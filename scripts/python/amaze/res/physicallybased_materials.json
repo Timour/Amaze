@@ -1,0 +1,1891 @@
+{
+ "licence": "CC0 1.0 - physicallybased.info (Anton Palmqvist)",
+ "materials": {
+  "Aluminum": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.916,
+    0.923,
+    0.924
+   ],
+   "complexIor": [
+    0.728978,
+    6.45971,
+    0.588215,
+    5.19646,
+    0.78354,
+    4.37746
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.989,
+    0.989,
+    0.972
+   ],
+   "tags": [
+    "aluminium",
+    "mirror"
+   ]
+  },
+  "Banana": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.634,
+    0.532,
+    0.111
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": []
+  },
+  "Beryllium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.539,
+    0.533,
+    0.534
+   ],
+   "complexIor": [
+    3.21038,
+    3.29815,
+    3.32907,
+    3.11669,
+    3.77105,
+    2.66995
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.549,
+    0.503,
+    0.364
+   ],
+   "tags": []
+  },
+  "Blackboard": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.039,
+    0.039,
+    0.039
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Blood": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.64448,
+    0.003,
+    0.005
+   ],
+   "description": "The color of blood depends on its oxygen level. When there is plenty of oxygen, the color is a brighter red. The reason is because of a protein called hemoglobin, which carries the oxygen in your blood. When hemoglobin has a full oxygen load, it has a bright red color, and when it's deoxygenated it's a darker red. For example, arterial and capillary blood is bright, and venous blood is dark.",
+   "ior": 1.35,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "liquid"
+   ],
+   "transmission": 1,
+   "transmissionDepth": 0.08,
+   "transmissionDispersion": 54
+  },
+  "Bone": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.793,
+    0.793,
+    0.664
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": [
+    "skeleton"
+   ]
+  },
+  "Brass": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.91,
+    0.778,
+    0.423
+   ],
+   "complexIor": [
+    0.341048,
+    4.14088,
+    0.53349,
+    2.67993,
+    1.42749,
+    1.87543
+   ],
+   "description": "Brass is an alloy of copper and zinc, with a bright and gold-like appearance. It is similar to bronze, another alloy containing copper that uses tin instead of zinc. Historically, the distinction between the two alloys has been less consistent and clear, and modern practice in museums and archaeology increasingly avoids both terms for historical objects in favor of the more general \"copper alloy\".",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.995,
+    0.974,
+    0.747
+   ],
+   "tags": []
+  },
+  "Brick": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.262,
+    0.095,
+    0.061
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Car Paint": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.1,
+    0.1,
+    0.1
+   ],
+   "description": "Modern car paints are nearly always an acrylic polyurethane \"enamel\" with a pigmented basecoat and a clear topcoat. It may be described as \"acrylic\", \"acrylic enamel\", \"urethane\", etc. and the clearcoat in particular may be described as a lacquer. The size of the metal flakes in metallic paints is typically between 100 to 400 microns in diameter. Modern automobile paint is applied in several layers, with a total thickness of around 100 \u03bcm (0.1mm).",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "acrylic",
+    "coat",
+    "car paint",
+    "lacquer"
+   ]
+  },
+  "Carrot": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.713,
+    0.17,
+    0.026
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": []
+  },
+  "Cesium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.718,
+    0.554,
+    0.237
+   ],
+   "complexIor": [
+    0.204334,
+    1.19256,
+    0.272018,
+    0.906033,
+    0.449252,
+    0.517209
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.997,
+    1.002,
+    1.073
+   ],
+   "tags": [
+    "caesium"
+   ]
+  },
+  "Charcoal": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.02,
+    0.02,
+    0.02
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Chocolate": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.162,
+    0.091,
+    0.06
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.1,
+    0.05,
+    0.025
+   ],
+   "tags": []
+  },
+  "Chromium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.654,
+    0.685,
+    0.701
+   ],
+   "complexIor": [
+    4.19382,
+    4.85545,
+    3.53806,
+    4.89986,
+    2.91521,
+    4.25568
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.591,
+    0.675,
+    0.703
+   ],
+   "tags": [
+    "chrome"
+   ]
+  },
+  "Cobalt": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.699,
+    0.704,
+    0.671
+   ],
+   "complexIor": [
+    3.33754,
+    5.27723,
+    2.6841,
+    4.73548,
+    2.57555,
+    3.81892
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.731,
+    0.775,
+    0.715
+   ],
+   "tags": []
+  },
+  "Coffee": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.447,
+    0.133,
+    0.034
+   ],
+   "description": "",
+   "ior": 1.34,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "sss"
+   ],
+   "transmission": 1,
+   "transmissionDepth": 0.1,
+   "transmissionDispersion": 55.78
+  },
+  "Concrete": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.51,
+    0.51,
+    0.51
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": []
+  },
+  "Cooking Oil": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.737911,
+    0.687,
+    0.091
+   ],
+   "description": "",
+   "ior": 1.47,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1
+  },
+  "Copper": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.932,
+    0.623,
+    0.522
+   ],
+   "complexIor": [
+    0.133762,
+    3.10615,
+    1.05661,
+    2.63095,
+    1.68637,
+    2.42655
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.999,
+    0.9,
+    0.744
+   ],
+   "tags": []
+  },
+  "Diamond": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 2.4168,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "gem",
+    "gemstone"
+   ],
+   "transmission": 1,
+   "transmissionDispersion": 55.3
+  },
+  "Egg Shell": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.61,
+    0.624,
+    0.631
+   ],
+   "description": "White hen egg from grocery store.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Eye (Cornea)": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.376,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1
+  },
+  "Eye (Lens)": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "The refractive index of human lens varies from approximately 1.406 in the central layers down to 1.386 in less dense layers of the lens. This index gradient enhances the optical power of the lens.",
+   "ior": 1.386,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1
+  },
+  "Eye (Sclera)": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.652,
+    0.5,
+    0.394
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0,
+   "subsurfaceRadius": [
+    0.482,
+    0.169,
+    0.109
+   ],
+   "tags": []
+  },
+  "Gasoline": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    1,
+    0.97,
+    0.617
+   ],
+   "description": "",
+   "ior": 1.427,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "petrol",
+    "fuel"
+   ],
+   "transmission": 1
+  },
+  "Germanium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.5,
+    0.517,
+    0.465
+   ],
+   "complexIor": [
+    5.63391,
+    1.44383,
+    5.06611,
+    2.25088,
+    4.81402,
+    0.279501
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.068,
+    0.179,
+    0.002
+   ],
+   "tags": []
+  },
+  "Glass": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.52,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1,
+   "transmissionDispersion": 64
+  },
+  "Gold": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    1.059,
+    0.773,
+    0.307
+   ],
+   "complexIor": [
+    0,
+    6.59401,
+    0.351563,
+    2.08143,
+    1.85894,
+    1.49631
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    1.001,
+    0.985,
+    0.523
+   ],
+   "tags": []
+  },
+  "Gray Card": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.18,
+    0.18,
+    0.18
+   ],
+   "description": "In photography and computer graphics, middle gray is a tone that is perceptually about halfway between black and white on a lightness scale. Light meters and cameras are often calibrated using an 18% gray card or a color reference card such as a ColorChecker. It is typically defined as 18% reflectance in visible light.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": [
+    "grey",
+    "middle gray"
+   ]
+  },
+  "Honey (Crystallized)": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.449,
+    0.319,
+    0.011
+   ],
+   "description": "Variations in its water content alter its refractive index. Typically, the refractive index for honey ranges from 1.504 at 13% water content to 1.474 at 25%. Fresh honey is liquid and clear but with time it crystallizes and becomes thicker and less clear. The crystallization depends on temperature and the ratio of glucose and fructose.",
+   "ior": 1.504,
+   "metalness": 0,
+   "roughness": 0,
+   "subsurfaceRadius": [
+    0.2,
+    0.2,
+    0.2
+   ],
+   "tags": []
+  },
+  "Honey (Liquid)": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.831,
+    0.571,
+    0.037
+   ],
+   "description": "Variations in its water content alter its refractive index. Typically, the refractive index for honey ranges from 1.504 at 13% water content to 1.474 at 25%. Fresh honey is liquid and clear but with time it crystallizes and becomes thicker and less clear. The crystallization depends on temperature and the ratio of glucose and fructose.",
+   "ior": 1.504,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1
+  },
+  "Ice": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.3098,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": [],
+   "transmission": 1,
+   "transmissionDispersion": 64.87
+  },
+  "Iridium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.745,
+    0.734,
+    0.704
+   ],
+   "complexIor": [
+    2.79209,
+    5.68877,
+    2.56343,
+    5.0549,
+    2.7216,
+    4.20215
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.818,
+    0.81,
+    0.727
+   ],
+   "tags": []
+  },
+  "Iron": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.53,
+    0.513,
+    0.494
+   ],
+   "complexIor": [
+    2.73466,
+    3.14869,
+    2.94186,
+    2.92718,
+    3.15654,
+    2.46012
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.612,
+    0.541,
+    0.422
+   ],
+   "tags": []
+  },
+  "Ketchup": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.164,
+    0.006,
+    0.002
+   ],
+   "description": "",
+   "ior": 1.3,
+   "metalness": 0,
+   "roughness": 0.1,
+   "subsurfaceRadius": [
+    0.476,
+    0.058,
+    0.039
+   ],
+   "tags": [
+    "liquid",
+    "sss"
+   ]
+  },
+  "Lead": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.626,
+    0.64,
+    0.693
+   ],
+   "complexIor": [
+    2.71051,
+    4.04246,
+    2.68791,
+    4.01366,
+    2.9091,
+    4.17426
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.717,
+    0.717,
+    0.696
+   ],
+   "tags": []
+  },
+  "Lemon": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.617,
+    0.366,
+    0.045
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": []
+  },
+  "Lithium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.916,
+    0.89,
+    0.807
+   ],
+   "complexIor": [
+    0.141612,
+    2.7434,
+    0.215656,
+    2.48258,
+    0.481854,
+    2.35726
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.998,
+    0.995,
+    0.975
+   ],
+   "tags": []
+  },
+  "MIT Black": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    5e-05,
+    5e-05,
+    5e-05
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.99,
+   "tags": []
+  },
+  "Magnesium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.956,
+    0.953,
+    0.95
+   ],
+   "complexIor": [
+    0.286425,
+    6.75553,
+    0.322265,
+    4.94909,
+    0.594764,
+    4.25174
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.998,
+    0.996,
+    0.983
+   ],
+   "tags": []
+  },
+  "Manganese": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.606,
+    0.592,
+    0.573
+   ],
+   "complexIor": [
+    2.22147,
+    3.60175,
+    2.02055,
+    3.25337,
+    2.03472,
+    2.862
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.757,
+    0.761,
+    0.715
+   ],
+   "tags": []
+  },
+  "Marble": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    0.83,
+    0.791,
+    0.753
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0,
+   "subsurfaceRadius": [
+    0.851,
+    0.557,
+    0.395
+   ],
+   "tags": [
+    "sss"
+   ]
+  },
+  "Mercury": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.781,
+    0.78,
+    0.778
+   ],
+   "complexIor": [
+    1.86932,
+    5.36989,
+    1.53811,
+    4.60484,
+    1.4963,
+    3.92685
+   ],
+   "description": "Mercury is the only metallic element that is known to be liquid at standard conditions.",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.901,
+    0.91,
+    0.89
+   ],
+   "tags": [
+    "liquid"
+   ]
+  },
+  "Milk": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.815,
+    0.813,
+    0.682
+   ],
+   "description": "Cow's milk",
+   "ior": 1.348,
+   "metalness": 0,
+   "roughness": 0,
+   "subsurfaceRadius": [
+    1.842,
+    1.044,
+    0.35
+   ],
+   "tags": [
+    "sss"
+   ]
+  },
+  "Molybdenum": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.589,
+    0.612,
+    0.594
+   ],
+   "complexIor": [
+    4.13827,
+    3.90428,
+    4.14866,
+    4.00545,
+    4.27845,
+    3.21018
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.495,
+    0.505,
+    0.383
+   ],
+   "tags": []
+  },
+  "Musou Black": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.006,
+    0.006,
+    0.006
+   ],
+   "description": "Musou Black is one of the darkest paints available. Darker materials can be achieved by using technology such as carbon nanotubes, like the MIT Black material.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Nickel": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.697,
+    0.641,
+    0.563
+   ],
+   "complexIor": [
+    1.8644,
+    4.21007,
+    1.92207,
+    3.57008,
+    2.22915,
+    2.87501
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.855,
+    0.805,
+    0.675
+   ],
+   "tags": []
+  },
+  "Office Paper": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.794,
+    0.834,
+    0.884
+   ],
+   "description": "Office paper contains optical brightening additives that absorb light in the ultraviolet and violet region (usually 340-370 nm), and re-emit light in the blue region (typically 420-470 nm) by fluorescence.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.8,
+   "tags": []
+  },
+  "Palladium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.734,
+    0.7036,
+    0.662
+   ],
+   "complexIor": [
+    1.88141,
+    4.66959,
+    1.79976,
+    4.03631,
+    2.00737,
+    3.43839
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.874,
+    0.854,
+    0.779
+   ],
+   "tags": []
+  },
+  "Pearl": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    0.8,
+    0.75,
+    0.7
+   ],
+   "description": "The akoya pearl is a saltwater cultured pearl from the akoya oyster. Akoya are considered to be the classic pearl used for necklaces and other pearl jewelry. Nacre is the material of which pearls are composed and consists of aragonite crystal layers separated by conchiolin, a protein secreted by mollusk shells. The thickness of these layers determines the color of reflection from the nacre. The transmission interference color is complementary to the reflection interference color.",
+   "ior": 1.68,
+   "metalness": 0,
+   "roughness": 0.35,
+   "subsurfaceRadius": [
+    0.3,
+    0.5,
+    0.3
+   ],
+   "tags": [
+    "nacre",
+    "sss"
+   ],
+   "thinFilmIor": 2,
+   "thinFilmThickness": 420
+  },
+  "Petroleum": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    0.03,
+    0.027,
+    0.024
+   ],
+   "description": "The viscosity of crude oil is sensitive to temperature.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0,
+   "subsurfaceRadius": [
+    3,
+    1,
+    0.25
+   ],
+   "tags": [
+    "oil",
+    "crude oil",
+    "sss"
+   ]
+  },
+  "Plastic (Acrylic)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.4905,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "PMMA",
+    "plexi",
+    "polymethyl methacrylate"
+   ],
+   "transmission": 1,
+   "transmissionDispersion": 53.18
+  },
+  "Plastic (PC)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.5848,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "polycarbonate"
+   ],
+   "transmission": 1,
+   "transmissionDispersion": 27.86
+  },
+  "Plastic (PET)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.575,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "polyethylene terephthalate"
+   ],
+   "transmission": 1
+  },
+  "Plastic (PP)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.492,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "polypropylene"
+   ],
+   "transmission": 1
+  },
+  "Plastic (PUR)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "Modern car paints are nearly always an acrylic polyurethane \"enamel\" with a pigmented basecoat and a clear topcoat. It may be described as \"acrylic\", \"acrylic enamel\", \"urethane\", etc. and the clearcoat in particular may be described as a lacquer.",
+   "ior": 1.6,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "acrylic",
+    "coat",
+    "car paint",
+    "lacquer",
+    "polyurethane"
+   ],
+   "transmission": 1
+  },
+  "Plastic (PVC)": {
+   "category": [
+    "Plastic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.542,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "polyvinyl chloride"
+   ],
+   "transmission": 1
+  },
+  "Platinum": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.765,
+    0.73,
+    0.676
+   ],
+   "complexIor": [
+    2.17679,
+    5.44798,
+    2.02616,
+    4.54881,
+    2.34437,
+    3.74446
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.873,
+    0.85,
+    0.747
+   ],
+   "tags": []
+  },
+  "Porcelain": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.745,
+    0.745,
+    0.723
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "vitreous china",
+    "ceramic"
+   ]
+  },
+  "Potassium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.983,
+    0.956,
+    0.906
+   ],
+   "complexIor": [
+    0.0,
+    3.37295,
+    0.041228,
+    1.56367,
+    0.220328,
+    2.05971
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    1.0,
+    1.0,
+    0.994
+   ],
+   "tags": []
+  },
+  "Quartz": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.54,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1,
+   "transmissionDispersion": 67.82
+  },
+  "Rubidium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.919,
+    0.859,
+    0.747
+   ],
+   "complexIor": [
+    0.0391755,
+    1.22619,
+    0.101768,
+    1.27629,
+    0.205178,
+    1.13104
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    1.0,
+    0.999,
+    0.998
+   ],
+   "tags": []
+  },
+  "Salt": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "",
+   "ior": 1.5441,
+   "metalness": 0,
+   "roughness": 0.2,
+   "tags": [],
+   "transmission": 1,
+   "transmissionDispersion": 42.89
+  },
+  "Sand": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    0.44,
+    0.386,
+    0.23074
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.9,
+   "tags": []
+  },
+  "Sapphire": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    0.67,
+    0.764,
+    0.855
+   ],
+   "description": "",
+   "ior": 1.7682,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [
+    "gem",
+    "gemstone"
+   ],
+   "transmission": 1,
+   "transmissionDispersion": 72.2
+  },
+  "Silicon": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.345,
+    0.369,
+    0.426
+   ],
+   "complexIor": [
+    3.65156,
+    0.972551,
+    4.08561,
+    0,
+    4.36337,
+    0
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.081,
+    0,
+    0.004
+   ],
+   "tags": []
+  },
+  "Silver": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.991,
+    0.985,
+    0.974
+   ],
+   "complexIor": [
+    0,
+    8.06675,
+    0.0626977,
+    3.62828,
+    0.382178,
+    3.80086
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    1.0,
+    1.0,
+    0.991
+   ],
+   "tags": [
+    "mirror"
+   ]
+  },
+  "Skin I": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.847,
+    0.638,
+    0.552
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.482,
+    0.169,
+    0.109
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Skin II": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.799,
+    0.485,
+    0.347
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.482,
+    0.169,
+    0.109
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Skin III": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.623,
+    0.433,
+    0.343
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.482,
+    0.169,
+    0.109
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Skin IV": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.436,
+    0.227,
+    0.131
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.367,
+    0.137,
+    0.068
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Skin V": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.283,
+    0.148,
+    0.079
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.367,
+    0.137,
+    0.068
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Skin VI": {
+   "category": [
+    "Human"
+   ],
+   "color": [
+    0.09,
+    0.05,
+    0.02
+   ],
+   "description": "",
+   "ior": 1.4,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.367,
+    0.137,
+    0.068
+   ],
+   "tags": [
+    "epidermis",
+    "sss"
+   ]
+  },
+  "Snow": {
+   "category": [
+    "Crystal"
+   ],
+   "color": [
+    0.85,
+    0.85,
+    0.85
+   ],
+   "description": "",
+   "ior": 1.3098,
+   "metalness": 0,
+   "roughness": 0.5,
+   "subsurfaceRadius": [
+    0.2,
+    0.2,
+    1
+   ],
+   "tags": [
+    "ice"
+   ]
+  },
+  "Soap Bubble": {
+   "category": [
+    "Organic"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "The colors of a soap bubble are the result of an interaction between the light reflected from the front and back surfaces of the soap film, a phenomenon known as thin-film interference. The thickness of a soap bubble can range between 10 nm and 1000 nm. It's thinner at the top due to gravity.",
+   "ior": 1,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "thinFilmIor": 1.4,
+   "thinFilmThickness": 500,
+   "transmission": 1
+  },
+  "Sodium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.977,
+    0.962,
+    0.936
+   ],
+   "complexIor": [
+    0.0,
+    4.94428,
+    0.0669661,
+    2.3243,
+    0.325253,
+    2.89317
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    1.0,
+    1.0,
+    0.991
+   ],
+   "tags": []
+  },
+  "Spectralon": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.99,
+    0.99,
+    0.99
+   ],
+   "description": "Spectralon is a fluoropolymer that has the highest diffuse reflectance of any known material or coating over the ultraviolet, visible, and near-infrared regions of the spectrum. It is the whitest substance available and reflects 99% of the light.",
+   "ior": 1.35,
+   "metalness": 0,
+   "roughness": 0.99,
+   "tags": []
+  },
+  "Stainless Steel": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.669,
+    0.639,
+    0.598
+   ],
+   "complexIor": [
+    2.22981,
+    4.21948,
+    2.04109,
+    3.64081,
+    2.15682,
+    3.07445
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.804,
+    0.791,
+    0.714
+   ],
+   "tags": []
+  },
+  "Tire": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.023,
+    0.023,
+    0.023
+   ],
+   "description": "Car tire.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.7,
+   "tags": [
+    "tyre",
+    "rubber"
+   ]
+  },
+  "Titanium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.441,
+    0.4,
+    0.361
+   ],
+   "complexIor": [
+    1.9345,
+    2.33987,
+    1.86761,
+    2.05312,
+    2.05863,
+    1.74518
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.67,
+    0.641,
+    0.52
+   ],
+   "tags": []
+  },
+  "Toner (Black)": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.05,
+    0.05,
+    0.05
+   ],
+   "description": "Black toner printed on office paper with linear sRGB values of 0, 0, 0.",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0.5,
+   "tags": []
+  },
+  "Tungsten": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.537,
+    0.536,
+    0.519
+   ],
+   "complexIor": [
+    3.8332,
+    3.26472,
+    3.92528,
+    3.0739,
+    4.53149,
+    2.0965
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.45,
+    0.409,
+    0.193
+   ],
+   "tags": []
+  },
+  "Vanadium": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.534,
+    0.526,
+    0.546
+   ],
+   "complexIor": [
+    3.6507,
+    3.25065,
+    3.72723,
+    3.00712,
+    4.94609,
+    2.17896
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.474,
+    0.426,
+    0.175
+   ],
+   "tags": []
+  },
+  "Water": {
+   "category": [
+    "Liquid"
+   ],
+   "color": [
+    1,
+    1,
+    1
+   ],
+   "description": "While relatively small quantities of water appear to be colorless, pure water has a slight blue color that becomes deeper as the thickness of the observed sample increases. The hue of water is an intrinsic property and is caused by selective absorption and scattering of white light. Dissolved elements or suspended impurities may give water a different color.",
+   "ior": 1.3325,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": [],
+   "transmission": 1,
+   "transmissionDispersion": 55.78
+  },
+  "Whiteboard": {
+   "category": [
+    "Manmade"
+   ],
+   "color": [
+    0.869,
+    0.867,
+    0.771
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 0,
+   "roughness": 0,
+   "tags": []
+  },
+  "Zinc": {
+   "category": [
+    "Metal"
+   ],
+   "color": [
+    0.808,
+    0.844,
+    0.865
+   ],
+   "complexIor": [
+    3.15207,
+    7.39342,
+    1.89133,
+    6.28678,
+    1.48736,
+    4.92701
+   ],
+   "description": "",
+   "ior": 1.5,
+   "metalness": 1,
+   "roughness": 0,
+   "specularColor": [
+    0.854,
+    0.922,
+    0.923
+   ],
+   "tags": []
+  }
+ },
+ "source": "physicallybased.info"
+}

@@ -1,0 +1,27 @@
+#!/bin/bash
+# Refuse a commit MESSAGE that carries more than the change. That is ALL
+# this does.
+#
+# The companion to pre-commit: that one guards the content, this one the
+# message. It refuses four things - the author's name, a pronoun
+# standing in for a person, a quoted sentence, and a body over ten
+# lines. The published history carried verbatim informal messages,
+# typos included, and had to be rewritten.
+#
+# A message states the FUNCTION of the code and the RESULT of the tests.
+# The auto-capture case, as it should have been written: the capture
+# blocked 22s on one scene and never returned on the next, consuming
+# 86GB. No speaker, no conversation, no justification.
+#
+# The RAW message is scanned, `#` lines included: git only strips
+# comments under --cleanup=strip (editor mode), and with `-m` they are
+# published verbatim.
+set -uo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+head_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+if [ -n "${AMAZE_ALLOW_PRIVATE:-}" ] && [ "${AMAZE_ALLOW_PRIVATE}" = "$head_sha" ]; then
+    exit 0
+fi
+
+exec python3 "$here/amaze_name_scan.py" --message "${1:-}"

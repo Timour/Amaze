@@ -1,0 +1,12 @@
+#!/bin/bash
+# Merges do not run pre-commit. That gap was reproduced: `git merge
+# --no-ff` landed a file naming the author straight on main, because the
+# merge MESSAGE is checked by commit-msg but the merge CONTENT was
+# checked by nothing.
+#
+# Same scan, same exit codes - this is pre-commit, run at merge time.
+# (Note: cherry-pick and rebase run neither hook. Content arriving that
+# way - a fork, a GitHub web edit, a second machine - is still unguarded
+# at commit time, which is why the scan is content-based rather than
+# diff-based: a later commit touching the file will catch it.)
+exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pre-commit" "$@"

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<pythonPanelDocument>
+  <!-- This file contains definitions of Python interfaces and the
+ interfaces menu.  It should not be hand-edited when it is being
+ used by the application.  Note, that two definitions of the
+ same interface or of the interfaces menu are not allowed
+ in a single file. -->
+  <!-- label = the pane-tab display name. This is the ONE user-visible
+       name Python can't reach at load time (Houdini reads it here before
+       any code runs), so on a rename it's edited here to match
+       branding.APP_NAME. name= was "MatLib" until 2026-07-27; the saved
+       desktops that keyed on it were patched in the same change
+       ("pythonpanel ... -n MatLib" -> "-n Amaze" in each .desk). -->
+  <interface name="Amaze" label="Amaze" icon="MISC_python" showNetworkNavigationBar="false"
+    help_url="">
+    <script><![CDATA[import os
+
+from amaze.panel import panel
+
+# panel.py is re-executed here ONLY with the dev switch on. Houdini has
+# already imported it by the line above; reloading it again re-ran the
+# module body - and its whole reload chain - a second time on every
+# open, for a refresh the live-test loop does not use (it says to fully
+# quit and relaunch Houdini instead, because module caching makes a
+# panel reopen untrustworthy anyway). AMAZE_DEV_RELOAD=1 restores it.
+if os.environ.get("AMAZE_DEV_RELOAD"):
+    import importlib
+    importlib.reload(panel)
+
+
+def onCreateInterface():
+    amaze_widget = panel.MatLibPanel()
+    return amaze_widget]]></script>
+    <includeInPaneTabMenu menu_position="99" create_separator="false" />
+    <includeInToolbarMenu menu_position="415" create_separator="false" />
+    <help><![CDATA[]]></help>
+  </interface>
+</pythonPanelDocument>

@@ -1,0 +1,6 @@
+{
+    "env": [
+        { "AMAZE": "/path/to/Amaze" }
+    ],
+    "path": [ "$AMAZE" ]
+}

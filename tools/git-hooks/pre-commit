@@ -1,0 +1,30 @@
+#!/bin/bash
+# Refuse to commit anything that would publish the author's identity.
+# That is ALL this does.
+#
+# The rule is absolute and predates the mechanism: no name, no quotes,
+# no messages, nothing traceable to the author, in anything public. It
+# was broken three times and each cost a rewrite of published history -
+# and a force-push is a reduction, not a deletion.
+#
+# The scan lives in amaze_name_scan.py. It was shell twice, and both
+# times an adversarial review walked through it by exploiting how a
+# PATH becomes a STRING - see that file's header for the three shapes.
+# This wrapper only handles the escape hatch.
+#
+# Escape hatch: git commit --no-verify, or
+# AMAZE_ALLOW_PRIVATE=$(git rev-parse HEAD) git commit - bound to the
+# CURRENT tip, so a static export in a profile expires after one commit
+# instead of disabling the gate forever.
+set -uo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+head_sha="$(git rev-parse HEAD 2>/dev/null || true)"
+if [ -n "${AMAZE_ALLOW_PRIVATE:-}" ] && [ "${AMAZE_ALLOW_PRIVATE}" = "$head_sha" ]; then
+    echo "pre-commit: AMAZE_ALLOW_PRIVATE matches HEAD - name scan skipped" >&2
+    exit 0
+elif [ -n "${AMAZE_ALLOW_PRIVATE:-}" ]; then
+    echo "pre-commit: AMAZE_ALLOW_PRIVATE set but does not match HEAD - scanning anyway" >&2
+fi
+
+exec python3 "$here/amaze_name_scan.py"

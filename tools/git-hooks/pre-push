@@ -1,0 +1,65 @@
+#!/bin/bash
+# Refuse to push a red suite. That is ALL this does.
+#
+# This is the project's CI. Not GitHub Actions: the tests need hython,
+# and a cloud runner has no Houdini licence. What CI actually buys you
+# is "it cannot go unrun" - a hook buys that locally, in ~20 seconds.
+# Wired with `git config core.hooksPath tools/git-hooks` so it travels
+# with a clone (sync-install.sh re-wires it automatically).
+#
+# It used to also decide WHICH pushes deserved the suite, parsing git's
+# ref protocol and diffing ranges so a docs-only push could skip. That
+# skip logic was ~40 lines, existed to save ~20 seconds, and produced
+# five of the eight gate bugs of 2026-07-27 - including two total
+# bypasses where code landed on main while the hook printed "docs only,
+# skipped". Deleted 2026-07-28: the suite ALWAYS runs. Twenty seconds
+# is cheaper than one wrong skip. (log #283)
+#
+# Escape hatch for a genuine emergency: git push --no-verify, or
+# AMAZE_SKIP_TESTS=$(git rev-parse HEAD) git push - sha-bound so it
+# cannot be exported once in a profile and disable the gate forever.
+
+set -uo pipefail
+repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+if [ "${AMAZE_SKIP_TESTS:-}" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
+    echo "pre-push: AMAZE_SKIP_TESTS matches HEAD - suite skipped" >&2
+    echo "pre-push: DONE"
+    exit 0
+elif [ -n "${AMAZE_SKIP_TESTS:-}" ]; then
+    echo "pre-push: AMAZE_SKIP_TESTS set but does not match HEAD - running anyway" >&2
+fi
+
+# A git hook inherits almost no environment - resolve Houdini here.
+if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
+    HFS="$(ls -d /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources 2>/dev/null | sort -V | tail -1 || true)"
+    export HFS
+fi
+if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
+    echo "PUSH REFUSED - no Houdini found, so the suite cannot run." >&2
+    echo "  Set HFS to a Houdini install, or push with --no-verify." >&2
+    exit 1
+fi
+
+echo "pre-push: running the suite (about 130s)..."
+output="$("$repo/tools/run-tests.sh" 2>&1)"
+status=$?
+
+tests_ran="$(printf '%s\n' "$output" | sed -n 's/^Ran \([0-9][0-9]*\) test.*/\1/p' | tail -1 || true)"
+tests_ran="${tests_ran:-0}"
+failed="$(printf '%s\n' "$output" | grep -cE '^FAILED( \(|$)' || true)"
+leak="$(printf '%s\n' "$output" | grep -c 'LOG LEAK' || true)"
+
+if [ "$status" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] \
+   || [ "$tests_ran" -eq 0 ]; then
+    echo >&2
+    echo "PUSH REFUSED - the suite is not green." >&2
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK|^Testing ' | tail -25 >&2 || true
+    echo >&2
+    echo "  $tests_ran test(s) ran, $failed suite(s) failed. Fix, or push --no-verify." >&2
+    exit 1
+fi
+
+echo "pre-push: $tests_ran tests OK, real debug log clean."
+echo "pre-push: DONE"
+exit 0

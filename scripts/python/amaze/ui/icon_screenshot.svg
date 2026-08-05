@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8.07 8.07 30.86 30.86">
+  <!-- HIP capture icon (download arrow in a disc), from Screenshoot.svg
+       in the design file. Colors are load-time tint targets:
+       #5d7abd = icon body, #2d2d2d = punch-out - the same pair the
+       Library gear uses, so IconMenuButton tints this identically.
+
+       BARE ARTWORK ONLY, matching icon_library.svg. The design file
+       also draws the cube frame and a pressed rectangle around this;
+       IconMenuButton produces hover and pressed itself (grey chip +
+       tint swap), so an icon asset here carries one state, no ids and
+       no hidden elements.
+
+       The viewBox is TIGHTENED to the artwork rather than left at the
+       design file's 47x47 canvas: the disc occupied 54% of that frame
+       while every other toolbar icon fills 81-90% of its own, so it
+       rendered visibly smaller in the same 30px button. Measured, not
+       eyeballed - see the ink-extent test. -->
+  <path fill="#5d7abd" d="M 36 23.5 C 36 30.403561 30.403561 36 23.5 36 C 16.596441 36 11 30.403561 11 23.5 C 11 16.596439 16.596441 11 23.5 11 C 30.403561 11 36 16.596439 36 23.5 Z"/>
+  <path fill="none" stroke="#2d2d2d" stroke-width="2.238864" stroke-linecap="round" stroke-linejoin="round" d="M 18.5 23.5 L 23.5 28.5 L 28.5 23.5 M 23.5 18.5 L 23.5 28.5"/>
+</svg>

@@ -1,0 +1,602 @@
+"""The Keyed Store Engine: one guarded side table, for every store.
+
+BATCH 2 of the four-areas restructure. Three stores were the same store
+implemented three times - notes.json, icons.json and the four
+per-location preference dicts - each with its own copy of a guard set,
+and each copy missing a different part of it. `notes.py`'s docstring
+said its guards were icons.json's, "copied deliberately"; they were
+not, and the tuple it passed to prove the one guard it did have was a
+no-op.
+
+What is tested here is the ENGINE's guarantees, not a store's shape:
+
+* absence is a VERDICT the engine resolves, never a value a caller gets;
+* a read hands out a COPY, a write STAGES and commits only on success;
+* the registry is the ONE enumeration, so Repair cannot be one short;
+* a key lifecycle (a folder moved, a location is gone) is announced by
+  its owner and fanned out by the engine.
+
+Every path here is inside a temp dir. Nothing reads the machine's own
+library, and nothing under it is opened - his registered File locations
+are real photograph archives.
+"""
+
+import json
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+from unittest import mock
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+
+from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
+
+
+class _Prefs:
+    """Only what a store reads: where the library is."""
+
+    def __init__(self, directory):
+        self.dir = directory
+
+
+class StoreCase(unittest.TestCase):
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_keyed_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.prefs = _Prefs(self.dir)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+
+    def path(self, name="notes.json"):
+        return os.path.join(self.dir, name)
+
+    def store(self, spec=None):
+        return keyed_store.open_store(spec or notes.SPEC, self.prefs)
+
+    def page(self, text="a note"):
+        return {"items": [{"t": "text", "text": text}]}
+
+    def on_disk(self, name="notes.json"):
+        with open(self.path(name), encoding="utf-8") as handle:
+            return json.load(handle)
+
+
+class AbsenceIsAVerdict(StoreCase):
+    """`if os.path.exists(path):` with no `else` is what icons.json
+    was: a missing file read as "this library has no chosen icons", so
+    one pick rewrote the whole table as a one-key file. There is no
+    such branch in any store now, because absence is resolved once, by
+    the engine, into an answer a caller cannot mistake for data."""
+
+    def test_a_library_with_nothing_yet_is_FRESH_and_writable(self):
+        store = self.store()
+        self.assertEqual(keyed_store.FRESH, store.state)
+        self.assertTrue(store.writable)
+        self.assertTrue(store.set("material:1", self.page()))
+
+    def test_a_file_that_is_there_and_parses_is_READ(self):
+        self.store().set("material:1", self.page())
+        keyed_store.release()
+        self.assertEqual(keyed_store.READ, self.store().state)
+
+    def test_ABSENT_WITH_A_TRACE_IS_BLIND_and_refuses_to_write(self):
+        """The 178-black-tiles shape, one level down: a sync
+        placeholder still arriving, a conflict rename or a partial
+        restore all look like an empty library for one instant."""
+        self.store().set("material:1", self.page())
+        keyed_store.release()
+        os.remove(self.path())                # the file blinks out...
+        self.assertTrue(hostos.existed_before(self.path()),
+                        "no trace survived, so this proves nothing")
+
+        store = self.store()
+        self.assertEqual(keyed_store.BLIND, store.state)
+        self.assertFalse(store.writable)
+        result = store.set("material:2", self.page("new"))
+        self.assertFalse(result)
+        self.assertEqual(keyed_store.REASON_ABSENT, result.reason)
+        self.assertFalse(
+            os.path.exists(self.path()),
+            "a one-key file was written over a table that is merely "
+            "not arrived yet")
+
+    def test_a_file_that_will_not_parse_is_BLIND_and_is_kept(self):
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            handle.write("{ this is not json")
+        store = self.store()
+        self.assertEqual(keyed_store.BLIND, store.state)
+        result = store.set("material:1", self.page())
+        self.assertFalse(result)
+        self.assertEqual(keyed_store.REASON_LATCHED, result.reason)
+        self.assertTrue(
+            os.path.exists(self.path() + ".unreadable"),
+            "the file that would not parse was not kept beside itself")
+
+    def test_the_icons_store_has_the_guard_it_never_had(self):
+        """THE FINDING, in one test. icons.json had no absent-but-known
+        branch at all - and it did not get one by having a branch
+        written for it. It got one by being declared."""
+        store = self.store(tile_icons.SPEC)
+        self.assertTrue(store.set("/tex/a.exr",
+                                  {"name": "box", "bg": "#ef8878"}))
+        keyed_store.release()
+        os.remove(self.path("icons.json"))
+
+        store = self.store(tile_icons.SPEC)
+        self.assertEqual(keyed_store.BLIND, store.state)
+        self.assertFalse(store.set("/tex/b.exr",
+                                   {"name": "box", "bg": "#ef8878"}))
+        self.assertFalse(os.path.exists(self.path("icons.json")))
+
+
+class TheRestoreFloorArrivesOnCreate(StoreCase):
+    """snapshot_before_write copies what is ALREADY on disk and rightly
+    declines when there is nothing there - so a store written exactly
+    once had no trace of any kind, and absent-but-known cannot find
+    evidence that was never written.
+
+    Measured on the real library 2026-08-03: notes.json has all four
+    tiers and icons.json is absent with none, so the first icon ever
+    picked was also the one write with nothing behind it."""
+
+    def test_the_first_write_leaves_a_floor(self):
+        self.assertTrue(self.store().set("material:1", self.page()))
+        self.assertTrue(
+            os.path.exists(self.path() + ".bak-first"),
+            "a store written once has no restore point and no evidence "
+            "it ever existed")
+
+    def test_the_floor_is_never_replaced_by_a_later_write(self):
+        store = self.store()
+        store.set("material:1", self.page("first"))
+        floor = self.path() + ".bak-first"
+        before = open(floor, encoding="utf-8").read()
+        store.set("material:2", self.page("second"))
+        self.assertEqual(before, open(floor, encoding="utf-8").read(),
+                         "the write-once floor rotated")
+
+    def test_a_floor_is_not_minted_from_bytes_that_do_not_parse(self):
+        """A permanent floor made of garbage is worse than no floor: a
+        single half-synced launch used to mint the one copy that never
+        rotates from a truncated file.
+
+        The file has to EXIST for this to reach the guard - the first
+        version of this test pointed at a path that was not there, so
+        it returned False before the parse check and was green with
+        the guard deleted."""
+        target = self.path("icons.json")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write("{ truncated")
+        self.assertFalse(hostos.seed_restore_floor(target))
+        self.assertFalse(os.path.exists(target + ".bak-first"))
+
+    def test_calling_it_twice_never_replaces_the_floor(self):
+        """Directly, because the caller only reaches it on a CREATE -
+        so the write-once rule inside it has no other way to be held."""
+        target = self.path("icons.json")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write('{"icons": {}}')
+        self.assertTrue(hostos.seed_restore_floor(target))
+        floor = target + ".bak-first"
+        first = open(floor, encoding="utf-8").read()
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write('{"icons": {"/a.exr": {"name": "box"}}}')
+        self.assertFalse(hostos.seed_restore_floor(target),
+                         "it minted a second floor")
+        self.assertEqual(first, open(floor, encoding="utf-8").read(),
+                         "the write-once floor was replaced")
+
+
+class AReadHandsOutACopy(StoreCase):
+    """`notes()` used to return the live cache. A caller holding that
+    could mutate the table without writing anything - so a REFUSED save
+    still lit the tile's comment badge, and a later sweep read the
+    phantom back and wrote its text a second time."""
+
+    def test_mutating_a_get_does_not_reach_the_store(self):
+        store = self.store()
+        store.set("material:1", self.page("real"))
+        page = store.get("material:1")
+        page["items"].append({"t": "text", "text": "smuggled"})
+        self.assertEqual(1, len(store.get("material:1")["items"]),
+                         "a caller mutated the store through a read")
+
+    def test_mutating_all_does_not_reach_the_store(self):
+        store = self.store()
+        store.set("material:1", self.page())
+        table = store.all()
+        table["material:2"] = self.page("smuggled")
+        self.assertFalse(store.has("material:2"))
+
+    def test_has_is_the_paint_paths_question_and_reads_no_disk(self):
+        store = self.store()
+        store.set("material:1", self.page())
+        opened = []
+        real_open = open
+
+        def spy(*a, **kw):
+            opened.append(a[0])
+            return real_open(*a, **kw)
+
+        import builtins
+        with mock.patch.object(builtins, "open", spy):
+            for _ in range(50):
+                store.has("material:1")
+        self.assertEqual([], opened,
+                         "has() touched the disk - it is called per tile "
+                         "per repaint from three models: %s" % opened[:3])
+
+
+class AWriteCommitsOnlyOnSuccess(StoreCase):
+
+    def test_a_refused_write_leaves_the_cache_exactly_as_it_was(self):
+        store = self.store()
+        store.set("material:1", self.page("kept"))
+        keyed_store.release()
+        os.remove(self.path())                       # -> BLIND
+        store = self.store()
+
+        self.assertFalse(store.set("material:9", self.page("lost")))
+        self.assertFalse(
+            store.has("material:9"),
+            "the badge lights for a note that was never saved")
+
+    def test_a_denied_write_leaves_the_cache_exactly_as_it_was(self):
+        store = self.store()
+        store.set("material:1", self.page("kept"))
+        with mock.patch.object(hostos, "write_json_atomic",
+                               side_effect=OSError("read-only")):
+            result = store.set("material:2", self.page("lost"))
+        self.assertFalse(result)
+        self.assertEqual(keyed_store.REASON_DENIED, result.reason)
+        self.assertFalse(store.has("material:2"))
+        self.assertTrue(store.has("material:1"),
+                        "a failed write dropped what was already there")
+
+    def test_the_answer_says_WHY_not_just_no(self):
+        """A bare False could not tell a read-only folder from a file
+        that would not parse - and the panel guessed, telling the user
+        to check the folder was writable when the folder was fine."""
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            handle.write("nonsense")
+        result = self.store().set("material:1", self.page())
+        self.assertEqual(keyed_store.REASON_LATCHED, result.reason)
+        self.assertIn("could not be read", result.sentence)
+
+    def test_asking_for_what_is_already_there_is_not_a_failure(self):
+        store = self.store()
+        store.set("material:1", self.page())
+        result = store.set("material:1", self.page())
+        self.assertTrue(result)
+        self.assertEqual(keyed_store.REASON_UNCHANGED, result.reason)
+
+
+class TheFileMustBeTHISStoresFile(StoreCase):
+
+    def test_a_document_holding_the_other_stores_key_is_refused(self):
+        """`wrong_table_shape` reads a MISSING payload key as a valid
+        empty table, so icons.json copied over notes.json parses, reads
+        as zero notes, and the next note written replaces the file."""
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"icons": {"/a.exr": {"name": "box"}}}, handle)
+        store = self.store()
+        self.assertEqual(keyed_store.BLIND, store.state)
+        self.assertFalse(store.set("material:1", self.page()))
+
+    def test_a_byte_order_mark_is_read_not_latched(self):
+        """A BOM is what a Windows editor leaves behind. Reading plain
+        utf-8 made that file "damaged" and latched the whole store."""
+        with open(self.path(), "wb") as handle:
+            handle.write(b"\xef\xbb\xbf" + json.dumps(
+                {"notes": {"material:1": self.page("from windows")}}
+            ).encode("utf-8"))
+        store = self.store()
+        self.assertEqual(keyed_store.READ, store.state)
+        self.assertTrue(store.has("material:1"))
+
+
+class TheRegistryIsTheOneEnumeration(StoreCase):
+
+    def test_it_can_be_read_without_qt_or_houdini(self):
+        """Repair must be able to name these files on a machine where
+        Houdini will not start, and `tile_icons`' normaliser pulls in
+        Qt - so WHICH files exist is declared apart from what a valid
+        value of one is."""
+        source = open(keyed_store.__file__.replace(".pyc", ".py"),
+                      encoding="utf-8").read()
+        head = source[:source.index('class Written', 0)]
+        for banned in ("PySide6", "import hou"):
+            self.assertNotIn(banned, head)
+
+    def test_every_library_store_is_declared_with_its_words(self):
+        for spec in keyed_store.stores():
+            self.assertTrue(spec.label, "%s has no name" % spec.filename)
+            self.assertTrue(spec.noun, "%s has no noun" % spec.filename)
+
+    def test_repair_surveys_what_the_registry_declares(self):
+        """The SURVEY, not just the helper that names them. Asserting
+        the helper alone left the survey free to loop over the four
+        databases and ignore it - which is what it did for a day."""
+        from amaze.core import repair
+
+        self.assertEqual(set(keyed_store.filenames()),
+                         set(repair.side_tables()))
+        self.store().set("material:1", self.page())
+        surveyed = {entry["filename"]
+                    for entry in repair.survey(self.dir)["lists"]}
+        for name in ("notes.json", "icons.json"):
+            self.assertIn(
+                name, surveyed,
+                "Repair does not survey %s, although that file's "
+                "unreadable alert sends the user to Repair by name"
+                % name)
+        self.assertEqual(
+            "Comments",
+            [e for e in repair.survey(self.dir)["lists"]
+             if e["filename"] == "notes.json"][0]["label"],
+            "Repair surveys it without being able to name it")
+
+    def test_the_audit_tools_list_agrees_with_the_registry(self):
+        """`tools/library-audit.py` keeps its OWN literal, on purpose -
+        it promises to run with no import from the package, in a hook,
+        on a machine where Houdini will not start. A second list is
+        allowed only when a test makes drift RED, which is what this
+        is: the audit's copy grew the side tables on 2026-08-02 and
+        Repair's copy stayed narrow, silently, for a day."""
+        import ast
+
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        source = open(os.path.join(root, "tools", "library-audit.py"),
+                      encoding="utf-8").read()
+        tree = ast.parse(source)
+        listed = None
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign) and node.targets
+                    and getattr(node.targets[0], "id", "") == "SIDE_TABLES"):
+                listed = set(ast.literal_eval(node.value))
+        self.assertIsNotNone(listed, "library-audit.py no longer names "
+                                     "SIDE_TABLES, so this check is vacuous")
+        self.assertEqual(
+            set(keyed_store.filenames()), listed,
+            "the audit tool and the registry disagree about which keyed "
+            "files a library contains")
+
+    def test_a_side_table_can_be_counted_by_the_restore_picker(self):
+        """It counted a 40-note notes.json as "1 settings", so the
+        restore refusal that compares record counts never fired."""
+        from amaze.helpers import restore as restore_lib
+
+        store = self.store()
+        for n in range(7):
+            store.set("material:%d" % n, self.page("n%d" % n))
+        facts = restore_lib.info(self.path())
+        self.assertEqual(7, facts["count"])
+        self.assertEqual("comments", facts["noun"])
+
+
+class TheKeyLifecycle(StoreCase):
+    """The owner announces; the ENGINE fans out. A caller that
+    enumerates the stores is a list someone can write short, and both
+    of the callers that did had already been written short - the
+    relocate hook named four preferences and neither side table, the
+    removal hook named two of those same four."""
+
+    def test_a_relocate_moves_only_path_shaped_keys(self):
+        store = self.store()
+        store.set(notes.note_key("file", "/old/a.exr"), self.page("file"))
+        store.set(notes.note_key("material", "/old/a.exr"), self.page("id"))
+
+        keyed_store.relocate(self.prefs, "/old/", "/new/")
+
+        self.assertTrue(store.has(notes.note_key("file", "/new/a.exr")))
+        self.assertFalse(store.has(notes.note_key("file", "/old/a.exr")))
+        self.assertTrue(
+            store.has(notes.note_key("material", "/old/a.exr")),
+            "an asset key that merely LOOKS like a path was rewritten "
+            "by a folder move")
+
+    def test_the_path_prefix_is_what_makes_a_key_movable(self):
+        """notes.json holds `material:<id>` beside `file:<path>` in ONE
+        file, and the on-disk format cannot change. Which keys a folder
+        move may rewrite is therefore the declared PREFIX - get it
+        wrong and either every File note is orphaned or every asset id
+        is rewritten."""
+        self.assertEqual(keyed_store.KEY_MIXED, notes.SPEC.keyspace)
+        self.assertEqual("file:", notes.SPEC.path_prefix)
+        self.assertTrue(notes.SPEC.is_path_key("file:/a/b.exr"))
+        self.assertFalse(notes.SPEC.is_path_key("material:12345"))
+        self.assertFalse(
+            notes.SPEC.is_path_key("material:/a/b.exr"),
+            "an asset id shaped like a path is not a path key")
+
+    def test_a_relocate_is_one_write_per_store(self):
+        store = self.store()
+        for n in range(5):
+            store.set(notes.note_key("file", "/old/%d.exr" % n),
+                      self.page("n%d" % n))
+        writes = []
+        real = hostos.write_json_atomic
+
+        def spy(path, data, **kw):
+            writes.append(path)
+            return real(path, data, **kw)
+
+        with mock.patch.object(hostos, "write_json_atomic", spy):
+            keyed_store.relocate(self.prefs, "/old/", "/new/")
+        self.assertEqual(
+            1, len(writes),
+            "five keys moved in %d writes - a half-rewritten keyspace "
+            "is worse than the orphaning it fixes" % len(writes))
+
+    def test_an_existing_entry_at_the_destination_is_not_overwritten(self):
+        store = self.store()
+        store.set(notes.note_key("file", "/old/a.exr"), self.page("old"))
+        store.set(notes.note_key("file", "/new/a.exr"), self.page("chosen"))
+        keyed_store.relocate(self.prefs, "/old/", "/new/")
+        self.assertEqual(
+            "chosen",
+            store.get(notes.note_key("file", "/new/a.exr"))["items"][0]["text"],
+            "a rename overwrote a note that was written for the new path")
+
+    def test_a_sibling_directory_is_not_captured(self):
+        store = self.store()
+        store.set(notes.note_key("file", "/a/textures/x.exr"), self.page())
+        keyed_store.relocate(self.prefs, "/a/tex", "/b/tex")
+        self.assertTrue(
+            store.has(notes.note_key("file", "/a/textures/x.exr")),
+            "relocating /a/tex captured /a/textures")
+
+    def test_a_removal_forgets_EVERYTHING_about_the_location(self):
+        """HIS CALL, 2026-08-03: "clear everything - favourites,
+        comments and icons". Removal means removal; re-adding the
+        folder gives a clean slate.
+
+        This reverses the behaviour ui-text.md documented since
+        2026-07-31 ("captures and favorites are kept"), which is why
+        the wording moved in the same change."""
+        page_store = self.store()
+        icon_store = self.store(tile_icons.SPEC)
+        page_store.set(notes.note_key("file", "/gone/a.exr"), self.page())
+        icon_store.set("/gone/a.exr", {"name": "box", "bg": "#ef8878"})
+
+        keyed_store.retire_prefix(self.prefs, "/gone/")
+
+        self.assertFalse(
+            page_store.has(notes.note_key("file", "/gone/a.exr")),
+            "removing a location left the comments in it behind")
+        self.assertFalse(
+            icon_store.has("/gone/a.exr"),
+            "removing a location left the custom icons in it behind")
+
+    def test_a_removal_leaves_everything_OUTSIDE_the_location_alone(self):
+        """The other half, and the one that matters more: forgetting a
+        folder must not reach an asset's comment or another folder."""
+        page_store = self.store()
+        page_store.set(notes.note_key("material", "a1"), self.page("asset"))
+        page_store.set(notes.note_key("file", "/kept/a.exr"), self.page())
+        page_store.set(notes.note_key("file", "/gone/a.exr"), self.page())
+
+        keyed_store.retire_prefix(self.prefs, "/gone/")
+
+        self.assertTrue(
+            page_store.has(notes.note_key("material", "a1")),
+            "removing a File location deleted an ASSET's comment")
+        self.assertTrue(
+            page_store.has(notes.note_key("file", "/kept/a.exr")),
+            "removing one location reached into another")
+
+    def test_a_prefixed_key_is_matched_by_the_SAME_rule_both_ways(self):
+        """The bug this pins, found by driving the real thing rather
+        than by a test: `relocate` stripped the `file:` prefix before
+        comparing and `retire_prefix` did not, so a removal swept the
+        locations and the icons and silently left every comment behind.
+        Two places asking one question, one of them wrong - which is
+        the shape this whole engine exists to end, grown inside the
+        engine itself within the hour."""
+        key = notes.note_key("file", "/gone/a.exr")
+        self.assertTrue(keyed_store._under(notes.SPEC, key, "/gone/"))
+        self.assertTrue(keyed_store._under(notes.SPEC, key, "/gone"))
+        self.assertFalse(keyed_store._under(notes.SPEC, key, "/go/"))
+        self.assertFalse(
+            keyed_store._under(notes.SPEC,
+                               notes.note_key("material", "/gone/a.exr"),
+                               "/gone/"),
+            "an asset id shaped like a path was swept by a folder removal")
+        # ASSERT THE CALL, NOT THE TEXT. This read
+        # `"_bare_path(" in inspect.getsource(func)` - and getsource
+        # returns COMMENTS, so an inlined copy of the rule with the
+        # words `_bare_path(...)` left behind in a comment satisfied
+        # it. Proved 2026-08-03: inlining the rule in both functions
+        # made `_bare_path` dead code and the test stayed green.
+        calls = []
+        real = keyed_store._bare_path
+        self.addCleanup(setattr, keyed_store, "_bare_path", real)
+
+        def counting(spec, key):
+            calls.append(key)
+            return real(spec, key)
+
+        keyed_store._bare_path = counting
+
+        page_store = self.store()
+        page_store.set(notes.note_key("file", "/old/a.exr"), self.page())
+        keyed_store.relocate(self.prefs, "/old/", "/new/")
+        self.assertTrue(
+            calls, "relocate stopped asking one function how a keyspace "
+                   "prefix comes off - an inlined copy is how the two "
+                   "halves drifted apart the first time")
+
+        calls.clear()
+        keyed_store.retire_prefix(self.prefs, "/new/")
+        self.assertTrue(
+            calls, "the removal half stopped asking it, which is the "
+                   "exact drift that left every comment behind")
+
+    def test_favourites_are_in_the_registry_too(self):
+        """They were swept by hand in the base folder model - a second
+        list, with the same failure mode as the first two.
+
+        A real library file since 2026-08-05, so this now reads the
+        store rather than a settings attribute: it used to seed a plain
+        list on the stub and assert against that same list, which the
+        engine could only satisfy while it was reaching into prefs.
+        """
+        store = keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
+        store.update({"/gone/a.exr": True, "/kept/b.exr": True})
+        keyed_store.retire_prefix(self.prefs, "/gone/")
+        self.assertEqual(["/kept/b.exr"], sorted(store.all()),
+                         "a removed location's favourites outlived it")
+
+    def test_a_store_created_by_its_own_write_reports_READ(self):
+        """`state` was set once at load and never moved, so a store that
+        wrote itself into existence went on answering FRESH - "absent,
+        and nothing says it was ever here" - for the rest of the
+        session. Any caller telling "no file at all" apart from "a file
+        holding nothing" got the wrong answer, and one did: a rule keyed
+        on FRESH fired after the last key was removed and put it back.
+        """
+        store = self.store()
+        self.assertEqual(keyed_store.FRESH, store.state,
+                         "a library with no notes.json is not FRESH, so "
+                         "this test is not exercising its own case")
+        self.assertTrue(store.set("material:1", self.page()))
+        self.assertTrue(os.path.exists(self.path()))
+        self.assertEqual(
+            keyed_store.READ, store.state,
+            "the store wrote its own file and still calls itself FRESH")
+
+    def test_emptying_a_store_leaves_it_READ_not_FRESH(self):
+        """The case that matters: removing the last key writes a real
+        file holding an empty table. That is READ - a file that is
+        there - and NOT the same thing as no file at all."""
+        store = self.store()
+        store.set("material:1", self.page())
+        self.assertTrue(store.set("material:1", {}))
+        self.assertEqual(0, store.count())
+        self.assertEqual(
+            keyed_store.READ, store.state,
+            "an emptied store reports FRESH, so a caller cannot tell it "
+            "from a library that never had one")
+
+    def test_survives_forget_is_declared_not_inferred(self):
+        for name in ("notes.json", "icons.json", keyed_store.LOCATIONS,
+                     keyed_store.FAVOURITES):
+            self.assertFalse(
+                keyed_store.store_for(name).survives_forget,
+                "%s would outlive the location it belongs to" % name)
+
+
+if __name__ == "__main__":
+    unittest.main()
