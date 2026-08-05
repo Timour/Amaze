@@ -1,0 +1,8849 @@
+{
+ "source": "amaze extract_specs",
+ "materials": 287,
+ "summary": {
+  "scalars": {
+   "base": {
+    "n": 264,
+    "min": 0.0,
+    "p10": 1.0,
+    "median": 1.0,
+    "p90": 1.0,
+    "max": 1.0,
+    "mean": 0.9053
+   },
+   "coat": {
+    "n": 278,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 1.0,
+    "max": 1.0,
+    "mean": 0.3217
+   },
+   "coat_roughness": {
+    "n": 280,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 0.1,
+    "max": 0.915,
+    "mean": 0.0512
+   },
+   "emission": {
+    "n": 263,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 0.0,
+    "max": 1.0,
+    "mean": 0.0152
+   },
+   "metalness": {
+    "n": 265,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 1.0,
+    "max": 1.0,
+    "mean": 0.1985
+   },
+   "sheen": {
+    "n": 264,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 0.0,
+    "max": 1.0,
+    "mean": 0.011
+   },
+   "sheen_roughness": {
+    "n": 264,
+    "min": 0.0032,
+    "p10": 0.0493,
+    "median": 0.1768,
+    "p90": 0.1768,
+    "max": 0.2243,
+    "mean": 0.1344
+   },
+   "specular": {
+    "n": 265,
+    "min": 0.0,
+    "p10": 0.6,
+    "median": 1.0,
+    "p90": 1.0,
+    "max": 1.0,
+    "mean": 0.9004
+   },
+   "specular_IOR": {
+    "n": 278,
+    "min": 0.9,
+    "p10": 1.38,
+    "median": 1.5,
+    "p90": 1.7651,
+    "max": 12.1,
+    "mean": 1.6321
+   },
+   "specular_roughness": {
+    "n": 278,
+    "min": 0.0,
+    "p10": 0.022,
+    "median": 0.2,
+    "p90": 0.4,
+    "max": 0.8,
+    "mean": 0.1934
+   },
+   "subsurface": {
+    "n": 268,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 0.8,
+    "max": 1.0,
+    "mean": 0.116
+   },
+   "transmission": {
+    "n": 270,
+    "min": 0.0,
+    "p10": 0.0,
+    "median": 0.0,
+    "p90": 1.0,
+    "max": 1.0,
+    "mean": 0.1915
+   }
+  },
+  "colors": {
+   "base_color": {
+    "n": 271,
+    "mean": [
+     0.5923,
+     0.57,
+     0.5568
+    ]
+   },
+   "emission_color": {
+    "n": 263,
+    "mean": [
+     0.9011,
+     0.9011,
+     0.9011
+    ]
+   },
+   "subsurface_color": {
+    "n": 263,
+    "mean": [
+     0.8334,
+     0.824,
+     0.8143
+    ]
+   }
+  }
+ },
+ "entries": [
+  {
+   "name": "CarPaint",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "base_color": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "coat_roughness": 0.0375,
+    "coat": 0.5,
+    "specular_IOR": 1.45,
+    "specular_roughness": 0.005
+   }
+  },
+  {
+   "name": "CarPaintMetallic",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "base_color": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "coat_roughness": 0.0825,
+    "coat": 1.0,
+    "metalness": 1.0,
+    "specular_IOR": 1.45,
+    "specular_roughness": 0.005
+   }
+  },
+  {
+   "name": "Wood",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.2,
+    "base_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "coat": 0.4,
+    "specular_IOR": 1.51,
+    "specular_roughness": 0.016
+   }
+  },
+  {
+   "name": "Metal",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "base_color": [
+     0.91,
+     0.914,
+     0.918
+    ],
+    "metalness": 1.0,
+    "specular_IOR": 1.244,
+    "specular_roughness": 0.171
+   }
+  },
+  {
+   "name": "Plastic",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "subsurface": 0.625,
+    "specular_roughness": 0.125
+   }
+  },
+  {
+   "name": "ThinPlastic",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "specular_IOR": 1.0,
+    "specular_roughness": 0.0,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "ArchGlass",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.0,
+    "specular_IOR": 1.55,
+    "specular_roughness": 0.0625,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "Glass",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.05,
+    "specular_IOR": 1.55,
+    "specular_roughness": 0.0625,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "Ceramic",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "coat_roughness": 0.095,
+    "subsurface": 1.0
+   }
+  },
+  {
+   "name": "Clay",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "coat_roughness": 0.095
+   }
+  },
+  {
+   "name": "CottonSurface",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "coat_roughness": 0.095,
+    "base_color": [
+     0.197,
+     0.0,
+     0.0
+    ],
+    "subsurface": 1.0
+   }
+  },
+  {
+   "name": "LeatherSurface",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "coat_roughness": 0.095,
+    "base_color": [
+     0.197,
+     0.0,
+     0.0
+    ]
+   }
+  },
+  {
+   "name": "SilkSurface",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "base_color": [
+     0.197,
+     0.0,
+     0.0
+    ],
+    "coat_roughness": 0.915,
+    "sheen": 0.484,
+    "sheen_roughness": 0.034,
+    "specular_IOR": 12.1
+   }
+  },
+  {
+   "name": "AppleJuice",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "specular": 0.0,
+    "specular_IOR": 1.252,
+    "specular_roughness": 0.579,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "Asphalt",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.25,
+    "specular_IOR": 1.362
+   }
+  },
+  {
+   "name": "CarbonFiber",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 0.1,
+    "coat_roughness": 0.0625,
+    "specular_IOR": 1.674
+   }
+  },
+  {
+   "name": "Concrete",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.376,
+    "coat": 1.0
+   }
+  },
+  {
+   "name": "Granite",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.0625,
+    "coat": 1.0,
+    "specular_roughness": 0.225
+   }
+  },
+  {
+   "name": "MapleSyrup",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 1.0,
+    "coat_roughness": 0.0625,
+    "specular": 0.0,
+    "specular_IOR": 1.61,
+    "specular_roughness": 0.109,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "Marble",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat_roughness": 0.125,
+    "coat": 1.0,
+    "specular_IOR": 1.2,
+    "specular_roughness": 0.225,
+    "subsurface": 0.625
+   }
+  },
+  {
+   "name": "RubberTire",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "coat": 0.0,
+    "coat_roughness": 0.0625
+   }
+  },
+  {
+   "name": "Skin",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "specular_roughness": 0.22,
+    "subsurface": 0.625
+   }
+  },
+  {
+   "name": "SoapBubble",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "specular_IOR": 1.025,
+    "specular_roughness": 0.0,
+    "transmission": 1.0
+   }
+  },
+  {
+   "name": "Water",
+   "source": "houdini",
+   "categories": [],
+   "spec": {
+    "specular_IOR": 1.34,
+    "specular_roughness": 0.0,
+    "transmission": 1.0
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.2199999988079071,
+     0.2199999988079071,
+     0.2199999988079071
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.04733400419354439,
+     0.3089984357357025,
+     0.34299999475479126
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.8,
+    "subsurface_color": [
+     0.1859000325202942,
+     0.7692036032676697,
+     0.8450000286102295
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.3499999940395355,
+     0.08749999850988388,
+     0.328125
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.012000000104308128,
+     0.03999999910593033,
+     0.025066666305065155
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.5,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 0.5,
+    "specular_roughness": 0.5,
+    "specular_IOR": 1.35,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.19999998807907104,
+     0.32499998807907104,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.75,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 4.0,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.5,
+    "specular_IOR": 4.0,
+    "coat": 0.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.009999999776482582,
+     0.009999999776482582,
+     0.009999999776482582
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.6,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0018620009068399668,
+     0.021436749026179314,
+     0.03799999877810478
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 6.0,
+    "coat": 1.0,
+    "coat_roughness": 0.2,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0018620009068399668,
+     0.021436749026179314,
+     0.03799999877810478
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 6.0,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.007500002160668373,
+     0.01937500201165676,
+     0.15000000596046448
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 1.0,
+    "sheen_roughness": 0.008714212528966687,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 1.0,
+    "sheen_roughness": 0.00316227766016838,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5099998712539673,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.16016001999378204,
+     0.5440639853477478,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.5,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.07904000580310822,
+     0.5116159915924072,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.5,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 6.0824785232543945,
+    "coat": 1.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 6.0824785232543945,
+    "coat": 1.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.6499999761581421,
+     0.6418749690055847,
+     0.6174999475479126
+    ],
+    "metalness": 0.0,
+    "specular": 0.6,
+    "specular_roughness": 0.3,
+    "specular_IOR": 1.3,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.75,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.5,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.6,
+     0.6,
+     0.6
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.5,
+    "specular_IOR": 1.3,
+    "coat": 0.5,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.75,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     1.0,
+     0.0,
+     0.0
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0,
+     1.0,
+     0.0
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0,
+     0.0,
+     1.0
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.5,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.5,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.010648160241544247,
+     0.012000000104308128,
+     0.01029600016772747
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.57,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.0,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     0.8999999761581421,
+     0.699999988079071
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.03214286267757416,
+     0.09642855077981949,
+     0.30000001192092896
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.12,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.12,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.009090912528336048,
+     0.20000000298023224,
+     0.0727272778749466
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.0913898,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.0913898,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.13300000131130219,
+     0.033250000327825546,
+     0.12191668152809143
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.4909999966621399,
+     0.4850122034549713,
+     0.42513415217399597
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.4,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.022599995136260986,
+     0.06251499801874161,
+     0.20000000298023224
+    ],
+    "metalness": 1.0,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.7,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.42,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.7,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.46,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.5,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.75,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.46,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.1,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.6,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.5,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.1,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.52,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.1,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.52,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.1,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.5,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.42,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.5,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.2,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.2,
+    "specular": 0.9,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.4790000021457672,
+     0.43444186449050903,
+     0.3397558033466339
+    ],
+    "metalness": 0.0,
+    "specular": 0.9,
+    "specular_roughness": 0.0854131,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.0854131,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.014999999664723873,
+     0.014999999664723873,
+     0.007499999832361937
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.12562452500000001,
+    "specular_IOR": 1.12,
+    "coat": 0.775,
+    "coat_roughness": 0.112451,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.6200000047683716,
+     0.581250011920929,
+     0.4959999918937683
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.6,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5199999809265137,
+     0.4107999801635742,
+     0.30160000920295715
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.6,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.4000000059604645,
+     0.381600022315979,
+     0.36320000886917114
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.6,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3100000023841858,
+     0.3100000023841858,
+     0.2008799910545349
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.6,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3499999940395355,
+     0.15312500298023224,
+     0.08749999850988388
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.7,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.7,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.6,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.6,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.028,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 1.627,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 2.418,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.028,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.026,
+    "specular_IOR": 1.756,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 1.627,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0117647061124444,
+     0.0117647061124444,
+     0.0117647061124444
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.156,
+    "specular_IOR": 1.486,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.026,
+    "specular_IOR": 1.338,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 1.627,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 1.627,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.022,
+    "specular_IOR": 1.4565,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.028,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5408,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.028,
+    "specular_IOR": 1.7651,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.47843137383461,
+     0.800000011920929,
+     0.95686274766922
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.001,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.001,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.001,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.026,
+    "specular_IOR": 1.5144,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.001,
+    "specular_IOR": 1.381,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.3098,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.164,
+     0.006,
+     0.002
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 0.96,
+    "specular_roughness": 0.01,
+    "specular_IOR": 1.333,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8790000081062317,
+     0.5667791962623596,
+     0.09844799339771271
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.02,
+    "specular_IOR": 1.33,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.45,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.916,
+    "subsurface_color": [
+     0.8159999847412109,
+     0.4495347738265991,
+     0.06527998298406601
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.02,
+    "specular_IOR": 1.33,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 0.9599999785423279,
+    "specular_roughness": 0.001,
+    "specular_IOR": 1.33,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.55,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 0.98,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.344,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 0.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.344,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.23529411852359772,
+     0.21568627655506134,
+     0.19607843458652496
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.916,
+     0.923,
+     0.924
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.9290000200271606,
+     0.8126582503318787,
+     0.5183820128440857
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.2,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.91,
+     0.778,
+     0.423
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8470588326454163,
+     0.8313725590705872,
+     0.8117647171020508
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.925,
+     0.6510360836982727,
+     0.5591999888420105
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3823559880256653,
+     0.4560000002384186,
+     0.3784799873828888
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.039,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.9440000057220459,
+     0.7854080200195312,
+     0.3492799997329712
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.944,
+     0.776,
+     0.373
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.1706249862909317,
+     0.19499999284744263,
+     0.1706249862909317
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.531,
+     0.512,
+     0.496
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.632,
+     0.626,
+     0.641
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.781,
+     0.779,
+     0.779
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.649,
+     0.61,
+     0.541
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.679,
+     0.642,
+     0.588
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.26015999913215637,
+     0.2821013331413269,
+     0.3199999928474426
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.962,
+     0.949,
+     0.922
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.962,
+     0.949,
+     0.922
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5333333611488342,
+     0.5843137502670288,
+     0.5568627715110779
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.424,
+     0.403,
+     0.367
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.536,
+     0.535,
+     0.522
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.6399999856948853,
+     0.5107070803642273,
+     0.34262627363204956
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.532,
+     0.527,
+     0.543
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.9529411792755127,
+     0.9372549057006836,
+     0.886274516582489
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.91,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.45,
+    "coat_roughness": 0.02,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.45,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.45,
+    "coat_roughness": 0.02,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.6,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.8,
+    "coat_roughness": 0.02,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.6,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 1.0,
+    "coat_roughness": 0.02,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.75,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 1.0,
+    "coat_roughness": 0.02,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.3,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.3,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.95,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.7,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.9,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.7,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 2.0,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.8,
+    "specular_roughness": 0.1411,
+    "specular_IOR": 0.9,
+    "coat": 0.1,
+    "coat_roughness": 0.25,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.61,
+     0.624,
+     0.631
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.8,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.8,
+    "specular_roughness": 0.2672,
+    "specular_IOR": 0.9,
+    "coat": 0.1,
+    "coat_roughness": 0.35,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.5,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5,
+     0.5,
+     0.5
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 1.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 1.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 1.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.05000000074505806,
+     0.05000000074505806,
+     0.05000000074505806
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 1.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.20000000298023224,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.003921568859368563,
+     0.007843137718737125,
+     0.05098039284348488
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.20000000298023224,
+     0.025806456804275513,
+     0.009677422232925892
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3333333432674408,
+     0.3294117748737335,
+     0.32156863808631897
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.5,
+     0.07621360570192337,
+     0.050000011920928955
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.10000000149011612,
+     0.004838711116462946,
+     0.028629032894968987
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.30000001192092896,
+     0.10909091681241989,
+     0.01212120708078146
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.16099999845027924,
+     0.1241999939084053,
+     0.11499999463558197
+    ],
+    "metalness": 0.2,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.2,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.6392157077789307,
+     0.6274510025978088,
+     0.6196078658103943
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.27450981736183167,
+     0.18039216101169586,
+     0.027450980618596077
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.1599999964237213,
+     0.0280000027269125,
+     0.01600000262260437
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.4,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0020000000949949026,
+     0.0020000000949949026,
+     0.0020000000949949026
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.38,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.006666665896773338,
+     0.013333330862224102,
+     0.029999999329447746
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.43,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0037499999161809683,
+     0.029999999329447746,
+     0.026250001043081284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.42,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.07000000029802322,
+     0.015555555000901222,
+     0.023333344608545303
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.4,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.30000001192092896,
+     0.07200001180171967,
+     0.015000004321336746
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.38,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.30000001192092896,
+     0.0292682945728302,
+     0.018292684108018875
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.38,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.037319112569093704,
+     0.02237200178205967,
+     0.06800000369548798
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.38,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.2823529541492462,
+     0.2503020763397217,
+     0.1976470649242401
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.38,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.33725491166114807,
+     0.12156862765550613,
+     0.003921568859368563
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.43,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.10196078568696976,
+     0.10588235408067703,
+     0.10980392247438431
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.027450978755950928,
+     0.09803921729326248,
+     0.040392156690359116
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.027450980618596077,
+     0.08235294371843338,
+     0.09803921729326248
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.10980392247438431,
+     0.019607843831181526,
+     0.0313725508749485
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.17299999296665192,
+     0.1713017076253891,
+     0.16763699054718018
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.20000000298023224,
+     0.03677419200539589,
+     0.015999997034668922
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.2549019753932953,
+     0.1616993546485901,
+     0.0117647061124444
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.0117647061124444,
+     0.0117647061124444,
+     0.01568627543747425
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.29411765933036804,
+     0.2823529541492462,
+     0.26274511218070984
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.29411765933036804,
+     0.28723981976509094,
+     0.27176472544670105
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.35686275362968445,
+     0.13370458781719208,
+     0.10705883055925369
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.23137255012989044,
+     0.24313725531101227,
+     0.239215686917305
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.08627451211214066,
+     0.08172497153282166,
+     0.0765254944562912
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.09882000088691711,
+     0.1023389995098114,
+     0.1080000028014183
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.20000000298023224,
+     0.04215385019779205,
+     0.020000005140900612
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.35686275362968445,
+     0.0941176488995552,
+     0.062745101749897
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.2549019753932953,
+     0.1616993546485901,
+     0.0117647061124444
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 0.5,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.0062500000931322575,
+     0.005968749988824129,
+     0.005968749988824129
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.019999999552965164,
+     0.019999999552965164,
+     0.019999999552965164
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.8,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.01568627543747425,
+     0.054901961237192154,
+     0.15294118225574493
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.7,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.316,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.15,
+    "sheen_roughness": 0.22434000423464384,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.01568627543747425,
+     0.054901961237192154,
+     0.15294118225574493
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.05947946757078171,
+     0.2240000069141388,
+     0.009407998993992805
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.2,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.03500000014901161,
+     0.03500000014901161,
+     0.03500000014901161
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.5499999999999999,
+    "specular_IOR": 1.5,
+    "coat": 0.25,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3370000123977661,
+     0.2525726556777954,
+     0.1364849954843521
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.7,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.15,
+    "sheen_roughness": 0.22434000423464384,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.3333333432674408,
+     0.250980406999588,
+     0.13333334028720856
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.15294118225574493,
+     0.05098039284348488,
+     0.16078431904315948
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.7,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.1,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.13,
+    "sheen_roughness": 0.22434000423464384,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.15294118225574493,
+     0.05098039284348488,
+     0.16078431904315948
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.976,
+     0.9,
+     0.725
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.3,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.9760000109672546,
+     0.8639971613883972,
+     0.6060959696769714
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.52,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.13505400717258453,
+     0.09470999985933304,
+     0.2460000067949295
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.847,
+     0.638,
+     0.552
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.799,
+     0.485,
+     0.347
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.6,
+     0.318,
+     0.228
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.43,
+     0.2,
+     0.13
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.36,
+     0.16,
+     0.08
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.4,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.09,
+     0.05,
+     0.02
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.3098,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.8100000023841858,
+     0.8100000023841858,
+     0.8100000023841858
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.699999988079071,
+     0.6789999604225159,
+     0.6299999952316284
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1,
+    "specular_IOR": 1.5,
+    "coat": 1.0,
+    "coat_roughness": 0.1,
+    "transmission": 1.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.4,
+    "specular_IOR": 1.52,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 1.0,
+    "subsurface_color": [
+     0.4449999928474426,
+     0.4086734652519226,
+     0.3796122372150421
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.492,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.492,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.492,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.492,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.492,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.3176470696926117,
+     0.3176470696926117,
+     0.30980393290519714
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.444,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.18000000715255737,
+     0.18000000715255737,
+     0.18000000715255737
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.8,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 1.0,
+    "specular": 1.0,
+    "specular_roughness": 0.1488,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.30000001192092896,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ],
+    "metalness": 0.0,
+    "specular": 1.0,
+    "specular_roughness": 0.30000001192092896,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.1767766952966369,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     0.800000011920929,
+     0.800000011920929,
+     0.800000011920929
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  },
+  {
+   "source": "library",
+   "spec": {
+    "base": 1.0,
+    "base_color": [
+     0.8,
+     0.8,
+     0.8
+    ],
+    "metalness": 0.0,
+    "specular": 0.0,
+    "specular_roughness": 0.2,
+    "specular_IOR": 1.5,
+    "coat": 0.0,
+    "coat_roughness": 0.0,
+    "transmission": 0.0,
+    "emission": 0.0,
+    "emission_color": [
+     1.0,
+     1.0,
+     1.0
+    ],
+    "sheen": 0.0,
+    "sheen_roughness": 0.049295035072486365,
+    "subsurface": 0.0,
+    "subsurface_color": [
+     1.0,
+     1.0,
+     1.0
+    ]
+   }
+  }
+ ]
+}

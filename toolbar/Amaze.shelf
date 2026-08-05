@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<shelfDocument>
+  <!-- Amaze's own shelf. Ships with the package: the install directory
+       is on HOUDINI_PATH and Houdini scans toolbar/ under every path
+       entry, so the tools and the "amaze" toolshelf are REGISTERED
+       automatically.
+
+       ONE PER-MACHINE STEP IS STILL NEEDED, and an earlier version of
+       this comment claimed otherwise. Registered is not displayed: the
+       shelf dock is populated from shelf SETS named in the desktop, and
+       a loose toolshelf belongs to no set. SideFX Labs has the same
+       shape - it ships <toolshelf name="labs_toolset"> and it is
+       Houdini's own GameTools.shelf that adopts it into a shelfSet.
+       Add the tab once per machine (right-click the shelf dock ▸
+       Shelves ▸ Amaze); Houdini records that in
+       $HOUDINI_USER_PREF_DIR/toolbar/default.shelf as a <shelfSetEdit>.
+       Note that record pins the Houdini BUILD in its fileLocation, so
+       it is lost on an upgrade and has to be redone. See INSTALL.md.
+
+       WHY A SHELF TOOL AT ALL. Houdini's hotkey system cannot bind an
+       action inside a Python Panel - verified on 22.0.394 against the
+       docs and the shipped tables: hou.hotkeys.addContext is
+       documented as "only useful for adding hotkeys to Python states",
+       PluginHotkeyDefinitions is for viewer states, and
+       HotkeyContexts.json carries no Python-Panel context (built-in
+       panes have one, custom panels do not). A shelf tool CAN take a
+       hotkey, and it fires from anywhere - including while the
+       viewport has focus, which is where you are when you have just
+       framed the shot you want to keep.
+
+       NO DEFAULT BINDING IS SHIPPED, deliberately. Assign a key in
+       Houdini's Hotkey Editor; choosing one here would silently take a
+       key that already means something to somebody. -->
+
+  <tool name="amaze_capture_hip" label="Capture"
+        icon="$AMAZE/scripts/python/amaze/ui/icon_screenshot.svg">
+    <helpText><![CDATA[Capture the current scene view as this scene's Amaze thumbnail.
+
+Captures whatever the viewport is showing right now, and files it
+under the scene that is currently open. The Amaze panel does not
+need to be open.
+
+Refuses, with a reason, when the viewport is rendering through a
+pathtracing delegate - a capture runs a flipbook, and a flipbook
+through Karma is work of unbounded size.]]></helpText>
+    <script scriptType="python"><![CDATA[import hou
+
+# The panel's button and this tool run the SAME function; every check
+# and every refusal message lives there, so the two cannot drift.
+try:
+    from amaze.core import hip_library
+except ImportError as exc:
+    hou.ui.displayMessage(
+        "Amaze is not importable from this session (%s).\n\n"
+        "Check that $AMAZE points at the install and that Houdini was "
+        "restarted after it changed." % exc)
+else:
+    try:
+        hip_library.capture_open_scene()
+    except hip_library.CaptureRefused as exc:
+        hou.ui.displayMessage(str(exc))
+    else:
+        # basename() returns "untitled.hip" for an unsaved scene, never
+        # "", so there is no empty case to defend against.
+        hou.ui.setStatusMessage(
+            "Amaze: thumbnail captured for %s" % hou.hipFile.basename())]]></script>
+  </tool>
+
+  <tool name="amaze_open_panel" label="Amaze"
+        icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg">
+    <helpText><![CDATA[Open Amaze in a floating window.
+
+If a floating Amaze is already open this raises that one rather than
+stacking a second copy.]]></helpText>
+    <script scriptType="python"><![CDATA[import hou
+
+INTERFACE = "Amaze"
+
+interface = hou.pypanel.interfaceByName(INTERFACE)
+if interface is None:
+    hou.ui.displayMessage(
+        "The Amaze Python Panel interface is not installed.\n\n"
+        "Check that $AMAZE points at the install (it supplies "
+        "python_panels/Amaze.pypanel) and that Houdini was restarted "
+        "after it changed.")
+else:
+    desktop = hou.ui.curDesktop()
+
+    # Already open? Raise it. Opening a second copy of a browser that
+    # reads one library on disk is never what was wanted, and two of
+    # them writing the same index is how a database gets damaged.
+    #
+    # paneTabs(), not floatingPaneTabs(): the first version scanned only
+    # floating tabs, so an Amaze already open as a DOCKED tab was not
+    # found and the tool opened a second copy - the exact hazard this
+    # block exists to prevent. paneTabs() covers both.
+    existing = None
+    for tab in desktop.paneTabs():
+        try:
+            if tab.type() != hou.paneTabType.PythonPanel:
+                continue
+            active = tab.activeInterface()
+            if active is not None and active.name() == INTERFACE:
+                existing = tab
+                break
+        except Exception:
+            continue
+
+    if existing is not None:
+        # All of this is best-effort and stays inside the try.
+        # setIsCurrentTab is documented against "the containing pane",
+        # and a tab made by createFloatingPaneTab has none
+        # (PaneTab.pane() returns None there) - whether HOM no-ops or
+        # raises is not documented, and a raise must not take the
+        # raise-the-window path down with it.
+        try:
+            existing.setIsCurrentTab()
+            panel = existing.floatingPanel()
+            if panel is not None:
+                window = panel.qtParentWindow()
+                if window is not None:
+                    window.raise_()
+                    window.activateWindow()
+        except Exception:
+            pass
+    else:
+        # python_panel_interface takes the interface NAME, not the
+        # hou.PythonPanelInterface object - passing the object raises
+        # "argument 5 of type 'char const *'". interfaceByName above is
+        # still worth doing: it turns "the panel is not installed" into
+        # a readable message instead of a silent empty Python Panel.
+        # Passing the name also hides the Python Panel toolbar, which is
+        # what makes this read as an Amaze window rather than a host for
+        # one.
+        desktop.createFloatingPaneTab(
+            hou.paneTabType.PythonPanel,
+            size=(1100, 800),
+            python_panel_interface=INTERFACE,
+        )]]></script>
+  </tool>
+
+  <tool name="amaze_repair_library" label="Repair"
+        icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
+    <helpText><![CDATA[Check the Amaze library and put right what is wrong.
+
+Reports which of the library's lists will not load, which files no
+section accounts for, and what each saved copy of a list would bring
+back. It can put a saved copy back, add unlisted files to a section,
+and move unclaimed files aside into a dated folder inside the library.
+
+It never deletes anything.
+
+Run it before you open Amaze in this session. If Amaze has already been
+open, quit Houdini and start it again first: an open Amaze saves the
+library while you work and would write over anything Repair put back.
+Repair always reports; it can only put things right from a Houdini that
+has not opened the library yet.]]></helpText>
+    <script scriptType="python"><![CDATA[import hou
+
+# Every check, every refusal and every sentence lives in the module, so
+# the tool cannot drift from what it reports. It deliberately does NOT
+# import or construct the panel: Repair has to work when the panel will
+# not open, which is the case it exists for.
+try:
+    from amaze.core import repair
+except ImportError as exc:
+    hou.ui.displayMessage(
+        "Amaze is not importable from this session (%s).\n\n"
+        "Check that $AMAZE points at the install and that Houdini was "
+        "restarted after it changed." % exc)
+else:
+    repair.run()]]></script>
+  </tool>
+
+  <toolshelf name="amaze" label="Amaze">
+    <memberTool name="amaze_open_panel"/>
+    <memberTool name="amaze_capture_hip"/>
+    <memberTool name="amaze_repair_library"/>
+  </toolshelf>
+</shelfDocument>

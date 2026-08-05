@@ -1,0 +1,626 @@
+{
+ "source": "EPFL RGL (CC0 1.0)",
+ "count": 62,
+ "materials": {
+  "acrylic_felt_green": {
+   "color": [
+    0.1046,
+    0.21598,
+    0.03027
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Green acrylic felt (Edukit A4)"
+  },
+  "acrylic_felt_orange": {
+   "color": [
+    0.69623,
+    0.09825,
+    0.02242
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Orange acrylic felt (Edukit A4)"
+  },
+  "acrylic_felt_pink": {
+   "color": [
+    0.54008,
+    0.03535,
+    0.1614
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Pink acrylic felt (Edukit A4)"
+  },
+  "acrylic_felt_purple": {
+   "color": [
+    0.12291,
+    0.02564,
+    0.15987
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Purple acrylic felt (Edukit A4)"
+  },
+  "acrylic_felt_white": {
+   "color": [
+    0.57992,
+    0.62135,
+    0.77846
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "White acrylic felt (Edukit A4)"
+  },
+  "acrylic_felt_yellow": {
+   "color": [
+    0.77521,
+    0.72234,
+    0.02962
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Yellow acrylic felt (Edukit A4)"
+  },
+  "aniso_brushed_aluminium_1": {
+   "color": [
+    0.98167,
+    0.96838,
+    0.94941
+   ],
+   "roughness": 0.3141,
+   "metalness": 1.0,
+   "description": "Brushed aluminium sheet (https://www.gah.de/profile-bleche/produkte/reparatur-und-bastlerbleche-1/glattblech-8/)"
+  },
+  "aniso_copper_sheet": {
+   "color": [
+    0.72228,
+    0.40913,
+    0.2811
+   ],
+   "roughness": 0.07754,
+   "metalness": 1.0,
+   "description": "Smooth copper sheet -- anisotropic"
+  },
+  "aniso_green_pvc": {
+   "color": [
+    0.0,
+    0.27812,
+    0.11277
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Guttagliss Hobbycolor, https://www.gutta.com/en/products/decorative-sheets/hobbycolor.html"
+  },
+  "aniso_metallic_paper_copper": {
+   "color": [
+    0.83739,
+    0.36067,
+    0.15861
+   ],
+   "roughness": 0.3141,
+   "metalness": 1.0,
+   "description": "Copper metallic foil card"
+  },
+  "aniso_metallic_paper_gold": {
+   "color": [
+    0.8589,
+    0.58735,
+    0.24755
+   ],
+   "roughness": 0.27397,
+   "metalness": 1.0,
+   "description": "Gold metallic foil card"
+  },
+  "aniso_miro_7": {
+   "color": [
+    0.80097,
+    0.82079,
+    0.82222
+   ],
+   "roughness": 0.15548,
+   "metalness": 1.0,
+   "description": "Alanod Miro #7 5000GP aluminium sample"
+  },
+  "aniso_morpho_melenaus": {
+   "color": [
+    0.0,
+    0.50153,
+    0.56614
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Morpho melenaus specimen (male, scan covers dorsal surface of right fore wing)"
+  },
+  "aniso_sari_silk_2color": {
+   "color": [
+    0.37856,
+    0.12553,
+    0.04345
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Silk sample from an Indian sari, with differently-colored warp and weft yarns"
+  },
+  "aurora_white": {
+   "color": [
+    0.68078,
+    0.75064,
+    0.68687
+   ],
+   "roughness": 0.43354,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Aurora White DCH02)"
+  },
+  "cardboard": {
+   "color": [
+    0.30707,
+    0.20207,
+    0.11678
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Brown corrugated cardboard, smooth surface"
+  },
+  "cc_amber_citrine": {
+   "color": [
+    0.66041,
+    0.1935,
+    0.03539
+   ],
+   "roughness": 0.05256,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Amber Citrine MCH05)"
+  },
+  "cc_blue_agat": {
+   "color": [
+    0.03388,
+    0.23566,
+    0.52252
+   ],
+   "roughness": 0.05256,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Blue Agat MCH03)"
+  },
+  "cc_green_malachite": {
+   "color": [
+    0.05169,
+    0.27577,
+    0.04519
+   ],
+   "roughness": 0.09621,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Green Malachite MCH04)"
+  },
+  "cc_ibiza_sunset": {
+   "color": [
+    0.24488,
+    0.10813,
+    0.17455
+   ],
+   "roughness": 0.49636,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Ibiza Sunset RD02)"
+  },
+  "cc_iris_purple_gem": {
+   "color": [
+    0.00549,
+    0.15508,
+    0.34472
+   ],
+   "roughness": 0.4129,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Iris Purple Gem RD03)"
+  },
+  "cc_nothern_aurora": {
+   "color": [
+    0.09093,
+    0.2113,
+    0.16994
+   ],
+   "roughness": 0.4129,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Nothern Aurora RD05)"
+  },
+  "cg_sunflower": {
+   "color": [
+    0.84029,
+    0.39937,
+    0.0
+   ],
+   "roughness": 0.11552,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Sunflower CG12)"
+  },
+  "chm_light_blue": {
+   "color": [
+    0.32671,
+    0.56539,
+    0.77465
+   ],
+   "roughness": 0.13486,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Light Blue CHM17E)"
+  },
+  "chm_mint": {
+   "color": [
+    0.0821,
+    0.56364,
+    0.49586
+   ],
+   "roughness": 0.11552,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Mint CHM16E)"
+  },
+  "chm_orange": {
+   "color": [
+    0.92397,
+    0.16912,
+    0.07838
+   ],
+   "roughness": 0.09621,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Orange CHM11E)"
+  },
+  "cm_military_green": {
+   "color": [
+    0.06559,
+    0.08322,
+    0.06006
+   ],
+   "roughness": 0.62677,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Military Green CM09)"
+  },
+  "cm_toxic_green": {
+   "color": [
+    0.49755,
+    0.64819,
+    0.09514
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Toxic Green CM08)"
+  },
+  "cm_white": {
+   "color": [
+    0.75848,
+    0.7841,
+    0.80019
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (White CM02)"
+  },
+  "colodur_azure_4e": {
+   "color": [
+    0.08619,
+    0.1479,
+    0.29282
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Coop Colodur wall paint sample swatch (Azure 4E)"
+  },
+  "colodur_connemara_4c": {
+   "color": [
+    0.30631,
+    0.49365,
+    0.34522
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Coop Colodur wall paint sample swatch (Connemara 4C)"
+  },
+  "colodur_kalahari_2a": {
+   "color": [
+    0.9803,
+    0.77515,
+    0.46563
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Coop Colodur wall paint sample swatch (Kalahari 2A)"
+  },
+  "colodur_napoli_4f": {
+   "color": [
+    0.23736,
+    0.05634,
+    0.06043
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Coop Colodur wall paint sample swatch (Napoli 4F)"
+  },
+  "ilm_aniso_darth_vader_pants": {
+   "color": [
+    0.02735,
+    0.02512,
+    0.02818
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Darth Vader pants sample swatch (neoprene; from \"Solo: A Star Wars Story\", provided by ILM)"
+  },
+  "ilm_aniso_tarkin_tunic": {
+   "color": [
+    0.05959,
+    0.06395,
+    0.052
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Grand Moff Tarkin tunic sample (from \"Solo: A Star Wars Story\", provided by ILM)"
+  },
+  "ilm_l3_37_dark_green": {
+   "color": [
+    0.03695,
+    0.05241,
+    0.04568
+   ],
+   "roughness": 0.4129,
+   "metalness": 0.0,
+   "description": "Dark green paint from L3-37 robot (from \"Solo: A Star Wars Story\", provided by ILM)"
+  },
+  "ilm_l3_37_matte": {
+   "color": [
+    0.47467,
+    0.43102,
+    0.35883
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Matte paint from L3-37 robot (from \"Solo: A Star Wars Story\", provided by ILM), top right swatch on sample"
+  },
+  "ilm_l3_37_metallic": {
+   "color": [
+    0.67479,
+    0.68559,
+    0.67366
+   ],
+   "roughness": 0.21271,
+   "metalness": 0.0,
+   "description": "Metallic paint from L3-37 robot (from \"Solo: A Star Wars Story\", provided by ILM), bottom right swatch"
+  },
+  "ilm_solo_m_68": {
+   "color": [
+    0.02227,
+    0.03259,
+    0.09115
+   ],
+   "roughness": 0.13486,
+   "metalness": 0.0,
+   "description": "Blue metallic m68-speeder material (from \"Solo: A Star Wars Story\", provided by ILM)"
+  },
+  "ilm_solo_millennium_falcon": {
+   "color": [
+    0.63007,
+    0.58745,
+    0.51085
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Millennium Falcon paint sample (from \"Solo: A Star Wars Story\", provided by ILM)"
+  },
+  "irid_flake_paint1": {
+   "color": [
+    0.09159,
+    0.09191,
+    0.08765
+   ],
+   "roughness": 0.21271,
+   "metalness": 0.0,
+   "description": "Iridescent flake car paint (\"Dupli-color flip flop ultra\") on top of aluminium with black primer"
+  },
+  "irid_flake_paint1_fine": {
+   "color": [
+    0.08534,
+    0.08834,
+    0.08559
+   ],
+   "roughness": 0.21271,
+   "metalness": 0.0,
+   "description": "Iridescent flake car paint (\"Dupli-color flip flop ultra\") on top of aluminium with black primer"
+  },
+  "irid_flake_paint2": {
+   "color": [
+    0.17234,
+    0.18367,
+    0.17848
+   ],
+   "roughness": 0.3316,
+   "metalness": 0.0,
+   "description": "Iridescent car paint with flakes"
+  },
+  "laika_ceiling_paint_18_gray": {
+   "color": [
+    0.15758,
+    0.16827,
+    0.17282
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Waterborne ceiling paint, ultra flat, custom color match to Kodak 18% gray card. Provided by LAIKA."
+  },
+  "leaf_maple": {
+   "color": [
+    0.08428,
+    0.12148,
+    0.02621
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Maple leaf sample (collected in Lausanne on June 1, 2018)"
+  },
+  "paper_blue": {
+   "color": [
+    0.05357,
+    0.42837,
+    0.63722
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Blue A4 paper (160 gsm)"
+  },
+  "paper_green": {
+   "color": [
+    0.17287,
+    0.50932,
+    0.08277
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Green A4 paper (160 gsm)"
+  },
+  "paper_red": {
+   "color": [
+    0.6995,
+    0.08939,
+    0.08286
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Red A4 paper (160 gsm)"
+  },
+  "paper_white": {
+   "color": [
+    0.81147,
+    0.82557,
+    0.97042
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "White A4 paper (160 gsm)"
+  },
+  "paper_yellow": {
+   "color": [
+    0.96735,
+    0.75327,
+    0.03948
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Yellow A4 paper (160 gsm)"
+  },
+  "satin_blue": {
+   "color": [
+    0.67809,
+    0.7411,
+    0.75424
+   ],
+   "roughness": 0.53907,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Blue Satin CK905)"
+  },
+  "satin_gold": {
+   "color": [
+    0.74011,
+    0.76021,
+    0.72076
+   ],
+   "roughness": 0.49636,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Gold Satin CK906)"
+  },
+  "satin_purple": {
+   "color": [
+    0.69294,
+    0.73439,
+    0.74406
+   ],
+   "roughness": 0.7415,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Purple Satin CK907)"
+  },
+  "satin_rosaline": {
+   "color": [
+    0.68602,
+    0.71819,
+    0.72692
+   ],
+   "roughness": 0.45433,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Rosaline Satin CK904)"
+  },
+  "satin_white": {
+   "color": [
+    0.76031,
+    0.77653,
+    0.73476
+   ],
+   "roughness": 0.51763,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (White Satin CK903)"
+  },
+  "spectralon": {
+   "color": [
+    0.93651,
+    0.93994,
+    0.93728
+   ],
+   "roughness": 1.0,
+   "metalness": 0.0,
+   "description": "Labsphere SRS-99-020 reflectance standard"
+  },
+  "vch_dragon_eye_red": {
+   "color": [
+    0.51965,
+    0.02886,
+    0.0411
+   ],
+   "roughness": 0.56069,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Dragon Eye Red VCH501N)"
+  },
+  "vch_frozen_amethyst": {
+   "color": [
+    0.17322,
+    0.03468,
+    0.17835
+   ],
+   "roughness": 0.60453,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Frozen Amethyst VCH503N)"
+  },
+  "vch_golden_yellow": {
+   "color": [
+    0.51631,
+    0.31079,
+    0.02428
+   ],
+   "roughness": 0.43354,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Golden Yellow VCH508N)"
+  },
+  "vch_silk_blue": {
+   "color": [
+    0.00124,
+    0.08684,
+    0.4481
+   ],
+   "roughness": 0.47527,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Silk Blue VCH502N)"
+  },
+  "vch_ultra_pink": {
+   "color": [
+    0.71054,
+    0.04672,
+    0.29263
+   ],
+   "roughness": 0.49636,
+   "metalness": 0.0,
+   "description": "TeckWrap vinyl wrapping film (Ultra Pink VCH504N)"
+  },
+  "weta_brushed_steel_satin_pink": {
+   "color": [
+    0.67904,
+    0.65552,
+    0.61035
+   ],
+   "roughness": 1.0,
+   "metalness": 1.0,
+   "description": "Brushed steel samples from Weta Digital (\"Satin Pink\")"
+  }
+ }
+}

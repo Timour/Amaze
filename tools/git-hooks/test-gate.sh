@@ -1,0 +1,275 @@
+#!/bin/bash
+# Sabotage-verify the personal-data gate, in BOTH directions.
+#
+# A gate that only ever refuses gets bypassed always; one that only ever
+# passes is decoration. Both of this project's earlier gates shipped
+# broken in one of those two ways.
+#
+# It NAMES NOBODY: every probe string is derived from the private
+# pattern list at run time, so this file is safe in a public repo and a
+# new pattern gains a test for free.
+#
+# The BYPASS section is a regression suite. Every case in it was a real
+# hole, reproduced with a real commit by an adversarial review, in one
+# of the two shell drafts that preceded the Python scanner.
+#
+# Run after touching any hook, and on a fresh machine to prove the gate
+# is wired:  tools/git-hooks/test-gate.sh
+
+set -uo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+
+list="${AMAZE_PRIVATE_NAMES:-$repo/../AmazeNotes/private-names.txt}"
+if [ ! -f "$list" ]; then
+    echo "no private name list at $list - nothing to test against" >&2
+    exit 1
+fi
+export AMAZE_PRIVATE_NAMES="$list"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+cd "$work" || exit 1
+git init -q .
+git config core.hooksPath "$here"
+git config user.email "gate-test@example.invalid"
+git config user.name "Gate Test"
+# An origin the scanner can discover, so the "our own URL is exempt"
+# rule has something to be exempt ABOUT without this file naming it.
+git remote add origin "https://github.com/gate-test-org/gate-test-repo.git"
+
+pass=0
+fail=0
+check() {   # description, expected status, actual status
+    if [ "$2" -eq "$3" ]; then
+        printf '  PASS  %s\n' "$1"; pass=$((pass + 1))
+    else
+        printf '  FAIL  %s (expected exit %s, got %s)\n' "$1" "$2" "$3"
+        fail=$((fail + 1))
+    fi
+}
+reset_tree() { git reset -q; git clean -qfdx >/dev/null 2>&1; }
+
+echo "seed" > seed.txt && git add seed.txt && git commit -qm "Seed"
+
+patterns="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$list" \
+            | grep -v '^#' | awk 'NF')"
+probe="$(printf '%s\n' "$patterns" | head -1 | tr -d '\\')"
+
+echo "REFUSES - every pattern in the list, in content and in a message"
+while read -r pattern; do
+    [ -n "$pattern" ] || continue
+    p="${pattern//\\/}"
+    printf 'x = 1  # %s wrote this\n' "$p" > probe.py
+    git add probe.py
+    "$here/pre-commit" >/dev/null 2>&1
+    check "content carrying a listed pattern is refused" 1 $?
+    reset_tree
+    printf 'A technical subject\n\nReported by %s.\n' "$p" > msg.txt
+    "$here/commit-msg" msg.txt >/dev/null 2>&1
+    check "message carrying a listed pattern is refused" 1 $?
+done <<< "$patterns"
+
+echo "REFUSES - bypasses reproduced against the earlier shell drafts"
+
+# B1: a C-quoted filename skipped the content scan entirely.
+printf '%s wrote this and it is a real leak\n' "$probe" > "$(printf 'no\ntes.md')"
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "a filename with a newline cannot hide its content" 1 $?
+reset_tree
+
+# B2: a stage-spec-shaped filename made the gate scan a DIFFERENT file.
+printf 'perfectly innocent technical text\n' > notes.md
+printf '%s said it stalled and ate 86GB\n' "$probe" > '0:notes.md'
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "a 0:-prefixed filename is not resolved as a stage spec" 1 $?
+reset_tree
+
+# B3: one NUL past byte 8000 hid a file git itself calls TEXT.
+{ printf '# Release notes\n\nWritten by %s\n' "$probe"
+  for i in $(seq 1 400); do printf 'Line %d of ordinary notes text.\n' "$i"; done
+  printf '<!-- \000 -->\n'; } > RELEASE.md
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "a NUL past byte 8000 does not make a text file invisible" 1 $?
+reset_tree
+
+# B4: the About-box exemption applied to commit MESSAGES too.
+printf 'Fix the capture stall\n\n<p>By %s<br>\n' "$probe" > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "the About-box shape does not excuse a commit message" 1 $?
+
+# B4b: the credit pattern was wide enough to swallow prose.
+printf '    "<p>By %s and he said the render stalled again<br>"\n' "$probe" > wide.py
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "an About-shaped line padded with prose is refused" 1 $?
+reset_tree
+
+# B5: stripping ANY url deleted the evidence of a real leak.
+printf 'AUTHOR_PAGE = "https://www.linkedin.com/in/%s"\n' "$probe" > links.py
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "a name inside a FOREIGN url is refused" 1 $?
+reset_tree
+
+# Invisible-character obfuscation renders as the name on GitHub.
+printf 'note = "%s\xe2\x80\x8b more text"\n' "$probe" > zw.py
+git add -A
+"$here/pre-commit" >/dev/null 2>&1
+check "a zero-width space inside the name does not hide it" 1 $?
+reset_tree
+
+echo "PASSES - legitimate content must not be blocked"
+printf 'x = 1  # the capture blocked until a render was stopped\n' > ok.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "ordinary technical prose passes" 0 $?
+reset_tree
+
+printf '            "<p>By %s.<br>"\n' "$probe" > credit.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "the About-box product credit passes" 0 $?
+reset_tree
+
+printf 'URL = "https://github.com/gate-test-org/gate-test-repo/issues/1"\n' > url.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "our OWN repo url passes" 0 $?
+reset_tree
+
+printf 'x = [u for u in x if "github.com/gate-test-org" not in u]\n' > owner.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "our own host/owner prefix passes as a bare literal" 0 $?
+reset_tree
+
+# The lookalike must CONTAIN the name, or it tests nothing - the
+# first version used an owner with no name in it at all and passed
+# for that reason.
+printf 'REF = "github.com/%s-personal-notes/private"\n' "$probe" > lookalike.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "a LOOKALIKE owner is still refused" 1 $?
+reset_tree
+
+printf 'A technical subject\n\nThe check blocked on OBJ and the message lectured.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a technical commit message passes" 0 $?
+
+echo "REFUSES - a message carrying more than the change"
+# These name nobody, so the identity list cannot see them. Every one is
+# a shape found in the published history by audit.
+
+printf 'Widen the tick column\n\nHis call: the mark decides the width.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a decision credited to a person is refused" 1 $?
+
+printf 'Widen the tick column\n\nHe asked for the mark to decide the width.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a person reported as speaking is refused" 1 $?
+
+printf 'Widen the tick column\n\nReported as "the swatch renders upside down" in testing.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a quoted sentence is refused" 1 $?
+
+# THE WRAPPING CASES. A message wraps at 72 columns, so an attribution
+# and a quotation both straddle the break - and neither half matches on
+# its own. A scan reading one line at a time passes both of these, which
+# is what the published history proved: a quotation that opens on one
+# line and closes on the next survived the gate.
+printf 'Widen the tick column\n\nThe width rule is the one we\nagreed on for every column.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "an attribution straddling a line break is refused" 1 $?
+
+printf 'Widen the tick column\n\nThe field was restyled, reported as "the thumbnails\nare almost useless" during the pass.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a quotation straddling a line break is refused" 1 $?
+
+# Tool advertising arrives by DEFAULT and nothing refused it, which is
+# how 195 of the 445 commits on main came to carry it in three variants.
+printf 'Widen the tick column\n\nThe mark decides the width.\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a co-author trailer advertising the tool is refused" 1 $?
+
+printf 'Widen the tick column\n\nThe mark decides the width.\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a generated-with advertising line is refused" 1 $?
+
+printf 'Widen the tick column so the mark decides its width and the header stops reserving arrow space\n\nShort body.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a subject over 72 characters is refused" 1 $?
+
+{ printf 'Widen the tick column\n\n'
+  for i in $(seq 1 11); do printf 'Body line %d of ordinary technical text.\n' "$i"; done
+} > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a body over ten lines is refused" 1 $?
+
+echo "PASSES - a message stating the change and nothing else"
+
+printf 'Widen the tick column\n\nThe mark decides the width; the header no longer reserves space\nfor a sort arrow. 203 tests pass on H21 and H22.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "the function of the code plus a test result passes" 0 $?
+
+# Machine text is why the quote rule cannot simply refuse every quote:
+# an error string is not speech, and backticks are where it goes.
+printf 'Guard the loader\n\nThe panel logged `IndexError: tuple index out of range` before the\nguard; `_FileLoader` now checks the index first.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "machine text in backticks passes" 0 $?
+
+printf 'Rename the section\n\nThe "Notes" pane is now Comments; identifiers unchanged.\n' > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a short quoted label passes" 0 $?
+
+{ printf 'Widen the tick column\n\n'
+  for i in $(seq 1 10); do printf 'Body line %d of ordinary technical text.\n' "$i"; done
+} > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a body of exactly ten lines passes" 0 $?
+
+echo "REFUSES - a gate that cannot trust itself must not pass"
+printf 'x = 1  # a plain technical comment\n' > m2.py
+git add -A
+AMAZE_PRIVATE_NAMES=/nonexistent/nope.txt "$here/pre-commit" >/dev/null 2>&1
+check "an explicitly-set missing list refuses (no silent fallback)" 1 $?
+: > "$work/empty-list"
+AMAZE_PRIVATE_NAMES="$work/empty-list" "$here/pre-commit" >/dev/null 2>&1
+check "an empty list refuses" 1 $?
+printf '%s (unbalanced\n' "$probe" > "$work/badlist"
+AMAZE_PRIVATE_NAMES="$work/badlist" "$here/pre-commit" >/dev/null 2>&1
+check "a list that will not compile refuses (fails closed)" 1 $?
+reset_tree
+
+echo "REFUSES - paths, renames and merges"
+printf 'nothing to see\n' > plain.txt
+git add -A && git commit -qm "Add a plain file"
+git mv plain.txt "${probe}-notes.txt"
+"$here/pre-commit" >/dev/null 2>&1
+check "a rename to a name-carrying path is refused" 1 $?
+reset_tree; git checkout -q -- . 2>/dev/null
+: > "${probe}-empty.txt"
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "an EMPTY file with a name-carrying path is refused" 1 $?
+reset_tree
+
+git checkout -q -b topic
+printf '%s wrote this file\n' "$probe" > merged.txt
+git add -A && git -c core.hooksPath=/dev/null commit -qm "Add a file" >/dev/null 2>&1
+git checkout -q -
+git merge --no-ff -m "Merge topic" topic >/dev/null 2>&1
+check "merged CONTENT is scanned (pre-merge-commit)" 1 $?
+git merge --abort >/dev/null 2>&1 || true
+git branch -qD topic >/dev/null 2>&1 || true
+reset_tree
+
+echo "END TO END - real commits, through git itself"
+printf 'x = 1  # %s wanted this\n' "$probe" > real.py
+git add -A && git commit -qm "A technical message" >/dev/null 2>&1
+check "git commit is blocked by the content gate" 1 $?
+reset_tree
+printf 'x = 1  # a plain technical comment\n' > clean.py
+git add -A && git commit -qm "A technical message" >/dev/null 2>&1
+check "git commit succeeds when everything is clean" 0 $?
+
+echo
+echo "RESULT: $pass passed, $fail failed"
+[ "$fail" -eq 0 ]

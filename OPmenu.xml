@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<menuDocument>
+    <menu>
+        <!--***********************************-->
+        <scriptItem id="saveMatToEgLib">
+            <context>
+                <expression>
+<![CDATA[
+n = kwargs.get("node", None)
+if n is None:
+    return False
+if n.type().name() == "redshift_vopnet":
+    return True
+elif "rs_usd_material_builder" in n.type().name():
+    return True
+elif n.type().name() == "octane_vopnet":
+    return True
+elif "octane_solaris_material_builder" in n.type().name():
+    return True
+elif n.type().name() == "materialbuilder":
+    return True
+elif n.type().name() == "principledshader::2.0":
+    return True
+elif n.type().name() == "subnet":
+    return True
+elif n.type().name() == "collect":
+    return True
+elif "mtlxopen_pbr_surface" in n.type().name():
+    return True
+elif "mtlxstandard_surface" in n.type().name():
+    return True
+return False ]]>
+                    </expression>
+            </context>
+            <labelExpression>
+<![CDATA[
+try:
+    from amaze import branding
+    _APP = branding.APP_NAME
+except Exception:
+    _APP = "Amaze"
+
+n = kwargs.get("node", None)
+if n is None:
+    return "Save to " + _APP
+if n.type().name() == "redshift_vopnet":
+    return "Save to " + _APP
+elif "rs_usd_material_builder" in n.type().name():
+    return "Save to " + _APP
+elif n.type().name() == "octane_vopnet":
+    return "Save to " + _APP
+elif "octane_solaris_material_builder" in n.type().name():
+    return "Save to " + _APP
+elif n.type().name() == "materialbuilder":
+    return "Save to " + _APP
+elif n.type().name() == "principledshader::2.0":
+    return "Save to " + _APP
+elif n.type().name() == "subnet":
+    return "Save to " + _APP
+elif n.type().name() == "collect":
+    return "Save to " + _APP
+elif "mtlxopen_pbr_surface" in n.type().name():
+    return "Save to " + _APP
+elif "mtlxstandard_surface" in n.type().name():
+    return "Save to " + _APP
+return "Unavailable in this Context"
+]]>
+</labelExpression>
+            <scriptCode>
+<![CDATA[
+n = kwargs.get("node", None)
+if n is not None:
+    # The save flow is selection-based (multi-selection saves are a
+    # feature) - but the user right-clicked THIS node, so make sure it
+    # is actually part of the selection: right-clicking an unselected
+    # builder used to save whatever ELSE happened to be selected.
+    # Right-clicking a node already in a multi-selection keeps the
+    # whole selection (multi-save unchanged).
+    if not n.isSelected():
+        n.setSelected(True, clear_all_selected=True)
+    from amaze.utils import rc_calls
+    import importlib
+    importlib.reload(rc_calls)
+    rc_calls.save_material()
+]]>
+                </scriptCode>
+        </scriptItem>
+        <!--***********************************-->
+        <scriptItem id="saveGradientToAssetLib">
+            <context>
+                <expression>
+<![CDATA[
+n = kwargs.get("node", None)
+if n is None:
+    return False
+try:
+    for parm in n.parms():
+        t = parm.parmTemplate()
+        if t.type() == hou.parmTemplateType.Ramp and t.parmType() == hou.rampParmType.Color:
+            return True
+except Exception:
+    pass
+return False ]]>
+                    </expression>
+            </context>
+            <labelExpression>
+<![CDATA[
+try:
+    from amaze import branding
+    _APP = branding.APP_NAME
+except Exception:
+    _APP = "Amaze"
+
+return "Save to " + _APP
+]]>
+</labelExpression>
+            <scriptCode>
+<![CDATA[
+import amaze
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.save_gradient(kwargs.get("node", None))
+]]>
+                </scriptCode>
+        </scriptItem>
+        <!--***********************************-->
+        <scriptItem id="saveCopToAssetLib">
+            <context>
+                <expression>
+<![CDATA[
+n = kwargs.get("node", None)
+if n is None:
+    return False
+# The contexts the Nodes section can save AND restore. Vop is
+# deliberately absent: materials have their own "Save to Amaze"
+# entry, and two identical labels in one menu is a coin toss.
+# Mirrors CopLibrary.SAVE_CONTEXTS - kept literal so a right-click
+# never depends on importing the package.
+KINDS = ("Sop", "Cop", "Lop", "Dop", "Top", "Chop", "Object")
+try:
+    return n.type().category().name() in KINDS
+except AttributeError:
+    return False ]]>
+                    </expression>
+            </context>
+            <labelExpression>
+<![CDATA[
+try:
+    from amaze import branding
+    _APP = branding.APP_NAME
+except Exception:
+    _APP = "Amaze"
+
+# Must predict what the panel will do: a container clicked on its
+# own saves the whole network, everything else saves the selection.
+n = kwargs.get("node", None)
+whole = False
+if n is not None:
+    # Mirrors CopLibrary.saves_whole_network - a light has 33 internal
+    # SOPs, so "has children" is not what makes a node a network.
+    KINDS = ("Sop", "Cop", "Lop", "Dop", "Top", "Chop", "Object")
+    TYPES = ("geo", "copnet", "dopnet", "lopnet", "topnet", "chopnet",
+             "subnet", "sopnet", "objnet")
+    try:
+        # Count the selection the way the PANEL does: it adds the
+        # clicked node to the set before deciding. Counting the raw
+        # selection instead made the label read "Save Network" while
+        # the panel saved a two-node selection.
+        sel = [i for i in hou.selectedItems() if i.parent() == n.parent()]
+        if not any(i == n for i in sel):
+            sel = sel + [n]
+        whole = (n.type().name() in TYPES
+                 and n.childTypeCategory().name() in KINDS
+                 and bool(n.children())
+                 and len(sel) <= 1)
+    except AttributeError:
+        whole = False
+return "Save to " + _APP
+]]>
+</labelExpression>
+            <scriptCode>
+<![CDATA[
+import amaze
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.save_cop(kwargs.get("node", None))
+]]>
+                </scriptCode>
+        </scriptItem>
+        <!--***********************************-->
+        <scriptItem id="saveCodeToAssetLib">
+            <context>
+                <expression>
+<![CDATA[
+n = kwargs.get("node", None)
+if n is None:
+    return False
+for name in ("snippet", "vexpression", "kernelcode", "python", "code"):
+    if n.parm(name) is not None:
+        return True
+return False ]]>
+                    </expression>
+            </context>
+            <labelExpression>
+<![CDATA[
+try:
+    from amaze import branding
+    _APP = branding.APP_NAME
+except Exception:
+    _APP = "Amaze"
+
+return "Save to " + _APP
+]]>
+</labelExpression>
+            <scriptCode>
+<![CDATA[
+import amaze
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.save_code(kwargs.get("node", None))
+]]>
+                </scriptCode>
+        </scriptItem>
+        <!--***********************************-->
+    </menu>
+</menuDocument>

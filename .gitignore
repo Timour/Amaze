@@ -1,0 +1,25 @@
+# Byte-compiled Python (Houdini re-generates these per session)
+__pycache__/
+*.py[cod]
+
+# macOS Finder metadata
+.DS_Store
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local working notes - never published; ignored in case tooling ever
+# recreates one inside the repo.
+CLAUDE.md
+houdinilogs.json
+
+# Preferences live in the OS preferences directory now
+# (~/Library/Preferences/Amaze on macOS, %APPDATA%/Amaze on Windows,
+# $XDG_CONFIG_HOME/Amaze on Linux) - never in the install, so an
+# install-by-clone can never conflict with a user config.
+settings.json
+
+# Agent worktrees (Workflow isolation) - never part of the repo.
+.claude/worktrees/
