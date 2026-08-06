@@ -31,8 +31,10 @@ elif [ -n "${AMAZE_SKIP_TESTS:-}" ]; then
 fi
 
 # A git hook inherits almost no environment - resolve Houdini here.
+# shellcheck source=tools/houdini-env.sh
+. "$repo/tools/houdini-env.sh"
 if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    HFS="$(ls -d /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources 2>/dev/null | sort -V | tail -1 || true)"
+    HFS="$(amaze_newest_houdini)"
     export HFS
 fi
 if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then

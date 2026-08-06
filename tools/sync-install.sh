@@ -7,16 +7,28 @@
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Where Houdini is, and how to mirror a tree. One resolver, because this
+# script alone had grown two copies of the lookup.
+# shellcheck source=tools/houdini-env.sh
+. "$repo/tools/houdini-env.sh"
 
 install="${AMAZE:-}"
 if [ -z "$install" ]; then
-    pkg="/Applications/Houdini/sidefx_packages/Amaze.json"
-    [ -f "$pkg" ] && install="$(python3 -c "
+    # The LAST readable package file wins - amaze_package_files yields
+    # them newest-last, and on macOS there is only ever one. The path is
+    # passed as an ARGUMENT, not interpolated into the source: a Windows
+    # package path is full of backslashes, and one of them inside a
+    # Python string literal is an escape.
+    while IFS= read -r pkg; do
+        [ -n "$pkg" ] || continue
+        found="$("$(amaze_python || echo python3)" -c "
 import json,sys
-for e in json.load(open('$pkg')).get('env', []):
+for e in json.load(open(sys.argv[1])).get('env', []):
     if 'AMAZE' in e:
         print(e['AMAZE']); break
-" 2>/dev/null || true)"
+" "$pkg" 2>/dev/null || true)"
+        if [ -n "$found" ]; then install="$found"; fi
+    done < <(amaze_package_files)
 fi
 if [ -z "$install" ] || [ ! -d "$install" ]; then
     echo "sync-install: cannot find the install (set \$AMAZE)" >&2
@@ -32,9 +44,9 @@ if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     echo "sync-install: wired the pre-push gate (core.hooksPath)"
 fi
 
-rsync -a --delete --exclude '__pycache__' "$repo/scripts/" "$install/scripts/"
-rsync -a --delete "$repo/python_panels/" "$install/python_panels/"
-rsync -a --delete "$repo/toolbar/" "$install/toolbar/"
+amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
+amaze_mirror "$repo/python_panels" "$install/python_panels"
+amaze_mirror "$repo/toolbar" "$install/toolbar"
 cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
 # BYTECODE: purge, then rebuild HASH-VALIDATED.
 #
@@ -58,10 +70,13 @@ cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
 # magic number would not match and every file would be recompiled at
 # import anyway.
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-if [ -n "${HFS:-}" ] && [ -x "$HFS/bin/hython" ]; then
-    _hython="$HFS/bin/hython"
-else
-    _hython="$(ls -d /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources/bin/hython 2>/dev/null | sort -V | tail -1 || true)"
+_hython=""
+if [ -n "${HFS:-}" ]; then
+    _hython="$(amaze_hython "$HFS" || true)"
+fi
+if [ -z "$_hython" ]; then
+    _root="$(amaze_newest_houdini)"
+    if [ -n "$_root" ]; then _hython="$(amaze_hython "$_root" || true)"; fi
 fi
 if [ -n "$_hython" ] && [ -x "$_hython" ]; then
     "$_hython" -c "
@@ -111,12 +126,12 @@ if [ -n "${AMAZE_SYNC_NO_VERIFY:-}" ]; then
 fi
 
 if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    # `|| true`: under `set -euo pipefail` a non-matching glob makes ls
-# exit non-zero, pipefail propagates it, and the script DIES HERE with
-# no output - on a fresh machine with no Houdini, which is exactly the
-# case the lines below were written to handle. (The same snippet is
-# harmless in pre-push and start_test.sh: neither sets pipefail.)
-HFS="$(ls -d /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources 2>/dev/null | sort -V | tail -1 || true)"
+    # The old form here was a bare `ls -d <glob>`, which under
+    # `set -euo pipefail` exits non-zero when nothing matches and killed
+    # this script with NO OUTPUT - on a fresh machine with no Houdini,
+    # the exact case these lines exist to handle. amaze_newest_houdini
+    # returns an empty string instead, which the check below can report.
+    HFS="$(amaze_newest_houdini)"
     export HFS
 fi
 if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then

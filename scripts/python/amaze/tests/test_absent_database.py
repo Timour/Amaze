@@ -930,8 +930,18 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(written),
                         "the first preference save never reached disk")
         with open(written, encoding="utf-8") as handle:
-            self.assertIn(library_dir, json.load(handle).get("directory", ""),
-                          "the chosen library was not persisted")
+            stored = json.load(handle).get("directory", "")
+        # expanduser + normcase on BOTH sides, rather than a substring.
+        # Prefs stores the library home-collapsed ("~/..."), and on
+        # Windows the temp dir IS under $HOME, so the raw path never
+        # appears in the file - while on macOS tempfile lands under
+        # /var/folders, outside $HOME, and the very same code stores it
+        # verbatim. The substring form therefore asked "did it store
+        # this SPELLING", which is not what the test means.
+        self.assertEqual(
+            os.path.normcase(os.path.normpath(library_dir)),
+            os.path.normcase(os.path.normpath(os.path.expanduser(stored))),
+            "the chosen library was not persisted")
 
     def test_a_genuinely_unreadable_settings_file_still_latches(self):
         """The accept path for the refusal: broken must still refuse, or
@@ -1137,11 +1147,30 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
         from amaze.panel.panel import MatLibPanel
         return MatLibPanel._volume_unreachable(path)
 
+    @staticmethod
+    def _absent_volume_path():
+        """A path whose VOLUME is not present, in this platform's own
+        spelling - the two branches `_volume_unreachable` documents.
+
+        The macOS spelling was asserted unconditionally, and on Windows
+        `os.path.abspath("/Volumes/...")` resolves to `C:\\Volumes\\...`
+        - a perfectly mounted drive - so the test reported the guard
+        broken when the guard was right.
+        """
+        if sys.platform == "win32":
+            for letter in "ZYXWVU":
+                if not os.path.exists(letter + ":\\"):
+                    return letter + ":\\NoSuchShare-xyzzy\\textures"
+            raise unittest.SkipTest(
+                "every drive letter probed is mounted, so there is no "
+                "absent volume to point at")
+        return "/Volumes/NoSuchShare-xyzzy/textures"
+
     def test_a_path_on_an_absent_volume_is_unreachable(self):
         self.assertTrue(
-            self._check("/Volumes/NoSuchShare-xyzzy/textures"),
-            "a path under an absent /Volumes root read as gone rather "
-            "than unreachable")
+            self._check(self._absent_volume_path()),
+            "a path on an absent volume read as gone rather than "
+            "unreachable")
 
     def test_a_path_on_the_boot_volume_is_not(self):
         self.assertFalse(
