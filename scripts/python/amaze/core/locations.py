@@ -41,6 +41,7 @@ from __future__ import annotations
 import os
 
 from amaze.core import debug, keyed_store
+from amaze.helpers import hostos
 
 
 LOCATIONS_FILE = keyed_store.LOCATIONS
@@ -219,10 +220,13 @@ def record(preferences, path: str) -> dict:
 
 
 def paths(preferences) -> list:
-    """Every path the store mentions, registered or not."""
+    """Every path the store mentions, registered or not - as
+    absolutes; the portable spelling is the file's business."""
     if not _ready(preferences):
-        return _copy_paths(preferences)
-    return list(_store(preferences).all())
+        return [hostos.expand_storage_path(hostos.storage_path_key(p))
+                for p in _copy_paths(preferences)]
+    return [hostos.expand_storage_path(p)
+            for p in _store(preferences).all()]
 
 
 def registered_paths(preferences) -> list:
@@ -234,28 +238,46 @@ def registered_paths(preferences) -> list:
     the other. The order comes from the settings.json copy for the
     reason given at the top of this module.
     """
-    known = list(getattr(preferences, "last_known_folders", ()) or ())
+    # Order entries and store keys meet in STORAGE spelling - the copy
+    # may still hold a legacy absolute beside the spelling the store
+    # now uses, and comparing raw would list one location twice. The
+    # answer expands back to absolutes at the end: the sidebar and the
+    # scanner need paths `os.walk` can open; only the FILES carry the
+    # portable spelling.
+    known, seen = [], set()
+    for path in (getattr(preferences, "last_known_folders", ()) or ()):
+        stored = hostos.storage_path_key(path)
+        if stored not in seen:
+            seen.add(stored)
+            known.append(stored)
     if not _ready(preferences):
-        return known
+        return [hostos.expand_storage_path(p) for p in known]
     live = {path for path, rec in _store(preferences).all().items()
             if rec.get("registered")}
     ordered = [path for path in known if path in live]
     ordered.extend(sorted(live.difference(ordered)))
-    return ordered
+    return [hostos.expand_storage_path(p) for p in ordered]
 
 
 def favourite_paths(preferences) -> list:
     if not _ready(preferences):
-        return list(getattr(preferences, "last_known_favourites", ()) or ())
-    return sorted(_favourites_store(preferences).all())
+        return [hostos.expand_storage_path(hostos.storage_path_key(p))
+                for p in (getattr(preferences, "last_known_favourites", ())
+                          or ())]
+    return [hostos.expand_storage_path(p)
+            for p in sorted(_favourites_store(preferences).all())]
 
 
 def is_favourite(preferences, path: str) -> bool:
     """The star's question, asked per row per repaint - a membership
-    test, no copy."""
+    test, no copy. Compared in STORAGE spelling, so the star does not
+    depend on which spelling registered the file."""
     if not _ready(preferences):
-        return path in (getattr(preferences, "last_known_favourites", ())
-                        or ())
+        wanted = hostos.storage_path_key(path)
+        return wanted in {
+            hostos.storage_path_key(p)
+            for p in (getattr(preferences, "last_known_favourites", ())
+                      or ())}
     return _favourites_store(preferences).has(path)
 
 
@@ -277,6 +299,10 @@ def set_record(preferences, path: str, value) -> keyed_store.Written:
     The copy is the only truth available, so it is the one written; the
     migration carries it in the moment a library appears.
     """
+    # STORAGE spelling from here down, so the store and the settings
+    # copy hold the same portable form - the store would convert for
+    # itself, the copy would not.
+    path = hostos.storage_path_key(path)
     if not _ready(preferences):
         return _write_copy(preferences, path, value)
     written = _store(preferences).set(path, value or {})
@@ -318,6 +344,7 @@ def set_field(preferences, path: str, field: str, value) -> keyed_store.Written:
 
 
 def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
+    path = hostos.storage_path_key(path)
     if not _ready(preferences):
         return _write_copy_favourite(preferences, path, bool(on))
     written = _favourites_store(preferences).set(path, bool(on))
@@ -330,9 +357,11 @@ def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
 
 def _copy_record(preferences, path: str) -> dict:
     """One record, out of the copy. Only reached when the library is not
-    there to answer."""
-    return dict((getattr(preferences, "last_known_records", None)
-                 or {}).get(path, {}))
+    there to answer. The copy may predate the portable spelling, so the
+    raw path is the second look, not the first."""
+    records = getattr(preferences, "last_known_records", None) or {}
+    return dict(records.get(hostos.storage_path_key(path))
+                or records.get(path) or {})
 
 
 def _copy_paths(preferences) -> list:
@@ -475,10 +504,19 @@ def migrate(preferences) -> dict:
     # overwritten.
     existing = store.all()
     wanted = dict(existing)
+    # STORAGE spelling before the union and the compare. The copy's
+    # keys are legacy spellings - native, absolute, or two of them for
+    # one folder - while the store answers in the portable form, so a
+    # raw-keyed `wanted` can never reproduce: every entry reads as
+    # missing on one side and extra on the other, and the migration
+    # refuses forever. Converting here also collapses the copy's own
+    # duplicate spellings, first in winning, same as the load rule.
     for path, record in mine.items():
+        path = hostos.storage_path_key(path)
         if path not in wanted:
             wanted[path] = record
-    wanted_favs = sorted(set(favourites.all()) | set(my_favs))
+    wanted_favs = sorted(set(favourites.all())
+                         | {hostos.storage_path_key(p) for p in my_favs})
     adopted = len(wanted) - len(existing)
 
     written = store.update(wanted)

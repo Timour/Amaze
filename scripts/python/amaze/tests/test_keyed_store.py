@@ -386,6 +386,109 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
         self.assertEqual("comments", facts["noun"])
 
 
+class TheStoreSpeaksPortableSpelling(StoreCase):
+    """Path keys are stored VARIABLE-RELATIVE - `$AMAZE/...` under the
+    install tree, `~/...` under home, absolute only when neither covers
+    it - so one entry resolves on every machine that shares the library
+    (the 2026-08-06 unification, devlog #416).
+
+    The API keeps speaking absolutes: callers pass whatever spelling
+    they hold, the store converts at its own boundary, and every legacy
+    spelling is absorbed on LOAD - the real favourites held the same
+    file under three spellings at once, which is the disease, measured."""
+
+    def _fake_home(self, *made):
+        home = tempfile.mkdtemp(prefix="amaze_home_")
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        for name in made:
+            full = os.path.join(home, name)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            with open(full, "w") as handle:
+                handle.write("x")
+        patcher = mock.patch.object(
+            hostos, "_home_root", lambda: hostos.canonical_path_key(home))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return hostos.canonical_path_key(home)
+
+    def test_a_home_path_is_stored_home_relative(self):
+        home = self._fake_home("plates/a.exr")
+        absolute = home + "/plates/a.exr"
+        store = self.store()
+        store.set(notes.note_key("file", absolute), self.page("kept"))
+        self.assertEqual(["file:~/plates/a.exr"],
+                         list(self.on_disk()["notes"]),
+                         "the bytes carry the machine's spelling - this "
+                         "library cannot travel")
+        self.assertTrue(store.has(notes.note_key("file", absolute)),
+                        "the caller's absolute no longer finds its own "
+                        "entry back")
+
+    def test_an_amaze_path_is_stored_amaze_relative(self):
+        self._fake_home()
+        amaze = tempfile.mkdtemp(prefix="amaze_root_")
+        self.addCleanup(shutil.rmtree, amaze, ignore_errors=True)
+        patcher = mock.patch.dict(
+            os.environ, {"AMAZE": amaze})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        absolute = hostos.canonical_path_key(
+            os.path.join(amaze, "toolbar", "x.png"))
+        store = self.store()
+        store.set(notes.note_key("file", absolute), self.page("kept"))
+        self.assertEqual(["file:$AMAZE/toolbar/x.png"],
+                         list(self.on_disk()["notes"]))
+        self.assertTrue(store.has(notes.note_key("file", absolute)))
+
+    def test_legacy_spellings_converge_on_load(self):
+        """Three spellings of ONE file - the absolute, the home form,
+        and an uncollapsed dot-dot absolute - are one entry after a
+        load, first in wins, and a lookup by any spelling finds it."""
+        home = self._fake_home("plates/a.exr")
+        absolute = home + "/plates/a.exr"
+        detour = home + "/plates/sub/../a.exr"
+        legacy = {"notes": {
+            "file:" + absolute: {"items": [{"t": "text", "text": "one"}]},
+            "file:~/plates/a.exr": {"items": [{"t": "text", "text": "two"}]},
+            "file:" + detour: {"items": [{"t": "text", "text": "three"}]},
+        }}
+        with open(self.path(), "w", encoding="utf-8", newline="\n") as f:
+            json.dump(legacy, f, indent=4)
+        store = self.store()
+        self.assertEqual(1, store.count(),
+                         "three spellings of one file survived the load "
+                         "as separate entries")
+        self.assertTrue(store.has(notes.note_key("file", absolute)))
+        self.assertTrue(store.has(notes.note_key("file", detour)))
+
+    def test_a_path_under_no_root_stays_absolute(self):
+        self._fake_home()
+        store = self.store()
+        store.set(notes.note_key("file", "/old/a.exr"), self.page("kept"))
+        self.assertIn("file:/old/a.exr", self.on_disk()["notes"])
+
+    def test_locations_speak_walkable_absolutes_over_portable_bytes(self):
+        """The sidebar and the scanner need paths `os.walk` can open;
+        the FILE needs paths the other machine can resolve. The store
+        holds the portable spelling, the reader hands back the
+        absolute."""
+        home = self._fake_home("plates/a.exr")
+        absolute = home + "/plates"
+        locations.register(self.prefs, absolute)
+        locations.set_favourite(self.prefs, absolute + "/a.exr", True)
+        stored = self.on_disk(keyed_store.LOCATIONS)["locations"]
+        self.assertEqual(["~/plates"], list(stored),
+                         "locations.json carries the machine's spelling")
+        self.assertEqual([absolute],
+                         locations.registered_paths(self.prefs),
+                         "the reader hands back a spelling the scanner "
+                         "cannot walk")
+        self.assertTrue(
+            locations.is_favourite(self.prefs, absolute + "/a.exr"))
+        self.assertEqual([absolute + "/a.exr"],
+                         locations.favourite_paths(self.prefs))
+
+
 class TheKeyLifecycle(StoreCase):
     """The owner announces; the ENGINE fans out. A caller that
     enumerates the stores is a list someone can write short, and both

@@ -1130,6 +1130,79 @@ def canonical_path_key(path: str) -> str:
     return os.path.normpath(path).replace(os.sep, "/")
 
 
+def _home_root() -> str:
+    """Home in canonical spelling. Its own function so a test can pin
+    it - patching expanduser would patch the world."""
+    return canonical_path_key(os.path.expanduser("~"))
+
+
+def storage_path_key(path: str) -> str:
+    """A path as the LIBRARY stores spell it: `$AMAZE/...` under the
+    install tree, `~/...` under home, the canonical absolute when
+    neither covers it - one entry that resolves on every machine
+    sharing the library (the 2026-08-06 unification: relative
+    spellings, home by default; research.md > Windows for the
+    three-spellings-of-one-file measurement that earned it).
+
+    $AMAZE is tried FIRST: the install lives under home on every
+    current machine, so home-first would mean the $AMAZE spelling can
+    never fire. Empty stays empty - `normpath("")` is `"."`
+    (research.md), and a truthy `"."` key slips every `if not key`
+    guard downstream.
+
+    `~` here is PYTHON's home, expanded by `expand_storage_path` and
+    nothing else. It is NOT Houdini's `$HOME`, which on a stock
+    Windows machine defaults to Documents (INSTALL.md) - the display
+    spelling `houdini_path()` writes serves that world; this one never
+    passes through Houdini. Measured 2026-08-06: a package's `env`
+    entries land in `os.environ`, so $AMAZE resolves here without hou.
+    """
+    if not path:
+        return ""
+    # A location's identity CARRIES its trailing separator (`/tex/a/`
+    # is the registered spelling everywhere the store is compared), and
+    # normpath strips it - so it is remembered here and put back on
+    # whatever spelling wins.
+    trailing = "/" if str(path).endswith(("/", "\\")) else ""
+    path = canonical_path_key(path)
+    amaze = os.environ.get("AMAZE", "")
+    for var, root in (("$AMAZE", canonical_path_key(amaze) if amaze else ""),
+                      ("~", _home_root())):
+        if not root or root in ("/", "."):
+            continue
+        trimmed = root.rstrip("/")
+        if path == trimmed:
+            return var + trailing
+        if path.startswith(trimmed + "/"):
+            return var + path[len(trimmed):] + trailing
+    if path != "/" and trailing and not path.endswith("/"):
+        return path + trailing
+    return path
+
+
+def expand_storage_path(path: str) -> str:
+    """The inverse: a stored spelling back to THIS machine's canonical
+    absolute. A `$AMAZE` spelling with no $AMAZE in the environment
+    comes back untouched - unresolvable is a fact the caller can see,
+    not one to guess around."""
+    if not path:
+        return ""
+    trailing = "/" if path.endswith("/") else ""
+    if path == "$AMAZE" or path.startswith("$AMAZE/"):
+        root = os.environ.get("AMAZE", "")
+        if not root:
+            return path
+        expanded = canonical_path_key(
+            root.rstrip("/\\") + path[len("$AMAZE"):])
+    elif path == "~" or path.startswith("~/"):
+        expanded = canonical_path_key(_home_root() + path[1:])
+    else:
+        expanded = canonical_path_key(path)
+    if trailing and expanded != "/" and not expanded.endswith("/"):
+        return expanded + trailing
+    return expanded
+
+
 def matched_extension(name: str, extensions) -> str:
     """The entry of `extensions` that `name` ends with, or "".
 

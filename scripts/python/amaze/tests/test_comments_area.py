@@ -407,6 +407,7 @@ class TheLocationBehindAFileRow(unittest.TestCase):
         """A file under both answers to the NEARER one - otherwise the
         header names a location the user did not put it in, and paints
         that location's colour beside it."""
+        from amaze.helpers import hostos
         for order in ((self.outer, self.inner), (self.inner, self.outer)):
             with self.subTest(registered=("outer first"
                                           if order[0] == self.outer
@@ -415,7 +416,10 @@ class TheLocationBehindAFileRow(unittest.TestCase):
                 location, label, colour = section.location_for(
                     os.path.join(self.inner, "shot.exr"))
                 self.assertEqual(
-                    self.inner, location,
+                    # Canonical: the locations API's spelling since the
+                    # portable-spelling change; the fixture built the
+                    # nested path natively.
+                    hostos.canonical_path_key(self.inner), location,
                     "a file inside the nested location answered with %r"
                     % location)
                 self.assertEqual("#4af2a1", colour)

@@ -38,6 +38,7 @@ sys.path.insert(
 
 from amaze.core import file_library  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -1127,7 +1128,9 @@ class LocationManagementTest(unittest.TestCase):
         prefs.save = lambda: None
         rewritten = model.relocate_folder(1, new)
         self.assertGreaterEqual(rewritten, 0, "relocate refused")
-        new_key = new if new.endswith("/") else new + "/"
+        # Canonical, the locations API's spelling since the
+        # portable-spelling change.
+        new_key = hostos.canonical_path_key(new) + "/"
         self.assertEqual({new_key: "Set Dressing"},
                          prefs.file_folder_names,
                          "the custom name did not follow the move")
@@ -1166,7 +1169,9 @@ class LocationManagementTest(unittest.TestCase):
 
         rewritten = model.relocate_folder(2, new)
 
-        new_key = new if new.endswith("/") else new + "/"
+        # Canonical on both sides - the API's spelling now.
+        new_key = hostos.canonical_path_key(new) + "/"
+        first = hostos.canonical_path_key(first)
         self.assertEqual(1, rewritten,
                          "Locate did not report the favourite it moved")
         self.assertEqual([first, new_key], list(prefs.file_folders),
@@ -1279,6 +1284,10 @@ class LocationManagementTest(unittest.TestCase):
         with mock.patch.object(
                 file_library, "sweep_folder_cache") as sweep:
             model.remove_folder(1)
+        # Canonical, the API's spelling since the portable-spelling
+        # change; `kept` and `tmp` were made natively by mkdtemp.
+        kept = hostos.canonical_path_key(kept)
+        tmp = hostos.canonical_path_key(tmp)
         self.assertEqual({kept: "Kept"}, prefs.file_folder_names,
                          "the custom name outlived its folder, or the "
                          "removal reached the location NEXT to it")
@@ -1350,12 +1359,15 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
             "stale row count"
             % (before - model.rowCount(), len(removed)))
         survivors = list(panel.prefs.file_folders)
+        # The locations API answers CANONICAL absolutes since the
+        # portable-spelling change; the fixture's native tmp spelling
+        # is converted on the way in, so the expectation converts too.
         self.assertIn(
-            alive, survivors,
+            hostos.canonical_path_key(alive), survivors,
             "cleanup removed a location whose folder is still there")
         for path in (dead_a, dead_b):
             self.assertNotIn(
-                path, survivors,
+                hostos.canonical_path_key(path), survivors,
                 "a dead location survived cleanup - the second removal "
                 "aimed at a row the first one had already shifted")
 
