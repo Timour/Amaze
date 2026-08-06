@@ -188,8 +188,18 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         # redirect ever stops taking, these tests must stop rather than
         # run against whatever library the settings actually name.
         library = prefs.dir
-        self.assertTrue(library.startswith(tempfile.gettempdir()),
-                        "the fixture is pointed at %r" % (library,))
+        # normcase+normpath BOTH sides. `prefs.dir` comes back in the
+        # HOUDINI spelling - forward slashes, trailing separator - while
+        # tempfile.gettempdir() uses the platform's own, so on Windows
+        # this compared 'C:/Users/.../Temp/...' against
+        # 'C:\\Users\\...\\Temp' and was False for the separator alone.
+        # It took all ten tests in this class down with it, each
+        # reporting a fixture that was in fact pointed exactly where it
+        # should be.
+        self.assertTrue(
+            os.path.normcase(os.path.normpath(library)).startswith(
+                os.path.normcase(os.path.normpath(tempfile.gettempdir()))),
+            "the fixture is pointed at %r" % (library,))
         return prefs, library
 
     def test_every_location_arrives_field_for_field(self):

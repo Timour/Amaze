@@ -783,8 +783,15 @@ class TheGuardsTest(_Case):
         prefs.dir = os.path.join(self.dir, "not-mounted") + os.sep
         with patch.object(hou, "ui", MagicMock(), create=True):
             repair.run(preferences=prefs)
-            said = " ".join(str(call) for call in hou.ui.displayMessage
-                            .call_args_list)
+            # The ARGUMENTS, not str(call). A mock call's repr escapes
+            # every backslash, so on Windows the message really did name
+            # the folder and the assertion could still never find it -
+            # `C:\Users\...` searched inside `C:\\Users\\...`. Reading
+            # the args gives the text the user is actually shown.
+            said = " ".join(
+                str(value)
+                for call in hou.ui.displayMessage.call_args_list
+                for value in list(call.args) + list(call.kwargs.values()))
         self.assertIn("cannot reach the library folder", said)
         self.assertIn(prefs.dir, said,
                       "the message does not name the folder it cannot "

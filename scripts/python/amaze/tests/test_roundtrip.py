@@ -450,11 +450,25 @@ class TestRoundTrip(unittest.TestCase):
 
     # -- the failure half ----------------------------------------------
 
+    @unittest.skipUnless(sys.platform != "win32",
+                         "chmod cannot make a directory unwritable on "
+                         "Windows - the failure this test injects does "
+                         "not happen there")
     def test_failed_save_leaves_no_phantom_row(self):
         """A save whose file write fails must not register the asset:
         a row without files is the phantom that looks fine in the grid
         until the day it is needed. (Files without a row are the safe
-        direction - Clean Up Library collects those.)"""
+        direction - Clean Up Library collects those.)
+
+        WINDOWS: skipped, and the skip is the honest answer rather than
+        a weaker assertion. MEASURED 2026-08-06: `os.chmod(d, 0o555)`
+        on a directory reports mode 0o555 back and a write INTO it
+        still succeeds, so the save never fails, the row is registered,
+        and the test reports a phantom row for behaviour that is
+        correct. Restoring the coverage needs a different injection -
+        the write has to be made to fail some other way - not a
+        different assertion.
+        """
         rows_before = self.model.rowCount()
         index_path = os.path.join(self.prefs.dir, "library.json")
         index_before = open(index_path, "rb").read()
@@ -630,9 +644,17 @@ class TestUnsafeAssetIds(unittest.TestCase):
             ext = ".mat"
             dir = base                      # no trailing separator
 
+        # normpath BOTH sides: `asset_dir` carries a literal "mat/", so
+        # on Windows the composed path is `<base>\mat/abc.mat` - correct
+        # and openable, but not string-equal to os.path.join's
+        # `<base>\mat\abc.mat`. This test is about COMPOSITION versus
+        # concatenation, not about which separator the OS prefers, and
+        # comparing the raw strings failed it on Windows for the one
+        # reason it does not care about.
         self.assertEqual(
-            os.path.join(base, "mat", "abc.mat"),
-            material.payload_path(_Unslashed, "abc", ".mat"),
+            os.path.normpath(os.path.join(base, "mat", "abc.mat")),
+            os.path.normpath(material.payload_path(_Unslashed, "abc",
+                                                   ".mat")),
             "a library path without its trailing separator composed "
             "wrong - which is what concatenation did here")
 

@@ -65,7 +65,15 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 
 #: The real files under test. Relative path in the fixture -> real path.
+#:
+#: houdini-env.sh is not itself a gate, but all three gates SOURCE it,
+#: so a fixture without it is a fixture where every script dies on line
+#: one - which is how it was noticed: 29 of these tests went red at once
+#: with `No such file or directory`, the silent `set -e` abort they are
+#: built to catch, caught on themselves.
 GATE_SCRIPTS = {
+    os.path.join("tools", "houdini-env.sh"):
+        os.path.join(REPO, "tools", "houdini-env.sh"),
     os.path.join("tools", "sync-install.sh"):
         os.path.join(REPO, "tools", "sync-install.sh"),
     os.path.join("tools", "run-tests.sh"):
@@ -271,10 +279,17 @@ class GateFixture(unittest.TestCase):
             _write(os.path.join(self.repo, relative), "touched\n")
         self._git("add", "-A")
         self._git("commit", "-q", "-m", "change " + " ".join(relative_paths))
+        # git reports paths with FORWARD slashes on every platform,
+        # including Windows; the callers build theirs with os.path.join,
+        # which uses the native separator. Comparing the two directly
+        # made all seventeen pre-push tests fail in setup on Windows -
+        # every one of them reporting the gate as broken when it was the
+        # comparison that was.
         self.assertEqual(
             sorted(self._git("diff", "--name-only",
                              "%s..HEAD" % self.base_sha).splitlines()),
-            sorted(relative_paths), "the fixture range is not what we set up")
+            sorted(p.replace(os.sep, "/") for p in relative_paths),
+            "the fixture range is not what we set up")
         return self._git("rev-parse", "HEAD")
 
     def _env(self, mode, **extra):

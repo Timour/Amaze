@@ -201,6 +201,13 @@ class TestPickCoordinateSpace(unittest.TestCase):
         for gl_y in (0, 2, 140, 277, 279):
             vp = _Viewport(h=self.HEIGHT, scale=self.SCALE)
             _Version(self, 21)
+            # The OS is pinned for the same reason the BUILD is. This
+            # test asserts the workaround FIRES, and the workaround is
+            # macOS-only, so without the pin it reads the real host and
+            # can only pass on a Mac - which is how it failed the first
+            # time the suite was run on Windows, reporting "y=2 became
+            # 2 - that is not a pure scale" for correct behaviour.
+            _Platform(self, "macos")
             dragengine._pick(_Viewer(vp), "obj", 100, gl_y,
                              self.SCALE, self.HEIGHT)
             self.assertEqual(
@@ -239,6 +246,11 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
 
     def test_a_hit_is_reported_as_the_node_path(self):
         _Version(self, 21)
+        # macOS, because the fake viewport only answers at (882, 4) -
+        # the SCALED point. Off macOS the workaround does not fire, the
+        # pick asks at (441, 2), and the miss comes back as "" - a
+        # correct answer that reads here as a lost hit.
+        _Platform(self, "macos")
         vp = _Viewport(hit=(882, 4))
         found = dragengine._pick(_Viewer(vp), "obj", 441, 2, 2.0, 279)
         self.assertEqual("/obj/sphere_object1", found)
