@@ -903,5 +903,83 @@ class TheCommentGlyphsAreRasterisedOnce(unittest.TestCase):
             "unchecked to-do would share one pixmap")
 
 
+class TheAccentReachesEveryDelegateAtBirth(_PanelCase):
+    """The construction-time accent sweep ran BEFORE the sections were
+    built, and tile_delegates() is DERIVED from the sections - so it
+    walked an empty tuple and every subtitle painted the class-default
+    blue until Preferences was opened and closed once (whose own sweep
+    runs late enough). One hand-set on the gradient delegate masked the
+    hole for exactly one of five delegates."""
+
+    def test_every_tile_delegate_wears_the_accent(self):
+        """Vacuously green under a DEFAULT accent (the class default is
+        itself theme-derived), so the ORDER test below is the real pin;
+        this one holds the end state for whatever accent is set."""
+        panel = self.panel
+        delegates = panel.tile_delegates()
+        self.assertGreaterEqual(
+            len(delegates), 4,
+            "premise: the delegates exist and are enumerable")
+        expected = theme.accent(panel.prefs.accent_color)
+        wrong = [type(d).__name__ for d in delegates
+                 if d.DIM != expected]
+        self.assertEqual([], wrong)
+
+    def test_the_sweep_runs_after_the_sections_exist(self):
+        """The observable half: tile_delegates() derives from
+        self.sections, so a sweep before build_sections walks an empty
+        tuple - read as ORDER, because under a default accent the
+        painted result cannot tell a dead sweep from a live one."""
+        import inspect
+        import textwrap
+
+        from amaze.panel import panel as panel_mod
+
+        source = textwrap.dedent(
+            inspect.getsource(panel_mod.MatLibPanel.setup))
+        tree = ast.parse(source)
+        sections_line = sweep_line = None
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and getattr(node.func, "attr", "")
+                    == "build_sections"):
+                sections_line = node.lineno
+            if (isinstance(node, ast.For)
+                    and isinstance(node.iter, ast.Call)
+                    and getattr(node.iter.func, "attr", "")
+                    == "tile_delegates"):
+                sweep_line = node.lineno
+        self.assertIsNotNone(sections_line, "build_sections not found")
+        self.assertIsNotNone(sweep_line, "the accent sweep not found")
+        self.assertGreater(
+            sweep_line, sections_line,
+            "the accent sweep runs before the sections exist, so "
+            "tile_delegates() is empty and every subtitle keeps the "
+            "class default until Preferences is opened once")
+
+
+class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
+    """The no-library branch nulls six model attributes; the two File
+    models were not among them, and show_prefs reads file_files_model
+    unconditionally - so on a machine with no library configured the
+    Preferences gear raised AttributeError, and Preferences is the only
+    way to configure a library: a first-run dead end."""
+
+    def test_show_prefs_survives_no_library(self):
+        self.addCleanup(test_support.reset_database_singletons)
+        panel = test_support.fixture_unconfigured_panel(self)
+        self.assertIsNone(
+            getattr(panel, "material_model", "missing"),
+            "premise: the panel took the no-library branch")
+        self.assertIsNone(
+            getattr(panel, "file_files_model", "missing"),
+            "the File models were left unset - any reader raises "
+            "AttributeError instead of seeing None")
+        panel.show_prefs()          # raised before the fix
+        dialog = getattr(panel, "_prefs_dialog", None)
+        self.assertIsNotNone(dialog, "no dialog was built")
+        dialog.close()
+
+
 if __name__ == "__main__":
     unittest.main()

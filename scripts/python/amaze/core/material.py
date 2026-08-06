@@ -545,7 +545,14 @@ class Material:
 
         self.categories = cats
         self.tags = tags
-        self.fav = fav
+        # `fav` is accepted for arity and IGNORED: the record's
+        # favourite is frozen history for older builds (overview.md ▸
+        # Housekeeping semantics - "this build neither reads nor writes
+        # it"). Writing it here made the Edit Info checkbox the one
+        # path that still did - and the field is not shared metadata,
+        # so it won the merge outright and seeded favourite adoption on
+        # machines that had not migrated. The live star is per-user:
+        # library.set_assetdata routes it to preferences.
         if renderer:
             self._renderer = renderer
         if name:

@@ -1162,6 +1162,25 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "Renamed By Seam", model.assets[row].name,
             "Update Info wrote nothing")
 
+    def test_a_dragged_column_width_survives_a_tab_switch(self):
+        """Widths are DEFAULTS the user can drag (overview.md §2) - but
+        the seed ran on every activate and view-mode switch, so a
+        dragged column snapped back to its default on the next tab
+        click. The seed runs once per view; later syncs change
+        visibility only."""
+        panel = self.panel
+        header = panel.thumbtable.horizontalHeader()
+        column = grid_columns.KEYS.index("name")
+        dragged = header.sectionSize(column) + 77
+        header.resizeSection(column, dragged)
+        panel.section_tabs.setChecked("code")
+        QtWidgets.QApplication.processEvents()
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(
+            dragged, header.sectionSize(column),
+            "the tab switch re-seeded the default over the user's drag")
+
     def test_the_table_offers_the_menu_and_the_primary_action(self):
         """`thumblist` gets both wirings; the table got neither, so in
         list mode right-click opened nothing and double-click did

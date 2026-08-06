@@ -136,10 +136,16 @@ def quarantine_size(library_dir: str) -> tuple:
 def quarantine_file(library_dir: str, path: str) -> str:
     """Move one file into today's quarantine, keeping its folder name.
 
-    os.replace, so it is atomic and cannot half-copy - the source and
-    destination are inside the same library and therefore the same
-    volume. Returns the new path, or "" if it could not be moved, in
-    which case the caller must treat the file as still present.
+    os.replace first - atomic where it works. But the quarantine lives
+    under config_root while the LIBRARY may live on an external drive,
+    a NAS or another Windows drive letter, and a rename cannot cross
+    that boundary - so the old same-volume assumption meant Clean
+    Library's sweep and Repair's Move Aside silently did nothing on
+    exactly those setups. The fallback copies-then-unlinks: not atomic,
+    but a torn copy lands in the QUARANTINE side and the source
+    survives, which is the right direction of failure here. Returns the
+    new path, or "" if it could not be moved, in which case the caller
+    must treat the file as still present.
     """
     folder = quarantine_folder(library_dir)
     relative = os.path.relpath(path, library_dir)
@@ -151,9 +157,12 @@ def quarantine_file(library_dir: str, path: str) -> str:
             # the older one is evidence too.
             stem, ext = os.path.splitext(target)
             target = "%s.%s%s" % (stem, time.strftime("%H%M%S"), ext)
-        os.replace(path, target)
+        try:
+            os.replace(path, target)
+        except OSError:
+            shutil.move(path, target)
         return target
-    except OSError as exc:
+    except (OSError, shutil.Error) as exc:
         debug.event("cleanup", "could not quarantine", file=path,
                     error=str(exc))
         return ""

@@ -21,6 +21,7 @@ discipline as the thumbnail and import paths.
 from __future__ import annotations
 
 import os
+import shutil
 
 import hou
 
@@ -310,12 +311,37 @@ def _producer_for(record, source, resolution, preferences, progress=None):
                               ".mtlx - remove %s and try again"
                     % (record.title, dest))
     else:
+        # FETCH INTO A SCRATCH SIBLING, PROMOTE ON SUCCESS. fetch used
+        # to write straight into dest, so a download dying part-way
+        # left a non-empty directory - and the reuse check above reads
+        # a non-empty directory as "already downloaded": torn textures
+        # reused on every later import, or a permanent refusal when the
+        # .mtlx never arrived. The rename is what makes an occupied
+        # destination MEAN a complete package. A surviving scratch is
+        # ours by construction (library-audit reports it as leftover)
+        # and is swept on the next attempt.
+        scratch = dest + ".downloading"
+        shutil.rmtree(scratch, ignore_errors=True)
         try:
-            fetched = source.fetch(record, resolution, dest,
+            fetched = source.fetch(record, resolution, scratch,
                                    progress=progress)
         except Exception as exc:                        # noqa: BLE001
             debug.exception("download", exc, url=record.payload, dest=dest)
+            shutil.rmtree(scratch, ignore_errors=True)
             return (None, "", "Download failed: %s" % exc)
+        if os.path.isdir(scratch):
+            if os.path.isdir(dest):
+                # This branch means dest was absent or EMPTY - an empty
+                # husk cannot be renamed onto, and holds nothing.
+                shutil.rmtree(dest, ignore_errors=True)
+            os.rename(scratch, dest)
+        # The fetch answered scratch paths; the files live at dest now.
+        fetched = {
+            key: (dest + value[len(scratch):]
+                  if isinstance(value, str) and value.startswith(scratch)
+                  else value)
+            for key, value in (fetched or {}).items()
+        }
     mtlx_path = fetched.get("mtlx")
     if not mtlx_path or not os.path.exists(mtlx_path):
         return (None, "", "No .mtlx document in the downloaded package")

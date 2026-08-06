@@ -96,6 +96,33 @@ class PreEditHoldsTheRightFilesTest(_Case):
                       "the interface never joined the held set")
 
 
+class SwitchRollsBackOnALedgerRefusal(_Case):
+    """switch_active promotes the archive over the base and THEN writes
+    the ledger; a refused ledger write left the base holding version N
+    while the ledger still named the old one - the exact base/ledger
+    disagreement _copy_set's two-phase design exists to prevent, one
+    layer up. The previous active's archive is still complete, so the
+    rollback is one more promote."""
+
+    def test_the_base_returns_when_the_ledger_will_not_write(self):
+        from unittest import mock
+
+        versions.create_version(self.prefs, self.mat_id)          # V1
+        self._rewrite_base(b"EDITED-STATE")
+        versions.create_version(self.prefs, self.mat_id)          # V2
+        with mock.patch.object(versions, "_write_ledger",
+                               return_value=False):
+            self.assertFalse(
+                versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual(
+            b"EDITED-STATE", self._base_bytes(),
+            "the base holds version 1 while the ledger still names "
+            "version 2 - the promotion was not rolled back")
+        self.assertEqual(
+            2, versions.active_version(self.prefs, self.mat_id),
+            "the ledger moved despite the refusal")
+
+
 class StoreTest(_Case):
 
     def test_no_versions_is_the_ordinary_state(self):

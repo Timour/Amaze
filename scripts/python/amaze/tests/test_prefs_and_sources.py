@@ -397,6 +397,170 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "a failed extract poisons the package folder permanently")
 
 
+class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
+    """Six converters accept `target_input` and re-forward it to the
+    texture samplers nested behind them - but the dispatcher passed it
+    only to convert_texture_sampler ITSELF, so a base_color texture
+    behind an RSColorCorrection, RSColorLayer, Fresnel, RSMathRange or
+    RSRamp converted with role "data" and a Raw colour space: a colour
+    map read as linear floats, silently desaturated, with a success
+    report. The dispatcher hands the hint to every converter whose
+    signature takes it."""
+
+    def test_a_converter_that_accepts_it_receives_it(self):
+        from amaze.render import material_converter as mc
+
+        received = {}
+
+        def takes(rs_node, dest_parent, report, target_input=""):
+            received["takes"] = target_input
+            return None
+
+        def bare(rs_node, dest_parent, report):
+            received["bare"] = True
+            return None
+
+        class _Type:
+            def __init__(self, name):
+                self._name = name
+
+            def name(self):
+                return self._name
+
+        class _Node:
+            def __init__(self, type_name):
+                self._type = _Type(type_name)
+
+            def type(self):
+                return self._type
+
+            def name(self):
+                return "stub"
+
+        mc.NODE_CONVERTERS["stub::Takes"] = takes
+        mc.NODE_CONVERTERS["stub::Bare"] = bare
+
+        def _unregister():
+            mc.NODE_CONVERTERS.pop("stub::Takes", None)
+            mc.NODE_CONVERTERS.pop("stub::Bare", None)
+
+        self.addCleanup(_unregister)
+        report = mc.ConversionReport("stub")
+        mc.convert_node(_Node("stub::Takes"), None, report, "base_color")
+        mc.convert_node(_Node("stub::Bare"), None, report, "base_color")
+        self.assertEqual(
+            "base_color", received.get("takes"),
+            "the dispatcher dropped target_input for a converter that "
+            "forwards it - the nested texture reads as data/Raw")
+        self.assertTrue(received.get("bare"),
+                        "a converter without the parameter broke")
+
+
+class AHalfFetchedPackageIsNotReused(unittest.TestCase):
+    """`source.fetch` used to write straight into matX/<package>, so a
+    fetch dying part-way left a non-empty directory - and the reuse
+    check reads a non-empty directory as "already downloaded": torn
+    textures reused forever, or an import refused forever when the
+    .mtlx never arrived. The fetch lands in a scratch sibling and is
+    renamed over only on success, so an occupied destination IS a
+    complete package."""
+
+    def _record(self):
+        class Record:
+            kind = "package"
+            uid = "seam1"
+            title = "Seam Test"
+            source = "stub"
+            payload = {}
+
+        return Record()
+
+    def test_a_fetch_that_dies_leaves_no_destination(self):
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+
+        class DyingSource:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                os.makedirs(dest_dir, exist_ok=True)
+                with open(os.path.join(dest_dir, "texture_part.png"),
+                          "wb") as handle:
+                    handle.write(b"HALF")
+                raise RuntimeError("connection dropped")
+
+        record = self._record()
+        produce, _note, error = matx_import._producer_for(
+            record, DyingSource(), "2K", prefs)
+        self.assertIsNone(produce)
+        self.assertIn("connection dropped", error)
+        dest = os.path.join(matx_import.matx_dir(prefs.dir),
+                            matx_import.package_dirname(record))
+        self.assertFalse(
+            os.path.isdir(dest) and os.listdir(dest),
+            "the dead fetch occupied the destination - every later "
+            "import will reuse the torn package")
+
+    def test_the_retry_fetches_fresh_and_lands_complete(self):
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+
+        class Source:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                os.makedirs(dest_dir, exist_ok=True)
+                path = os.path.join(dest_dir, "seam.mtlx")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write('<?xml version="1.0"?>\n'
+                                 '<materialx version="1.38">\n'
+                                 "</materialx>\n")
+                return {"mtlx": path}
+
+        record = self._record()
+        produce, _note, error = matx_import._producer_for(
+            record, Source(), "2K", prefs)
+        self.assertEqual("", error)
+        self.assertIsNotNone(produce)
+        dest = os.path.join(matx_import.matx_dir(prefs.dir),
+                            matx_import.package_dirname(record))
+        self.assertTrue(
+            os.path.isfile(os.path.join(dest, "seam.mtlx")),
+            "the completed fetch never landed at the destination")
+        self.assertFalse(
+            os.path.isdir(dest + ".downloading"),
+            "the scratch sibling survived a successful fetch")
+
+
+class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
+    """`next(iter({}.values()))` raises StopIteration, whose str() is
+    EMPTY - so an asset shipping no .mtlx variant at all reported
+    "Download failed: " with nothing after the colon, exactly the
+    two-meanings-of-an-empty-message shape the surrounding comments
+    were written to end."""
+
+    def test_fetch_with_no_variants_names_the_asset(self):
+        from amaze.core import matx_sources
+
+        class Source(matx_sources.PolyHavenSource):
+            def __init__(self):
+                pass
+
+            def _files(self, record):
+                return {}
+
+        class Record:
+            title = "Bare Rock"
+            payload = {}
+
+        with self.assertRaisesRegex(RuntimeError, "Bare Rock"):
+            Source().fetch(Record(), "2K", "/nowhere")
+
+
 class StagingLeavesNoUndoEntry(unittest.TestCase):
     """createNode and destroy BOTH land on the live stack, and one
     performUndo resurrects the node WITH its children (research.md ▸

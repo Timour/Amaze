@@ -405,13 +405,26 @@ class ThumbNailScene:
         safe_set(null, "ty", -0.01)
         safe_set(null, "scale", 1.1)
         if "Redshift" in self.renderer:
-            self.cam.setSelected(True, True)
+            # The spare-parameter hscript works on the SELECTION, so
+            # the user's own node selection is set aside and put back:
+            # building a thumbnail scene must not eat what they had
+            # selected in the network editor.
+            previous = hou.selectedNodes()
             try:
-                hou.hscript("Redshift_cameraSpareParameters -C 1")
-            except hou.OperationFailed as e:
-                debug.event("thumb", "Redshift_cameraSpareParameters "
-                            "unavailable - skipping", error=str(e))
-            self.geo_node.setSelected(True, True)
+                self.cam.setSelected(True, True)
+                try:
+                    hou.hscript("Redshift_cameraSpareParameters -C 1")
+                except hou.OperationFailed as e:
+                    debug.event("thumb", "Redshift_cameraSpareParameters "
+                                "unavailable - skipping", error=str(e))
+                self.geo_node.setSelected(True, True)
+            finally:
+                try:
+                    hou.clearAllSelected()
+                    for node in previous:
+                        node.setSelected(True)
+                except hou.Error:
+                    pass
 
     def build_rops(self) -> None:
         """

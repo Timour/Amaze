@@ -94,7 +94,13 @@ def normalise(value) -> dict:
                 items.append({"t": "text", "text": text})
     if not items:
         return {}
-    return {"items": items}
+    # Unknown page-level fields ride along (a newer build's addition);
+    # "text" and "todos" do not - they were CONSUMED into items above,
+    # and carrying them too would duplicate the page on the next read.
+    page = {k: v for k, v in value.items()
+            if k not in ("items", "text", "todos")}
+    page["items"] = items
+    return page
 
 
 #: The engine DECLARES this store (filename, payload, keyspace, the

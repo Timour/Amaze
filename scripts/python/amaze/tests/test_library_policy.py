@@ -33,6 +33,20 @@ class PolicyFileTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = library_policy.path_for(self.dir)
 
+    def test_a_byte_order_mark_is_read_not_fail_closed(self):
+        """policy.json is the one library file a user is INVITED to
+        hand-edit, and Windows Notepad prepends a BOM - which made the
+        parse raise, and fail-closed then read a healthy permissive
+        policy as the most restrictive one: Update Existing refused
+        library-wide over three invisible bytes. utf-8-sig, like every
+        other reader in the package (keyed_store says why)."""
+        with open(self.path, "w", encoding="utf-8-sig") as handle:
+            json.dump({"allow_overwrite": True,
+                       "version": library_policy.POLICY_VERSION}, handle)
+        self.assertTrue(
+            library_policy.allow_overwrite(self.dir),
+            "a Notepad BOM read as a broken policy file")
+
     def _write(self, text):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(text)

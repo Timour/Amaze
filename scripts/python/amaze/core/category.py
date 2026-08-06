@@ -366,9 +366,13 @@ class Categories(QtCore.QAbstractListModel):
         data["categories"] = self._categories
         data["category_colors"] = self.colors()
         db.set(data)
-        db.save()
+        # The connector's answer, not an unconditional True: a refused
+        # write (latch, merge refusal, held file) reported success here
+        # while the in-memory list had already moved - the same shape
+        # MaterialLibrary.save was fixed for.
+        stored = db.save()
         self.drop_count_cache()
-        return True
+        return bool(stored)
 
 
 class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):

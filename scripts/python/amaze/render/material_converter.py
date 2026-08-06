@@ -20,6 +20,8 @@ look identical, and every use is flagged in the ConversionReport so that's
 never mistaken for a faithful reproduction.
 """
 
+import inspect
+
 import hou
 
 from amaze.core import debug
@@ -1178,11 +1180,15 @@ def convert_node(
     callers must handle that by leaving the destination input unwired
     rather than crashing.
 
-    `target_input` is the standard-surface input the result will feed;
-    passed through so a texture sampler can pick its colour space from
-    what it drives (colour vs data). Only convert_texture_sampler uses
-    it; the other converters accept and ignore it via **kwargs-free
-    signature matching below."""
+    `target_input` is the standard-surface input the result will feed,
+    so a texture sampler can pick its colour space from what it drives
+    (colour vs data). Every converter whose signature takes it gets it
+    - six of them re-forward it to the samplers nested behind them, and
+    the identity check this used to be handed the hint only to
+    convert_texture_sampler ITSELF: a base_color texture behind an
+    RSColorCorrection converted as data/Raw, silently desaturated, with
+    a success report. Read from the SIGNATURE so a new converter that
+    declares the parameter joins without touching this dispatch."""
     conv = NODE_CONVERTERS.get(rs_node.type().name())
     if conv is None:
         report.skip(
@@ -1193,7 +1199,7 @@ def convert_node(
             )
         )
         return None
-    if conv is convert_texture_sampler:
+    if "target_input" in inspect.signature(conv).parameters:
         return conv(rs_node, dest_parent, report, target_input)
     return conv(rs_node, dest_parent, report)
 

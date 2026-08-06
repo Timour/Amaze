@@ -834,7 +834,21 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         else:
             tags = ", ".join(asset.tags)
 
-        asset.set_data(name, cats, tags, fav, None, about=about, license=license)
+        # THE STAR IS PER-USER, like toggle_fav: it goes to settings,
+        # never onto the shared record (whose `favorite` is frozen
+        # history). None leaves the star alone - the recategorise path
+        # passes that, because it edits the record, not the star.
+        if fav is not None:
+            try:
+                if bool(fav) != bool(
+                        self.preferences.is_material_favorite(
+                            asset.mat_id)):
+                    self.preferences.set_material_favorite(
+                        asset.mat_id, bool(fav))
+            except AttributeError:
+                pass
+        asset.set_data(name, cats, tags, asset.fav, None, about=about,
+                       license=license)
         self.save()
         # Full-row repaint (all roles) - name/categories/tags/favorite
         # may all have changed.
@@ -1085,8 +1099,15 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # without this, the delete we just declined would happen
             # anyway the next time anything saves.
             try:
-                database.DatabaseConnector(self.DB_FILENAME).unforget(
-                    asset.mat_id)
+                connector = database.DatabaseConnector(self.DB_FILENAME)
+                connector.unforget(asset.mat_id)
+                # unforget clears a PENDING delete, but save() already
+                # ran set(), which consumed the mark and dropped the
+                # row from the connector's live document - so ANY other
+                # model's save (Categories writes only its own keys and
+                # never re-adds assets) would commit the delete we just
+                # declined. Put the row back in the document too.
+                connector.set({"assets": [asset.get_as_dict()]})
             except (AttributeError, TypeError) as exc:
                 debug.event("library", "could not take back a row removal",
                             error=str(exc))

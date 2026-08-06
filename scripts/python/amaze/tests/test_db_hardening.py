@@ -1209,6 +1209,116 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
                 "good states one step closer to falling off the end")
 
 
+class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
+    """A refused write must leave the shared DOCUMENT exactly as it
+    was, not only the model: set() consumes the pending delete into the
+    connector's live data before save() answers, so a declined delete
+    sat in the document waiting for ANY other model's save - Categories
+    writes only its own keys and never re-adds assets - to commit it."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        from amaze.core import library as library_mod
+        self.library_mod = library_mod
+
+    def _own_path(self):
+        return os.path.join(self.prefs.dir, "library.json")
+
+    def test_a_declined_delete_is_not_committed_by_another_model(self):
+        from unittest.mock import patch
+        from amaze.core import category as category_mod
+        from amaze.core import database
+
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        # A row with a REAL id: the fixture's damaged row answers -1
+        # and never appears in the document.
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) not in ("", "-1"))
+        asset = model.assets[row]
+        doomed = str(asset.mat_id)
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            model.remove_asset(model.index(row, 0))
+        self.assertEqual(doomed, str(model.assets[row].mat_id),
+                         "premise: the refusal restored the model row")
+
+        cats = category_mod.Categories(preferences=self.prefs)
+        cats.save()
+        with open(self._own_path(), encoding="utf-8") as handle:
+            ids = [str(row.get("id"))
+                   for row in json.load(handle)["assets"]]
+        self.assertIn(
+            doomed, ids,
+            "the declined delete reached disk through a save that "
+            "writes only categories - the document still carried it")
+
+    def test_a_refused_category_save_reports_False(self):
+        from unittest.mock import patch
+        from amaze.core import category as category_mod
+        from amaze.core import database
+
+        cats = category_mod.Categories(preferences=self.prefs)
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.assertFalse(
+                cats.save(),
+                "a refused write reported success while the in-memory "
+                "list had already moved")
+
+    def test_the_edit_info_star_never_touches_the_shared_record(self):
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) not in ("", "-1"))
+        asset = model.assets[row]
+        frozen = asset.fav
+        model.set_assetdata(model.index(row, 0), asset.name,
+                            ", ".join(asset.categories),
+                            ", ".join(asset.tags), True)
+        self.assertEqual(
+            frozen, asset.fav,
+            "the Edit Info checkbox wrote the frozen shared field - it "
+            "wins the field merge and seeds favourite adoption on "
+            "machines that have not migrated")
+        self.assertTrue(
+            self.prefs.is_material_favorite(asset.mat_id),
+            "the star never reached the per-user store")
+
+
+class QuarantineCrossesVolumes(unittest.TestCase):
+    """The quarantine lives under config_root while the library may
+    live on an external drive, a NAS or another Windows drive letter -
+    and os.replace cannot rename across that boundary. Every caller
+    treats "" as "could not be moved", so Clean Library's sweep and
+    Repair's Move Aside silently did nothing on exactly those setups.
+    The fallback copies-then-unlinks; not atomic, but the shipped
+    alternative was nothing happening at all."""
+
+    def test_a_cross_device_move_still_lands(self):
+        from unittest.mock import patch
+        from amaze.core import quarantine
+
+        # fixture_prefs first: it redirects config_root, so the
+        # quarantine folder lands inside the temp tree.
+        test_support.fixture_prefs(self)
+        library = tempfile.mkdtemp(prefix="amaze_qxdev_")
+        self.addCleanup(shutil.rmtree, library, ignore_errors=True)
+        stray = os.path.join(library, "leftover.tmp")
+        with open(stray, "w", encoding="utf-8") as handle:
+            handle.write("scratch")
+
+        with patch("amaze.core.quarantine.os.replace",
+                   side_effect=OSError(18, "Invalid cross-device link")):
+            target = quarantine.quarantine_file(library, stray)
+        self.assertTrue(
+            target and os.path.isfile(target),
+            "the cross-device quarantine silently did nothing - the "
+            "sweep reports the file as still present forever")
+        self.assertFalse(os.path.exists(stray),
+                         "the source survived the move")
+
+
 class _CleanupCase(unittest.TestCase):
     """A fixture library copy plus the Clean Library call site."""
 
