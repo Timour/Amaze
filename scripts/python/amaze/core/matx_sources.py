@@ -750,6 +750,14 @@ class PolyHavenSource(MatxSource):
 
     def fetch(self, record, resolution, dest_dir, progress=None):
         mtlx_all = self._files(record).get("mtlx") or {}
+        if not mtlx_all:
+            # Explicit, because `next(iter({}.values()))` raises
+            # StopIteration whose str() is EMPTY - the caller's
+            # `Download failed: %s` then printed nothing after the
+            # colon, the two-meanings-of-an-empty-message shape the
+            # comments above were written to end.
+            raise RuntimeError(
+                "no .mtlx variants listed for " + record.title)
         entry = mtlx_all.get(resolution) or next(iter(mtlx_all.values()))
         doc = entry.get("mtlx") if isinstance(entry, dict) else None
         if not doc:

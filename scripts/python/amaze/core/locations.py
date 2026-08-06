@@ -76,7 +76,11 @@ def normalise(value) -> dict:
     """
     if not isinstance(value, dict):
         return {}
-    record = {}
+    # UNKNOWN FIELDS RIDE ALONG: a newer build's field must survive an
+    # older build's rewrite of the record - the engine keeps whole
+    # foreign ENTRIES for the same reason, one level up.
+    known = ("registered", "name", "color", "show_all", "recursive")
+    record = {k: v for k, v in value.items() if k not in known}
     if value.get("registered"):
         record["registered"] = True
     name = value.get("name")

@@ -307,11 +307,26 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
         debug.event("versions", "switch refused - no such version",
                     mat_id=str(mat_id), n=number)
         return False
+    previous = ledger.get("active")
     if not _copy_set(_archive_paths(preferences, mat_id, int(number)),
                      _base_paths(preferences, mat_id)):
         return False
     ledger["active"] = int(number)
     if not _write_ledger(preferences, mat_id, ledger):
+        # The base already holds version `number` while the ledger on
+        # disk still names the previous one - the exact base/ledger
+        # disagreement _copy_set's two-phase design prevents one layer
+        # down. The previous active's archive is still complete, so the
+        # rollback is one more promote.
+        rolled_back = (
+            previous is not None and int(previous) in known
+            and _copy_set(
+                _archive_paths(preferences, mat_id, int(previous)),
+                _base_paths(preferences, mat_id)))
+        debug.event("versions",
+                    "switch refused - ledger write failed",
+                    mat_id=str(mat_id), n=int(number),
+                    rolled_back=bool(rolled_back))
         return False
     debug.event("versions", "active version switched",
                 mat_id=str(mat_id), n=number)

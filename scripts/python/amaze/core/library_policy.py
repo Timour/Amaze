@@ -108,7 +108,11 @@ def read(library_dir: str) -> dict:
             return {key: False for key in DEFAULTS}
         return settings
     try:
-        with open(path, encoding="utf-8") as handle:
+        # utf-8-sig: this is the one library file a user is INVITED to
+        # hand-edit, and Windows Notepad prepends a BOM - which made
+        # the parse raise, and fail-closed then read a healthy
+        # permissive policy as the most restrictive one.
+        with open(path, encoding="utf-8-sig") as handle:
             loaded = json.load(handle)
         if not isinstance(loaded, dict):
             raise ValueError("policy is %s, not an object"
@@ -167,7 +171,10 @@ def _write(library_dir: str, changes: dict) -> bool:
     current = {}
     if os.path.isfile(path):
         try:
-            with open(path, encoding="utf-8") as handle:
+            # utf-8-sig, same reason as read(): a Notepad BOM must not
+            # make the write path treat the file as unreadable and
+            # replace it, dropping its other keys.
+            with open(path, encoding="utf-8-sig") as handle:
                 loaded = json.load(handle)
             if isinstance(loaded, dict):
                 current = loaded

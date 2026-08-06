@@ -285,6 +285,13 @@ class MatLibPanel(QtWidgets.QWidget):
             self.cop_category_model = None
             self.code_model = None
             self.code_category_model = None
+            # The File models too: show_prefs hands file_files_model to
+            # the Preferences dialog (which takes None), and Preferences
+            # is the ONLY way to configure a library - leaving the
+            # attribute unset made the gear an AttributeError on
+            # exactly the machine that needs it most, the first run.
+            self.file_files_model = None
+            self.file_folders_model = None
 
     # Menu title -> icon asset, each with a baked-in corner triangle as
     # the "opens a menu" hint. The two were swapped from the original
@@ -427,11 +434,11 @@ class MatLibPanel(QtWidgets.QWidget):
             crop_role=self.file_files_model.CropRole,
             notes_role=self.file_files_model.NotesRole,
         )
-        # Tile subtitle line follows the accent preference (instance
-        # attribute shadows the class default; refreshed again in
-        # show_prefs() when the accent changes).
-        for tile_delegate in self.tile_delegates():
-            tile_delegate.DIM = theme.accent(self.prefs.accent_color)
+        # The accent sweep for the tile delegates runs at the END of
+        # setup(): tile_delegates() derives from self.sections, which
+        # do not exist yet here - a sweep at this point walks an empty
+        # tuple, which left every subtitle on the class default until
+        # Preferences was opened once.
         # The "Type" header label follows the same accent as the type
         # entries the delegates paint.
         # The star preference colours the NOTES surfaces (chip lit +
@@ -465,7 +472,9 @@ class MatLibPanel(QtWidgets.QWidget):
             favorite_role=self.gradient_model.FavoriteRole,
             notes_role=self.gradient_model.NotesRole,
         )
-        self.gradient_delegate.DIM = theme.accent(self.prefs.accent_color)
+        # (No per-delegate accent set here: the one sweep at the end of
+        # setup() covers every tile delegate - a hand-set on this one
+        # masked the dead early sweep for exactly one of five.)
 
         # v2: Cop section - standalone COP-network assets. A second,
         # fully independent material-style stack over its own cops.json
@@ -602,6 +611,14 @@ class MatLibPanel(QtWidgets.QWidget):
         # self._section() instead of branching on current_section - a new
         # section is a new class in panel/sections.py, not edits here.
         self.sections = sections.build_sections(self)
+
+        # Tile subtitle line follows the accent preference for EVERY
+        # tile delegate (instance attribute shadows the class default;
+        # refreshed again in show_prefs() when the accent changes).
+        # AFTER build_sections, deliberately: tile_delegates() derives
+        # from the sections, so any earlier sweep walks an empty tuple.
+        for tile_delegate in self.tile_delegates():
+            tile_delegate.DIM = theme.accent(self.prefs.accent_color)
 
         # Start on the first ENABLED section (usually Materials, but a
         # user may have hidden it). Models all exist regardless of which
@@ -2342,9 +2359,11 @@ class MatLibPanel(QtWidgets.QWidget):
             for index in indexes:
                 idx = model.index(proxy.mapToSource(index).row(), 0)
                 asset = model.assets[idx.row()]
+                # fav=None: a recategorise edits the record, never the
+                # star - the star is per-user and lives in settings.
                 model.set_assetdata(
                     idx, asset.name, category, ", ".join(asset.tags),
-                    asset.fav
+                    None
                 )
         self._refresh_sidebar_categories()
 

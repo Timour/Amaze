@@ -701,5 +701,125 @@ class TheKeyLifecycle(StoreCase):
                 "%s would outlive the location it belongs to" % name)
 
 
+class ForeignEntriesSurviveTheRewrite(StoreCase):
+    """An entry the CURRENT build's normaliser rejects is not junk to
+    delete - it is usually a NEWER build's data: an icon name this
+    build's Feather set lacks, a record shape from next year. The load
+    keeps it aside verbatim, invisible to readers, and every commit
+    writes it back - an older build must not erase what a newer one
+    wrote into the shared file."""
+
+    def _seed(self, entries):
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": entries}, handle)
+
+    def test_a_rejected_entry_survives_a_write(self):
+        self._seed({
+            "material:good": self.page("keep me"),
+            "material:future": {"hologram": True},
+        })
+        store = self.store()
+        self.assertFalse(store.has("material:future"),
+                         "a rejected entry answered as readable")
+        store.set("material:new", self.page("mine"))
+        written = self.on_disk()["notes"]
+        self.assertIn(
+            "material:future", written,
+            "one write from an older build erased the newer build's "
+            "entry from the shared file")
+        self.assertEqual({"hologram": True}, written["material:future"],
+                         "the foreign entry was not kept verbatim")
+
+    def test_a_rejected_PEER_entry_survives_our_write(self):
+        self._seed({"material:good": self.page("keep")})
+        store = self.store()
+        # Another session writes an entry we cannot parse.
+        self._seed({
+            "material:good": self.page("keep"),
+            "material:future": {"hologram": True},
+        })
+        store.set("material:new", self.page("mine"))
+        self.assertIn(
+            "material:future", self.on_disk()["notes"],
+            "our write erased what the peer session had just written")
+
+    def test_setting_the_same_key_takes_it_over(self):
+        self._seed({"material:x": {"hologram": True}})
+        store = self.store()
+        store.set("material:x", self.page("now real"))
+        self.assertEqual(
+            self.page("now real"), self.on_disk()["notes"]["material:x"],
+            "the foreign copy shadowed the value the user just chose")
+
+
+class EveryDoorSpeaksThePortableSpelling(StoreCase):
+    """set/get/has convert keys at the boundary (storage_key); update,
+    rekey and retire took raw strings - so a caller speaking absolutes
+    grew a SECOND spelling of a key the table already held, and the
+    next load kept only the first: the newer entry's data silently
+    dropped."""
+
+    def _table(self, name="locations.json"):
+        document = self.on_disk(name)
+        return next(iter(document.values()))
+
+    def test_update_rekey_and_retire_match_the_stored_spelling(self):
+        target = os.path.join(os.path.expanduser("~"), "amaze-seam-loc")
+        moved = os.path.join(os.path.expanduser("~"), "amaze-seam-two")
+        store = keyed_store.open_store(locations.SPEC, self.prefs)
+        store.set(target, {"registered": True})
+        self.assertTrue(
+            all(key.startswith("~") for key in self._table()),
+            "premise: a home path is stored in the portable spelling")
+
+        store.update({target: {"registered": True, "name": "Seam"}})
+        self.assertEqual(
+            1, len(self._table()),
+            "update grew a second spelling of a key the table held")
+
+        store.rekey({target: moved})
+        table = self._table()
+        self.assertEqual(1, len(table), "rekey grew a second spelling")
+        self.assertTrue(next(iter(table)).startswith("~"),
+                        "rekey stored the raw absolute destination")
+
+        store.retire([moved])
+        self.assertEqual(
+            {}, self._table(),
+            "retire missed the stored spelling - the location's record "
+            "outlives the location")
+
+
+class ARecordCarriesFieldsItDoesNotKnow(StoreCase):
+    """The engine keeps whole foreign ENTRIES; the adapters keep
+    foreign FIELDS inside entries they accept - the same reason at the
+    next level down. A location record rebuilt from the five known
+    fields dropped whatever a newer build had added, on the first write
+    from an older one."""
+
+    def test_locations_normalise_keeps_unknown_fields(self):
+        record = locations.normalise({
+            "registered": True, "name": "Seam",
+            "pinned_by": "future-build"})
+        self.assertEqual("Seam", record.get("name"))
+        self.assertEqual(
+            "future-build", record.get("pinned_by"),
+            "an older build's write drops the field a newer one added")
+
+    def test_notes_normalise_keeps_unknown_fields(self):
+        page = notes.normalise({
+            "items": [{"t": "text", "text": "hello"}],
+            "pinned": True})
+        self.assertEqual(1, len(page.get("items") or ()))
+        self.assertTrue(page.get("pinned"),
+                        "the page-level field a newer build added died")
+
+    def test_tile_icons_normalise_keeps_unknown_fields(self):
+        record = tile_icons.normalise({
+            "name": tile_icons.icon_names()[0], "bg": "#333333",
+            "badge": "future"})
+        self.assertEqual("future", record.get("badge"))
+
+
 if __name__ == "__main__":
     unittest.main()

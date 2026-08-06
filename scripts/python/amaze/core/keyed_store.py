@@ -442,6 +442,11 @@ class Store:
         self.spec = spec
         self.path = path
         self._table: dict = {}
+        #: Entries the normaliser REJECTED, kept verbatim - usually a
+        #: NEWER build's data (an icon name this build lacks, a shape
+        #: from next year). Invisible to readers, written back by every
+        #: commit: an older build must not erase what a newer one wrote.
+        self._foreign: dict = {}
         self._disk_state = None
         self.state = FRESH
         self.trace = ""
@@ -478,23 +483,35 @@ class Store:
                         % (spec.filename, spec.payload, spec.label))
                 table = {}
                 for key, value in loaded[spec.payload].items():
-                    value = spec.normalise(value)
-                    if not value:
-                        continue
                     # Every legacy spelling is absorbed HERE, one
                     # conversion on the way in, no migration event: the
                     # real favourites held one file three ways. On a
                     # collision the FIRST entry wins whole - no clever
                     # merge - and the drop is logged by both spellings.
                     stored = storage_key(spec, str(key))
+                    kept = spec.normalise(value)
+                    if not kept:
+                        # A truthy value the normaliser cannot read is
+                        # FOREIGN, not junk: held aside verbatim so the
+                        # rewrite keeps it (see _foreign). A falsy one
+                        # is the delete contract and stays dropped.
+                        if value and stored not in self._foreign:
+                            self._foreign[stored] = value
+                        continue
                     if stored in table:
                         debug.event(spec.category,
                                     "two spellings of one key on load "
                                     "- first kept",
                                     kept=stored, dropped=str(key))
                         continue
-                    table[stored] = value
+                    table[stored] = kept
                 self._table = table
+                if self._foreign:
+                    debug.event(spec.category,
+                                "entries this build cannot read - kept "
+                                "aside, written back on every save",
+                                count=len(self._foreign),
+                                store=spec.filename)
                 self.state = READ
             else:
                 # ABSENT IS ONLY "NEW" WHEN NOTHING SAYS IT WAS HERE. A
@@ -602,7 +619,7 @@ class Store:
         staged = dict(self._table)
         touched = []
         for key, value in (values or {}).items():
-            key = str(key)
+            key = storage_key(self.spec, str(key))
             value = self.spec.normalise(value) if value else {}
             if value:
                 if self._table.get(key) == value:
@@ -624,8 +641,10 @@ class Store:
         and the adopt-only merge means a rename expressed as
         delete-then-add can be half-resurrected by the other pane.
         """
-        moves = {str(k): str(v) for k, v in (moves or {}).items()
-                 if str(k) != str(v)}
+        moves = {storage_key(self.spec, str(k)):
+                 storage_key(self.spec, str(v))
+                 for k, v in (moves or {}).items()}
+        moves = {k: v for k, v in moves.items() if k != v}
         touched = [k for k in moves if k in self._table]
         if not touched:
             return Written(True, REASON_UNCHANGED)
@@ -639,7 +658,8 @@ class Store:
 
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
-        doomed = [str(k) for k in keys if str(k) in self._table]
+        doomed = [storage_key(self.spec, str(k)) for k in keys
+                  if storage_key(self.spec, str(k)) in self._table]
         if not doomed:
             return Written(True, REASON_UNCHANGED)
         staged = dict(self._table)
@@ -663,10 +683,19 @@ class Store:
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             self._adopt_from_disk(staged)
-            # The same restore tier every database gets.
+            # A key the user just SET stops being foreign - the chosen
+            # value must not be shadowed by the unreadable copy.
+            for key in keys:
+                self._foreign.pop(key, None)
+            # The same restore tier every database gets. Foreign
+            # entries ride under the staged ones (staged wins a key
+            # both hold), so a rewrite never erases what a newer build
+            # wrote.
             hostos.snapshot_before_write(self.path)
-            hostos.write_json_atomic(self.path, {spec.payload: staged},
-                                     indent=1, sort_keys=True)
+            hostos.write_json_atomic(
+                self.path,
+                {spec.payload: {**self._foreign, **staged}},
+                indent=1, sort_keys=True)
             if created:
                 # THE FLOOR, FROM THE FIRST WRITE. snapshot_before_write
                 # correctly refuses to snapshot a file that does not
@@ -726,9 +755,17 @@ class Store:
             return
         adopted = 0
         for key, value in peer.items():
-            value = self.spec.normalise(value)
-            if value and str(key) not in staged:
-                staged[str(key)] = value
+            stored = storage_key(self.spec, str(key))
+            kept = self.spec.normalise(value)
+            if kept:
+                if stored not in staged:
+                    staged[stored] = kept
+                    adopted += 1
+            elif (value and stored not in staged
+                  and stored not in self._foreign):
+                # The peer's unreadable entry is as foreign as one from
+                # our own load - kept, or OUR write erases THEIR data.
+                self._foreign[stored] = value
                 adopted += 1
         if adopted:
             debug.event(self.spec.category,

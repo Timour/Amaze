@@ -435,6 +435,65 @@ def fixture_panel(testcase):
     return panel
 
 
+def fixture_unconfigured_panel(testcase):
+    """A REAL MatLibPanel with NO library configured - the first-run
+    state, which is a real machine state the panel must survive
+    (Preferences is the only way OUT of it).
+
+    The same guards as fixture_panel - config_root redirected to a
+    tempdir, Prefs.save disabled, the network blocked - plus one this
+    fixture alone needs: the LEGACY path blanked, because under hython
+    $AMAZE is the live install and load() would migrate the user's
+    real settings straight into the "unconfigured" panel. No library,
+    no settings file: prefs.load() answers False and the panel takes
+    its no-library branch.
+    """
+    from amaze.panel import panel as panel_mod       # reloads hostos
+    from amaze.helpers import hostos as hostos_mod
+    from amaze.core import matx_sources
+
+    def _no_network(url, *args, **kwargs):
+        raise OSError(
+            "the test suite blocks the network - an unconfigured "
+            "fixture panel reached out to %s" % url
+        )
+
+    real_request = matx_sources._request
+    matx_sources._request = _no_network
+    testcase.addCleanup(setattr, matx_sources, "_request", real_request)
+
+    real_save = prefs.Prefs.save
+    prefs.Prefs.save = lambda self, *a, **k: None
+    testcase.addCleanup(setattr, prefs.Prefs, "save", real_save)
+
+    real_init = prefs.Prefs.__init__
+
+    def _blank_legacy(prefs_self, *args, **kwargs):
+        real_init(prefs_self, *args, **kwargs)
+        prefs_self.legacy_path = ""
+
+    prefs.Prefs.__init__ = _blank_legacy
+    testcase.addCleanup(setattr, prefs.Prefs, "__init__", real_init)
+
+    config = tempfile.mkdtemp(prefix="amaze_fixture_noconf_")
+    testcase.addCleanup(shutil.rmtree, config, True)
+    real_config_root = hostos_mod.config_root
+    hostos_mod.config_root = lambda: config
+    testcase.addCleanup(setattr, hostos_mod, "config_root",
+                        real_config_root)
+
+    reset_database_singletons()
+    panel = panel_mod.MatLibPanel()
+    testcase.addCleanup(dispose_panel, panel)
+    testcase.addCleanup(stop_panel_workers, panel)
+    if panel.prefs.dir:
+        raise RuntimeError(
+            "the unconfigured fixture found a library (%s) - the "
+            "isolation failed and this panel is not first-run"
+            % panel.prefs.dir)
+    return panel
+
+
 def dispose_panel(panel) -> None:
     """The fixture's own deleteLater, tolerating a panel the test has
     already destroyed - a test about panel TEARDOWN has to be able to

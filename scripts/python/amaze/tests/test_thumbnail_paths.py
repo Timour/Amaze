@@ -346,6 +346,29 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
             % unguarded)
 
 
+class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
+    """The Redshift branch selects the camera and the geo to run the
+    spare-parameter hscript, and never put the user's own selection
+    back - so saving or re-rendering any Redshift material silently
+    wiped whatever nodes they had selected in the network editor."""
+
+    def test_building_a_redshift_scene_restores_the_selection(self):
+        if hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP") is None:
+            self.skipTest("Redshift is not available in this session")
+        with hou.undos.disabler():
+            keeper = hou.node("/obj").createNode("null")
+        self.addCleanup(lambda: keeper.destroy())
+        keeper.setSelected(True, True)
+        scene = thumbnail_scene.ThumbNailScene("Redshift")
+        try:
+            self.assertIn(
+                keeper, hou.selectedNodes(),
+                "building a thumbnail scene ate the user's selection")
+        finally:
+            with hou.undos.disabler():
+                scene.get_node().destroy()
+
+
 class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
 
     def test_build_lights_sets_no_parm_raw(self):

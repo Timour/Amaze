@@ -332,7 +332,12 @@ def normalise(spec) -> dict:
     ink = str(spec.get("ink", "") or "").strip().lower()
     if ink not in INKS:
         ink = DEFAULT_INK
-    return {"name": name, "bg": background, "ink": ink}
+    # Unknown fields ride along - a newer build's addition must survive
+    # this build rewriting the entry.
+    record = {k: v for k, v in spec.items()
+              if k not in ("name", "bg", "ink")}
+    record.update({"name": name, "bg": background, "ink": ink})
+    return record
 
 
 def stroke_for(preferences) -> float:

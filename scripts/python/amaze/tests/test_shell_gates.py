@@ -944,5 +944,40 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
                            "no longer matches the shell syntax")
 
 
+class EveryToolSpeaksTheResolver(unittest.TestCase):
+    """The Houdini lookup was written four times as a mac-only glob,
+    and a FIFTH copy - with the BSD `mktemp -d -t` and the drive-colon
+    PATH trap beside it - survived in the sidecar migration script
+    (practice.md ▸ A LOOKUP WRITTEN FOUR TIMES IS A PLATFORM SILENTLY
+    UNGATED; research.md ▸ Windows for all three trap spellings). Every
+    tools/*.sh that reaches for hython sources the one resolver, and
+    the two trap spellings are banned from the directory."""
+
+    def test_no_tool_carries_the_recorded_traps(self):
+        tools = os.path.join(REPO, "tools")
+        checked = 0
+        for name in sorted(os.listdir(tools)):
+            if not name.endswith(".sh"):
+                continue
+            checked += 1
+            with open(os.path.join(tools, name), encoding="utf-8") as f:
+                text = f.read()
+            self.assertNotIn(
+                "mktemp -d -t", text,
+                "%s: GNU/MSYS mktemp refuses -t with no X's - the "
+                "script dies on line one on Windows" % name)
+            self.assertNotIn(
+                "ls -d /Applications", text,
+                "%s carries its own mac-only Houdini lookup beside the "
+                "shared resolver" % name)
+            if "hython" in text and name != "houdini-env.sh":
+                self.assertIn(
+                    "houdini-env.sh", text,
+                    "%s reaches for hython without sourcing the "
+                    "resolver" % name)
+        self.assertGreaterEqual(checked, 4,
+                                "the tools directory scan went vacuous")
+
+
 if __name__ == "__main__":
     unittest.main()

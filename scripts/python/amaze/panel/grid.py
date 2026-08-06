@@ -489,18 +489,28 @@ def sync_table_columns(panel) -> None:
     #
     # A STARTING WIDTH plus a drag handle is what was actually
     # wanted, and it costs nothing at all.
-    header.setSectionResizeMode(
-        QtWidgets.QHeaderView.ResizeMode.Interactive)
-    header.setMinimumSectionSize(theme.ui_px(panel.COLUMN_MIN_WIDTH))
-    for column, key in enumerate(grid_columns.KEYS):
-        width = panel.COLUMN_DEFAULT_WIDTH.get(key)
-        if width:
-            header.resizeSection(column, theme.ui_px(width))
-    # THE LAST COLUMN TAKES THE SLACK. Qt's own property for it, so
-    # a wide panel has no dead strip on the right and a narrow one
-    # simply scrolls. It overrides the resize mode on that section
-    # alone, which is why every other column stays draggable.
-    header.setStretchLastSection(True)
+    #
+    # SEEDED ONCE per view, not per call: this runs from every
+    # activate(), view-mode switch and show, and re-applying the
+    # defaults here snapped a user's dragged width back on the next
+    # tab click - the widths are DEFAULTS the user can drag
+    # (overview.md §2). Visibility above stays per-call, because it
+    # is the SECTION's answer; a width is the USER's.
+    if not getattr(table, "_widths_seeded", False):
+        table._widths_seeded = True
+        header.setSectionResizeMode(
+            QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setMinimumSectionSize(theme.ui_px(panel.COLUMN_MIN_WIDTH))
+        for column, key in enumerate(grid_columns.KEYS):
+            width = panel.COLUMN_DEFAULT_WIDTH.get(key)
+            if width:
+                header.resizeSection(column, theme.ui_px(width))
+        # THE LAST COLUMN TAKES THE SLACK. Qt's own property for it,
+        # so a wide panel has no dead strip on the right and a narrow
+        # one simply scrolls. It overrides the resize mode on that
+        # section alone, which is why every other column stays
+        # draggable.
+        header.setStretchLastSection(True)
 
 
 def style_table_header(panel) -> None:
