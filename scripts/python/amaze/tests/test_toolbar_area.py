@@ -185,6 +185,36 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                     "%s is live in the online world, where it has "
                     "nothing to act on" % control)
 
+    def test_a_disabled_control_is_STILL_VISIBLE_in_the_online_world(self):
+        """Disabled means greyed at half opacity - not GONE. The
+        toolbar table answers these controls by ENABLED-ness, so the
+        assertions above never look at visibility, and a second owner
+        can hide one of them unseen: build_filter_menu hides
+        btn_filter whenever the context offers no filter entries,
+        which the online world always does. Reported live 2026-08-07 -
+        the eye VANISHED online instead of greying out beside
+        Favourites and Comments."""
+        from amaze.panel.panel import MatLibPanel
+
+        panel = self.panel
+        self.addCleanup(self._restore)
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        panel.enter_online_world()
+        QtWidgets.QApplication.processEvents()
+        for control, _fact, verb in MatLibPanel.TOOLBAR_CONTROLS:
+            if verb != "enabled":
+                continue
+            with self.subTest(control=control):
+                widget = getattr(panel, control, None)
+                self.assertIsNotNone(widget,
+                                     "%s is not on the panel" % control)
+                self.assertFalse(
+                    widget.isHidden(),
+                    "%s is HIDDEN in the online world - a control the "
+                    "table answers by enabled-ness greys out there, it "
+                    "does not vanish" % control)
+
     def _restore(self):
         panel = self.panel
         if panel._is_online():

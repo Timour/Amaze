@@ -2314,9 +2314,10 @@ class MatLibPanel(QtWidgets.QWidget):
         """ALL category names from a Categories model (empty ones
         included), excluding the 'All' pseudo-category. Reads the SOURCE
         model, not the sidebar proxy - the sidebar hides empty
-        categories, but every ASSIGNMENT surface (save dialog, details
-        dropdown, Move to menus) must still offer the complete list.
-        The one implementation behind all three sections' getters."""
+        categories, but every ASSIGNMENT surface (the save dialog, the
+        Edit Info dialog's Category dropdown) must still offer the
+        complete list. The one implementation behind all three
+        sections' getters."""
         names = []
         if not model:
             return names
@@ -2332,10 +2333,10 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def assign_category_active(self, category: str) -> None:
         """Set (replace) the category of the ACTIVE section's selected
-        assets. Reused by the Materials "Move to" menu and by dragging
-        assets onto a sidebar category, for every section with real
-        categories: Materials / Cop / Code (the curated-library stack) and
-        Colors (user gradients). A single category per asset now - the
+        assets. The path behind dragging assets onto a sidebar
+        category, for every section with real categories: Materials /
+        Cop / Code (the curated-library stack) and Colors (user
+        gradients). A single category per asset now - the
         multi-category feature was removed."""
         category = (category or "").strip()
         if not category:
@@ -5487,10 +5488,19 @@ class MatLibPanel(QtWidgets.QWidget):
         self.filter_values = {}
         button = getattr(self, "btn_filter", None)
         if button is not None:
-            # No entries, no menu: a button that opens an empty popup
-            # is worse than no button. Nothing shipped hits this - all
-            # five sections filter - but a new section gets it free.
-            button.setVisible(bool(entries))
+            if (section is not None
+                    and not getattr(section, "takes_filter_menu", True)):
+                # Offered-but-off belongs to the toolbar table, which
+                # DISABLES the button (half opacity, like Favourites
+                # and Comments beside it). Hiding it here was a second
+                # owner for the same control: the eye VANISHED in the
+                # online world, whose context always has no entries.
+                button.setVisible(True)
+            else:
+                # No entries, no menu: a button that opens an empty popup
+                # is worse than no button. Nothing shipped hits this - all
+                # five sections filter - but a new section gets it free.
+                button.setVisible(bool(entries))
             if section is not None:
                 button.setToolTip(ui_helpers.tooltip_text(
                     section.filter_tooltip))
