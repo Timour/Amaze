@@ -176,50 +176,20 @@ test_list_columns test_designed_dialog test_no_live_data \
 test_write_ordering test_thumbnail_paths test_panel_correctness \
 test_prefs_and_sources test_unbound_names test_conversion test_keyed_store test_area_bindings test_grid_order test_sidebar_area test_toolbar_area test_comments_area test_grid_operations test_grid_badges test_sidebar_colour test_grid_menu test_sidebar_menu test_grid_columns"
 
-# MODULES THAT CRASH HOUDINI ON WINDOWS. Not a failure in any of them:
-# the process dies inside Houdini's own graphics layer -
-# GR_Uniforms::pushObjectUniforms into DM_VPortAgent::~DM_VPortAgent and
-# DM_RenderVulkan - mid-test, taking the whole run with it.
-# test_area_bindings dies inside
-# test_a_model_that_can_answer_a_badge_has_it_wired.
-#
-# THE COST OF NOT DOING THIS is the whole gate, not these nine: a
-# crashed run prints no `Ran N tests` line, so pre-push refuses EVERY push
-# from Windows, and the machine cannot ship at all. Excluded here, the
-# suite is 1315 tests green and the gate works for the other 47 modules.
-#
-# THIS IS A REAL WEAKENING and it is scoped as narrowly as it can be:
-# Windows only, by name, printed on every run, and it does NOT apply to
-# a module named explicitly on the command line - ask for one and you
-# get it, crash included, which is what an investigation needs.
-#
-# Three causes were tested and REJECTED before settling for this
-# (research.md ▸ Windows: Houdini, Python and the shell): offscreen Qt
-# exported before hython, the QApplication/import-hou ordering, and the
-# amaze.panel.sections import. Delete this list the day the crash is
-# understood - it is a workaround with a name, not a decision.
-WINDOWS_CRASHERS="test_area_bindings test_comments_area test_grid_menu \
-test_grid_operations test_hip_section test_sidebar_colour \
-test_sidebar_menu test_toolbar_area test_toolbar_filter"
-
-case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*)
-        _kept=""
-        for _module in $MODULES; do
-            case " $WINDOWS_CRASHERS " in
-                *" $_module "*) ;;
-                *) _kept="$_kept $_module" ;;
-            esac
-        done
-        MODULES="$_kept"
-        # LOUDLY, every run. A gate covering less than it did must never
-        # be able to look identical to one that covers everything.
-        echo "WINDOWS: $(printf '%s\n' $WINDOWS_CRASHERS | wc -l | tr -d ' ')" \
-             "module(s) EXCLUDED - they crash Houdini's graphics layer here:"
-        echo "  $WINDOWS_CRASHERS" | tr -s ' '
-        echo "  This run is NOT the full suite. macOS runs all of them."
-        ;;
-esac
+# Windows: the Vulkan viewport's multithreaded update/draw is switched
+# off for the suite. Nine panel modules crashed hython inside Houdini's
+# own draw - a TBB parallel phase exiting into viewport teardown - and
+# the cause was isolated by measurement, not read off the stack: the
+# same module crashes on NVIDIA, on AMD and on SwiftShader, and passes
+# on all of them with this one variable off, so it is a thread race in
+# the viewport code and not any GPU's driver (research.md > Windows).
+# This replaced a nine-module exclusion; the suite is whole again.
+# Suite-only on purpose - a live Houdini keeps its own defaults.
+if amaze_is_windows; then
+    export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
+    echo "WINDOWS: viewport draw single-threaded for this run" \
+         "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
+fi
 
 # ONE hython process by default. The original measurement, when this
 # was 13 modules and 203 tests: 13 separate launches cost ~110s,

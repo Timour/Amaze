@@ -170,8 +170,13 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertIsNotNone(
             subject, "no subject for a File row - the fixture location "
                      "is empty, so this cannot test anything")
+        # The path after the prefix is os-native (file_key is an
+        # os.path.join), so asserting a leading slash encoded the macOS
+        # spelling; what the docstring actually requires is an ABSOLUTE
+        # path, which isabs answers on every platform.
         self.assertTrue(
-            subject.key.startswith("file:/"),
+            subject.key.startswith("file:")
+            and os.path.isabs(subject.key[len("file:"):]),
             "a File row's comment key is %r - it must be 'file:' plus "
             "the absolute path, which is what makes a comment come back "
             "when the location is removed and registered again"
@@ -423,8 +428,13 @@ class TheLocationBehindAFileRow(unittest.TestCase):
         prefix compared without its separator says it does, and the
         header then names a location the file is not in - the same
         boundary bug the notes store had for `retire_prefix`."""
+        # rstrip BOTH separators: fresh_files_folder returns the path
+        # with a trailing os.sep, and on Windows rstrip("/") leaves the
+        # backslash - the probe then lands INSIDE the location, in a
+        # subfolder literally named `_backup`, and the product's correct
+        # answer read as the boundary bug this test exists to catch.
         location, label, colour = self.section.location_for(
-            self.outer.rstrip("/") + "_backup/shot.exr")
+            self.outer.rstrip("/\\") + "_backup/shot.exr")
         self.assertEqual(
             ("", "", ""), (location, label, colour),
             "a file in a SIBLING location answered with %r" % location)

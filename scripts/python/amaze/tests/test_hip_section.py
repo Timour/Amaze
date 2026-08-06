@@ -1859,8 +1859,12 @@ class ShelfTest(unittest.TestCase):
             "tools", "sync-install.sh")
         with open(tools, encoding="utf-8") as handle:
             body = handle.read()
-        self.assertIn("toolbar/", body,
-                      "sync-install.sh does not copy toolbar/")
+        # The copy is an amaze_mirror call since the shared resolver
+        # (tools/houdini-env.sh) replaced the four rsync spellings; the
+        # old assertion looked for the literal `toolbar/` of the rsync
+        # form and read the refactor as a dropped copy.
+        self.assertIn('amaze_mirror "$repo/toolbar"', body,
+                      "sync-install.sh does not copy the toolbar")
         self.assertIn('diff -rq "$repo/toolbar"', body,
                       "the sync does not VERIFY the toolbar landed")
 
