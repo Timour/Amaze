@@ -170,16 +170,19 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         self.assertIsNotNone(
             subject, "no subject for a File row - the fixture location "
                      "is empty, so this cannot test anything")
-        # The path after the prefix is os-native (file_key is an
-        # os.path.join), so asserting a leading slash encoded the macOS
-        # spelling; what the docstring actually requires is an ABSOLUTE
-        # path, which isabs answers on every platform.
+        # The path after the prefix is CANONICAL (file_key, 2026-08-06)
+        # - one spelling per file, absolute, idempotent under
+        # canonical_path_key. Asserting a leading slash encoded the
+        # macOS spelling; asserting os-native encoded the Windows one.
+        from amaze.helpers import hostos
+        tail = subject.key[len("file:"):]
         self.assertTrue(
-            subject.key.startswith("file:")
-            and os.path.isabs(subject.key[len("file:"):]),
+            subject.key.startswith("file:") and os.path.isabs(tail)
+            and hostos.canonical_path_key(tail) == tail,
             "a File row's comment key is %r - it must be 'file:' plus "
-            "the absolute path, which is what makes a comment come back "
-            "when the location is removed and registered again"
+            "the one canonical absolute path, which is what makes a "
+            "comment come back when the location is removed and "
+            "registered again, however the location is spelled"
             % subject.key)
         self.assertEqual(
             subject.name, os.path.basename(subject.key[len("file:"):]),
