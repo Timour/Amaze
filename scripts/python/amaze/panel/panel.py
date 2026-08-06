@@ -2361,10 +2361,13 @@ class MatLibPanel(QtWidgets.QWidget):
                 asset = model.assets[idx.row()]
                 # fav=None: a recategorise edits the record, never the
                 # star - the star is per-user and lives in settings.
+                # save=False: one index write for the whole selection,
+                # not one per row.
                 model.set_assetdata(
                     idx, asset.name, category, ", ".join(asset.tags),
-                    None
+                    None, save=False
                 )
+            model.save()
         self._refresh_sidebar_categories()
 
     def _assign_gradient_category(self, category: str) -> None:
@@ -5642,10 +5645,13 @@ class MatLibPanel(QtWidgets.QWidget):
                 idx = self.material_model.index(
                     self.material_sorted_model.mapToSource(index).row(), 0
                 )
+                # save=False: one index write after the loop, not one
+                # per selected row.
                 self.material_model.set_assetdata(
                     idx, name, cats, tags, fav, about=about,
-                    license=license_
+                    license=license_, save=False
                 )
+            self.material_model.save()
 
     def _refresh_cat_combo(self) -> None:
         """Repopulate the category dropdown from the current category list"""

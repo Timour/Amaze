@@ -1443,6 +1443,9 @@ class FolderSection(Section):
                 folders.dataChanged.emit(index, index)
         # Every tile from that location repaints, role-scoped.
         if files is not None and files.rowCount():
+            # Drop the paint-path colour cache BEFORE the repaint that
+            # would re-fill it from the old answer.
+            files.colours_changed()
             files.dataChanged.emit(
                 files.index(0, 0), files.index(files.rowCount() - 1, 0),
                 [files.CategoryColorRole])

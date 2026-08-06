@@ -122,7 +122,13 @@ class GridGestureMixin:
         if delta == 0:
             super().wheelEvent(event)
             return
-        panel = _find_panel(self)
+        # Cached: a trackpad delivers 60-120 of these a second, and the
+        # press path already caches for the same reason (the panel does
+        # not move between events; a new panel is a new view).
+        panel = getattr(self, "_wheel_panel", None)
+        if panel is None:
+            panel = _find_panel(self)
+            self._wheel_panel = panel
         prefs = getattr(panel, "prefs", None) if panel is not None else None
         speed = getattr(prefs, "scroll_speed", None) or self.SCROLL_SPEED
         bar = (self.horizontalScrollBar() if horizontal

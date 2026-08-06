@@ -213,35 +213,6 @@ RENDERER_KEYS = {
 # copy; they are just no longer where a location lives.
 
 
-def location_record(preferences, path: str) -> dict:
-    """Everything this location keeps, as one record. A field that is
-    not set simply is not in it."""
-    from amaze.core import locations
-    return locations.record(preferences, path)
-
-
-def set_location_record(preferences, path: str, record) -> None:
-    """Write one location's whole record; an EMPTY record forgets the
-    location, registration included.
-
-    The one call a removal and a relocation both go through, so neither
-    can visit four fields of five again."""
-    from amaze.core import locations
-    locations.set_record(preferences, path, record)
-
-
-def location_paths(preferences) -> list:
-    """Every path the location store still mentions.
-
-    It used to be every path any of the four DECORATION surfaces
-    mentioned, which could not see a location carrying no decoration at
-    all - two of fourteen on the real settings, measured 2026-08-05.
-    `registered` is a field of the record now, so there is one answer.
-    """
-    from amaze.core import locations
-    return locations.paths(preferences)
-
-
 class Prefs:
     """
     Holds and loads the Preferences for the Matlib
@@ -1448,20 +1419,6 @@ class Prefs:
     # settings.json, `_COLLECTED_ATTRS` still round-trips them, and the
     # live-data guard still sweeps all four kinds. Nothing may strip
     # them - the same rule the retired section KEYS carry.
-
-    def _append_unique(self, attr: str, value: str) -> None:
-        """Add VALUE to the list preference ATTR, once, and persist."""
-        current = getattr(self, attr)
-        if value and value not in current:
-            current.append(value)
-            self.save()
-
-    def _discard(self, attr: str, value: str) -> None:
-        """Remove VALUE from the list preference ATTR, and persist."""
-        current = getattr(self, attr)
-        if value in current:
-            current.remove(value)
-            self.save()
 
     @property
     def texture_folders(self) -> list[str]:

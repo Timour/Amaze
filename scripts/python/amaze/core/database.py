@@ -855,7 +855,13 @@ class DatabaseConnector:
         # are adopted, ids WE deleted stay deleted (they were present
         # at our load), and records both sides hold take OUR version
         # (this session is the active editor).
-        if self._disk_stat is not None and self._stat_file() not in (
+        # ONE read for the whole save: the stale-write guard and the
+        # identical-write compare both need (len, sha256) of the file,
+        # and nothing writes it between the two questions inside this
+        # call - reading it twice cost a full parse-sized read per save
+        # for an answer that could not differ.
+        current_stat = self._stat_file()
+        if self._disk_stat is not None and current_stat not in (
             None, self._disk_stat
         ):
             # REFUSE OVER OVERWRITE. This guard fires precisely when the
@@ -962,14 +968,18 @@ class DatabaseConnector:
         # written: every write costs a snapshot rotation, a sync upload
         # and a backup-system event downstream, so a no-op save should
         # be a no-op on disk too. Sync hygiene, explicitly not speed.
+        serialised_stat = None
         try:
             import hashlib
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
-            on_disk = self._stat_file()
-            if on_disk is not None and on_disk == (
-                    len(serialised),
-                    hashlib.sha256(serialised).hexdigest()):
-                self._remember_disk_state()
+            serialised_stat = (len(serialised),
+                               hashlib.sha256(serialised).hexdigest())
+            # A merge above rewrote self._data, never the file, so the
+            # stat from the top of this call is still the disk's.
+            if current_stat is not None and current_stat == serialised_stat:
+                # The disk already holds these exact bytes - remember
+                # THAT, no third read.
+                self._disk_stat = serialised_stat
                 self._save_outcome = "identical-skip"
                 return True
         except (TypeError, ValueError):
@@ -1002,7 +1012,15 @@ class DatabaseConnector:
             self._save_outcome = "file-held"
             return False
         else:
-            self._remember_disk_state()
+            if serialised_stat is not None:
+                # The bytes just written ARE the serialisation above -
+                # write_json_atomic writes them verbatim (the
+                # identical-skip guard depends on exactly that and its
+                # test proves it) - so the baseline is derived, not
+                # re-read: this was the third full read+hash per save.
+                self._disk_stat = serialised_stat
+            else:
+                self._remember_disk_state()
             self._save_outcome = "stored"
             return True
 

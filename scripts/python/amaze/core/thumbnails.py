@@ -527,7 +527,6 @@ class ThumbnailEngine(QtCore.QObject):
         # requests) for as long as anything referenced it - and the
         # handover below keeps the previous engine referenced.
         self._states = {}
-        self._thumb_rows = getattr(self, "_thumb_rows", {})
         self._file_queue = []
         self._convert_queue = []
         self._dispatch_scheduled = False

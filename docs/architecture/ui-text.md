@@ -181,7 +181,9 @@ SHELL is the design, the CONTROLS are Houdini's.
   to-do's edge keeps the frame: Qt hands a merged block the following
   block's state (probed), so both merge keys are intercepted and the
   survivor re-stamped.
-- Body placeholder: `Write a note...`
+- Body placeholder: `Write a comment...` (followed the 2026-08-01
+  Notes -> Comments rename; this line had kept the old noun while the
+  app moved on)
 - ONE ICON FILE for the notes SURFACES: the toolbar chip and the
   pane header render `ui/icon_notes.svg` (update it there and both
   follow), and their yellow presentations re-tint to the theme's own

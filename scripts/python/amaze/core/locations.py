@@ -288,6 +288,18 @@ def is_favourite(preferences, path: str) -> bool:
 # -- writing -----------------------------------------------------------
 
 
+#: Bumped on every record write - the cache token for the paint path.
+#: A colour set through ANY prefs surface must show on the very next
+#: data() read with no notification channel (the pinned File-tile
+#: contract), and this is the one write door they all go through.
+_generation = 0
+
+
+def generation() -> int:
+    """A number that moves whenever any location record moves."""
+    return _generation
+
+
 def set_record(preferences, path: str, value) -> keyed_store.Written:
     """Write one location's whole record; an EMPTY record forgets the
     location across every field at once, registration included.
@@ -303,6 +315,8 @@ def set_record(preferences, path: str, value) -> keyed_store.Written:
     The copy is the only truth available, so it is the one written; the
     migration carries it in the moment a library appears.
     """
+    global _generation
+    _generation += 1
     # STORAGE spelling from here down, so the store and the settings
     # copy hold the same portable form - the store would convert for
     # itself, the copy would not.

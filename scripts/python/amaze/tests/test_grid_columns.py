@@ -1181,6 +1181,32 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             dragged, header.sectionSize(column),
             "the tab switch re-seeded the default over the user's drag")
 
+    def test_recategorising_a_selection_is_TWO_index_writes(self):
+        """One for the new category, ONE for the whole selection - not
+        one per row plus one per row's tag check: each index write
+        serialises and hashes the full 548-row document, and a 50-tile
+        Move-to paid it a hundred times."""
+        from unittest import mock
+
+        from amaze.helpers import hostos as hostos_mod
+
+        self._select_row(0)
+        writes = []
+        real = hostos_mod.write_json_atomic
+
+        def counting(path, *args, **kwargs):
+            if str(path).endswith("library.json"):
+                writes.append(str(path))
+            return real(path, *args, **kwargs)
+
+        with mock.patch.object(hostos_mod, "write_json_atomic",
+                               counting):
+            self.panel.assign_category_active("One Write")
+        self.assertEqual(
+            2, len(writes),
+            "recategorising one row wrote the index %d times"
+            % len(writes))
+
     def test_the_table_offers_the_menu_and_the_primary_action(self):
         """`thumblist` gets both wirings; the table got neither, so in
         list mode right-click opened nothing and double-click did
