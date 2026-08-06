@@ -1751,7 +1751,11 @@ def convert_redshift_material(
         )
         return None, None, report
 
-    scratch = hou.node("/obj").createNode("matnet")
+    # Off the undo stack at BOTH ends: a create/destroy pair on the
+    # live stack resurrects the scratch with the whole reconstructed
+    # Redshift copy on one Ctrl+Z (#278).
+    with hou.undos.disabler():
+        scratch = hou.node("/obj").createNode("matnet")
     try:
         node_handler._hou_parent = scratch
         node_handler._import_path = scratch
@@ -1860,7 +1864,8 @@ def convert_redshift_material(
         # The reconstructed Redshift copy is only ever scratch scaffolding
         # for reading values/connections - never left in the scene, same
         # discipline as every other temp-node use in this codebase.
-        scratch.destroy()
+        with hou.undos.disabler():
+            scratch.destroy()
 
 
 # Registered here, not in the literal above: these converters are

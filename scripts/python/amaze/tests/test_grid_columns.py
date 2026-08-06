@@ -1054,3 +1054,171 @@ class TheHeaderSORTS(unittest.TestCase):
         self.assertEqual(
             column, panel.thumbtable.model().sortColumn(),
             "the filter change reset the sort column")
+
+
+class TheSelectionSpeaksInROWS(unittest.TestCase):
+    """List mode selects whole ROWS; every consumer sees ONE index per
+    row, at column 0.
+
+    research.md ▸ *Row selection over a table view* (measured): a
+    SelectRows selection answers `selectedIndexes()` with one index PER
+    CELL - ten for one selected row, the hidden thumb column included -
+    and the current index keeps whichever column the click landed on.
+    Left raw, one selected row greys every needs-one menu entry, labels
+    read "Delete (10)", and Favorite toggles the same asset ten times -
+    an even number, so the star appears dead. The collapse to column 0
+    lives at the chokepoints (`grid_columns.selected_rows`,
+    `ui_helpers.live_current_index`); these tests select through the
+    table the way a CLICK does and hold it there.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        panel.prefs.view_mode = "list"
+        panel.apply_view_mode()
+        QtWidgets.QApplication.processEvents()
+        self.addCleanup(self._back_to_grid)
+
+    def _back_to_grid(self):
+        self.panel.prefs.view_mode = "grid"
+        self.panel.apply_view_mode()
+        QtWidgets.QApplication.processEvents()
+
+    def _select_row(self, row):
+        """Select the way a CLICK does: current lands on a VISIBLE cell
+        (the thumb column is hidden, so no click can land on column 0),
+        the selection spans the row."""
+        proxy = self.panel.thumbtable.model()
+        selection = self.panel.thumbtable.selectionModel()
+        flags = (QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
+                 | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        name_column = grid_columns.KEYS.index("name")
+        selection.setCurrentIndex(proxy.index(row, name_column), flags)
+        QtWidgets.QApplication.processEvents()
+        return proxy
+
+    def test_one_selected_row_is_ONE_grid_selection(self):
+        self._select_row(0)
+        selection = self.panel._section().grid_selection()
+        self.assertEqual(
+            1, len(selection),
+            "one selected row reads as %d selections" % len(selection))
+        self.assertEqual(0, selection[0].column(),
+                         "the selection does not speak in column 0")
+
+    def test_favourite_toggles_ONCE_for_one_row(self):
+        proxy = self._select_row(0)
+        model = self.panel.material_model
+        row = proxy.mapToSource(proxy.index(0, 0)).row()
+
+        def fav():
+            return bool(model.data(model.index(row, 0),
+                                   model.FavoriteRole))
+
+        before = fav()
+        section = self.panel._section()
+        section.toggle_favourite(section.grid_selection())
+        self.assertNotEqual(
+            before, fav(),
+            "the toggle ran an even number of times - ten, one per "
+            "column - and the star ends where it began")
+
+    def test_assign_category_MOVES_the_selected_asset(self):
+        """The Move-to menu and the sidebar drop both land here, and
+        both were dead: a one-argument `index(row)` on a table model
+        raises TypeError before any row is edited."""
+        proxy = self._select_row(0)
+        model = self.panel.material_model
+        row = proxy.mapToSource(proxy.index(0, 0)).row()
+        self.panel.assign_category_active("Seam Test")
+        self.assertIn(
+            "Seam Test",
+            model.data(model.index(row, 0), model.CategoryRole),
+            "Move to a category changed nothing")
+
+    def test_the_details_form_shows_ONE_value_for_one_row(self):
+        self._select_row(0)
+        self.panel.update_details_view()
+        self.assertNotEqual(
+            "Multiple Values...", self.panel.line_name.text(),
+            "one selected row reads as a multi-selection in the form")
+
+    def test_update_info_WRITES_the_edit(self):
+        """The Edit Info dialog's Update path - the second shipped
+        one-argument `index(row)`."""
+        proxy = self._select_row(0)
+        model = self.panel.material_model
+        row = proxy.mapToSource(proxy.index(0, 0)).row()
+        self.panel.update_details_view()          # populate the form
+        self.panel.line_name.setText("Renamed By Seam")
+        self.panel.user_update_asset()
+        self.assertEqual(
+            "Renamed By Seam", model.assets[row].name,
+            "Update Info wrote nothing")
+
+    def test_the_table_offers_the_menu_and_the_primary_action(self):
+        """`thumblist` gets both wirings; the table got neither, so in
+        list mode right-click opened nothing and double-click did
+        nothing - the whole GRID_MENU unreachable in one of the two
+        view modes."""
+        table = self.panel.thumbtable
+
+        def connected(signal):
+            return table.isSignalConnected(
+                QtCore.QMetaMethod.fromSignal(signal))
+
+        self.assertEqual(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu,
+            table.contextMenuPolicy(),
+            "right-click on a list row opens nothing")
+        self.assertTrue(connected(table.customContextMenuRequested),
+                        "the menu request goes nowhere")
+        self.assertTrue(connected(table.doubleClicked),
+                        "double-click performs no primary action")
+
+
+class TheCallersNameTheColumnToo(unittest.TestCase):
+    """test_no_TABLE_model_builds_a_ONE_ARGUMENT_index holds the fact
+    INSIDE the model classes; this is the callers' half. Both shipped
+    instances were in panel.py - the Move-to path and the Edit Info
+    Update path, exactly the verbs nothing drove - and both raise
+    TypeError the moment they run, because every grid model is a table
+    now."""
+
+    def test_no_panel_caller_builds_a_ONE_ARGUMENT_index(self):
+        import ast
+
+        offenders = []
+        panel_dir = os.path.join(PACKAGE, "panel")
+        for name in sorted(os.listdir(panel_dir)):
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(panel_dir, name),
+                      encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "index"
+                        and len(node.args) == 1
+                        and not node.keywords):
+                    continue
+                receiver = node.func.value
+                tail = ""
+                if isinstance(receiver, ast.Attribute):
+                    tail = receiver.attr
+                elif isinstance(receiver, ast.Name):
+                    tail = receiver.id
+                if "model" in tail.lower():
+                    offenders.append("%s:%d" % (name, node.lineno))
+        self.assertEqual(
+            [], offenders,
+            "a table model cannot index a row without naming a column - "
+            "each of these raises TypeError the moment it runs: %s"
+            % offenders)

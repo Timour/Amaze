@@ -45,6 +45,28 @@ COLUMNS = (
 KEYS = tuple(key for key, _label in COLUMNS)
 LABELS = tuple(label for _key, label in COLUMNS)
 
+
+def selected_rows(selection) -> list:
+    """The grid selection as ONE index per row - column 0, THE row.
+
+    research.md ▸ *Row selection over a table view* (measured): under
+    `SelectRows` a selection model answers `selectedIndexes()` with one
+    index PER CELL, hidden columns included - ten for one selected row
+    of these models - while grid mode's `QListView` selects column 0
+    alone. Filtering to column 0 collapses both shapes to the same
+    answer, one index per row; `selectedRows()` would not, because a
+    grid-mode selection never spans the row.
+
+    Every reader of the grid selection comes through here - the Section
+    API's `grid_selection` and the panel's own material verbs - so the
+    collapse is one rule, not a per-caller memory.
+    """
+    if selection is None:
+        return []
+    return [index for index in selection.selectedIndexes()
+            if index.column() == 0]
+
+
 class GridColumnsMixin:
     """Makes a flat model answer as a TABLE.
 

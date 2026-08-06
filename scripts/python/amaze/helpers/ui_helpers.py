@@ -172,7 +172,13 @@ def live_current_index(view):
         return None
     if index.row() >= rows:
         return None
-    return model.index(index.row(), index.column())
+    # COLUMN 0, not the clicked cell: over the list-mode table the
+    # current index keeps whichever visible column the click landed on
+    # (research.md > Row selection over a table view), and the grid
+    # models answer roles only on the owning column - every caller here
+    # reads roles or rows, so the clicked cell's column is never the
+    # answer.
+    return model.index(index.row(), 0)
 
 
 def _screen_dpr() -> float:

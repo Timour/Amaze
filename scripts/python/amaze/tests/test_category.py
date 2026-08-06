@@ -296,3 +296,32 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
         model.modelAboutToBeReset.connect(lambda: seen.append("about"))
         self.assertEqual(0, model.normalize_categories())
         self.assertEqual([], seen, "a no-op reset the whole model")
+
+    def test_the_model_stays_ALIASED_to_the_connectors_list(self):
+        """`Categories.__init__` aliases `_categories` to the
+        connector's own `_data["categories"]`, and `database`'s
+        two-writer merge APPENDS a peer machine's new categories to
+        that list IN PLACE (its comment names this exact hazard). A
+        normalize that REBINDS instead of mutating detaches the model:
+        the merge then updates a list nobody shows, and the model's
+        next save writes the document without the adopted names."""
+        from amaze.core import category as category_mod
+        from amaze.core import database
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = category_mod.Categories(preferences=prefs)
+        shared = database.DatabaseConnector(
+            category_mod.Categories.DB_FILENAME).load(prefs.dir)
+        self.assertIs(model._categories, shared["categories"],
+                      "premise: the model aliases the connector's list")
+        shared["categories"].append("  Needs Cleaning  ")
+        self.assertGreater(model.normalize_categories(), 0,
+                           "the dirty entry was not cleaned")
+        self.assertIs(
+            model._categories, shared["categories"],
+            "normalize_categories rebound the list - the model is "
+            "detached from the document the merge repairs, and the "
+            "next save erases whatever a peer machine added")

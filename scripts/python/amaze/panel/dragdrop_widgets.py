@@ -203,7 +203,11 @@ class GridGestureMixin:
         ):
             self._drag_start = event.pos()
             self._drag_section = section
-            self._drag_index = self.indexAt(event.pos())
+            # THE ROW, not the pressed cell: in list mode the press
+            # lands on a visible column >= 1, where KindRole and
+            # PathRole answer None and the name tag reads that CELL's
+            # text (research.md > Row selection over a table view).
+            self._drag_index = self.indexAt(event.pos()).siblingAtColumn(0)
             self._drag_panel = panel
         else:
             self._drag_start = None

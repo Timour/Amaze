@@ -962,6 +962,39 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
                         "an unreadable settings file no longer refuses "
                         "to be overwritten")
 
+    def test_deleting_the_broken_file_UNLATCHES_the_session(self):
+        """The "start fresh" route the refusal implies: delete the
+        unreadable file mid-session. load() runs again when Preferences
+        closes, and the latch is re-derived from the file on every
+        read - so an ABSENT file must clear it exactly as a healthy one
+        does, or save() refuses for the life of the panel and the fresh
+        start can never persist. Only the success path cleared it."""
+        from amaze.prefs import prefs as prefs_mod
+
+        settings_dir = tempfile.mkdtemp(prefix="amaze_absent_prefs_gone_")
+        self.addCleanup(shutil.rmtree, settings_dir, ignore_errors=True)
+        target = os.path.join(settings_dir, "settings.json")
+        with open(target, "w", encoding="utf-8") as handle:
+            handle.write('{"directory": "/somewhere"')      # truncated
+        p = prefs_mod.Prefs()
+        p.path = settings_dir
+        p.legacy_path = ""
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(p.load())
+        self.assertTrue(getattr(p, "_load_failed", False), "premise")
+
+        if os.path.exists(target):
+            os.remove(target)               # the user starts fresh
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertFalse(p.load())      # Preferences closed
+        self.assertFalse(
+            getattr(p, "_load_failed", False),
+            "an absent settings file left the broken-file latch set")
+        p.save()
+        self.assertTrue(
+            os.path.isfile(target),
+            "the fresh start's first save never reached disk")
+
     def test_the_snippet_marker_is_not_written_without_its_database(self):
         """code.json's marker is its ONLY trace (no .bak on the real
         library), so a marker with no database behind it refuses the

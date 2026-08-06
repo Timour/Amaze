@@ -41,7 +41,7 @@ import collections
 import hou
 from PySide6 import QtCore
 
-from amaze.core import debug, file_library, hip_library, notes
+from amaze.core import debug, file_library, grid_columns, hip_library, notes
 from amaze.helpers import helpers, hostos, ui_helpers
 from amaze.panel import grid
 
@@ -245,17 +245,17 @@ class Section:
         grid.open_grid_menu(self.panel, self)
 
     def grid_selection(self) -> list:
-        """This section's grid selection, as ITS OWN proxy's indexes.
+        """This section's grid selection, as ITS OWN proxy's indexes -
+        ONE per row (grid_columns.selected_rows: in list mode a
+        SelectRows selection answers one index per CELL, and a raw read
+        acted on every row ten times).
 
         The shared view's selection model IS this one while the section
         is active, but a menu asks the section, not the widget - which
         is what lets a test drive one section's menu without the panel
         having switched to it.
         """
-        selection = self._p(self.selection_attr)
-        if selection is None:
-            return []
-        return list(selection.selectedIndexes())
+        return grid_columns.selected_rows(self._p(self.selection_attr))
 
     def tile_models(self):
         """(model, proxy) for the tile a menu is acting on - what the
@@ -645,8 +645,11 @@ class AssetSection(Section):
         name = self.panel.ask_category_name("Add Category")
         if st is None or not name:
             return
-        with ui_helpers.relayout(st.categories):
-            st.categories.check_add_category(name)
+        # NO relayout wrapper: check_add_category announces itself with
+        # begin/endInsertRows, and pairing the two segfaults H21
+        # (research.md, measured 2026-08-04) - the same hoist
+        # panel.assign_category_active carries.
+        st.categories.check_add_category(name)
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
@@ -670,20 +673,30 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        with ui_helpers.relayout(st.model, st.categories):
-            if st.selection is not None:
-                st.selection.clearSelection()
-            for index in indexes:
-                # Stored name, same reason as the rename above:
-                # remove_category returns early on its own
-                # `cat not in self._categories` guard, so removing by
-                # the label left the row exactly where it was.
-                name = self.sidebar_key(index)
-                if not name or name in ("All", "_All"):
-                    continue
+        # Stored names, same reason as the rename above:
+        # remove_category returns early on its own
+        # `cat not in self._categories` guard, so removing by the
+        # label left the row exactly where it was.
+        names = []
+        for index in indexes:
+            name = self.sidebar_key(index)
+            if name and name not in ("All", "_All"):
+                names.append(name)
+        if not names:
+            return
+        if st.selection is not None:
+            st.selection.clearSelection()
+        with ui_helpers.relayout(st.model):
+            for name in names:
                 st.model.remove_category(name)
-                st.categories.remove_category(name)
             st.model.save()
+        # OUTSIDE the wrapper: remove_category announces itself with
+        # begin/endRemoveRows, and pairing the two segfaults H21
+        # (research.md, measured 2026-08-04). The asset rows changed
+        # inside the wrapper; the sidebar rows change here, bracketed
+        # by their own signals.
+        for name in names:
+            st.categories.remove_category(name)
 
     def tile_models(self):
         st = self.stack()

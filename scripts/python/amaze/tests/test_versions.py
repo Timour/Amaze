@@ -46,6 +46,56 @@ class _Case(unittest.TestCase):
             fh.write(payload)
 
 
+class PreEditHoldsTheRightFilesTest(_Case):
+    """The first Update on an asset archives the PRE-EDIT state as
+    Version 1, from a held-aside copy of the asset's files. The held
+    set is keyed by `versions.SOURCE_KINDS`: keying by filename suffix
+    collided `<id>_cop.mat` with `<id>.mat` (both ".mat", and the
+    companion is listed after the material, so it won the dict) and
+    archived the COP companion as Version 1's material - switching
+    back then promoted the companion over the material itself. Same
+    shape for `<id>_icon.png` standing in for the render."""
+
+    def test_the_material_wins_over_its_companions(self):
+        from amaze.core import library as library_mod
+
+        assets_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
+        os.makedirs(img_dir, exist_ok=True)
+        with open(os.path.join(assets_dir, self.mat_id + "_cop.mat"),
+                  "wb") as fh:
+            fh.write(b"COP-COMPANION-NOT-THE-MATERIAL")
+        with open(os.path.join(img_dir, self.mat_id + "_icon.png"),
+                  "wb") as fh:
+            fh.write(b"ICON-COMPOSITE-NOT-THE-RENDER")
+
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        held = model._hold_pre_edit_files(self.mat_id)
+
+        with open(held[".mat"], "rb") as fh:
+            self.assertEqual(
+                self._base_bytes(), fh.read(),
+                "the held .mat is not the material - the companion won "
+                "the suffix collision and Version 1 archives the wrong "
+                "bytes")
+        base_png = os.path.join(img_dir, self.mat_id + ".png")
+        if os.path.exists(base_png):
+            with open(base_png, "rb") as fh:
+                base = fh.read()
+            with open(held[".png"], "rb") as fh:
+                self.assertEqual(
+                    base, fh.read(),
+                    "the held .png is the icon composite, not the "
+                    "render")
+        else:
+            self.assertNotIn(
+                ".png", held,
+                "the icon composite stood in for a render the asset "
+                "does not have")
+        self.assertIn(".interface", held,
+                      "the interface never joined the held set")
+
+
 class StoreTest(_Case):
 
     def test_no_versions_is_the_ordinary_state(self):

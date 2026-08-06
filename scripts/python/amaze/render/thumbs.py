@@ -174,7 +174,10 @@ class ThumbNailRenderer:
             rop.setFirstInput(preferences)
             rop.parm("soho_foreground").set(1)
         except Exception:
-            net.destroy()
+            # Off the stack like the create above: a bare destroy is
+            # itself undoable and hands the half-built scaffold back.
+            with hou.undos.disabler():
+                net.destroy()
             raise
         return {
             "net": net,
@@ -382,10 +385,11 @@ class ThumbNailRenderer:
             # clean for the next material (single-shot then destroys the
             # whole net anyway). Runs on interrupt too - no orphaned
             # material lib / copnet left behind.
-            if copnet is not None:
-                copnet.destroy()
-            if lib is not None:
-                lib.destroy()
+            with hou.undos.disabler():
+                if copnet is not None:
+                    copnet.destroy()
+                if lib is not None:
+                    lib.destroy()
             # INSIDE the finally. It used to sit after it, so any
             # exception - notably hou.OperationInterrupted from ESC,
             # which create_thumbnail explicitly enables - propagated
@@ -426,8 +430,12 @@ class ThumbNailRenderer:
             return self.render_karma_into(scaffold, node, asset_id)
         finally:
             # Runs even if the render is interrupted so no orphaned
-            # lopnet (with live ROP) stays in /obj.
-            scaffold["net"].destroy()
+            # lopnet (with live ROP) stays in /obj. Off the stack: the
+            # create is disabled in build_karma_scaffold, and a bare
+            # destroy is the half that resurrects the whole scaffold
+            # on one Ctrl+Z (the BOTH-ends rule below).
+            with hou.undos.disabler():
+                scaffold["net"].destroy()
 
     @contextlib.contextmanager
     def _thumb_scene(self, renderer: str):
@@ -827,7 +835,8 @@ class ThumbNailRenderer:
                             bg=bg_mode,
                         )
                 else:
-                    candidate.destroy()
+                    with hou.undos.disabler():
+                        candidate.destroy()
             except hou.OperationFailed:
                 rop = None
             if rop is None:
@@ -931,8 +940,8 @@ class ThumbNailRenderer:
             # nodes instead of undoing what they actually did.
             with hou.undos.disabler():
                 temp = hou.node("/obj").createNode("geo")
-            for child in temp.children():
-                child.destroy()          # the default file SOP
+                for child in temp.children():
+                    child.destroy()      # the default file SOP
             try:
                 temp.loadItemsFromFile(file_name)
             except (OSError, hou.Error) as exc:

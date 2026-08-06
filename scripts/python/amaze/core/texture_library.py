@@ -441,6 +441,22 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         self._favorites_only = enabled
         self.refilter()
 
+    def watched_roles(self):
+        """Exactly what filterAcceptsRow reads - favourite, kind, the
+        display name - plus the sort role. A location colour picked on
+        the sidebar or a comment badge appearing emits its role over
+        every row, and the whole-blacklist fallback bought a full
+        re-filter and re-sort of the section for each (the base's own
+        watched_roles docstring names the gesture; MultiFilterProxyModel
+        answered, this proxy fell through)."""
+        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
+        model = self.sourceModel()
+        for name in ("FavoriteRole", "KindRole"):
+            role = getattr(model, name, None)
+            if role is not None:
+                watched.add(role)
+        return watched
+
     def set_kind_filter(self, kind) -> None:
         """Show only rows of one KIND - a file_library.KIND_* value, or
         None for every kind (which includes KIND_OTHER, the files the

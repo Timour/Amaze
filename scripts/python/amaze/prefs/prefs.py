@@ -526,13 +526,16 @@ class Prefs:
                   "geometry_folders", "geometry_favorites",
                   "hip_folders", "hip_favorites",
                   "file_folders", "file_favorites",
-                  "file_recursive_folders", "material_favorites")
+                  "material_favorites")
 
     #: Dict-valued collected keys merge KEY-WISE on a two-pane race:
     #: ours wins per key, theirs adopted for keys we lack - the same
-    #: shape the list union has, for the same reason.
-    _DICT_KEYS = ("file_folder_names", "file_folder_colors",
-                  "file_folder_show_all")
+    #: shape the list union has, for the same reason. EMPTY today: the
+    #: location decorations (and the recursive flag) moved INSIDE
+    #: `file_location_records`, which merges key-wise below with a
+    #: field-wise union per record. The mechanism stays for the next
+    #: dict-valued collected key.
+    _DICT_KEYS: tuple = ()
 
     #: The BACKING ATTRIBUTE behind every collected key, and whether
     #: its list values (or dict keys) are path-encoded on disk.
@@ -555,12 +558,8 @@ class Prefs:
         "hip_favorites": ("_hip_favorites", True),
         "file_folders": ("_file_folders", True),
         "file_favorites": ("_file_favorites", True),
-        "file_recursive_folders": ("_file_recursive_folders", True),
         # Asset ids, not paths - the one collected key that is not.
         "material_favorites": ("_material_favorites", False),
-        "file_folder_names": ("_file_folder_names", True),
-        "file_folder_colors": ("_file_folder_colors", True),
-        "file_folder_show_all": ("_file_folder_show_all", True),
     }
 
     #: Keys this build DELIBERATELY removed. The unknown-key courtesy
@@ -629,6 +628,33 @@ class Prefs:
                 if mine not in ours:
                     ours[mine] = value
                     adopted += 1
+        # THE LOCATION RECORDS: key-wise - ours wins per key, theirs
+        # adopted for keys we lack - and field-wise INSIDE a shared
+        # record, so a label from one pane and a colour from the other
+        # both survive. The four decoration keys (names / colors /
+        # show_all / recursive) are DERIVED from these records by
+        # refresh_data(), so this one merge keeps all four honest. The
+        # old dict arms adopted the derived keys into attributes
+        # refresh_data no longer reads - dead writes, the second life
+        # of the 2026-08-02 bug the _COLLECTED_ATTRS docstring records
+        # (found 2026-08-06).
+        their_records = theirs.get("file_location_records")
+        if not isinstance(their_records, dict):
+            # An older build's file carries the six old keys instead.
+            their_records = self._compose_location_records(theirs)
+        for key, value in their_records.items():
+            if not (isinstance(key, str) and isinstance(value, dict)):
+                continue
+            mine = _decode_path(key)
+            ours_record = self._file_location_records.get(mine)
+            if ours_record is None:
+                self._file_location_records[mine] = dict(value)
+                adopted += 1
+                continue
+            for field, field_value in value.items():
+                if field not in ours_record:
+                    ours_record[field] = field_value
+                    adopted += 1
         # RE-SERIALISE. save() ran refresh_data() before calling this,
         # and refresh_data() is what turns these attributes into
         # self.data - so the adoption only reaches disk if that runs
@@ -642,6 +668,38 @@ class Prefs:
         if adopted:
             debug.event("prefs", "adopted settings another writer saved",
                         adopted=adopted)
+
+    @staticmethod
+    def _compose_location_records(data: dict) -> dict:
+        """`file_location_records` composed from the six old keys - the
+        shape of a settings file written before 2026-08-05. Serves the
+        load fallback, and the merge when the OTHER pane's file was
+        written by an older build on this same machine (a rollback;
+        settings.json never travels between machines, INSTALL.md)."""
+        composed: dict = {}
+        folders = data.get("file_folders")
+        if isinstance(folders, list):
+            for path in folders:
+                if isinstance(path, str):
+                    composed.setdefault(
+                        _decode_path(path), {})["registered"] = True
+        for key, field in (("file_folder_names", "name"),
+                           ("file_folder_colors", "color"),
+                           ("file_folder_show_all", "show_all")):
+            table = data.get(key)
+            if not isinstance(table, dict):
+                continue
+            for path, value in table.items():
+                if isinstance(path, str):
+                    composed.setdefault(
+                        _decode_path(path), {})[field] = value
+        recursive = data.get("file_recursive_folders")
+        if isinstance(recursive, list):
+            for path in recursive:
+                if isinstance(path, str):
+                    composed.setdefault(
+                        _decode_path(path), {})["recursive"] = True
+        return composed
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and
@@ -905,6 +963,13 @@ class Prefs:
             # over a first launch where nothing was wrong.
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
+            # And the latch CLEARS, exactly as a healthy read clears
+            # it: the refusal is re-derived from the file on every
+            # read, and an absent file is the "start fresh" route out
+            # of a broken one - load() runs again when Preferences
+            # closes, so a latch left set here refused every save for
+            # the life of the panel.
+            self._load_failed = False
             return False
         except (OSError, ValueError) as exc:
             debug.event("prefs", "settings unreadable - opening without a "
@@ -1639,6 +1704,15 @@ class Prefs:
             if records:
                 self._file_location_records = records
                 return
+        # From the ATTRIBUTES, not from `data`: by the time this runs,
+        # load() has already merged the three pre-merge sections'
+        # folder keys (texture/geometry/hip) into `_file_folders`, and
+        # a pre-merge file has no `file_folders` key at all - composing
+        # from the raw document came back empty and emptied the sidebar
+        # (caught by MigrationTest the day this was tried). The MERGE
+        # path composes from the raw document instead, because a peer
+        # FILE is complete by definition - see
+        # _compose_location_records.
         composed: dict = {}
         for path in self._file_folders:
             composed.setdefault(path, {})["registered"] = True

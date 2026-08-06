@@ -309,5 +309,49 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                     % (key, called))
 
 
+class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
+    """`ui_helpers.relayout` is for DATA changes only - its own
+    docstring bans wrapping a structural insert or removal, because a
+    layout-change pair around begin/endInsert/RemoveRows hands attached
+    proxies dangling persistent indexes at the closing signal: a native
+    segfault, measured on H21 (research.md, 2026-08-04).
+    panel.assign_category_active hoisted `check_add_category` out for
+    exactly this reason; the sidebar's Add and Remove verbs re-created
+    the pairing."""
+
+    def test_no_relayout_wraps_a_categories_row_signal(self):
+        import ast
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "panel", "sections.py")
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        offenders = []
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.With) and node.items):
+                continue
+            context = node.items[0].context_expr
+            if "relayout" not in ast.dump(context):
+                continue
+            for call in ast.walk(node):
+                if not (isinstance(call, ast.Call)
+                        and isinstance(call.func, ast.Attribute)
+                        and call.func.attr in ("check_add_category",
+                                               "remove_category")):
+                    continue
+                receiver = call.func.value
+                if (isinstance(receiver, ast.Attribute)
+                        and receiver.attr == "categories"):
+                    offenders.append(
+                        "sections.py:%d %s inside relayout"
+                        % (call.lineno, call.func.attr))
+        self.assertEqual(
+            [], offenders,
+            "a categories-model row signal is paired with a layout "
+            "change - the H21 segfault shape the relayout docstring "
+            "bans: %s" % offenders)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1867,7 +1867,12 @@ class NodeHandler:
             self._preferences, asset_id, "_cop" + self._preferences.ext
         )
 
-        staging_parent = hou.node("/obj").createNode("subnet")
+        # Off the undo stack at BOTH ends: a create/destroy pair on the
+        # live stack resurrects the container with its children on one
+        # Ctrl+Z (#278; the pair scan in test_prefs_and_sources holds
+        # every staging site to this).
+        with hou.undos.disabler():
+            staging_parent = hou.node("/obj").createNode("subnet")
         rename_map = {}
         net_type = containers[0].type().name()
         try:
@@ -1947,7 +1952,8 @@ class NodeHandler:
                     "the companion network file was not written (%s)"
                     % file_name)
         finally:
-            staging_parent.destroy()
+            with hou.undos.disabler():
+                staging_parent.destroy()
 
         path_map = {}
         for _parm, target, container in refs:
@@ -2380,8 +2386,10 @@ class NodeHandler:
         # inside a LOP materiallibrary fires an eager full-library
         # retranslation per created node (wiki: amaze retranslation
         # model) - /obj staging is free, exactly like save_node_mtlx.
-        staging_parent = hou.node("/obj").createNode("matnet")
-        sub_tmp = staging_parent.createNode("subnet")
+        # Off the stack at BOTH ends, like staged_asset above (#278).
+        with hou.undos.disabler():
+            staging_parent = hou.node("/obj").createNode("matnet")
+            sub_tmp = staging_parent.createNode("subnet")
         try:
             children = sub_tmp.children()
             for n in children:
@@ -2408,7 +2416,8 @@ class NodeHandler:
         finally:
             # Runs even on failure so the temporary save copy never
             # lingers in the scene.
-            staging_parent.destroy()
+            with hou.undos.disabler():
+                staging_parent.destroy()
 
         # If this is not a manual update and render_on_import is off, finish here
         if not update:
@@ -2447,7 +2456,9 @@ class NodeHandler:
             self._preferences, asset_id, ".interface"
         )
 
-        builder = hou.node("/obj").createNode("matnet")
+        # Off the stack at BOTH ends, like staged_asset above (#278).
+        with hou.undos.disabler():
+            builder = hou.node("/obj").createNode("matnet")
         try:
             copied = hou.copyNodesTo((node,), builder)  # type: ignore
 
@@ -2469,7 +2480,8 @@ class NodeHandler:
         finally:
             # Runs even on failure so the temporary save copy never
             # lingers in the scene.
-            builder.destroy()
+            with hou.undos.disabler():
+                builder.destroy()
 
         # If this is not a manual update and render_on_import is off, finish here
         if not update:
@@ -2513,9 +2525,12 @@ class NodeHandler:
         orig_node = node
         builder = None
         if node.type().name() != "materialbuilder" or path_map:
-            builder = hou.node("/mat").createNode("materialbuilder")
-            for c in builder.children():
-                c.destroy()
+            # Off the stack at BOTH ends, like staged_asset (#278) -
+            # /mat staging, same rule as /obj.
+            with hou.undos.disabler():
+                builder = hou.node("/mat").createNode("materialbuilder")
+                for c in builder.children():
+                    c.destroy()
             hou.copyNodesTo((node,), builder)  # type: ignore
             node = builder
             if path_map:
@@ -2542,7 +2557,8 @@ class NodeHandler:
             # lingers in the scene.
             node = orig_node
             if builder is not None:
-                builder.destroy()
+                with hou.undos.disabler():
+                    builder.destroy()
 
         # If this is not a manual update and render_on_import is off, finish here
         if not update:
@@ -2611,7 +2627,9 @@ class NodeHandler:
         tmp_parent = None
         save_node = node
         if path_map:
-            tmp_parent = hou.node("/obj").createNode("matnet")
+            # Off the stack at BOTH ends, like staged_asset (#278).
+            with hou.undos.disabler():
+                tmp_parent = hou.node("/obj").createNode("matnet")
             save_node = hou.copyNodesTo((node,), tmp_parent)[0]
             self.rewrite_cop_refs((save_node,), path_map)
 
@@ -2631,7 +2649,8 @@ class NodeHandler:
             # Runs even on failure so the temporary COP-rewrite copy never
             # lingers in the scene.
             if tmp_parent is not None:
-                tmp_parent.destroy()
+                with hou.undos.disabler():
+                    tmp_parent.destroy()
 
         # If this is not a manual update and render_on_import is off, finish here
         if not update:

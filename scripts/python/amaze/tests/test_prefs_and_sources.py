@@ -397,45 +397,92 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "a failed extract poisons the package folder permanently")
 
 
-class TheOnlineImportLeavesNoUndoEntry(unittest.TestCase):
+class StagingLeavesNoUndoEntry(unittest.TestCase):
+    """createNode and destroy BOTH land on the live stack, and one
+    performUndo resurrects the node WITH its children (research.md ▸
+    Undo; the mechanism is measured in test_thumbnail_paths) - so a
+    single Ctrl+Z after a save, a gallery import or a Redshift
+    conversion brought back a container holding a duplicate of the
+    material just handled.
 
-    def test_the_staging_container_is_disabled(self):
-        """createNode and destroy BOTH land on the live stack, and one
-        performUndo resurrects the node WITH its children - so a single
-        Ctrl+Z after Add to Library brought back a matnet holding a
-        duplicate of the material just imported."""
-        body = source_of("core/matx_import.py")
-        tree = ast.parse(body)
-        # Only the containers built in the USER's /obj. The three
-        # createNode calls on `builder` are nodes INSIDE the staging
-        # matnet, which the container's own disabler already covers -
-        # counting those made this test demand five disablers for two
-        # containers.
-        lines = body.splitlines()
-        creates = 0
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.Call)
-                    and getattr(node.func, "attr", "") == "createNode"):
-                continue
-            inner = node.func.value
-            if not (isinstance(inner, ast.Call)
-                    and getattr(inner.func, "attr", "") == "node"
-                    and inner.args
-                    and isinstance(inner.args[0], ast.Constant)
-                    and inner.args[0].value == "/obj"):
-                continue
-            creates += 1
-            # A disabler within the three lines above it.
-            window = "\n".join(lines[max(0, node.lineno - 4):node.lineno])
-            self.assertIn(
-                "hou.undos.disabler()", window,
-                "the staging container at line %d is created on the "
-                "LIVE undo stack" % node.lineno)
-        self.assertGreater(creates, 0, "no staging container is created")
+    The rule, read structurally: a container is STAGING when the same
+    function creates it and destroys it in a `finally` - destroyed on
+    EVERY path - and then both halves sit inside
+    `hou.undos.disabler()`. A container destroyed only on a FAILURE
+    branch (the restored COP companion, an import's fallback
+    destination, /obj/Amaze's own setName rollback) is a RESULT with a
+    rollback: the user may undo the result, so its create stays on the
+    stack and this scan deliberately does not match it."""
+
+    FILES = ("core/matx_import.py", "core/gallery_import.py",
+             "render/nodes.py", "render/material_converter.py",
+             "core/library.py")
+
+    def test_every_staging_pair_is_off_the_stack(self):
+        offenders = []
+        pairs = 0
+        for rel in self.FILES:
+            body = source_of(rel)
+            tree = ast.parse(body)
+            # A disabler guards its LEXICAL block (staged_asset wraps
+            # its whole body in one), so this reads scope, never a
+            # line window.
+            guarded_ranges = [
+                (node.lineno, node.end_lineno)
+                for node in ast.walk(tree)
+                if isinstance(node, ast.With)
+                and "disabler" in ast.dump(node.items[0].context_expr)]
+
+            def guarded(lineno):
+                return any(first <= lineno <= last
+                           for first, last in guarded_ranges)
+
+            for func in ast.walk(tree):
+                if not isinstance(func, ast.FunctionDef):
+                    continue
+                creates = {}
+                for node in ast.walk(func):
+                    if (isinstance(node, ast.Assign)
+                            and len(node.targets) == 1
+                            and isinstance(node.targets[0], ast.Name)
+                            and isinstance(node.value, ast.Call)
+                            and getattr(node.value.func, "attr", "")
+                            == "createNode"):
+                        creates[node.targets[0].id] = node.lineno
+                if not creates:
+                    continue
+                finally_ranges = [
+                    (node.finalbody[0].lineno,
+                     node.finalbody[-1].end_lineno)
+                    for node in ast.walk(func)
+                    if isinstance(node, ast.Try) and node.finalbody]
+                for node in ast.walk(func):
+                    if not (isinstance(node, ast.Call)
+                            and isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "destroy"
+                            and isinstance(node.func.value, ast.Name)
+                            and node.func.value.id in creates):
+                        continue
+                    if not any(first <= node.lineno <= last
+                               for first, last in finally_ranges):
+                        continue          # a failure rollback - a RESULT
+                    name = node.func.value.id
+                    pairs += 1
+                    for half, lineno in (("created", creates[name]),
+                                         ("destroyed", node.lineno)):
+                        if not guarded(lineno):
+                            offenders.append(
+                                "%s:%d (%s, %s)"
+                                % (rel, lineno, name, half))
         self.assertGreaterEqual(
-            body.count("hou.undos.disabler()"), creates * 2,
-            "a staging container is DESTROYED on the live stack - the "
-            "destroy is the half that resurrects it with its children")
+            pairs, 8,
+            "the scan matched %d staging pairs where the tree holds "
+            "about ten - it has gone vacuous, not clean" % pairs)
+        self.assertEqual(
+            [], offenders,
+            "these put half of a staging pair on the LIVE undo stack, "
+            "so one Ctrl+Z resurrects the container with its "
+            "children: %s" % offenders)
 
 
 class AGalleryIsLeftAsItWasFound(unittest.TestCase):

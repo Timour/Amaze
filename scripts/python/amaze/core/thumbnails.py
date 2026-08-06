@@ -390,11 +390,16 @@ class ThumbnailEngine(QtCore.QObject):
         )
         free = parallel - live
         if free <= 0:
-            # Back on the queue, retried when a slot frees.
+            # Back on the queue, retried when a slot frees. ONE FRAME,
+            # not 0: a 0ms re-arm runs this handler every event-loop
+            # turn for as long as the slots stay busy - and a busy slot
+            # here is an iconvert that can run 30s. _dispatch_files hit
+            # the identical shape and measured it at ~7.5s of pure spin
+            # for a far shorter-lived worker before moving to 16ms.
             self._convert_queue = items + self._convert_queue
             if not self._convert_scheduled:
                 self._convert_scheduled = True
-                QtCore.QTimer.singleShot(0, self._dispatch_converts)
+                QtCore.QTimer.singleShot(16, self._dispatch_converts)
             return
         parallel = min(parallel, free)
         chunks = [c for c in (items[i::parallel] for i in range(parallel)) if c]

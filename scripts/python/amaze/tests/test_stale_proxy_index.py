@@ -90,6 +90,25 @@ class LiveCurrentIndexTest(unittest.TestCase):
         live = ui_helpers.live_current_index(view)
         self.assertIs(live.model(), proxy)
 
+    def test_a_TABLE_current_index_comes_back_at_column_ZERO(self):
+        """research.md ▸ *Row selection over a table view*: a click on
+        the list-mode table lands current on the clicked CELL, and with
+        the thumb column hidden that is always a column >= 1 - where a
+        grid model answers roles with None (`grid_columns`: a role
+        belongs to its own column). So the helper answers THE ROW:
+        column 0, whatever the click landed on."""
+        model = QtGui.QStandardItemModel(3, 5)
+        view = QtWidgets.QTableView()
+        view.setModel(model)
+        view.setCurrentIndex(model.index(1, 3))
+        live = ui_helpers.live_current_index(view)
+        self.assertIsNotNone(live)
+        self.assertEqual(1, live.row())
+        self.assertEqual(
+            0, live.column(),
+            "the helper hands back the clicked cell, and every role "
+            "read through it answers None")
+
     def test_qt_keeps_current_index_consistent_through_every_shrink(self):
         """A NEGATIVE result, pinned deliberately.
 

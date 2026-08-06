@@ -403,5 +403,48 @@ class TestDeliveriesSurviveAReload(unittest.TestCase):
             "through it")
 
 
+class DispatchWaitsAFrameNotATurn(unittest.TestCase):
+    """A 0ms re-arm runs the dispatcher on EVERY event-loop turn while
+    it waits for a slot - and a convert slot is an iconvert that can
+    run 30s. _dispatch_files hit the identical shape and measured
+    ~7.5s of pure spin before moving to 16ms; _dispatch_converts was
+    the sibling the fix never reached."""
+
+    def test_no_dispatcher_rearms_at_zero_delay(self):
+        """Scoped to the `_dispatch_*` bodies: the 0ms one-shots that
+        ARM a dispatcher from the request path, or hand a result back,
+        fire once and are fine - the spin is a dispatcher re-arming
+        ITSELF at 0."""
+        import ast
+
+        path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "core", "thumbnails.py")
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        offenders = []
+        dispatchers = 0
+        for func in ast.walk(tree):
+            if not (isinstance(func, ast.FunctionDef)
+                    and func.name.startswith("_dispatch_")):
+                continue
+            dispatchers += 1
+            offenders.extend(
+                node.lineno
+                for node in ast.walk(func)
+                if isinstance(node, ast.Call)
+                and getattr(node.func, "attr", "") == "singleShot"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == 0)
+        self.assertGreaterEqual(dispatchers, 2,
+                                "the dispatchers were not found - the "
+                                "scan is vacuous")
+        self.assertEqual(
+            [], offenders,
+            "a dispatcher re-arms itself at 0ms - a busy-poll of the "
+            "UI thread for the life of the queue: lines %s" % offenders)
+
+
 if __name__ == "__main__":
     unittest.main()

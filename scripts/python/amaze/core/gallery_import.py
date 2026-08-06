@@ -139,7 +139,11 @@ def import_entries(model, entries, staging_parent=None,
     summary = {"imported": 0, "skipped": 0, "failed": 0, "categories": {}}
     if model is None or not entries:
         return summary
-    parent = staging_parent or hou.node("/obj").createNode("matnet")
+    # The container joins the disabler below at BOTH ends: created or
+    # destroyed on the live stack, one Ctrl+Z resurrects it (#278) -
+    # this pair sat just outside the block the docstring promises.
+    with hou.undos.disabler():
+        parent = staging_parent or hou.node("/obj").createNode("matnet")
     owns_parent = staging_parent is None
     try:
         with hou.undos.disabler():
@@ -177,7 +181,8 @@ def import_entries(model, entries, staging_parent=None,
     finally:
         if owns_parent:
             try:
-                parent.destroy()
+                with hou.undos.disabler():
+                    parent.destroy()
             except hou.Error:
                 pass
     debug.event("gallery", "import finished", **{
