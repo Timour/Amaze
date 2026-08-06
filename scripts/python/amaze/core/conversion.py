@@ -402,7 +402,15 @@ def _produce_pillow(source: str, out_path: str, ctx) -> tuple:
 
         if ctx.cancelled():
             return False, "cancelled"
-        image.thumbnail((ctx.size, ctx.size), Image.Resampling.BILINEAR)
+        # getattr, because the two shipped Pillows straddle an API
+        # break: `Image.Resampling` arrived in 9.1, H21's Python has
+        # 9.0.1 and H22's has 12.1 (research.md > Windows). The enum
+        # spelling raised AttributeError on H21, the blanket except
+        # below read that as `unreadable`, and every oversized image on
+        # an H21 machine with no sips - every H21 Windows artist - got
+        # no thumbnail. Both spellings measure to the same value.
+        resample = getattr(Image, "Resampling", Image).BILINEAR
+        image.thumbnail((ctx.size, ctx.size), resample)
         image.convert("RGB").save(out_path, "PNG")
     except Exception as exc:                                  # noqa: BLE001
         return False, str(exc)
