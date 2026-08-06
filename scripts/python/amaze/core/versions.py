@@ -37,6 +37,19 @@ from amaze.helpers import hostos
 _KINDS = ((".mat", True), (".interface", False),
           (".builder.json", False), (".png", False))
 
+#: `asset_files()` kind -> the archive suffix it fills. The store
+#: archives exactly the four _KINDS; a kind absent here (cop, stamp,
+#: tile icon) is not versioned. library.py keys its pre-edit hold with
+#: this: keyed by filename suffix, `<id>_cop.mat` collided with
+#: `<id>.mat` and the companion was archived as Version 1's material
+#: (found 2026-08-06).
+SOURCE_KINDS = {
+    "mat": ".mat",
+    "interface": ".interface",
+    "builder": ".builder.json",
+    "thumbnail": ".png",
+}
+
 LEDGER = "versions.json"
 
 

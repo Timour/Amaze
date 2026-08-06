@@ -105,8 +105,18 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
     def refilter(self) -> None:
         """Re-filter AND re-sort, NOW. What a filter setter calls: the
         caller changed what is shown and expects to read it back."""
-        self.invalidateFilter()
-        self._resort()
+        # THE PASS'S OWN ECHO, the same guard _pass_now carries: rows a
+        # re-filter brings back IN emit this proxy's rowsInserted, which
+        # lands in _schedule_pass - so every filter setter also posted a
+        # SECOND full sort and layoutChanged for the next event-loop
+        # turn, doubling exactly the work this synchronous pass just
+        # did (the measured shape in _schedule_pass's comment).
+        self._in_pass = True
+        try:
+            self.invalidateFilter()
+            self._resort()
+        finally:
+            self._in_pass = False
 
     def _resort(self) -> None:
         """Nothing to re-apply before the first sort() establishes a

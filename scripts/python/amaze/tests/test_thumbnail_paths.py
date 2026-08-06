@@ -306,6 +306,45 @@ class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
             "undo stack, so their next Ctrl+Z resurrects a thumbnail "
             "scaffold: %s" % unguarded)
 
+    def test_every_scene_container_is_DESTROYED_off_the_stack(self):
+        """The other half, and the half that actually resurrects: a
+        destroy left on the stack is itself undoable (the mechanism
+        test above measures it), so a guarded CREATE with a bare
+        DESTROY still hands Ctrl+Z the whole scaffold back - reference,
+        materiallibrary and live ROP. The Karma scaffold's teardown in
+        create_thumb_mtlx was the one destroy in this file outside a
+        disabler, among siblings that all state the both-ends rule."""
+        source = source_of("render/thumbs.py")
+        tree = ast.parse(source)
+        lines = source.splitlines()
+        # A disabler guards its LEXICAL block, not a line window - the
+        # _thumb_scene teardown sits eight lines under its `with` and
+        # is fully covered, so this scan reads scope, not proximity.
+        guarded_ranges = [
+            (node.lineno, node.end_lineno)
+            for node in ast.walk(tree)
+            if isinstance(node, ast.With)
+            and "disabler" in ast.dump(node.items[0].context_expr)]
+
+        def guarded(lineno):
+            return any(first <= lineno <= last
+                       for first, last in guarded_ranges)
+
+        unguarded = []
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "destroy"):
+                continue
+            if not guarded(node.lineno):
+                unguarded.append((node.lineno,
+                                  lines[node.lineno - 1].strip()))
+        self.assertEqual(
+            [], unguarded,
+            "these destroy a scene container on the LIVE undo stack, "
+            "so one Ctrl+Z resurrects it with its children: %s"
+            % unguarded)
+
 
 class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
 

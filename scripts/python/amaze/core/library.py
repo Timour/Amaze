@@ -975,6 +975,30 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             "tile_icon": tile_icons.icon_image_path(self.preferences, mat_id),
         }
 
+    def _hold_pre_edit_files(self, mat_id: str) -> dict:
+        """Copy the asset's CURRENT files aside for the version store:
+        {archive suffix: held path}, per `versions.SOURCE_KINDS`.
+
+        Keyed by KIND, never by filename suffix: `<id>_cop.mat` shares
+        ".mat" with the material and `<id>_icon.png` shares ".png" with
+        the render, so a suffix-keyed dict let whichever came later
+        overwrite the real payload - Version 1 then archived the COP
+        companion as the material, and switching back promoted it over
+        `mat/<id>.mat`. Kinds SOURCE_KINDS does not name (cop, stamp,
+        tile icon) are not versioned.
+        """
+        import tempfile as _tempfile
+        keep = _tempfile.mkdtemp(prefix="amaze_preedit_")
+        held = {}
+        for kind, path in self.asset_files(mat_id).items():
+            suffix = versions.SOURCE_KINDS.get(kind)
+            if suffix is None or not os.path.exists(path):
+                continue
+            target = os.path.join(keep, os.path.basename(path))
+            shutil.copyfile(path, target)
+            held[suffix] = target
+        return held
+
     def asset_directories(self, mat_id: str) -> dict:
         """{kind: absolute path} for every DIRECTORY asset `mat_id` owns.
 
@@ -1419,16 +1443,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 # parameter-only they become Version 1 - the state the
                 # user is versioning away from must not be lost, and by
                 # then the save has overwritten the base.
-                import tempfile as _tempfile
-                keep = _tempfile.mkdtemp(prefix="amaze_preedit_")
-                for kind, path in self.asset_files(mat.mat_id).items():
-                    if os.path.exists(path):
-                        held = os.path.join(keep, os.path.basename(path))
-                        shutil.copyfile(path, held)
-                        suffix = os.path.splitext(path)[1]
-                        if path.endswith(".builder.json"):
-                            suffix = ".builder.json"
-                        pre_edit[suffix] = held
+                pre_edit = self._hold_pre_edit_files(mat.mat_id)
         except Exception as exc:                          # noqa: BLE001
             debug.event("versions", "pre-save staging failed - the save "
                         "will be treated as structural",
@@ -2289,7 +2304,11 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return False, report
 
         handler = nodes.NodeHandler(self.preferences)
-        scratch = hou.node("/obj").createNode("matnet")
+        # Off the undo stack at BOTH ends: a create/destroy pair on the
+        # live stack resurrects the scratch with the converted network
+        # on one Ctrl+Z (#278).
+        with hou.undos.disabler():
+            scratch = hou.node("/obj").createNode("matnet")
         try:
             # Build the converted material INSIDE a real Karma Material
             # Builder, not a bare matnet. Karma-context nodes (kma_*,
@@ -2324,4 +2343,5 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # add_asset()'s own save path - never left in the scene,
             # same discipline as the Redshift scratch reconstruction in
             # convert_redshift_material() itself.
-            scratch.destroy()
+            with hou.undos.disabler():
+                scratch.destroy()

@@ -255,7 +255,12 @@ class Categories(QtCore.QAbstractListModel):
             # remove_category docstring says so.
             self.beginResetModel()
             try:
-                self._categories = cleaned
+                # IN PLACE: `_categories` aliases the connector's own
+                # `_data["categories"]`, which the two-writer merge
+                # repairs in place - a rebind detaches the model from
+                # the document and the next save erases whatever a peer
+                # machine added.
+                self._categories[:] = cleaned
             finally:
                 self.endResetModel()
             self.save()

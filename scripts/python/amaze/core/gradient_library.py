@@ -1135,6 +1135,22 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
         self._size_filter = bounds
         self.refilter()
 
+    def watched_roles(self):
+        """Exactly what this filter reads through roles - the display
+        name and the favourite - plus the sort role. Category and size
+        are read straight off the entry, and every edit that changes
+        them announces itself structurally (reset/insert), never as a
+        role-scoped dataChanged; the role-scoped emissions here are the
+        category-colour sweep (paint only, over every row), the
+        thumbnail's DecorationRole and FavoriteRole. Falling through to
+        the blacklist bought a full re-filter and re-sort per colour
+        pick (the base's watched_roles docstring names the gesture)."""
+        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
+        role = getattr(self.sourceModel(), "FavoriteRole", None)
+        if role is not None:
+            watched.add(role)
+        return watched
+
     def filterAcceptsRow(self, source_row, source_parent) -> bool:
         model = self.sourceModel()
         entry = model.entry(source_row)

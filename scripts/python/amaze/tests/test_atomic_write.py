@@ -1039,6 +1039,36 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
             "first one had just adopted - the merge repaired self.data "
             "only, and refresh_data rebuilds it from the attributes")
 
+    def test_a_location_LABEL_saved_by_the_other_pane_survives(self):
+        """The four location decorations travel inside
+        `file_location_records` since 2026-08-05, and `refresh_data`
+        DERIVES the four old keys from those records. The merge's old
+        dict arms adopted the derived keys into attributes refresh_data
+        no longer reads - dead writes - so pane B's save put its stale
+        records over pane A's fresh ones, and A's label was gone from
+        the fallback copy (and from any store later seeded from it)."""
+        pane_a = self._prefs()
+        pane_a.save()
+        pane_b = self._prefs()
+
+        pane_a.add_file_folder("/theirs/textures")
+        pane_a.set_file_folder_name("/theirs/textures", "Their Label")
+        pane_a.save()
+
+        pane_b.thumbsize = 256
+        pane_b.save()
+
+        check = self._prefs()
+        keys = [path for path in check.file_folders
+                if "theirs" in str(path)]
+        self.assertTrue(keys, "the folder itself was clobbered - the "
+                              "list merge has regressed too")
+        names = dict(check.file_folder_names)
+        self.assertEqual(
+            "Their Label", names.get(keys[0], ""),
+            "pane B's save dropped the label pane A had just written - "
+            "the records merge adopted nothing")
+
     def test_every_collected_key_has_a_backing_attribute(self):
         """The merge adopts into ATTRIBUTES, so a collected key with no
         entry in _COLLECTED_ATTRS would raise KeyError mid-save - and a

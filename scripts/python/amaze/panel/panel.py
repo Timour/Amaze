@@ -1885,6 +1885,16 @@ class MatLibPanel(QtWidgets.QWidget):
         if thumb_layout is not None:
             thumb_layout.addWidget(self.thumbtable)
         self._style_table_header()
+        # The table IS the grid while list mode shows: same menu, same
+        # primary action. thumblist takes its CustomContextMenu policy
+        # from the .ui; this view is built in code, so it takes both
+        # wirings here - without them right-click and double-click are
+        # dead in one of the two view modes.
+        self.thumbtable.setContextMenuPolicy(
+            QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.thumbtable.customContextMenuRequested.connect(
+            self.thumblist_rc_menu)
+        self.thumbtable.doubleClicked.connect(self.import_asset_auto)
         # NO SCROLL-OFFSET WIRING. The painted strip sat ABOVE the view
         # and had to be told when the rows scrolled sideways, or its
         # labels named whichever column had slid underneath them. A
@@ -2320,7 +2330,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if stack is None:
             return
         model, proxy, selmodel, catmodel = stack
-        indexes = selmodel.selectedIndexes()
+        indexes = grid_columns.selected_rows(selmodel)
         if not indexes:
             return
         # OUTSIDE the wrapper: check_add_category announces itself with
@@ -2330,7 +2340,7 @@ class MatLibPanel(QtWidgets.QWidget):
         catmodel.check_add_category(category)
         with ui_helpers.relayout(model):
             for index in indexes:
-                idx = model.index(proxy.mapToSource(index).row())
+                idx = model.index(proxy.mapToSource(index).row(), 0)
                 asset = model.assets[idx.row()]
                 model.set_assetdata(
                     idx, asset.name, category, ", ".join(asset.tags),
@@ -2343,7 +2353,7 @@ class MatLibPanel(QtWidgets.QWidget):
         normal editable entry now (the seeded palettes included)."""
         rows = [
             self.gradient_sorted_model.mapToSource(i).row()
-            for i in self.gradient_selection_model.selectedIndexes()
+            for i in grid_columns.selected_rows(self.gradient_selection_model)
         ]
         moved = self.gradient_model.set_user_category(rows, category)
         if moved:
@@ -2790,7 +2800,8 @@ class MatLibPanel(QtWidgets.QWidget):
         showing "Convert to Karma" in the right-click menu."""
         if not self.material_model:
             return False
-        for index in self.material_selection_model.selectedIndexes():
+        for index in grid_columns.selected_rows(
+                self.material_selection_model):
             idx = self.material_sorted_model.mapToSource(index)
             mat = self.material_model.assets[idx.row()]
             if "Redshift" in mat.renderer:
@@ -2809,7 +2820,7 @@ class MatLibPanel(QtWidgets.QWidget):
         claimed to be a faithful reproduction."""
         if not self.material_model:
             return
-        indexes = self.material_selection_model.selectedIndexes()
+        indexes = grid_columns.selected_rows(self.material_selection_model)
         if not indexes:
             return
         all_lines = []
@@ -4158,7 +4169,8 @@ class MatLibPanel(QtWidgets.QWidget):
         # one built a container and loaded into it as separate entries,
         # so a single Ctrl+Z left the empty container behind.
         with hou.undos.group("Amaze Import Nodes Asset"):
-            for index in self.thumblist.selectedIndexes():
+            for index in grid_columns.selected_rows(
+                    self.thumblist.selectionModel()):
                 source_index = self.cop_sorted_model.mapToSource(index)
                 try:
                     ok, reason = self.cop_model.import_asset_to_scene(
@@ -4796,7 +4808,8 @@ class MatLibPanel(QtWidgets.QWidget):
         pressed_id = self.material_model.assets[row].mat_id
         ids = [pressed_id]
         try:
-            for sel in self.material_selection_model.selectedIndexes():
+            for sel in grid_columns.selected_rows(
+                    self.material_selection_model):
                 src_row = self.material_sorted_model.mapToSource(sel).row()
                 if not 0 <= src_row < len(self.material_model.assets):
                     continue      # same stale-row trap, per selected row
@@ -5588,7 +5601,7 @@ class MatLibPanel(QtWidgets.QWidget):
         """User modifies an assete in the detailview"""
         if not self.material_model or not self.category_model:
             return
-        indexes = self.material_selection_model.selectedIndexes()
+        indexes = grid_columns.selected_rows(self.material_selection_model)
         # About/license are per-material provenance - only save them for a
         # single selection, so editing a multi-selection can't overwrite
         # everyone's credits with one material's text (None = keep).
@@ -5608,7 +5621,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with ui_helpers.relayout(self.material_model):
             for index in indexes:
                 idx = self.material_model.index(
-                    self.material_sorted_model.mapToSource(index).row()
+                    self.material_sorted_model.mapToSource(index).row(), 0
                 )
                 self.material_model.set_assetdata(
                     idx, name, cats, tags, fav, about=about,
@@ -5643,7 +5656,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.box_fav.setCheckState(QtCore.Qt.CheckState.Unchecked)
             return
 
-        indexes = self.material_selection_model.selectedIndexes()
+        indexes = grid_columns.selected_rows(self.material_selection_model)
 
         asset_id = ""
         name = ""
@@ -6188,7 +6201,8 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _import_selected_materials(self, target: str, failures: list) -> None:
         """The import loop itself - see import_asset for the grouping."""
-        for index in self.thumblist.selectedIndexes():
+        for index in grid_columns.selected_rows(
+                self.thumblist.selectionModel()):
             source_index = self.material_sorted_model.mapToSource(index)
             try:
                 ok, reason = self.material_model.import_asset_to_scene(
@@ -6217,6 +6231,12 @@ class MatLibPanel(QtWidgets.QWidget):
         Textures: push the double-clicked file's path onto a selected
         texture node's image parm - here the index *is* what's needed, to
         know which file was double-clicked."""
+        if index is not None and index.isValid():
+            # THE ROW, not the clicked cell: in list mode the double-
+            # click lands on a visible column >= 1, where the models
+            # answer roles with None (research.md > Row selection over
+            # a table view).
+            index = index.siblingAtColumn(0)
         if self._is_online():
             # Without this the online branch fell through to Materials,
             # and import_asset() reads the MATERIAL selection model -

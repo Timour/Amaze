@@ -553,5 +553,101 @@ class TheRuleHasOneHome(unittest.TestCase):
             "came to be one route short" % offenders)
 
 
+class _TenColumns(QtCore.QAbstractTableModel):
+    """The shape the grid models share: roles as instance attributes,
+    read off the source by whoever needs the number."""
+
+    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 61
+    KindRole = QtCore.Qt.ItemDataRole.UserRole + 70
+    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 30
+
+    def __init__(self, names):
+        super().__init__()
+        self._names = list(names)
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._names)
+
+    def columnCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else 1
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            return self._names[index.row()]
+        return None
+
+
+class PaintOnlyRolesCostNoPass(unittest.TestCase):
+    """A sidebar colour pick and a comment badge emit their role over
+    EVERY row - that is how the tiles repaint - and no grid proxy
+    filters or sorts on either. The base's watched_roles hook existed
+    with exactly one implementer (MultiFilterProxyModel); File and
+    Color fell through to the blacklist and re-filtered and re-sorted
+    the whole section per paint-only role, on the section with the
+    most rows."""
+
+    def _proxies(self):
+        from amaze.core import gradient_library, texture_library
+
+        for cls in (texture_library.TextureFilterProxyModel,
+                    gradient_library.GradientFilterProxyModel):
+            proxy = cls()
+            proxy.setSourceModel(_TenColumns(["a", "b"]))
+            yield proxy
+
+    def test_paint_only_roles_do_not_matter(self):
+        for proxy in self._proxies():
+            with self.subTest(proxy=type(proxy).__name__):
+                model = proxy.sourceModel()
+                self.assertFalse(
+                    proxy._matters([model.CategoryColorRole]),
+                    "a colour pick re-filters the whole section")
+                self.assertFalse(
+                    proxy._matters([model.NotesRole]),
+                    "a comment badge re-filters the whole section")
+
+    def test_the_roles_the_filter_READS_still_matter(self):
+        """The 2026-08-03 shape this must not reintroduce: a role the
+        filter reads going quiet is a filter that lies."""
+        for proxy in self._proxies():
+            with self.subTest(proxy=type(proxy).__name__):
+                model = proxy.sourceModel()
+                self.assertTrue(
+                    proxy._matters([model.FavoriteRole]),
+                    "un-favouriting with Favourites-only on would "
+                    "leave the row in the grid, star off")
+                self.assertTrue(
+                    proxy._matters(
+                        [QtCore.Qt.ItemDataRole.DisplayRole]))
+                self.assertTrue(proxy._matters([]),
+                                "empty means everything changed")
+
+
+class AFilterChangeIsOnePass(unittest.TestCase):
+    """refilter() sorts synchronously - and the rows it brings back IN
+    emit the proxy's own rowsInserted, which lands in _schedule_pass.
+    Unguarded, every filter setter also posted a SECOND full sort and
+    layoutChanged for the next event-loop turn: the exact echo
+    _pass_now's guard exists for, on the synchronous path."""
+
+    def test_refilter_does_not_schedule_its_own_echo(self):
+        from amaze.core import texture_library
+
+        proxy = texture_library.TextureFilterProxyModel()
+        proxy.setSourceModel(_TenColumns(["alpha", "beta", "gamma"]))
+        proxy.sort(0)
+        proxy.set_name_filter("zzz")          # empties the grid
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(0, proxy.rowCount(), "premise: filtered empty")
+        proxy._pass_scheduled = False
+        proxy.set_name_filter("")             # every row comes back IN
+        self.assertFalse(
+            proxy._pass_scheduled,
+            "the setter's own synchronous pass scheduled a second one "
+            "off its rowsInserted echo - two sorts and two "
+            "layoutChanged per keystroke")
+
+
 if __name__ == "__main__":
     unittest.main()
