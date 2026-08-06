@@ -817,7 +817,13 @@ def _write_json(path: str, document) -> None:
     recovery tool must not spend the evidence."""
     scratch = hostos.unique_scratch(path, suffix=".repairing")
     try:
-        with open(scratch, "w", encoding="utf-8") as handle:
+        # newline="\n" for the same reason write_json_atomic carries it:
+        # this writes the SAME database documents, so a repair that left
+        # CRLF behind on Windows would defeat save()'s identical-write
+        # guard and have the next ordinary save rewrite the file - the
+        # bug that keyword fixes, arriving through the one door that
+        # deliberately does not go through that function.
+        with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
     except OSError:
         hostos.discard_scratch(scratch)
