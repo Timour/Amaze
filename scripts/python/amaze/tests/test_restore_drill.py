@@ -39,8 +39,19 @@ PYTHON = shutil.which("python3") or sys.executable
 
 
 def _run(*args):
+    # The child gets a CLEAN Python environment. This drill runs inside
+    # hython, whose PYTHONHOME/PYTHONPATH name Houdini's own stdlib -
+    # and the child is whatever `python3` is on PATH, so on Windows a
+    # 3.13 binary imported H21's 3.11 stdlib and died on `SRE module
+    # mismatch` before restore.py ran a line. Twelve tests red, none of
+    # them about restoring. Stripping the two is also the claim under
+    # test: restore.py is pure stdlib precisely so it runs under ANY
+    # python when Houdini is broken - a real user's terminal does not
+    # carry hython's variables, and the drill should not either.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONHOME", "PYTHONPATH")}
     return subprocess.run([PYTHON, RESTORE] + list(args),
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, env=env)
 
 
 class TestRestoreDrill(unittest.TestCase):

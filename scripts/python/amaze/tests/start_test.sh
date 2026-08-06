@@ -99,6 +99,12 @@ if [ -n "${AMAZE_HOUDINI:-}" ]; then
     # An explicit install wins over anything on PATH, so a caller can
     # pin the version the suite runs against.
     HFS="$AMAZE_HOUDINI"
+    # A drive-letter spelling cannot ride in bash PATH - PATH splits on
+    # the colon, so `C:/...` shatters into two dead entries and hython
+    # is silently not found. cygpath makes either spelling safe.
+    if amaze_is_windows && command -v cygpath >/dev/null 2>&1; then
+        HFS="$(cygpath -u "$HFS")"
+    fi
     export HFS
     PATH="$HFS/bin:$PATH"
     export PATH
