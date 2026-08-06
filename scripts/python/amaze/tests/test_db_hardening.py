@@ -47,7 +47,15 @@ class _Case(unittest.TestCase):
         }
 
     def _write(self, data, encoding="utf-8", path=None):
-        with open(path or self.path, "w", encoding=encoding) as handle:
+        # newline="\n" to match hostos.write_json_atomic. A fixture that
+        # lays a file down differently from the product is not a fixture:
+        # test_a_bom_less_database_round_trips_byte_identical reads a
+        # file, saves, and compares BYTES, so on Windows this wrote CRLF,
+        # the product wrote LF, and the save it asserts is a no-op became
+        # a real rewrite. It passed before only because both sides were
+        # wrong in the same direction.
+        with open(path or self.path, "w", encoding=encoding,
+                  newline="\n") as handle:
             json.dump(data, handle, indent=4)
 
     def _connector(self):

@@ -1083,7 +1083,19 @@ def write_json_atomic(path: str, data, indent: int = 4,
     """
     check_sandbox(path)
     with scratch_beside(path) as scratch:
-        with open(scratch, "w", encoding="utf-8") as stream:
+        # newline="\n", or Windows text mode turns every \n into \r\n on
+        # the way out. Nothing READS these files line by line, so the
+        # cost was invisible - but database.save() skips a write that
+        # changes nothing by comparing `json.dumps(...)` (LF) against the
+        # file read in BINARY, and CRLF on disk can never match it. So on
+        # Windows the no-op guard never fired: every save wrote, and each
+        # write costs a snapshot rotation and a sync upload, which is the
+        # exact cost the guard exists to avoid. Worse across the two
+        # machines - the Mac writes LF, Windows wrote CRLF, so each one's
+        # guard also mismatched after the other had saved, in the library
+        # they share. Measured 2026-08-06 by test_db_hardening's
+        # identical-skip, which returned "stored" on Windows.
+        with open(scratch, "w", encoding="utf-8", newline="\n") as stream:
             json.dump(data, stream, indent=indent, sort_keys=sort_keys)
 
 
