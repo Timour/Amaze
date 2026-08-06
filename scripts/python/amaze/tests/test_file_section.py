@@ -647,6 +647,60 @@ class _Prefs:
         locations_mod.set_field(self, path, "recursive", bool(on) or None)
 
 
+class FileKeyIsCanonicalTest(unittest.TestCase):
+    """file_key is the identity everything keyed about a file hangs on -
+    its comment, its icon override, the drag bookkeeping - so the same
+    file must produce the SAME key however its location was spelled.
+
+    The detour registration below is not exotic: registered folders are
+    stored `$AMAZE`-relative, `hou.text.expandString` substitutes
+    verbatim and collapses nothing (measured 2026-08-06), so every real
+    key on both platforms carried `../../..` from the location's
+    spelling - and on Windows, mixed separators on top. One location
+    re-registered absolute would have orphaned every key made under the
+    relative spelling."""
+
+    def _model_over(self, folder):
+        from amaze.helpers import hostos  # noqa: F401 - guard below
+        model = file_library.FileFiles(_Prefs([folder]))
+        model.set_folder(folder)
+        return model
+
+    def test_the_key_is_one_canonical_spelling(self):
+        tmp = tempfile.mkdtemp(prefix="amaze_key_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        os.mkdir(os.path.join(tmp, "sub"))
+        with open(os.path.join(tmp, "a.png"), "w") as handle:
+            handle.write("x")
+        from amaze.helpers import hostos
+        detour = os.path.join(tmp, "sub", os.pardir)
+        model = self._model_over(detour)
+        self.assertGreater(model.rowCount(), 0, "the fixture scanned "
+                                                "nothing - this test is "
+                                                "not testing keys")
+        for row in range(model.rowCount()):
+            key = model.file_key(row)
+            self.assertEqual(
+                hostos.canonical_path_key(key), key,
+                "file_key %r is not canonical - the same file reached "
+                "through a differently-spelled location gets a different "
+                "identity, and its comment and icon are keyed to the "
+                "spelling" % key)
+            self.assertTrue(
+                os.path.isfile(key),
+                "the canonical key %r no longer opens as a path" % key)
+
+    def test_an_out_of_range_row_stays_empty(self):
+        """normpath("") is "." (research.md > empty path), so a blind
+        canonicalise would turn the no-such-row answer into a truthy,
+        real-looking relative path every `if not key` guard misses."""
+        tmp = tempfile.mkdtemp(prefix="amaze_key_")
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        model = self._model_over(tmp)
+        self.assertEqual("", model.file_key(999))
+        self.assertEqual("", model.file_key(-1))
+
+
 class OsIconTest(unittest.TestCase):
     """A file Amaze does not recognise still gets a picture: the OS's
     own icon, drawn on a transparent tile-sized canvas, never scaled

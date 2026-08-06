@@ -887,15 +887,25 @@ class FileFiles(grid_columns.GridColumnsMixin,
     # -- tile icons (the folder-section contract, verbatim) -----------
     #
     # These rows are FILES, not library assets, so per-tile choices
-    # live in the library's icons.json keyed by absolute path. The key
-    # stays the RAW os.path.join - canonicalising it would orphan every
-    # entry written before the merge.
+    # live in the library's icons.json keyed by absolute path.
+    #
+    # The key is CANONICAL now (2026-08-06). It stayed the raw
+    # os.path.join for a year of one reason - canonicalising would
+    # orphan every icons.json entry written before the File merge - and
+    # that reason was measured empty before this changed: icons.json
+    # does not exist and notes.json holds no file keys, so there is
+    # nothing to orphan and never was. The raw join was itself the
+    # orphaner: locations are stored $AMAZE-relative and expandString
+    # substitutes verbatim (research.md > Windows), so every key
+    # carried the location's `..` spelling - re-register the same
+    # folder absolute and every comment and icon under it went dark.
+    # One spelling per file, whatever road named it.
 
     def file_key(self, row: int) -> str:
         if not 0 <= row < len(self._files):
             return ""
         folder, name = self._files[row]
-        return os.path.join(folder, name)
+        return hostos.canonical_path_key(os.path.join(folder, name))
 
     def tile_icon(self, row: int) -> dict:
         key = self.file_key(row)
