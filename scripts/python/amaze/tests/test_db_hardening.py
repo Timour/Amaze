@@ -1286,6 +1286,45 @@ class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
             "the star never reached the per-user store")
 
 
+class ANoOpSaveCostsOneRead(unittest.TestCase):
+    """The identical-skip exists for sync hygiene; it was still paying
+    a full read+hash THREE times per save (stale guard, identical
+    compare, remember) and a 548-file stamp scan afterwards - for a
+    save that by its own verdict changed nothing."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        from amaze.core import library as library_mod
+        self.library_mod = library_mod
+
+    def test_an_identical_skip_reads_once_and_scans_no_stamps(self):
+        from unittest.mock import patch
+        from amaze.core import database
+
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(model.save())          # baseline write or skip
+
+        calls = []
+        real_stat = database.DatabaseConnector._stat_file
+
+        def counting(connector):
+            calls.append(1)
+            return real_stat(connector)
+
+        with patch.object(database.DatabaseConnector, "_stat_file",
+                          counting), \
+                patch.object(self.library_mod._StampWriter,
+                             "refresh") as refresh:
+            self.assertTrue(model.save())      # nothing changed
+        refresh.assert_not_called()
+        self.assertLessEqual(
+            len(calls), 1,
+            "a no-op save read and hashed the document %d times"
+            % len(calls))
+
+
 class QuarantineCrossesVolumes(unittest.TestCase):
     """The quarantine lives under config_root while the library may
     live on an external drive, a NAS or another Windows drive letter -

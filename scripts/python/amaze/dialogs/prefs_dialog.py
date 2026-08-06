@@ -352,8 +352,6 @@ class PrefsDialog(QtWidgets.QDialog):
 
         self._add_divider(form)
         self.spin_parallel = QtWidgets.QSpinBox()
-        self.spin_parallel.setValue(self._prefs.texture_parallel_conversions)
-        self.spin_parallel.valueChanged.connect(self.set_texture_parallel)
         self.spin_parallel.setToolTip(ui_helpers.tooltip_text(
             "How many texture conversions (EXR/HDR to thumbnail) run "
             "at once."
@@ -362,6 +360,12 @@ class PrefsDialog(QtWidgets.QDialog):
             self._label("Conversion Threads"),
             self._field_slider_row(self.spin_parallel, 1, 8),
         )
+        # Range BEFORE value (the rule stated at the top of this form):
+        # a fresh QSpinBox clamps to Qt's default 0-99, and this was the
+        # one row setting its value first. Connect after both, so the
+        # initial set does not write the preference back to itself.
+        self.spin_parallel.setValue(self._prefs.texture_parallel_conversions)
+        self.spin_parallel.valueChanged.connect(self.set_texture_parallel)
         # "Force iconvert only" stood here until 2026-08-03. It was the
         # MANUAL WORKAROUND for a converter that returned a wrong
         # picture and said it had succeeded - and the Conversion Engine

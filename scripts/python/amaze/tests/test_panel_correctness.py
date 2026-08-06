@@ -958,6 +958,55 @@ class TheAccentReachesEveryDelegateAtBirth(_PanelCase):
             "class default until Preferences is opened once")
 
 
+class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
+    """The paint path keyed the colour lookup on the row's own
+    directory, so every subfolder row of a recursive location painted
+    bandless - and deep-copied a location record per tile per frame
+    while doing it. The owning location resolves by prefix, once per
+    FOLDER, cached."""
+
+    def test_a_subfolder_row_wears_the_locations_colour(self):
+        from unittest import mock
+
+        from amaze.core import locations
+
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        root = tempfile.mkdtemp(prefix="amaze_colour_root_")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        sub = os.path.join(root, "deeper")
+        os.makedirs(sub)
+        locations.register(prefs, root)
+        prefs.set_file_folder_color(root, "#123456")
+
+        model = file_library.FileFiles(prefs)
+        self.assertEqual(
+            "#123456", model._folder_colour(sub),
+            "a subfolder row of a recursive location paints bandless")
+        self.assertEqual("#123456", model._folder_colour(root))
+
+        calls = []
+        real_record = locations.record
+
+        def counting(preferences, path):
+            calls.append(str(path))
+            return real_record(preferences, path)
+
+        with mock.patch.object(locations, "record", counting):
+            model._folder_colour(sub)
+            model._folder_colour(sub)
+        self.assertEqual(
+            [], calls,
+            "the paint path re-reads a record per tile - the folder "
+            "cache is not holding")
+
+        model.colours_changed()
+        with mock.patch.object(locations, "record", counting):
+            model._folder_colour(sub)
+        self.assertTrue(calls, "colours_changed did not drop the cache")
+
+
 class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
     """The no-library branch nulls six model attributes; the two File
     models were not among them, and show_prefs reads file_files_model

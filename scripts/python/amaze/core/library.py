@@ -735,8 +735,12 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         # assets[] above is rebuilt from the model - so the next save
         # wrote them out of existence. Take them now.
         self._adopt_rows(db.take_adopted())
-        if stored:
-            # AFTER the index write, and only when it landed.
+        if stored and getattr(db, "_save_outcome", "") != "identical-skip":
+            # AFTER the index write, and only when it landed - and not
+            # on an identical-skip: bytes that did not change describe
+            # records that did not change, so the 548-file stamp scan
+            # would find nothing to rewrite (it cost ~13ms per no-op
+            # save, per the class docstring's measurement).
             _StampWriter(self).refresh()
         return stored
 
@@ -818,10 +822,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         return new_tags
 
     def set_assetdata(self, index: QtCore.QModelIndex, name, cats, tags, fav,
-                      about=None, license=None) -> None:
+                      about=None, license=None, save=True) -> None:
         """Set Assetdata for the given index and parameters
         the library is saved immidiately after. about/license default to
-        None = leave unchanged (only the Material Info dialog edits them)."""
+        None = leave unchanged (only the Material Info dialog edits them).
+        save=False defers the index write to the CALLER: the multi-select
+        loops save once after the last row instead of once per row -
+        each save serialises and hashes the whole 548-row document."""
 
         asset = self._assets[index.row()]
 
@@ -849,7 +856,8 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 pass
         asset.set_data(name, cats, tags, asset.fav, None, about=about,
                        license=license)
-        self.save()
+        if save:
+            self.save()
         # Full-row repaint (all roles) - name/categories/tags/favorite
         # may all have changed.
         model_index = self.index(index.row(), 0)
@@ -1159,12 +1167,18 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                     )
 
     def check_add_tags(self, tag: str) -> None:
-        """Checks if this tag exists and adds it if needed"""
+        """Checks if this tag exists and adds it if needed. Saves only
+        when one was actually added - this runs once per row in the
+        recategorise loop, and the unconditional save cost a full index
+        write per selected tile (check_add_category already guards)."""
+        changed = False
         for t in tag.split(","):
             t = t.strip()
             if t != "" and t not in self.tags:
                 self.tags.append(t)
-        self.save()
+                changed = True
+        if changed:
+            self.save()
 
     def get_current_network_node(self) -> None | hou.Node:
         """Return thre current Node in the Network Editor"""
@@ -1875,7 +1889,11 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 % _count(rescued_count, "material")
             )
 
-        if rows_to_remove or mark_rescued:
+        # mark_rescued alone: missing-file rows are REPORTED and kept
+        # since the report-only change, so rows_to_remove mutates
+        # nothing and saving on it wrote an index that by construction
+        # had nothing to write.
+        if mark_rescued:
             self.save()
 
         self.last_cleanup_summary = list(summary)

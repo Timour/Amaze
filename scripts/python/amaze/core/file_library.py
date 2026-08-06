@@ -349,6 +349,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._progress_done = 0
         self._progress_total = 0
         self._os_icons: dict = {}
+        # Folder -> the owning location's colour band. THE PAINT PATH:
+        # data(CategoryColorRole) runs per tile per repaint, and the
+        # uncached shape deep-copied a location record per tile per
+        # frame - and keyed it on the row's own directory, so every
+        # subfolder row of a recursive location painted bandless.
+        # Cleared on rescan and by colours_changed().
+        self._colour_cache: dict = {}
         # Does this scene have a capture? Filled lazily on the first
         # paint of a row and kept, because the alternative is a stat
         # per visible scene row per FRAME - data(DecorationRole) is
@@ -470,6 +477,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._key_rows = {}
         self._pending_writes = {}
         self._progress_keys = set()
+        self._colour_cache = {}
         # A rescan is the moment the disk is authoritative again, so
         # the remembered stats go with the rows they described.
         self._capture_seen = {}
@@ -601,12 +609,55 @@ class FileFiles(grid_columns.GridColumnsMixin,
             debug.note("could not flush the image thumbnail cache "
                        "(%s)" % exc, why=why)
 
+    def _folder_colour(self, folder: str) -> str:
+        """The OWNING location's colour band for a row in `folder`.
+
+        Resolved by PREFIX - a subfolder row belongs to the registered
+        location above it, longest match wins; keying the lookup on the
+        row's own directory painted every subfolder row of a recursive
+        location bandless. Cached per FOLDER because this is the paint
+        path: the uncached shape deep-copied a location record per tile
+        per frame. Every input is in the key (the folder; the colour's
+        own changes clear the cache via colours_changed and the
+        rescan)."""
+        generation = locations.generation()
+        cached = self._colour_cache.get(folder)
+        if cached is not None and cached[0] == generation:
+            return cached[1]
+        # The row's own directory first - the registered-location case,
+        # and the one that must keep working on every prefs surface
+        # (the unreachable-library fallback answers this read too).
+        colour = str(locations.record(
+            self.preferences, folder).get("color", ""))
+        if not colour:
+            key = hostos.canonical_path_key(folder)
+            best = -1
+            for registered in locations.paths(self.preferences):
+                root = hostos.canonical_path_key(registered).rstrip("/")
+                if (key == root or key.startswith(root + "/")) \
+                        and len(root) > best:
+                    best = len(root)
+                    colour = str(locations.record(
+                        self.preferences, registered).get("color", ""))
+        self._colour_cache[folder] = (generation, colour)
+        return colour
+
+    def colours_changed(self) -> None:
+        """A location's colour moved - drop the paint-path cache. The
+        caller (the section's colour setter) emits the repaint."""
+        self._colour_cache = {}
+
     def clear_cache(self) -> None:
         """Wipe the on-disk thumbnail caches (images AND geometry - one
         clear() sweeps both prefixes) and the in-memory copies. Hip
         captures are NOT touched: they are hand-framed and cannot be
         regenerated, which is why they live under config_root."""
         self._get_image_cache().clear()
+        # The geo cache object too: clear() rmtrees the geo prefix on
+        # disk, and the kept in-memory manifest went on describing
+        # deleted PNGs, growing entries that could never hit again.
+        self._geo_cache = None
+        self._geo_cache_key = None
         thumbnails.engine.clear()
 
     # -- geo pipeline (the Geometry section's, verbatim) --------------
@@ -1026,8 +1077,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if role == self.FolderRole:
             return os.path.basename(folder.rstrip("/\\")) or folder
         if role == self.CategoryColorRole:
-            return str(locations.record(
-                self.preferences, folder).get("color", ""))
+            return self._folder_colour(folder)
         if role == self.KindRole:
             return kind
         if role == self.CropRole:

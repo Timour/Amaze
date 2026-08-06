@@ -186,7 +186,10 @@ class ThumbNailScene:
         Build the entire Scene with Lights, Camera, Rops and Cops
         """
         self.ropnet = self.geo_node.createNode("ropnet")
-        self.copnet = self.geo_node.createNode("cop2net")
+        # The cop2net belongs to build_cops' Mantra branch, its only
+        # user - built here unconditionally, every Redshift and Octane
+        # scene carried a dead node per render.
+        self.copnet = None
 
         self.build_lights()
         self.build_cam()
@@ -534,7 +537,8 @@ class ThumbNailScene:
         Build COPs for the set Renderer
         """
         if "Mantra" in self.renderer:
-            # CopNet Setup
+            # CopNet Setup - created here, in its only user's branch.
+            self.copnet = self.geo_node.createNode("cop2net")
             self.copnet.setName("exr_to_png")
 
             cop_file = self.copnet.createNode("file")
