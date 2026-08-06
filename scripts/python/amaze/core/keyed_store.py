@@ -479,8 +479,21 @@ class Store:
                 table = {}
                 for key, value in loaded[spec.payload].items():
                     value = spec.normalise(value)
-                    if value:
-                        table[str(key)] = value
+                    if not value:
+                        continue
+                    # Every legacy spelling is absorbed HERE, one
+                    # conversion on the way in, no migration event: the
+                    # real favourites held one file three ways. On a
+                    # collision the FIRST entry wins whole - no clever
+                    # merge - and the drop is logged by both spellings.
+                    stored = storage_key(spec, str(key))
+                    if stored in table:
+                        debug.event(spec.category,
+                                    "two spellings of one key on load "
+                                    "- first kept",
+                                    kept=stored, dropped=str(key))
+                        continue
+                    table[stored] = value
                 self._table = table
                 self.state = READ
             else:
@@ -533,7 +546,7 @@ class Store:
         Called per tile per repaint from three models' data(). A
         membership test and nothing else - no copy, no stat, no I/O.
         """
-        return str(key) in self._table
+        return storage_key(self.spec, key) in self._table
 
     def get(self, key) -> dict:
         """One value, as a COPY. {} when there is none.
@@ -542,7 +555,7 @@ class Store:
         cache without writing, which is how a comment badge lit for a
         note that was refused.
         """
-        value = self._table.get(str(key))
+        value = self._table.get(storage_key(self.spec, key))
         return copy.deepcopy(value) if value else {}
 
     def all(self) -> dict:
@@ -562,7 +575,7 @@ class Store:
     def set(self, key, value) -> Written:
         """Store one key; a falsy value REMOVES it - the contract both
         stores already have (an empty note deletes the note)."""
-        key = str(key)
+        key = storage_key(self.spec, key)
         value = self.spec.normalise(value) if value else {}
         if value:
             if self._table.get(key) == value:
@@ -759,10 +772,34 @@ def _bare_path(spec: Spec, key: str) -> str:
     return key
 
 
+def storage_key(spec: Spec, key) -> str:
+    """The spelling a path-shaped key is STORED under - variable-
+    relative via `hostos.storage_path_key`, so the file's bytes resolve
+    on every machine sharing the library. Id keys pass through; a mixed
+    store converts only inside its declared prefix. Callers keep
+    speaking whatever spelling they hold: the boundary converts, the
+    same one-implementation rule as `_bare_path` above."""
+    key = str(key)
+    if spec.keyspace == KEY_PATH:
+        return hostos.storage_path_key(key)
+    if (spec.keyspace == KEY_MIXED and spec.path_prefix
+            and key.startswith(spec.path_prefix)):
+        return spec.path_prefix + hostos.storage_path_key(
+            key[len(spec.path_prefix):])
+    return key
+
+
 def _under(spec: Spec, key: str, prefix: str) -> bool:
-    """Is this key the location itself, or something inside it?"""
+    """Is this key the location itself, or something inside it?
+
+    The caller's prefix is converted to STORAGE spelling first, because
+    that is the space the table's keys live in - comparing an absolute
+    against `~/...` matches nothing, which would leave every key under
+    a removed location behind, the exact sweep `retire_prefix` exists
+    to do."""
     if not spec.is_path_key(key):
         return False
+    prefix = hostos.storage_path_key(prefix)
     bare = _bare_path(spec, key)
     return bare in (prefix, prefix.rstrip("/")) or bare.startswith(
         _boundary(prefix))
@@ -774,6 +811,9 @@ def relocate(preferences, old: str, new: str) -> dict:
     results = {}
     if not old or not new or old == new:
         return results
+    # Storage space on both sides, the same conversion `_under` makes:
+    # the table's keys are variable-relative, so the edges must be too.
+    old, new = hostos.storage_path_key(old), hostos.storage_path_key(new)
     old_edge, new_edge = _boundary(old), _boundary(new)
     for spec in stores():
         if spec.keyspace == KEY_ID:
