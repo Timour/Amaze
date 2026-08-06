@@ -1221,8 +1221,14 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         back."""
         owned = sorted(
             name for name in os.listdir(self.mat_dir)
+            # The same suffix set Repair classifies by: a recovery
+            # stamp lives beside its asset files and is reported with
+            # them the moment their row is gone, so an expectation
+            # without ".stamp.json" goes stale on the first library
+            # that has saved under the stamp writer.
             if database.asset_id_for_file(
-                name, (".mat", ".interface"), "_cop") in self._cop_ids())
+                name, (".mat", ".interface", ".stamp.json"),
+                "_cop") in self._cop_ids())
         self.assertTrue(owned, "premise: the real cops.json owns files in "
                                "the asset folder")
         with open(self.cops, "w", encoding="utf-8") as handle:
