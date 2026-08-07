@@ -421,7 +421,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
             return (None, "Could not move %s into %s"
                     % (name, destination.path()))
         builder = moved[0]
-        builder.moveToGoodPosition()
+        helpers.auto_place(builder)
         # Registered exactly as an import is: a library whose wildcard
         # was narrowed or disabled would otherwise take the material as
         # a node that renders nowhere.

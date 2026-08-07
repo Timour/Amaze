@@ -617,6 +617,62 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
         cop.assert_not_called()
 
 
+class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
+    """Reported live: a drop rearranged the network - other nodes
+    slid away from where the artist had put them.
+
+    Measured on real nodes (2026-08-07): `moveToGoodPosition()` with
+    its defaults moved an unrelated box from y=0.0 to y=0.894 and a
+    sphere with it; the same call with `move_inputs`/`move_outputs`/
+    `move_unconnected` all False left both untouched. Houdini's own
+    tab-menu flow places the new node and rearranges nothing, so
+    Amaze places through ONE helper that carries those flags."""
+
+    def setUp(self):
+        self.net = hou.node("/obj").createNode("geo")
+        self.addCleanup(self.net.destroy)
+
+    def _others(self):
+        a = self.net.createNode("box")
+        b = self.net.createNode("sphere")
+        a.setPosition(hou.Vector2(0.0, 0.0))
+        b.setPosition(hou.Vector2(0.4, -0.2))
+        return a, b
+
+    def test_placing_a_node_never_moves_the_artists_nodes(self):
+        from amaze.helpers import helpers
+        a, b = self._others()
+        before = [tuple(n.position()) for n in (a, b)]
+        fresh = self.net.createNode("merge")
+        fresh.setInput(0, a)
+        helpers.auto_place(fresh)
+        after = [tuple(n.position()) for n in (a, b)]
+        self.assertEqual(before, after,
+                         "auto placement rearranged the network - the "
+                         "nodes the artist placed moved")
+
+    def test_the_app_never_calls_the_rearranging_form(self):
+        """A raw moveToGoodPosition() carries the defaults that move
+        other nodes, so the app calls it in exactly one place."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for base, _dirs, files in os.walk(root):
+            if os.path.basename(base) == "tests":
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, encoding="utf-8") as handle:
+                    body = handle.read()
+                if ".moveToGoodPosition(" in body:
+                    offenders.append(os.path.relpath(path, root))
+        self.assertEqual(
+            ["helpers/helpers.py"], offenders,
+            "these call Houdini's rearranging placement directly - "
+            "helpers.auto_place is the one home: %r" % offenders)
+
+
 class PlaceNodesTest(unittest.TestCase):
     """The ONE placement rule: created nodes move as a group so their
     centroid lands at the position, relative layout preserved; no

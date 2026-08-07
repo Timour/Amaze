@@ -1214,7 +1214,7 @@ class NodeHandler:
                     )
                     if moved:
                         self._builder_node = moved[0]
-                        self._builder_node.moveToGoodPosition()
+                        helpers.auto_place(self._builder_node)
 
             # Setup MaterialLibrary if Import Context was such
             if self._import_path.type().name() == "materiallibrary":
@@ -1643,7 +1643,7 @@ class NodeHandler:
                     "saved files look corrupt" % mat.name
                 )
             self._builder_node = new_mat[0]
-            self._builder_node.moveToGoodPosition()
+            helpers.auto_place(self._builder_node)
         else:
             new_mat = hou.moveNodesTo(self._builder_node.children(), self._import_path)  # type: ignore
             if not new_mat:
@@ -1714,7 +1714,7 @@ class NodeHandler:
             outer.destroy()
             inner.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
             inner.setGenericFlag(hou.nodeFlag.Material, True)
-            inner.moveToGoodPosition()
+            helpers.auto_place(inner)
             # The invariant check below is guarded by `shader_node is
             # not None` and this branch returns before reaching it - so
             # an unwrapped subnet with nothing wired to its surface
@@ -1791,7 +1791,7 @@ class NodeHandler:
         # wherever they lived at save time and can land overlapping here.
         # Same as pressing "L" in the network editor.
         self._builder_node.layoutChildren()
-        self._builder_node.moveToGoodPosition()
+        helpers.auto_place(self._builder_node)
 
     #: Was "/obj/MatLib" until 2026-07-27. Renaming was safe because
     #: zero library materials carried a cop_net at the time (verified),
@@ -2077,7 +2077,7 @@ class NodeHandler:
                         material=mat.name, error=str(exc))
             copnet.destroy()
             return
-        copnet.moveToGoodPosition()
+        helpers.auto_place(copnet)
         debug.event("import", "cop restored",
                     name=info["name"], reused=False)
         # Returned so a failed import can take it back out. Every early
@@ -2334,7 +2334,7 @@ class NodeHandler:
                 False,
                 '"%s": failed to load the saved network (%s).' % (mat.name, exc),
             )
-        container.moveToGoodPosition()
+        helpers.auto_place(container)
         try:
             container.setUserData("assetlib_id", str(mat.mat_id))
         except hou.OperationFailed:

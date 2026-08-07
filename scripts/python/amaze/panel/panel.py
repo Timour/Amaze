@@ -4682,9 +4682,9 @@ class MatLibPanel(QtWidgets.QWidget):
             loader.setRenderFlag(True)
         except AttributeError:
             pass
-        loader.moveToGoodPosition()
+        helpers.auto_place(loader)
         if container is not None:
-            container.moveToGoodPosition()
+            helpers.auto_place(container)
             # What you just added is what you want to see. createOutput
             # Node wires but does not flag, so a Solaris import would
             # otherwise land downstream of the display node and show
@@ -5125,7 +5125,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     liblop = lopnet.createNode("materiallibrary")
                     if target_lop is not None:
                         liblop.setInput(0, target_lop)
-                    liblop.moveToGoodPosition()
+                    helpers.auto_place(liblop)
                     liblop.setDisplayFlag(True)
                     created = True
                 except hou.OperationFailed:
@@ -6101,7 +6101,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     )
                     return
                 builder = moved[0]
-                builder.moveToGoodPosition()
+                helpers.auto_place(builder)
                 # Registered the same way an import is: a library whose
                 # wildcard was narrowed or disabled would otherwise
                 # take the material as a node that renders nowhere.
@@ -6603,7 +6603,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # unconnected siblings aside to make room, which read live as
         # every other node moving away from the drop.
         if position is None:
-            node.moveToGoodPosition()
+            helpers.auto_place(node)
         else:
             helpers.place_nodes([node], position)
         debug.event("interact", "carrier created", carrier=type_name,

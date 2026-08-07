@@ -522,6 +522,12 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 cached_png = image_cache.valid_path(full)
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
+                elif image_cache.known_failure(full):
+                    # Already defeated every converter as it stands -
+                    # re-queueing pays each adapter's timeout again on
+                    # every visit. The row shows its placeholder;
+                    # Rerender Thumbnail is the deliberate retry.
+                    self._row_specs.append((key, "missing", full))
                 else:
                     self._row_specs.append((key, "convert", full))
                     if not convert_queued:
@@ -594,6 +600,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if key not in self._progress_keys:
             return
         self._progress_keys.discard(key)
+        # An attempt that delivered no image is a FAILURE, and the one
+        # place both outcomes are known - remembered so the next visit
+        # skips it (texture_library.remember_failure says why).
+        failed_path = self._pending_writes.pop(key, None)
+        if (failed_path is not None and self._image_cache is not None
+                and thumbnails.engine.peek(key) is None):
+            self._image_cache.remember_failure(failed_path)
         self._progress_done += 1
         self.progress_changed.emit(
             self._progress_done, self._progress_total)
@@ -1020,6 +1033,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
             key, source, payload = self._row_specs[row]
             if source == "os-icon":
                 return self._os_icon_image(payload)
+            if source == "missing":
+                # Remembered: nothing could read this file as it
+                # stands, so the tile rests on its placeholder rather
+                # than paying every converter's timeout again.
+                return None
             if source == "file":
                 return thumbnails.engine.request_file(key, payload)
             if source == "capture":
