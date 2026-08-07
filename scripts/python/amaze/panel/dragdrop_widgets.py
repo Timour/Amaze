@@ -759,16 +759,23 @@ class GridGestureMixin:
         editor = dragengine.pane_tab_under_cursor()
         net = panel._network_under_release()
         spot = panel._release_position_in(net) if net is not None else None
-        wire, _name, _index = dragengine.wire_under_cursor(editor, spot)
+        # WHAT LANDED IS NEVER ITS OWN TARGET. The node is placed
+        # before either question is asked, so it sits under the cursor
+        # and answers both of them about itself. The host passes the
+        # items being dragged the same way (getPossibleDropTargets ->
+        # exclude_items).
+        wire, _name, _index = dragengine.wire_under_cursor(
+            editor, spot, exclude=landed)
         if wire is not None:
-            dragengine.splice_into_wire(wire, landed)
+            dragengine.splice_into_wire(wire, landed, editor)
             return
         # NO WIRE, but a node's own connector may be within reach - a
         # lone node, or the last of a chain, has nothing to insert
-        # into and Houdini connects to its stub instead, with a far
-        # larger snap radius (dragengine.connector_under_cursor).
+        # into and Houdini connects to its stub instead
+        # (dragengine.connector_under_cursor).
         dragengine.connect_to_neighbour(
-            dragengine.connector_under_cursor(editor, spot), landed)
+            dragengine.connector_under_cursor(
+                editor, spot, exclude=landed), landed, editor)
 
 
 def _node_paths_from_mime(mime) -> list:
