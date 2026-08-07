@@ -319,6 +319,12 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         self.rebuild_thumbs()
         row = index.row()
         if 0 <= row < self.rowCount():
+            # Every path that declares this row's PNG fresh runs
+            # through here, so the ACTIVE version's archive slot
+            # follows the base picture. Identical bytes are skipped
+            # inside, which makes the call after a switch a free no-op.
+            versions.record_render(self.preferences,
+                                   self._assets[row].mat_id)
             thumbnails.engine.discard(self._thumb_key(row))
             self.row_changed(
                 row, [QtCore.Qt.ItemDataRole.DecorationRole])
