@@ -4313,6 +4313,87 @@ class MatLibPanel(QtWidgets.QWidget):
         """Create a snippet by typing/pasting into an empty editor."""
         self._add_code_snippet("", "VEX", "")
 
+    # ---- THE CLICK WALKER --------------------------------------
+    #
+    # The second half of the interaction engine (ROADMAP - the matrix;
+    # sections.DropRule carries the declarations). It replaced FIVE
+    # hand-written double-click handlers that answered one question
+    # five ways: three carried a selection VETO (a selected node that
+    # could not take the payload refused instead of creating) and two
+    # never consulted the selection at all. The drag walker has read
+    # these same declarations since the behaviour table shipped; this
+    # is the aiming method it was always missing.
+
+    def click_on_row(self, section, index) -> None:
+        """A double-click on `index` in `section` - aimed by the
+        SELECTION, executed from the section's own declaration."""
+        if index is None or not index.isValid():
+            return
+        rule = getattr(section, "DROP", None)
+        by_kind = getattr(section, "DROP_BY_KIND", None)
+        if by_kind:
+            kind = index.data(self.file_files_model.KindRole) or ""
+            rule = by_kind.get(kind)
+        if rule is None:
+            self._cannot_load_here()
+            return
+        with helpers.preserving_selection_and_current():
+            landed = self._apply_click_rule(rule, index)
+        if not landed:
+            self._cannot_load_here()
+
+    def _apply_click_rule(self, rule, index) -> bool:
+        """ONE precedence for every section's click door.
+
+        THE SELECTION IS A HINT, NOT A VETO. A single visible selected
+        node is offered the payload first, and a node that cannot take
+        it FALLS THROUGH to the creation walk - the host's own rule
+        (the manual's tab-menu flow: a selection never blocks a
+        creation; wiring to the current node is a separate, explicit
+        gesture). The veto is what made a double-click refuse whenever
+        anything happened to be selected, which in Houdini is almost
+        always.
+        """
+        sel = self._visible_selected_nodes()
+        if rule.click_on_node and len(sel) == 1:
+            if bool(getattr(self, rule.click_on_node)(index, sel[0])):
+                return True
+            debug.event("interact", "click hint declined - falling "
+                        "through to the network",
+                        verb=rule.click_on_node, node=sel[0].path())
+        if rule.click_resolve:
+            return bool(getattr(self, rule.click_resolve)(index))
+        if rule.on_space:
+            for network in self._view_create_networks():
+                if getattr(self, rule.on_space)(index, network):
+                    return True
+        return False
+
+    # ---- the click-door verbs the declarations name ---------------
+
+    def click_import_material(self, _index) -> bool:
+        """Materials aim themselves - the context-aware import reads
+        the selection and the network under the cursor."""
+        self.import_asset("auto")
+        return True
+
+    def click_import_cop(self, _index) -> bool:
+        self.import_cop_assets()
+        return True
+
+    def click_import_geo(self, index) -> bool:
+        self.import_geo_asset(index)
+        return True
+
+    def click_open_hip(self, index) -> bool:
+        self.open_hip_scene(index)
+        return True
+
+    def click_copy_path(self, index) -> bool:
+        """An unknown file has no scene behaviour - its one action."""
+        self.copy_file_paths([index])
+        return True
+
     def _apply_code_index(self, index: QtCore.QModelIndex) -> None:
         """The Code section's click doors (double-click and menu
         Apply): ONE selected node takes the snippet; nothing selected
@@ -6493,7 +6574,24 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
         try:
             node = dest.createNode(type_name)
-        except hou.Error:
+        except hou.Error as refusal:
+            # HOUDINI IS THE AUTHORITY ON WHETHER A NETWORK CAN TAKE A
+            # NODE, and it answers in one sentence - a locked digital
+            # asset says `Cannot create a node inside a locked asset`,
+            # and only the nodes an asset MARKS editable are exempt (a
+            # SOP Create's `create` subnet is, its sopnet is not).
+            # Asking hou.isLockedHDA/isEditableInsideLockedHDA here
+            # FIRST was tried and deleted the same hour: a second
+            # answerer for a question the host already answers, and a
+            # sabotage of it changed nothing. What was missing was
+            # never the predicate - it was this line, which used to
+            # swallow the reason and cost two wrong diagnoses. The
+            # walk moves on to a network that can take it; unlocking
+            # the user's asset (allowEditingOfContents) is never ours
+            # to do.
+            debug.event("interact", "the network refused the carrier",
+                        carrier=type_name, dest=dest.path(),
+                        error=str(refusal))
             return None
         if name:
             try:

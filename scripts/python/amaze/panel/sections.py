@@ -72,19 +72,40 @@ CommentSubject = collections.namedtuple(
 FileLocation = collections.namedtuple(
     "FileLocation", "path label colour")
 
-#: WHAT A GESTURE RELEASE DOES HERE (ROADMAP - the interaction matrix).
-#: Four doors, each a panel VERB NAME or None, tried by the engine in
-#: one fixed order for every section (GridGestureMixin._apply_drop_rule
-#: is the only reader): a node under the release takes the payload
-#: `(index, node)`; a release outside the panel runs `outside(index)`;
-#: a self-aiming verb `resolve(index)` finds its own landing; empty
+#: WHAT A GESTURE DOES HERE (ROADMAP - the interaction matrix): one
+#: behaviour, two aiming methods, BOTH doors reading this one rule.
+#:
+#: The DRAG walker (GridGestureMixin._apply_drop_rule) aims by the
+#: cursor: a node under the release takes the payload `(index,
+#: node)`; a release outside the panel runs `outside(index)`; a
+#: self-aiming verb `resolve(index)` finds its own landing; empty
 #: network space runs the creation rule `(index, network, position)`.
+#:
+#: The CLICK walker (MatLibPanel._apply_click_rule) aims by the
+#: SELECTION: one visible selected node is tried through `on_node` as
+#: a HINT - a node that cannot take the payload falls through, never
+#: vetoes (the host's own Tab behaviour: a selection never blocks a
+#: creation); then `click_resolve(index)` for sections that aim
+#: themselves; then the creation walk over the visible networks; the
+#: one dialog only when nothing held it.
+#:
 #: Undeclared doors fall through; no door left = the uniform miss.
-#: This retired the release ladder - five sections' dispatch written
-#: as branches, where the File kinds each grew their own wording.
+#: This retired the release ladder AND the five hand-written
+#: double-click handlers - two doors, one rule (ROADMAP - the
+#: interaction matrix).
+#: `on_node`/`on_space`/`resolve`/`outside` are the DRAG's doors;
+#: `click_on_node`/`click_resolve` are the CLICK's, and they are
+#: separate because the function sheet aims the two doors
+#: differently in exactly two rows: a double-clicked scene file
+#: opens the scene and an unknown file copies its path, whatever
+#: happens to be selected, while a DRAGGED one still hands its path
+#: to the node under the cursor. Where both doors agree - code,
+#: colour, images - the same verb name appears in both fields, which
+#: is one fact stated twice, not two mechanisms.
 DropRule = collections.namedtuple(
-    "DropRule", "on_node on_space resolve outside",
-    defaults=(None, None, None, None),
+    "DropRule",
+    "on_node on_space resolve outside click_on_node click_resolve",
+    defaults=(None, None, None, None, None, None),
 )
 
 
@@ -970,7 +991,8 @@ class MaterialSection(AssetSection):
 
     #: A material import finds its own landing - the verb checks the
     #: release for a material library node or a network itself.
-    DROP = DropRule(resolve="drop_material_at_release")
+    DROP = DropRule(resolve="drop_material_at_release",
+                    click_resolve="click_import_material")
 
 
     def selection_has_redshift(self, indexes, current) -> bool:
@@ -1046,9 +1068,7 @@ class MaterialSection(AssetSection):
         )
 
     def double_click(self, index) -> None:
-        # Context-aware import (the index isn't used - import_asset reads
-        # the selection and the network under the cursor).
-        self.panel.import_asset("auto")
+        self.panel.click_on_row(self, index)
 
     def edit_dialog(self) -> None:
         self.panel.edit_material_info()
@@ -1085,7 +1105,8 @@ class CopSection(AssetSection):
 
     #: A saved network builds where the context allows - the verb
     #: resolves the destination itself (fill rule, approved).
-    DROP = DropRule(resolve="drop_cop_at_release")
+    DROP = DropRule(resolve="drop_cop_at_release",
+                    click_resolve="click_import_cop")
 
 
     def menu_load(self, indexes, current, payload=None) -> None:
@@ -1118,7 +1139,7 @@ class CopSection(AssetSection):
     )
 
     def double_click(self, index) -> None:
-        self.panel.import_cop_assets()
+        self.panel.click_on_row(self, index)
 
     def save_node(self, node) -> None:
         self.panel.save_cop_from_node(node)
@@ -1167,7 +1188,8 @@ class CodeSection(AssetSection):
     #: A snippet hands to the node under the release; on empty network
     #: space the carrier wrangle is created where supported.
     DROP = DropRule(on_node="drop_code_at_release",
-                    on_space="create_code_node_in")
+                    on_space="create_code_node_in",
+                    click_on_node="drop_code_at_release")
 
 
     def menu_new_snippet(self, indexes, current, payload=None) -> None:
@@ -1204,8 +1226,7 @@ class CodeSection(AssetSection):
     )
 
     def double_click(self, index) -> None:
-        if index is not None and index.isValid():
-            self.panel._apply_code_index(index)
+        self.panel.click_on_row(self, index)
 
     def save_node(self, node) -> None:
         self.panel.save_code_from_node(node)
@@ -1583,17 +1604,24 @@ class FileSection(FolderSection):
     #: creates its carrier on network space, anything else misses.
     #: The un-kinded "" row is a real case (a model that answers no
     #: KindRole) and behaves like unknown.
-    _PATH_ONLY = DropRule(on_node="drop_file_path_on_node")
+    #: An unknown file has no scene behaviour at all - its one
+    #: click action is Copy Path (the function sheet).
+    _PATH_ONLY = DropRule(on_node="drop_file_path_on_node",
+                          click_resolve="click_copy_path")
     DROP_BY_KIND = {
         file_library.KIND_IMAGE: DropRule(
             on_node="drop_file_path_on_node",
-            on_space="create_image_node_in"),
+            on_space="create_image_node_in",
+            click_on_node="drop_file_path_on_node"),
         file_library.KIND_GEO: DropRule(
             on_node="drop_file_path_on_node",
-            resolve="drop_geo_at_release"),
+            resolve="drop_geo_at_release",
+            click_on_node="drop_file_path_on_node",
+            click_resolve="click_import_geo"),
         file_library.KIND_HIP: DropRule(
             on_node="drop_file_path_on_node",
-            outside="open_hip_scene"),
+            outside="open_hip_scene",
+            click_resolve="click_open_hip"),
         file_library.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
@@ -1727,8 +1755,7 @@ class FileSection(FolderSection):
         self.panel.update_selected_cat()
 
     def double_click(self, index) -> None:
-        if index is not None and index.isValid():
-            self.panel.file_double_click(index)
+        self.panel.click_on_row(self, index)
 
 
 class OnlineContext(Section):
@@ -1912,7 +1939,8 @@ class GradientSection(Section):
     #: A gradient hands to a node with a ramp; on empty network space
     #: the MaterialX ramp carrier is created where supported.
     DROP = DropRule(on_node="apply_gradient_to_node",
-                    on_space="create_gradient_node_in")
+                    on_space="create_gradient_node_in",
+                    click_on_node="apply_gradient_to_node")
 
     takes_category_drops = True
 
@@ -2107,11 +2135,7 @@ class GradientSection(Section):
         )
 
     def double_click(self, index) -> None:
-        if index is not None and index.isValid():
-            source = self.panel.gradient_sorted_model.mapToSource(index)
-            entry = self.panel.gradient_model.entry(source.row())
-            if entry is not None:
-                self.panel._apply_gradient_ramp(entry)
+        self.panel.click_on_row(self, index)
 
     def save_node(self, node) -> None:
         self.panel.save_gradient_from_node(node)
