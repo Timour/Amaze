@@ -1221,14 +1221,12 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         back."""
         owned = sorted(
             name for name in os.listdir(self.mat_dir)
-            # The same suffix set Repair classifies by: a recovery
-            # stamp lives beside its asset files and is reported with
-            # them the moment their row is gone, so an expectation
-            # without ".stamp.json" goes stale on the first library
-            # that has saved under the stamp writer.
+            # Repair's OWN suffix set, imported - the hand-rolled copy
+            # here went stale twice (first .stamp.json, then
+            # .builder.json), each time on the first real library that
+            # had saved under the newer writer.
             if database.asset_id_for_file(
-                name, (".mat", ".interface", ".stamp.json"),
-                "_cop") in self._cop_ids())
+                name, repair.ASSET_SIDECARS, "_cop") in self._cop_ids())
         self.assertTrue(owned, "premise: the real cops.json owns files in "
                                "the asset folder")
         with open(self.cops, "w", encoding="utf-8") as handle:
@@ -1271,10 +1269,23 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         test_support.reset_database_singletons()
         after = self._survey()
         self.assertTrue(after["complete"])
+        # bak-1 is OLDER than the newest saves: an asset saved since
+        # the last snapshot has no row in the restored list, so its
+        # files are - correctly - still reported. A zero expectation
+        # here held only for a library that never saved between
+        # snapshots; the honest claim is that every file whose row
+        # bak-1 DOES hold is accounted again. (put_back saves the
+        # pre-restore state first, so the newer rows are one more
+        # restore away, not lost.)
+        after_ids = after["ids"]
+        still_unlisted = sorted(
+            name for name in owned
+            if database.asset_id_for_file(
+                name, repair.ASSET_SIDECARS, "_cop") not in after_ids)
         self.assertEqual(
-            0, repair.unaccounted_total(after),
+            still_unlisted, after["unaccounted"][self.prefs.asset_dir],
             "putting the saved copy back did not account for the files "
-            "again, so the recovery does not recover")
+            "its rows own, so the recovery does not recover")
         model = self._clean()
         self.assertNotIn("Amaze could not check",
                          " ".join(model.last_cleanup_summary),

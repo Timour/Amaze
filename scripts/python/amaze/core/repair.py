@@ -70,6 +70,14 @@ from amaze.prefs import prefs as prefs_module
 #: all on the real one) and therefore the one most worth reporting on.
 DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
 
+#: Every file suffix an asset row owns in the asset folder - the ONE
+#: home for the set. Clean Library sweeps with these and the survey
+#: classifies with them, and the rehearsal test builds its expectation
+#: FROM here: a hand-rolled copy went stale twice, first missing
+#: .stamp.json, then .builder.json - each time on the first real
+#: library that had saved under the newer writer.
+ASSET_SIDECARS = (".mat", ".interface", ".builder.json", ".stamp.json")
+
 
 def side_tables() -> tuple:
     """The keyed side tables, from the ONE registry that declares them.
@@ -164,8 +172,7 @@ def survey(directory: str, asset_dir: str = "mat/",
             # count here too, or the two tools report different numbers
             # about one folder (the exact bug this module's own
             # docstring forbids).
-            (asset_dir, (".mat", ".interface", ".builder.json",
-                         ".stamp.json"), "_cop"),
+            (asset_dir, ASSET_SIDECARS, "_cop"),
             (img_dir, (".png",), "_icon")):
         names = _unlisted_in(directory, folder, extensions, tail, ids)
         if names is None:
