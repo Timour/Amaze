@@ -521,6 +521,50 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
             "paths go through _scene_path")
 
 
+class DropFilePathOnNodeTest(unittest.TestCase):
+    """The release-on-a-node verb: the node's FIRST file parameter
+    takes the SPELLED path, and a node with no file parameter refuses
+    with a False - dialog-free, so the gesture can show its own miss.
+    Uniform across kinds; the dispatch is pinned in
+    test_drag_gesture."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _home(self):
+        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
+        if not home or home in ("/", "."):
+            self.skipTest("no HOME variable in this session")
+        return home
+
+    def _index_for(self, path):
+        import types
+        return types.SimpleNamespace(data=lambda role: path)
+
+    def test_the_first_file_parm_takes_the_spelled_path(self):
+        home = self._home()
+        geo = hou.node("/obj").createNode("geo", "amaze_droptest")
+        self.addCleanup(geo.destroy)
+        loader = geo.createNode("file")
+        self.assertTrue(self.panel.drop_file_path_on_node(
+            self._index_for(home + "/textures/amaze_drop.png"), loader))
+        self.assertEqual(
+            "$HOME/textures/amaze_drop.png",
+            loader.parm("file").rawValue(),
+            "the hand-over wrote a raw absolute path")
+
+    def test_a_node_with_no_file_parm_refuses_without_a_dialog(self):
+        home = self._home()
+        geo = hou.node("/obj").createNode("geo", "amaze_droptest2")
+        self.addCleanup(geo.destroy)
+        bare = geo.createNode("null")
+        self.assertFalse(
+            self.panel.drop_file_path_on_node(
+                self._index_for(home + "/x.png"), bare),
+            "a node with nothing to take the path claimed success")
+
+
 class HoudiniPathTest(unittest.TestCase):
     """Copy Path writes paths the way Houdini writes them."""
 

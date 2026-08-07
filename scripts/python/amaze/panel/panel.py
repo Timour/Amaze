@@ -6317,6 +6317,33 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         parm.set(self._scene_path(path))
 
+    def drop_file_path_on_node(self, index, node) -> bool:
+        """A File row released on a node: the node's FIRST file
+        parameter takes the spelled path - the same act as selecting
+        the node and double-clicking the row, aimed by the cursor
+        instead of the selection. Uniform across kinds, unknown files
+        included (ROADMAP - the interaction matrix, 2026-08-07). A
+        node with no file parameter answers
+        False, so the gesture shows its own refusal - the miss
+        indicator and the tag flying home - never a dialog; the status
+        line carries the why."""
+        path = index.data(self.file_files_model.PathRole)
+        if not path:
+            return False
+        parm = helpers.find_file_parm(node)
+        if parm is None:
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.setStatusMessage(
+                    "Amaze: %s has no file parameter to take %s"
+                    % (node.name(), os.path.basename(path)),
+                    severity=hou.severityType.Warning,
+                )
+            return False
+        with hou.undos.group("Amaze Set File Path"):
+            parm.set(self._scene_path(path))
+        return True
+
     def set_texture_on_selected_node(self, index: QtCore.QModelIndex | None) -> None:
         """Double-click on an image in the File section: push the path onto
         the file parm of whichever single node is currently selected in

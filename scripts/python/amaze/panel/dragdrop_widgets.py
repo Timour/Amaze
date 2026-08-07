@@ -224,44 +224,34 @@ class GridGestureMixin:
 
     @debug.guarded("DragDropListView.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        """Two drag systems, split by task:
+        """ONE self-managed gesture for every section, File rows
+        included: the drop target (a node, a category, a viewport
+        prim) is resolved by US at release, which means the gesture
+        must stay in our hands - a real QDrag traps it in macOS's
+        native drag run loop where our code cannot run at all (proven
+        during the texture saga: a polling QTimer fired zero times
+        inside QDrag.exec()).
 
-        - REAL-PATH rows (the File section's image and other kinds)
-          drag the file PATH as native file mime - the OS renders its own
-          filepath tag and Houdini's parm fields accept it natively, so
-          nothing of ours runs during the drag (_run_file_path_drag).
+        The one place a real QDrag is REQUIRED is a Parameters pane -
+        a field is a Qt widget and only mime fills it - so a File
+        row's gesture crossing into one HANDS OFF to the real drag
+        (_promote_to_field_drag). Never call super() during the
+        gesture (even before the threshold) - that used to let
+        QAbstractItemView fall back to rubber-band selection.
 
-        - Every NON-real-path gesture (materials, cop, gradient/color,
-          code, and the File section's geometry-import and hip-load
-          rows) has no file handoff of its own, so
-          the drop target (a node/network) must be resolved by US, which
-          means the gesture must stay in our hands: a real QDrag traps it
-          in macOS's native drag run loop where our code can't run at all
-          (proven during the texture saga - a polling QTimer fired zero
-          times inside QDrag.exec()). One SELF-MANAGED gesture, one look
-          (a floating name tag); mouseReleaseEvent dispatches to the
-          section's own action.
-
-        Speed: the target is resolved ONCE at release, not polled every
-        frame during the drag - the per-move networkItemsInBox poll was
-        the lag. The floating tag just follows the cursor.
+        Speed: the release target is resolved ONCE, not polled every
+        frame - the per-move networkItemsInBox poll was the lag. The
+        floating tag just follows the cursor.
         """
         if self._drag_start is not None:
             moved = (event.pos() - self._drag_start).manhattanLength()
-            if self._drag_section == "file" and self._file_drag_is_native():
-                if moved >= QtWidgets.QApplication.startDragDistance():
-                    self._drag_start = None
-                    self._run_file_path_drag()
-                # Never call super() here (even before the threshold's
-                # crossed) - that's what used to let QAbstractItemView
-                # fall back to rubber-band selection during this gesture.
-                return
-            # Unified self-managed drag for every non-real-path section.
             if not self._dragging and moved >= (
                 QtWidgets.QApplication.startDragDistance()
             ):
                 self._begin_drag()
             if self._dragging:
+                if self._promote_to_field_drag():
+                    return
                 self._move_preview()
                 # Same accent-purple drop-target feedback as the material
                 # drag gets via the sidebar filter - these gestures have no
@@ -414,12 +404,42 @@ class GridGestureMixin:
         except RuntimeError:
             return ""
 
-    def _file_drag_is_native(self) -> bool:
-        """image and other rows drag as a native file-path mime; the
-        kinds with a resolve-the-target action (geometry imports, hip
-        loads) stay on the self-managed gesture."""
-        return self._file_drag_kind() in (
-            file_library.KIND_IMAGE, file_library.KIND_OTHER)
+    def _promote_to_field_drag(self) -> bool:
+        """The parameter-field hand-off: a FILE row's gesture crossing
+        into a Parameters pane becomes the one real QDrag, because a
+        field is a Qt widget and only mime fills it. Self-managed
+        cannot serve fields, and a real drag cannot serve nodes (the
+        run-loop trap in the class docstring), so the gesture chooses
+        at the pane boundary. After the hand-off the drag is Qt's:
+        releasing back over a network editor gets Houdini's stock
+        answer.
+
+        A hand-off, not a miss - the tag goes quietly and Qt's own
+        drag picture takes over; no fly-back, no indicator."""
+        if self._drag_section != "file":
+            return False
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        try:
+            pane = ui.paneTabUnderCursor()
+        except AttributeError:
+            return False
+        if pane is None or pane.type() != hou.paneTabType.Parm:
+            return False
+        preview = self._preview
+        self._preview = None
+        if preview is not None:
+            preview.hide()
+            preview.close()
+            preview.deleteLater()
+        self._dragging = False
+        self._drag_start = None
+        dragengine.end()
+        if self._drag_panel is not None:
+            self._drag_panel._set_drag_hover_row(-1)
+        self._run_file_path_drag()
+        return True
 
     @staticmethod
     def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
@@ -549,7 +569,18 @@ class GridGestureMixin:
                     elif section == "file":
                         kind = idx.data(
                             panel.file_files_model.KindRole) or ""
-                        if kind == file_library.KIND_GEO:
+                        # ONE rule on nodes, every kind (ROADMAP -
+                        # the interaction matrix): the release hands
+                        # the node the spelled path, and a node that
+                        # takes nothing is a MISS - no per-kind
+                        # fallback. The verbs below serve releases
+                        # that hit NO node; the behaviour table makes
+                        # them per-section declarations.
+                        node = panel._node_under_cursor()
+                        if node is not None:
+                            outcome = bool(panel.drop_file_path_on_node(
+                                idx, node))
+                        elif kind == file_library.KIND_GEO:
                             outcome = bool(panel.drop_geo_at_release(idx))
                         elif kind == file_library.KIND_HIP:
                             # Drag does what double-click does (the

@@ -44,6 +44,7 @@ class _StubPanel(QtWidgets.QWidget):
         self.hover_rows = []
         self._category = None
         self._node = None
+        self._file_path_outcome = True
         # The File section's release dispatch reads the row KIND
         # through this attribute; the harness stamps kinds onto its
         # QStandardItems under the same role number.
@@ -65,6 +66,11 @@ class _StubPanel(QtWidgets.QWidget):
 
     def _category_under_cursor(self):
         return self._category
+
+    def _update_category_drag_hover_global(self):
+        """File rows ride the self-managed gesture since batch 2 of
+        the interaction system, so every drag now walks the live
+        move path that drives the sidebar hover glow."""
 
     def _node_under_cursor(self):
         return self._node
@@ -95,6 +101,10 @@ class _StubPanel(QtWidgets.QWidget):
 
     def drop_code_at_release(self, idx, node):
         self.calls.append("code")
+
+    def drop_file_path_on_node(self, idx, node):
+        self.calls.append("file_path")
+        return self._file_path_outcome
 
 
 def _event(kind, pos, button=QtCore.Qt.MouseButton.LeftButton,
@@ -418,6 +428,162 @@ class TestGestureRelease(unittest.TestCase):
         h.release()
         self.assertFalse(h.view._dragging)
         self.assertEqual(h.panel.calls, [])
+
+
+class FileRowsReleaseOnNodes(unittest.TestCase):
+    """Batch 2 of the one interaction system: image, unknown and
+    geometry rows ride the one self-managed gesture, and a release on
+    a node hands over the spelled path - uniform across kinds.
+    Geometry falls back to its import when the node takes nothing;
+    image and unknown rows MISS."""
+
+    def _drag(self, harness):
+        harness.press()
+        start = harness.item_pos()
+        harness.move(QtCore.QPoint(start.x() + 60, start.y() + 60))
+
+    def test_an_image_release_on_a_node_hands_over_the_path(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
+        h.panel._node = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["file_path"], h.panel.calls)
+
+    def test_an_unknown_row_behaves_exactly_like_an_image(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_OTHER)
+        h.panel._node = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["file_path"], h.panel.calls)
+
+    def test_no_node_under_the_release_is_a_miss_not_an_action(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
+        self._drag(h)
+        h.release()
+        self.assertEqual([], h.panel.calls)
+        self.assertFalse(h.view._dragging, "the gesture stayed live")
+
+    def test_a_node_that_takes_nothing_is_a_MISS_for_geometry_too(self):
+        """ONE rule on nodes, no per-kind fallback: a refused hand-over
+        does not quietly become an import beside the node."""
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
+        h.panel._node = object()
+        h.panel._file_path_outcome = False
+        self._drag(h)
+        h.release()
+        self.assertEqual(["file_path"], h.panel.calls,
+                         "a refused node hand-over ran another verb")
+
+    def test_geometry_on_a_node_hands_over_like_everything_else(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
+        h.panel._node = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["file_path"], h.panel.calls)
+
+    def test_geometry_on_no_node_imports(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_GEO)
+        self._drag(h)
+        h.release()
+        self.assertEqual(["geo"], h.panel.calls,
+                         "the no-node release lost the geometry import")
+
+    def test_hip_on_a_node_hands_over_like_everything_else(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_HIP)
+        h.panel._node = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["file_path"], h.panel.calls,
+                         "a hip on a node must hand over the path, "
+                         "not load the scene")
+
+
+class TheParameterPaneHandOff(unittest.TestCase):
+    """A File gesture crossing into a Parameters pane becomes the one
+    real QDrag - a field is a Qt widget and only mime fills it. Every
+    other section stays self-managed whatever pane it crosses."""
+
+    class _Pane:
+        def type(self):
+            return hou.paneTabType.Parm
+
+    class _UI:
+        def __init__(self, pane):
+            self._pane = pane
+
+        def paneTabUnderCursor(self):
+            return self._pane
+
+        def paneTabs(self):
+            """dragengine's viewport hover walks the panes on every
+            move of a MATERIAL drag; an empty answer keeps it inert
+            under the mock."""
+            return []
+
+    def _armed(self, section, kind=None):
+        h = _Harness(self, section=section, kind=kind)
+        h.press()
+        start = h.item_pos()
+        h.move(QtCore.QPoint(start.x() + 60, start.y() + 60))
+        self.assertTrue(h.view._dragging, "premise: the gesture armed")
+        return h
+
+    def _with_parm_pane_under_cursor(self, harness, move_to):
+        ran = []
+        harness.view._run_file_path_drag = lambda: ran.append(True)
+        had_ui = hasattr(hou, "ui")
+        real = getattr(hou, "ui", None)
+        hou.ui = self._UI(self._Pane())
+        try:
+            harness.move(move_to)
+        finally:
+            if had_ui:
+                hou.ui = real
+            else:
+                del hou.ui
+        return ran
+
+    def test_a_file_gesture_over_a_parm_pane_promotes(self):
+        from amaze.core import file_library
+        h = self._armed("file", file_library.KIND_IMAGE)
+        start = h.item_pos()
+        ran = self._with_parm_pane_under_cursor(
+            h, QtCore.QPoint(start.x() + 90, start.y() + 90))
+        self.assertEqual([True], ran, "the hand-off did not run")
+        self.assertFalse(h.view._dragging,
+                         "the gesture stayed live after the hand-off")
+
+    def test_a_material_gesture_never_promotes(self):
+        # The mock is installed BEFORE arming: a material drag walks
+        # the viewport hover on every move, which asks hou.ui for the
+        # panes - absent headless, empty under the mock.
+        ran = []
+        had_ui = hasattr(hou, "ui")
+        real = getattr(hou, "ui", None)
+        hou.ui = self._UI(self._Pane())
+        try:
+            h = self._armed("material")
+            h.view._run_file_path_drag = lambda: ran.append(True)
+            start = h.item_pos()
+            h.move(QtCore.QPoint(start.x() + 90, start.y() + 90))
+        finally:
+            if had_ui:
+                hou.ui = real
+            else:
+                del hou.ui
+        self.assertEqual([], ran, "a material drag promoted to a "
+                         "file-path drag")
+        self.assertTrue(h.view._dragging,
+                        "the material gesture must survive the pane "
+                        "crossing")
+        h.release()
 
 
 class GuardedSlotsTest(unittest.TestCase):
