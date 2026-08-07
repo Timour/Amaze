@@ -4776,16 +4776,12 @@ class MatLibPanel(QtWidgets.QWidget):
             source_index = self.cop_sorted_model.mapToSource(index)
         except Exception:
             return False
-        position = (self._release_position()
-                    if context == self._network_under_release() else None)
-        before = set(context.children()) if position is not None else ()
         with hou.undos.group("Amaze Import COP Network"):
             ok, reason = self.cop_model.import_asset_to_scene(
                 source_index, context_node=context
             )
         if not ok and reason:
             hou.ui.displayMessage(reason)  # type: ignore
-        self._place_new_children(context, before, position)
         return True
 
     def _import_material_builder(self, asset_id, target, context_node=None):
@@ -4932,9 +4928,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
-        position = (self._release_position()
-                    if context == self._network_under_release() else None)
-        self._import_materials_into_context(context, ids, position)
+        self._import_materials_into_context(context, ids)
         return True
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
@@ -5114,27 +5108,22 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
 
-    def _import_materials_into_context(self, context, ids,
-                                       position=None) -> None:
+    def _import_materials_into_context(self, context, ids) -> None:
         """Network-release import for the material section. One undo
-        group: the whole multi-drop reverts as one step. A position
-        places the copies at the release point, cascading a
-        multi-drop; without one the import auto-places (a drop ONTO a
-        material library node imports inside it, where the outer
-        network's coordinates mean nothing)."""
+        group: the whole multi-drop reverts as one step. Placement is
+        the import machinery's own until it RETURNS what it created -
+        the general seam (ROADMAP - the interaction system); a
+        placement bolted on around it by diffing children was
+        withdrawn the night it shipped."""
         with hou.undos.group("Amaze Import Materials"):
-            self._import_materials_into_context_grouped(
-                context, ids, position)
+            self._import_materials_into_context_grouped(context, ids)
 
-    def _import_materials_into_context_grouped(self, context, ids,
-                                               position=None) -> None:
-        for offset, aid in enumerate(ids):
+    def _import_materials_into_context_grouped(self, context, ids) -> None:
+        for aid in ids:
             row = self.material_model.find_asset_row_by_id(aid)
             if row < 0:
                 continue
             idx = self.material_model.index(row, 0)
-            before = (set(context.children())
-                      if position is not None else ())
             ok, reason = self.material_model.import_asset_to_scene(
                 idx, "auto", context_node=context
             )
@@ -5147,7 +5136,6 @@ class MatLibPanel(QtWidgets.QWidget):
                 debug.event("import", "network import refused",
                             reason=str(reason))
                 break
-            self._place_new_children(context, before, position, offset)
 
     def drop_code_at_release(self, index, node: hou.Node) -> bool:
         """Code snippet drag released (self-managed): apply the snippet to
@@ -6405,24 +6393,6 @@ class MatLibPanel(QtWidgets.QWidget):
             return pane_tab.cursorPosition()
         except AttributeError:
             return None
-
-    def _place_new_children(self, context, before, position,
-                            offset: int = 0) -> None:
-        """The shared placement half of every network-release import:
-        children of `context` not in `before` land at the release
-        position, a multi-drop cascading from it. No position -
-        Houdini's own auto-placement stands (which walks a diagonal,
-        the pattern reported live when every import auto-placed)."""
-        if position is None:
-            return
-        for node in context.children():
-            if node not in before:
-                try:
-                    node.setPosition(hou.Vector2(
-                        position.x() + offset * 0.6,
-                        position.y() - offset * 0.9))
-                except (hou.OperationFailed, TypeError):
-                    pass
 
     def _view_create_networks(self) -> list:
         """The click doors' aim when nothing is selected: every
