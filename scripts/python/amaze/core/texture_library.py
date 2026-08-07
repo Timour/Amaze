@@ -293,6 +293,39 @@ class ThumbnailCache:
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 
+    def remember_failure(self, full_path: str) -> None:
+        """Record that NOTHING could read this file as it stands.
+
+        Without this a file no converter can decode is re-queued on
+        every visit to its folder and pays each adapter's timeout
+        again - measured live as a stall that never resolves, on the
+        same handful of files, forever. The record is keyed to the
+        file as it is now, so replacing it with a good image converts
+        normally; `invalidate` (Rerender Thumbnail) clears it, which
+        is the deliberate retry.
+        """
+        try:
+            st = os.stat(full_path)
+        except OSError:
+            return
+        self._manifest[full_path] = {"mtime": st.st_mtime,
+                                     "size": st.st_size,
+                                     "failed": True}
+        self._dirty = True
+
+    def known_failure(self, full_path: str) -> bool:
+        """True when this exact file has already defeated every
+        converter - the skip that keeps a folder open fast."""
+        entry = self._manifest.get(full_path)
+        if not entry or not entry.get("failed"):
+            return False
+        try:
+            st = os.stat(full_path)
+        except OSError:
+            return False
+        return (entry.get("mtime") == st.st_mtime
+                and entry.get("size") == st.st_size)
+
     def reconcile(self, folder: str, current_names: list) -> None:
         """Drop cache entries for this folder whose source file is gone or
         has changed, so the cache stays 1:1 with the folder's contents."""

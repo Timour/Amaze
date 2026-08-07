@@ -491,6 +491,43 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             "images against a manifest measured at 40,000 entries that "
             "is the whole of Update Preview" % len(writes))
 
+    def test_a_file_nothing_can_read_is_not_retried_forever(self):
+        """Reported live: browsing a folder stalled again and again on
+        the same few files. Nothing recorded a FAILURE, so every visit
+        re-queued them and paid every converter's timeout afresh - the
+        cost is per visit, forever, for a file that will never decode.
+
+        A remembered failure is keyed to the file as it is NOW (mtime
+        and size), so replacing the file with a good one converts it,
+        and Rerender Thumbnail clears the memory deliberately."""
+        cache = texture_library.ThumbnailCache(size=256)
+        folder = tempfile.mkdtemp(prefix="amaze_failmem_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        broken = os.path.join(folder, "not_really_a.jpg")
+        with open(broken, "wb") as handle:
+            handle.write(b"\x00" * 2048)
+
+        self.assertFalse(cache.known_failure(broken),
+                         "a file nobody has tried is not a failure")
+        cache.remember_failure(broken)
+        self.assertTrue(cache.known_failure(broken),
+                        "the failure was not remembered, so the file "
+                        "is converted again on the next visit")
+
+        # Rerender Thumbnail is the deliberate retry.
+        cache.invalidate(broken)
+        self.assertFalse(cache.known_failure(broken),
+                         "Rerender Thumbnail did not clear the memory")
+
+        # A REPLACED file is a different file, whatever it is called.
+        cache.remember_failure(broken)
+        with open(broken, "wb") as handle:
+            handle.write(b"\x00" * 4096)
+        self.assertFalse(
+            cache.known_failure(broken),
+            "the memory outlived the file it was about - a fixed "
+            "image would never get its thumbnail")
+
     def test_a_single_invalidate_still_writes(self):
         cache = texture_library.ThumbnailCache(size=256)
         cache._manifest["/img/one.png"] = {"mtime": 1, "size": 1}

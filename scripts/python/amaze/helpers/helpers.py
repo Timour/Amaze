@@ -398,6 +398,28 @@ def preserving_selection_and_current():
                 pass
 
 
+def auto_place(node) -> None:
+    """Place a freshly created node WITHOUT rearranging the network -
+    the no-drop-point half of the placement rule.
+
+    `moveToGoodPosition()` defaults to moving the new node's inputs,
+    outputs AND unconnected neighbours to make room. Measured
+    2026-08-07: an untouched box slid from y=0.0 to y=0.894 and a
+    sphere with it; the same call with the three flags off left both
+    where they were. Houdini's own tab-menu flow places what you
+    create and rearranges nothing (the manual, network/nodes.txt), so
+    every Amaze placement passes through here - a source scan in
+    test_nodes_section keeps this the only caller.
+    """
+    if node is None:
+        return
+    try:
+        node.moveToGoodPosition(move_inputs=False, move_outputs=False,
+                                move_unconnected=False)
+    except (hou.OperationFailed, hou.ObjectWasDeleted):
+        pass
+
+
 def place_nodes(nodes, position) -> None:
     """Move created nodes as a GROUP so their centroid lands at
     `position`, preserving their relative layout - the ONE placement
