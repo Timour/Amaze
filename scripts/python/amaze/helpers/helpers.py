@@ -430,21 +430,30 @@ def _put_editors_back(editors, pass_name: str) -> None:
     moved = []
     with hou.undos.disabler():
         for pane_tab, current, pwd in editors:
-            # PWD FIRST, then the current node: setCurrentNode on a
-            # node in another network is itself a dive, so putting
-            # the network back afterwards would fight it.
+            # THE CURRENT NODE FIRST, and only when it lives INSIDE
+            # the network being restored.
+            #
+            # An editor showing /stage with nothing selected answers
+            # `currentNode()` with /stage ITSELF, and making a network
+            # current sends the editor to that network's PARENT to
+            # show it as an item - measured live: restoring it put the
+            # editor at root with `stage` boxed, which is the very
+            # dive this function exists to undo. So a current node
+            # that is the network, or lives somewhere else entirely,
+            # is not restored at all; the pwd carries the state.
+            try:
+                if (current is not None and pwd is not None
+                        and current != pwd
+                        and current.parent() == pwd):
+                    pane_tab.setCurrentNode(current)
+            except (AttributeError, hou.OperationFailed,
+                    hou.ObjectWasDeleted):
+                pass
             try:
                 showing = pane_tab.pwd()
                 if pwd is not None and showing != pwd:
                     moved.append((showing.path(), pwd.path()))
                     pane_tab.setPwd(pwd)
-            except (AttributeError, hou.OperationFailed,
-                    hou.ObjectWasDeleted):
-                pass
-            if current is None:
-                continue
-            try:
-                pane_tab.setCurrentNode(current)
             except (AttributeError, hou.OperationFailed,
                     hou.ObjectWasDeleted):
                 pass
@@ -500,6 +509,27 @@ def auto_place(node) -> None:
         pass
 
 
+def centred_on(position):
+    """The POSITION to set so a node's body sits centred on `position`.
+
+    `setPosition` anchors a node's corner, not its middle, so a drop
+    point used raw puts the node beside the cursor - reported live as
+    the node landing left of the pointer while the outline sat on it.
+    Houdini's own new-node placement subtracts a half size for exactly
+    this (`nodegraphconnect`: `node_pos -= utils.getNewNodeHalfSize()`,
+    a constant `hou.Vector2(0.5, 0.15)`), and the ghost is drawn
+    centred, so both now agree with the host.
+    """
+    if position is None:
+        return None
+    try:
+        import nodegraphutils
+        half = nodegraphutils.getNewNodeHalfSize()
+    except (ImportError, AttributeError):
+        half = hou.Vector2(0.5, 0.15)
+    return hou.Vector2(position.x() - half.x(), position.y() - half.y())
+
+
 def place_nodes(nodes, position) -> None:
     """Move created nodes as a GROUP so their centroid lands at
     `position`, preserving their relative layout - the ONE placement
@@ -511,6 +541,7 @@ def place_nodes(nodes, position) -> None:
     if not nodes:
         return
     _remember_placed(nodes)
+    position = centred_on(position)
     if position is None:
         # NOT a placement - the import's own layout stands. Logged
         # because a node that missed the drop point and a node that

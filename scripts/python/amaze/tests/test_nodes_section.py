@@ -137,11 +137,14 @@ class NodesSectionTest(unittest.TestCase):
                         "a successful import returned no created nodes")
         spot = hou.Vector2(6.0, -4.0)
         helpers.place_nodes(created, spot)
+        # The anchor lands a half-size short: the BODY centres on the
+        # drop point, the host's own new-node convention.
+        anchor = helpers.centred_on(spot)
         xs = [n.position().x() for n in created]
         ys = [n.position().y() for n in created]
-        self.assertAlmostEqual(spot.x(), sum(xs) / len(xs),
+        self.assertAlmostEqual(anchor.x(), sum(xs) / len(xs),
                                msg="the group centroid missed the spot")
-        self.assertAlmostEqual(spot.y(), sum(ys) / len(ys))
+        self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
@@ -777,10 +780,17 @@ class PlaceNodesTest(unittest.TestCase):
             msg="the relative layout was not preserved")
         self.assertAlmostEqual(
             1.0, second.position().y() - first.position().y())
+        # THE GROUP CENTRES ON THE DROP POINT, so the anchor lands a
+        # half-size short of it: `setPosition` sets a node's corner,
+        # and the host subtracts the same constant when it places a
+        # new node at the mouse (nodegraphconnect: `node_pos -=
+        # getNewNodeHalfSize()`). Reported live before this: the node
+        # appeared left of the pointer while the outline sat on it.
+        half = helpers.centred_on(hou.Vector2(0.0, 0.0))
         centroid_x = (first.position().x() + second.position().x()) / 2
         centroid_y = (first.position().y() + second.position().y()) / 2
-        self.assertAlmostEqual(10.0, centroid_x)
-        self.assertAlmostEqual(10.0, centroid_y)
+        self.assertAlmostEqual(10.0 + half.x(), centroid_x)
+        self.assertAlmostEqual(10.0 + half.y(), centroid_y)
 
     def test_no_position_is_a_no_op(self):
         from amaze.helpers import helpers
