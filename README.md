@@ -77,4 +77,4 @@ Actively developed (AI-assisted). Found a bug? Open an issue — but check the W
 
 ## License
 
-**GPLv3**, same as upstream — see [LICENSE](LICENSE). Free to use, modify and embed as stated in the license; selling or reselling of the code is not permitted.
+**GPLv3**, same as upstream — see [LICENSE](LICENSE). Free to use, modify, embed and redistribute under the license's terms.
