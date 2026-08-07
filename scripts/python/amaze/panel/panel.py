@@ -6501,13 +6501,27 @@ class MatLibPanel(QtWidgets.QWidget):
         auto-places, exactly like the import seam's gate."""
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None or net is None:
+            debug.event("interact", "no drop point - no editor under "
+                        "the cursor", net=net.path() if net else None)
             return None
         try:
             if pane_tab.type() != hou.paneTabType.NetworkEditor:
                 return None
             if pane_tab.pwd() != net:
+                # The cross-space case: the release resolved INTO a
+                # container while the cursor's coordinates belong to
+                # the outer editor. Named, because it is the honest
+                # reason a drop auto-places instead of landing.
+                debug.event("interact", "no drop point - the editor "
+                            "shows another network",
+                            showing=pane_tab.pwd().path(),
+                            destination=net.path())
                 return None
-            return pane_tab.cursorPosition()
+            spot = pane_tab.cursorPosition()
+            debug.event("interact", "drop point",
+                        at=[round(spot.x(), 3), round(spot.y(), 3)],
+                        net=net.path())
+            return spot
         except AttributeError:
             return None
 

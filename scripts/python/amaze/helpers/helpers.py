@@ -455,8 +455,17 @@ def place_nodes(nodes, position) -> None:
     rule of the interaction system, fed by the import seam's created
     list. None position, or nothing created: the import's own
     placement stands."""
+    from amaze.core import debug
     nodes = [node for node in nodes if node is not None]
-    if position is None or not nodes:
+    if not nodes:
+        return
+    if position is None:
+        # NOT a placement - the import's own layout stands. Logged
+        # because a node that missed the drop point and a node that
+        # was never given one are different faults wearing the same
+        # symptom.
+        debug.event("interact", "placed by the import, no drop point",
+                    nodes=len(nodes), first=nodes[0].path())
         return
     centroid_x = sum(n.position().x() for n in nodes) / len(nodes)
     centroid_y = sum(n.position().y() for n in nodes) / len(nodes)
@@ -469,3 +478,19 @@ def place_nodes(nodes, position) -> None:
                 node.position().y() + shift_y))
         except (hou.OperationFailed, hou.ObjectWasDeleted):
             pass
+    # WHAT WAS ASKED FOR AND WHAT LANDED, in one record. A drop that
+    # reads as off-by-a-little has three possible causes - a position
+    # in the wrong space, a mover running after us, or a refused
+    # setPosition - and only the achieved centroid tells them apart
+    # (practice.md: coordinates and outcome in the SAME record).
+    try:
+        after_x = sum(n.position().x() for n in nodes) / len(nodes)
+        after_y = sum(n.position().y() for n in nodes) / len(nodes)
+    except hou.ObjectWasDeleted:
+        return
+    debug.event("interact", "placed at the drop point",
+                asked=[round(position.x(), 3), round(position.y(), 3)],
+                landed=[round(after_x, 3), round(after_y, 3)],
+                drift=[round(after_x - position.x(), 3),
+                       round(after_y - position.y(), 3)],
+                nodes=len(nodes), first=nodes[0].path())
