@@ -702,9 +702,12 @@ class CreationRuleTest(unittest.TestCase):
         self.assertTrue(ok)
         auto.assert_not_called()
         child = net.children()[0]
-        self.assertEqual((spot.x(), spot.y()),
+        from amaze.helpers import helpers
+        anchor = helpers.centred_on(spot)
+        self.assertEqual((anchor.x(), anchor.y()),
                          (child.position().x(), child.position().y()),
-                         "the carrier is not at the release point")
+                         "the carrier is not centred on the release "
+                         "point")
 
     def test_the_release_position_stays_in_its_own_space(self):
         """Live find: a release over a container node resolves INSIDE
@@ -1039,8 +1042,13 @@ class CreationRuleTest(unittest.TestCase):
             spot))
         children = net.children()
         self.assertEqual(1, len(children))
-        self.assertAlmostEqual(spot.x(), children[0].position().x())
-        self.assertAlmostEqual(spot.y(), children[0].position().y())
+        # The BODY centres on the release point, so the anchor sits a
+        # half-size short of it - the host's own new-node convention
+        # (helpers.centred_on says why).
+        from amaze.helpers import helpers
+        anchor = helpers.centred_on(spot)
+        self.assertAlmostEqual(anchor.x(), children[0].position().x())
+        self.assertAlmostEqual(anchor.y(), children[0].position().y())
 
 
 class HoudiniPathTest(unittest.TestCase):
