@@ -317,6 +317,20 @@ class TheDecodeFitSplit(ConversionCase):
                       "iconvert is the guaranteed-correct FORMAT route - "
                       "it reads every format Houdini reads, .rat included")
 
+    def test_pillow_answers_first_on_the_format_route(self):
+        """Measured 2026-08-07 on a real 117MB camera TIFF: pillow
+        answered in 0.3s while sips and iconvert each burned their
+        full 30s timeout ahead of it - a two-minute thumbnail per
+        file, reported live as a hang. A pillow decline costs
+        milliseconds (in-process, no timeout to wait out), so the
+        formats it cannot read still reach sips and iconvert at the
+        old speed."""
+        formats = [name for name, _p in conversion._FORMAT_ADAPTERS]
+        self.assertEqual("pillow", formats[0],
+                         "a subprocess adapter ahead of pillow makes "
+                         "every huge decodable file wait out its "
+                         "timeout first")
+
     def test_a_foreign_format_that_is_ALSO_oversized_gets_both_halves(self):
         """The case a per-format fix cannot reach.
 

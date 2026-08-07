@@ -446,6 +446,9 @@ class KindRouterTest(unittest.TestCase):
                 # fails cleanly (exit 13, no file) so the pipeline's
                 # iconvert fallback converts it like any EXR.
                 ("m.rat", "image"),
+                # Camera raw in the container macOS decodes natively -
+                # probed 2026-08-07: sips converts a real DNG in ~2.3s.
+                ("n.dng", "image"), ("o.DNG", "image"),
                 ("g.bgeo.sc", "geometry"), ("h.obj", "geometry"),
                 ("i.usd", "geometry"),
                 ("j.txt", "other"), ("k.bvh", "other"), ("noext", "other"),
