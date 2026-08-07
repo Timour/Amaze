@@ -906,6 +906,35 @@ class ThumbNailRenderer:
                         except hou.ObjectWasDeleted:
                             pass
 
+    def render_network_thumbnail(self, context, asset_id: str,
+                                 thumb_node: str = "") -> bool | None:
+        """THE Cop-or-Sop decision, made once for both of its doors -
+        the save side (render/nodes.py, which reads a child category
+        name like Sop or Cop) and Update Preview (core/cop_library.py,
+        which reads a renderer tag like SOP, COP or empty for assets
+        saved before contexts were recorded). It was typed at both
+        doors and they could drift apart - the two-resolvers shape; a
+        source scan in test_nodes_section keeps the verbs below
+        callable only from here.
+
+        Returns None when this context has no picture to render (Lop,
+        Dop... - the caller owns what that means at its door), else
+        whether the render succeeded. The interrupt shell lives here
+        too, so ESC behaves the same at both doors.
+        """
+        ctx = str(context or "").strip().lower()
+        if ctx not in ("sop", "cop", ""):
+            return None
+        with hou.InterruptableOperation(
+            "Rendering", "Performing Tasks", open_interrupt_dialog=True
+        ):
+            if ctx == "sop":
+                return bool(self.create_thumb_sop(str(asset_id)))
+            # Empty covers assets saved before the section knew about
+            # contexts - they are all Copernicus.
+            return bool(self.create_thumb_cop(str(asset_id),
+                                              str(thumb_node)))
+
     def create_thumb_sop(self, asset_id: str) -> bool:
         """Thumbnail for a saved SOP-network asset (the Nodes section).
 

@@ -338,27 +338,21 @@ class CopLibrary(library.MaterialLibrary):
             info = getattr(asset, "cop_net", {}) or {}
             thumber = thumbs.ThumbNailRenderer(self.preferences)
             context = str(getattr(asset, "renderer", "") or "").upper()
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                if context == "SOP":
-                    thumber.create_thumb_sop(str(asset.mat_id))
-                elif context in ("COP", ""):
-                    # "" covers assets saved before the section knew
-                    # about contexts - they are all Copernicus.
-                    thumber.create_thumb_cop(
-                        str(asset.mat_id), str(info.get("thumb_node", ""))
-                    )
-                else:
-                    # One tile was right-clicked, so the sentence is
-                    # about that tile - and it names the two kinds that
-                    # CAN be rerendered (RENDERABLE above), because
-                    # "this one cannot" with no boundary is a dead end.
-                    debug.note(
-                        "%s networks have no picture to render, so "
-                        "this tile keeps its node icon. Only "
-                        "Copernicus and SOP networks can be "
-                        "rerendered." % context)
+            # The Cop-or-Sop decision lives in render_network_thumbnail
+            # - the one home shared with the save side. None answers a
+            # context with no picture, and this door owns the sentence:
+            # one tile was right-clicked, so it is about that tile, and
+            # it names the two kinds that CAN be rerendered, because a
+            # refusal with no boundary is a dead end.
+            outcome = thumber.render_network_thumbnail(
+                context, str(asset.mat_id),
+                str(info.get("thumb_node", "")))
+            if outcome is None:
+                debug.note(
+                    "%s networks have no picture to render, so "
+                    "this tile keeps its node icon. Only "
+                    "Copernicus and SOP networks can be "
+                    "rerendered." % context)
         except Exception as exc:
             debug.note(
                 "the thumbnail could not be rerendered (%s). The tile "

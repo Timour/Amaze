@@ -2163,11 +2163,11 @@ class NodeHandler:
         if not update and not self._preferences.render_on_import:
             return True
         # Thumbnail failure never blocks registration (same rule as
-        # materials). WHICH thumbnail depends on the context: a COP
-        # network's own output image is the picture, a SOP network is
-        # rendered like any geometry, and anything else has no sensible
-        # render - those tiles fall back to the node icon, which is
-        # what the grid draws when no image exists.
+        # materials). WHICH thumbnail depends on the context - decided
+        # in render_network_thumbnail, the one home for the Cop-or-Sop
+        # choice shared with Update Preview. A context with no picture
+        # (None) is fine here: the tile falls back to the node icon,
+        # which is what the grid draws when no image exists.
         context = ""
         try:
             context = net.childTypeCategory().name()
@@ -2175,15 +2175,8 @@ class NodeHandler:
             pass
         thumber = thumbs.ThumbNailRenderer(self._preferences)
         try:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                if context == "Cop":
-                    thumber.create_thumb_cop(
-                        str(asset_id), self._cop_info.get("thumb_node", "")
-                    )
-                elif context == "Sop":
-                    thumber.create_thumb_sop(str(asset_id))
+            thumber.render_network_thumbnail(
+                context, asset_id, self._cop_info.get("thumb_node", ""))
         except Exception as exc:
             debug.note("thumbnail failed for "
                 + node.name()

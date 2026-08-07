@@ -553,6 +553,70 @@ if __name__ == "__main__":
 
 
 
+class TheRenderDecisionHasOneHome(unittest.TestCase):
+    """The Cop-or-Sop thumbnail decision was typed twice - once at
+    save (render/nodes.py) and once at Update Preview
+    (core/cop_library.py) - the two-resolvers shape that produced the
+    wrangle double-click bug. One method decides now, and a source
+    scan keeps the deciders from growing back."""
+
+    def test_the_create_verbs_are_called_only_inside_thumbs(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        callers = []
+        for base, _dirs, files in os.walk(root):
+            if os.path.basename(base) == "tests":
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, encoding="utf-8") as handle:
+                    source = handle.read()
+                count = (source.count("create_thumb_sop(")
+                         + source.count("create_thumb_cop("))
+                if count:
+                    callers.append((os.path.relpath(path, root), count))
+        self.assertEqual(
+            ["render/thumbs.py"], [path for path, _n in callers],
+            "the Cop-or-Sop decision is being made outside "
+            "render_network_thumbnail again: %r" % callers)
+
+    def _decide(self, context, thumb_node=""):
+        thumber = thumbs.ThumbNailRenderer(mock.Mock())
+        with mock.patch.object(
+                thumbs.ThumbNailRenderer, "create_thumb_sop",
+                return_value=True) as sop, \
+                mock.patch.object(
+                    thumbs.ThumbNailRenderer, "create_thumb_cop",
+                    return_value=True) as cop:
+            outcome = thumber.render_network_thumbnail(
+                context, "asset1", thumb_node)
+        return outcome, sop, cop
+
+    def test_both_spellings_of_each_context_reach_one_verb(self):
+        """The save side reads a category name (Sop, Cop); Update
+        Preview reads a renderer tag (SOP, COP, and empty for assets
+        saved before contexts were recorded). One normalisation."""
+        for context in ("Sop", "SOP", "sop"):
+            outcome, sop, cop = self._decide(context)
+            self.assertTrue(outcome, context)
+            sop.assert_called_once_with("asset1")
+            cop.assert_not_called()
+        for context in ("Cop", "COP", ""):
+            outcome, sop, cop = self._decide(context, thumb_node="wave1")
+            self.assertTrue(outcome, repr(context))
+            cop.assert_called_once_with("asset1", "wave1")
+            sop.assert_not_called()
+
+    def test_a_context_with_no_picture_asks_neither_verb(self):
+        outcome, sop, cop = self._decide("Lop")
+        self.assertIsNone(
+            outcome, "a Lop network has no thumbnail render - the "
+            "caller owns what that means at its door")
+        sop.assert_not_called()
+        cop.assert_not_called()
+
+
 class PlaceNodesTest(unittest.TestCase):
     """The ONE placement rule: created nodes move as a group so their
     centroid lands at the position, relative layout preserved; no
