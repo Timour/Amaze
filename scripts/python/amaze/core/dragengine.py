@@ -251,7 +251,7 @@ def ghost_clear() -> None:
 DROP_TARGET_RADIUS = 0.25
 
 
-def wire_under_cursor(editor, position):
+def wire_under_cursor(editor, position, exclude=()):
     """The connection a release at `position` would land on, with the
     triple `setDropTargetItem` wants - or (None, "", -1).
 
@@ -280,23 +280,37 @@ def wire_under_cursor(editor, position):
         return (None, "", -1)
     for item, name, index in found:
         if isinstance(item, hou.NodeConnection):
+            # Never insert into a wire the landed nodes are already
+            # part of - the host guards the same case by checking the
+            # connection's ends against the items being dragged.
+            try:
+                if (item.inputItem() in exclude
+                        or item.outputItem() in exclude):
+                    continue
+            except (AttributeError, hou.ObjectWasDeleted):
+                pass
             return (item, name, index)
     return (None, "", -1)
 
 
-def connector_under_cursor(editor, position):
+def connector_under_cursor(editor, position, exclude=()):
     """The node CONNECTOR a release at `position` would land on, as
     (node, name, index) - or (None, "", -1).
 
     A lone node, or the last of a chain, has no wire to hit, so the
     wire question alone answers nothing there and a drop lands beside
-    it. Houdini reports the node's own stubs as droppable targets -
-    measured live: just below a node the triples read `output, node`,
-    above it `input, node`, on the body `node` first - and it asks
-    with a far more generous reach than the wire question: the
-    connector snap radius measured 31px against the drop radius's
-    10px at the same zoom, which is why hovering near a node connects
-    so easily there.
+    it. Houdini reports the node's own stubs as droppable targets, and
+    a point query resolves them cleanly on its own - measured live
+    against a lone node, sampling straight up through it: `output`
+    alone just under the bottom edge, `node` alone through the body,
+    `input` alone at and above the top edge.
+
+    ASKED AT THE HOST'S OWN DROP RADIUS, not the connector snap
+    radius. The snap radius is over twice as wide (0.53 network units
+    against 0.25 at the same zoom) and reaches far enough to return a
+    NEIGHBOUR's stubs, which is what made this pick the wrong node in
+    a populated network. The host's node drop asks at the drop radius
+    (nodegraph.py, getPossibleDropTargets) and so does this.
 
     The node BODY winning means an ordinary node drop, not a
     connection, so this answers nothing in that case.
@@ -304,40 +318,53 @@ def connector_under_cursor(editor, position):
     if editor is None or position is None:
         return (None, "", -1)
     try:
-        import nodegraphutils
-        radius = nodegraphutils.getConnectorSnapRadius(editor)
-    except (ImportError, AttributeError, hou.OperationFailed):
-        return (None, "", -1)
-    try:
         spot = editor.posToScreen(position)
+        radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
         found = editor.networkItemsInBox(
             hou.Vector2(spot.x() - radius, spot.y() - radius),
             hou.Vector2(spot.x() + radius, spot.y() + radius),
             for_drop=True)
     except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
         return (None, "", -1)
+    # CONTAINMENT DECIDES, NOT ORDER. Even at the drop radius the box
+    # returns the body and both stubs together for most points near a
+    # node - measured live, sampling up through one: `output, node`
+    # below it, `node, output, input` across the body, `input, node`
+    # above. Order alone cannot separate those, and a leading `node`
+    # is often a NEIGHBOUR rather than the node being aimed at. Only
+    # the node the cursor is actually INSIDE means an ordinary drop.
+    #
+    # This is by hand what the host reads off `uievent.selected`,
+    # whose hit test already reports `node`/`input`/`output`. That is
+    # event-loop state with no public equivalent - the editor exposes
+    # `networkItemsInBox` and nothing else that answers "what is at
+    # this point" - so the resolution has to be redone here.
     for item, name, index in found:
-        if name in ("input", "output") and isinstance(item, hou.Node):
-            # INSIDE the node's own body is an ordinary node drop, not
-            # a connection. The connector reach is three times the
-            # drop reach, so a release on the body still reports the
-            # stub as nearest (measured live) - the body test is what
-            # keeps a drop ONTO a node from silently wiring itself in,
-            # which the host does not do either.
-            try:
-                rect = editor.itemRect(item, False)
-                if rect.contains(position):
-                    return (None, "", -1)
-            except (AttributeError, hou.OperationFailed,
-                    hou.ObjectWasDeleted):
-                pass
-            return (item, name, index)
+        if not isinstance(item, hou.Node) or item in exclude:
+            # THE NODES THAT JUST LANDED ARE NOT TARGETS. Placement
+            # happens before this question is asked, so the fresh node
+            # sits under the cursor and its own body answers the
+            # containment test below - measured live, that refused
+            # every connection. The host excludes the dragged items
+            # the same way (getPossibleDropTargets(exclude_items)).
+            continue
+        try:
+            inside = editor.itemRect(item, False).contains(position)
+        except (AttributeError, hou.OperationFailed,
+                hou.ObjectWasDeleted):
+            inside = False
         if name == "node":
-            return (None, "", -1)
+            if inside:
+                return (None, "", -1)
+            continue
+        if name in ("input", "output"):
+            if inside:
+                return (None, "", -1)
+            return (item, name, index)
     return (None, "", -1)
 
 
-def connect_to_neighbour(target, nodes) -> bool:
+def connect_to_neighbour(target, nodes, editor=None) -> bool:
     """Wire what landed to the connector it was dropped on.
 
     An OUTPUT under the cursor feeds the dropped node; an INPUT takes
@@ -365,24 +392,33 @@ def connect_to_neighbour(target, nodes) -> bool:
     except (AttributeError, hou.OperationFailed, hou.PermissionError,
             hou.ObjectWasDeleted):
         return False
-    _fit_after_wiring(nodes)
+    _fit_after_wiring(nodes, editor)
     _dbg("connected to a neighbour", to=node.path(), side=name,
          index=index, nodes=[n.path() for n in nodes])
     return True
 
 
-def _fit_after_wiring(nodes) -> None:
+def _fit_after_wiring(nodes, editor=None) -> None:
     """Let the newly wired nodes settle, the way the host's own drop
     does: `moveNodesToAvoidOverlap` nudges the block clear of what it
     is now connected to, and animates the move
     (nodegraph.NodeMoveHandler.handleDrop calls it after every
     insert). `update_graph=True` is required for nodes this new -
-    the editor has no graph item for them until the next paint."""
+    the editor has no graph item for them until the next paint.
+
+    TAKE THE EDITOR FROM THE CALLER, do not ask the cursor. Asking
+    `pane_tab_under_cursor` made this a SILENT NO-OP whenever the
+    pointer was not over a pane tab - which is every driven run, so
+    it reported "nothing moved" for a settle that had never been
+    called. The host never guesses this either: it settles into
+    `uievent.editor`, the editor the drop happened in. The cursor
+    lookup stays only as a fallback for callers that have none."""
     if not nodes:
         return
     try:
         import nodegraphutils
-        editor = pane_tab_under_cursor()
+        if editor is None:
+            editor = pane_tab_under_cursor()
         if editor is None:
             return
         nodegraphutils.moveNodesToAvoidOverlap(editor, nodes,
@@ -457,7 +493,7 @@ def splice_preview(editor, connection, position, shapes=()) -> tuple:
         return tuple(shapes)
 
 
-def splice_into_wire(connection, nodes) -> bool:
+def splice_into_wire(connection, nodes, editor=None) -> bool:
     """Insert `nodes` into `connection`, through the host's own
     function so the wiring rules stay SideFX's.
 
@@ -481,7 +517,7 @@ def splice_into_wire(connection, nodes) -> bool:
     except (AttributeError, hou.OperationFailed, hou.PermissionError,
             hou.ObjectWasDeleted):
         return False
-    _fit_after_wiring(nodes)
+    _fit_after_wiring(nodes, editor)
     _dbg("spliced into a wire", nodes=[n.path() for n in nodes])
     return True
 
