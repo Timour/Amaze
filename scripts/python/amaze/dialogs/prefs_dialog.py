@@ -547,8 +547,8 @@ class PrefsDialog(QtWidgets.QDialog):
             "<a href='https://github.com/Timour/Amaze'>"
             "github.com/Timour/Amaze</a></p>"
             "<p>Code and assets released under GPLv3 - free to use, "
-            "modify and embed as stated in the license. Selling or "
-            "reselling of the code is not permitted.</p>"
+            "modify, embed and redistribute under the license's "
+            "terms.</p>"
             # Credit, not obligation: every online source ships under
             # CC0 or MIT public domain, so none of them REQUIRE
             # attribution. They are named because a library full of
