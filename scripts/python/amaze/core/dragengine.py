@@ -337,29 +337,33 @@ def connector_under_cursor(editor, position, exclude=()):
     # This is by hand what the host reads off `uievent.selected`,
     # whose hit test already reports `node`/`input`/`output`. That is
     # event-loop state with no public equivalent - the editor exposes
-    # `networkItemsInBox` and nothing else that answers "what is at
-    # this point" - so the resolution has to be redone here.
-    for item, name, index in found:
-        if not isinstance(item, hou.Node) or item in exclude:
-            # THE NODES THAT JUST LANDED ARE NOT TARGETS. Placement
-            # happens before this question is asked, so the fresh node
-            # sits under the cursor and its own body answers the
-            # containment test below - measured live, that refused
-            # every connection. The host excludes the dragged items
-            # the same way (getPossibleDropTargets(exclude_items)).
-            continue
+    # `networkItemsInBox` and nothing else that answers what is at a
+    # point - so the resolution has to be redone here.
+    #
+    # THE NODES THAT JUST LANDED ARE NOT TARGETS in either pass.
+    # Placement happens before this question is asked, so the fresh
+    # node sits under the cursor and answers about itself - measured
+    # live, that refused every connection. The host excludes the
+    # dragged items the same way (getPossibleDropTargets).
+    candidates = [(item, name, index) for item, name, index in found
+                  if isinstance(item, hou.Node) and item not in exclude]
+
+    # PASS ONE: is the cursor inside a node at all? A release there is
+    # an ordinary drop and wires nothing, so it has to outrank every
+    # connector in the list rather than merely appear before them.
+    # Measured live: released dead centre on a node body, a NEIGHBOUR's
+    # input sorted first and got wired.
+    for item, _name, _index in candidates:
         try:
-            inside = editor.itemRect(item, False).contains(position)
+            if editor.itemRect(item, False).contains(position):
+                return (None, "", -1)
         except (AttributeError, hou.OperationFailed,
                 hou.ObjectWasDeleted):
-            inside = False
-        if name == "node":
-            if inside:
-                return (None, "", -1)
             continue
+
+    # PASS TWO: inside nothing, so the nearest stub is the target.
+    for item, name, index in candidates:
         if name in ("input", "output"):
-            if inside:
-                return (None, "", -1)
             return (item, name, index)
     return (None, "", -1)
 
