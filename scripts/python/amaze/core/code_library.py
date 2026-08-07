@@ -451,12 +451,15 @@ class CodeLibrary(library.MaterialLibrary):
     # The material overrides that make no sense for inline text: a code
     # snippet has no node archive to import or thumbnail to render.
     def import_asset_to_scene(self, index, target="auto", context_node=None):
-        """Double-click applies the snippet to the selected node."""
+        """Double-click applies the snippet to the selected node.
+        Returns (ok, reason, created) like every import - created is
+        always empty here, since applying text creates nothing."""
         node = None
         sel = hou.selectedNodes()
         if len(sel) == 1:
             node = sel[0]
-        return self.apply_to_node(index.row(), node)
+        ok, reason = self.apply_to_node(index.row(), node)
+        return ok, reason, []
 
     def render_thumbnail(self, index) -> None:
         """No render - repaint the preview from current content."""

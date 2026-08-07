@@ -1021,6 +1021,24 @@ class NodeHandler:
         target: str = "auto",
         context_node: hou.Node | None = None,
     ):
+        """The import seam: (ok, reason, created), where created is
+        the list of top-level nodes this import added to the scene -
+        what every placement rule builds on, so no caller has to
+        guess by diffing children. Empty on refusal. The body with
+        its refusals is the inner method, untouched."""
+        self._builder_node = None
+        ok, reason = self._import_asset_to_scene_inner(
+            mat, target, context_node=context_node)
+        created = ([self._builder_node]
+                   if ok and self._builder_node is not None else [])
+        return ok, reason, created
+
+    def _import_asset_to_scene_inner(
+        self,
+        mat: material.Material,
+        target: str = "auto",
+        context_node: hou.Node | None = None,
+    ):
         """Import a Material to the Network Editor/Scene.
 
         target: "auto" derives the destination from the active network editor
@@ -2178,6 +2196,20 @@ class NodeHandler:
         mat: material.Material,
         context_node: hou.Node | None = None,
     ):
+        """The import seam, COP flavour: (ok, reason, created) - the
+        directly-loaded nodes, or the one container built for them.
+        Empty on refusal."""
+        self._imported_cop_nodes = []
+        ok, reason = self._import_cop_asset_inner(
+            mat, context_node=context_node)
+        created = list(self._imported_cop_nodes) if ok else []
+        return ok, reason, created
+
+    def _import_cop_asset_inner(
+        self,
+        mat: material.Material,
+        context_node: hou.Node | None = None,
+    ):
         """Recreate a saved COP asset (Cop section import). Context-
         aware, like materials: if the destination network
         already holds Copernicus nodes - the user is inside a COP
@@ -2239,6 +2271,7 @@ class NodeHandler:
                         dest.layoutChildren(items=new_children)
                     except (TypeError, hou.OperationFailed):
                         pass
+                self._imported_cop_nodes = list(new_children)
                 return (True, "")
 
         # Not the destination's own context, so the nodes need a
@@ -2314,6 +2347,7 @@ class NodeHandler:
         except hou.OperationFailed:
             pass
         apply_node_color(container, mat.node_color)
+        self._imported_cop_nodes = [container]
         return (True, "")
 
     def save_node(self, node: hou.Node, asset_id: str, update: bool) -> bool:

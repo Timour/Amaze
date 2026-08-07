@@ -380,7 +380,7 @@ class TestLockedContextIsRefused(unittest.TestCase):
         if asset is None:
             self.skipTest("no fixture asset has a material file on disk")
         try:
-            ok, reason = handler.import_asset_to_scene(asset, target="auto")
+            ok, reason, _created = handler.import_asset_to_scene(asset, target="auto")
         except hou.Error as exc:
             self.fail("a locked context raised out of the import instead "
                       "of reporting: %s" % exc)

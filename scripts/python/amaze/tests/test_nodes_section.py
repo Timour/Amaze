@@ -117,6 +117,32 @@ class NodesSectionTest(unittest.TestCase):
 
     # -- round trip --------------------------------------------------
 
+    def test_the_import_seam_returns_what_it_created(self):
+        """(ok, reason, created): the import hands back the nodes it
+        added, and helpers.place_nodes - the one placement rule -
+        moves them as a group to a release point. The seam every
+        drop-position behaviour rides; no caller diffs children."""
+        from amaze.helpers import helpers
+
+        geo = _sop_network("seam_src")
+        self.assertEqual("SOP", self.model.add_asset(
+            geo, "", "", False, name="seam_sop"))
+        geo.destroy()
+
+        dest = hou.node("/obj").createNode("geo", "seam_dest")
+        ok, reason, created = self.model.import_asset_to_scene(
+            self.model.index(0, 0), context_node=dest)
+        self.assertTrue(ok, reason)
+        self.assertTrue(created,
+                        "a successful import returned no created nodes")
+        spot = hou.Vector2(6.0, -4.0)
+        helpers.place_nodes(created, spot)
+        xs = [n.position().x() for n in created]
+        ys = [n.position().y() for n in created]
+        self.assertAlmostEqual(spot.x(), sum(xs) / len(xs),
+                               msg="the group centroid missed the spot")
+        self.assertAlmostEqual(spot.y(), sum(ys) / len(ys))
+
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
         self.assertEqual("SOP", self.model.add_asset(
@@ -124,7 +150,7 @@ class NodesSectionTest(unittest.TestCase):
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "rt_dest")
-        ok, reason = self.model.import_asset_to_scene(
+        ok, reason, _created = self.model.import_asset_to_scene(
             self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
 
@@ -145,7 +171,7 @@ class NodesSectionTest(unittest.TestCase):
         geo.destroy()
 
         dest = hou.node("/obj").createNode("geo", "sel_dest")
-        ok, reason = self.model.import_asset_to_scene(
+        ok, reason, _created = self.model.import_asset_to_scene(
             self.model.index(0, 0), context_node=dest)
         self.assertTrue(ok, reason)
         self.assertEqual(["the_box"], [n.name() for n in dest.children()])
@@ -192,7 +218,7 @@ class NodesSectionTest(unittest.TestCase):
         returning (ok, reason, the nodes it created there)."""
         row = [i for i, a in enumerate(self.model.assets) if a.name == name][0]
         before = set(dest.children())
-        ok, reason = self.model.import_asset_to_scene(
+        ok, reason, _created = self.model.import_asset_to_scene(
             self.model.index(row, 0), context_node=dest)
         return ok, reason, [c for c in dest.children() if c not in before]
 
@@ -525,3 +551,40 @@ if __name__ == "__main__":
     unittest.main()
 
 
+
+
+class PlaceNodesTest(unittest.TestCase):
+    """The ONE placement rule: created nodes move as a group so their
+    centroid lands at the position, relative layout preserved; no
+    position means the creator's own placement stands."""
+
+    def test_the_group_moves_preserving_layout(self):
+        from amaze.helpers import helpers
+
+        net = hou.node("/obj").createNode("geo")
+        self.addCleanup(net.destroy)
+        first = net.createNode("null")
+        first.setPosition(hou.Vector2(0.0, 0.0))
+        second = net.createNode("null")
+        second.setPosition(hou.Vector2(2.0, 1.0))
+        helpers.place_nodes([first, second], hou.Vector2(10.0, 10.0))
+        self.assertAlmostEqual(
+            2.0, second.position().x() - first.position().x(),
+            msg="the relative layout was not preserved")
+        self.assertAlmostEqual(
+            1.0, second.position().y() - first.position().y())
+        centroid_x = (first.position().x() + second.position().x()) / 2
+        centroid_y = (first.position().y() + second.position().y()) / 2
+        self.assertAlmostEqual(10.0, centroid_x)
+        self.assertAlmostEqual(10.0, centroid_y)
+
+    def test_no_position_is_a_no_op(self):
+        from amaze.helpers import helpers
+
+        net = hou.node("/obj").createNode("geo")
+        self.addCleanup(net.destroy)
+        node = net.createNode("null")
+        node.setPosition(hou.Vector2(3.0, -1.0))
+        helpers.place_nodes([node], None)
+        self.assertAlmostEqual(3.0, node.position().x())
+        self.assertAlmostEqual(-1.0, node.position().y())

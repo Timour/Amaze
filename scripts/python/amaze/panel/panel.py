@@ -4205,7 +4205,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     self.thumblist.selectionModel()):
                 source_index = self.cop_sorted_model.mapToSource(index)
                 try:
-                    ok, reason = self.cop_model.import_asset_to_scene(
+                    ok, reason, _created = self.cop_model.import_asset_to_scene(
                         source_index)
                 except Exception as e:
                     try:
@@ -4507,7 +4507,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _import_geo_in_context(
         self, path: str, dest: hou.Node | None
-    ) -> None:
+    ) -> hou.Node | None:
         base = os.path.basename(path)
         name = helpers.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
         loader_type = geo_library.loader_sop_for(path)
@@ -4598,6 +4598,9 @@ class MatLibPanel(QtWidgets.QWidget):
                 container.setDisplayFlag(True)
             except (AttributeError, hou.Error):
                 pass
+        # The import seam: the caller receives what was created - the
+        # container when one was built, else the loader itself.
+        return container or loader
 
     def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
         """Geometry drag released: import in context at the release
@@ -4614,7 +4617,9 @@ class MatLibPanel(QtWidgets.QWidget):
         if not path:
             return False
         with hou.undos.group("Amaze Import Geometry"):
-            self._import_geo_in_context(path, context)
+            created = self._import_geo_in_context(path, context)
+        if created is not None and context == self._network_under_release():
+            helpers.place_nodes([created], self._release_position())
         return True
 
 
@@ -4777,11 +4782,13 @@ class MatLibPanel(QtWidgets.QWidget):
         except Exception:
             return False
         with hou.undos.group("Amaze Import COP Network"):
-            ok, reason = self.cop_model.import_asset_to_scene(
+            ok, reason, created = self.cop_model.import_asset_to_scene(
                 source_index, context_node=context
             )
         if not ok and reason:
             hou.ui.displayMessage(reason)  # type: ignore
+        if ok and context == self._network_under_release():
+            helpers.place_nodes(created, self._release_position())
         return True
 
     def _import_material_builder(self, asset_id, target, context_node=None):
@@ -4795,7 +4802,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
         mat = self.material_model.assets[row]
         handler = nodes.NodeHandler(self.prefs)
-        ok, reason = handler.import_asset_to_scene(
+        ok, reason, _created = handler.import_asset_to_scene(
             mat, target, context_node=context_node
         )
         if not ok:
@@ -4928,7 +4935,9 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
-        self._import_materials_into_context(context, ids)
+        position = (self._release_position()
+                    if context == self._network_under_release() else None)
+        self._import_materials_into_context(context, ids, position)
         return True
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
@@ -5108,23 +5117,26 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
 
-    def _import_materials_into_context(self, context, ids) -> None:
+    def _import_materials_into_context(self, context, ids,
+                                       position=None) -> None:
         """Network-release import for the material section. One undo
-        group: the whole multi-drop reverts as one step. Placement is
-        the import machinery's own until it RETURNS what it created -
-        the general seam (ROADMAP - the interaction system); a
-        placement bolted on around it by diffing children was
-        withdrawn the night it shipped."""
+        group: the whole multi-drop reverts as one step. Placement
+        rides the import seam - the import RETURNS what it created
+        and `helpers.place_nodes` is the one placement rule - so a
+        position lands each copy at the release point, a multi-drop
+        cascading from it."""
         with hou.undos.group("Amaze Import Materials"):
-            self._import_materials_into_context_grouped(context, ids)
+            self._import_materials_into_context_grouped(
+                context, ids, position)
 
-    def _import_materials_into_context_grouped(self, context, ids) -> None:
-        for aid in ids:
+    def _import_materials_into_context_grouped(self, context, ids,
+                                               position=None) -> None:
+        for offset, aid in enumerate(ids):
             row = self.material_model.find_asset_row_by_id(aid)
             if row < 0:
                 continue
             idx = self.material_model.index(row, 0)
-            ok, reason = self.material_model.import_asset_to_scene(
+            ok, reason, created = self.material_model.import_asset_to_scene(
                 idx, "auto", context_node=context
             )
             if not ok and reason:
@@ -5136,6 +5148,10 @@ class MatLibPanel(QtWidgets.QWidget):
                 debug.event("import", "network import refused",
                             reason=str(reason))
                 break
+            if position is not None:
+                helpers.place_nodes(created, hou.Vector2(
+                    position.x() + offset * 0.6,
+                    position.y() - offset * 0.9))
 
     def drop_code_at_release(self, index, node: hou.Node) -> bool:
         """Code snippet drag released (self-managed): apply the snippet to
@@ -6287,7 +6303,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 self.thumblist.selectionModel()):
             source_index = self.material_sorted_model.mapToSource(index)
             try:
-                ok, reason = self.material_model.import_asset_to_scene(
+                ok, reason, _created = self.material_model.import_asset_to_scene(
                     source_index, target
                 )
             except Exception as e:
@@ -6447,13 +6463,8 @@ class MatLibPanel(QtWidgets.QWidget):
                 node.setName(name, unique_name=True)
             except hou.OperationFailed:
                 pass
-        if position is not None:
-            try:
-                node.setPosition(position)
-            except (hou.OperationFailed, TypeError):
-                node.moveToGoodPosition()
-        else:
-            node.moveToGoodPosition()
+        node.moveToGoodPosition()
+        helpers.place_nodes([node], position)
         debug.event("interact", "carrier created", carrier=type_name,
                     dest=dest.path())
         return node

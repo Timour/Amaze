@@ -59,7 +59,7 @@ class ThumbNailRenderer:
             # scaffold and the other three reference the material by
             # path - and forcing /mat also stops each rerender
             # retranslating their whole material library.
-            ok, reason = node_handler.import_asset_to_scene(
+            ok, reason, _created = node_handler.import_asset_to_scene(
                 self._mat, target="mat")
             if not ok:
                 # No builder was created (e.g. a classic VOP material
