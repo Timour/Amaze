@@ -1,5 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="8.07 8.07 30.86 30.86">
-  <!-- HIP capture icon (download arrow in a disc), from Screenshoot.svg
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   viewBox="8.07 8.07 30.86 30.86"
+   version="1.1"
+   xml:space="preserve"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"><!-- HIP capture icon (download arrow in a disc), from Screenshoot.svg
        in the design file. Colors are load-time tint targets:
        #5d7abd = icon body, #2d2d2d = punch-out - the same pair the
        Library gear uses, so IconMenuButton tints this identically.
@@ -14,7 +19,21 @@
        design file's 47x47 canvas: the disc occupied 54% of that frame
        while every other toolbar icon fills 81-90% of its own, so it
        rendered visibly smaller in the same 30px button. Measured, not
-       eyeballed - see the ink-extent test. -->
-  <path fill="#5d7abd" d="M 36 23.5 C 36 30.403561 30.403561 36 23.5 36 C 16.596441 36 11 30.403561 11 23.5 C 11 16.596439 16.596441 11 23.5 11 C 30.403561 11 36 16.596439 36 23.5 Z"/>
-  <path fill="none" stroke="#2d2d2d" stroke-width="2.238864" stroke-linecap="round" stroke-linejoin="round" d="M 18.5 23.5 L 23.5 28.5 L 28.5 23.5 M 23.5 18.5 L 23.5 28.5"/>
-</svg>
+       eyeballed - see the ink-extent test. --><path
+     fill="#5d7abd"
+     d="M 36 23.5 C 36 30.403561 30.403561 36 23.5 36 C 16.596441 36 11 30.403561 11 23.5 C 11 16.596439 16.596441 11 23.5 11 C 30.403561 11 36 16.596439 36 23.5 Z" /><g
+     style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
+     transform="matrix(0.74755404,0,0,0.75238377,14.529352,14.471395)"><rect
+       x="3"
+       y="3"
+       width="18"
+       height="18"
+       rx="2"
+       ry="2"
+       style="stroke:#2d2d2d;stroke-opacity:1;fill:none;stroke-width:2.66679106;stroke-dasharray:none" /><circle
+       cx="7.6839252"
+       cy="7.6839252"
+       r="2.3160746"
+       style="fill:#2d2d2d;fill-opacity:1;stroke:none;stroke-width:3.08824;stroke-dasharray:none;stroke-opacity:1" /><polyline
+       points="21 15 16 10 5 21"
+       style="stroke:#2d2d2d;stroke-opacity:1;fill:none;stroke-width:2.66679106;stroke-dasharray:none" /></g></svg>
