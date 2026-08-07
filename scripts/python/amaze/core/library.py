@@ -195,6 +195,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         self._assets = [material.Material.from_dict(d) for d in self._data["assets"]]
         self._remember_content_state()
         self._adopt_record_favorites()
+        self._adopt_record_icons()
 
         self._tags = self._data["tags"]
 
@@ -255,7 +256,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # engine, the LRU cache, list mode and drag previews all
             # keep working untouched, and clearing the icon restores
             # the render that was never overwritten.
-            if tile_icons.normalise(self._assets[elem].icon):
+            if self.tile_icon(elem):
                 path = tile_icons.icon_image_path(self.preferences, mat_id)
             self._mat_paths.append((path, is_fav, elem))
 
@@ -357,7 +358,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         """Shared-RAM-cache key: stable across reloads (same
         material keeps its cached image through a library refresh) and
         collision-free across the models sharing the budget."""
-        spec = tile_icons.normalise(self._assets[row].icon)
+        spec = self.tile_icon(row)
         if not spec:
             return (self.DB_FILENAME, self._assets[row].mat_id, "", "", "", 0)
         # EVERY input to the picture belongs in the key, not just the
@@ -413,7 +414,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         because sections differ on what "no thumbnail" MEANS - for a
         material it is a failure, for a LOP node asset it is normal."""
         if 0 <= row < len(self._assets):
-            spec = tile_icons.normalise(self._assets[row].icon)
+            spec = self.tile_icon(row)
             if spec:
                 # Self-healing: the choice is stored on the asset, so a
                 # library copied without its _icon.png files still shows
@@ -455,9 +456,16 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
     def tile_icon(self, row: int) -> dict:
         """This row's chosen icon, {} when it shows its render. Same
         name as the file sections' version so one panel handler serves
-        every tile in the app."""
+        every tile in the app.
+
+        The shared store answers first (one icons.json for every
+        section, keyed by asset id); the record field is the fallback
+        for icons an older build wrote - or ones whose icon name this
+        build does not ship, which the migration deliberately held."""
         if 0 <= row < len(self._assets):
-            return tile_icons.normalise(self._assets[row].icon)
+            stored = tile_icons.override_for(
+                self.preferences, str(self._assets[row].mat_id))
+            return stored or tile_icons.normalise(self._assets[row].icon)
         return {}
 
     def tile_key(self, row: int) -> str:
@@ -486,10 +494,16 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return False
         asset = self._assets[row]
         spec = tile_icons.normalise(spec)
+        # The store is the one home; the record field is written too
+        # for one release, so the other machine's older build keeps
+        # reading the pick (the adoption in _adopt_record_icons is the
+        # other half of that contract).
+        stored = tile_icons.set_override(
+            self.preferences, str(asset.mat_id), spec)
         asset.icon = spec
-        written = True
+        written = bool(stored)
         if spec:
-            written = bool(
+            written = written and bool(
                 tile_icons.render_for(self.preferences, asset.mat_id, spec)
             )
         else:
@@ -508,7 +522,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         changed (the line-weight preference) rather than the choice."""
         made = 0
         for row, asset in enumerate(self._assets):
-            spec = tile_icons.normalise(asset.icon)
+            spec = self.tile_icon(row)
             if not spec:
                 continue
             if tile_icons.render_for(self.preferences, asset.mat_id, spec):
@@ -1343,6 +1357,34 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         except AttributeError:
             # A fixture prefs without the accessor - nothing to adopt.
             pass
+
+    def _adopt_record_icons(self) -> None:
+        """One-time move of record-level tile icons into the shared
+        store (icons.json, keyed by the asset id beside the File
+        section's path keys) - ROADMAP, one icons.json for every
+        section. The record field stays exactly as loaded and
+        keeps being written for one release, so the other machine's
+        older build still reads it; it simply stops being what this
+        build reads first. A spec whose icon name this build does not
+        ship is HELD on the record rather than normalised away - the
+        migration must not lose what an older build can still show."""
+        moved = held = 0
+        for asset in self._assets:
+            raw = asset.icon
+            if not raw:
+                continue
+            spec = tile_icons.normalise(raw)
+            if not spec:
+                held += 1
+                continue
+            key = str(asset.mat_id)
+            if tile_icons.override_for(self.preferences, key):
+                continue
+            if tile_icons.set_override(self.preferences, key, spec):
+                moved += 1
+        if moved or held:
+            debug.event("icons", "record icons adopted into the store",
+                        db=self.DB_FILENAME, moved=moved, held=held)
 
     _SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".part", ".new")
     _SCRATCH_MIN_AGE = 60 * 60

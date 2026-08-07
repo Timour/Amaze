@@ -189,6 +189,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self._entries = self._all_entries()
         self._backfill_uids_once()
         self._sweep_notes_to_store_once()
+        self._adopt_entry_icons_once()
 
     def _library_key(self) -> str:
         """The library directory these gradients belong to, canonical."""
@@ -230,6 +231,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._entries = self._all_entries()
             self._backfill_uids_once()
             self._sweep_notes_to_store_once()
+            self._adopt_entry_icons_once()
         finally:
             self.endResetModel()
 
@@ -756,6 +758,11 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         if entry is None:
             return False
         spec = tile_icons.normalise(spec)
+        # The shared store is the one home (keyed by the entry uid);
+        # the entry field is written too for one release, so the other
+        # machine's older build keeps reading the pick.
+        stored = tile_icons.set_override(
+            self._preferences, self.note_uid(row), spec)
         if spec:
             entry["icon"] = spec
         else:
@@ -764,7 +771,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._save_user()
         idx = self.index(row, 0)
         self.row_changed(idx.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
-        return True
+        return bool(stored)
 
     def commit_tile_icons(self, rows=None) -> None:
         """Save once after a multi-row Customize (the panel handler
@@ -947,6 +954,32 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._save_user()
             debug.event("gradients", "notes swept to the notes store",
                         moved=moved, cleared=cleared)
+
+    def _adopt_entry_icons_once(self) -> None:
+        """Entry-level tile icons move to the shared store - one
+        icons.json for every section, this one keyed by the entry uid
+        beside asset ids and file paths. Unlike the notes sweep the
+        entry field is NOT consumed: it keeps being written for one
+        release so the other machine's older build still reads the
+        pick. A store entry this build finds (set on another machine
+        by a newer one) overlays into memory, so every reader of the
+        entry field sees the merged truth."""
+        adopted = 0
+        for entry in self._entries:
+            uid = str(entry.get("uid", "") or "")
+            if not uid:
+                continue
+            stored = tile_icons.override_for(self._preferences, uid)
+            if stored:
+                entry["icon"] = stored
+                continue
+            spec = tile_icons.normalise(entry.get("icon"))
+            if spec and tile_icons.set_override(
+                    self._preferences, uid, spec):
+                adopted += 1
+        if adopted:
+            debug.event("gradients", "entry icons adopted into the store",
+                        adopted=adopted)
 
     def note_uid(self, row: int) -> str:
         """The entry's own identity - present from load (backfill) or

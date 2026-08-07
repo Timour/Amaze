@@ -162,6 +162,54 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row][0])
 
+    def test_the_choice_lands_in_the_store(self):
+        """One icons.json for every section: the pick is keyed by the
+        asset's own id in the shared store, beside the File section's
+        path keys - and stays on the record for one release so the
+        other machine's older build still reads it."""
+        self.model.set_tile_icon(self.row, {"name": "layers",
+                                            "bg": "#4af2a1"})
+        stored = tile_icons.override_for(
+            self.prefs, self.model.tile_key(self.row))
+        self.assertEqual("layers", stored.get("name"),
+                         "the pick never reached the shared store")
+        self.assertEqual(
+            "layers", self.model.assets[self.row].icon.get("name"),
+            "the record field stopped being written - the other "
+            "machine's build still reads it")
+        self.model.set_tile_icon(self.row, {})
+        self.assertEqual({}, tile_icons.override_for(
+            self.prefs, self.model.tile_key(self.row)),
+            "clearing the icon left the store entry behind")
+
+    def test_a_store_entry_wins_without_a_record_field(self):
+        """The store is the one home going forward: an icon present
+        only there (set on the other machine by a newer build) shows."""
+        key = self.model.tile_key(self.row)
+        tile_icons.set_override(self.prefs, key,
+                                {"name": "box", "bg": "#5cc9f5"})
+        self.assertEqual("box",
+                         self.model.tile_icon(self.row).get("name"))
+
+    def test_a_record_icon_migrates_into_the_store_at_load(self):
+        """Icons picked before the store move live on the records. The
+        model adopts them on load - counted, never deleting the record
+        - so the store becomes complete without a hand-run step."""
+        asset = self.model.assets[self.row]
+        asset.icon = {"name": "layers", "bg": "#4af2a1"}
+        self.model.save()
+        test_support.reset_database_singletons()
+        tile_icons.forget_overrides()
+        reloaded = cop_library.CopLibrary(preferences=self.prefs)
+        key = str(reloaded.assets[self.row].mat_id)
+        self.assertEqual(
+            "layers",
+            tile_icons.override_for(self.prefs, key).get("name"),
+            "the record icon was not adopted into the store")
+        self.assertEqual(
+            "layers", reloaded.assets[self.row].icon.get("name"),
+            "the migration deleted the record field")
+
     def test_the_cache_key_changes_with_the_icon(self):
         """Same asset, different picture. Without this the shared image
         cache serves whichever of the two was requested first."""
