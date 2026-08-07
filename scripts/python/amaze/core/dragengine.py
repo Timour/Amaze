@@ -141,6 +141,79 @@ def begin(section_key: str, ids=()) -> None:
 def end() -> None:
     """End of gesture - however it ended. Restores the highlight."""
     _restore_highlight()
+    ghost_clear()
+
+
+# ------------------------------------------------------------- ghost
+#
+# THE OUTLINE A DRAG CARRIES over a network editor, drawn the way
+# Houdini draws its own move ghost: `hou.NetworkShapeNodeShape` (or a
+# plain box where the type has no shape - Vop nodes are rectangles by
+# the host's own rule) into `editor.setOverlayShapes`, in NETWORK
+# space so it scales with zoom, alpha 0.7 (nodegraph.py:918).
+#
+# Measured 2026-08-07: a node is ~1.13 x 0.28 network units, and
+# `nodeType.defaultShape()` answers "" for Vop types.
+
+#: The overlay is ONE slot per editor, so whoever writes it must give
+#: it back. This remembers the editors we drew into, and every exit
+#: path clears them - the same teardown discipline the name tag has.
+_ghosted: list = []
+
+GHOST_SIZE = (1.1296, 0.2824)
+
+
+def _shape_for(type_name: str) -> str:
+    """The node shape a created carrier would wear, or "" for a plain
+    box - the host's own lookup (`nodeType.defaultShape`)."""
+    if not type_name:
+        return ""
+    for category in (hou.sopNodeTypeCategory(), hou.vopNodeTypeCategory(),
+                     hou.lopNodeTypeCategory(), hou.cop2NodeTypeCategory()):
+        try:
+            node_type = hou.nodeType(category, type_name)
+        except (AttributeError, hou.OperationFailed):
+            node_type = None
+        if node_type is not None:
+            try:
+                return node_type.defaultShape() or ""
+            except (AttributeError, hou.OperationFailed):
+                return ""
+    return ""
+
+
+def ghost_show(editor, position, type_name: str = "") -> None:
+    """Draw the outline at `position` in `editor`'s network space."""
+    if editor is None or position is None:
+        return
+    try:
+        rect = hou.BoundingRect(
+            position.x() - GHOST_SIZE[0] / 2.0,
+            position.y() - GHOST_SIZE[1] / 2.0,
+            position.x() + GHOST_SIZE[0] / 2.0,
+            position.y() + GHOST_SIZE[1] / 2.0)
+        colour = hou.ui.colorFromName("GraphPreSelection")  # type: ignore
+        shape = _shape_for(type_name)
+        if shape:
+            drawn = hou.NetworkShapeNodeShape(rect, shape, colour, 0.7,
+                                              True, False)
+        else:
+            drawn = hou.NetworkShapeBox(rect, colour, 0.7, True, False)
+        editor.setOverlayShapes([drawn])
+    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+        return
+    if editor not in _ghosted:
+        _ghosted.append(editor)
+
+
+def ghost_clear() -> None:
+    """Give every borrowed overlay back - on EVERY exit path."""
+    while _ghosted:
+        editor = _ghosted.pop()
+        try:
+            editor.setOverlayShapes([])
+        except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+            pass
 
 
 # ------------------------------------------------------------ picking

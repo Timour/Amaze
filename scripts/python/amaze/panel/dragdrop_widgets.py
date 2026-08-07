@@ -258,6 +258,11 @@ class GridGestureMixin:
                     dragengine.hover_update(
                         self._drag_panel, self._drag_section
                     )
+                    # The outline, drawn where the payload would land.
+                    # Cleared by dragengine.end() on every exit path -
+                    # release, cancel, and the leave the host itself
+                    # treats as a suspend (nodegraph.py:650).
+                    self._ghost_update(self._drag_panel)
             return
         super().mouseMoveEvent(event)
 
@@ -615,6 +620,62 @@ class GridGestureMixin:
             finally:
                 keeper.__exit__(None, None, None)
                 self._finish_preview(outcome)
+
+    @staticmethod
+    def _ghost_type(panel, rule, section, dest) -> str:
+        """WHICH carrier the space door would create in `dest` - read
+        from the declaration the creator itself builds from, so the
+        outline cannot promise a node the drop would not make.
+        "" means no carrier (an import, a path hand-over, or a
+        network that cannot hold one) and the ghost is a plain box."""
+        cls = sections.SECTION_INDEX.get(section)
+        name = rule.carrier_type or getattr(cls, "carrier_type", "")
+        verb = getattr(cls, "carrier_type_verb", "")
+        if not name and verb:
+            try:
+                name = getattr(panel, verb)(panel._drag_index, dest)
+            except (AttributeError, hou.OperationFailed):
+                name = ""
+        return name or ""
+
+    def _ghost_update(self, panel) -> None:
+        """Per move: show the outline where the payload would land.
+
+        It asks the SAME questions the release will - the section's
+        rule, the node under the cursor, the network under the
+        release - so what is drawn is what will happen. Over a node
+        the editor's own drop-target highlight does the talking
+        (research.md ▸ Node graph: setDropTargetItem is the
+        documented way), so no ghost is drawn there.
+        """
+        section = self._drag_section
+        idx = self._drag_index
+        if panel is None or idx is None:
+            return
+        rule = self._drop_rule(panel, section, idx)
+        if rule is None:
+            dragengine.ghost_clear()
+            return
+        try:
+            pane_tab = dragengine.pane_tab_under_cursor()
+            if (pane_tab is None
+                    or pane_tab.type() != hou.paneTabType.NetworkEditor):
+                dragengine.ghost_clear()
+                return
+            if rule.on_node and panel._node_under_cursor() is not None:
+                # The host's own highlight owns this case.
+                dragengine.ghost_clear()
+                return
+            net = panel._network_under_release()
+            spot = panel._release_position_in(net) if net else None
+            if spot is None:
+                dragengine.ghost_clear()
+                return
+            dragengine.ghost_show(
+                pane_tab, spot,
+                self._ghost_type(panel, rule, section, net))
+        except (AttributeError, hou.OperationFailed):
+            dragengine.ghost_clear()
 
     @staticmethod
     def _drop_rule(panel, section, idx):

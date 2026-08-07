@@ -102,10 +102,16 @@ FileLocation = collections.namedtuple(
 #: to the node under the cursor. Where both doors agree - code,
 #: colour, images - the same verb name appears in both fields, which
 #: is one fact stated twice, not two mechanisms.
+#: `carrier_type` names what the space door CREATES, when the answer
+#: is a constant - the DRAG GHOST draws that type's shape while the
+#: payload is still in the air, from the same declaration the creator
+#: builds from. A per-kind rule carries its own; a section-wide one
+#: sits on the class (Section.carrier_type / carrier_type_verb).
 DropRule = collections.namedtuple(
     "DropRule",
-    "on_node on_space resolve outside click_on_node click_resolve",
-    defaults=(None, None, None, None, None, None),
+    "on_node on_space resolve outside click_on_node click_resolve "
+    "carrier_type",
+    defaults=(None, None, None, None, None, None, ""),
 )
 
 
@@ -236,6 +242,18 @@ class Section:
     #: engine (GridGestureMixin).
     DROP = None
     DROP_BY_KIND: dict = {}
+
+    #: THE CARRIER THIS SECTION CREATES on empty network space, when
+    #: the answer is a constant. Code answers per language and per
+    #: network kind instead, so it names a panel method in
+    #: `carrier_type_verb` rather than a type here.
+    #:
+    #: ONE ANSWER, TWO READERS: the creator builds this type, and the
+    #: DRAG GHOST draws its shape while the payload is still in the
+    #: air. A ghost that asked its own question would be a second
+    #: engine free to disagree with the drop it is promising.
+    carrier_type = ""
+    carrier_type_verb = ""
     #: What the shared Filter Box says while this section is active.
     #: Per-ARCHETYPE rather than per-section, because the archetype is
     #: what decides the answer: filter_text below understands ":tag",
@@ -1191,6 +1209,9 @@ class CodeSection(AssetSection):
                     on_space="create_code_node_in",
                     click_on_node="drop_code_at_release")
 
+    #: Per language AND per network kind, so the answer is a method.
+    carrier_type_verb = "code_carrier_type"
+
 
     def menu_new_snippet(self, indexes, current, payload=None) -> None:
         self.panel.new_code_snippet()
@@ -1612,7 +1633,9 @@ class FileSection(FolderSection):
         file_library.KIND_IMAGE: DropRule(
             on_node="drop_file_path_on_node",
             on_space="create_image_node_in",
-            click_on_node="drop_file_path_on_node"),
+            click_on_node="drop_file_path_on_node",
+            # The ghost draws THIS while the image is still in the air.
+            carrier_type="mtlximage"),
         file_library.KIND_GEO: DropRule(
             on_node="drop_file_path_on_node",
             resolve="drop_geo_at_release",
@@ -1941,6 +1964,9 @@ class GradientSection(Section):
     DROP = DropRule(on_node="apply_gradient_to_node",
                     on_space="create_gradient_node_in",
                     click_on_node="apply_gradient_to_node")
+
+    #: The MaterialX colour ramp, wherever a network can hold one.
+    carrier_type = "hmtlxrampc"
 
     takes_category_drops = True
 

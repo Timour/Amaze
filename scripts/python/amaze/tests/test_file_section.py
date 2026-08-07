@@ -764,6 +764,54 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual((a,), hou.selectedNodes(),
                          "the block did not put the selection back")
 
+    def test_the_ghost_promises_what_the_drop_delivers(self):
+        """The outline draws the carrier the space door WOULD create,
+        read from the same declaration the creator builds from. If the
+        two could answer separately the ghost would be free to promise
+        a wrangle and deliver nothing."""
+        from amaze.panel import dragdrop_widgets, sections as sections_mod
+        sop = self._geo()
+        vop = self._matnet()
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        rule = sections_mod.SECTION_INDEX["code"].DROP
+        self.panel._drag_index = index
+        self.addCleanup(lambda: self.panel.__dict__.pop("_drag_index", None))
+        promised = dragdrop_widgets.GridGestureMixin._ghost_type(
+            self.panel, rule, "code", sop)
+        self.assertTrue(self.panel.create_code_node_in(index, sop))
+        made = [c for c in sop.children() if "wrangle" in c.type().name()]
+        self.assertEqual(promised, made[0].type().name(),
+                         "the ghost promised a different node than the "
+                         "drop created")
+        self.assertEqual(
+            "", dragdrop_widgets.GridGestureMixin._ghost_type(
+                self.panel, rule, "code", vop),
+            "a network with no carrier still got a promise")
+
+    def test_every_borrowed_overlay_is_given_back(self):
+        """The overlay is ONE slot per editor: a ghost left behind is
+        a shape stuck on the artist's network. Every exit path clears
+        it - dragengine.end() runs on release, on cancel and on the
+        leave the host treats as a suspend."""
+        from amaze.core import dragengine
+        given_back = []
+
+        class _Editor:
+            def setOverlayShapes(self, shapes):
+                if not shapes:
+                    given_back.append(True)
+
+        editor = _Editor()
+        dragengine._ghosted.append(editor)
+        dragengine.end()
+        self.assertTrue(given_back, "the overlay was never returned")
+        self.assertEqual([], dragengine._ghosted,
+                         "the engine still believes it owns an overlay")
+
     def test_the_editor_is_put_back_in_its_own_network(self):
         """Reported live: a material drop surfaced the editor at ROOT
         with `mat` boxed. An import tags its nodes current
