@@ -118,6 +118,9 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
             b"EDITED-STATE", self._base_bytes(),
             "the base holds version 1 while the ledger still names "
             "version 2 - the promotion was not rolled back")
+        self.assertEqual(
+            2, versions.active_version(self.prefs, self.mat_id),
+            "the ledger moved despite the refusal")
 
 
 class TheArchiveIsEachVersionsDurableThumbnail(_Case):
