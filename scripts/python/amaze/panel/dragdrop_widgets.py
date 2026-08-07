@@ -762,6 +762,13 @@ class GridGestureMixin:
         wire, _name, _index = dragengine.wire_under_cursor(editor, spot)
         if wire is not None:
             dragengine.splice_into_wire(wire, landed)
+            return
+        # NO WIRE, but a node's own connector may be within reach - a
+        # lone node, or the last of a chain, has nothing to insert
+        # into and Houdini connects to its stub instead, with a far
+        # larger snap radius (dragengine.connector_under_cursor).
+        dragengine.connect_to_neighbour(
+            dragengine.connector_under_cursor(editor, spot), landed)
 
 
 def _node_paths_from_mime(mime) -> list:
