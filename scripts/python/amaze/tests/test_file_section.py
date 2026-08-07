@@ -718,6 +718,39 @@ class CreationRuleTest(unittest.TestCase):
             got = self.panel._release_position_in(outer)
         self.assertEqual((9.0, 9.0), (got.x(), got.y()))
 
+    def test_a_creation_never_steals_the_selection(self):
+        """Live find: created and imported nodes arrive SELECTED and
+        current (Houdini tags them), so the editor scrolled to them
+        and the NEXT double-click applied to the newborn and refused.
+        A door leaves the artist's selection exactly as it was."""
+        sop = self._geo()
+        self._with_view_networks([sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        hou.clearAllSelected()
+        self.panel._apply_code_index(index)
+        self.assertEqual(1, len(sop.children()), "premise: created")
+        self.assertEqual(
+            (), hou.selectedNodes(),
+            "the newborn carrier stayed selected - it will hijack "
+            "the next double-click")
+
+    def test_the_preserving_helper_restores_what_was(self):
+        from amaze.helpers import helpers
+        net = self._geo()
+        a = net.createNode("box")
+        b = net.createNode("sphere")
+        hou.clearAllSelected()
+        a.setSelected(True)
+        with helpers.preserving_selection_and_current():
+            a.setSelected(False)
+            b.setSelected(True)
+        self.assertEqual((a,), hou.selectedNodes(),
+                         "the block did not put the selection back")
+
     def test_an_invisible_selection_cannot_hijack_the_click_door(self):
         """Live find: an import leaves its nodes SELECTED (Houdini
         tags moved nodes), so the next double-click read a selection

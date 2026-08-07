@@ -2,6 +2,7 @@
 Module with helpful utility functions used in and around houdini
 """
 
+import contextlib
 import re
 import html
 
@@ -344,6 +345,57 @@ def sanitize_usd_path(path: str) -> str:
     if clean and clean[0].isdigit():
         clean = "_" + clean
     return clean
+
+
+@contextlib.contextmanager
+def preserving_selection_and_current():
+    """A drop leaves the artist where they were - the interaction
+    system's rule. Imports and creations arrive SELECTED and current
+    (hou.moveNodesTo tags them - research.md), the network editor
+    follows the current node, so a drop scrolled the view away and
+    the newborn hijacked the next double-click's aim. Around any
+    Amaze import or creation: remember the selection and each visible
+    editor's current node, and put both back on the way out - deleted
+    nodes skipped, newborn selection cleared."""
+    try:
+        before = list(hou.selectedNodes())
+    except hou.Error:
+        before = []
+    editors = []
+    ui = getattr(hou, "ui", None)
+    if ui is not None:
+        try:
+            for pane_tab in ui.paneTabs():
+                if pane_tab.type() == hou.paneTabType.NetworkEditor:
+                    editors.append((pane_tab, pane_tab.currentNode()))
+        except (AttributeError, hou.Error):
+            editors = []
+    try:
+        yield
+    finally:
+        try:
+            after = hou.selectedNodes()
+        except hou.Error:
+            after = ()
+        for node in after:
+            if node not in before:
+                try:
+                    node.setSelected(False)
+                except (hou.OperationFailed, hou.ObjectWasDeleted):
+                    pass
+        for node in before:
+            try:
+                node.setSelected(True)
+            except (hou.OperationFailed, hou.ObjectWasDeleted):
+                pass
+        for pane_tab, current in editors:
+            if current is None:
+                continue
+            try:
+                pane_tab.setCurrentNode(current)
+            except (AttributeError, hou.OperationFailed,
+                    hou.ObjectWasDeleted):
+                pass
 
 
 def place_nodes(nodes, position) -> None:
