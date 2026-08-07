@@ -206,9 +206,12 @@ AssetItemDelegate = delegates.AssetItemDelegate
 #: + first paint after it. Both are bracketed now.
 _BODY_T0 = time.perf_counter()
 
-#: The sentinel a mixed multi-selection shows in the details
-#: form. set_assetdata treats it as "leave this field alone".
-MULTIPLE_VALUES = "Multiple Values..."
+#: The sentinel a mixed multi-selection shows in the details form;
+#: set_assetdata reads it as the instruction to leave that field
+#: alone. ONE home (material.py) - it is compared against, so a
+#: second spelling is a silent overwrite; the source scan in
+#: test_library keeps this the only one.
+MULTIPLE_VALUES = material.MULTIPLE_VALUES
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
 
@@ -5778,17 +5781,17 @@ class MatLibPanel(QtWidgets.QWidget):
             fav.append(curr_asset.data(self.material_model.FavoriteRole))
 
         clean_name = name
-        msg = "Multiple Values..." if len(indexes) > 1 else clean_name
+        msg = MULTIPLE_VALUES if len(indexes) > 1 else clean_name
         self.line_name.setText(msg)
 
-        msg = "Multiple Values..." if len(indexes) > 1 else asset_id
+        msg = MULTIPLE_VALUES if len(indexes) > 1 else asset_id
         self.line_id.setText(msg)
 
-        msg = "Multiple Values..." if len(indexes) > 1 else date
+        msg = MULTIPLE_VALUES if len(indexes) > 1 else date
         self.line_date.setText(msg)
 
         if len(indexes) > 1:
-            self.line_renderer.setText("Multiple Values...")
+            self.line_renderer.setText(MULTIPLE_VALUES)
         else:
             self.line_renderer.setText(
                 curr_asset.data(self.material_model.RendererLabelRole) or ""
@@ -5840,7 +5843,7 @@ class MatLibPanel(QtWidgets.QWidget):
             if len(sel_tags) > 1:
                 for elem in sel_tags:
                     if elem != sel_tags[0]:
-                        msg = "Multiple Values..."
+                        msg = MULTIPLE_VALUES
             self.line_tags.setText(msg)
         else:
             self.line_tags.setText("")

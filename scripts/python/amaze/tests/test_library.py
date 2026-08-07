@@ -592,6 +592,33 @@ class TestMaterialLibrary(unittest.TestCase):
                       self.library.last_cleanup_summary[0])
 
 
+class TheSentinelHasOneHome(unittest.TestCase):
+    """The mixed-selection sentinel is COMPARED against, so a drifted
+    spelling silently overwrites a field. One definition
+    (material.MULTIPLE_VALUES); every other appearance imports it.
+    Recorded at five spellings in the notes, measured at ten before
+    this test - the register lesson applied to a string."""
+
+    def test_the_literal_is_spelled_exactly_once(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        spellings = []
+        for base, _dirs, files in os.walk(root):
+            if os.path.basename(base) == "tests":
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, encoding="utf-8") as handle:
+                    count = handle.read().count("Multiple Values...")
+                if count:
+                    spellings.append((os.path.relpath(path, root), count))
+        self.assertEqual(
+            [("core/material.py", 1)], spellings,
+            "the sentinel is spelled outside its one home - import "
+            "material.MULTIPLE_VALUES instead")
+
+
 class MixedSelectionTest(unittest.TestCase):
     """Editing a multi-selection must not refile everything.
 

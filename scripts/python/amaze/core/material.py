@@ -9,6 +9,15 @@ import uuid
 import datetime
 
 
+#: THE MIXED-SELECTION SENTINEL - what an edit field shows when the
+#: selected assets disagree, and what set_assetdata reads as the
+#: instruction to leave that field alone. It is COMPARED against, so
+#: a second spelling anywhere is a silent overwrite waiting; a source
+#: scan (test_library.TheSentinelHasOneHome) keeps this the only one.
+#: Lives on the asset side because the model cannot import the panel.
+MULTIPLE_VALUES = "Multiple Values..."
+
+
 #: An asset id becomes FILENAMES - `mat/<id>.mat`, `mat/<id>.interface`,
 #: `img/<id>.png` - so the only ids that can be honoured are ones that
 #: are a single, safe path component.

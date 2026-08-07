@@ -838,10 +838,11 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
 
         asset = self._assets[index.row()]
 
-        name = name if "Multiple Values..." not in name else asset.name
-        cats = cats if "Multiple Values..." not in cats else ", ".join(asset.categories)
+        name = name if material.MULTIPLE_VALUES not in name else asset.name
+        cats = (cats if material.MULTIPLE_VALUES not in cats
+                else ", ".join(asset.categories))
 
-        if "Multiple Values..." not in tags:
+        if material.MULTIPLE_VALUES not in tags:
             tags = self.sanitize_tags(tags)
             self.check_add_tags(tags)
         else:
