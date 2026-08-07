@@ -682,9 +682,16 @@ button says **Delete** (never "OK"), with Cancel as the default:
 
 ## Common messages & confirmations
 
-*(Not listed yet — the `hou.ui.displayMessage` / `displayConfirmation`
-strings. Say "add the messages" and I'll list every one with its
-trigger.)*
+- `This content can not be loaded into this context.` — the ONE
+  double-click refusal, every section (2026-08-07, the interaction
+  matrix): a single selected target that cannot take the payload, a
+  multi-selection, or a network with no carrier for it. The DRAG door
+  never dialogs — a miss shows the red indicator and the tag flies
+  home, with one status-bar line.
+
+*(The rest not listed yet — the `hou.ui.displayMessage` /
+`displayConfirmation` strings. Ask for the messages and every one
+gets listed with its trigger.)*
 
 ---
 

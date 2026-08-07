@@ -4301,12 +4301,23 @@ class MatLibPanel(QtWidgets.QWidget):
         self._add_code_snippet("", "VEX", "")
 
     def _apply_code_index(self, index: QtCore.QModelIndex) -> None:
-        """Apply the double-clicked/selected snippet to the single
-        selected scene node's code parm."""
-        source_index = self.code_sorted_model.mapToSource(index)
-        ok, reason = self.code_model.import_asset_to_scene(source_index)
-        if not ok and reason:
-            hou.ui.displayMessage(reason)  # type: ignore
+        """The Code section's click doors (double-click and menu
+        Apply): ONE selected node takes the snippet; nothing selected
+        creates the language's carrier in the active network; every
+        other outcome is the one refusal sentence."""
+        sel = hou.selectedNodes()
+        if len(sel) == 1:
+            source_index = self.code_sorted_model.mapToSource(index)
+            with hou.undos.group("Amaze Apply Code Snippet"):
+                ok, _reason = self.code_model.apply_to_node(
+                    source_index.row(), sel[0])
+            if not ok:
+                self._cannot_load_here()
+            return
+        if not sel and self.create_code_node_in(
+                index, self._double_click_network()):
+            return
+        self._cannot_load_here()
 
 
     def _edit_code_row(self, row: int) -> None:
@@ -4620,21 +4631,24 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
     def _apply_gradient_ramp(self, entry: dict, basis: str = "") -> None:
-        """Sets the entry onto the selected node's first color ramp
-        parm. Plain "Apply" applies the gradient exactly as
-        saved; "Apply as <basis>" rebuilds every key on the chosen
-        interpolation."""
-        node = self._selected_scene_node()
-        if node is None:
+        """The Color section's click doors (double-click, Apply and
+        Apply as): ONE selected node's first color ramp takes the
+        gradient; nothing selected creates the MtlX ramp carrier in
+        the active network (re-based when Apply as asked for one);
+        every other outcome is the one refusal sentence."""
+        sel = hou.selectedNodes()
+        if len(sel) == 1:
+            parm = helpers.find_color_ramp_parm(sel[0])
+            if parm is None:
+                self._cannot_load_here()
+                return
+            with hou.undos.group("Amaze Apply Gradient"):
+                parm.set(self._entry_ramp(entry, basis))
             return
-        parm = helpers.find_color_ramp_parm(node)
-        if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                f'"{node.name()}" ({node.type().name()}) has no color '
-                "ramp parameter to set."
-            )
+        if not sel and self._create_gradient_carrier(
+                entry, self._double_click_network(), basis):
             return
-        parm.set(self._entry_ramp(entry, basis))
+        self._cannot_load_here()
 
     @staticmethod
     def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
@@ -5111,23 +5125,32 @@ class MatLibPanel(QtWidgets.QWidget):
                 hou.ui.displayMessage(reason)  # type: ignore
                 break
 
-    def drop_code_at_release(self, index, node: hou.Node) -> None:
+    def drop_code_at_release(self, index, node: hou.Node) -> bool:
         """Code snippet drag released (self-managed): apply the snippet to
         the node under the cursor - same as a double-click, but targeting
         where the drag landed. A release over nothing is silent; a node
         with no code/snippet parm reports why."""
         if not self.code_model or index is None or node is None:
-            return
+            return False
         try:
             source_index = self.code_sorted_model.mapToSource(index)
         except Exception:
-            return
+            return False
         with hou.undos.group("Amaze Apply Code Snippet"):
             ok, reason = self.code_model.apply_to_node(
                 source_index.row(), node
             )
-        if not ok and reason:
-            hou.ui.displayMessage(reason)  # type: ignore
+        if not ok:
+            # Drag-door rule: the miss indicator carries the refusal;
+            # the reason goes to the status line, never a dialog.
+            ui = getattr(hou, "ui", None)
+            if ui is not None and reason:
+                ui.setStatusMessage(
+                    "Amaze: %s" % reason,
+                    severity=hou.severityType.Warning,
+                )
+            return False
+        return True
 
     #: Sections whose sidebar holds real, assignable categories. The
     #: File section is excluded on purpose - deliberately partial: its
@@ -5206,28 +5229,31 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def apply_gradient_to_node(
         self, index: QtCore.QModelIndex, node: hou.Node
-    ) -> None:
+    ) -> bool:
         """Drag-drop completion for the Gradients section: apply the
         dragged combination to the node the drag was released over.
-        A release over empty canvas is silent (a miss is a normal drag
-        outcome, not an error) - but a release ON a node that has no
-        color ramp parm reports why nothing happened, since that was a
-        deliberate target."""
+        A node that takes nothing answers False - the gesture shows
+        its own miss (drag-door rule: the red indicator and the status
+        line, never a dialog)."""
         if index is None or not index.isValid():
-            return
+            return False
         source_index = self.gradient_sorted_model.mapToSource(index)
         entry = self.gradient_model.entry(source_index.row())
         if entry is None:
-            return
+            return False
         parm = helpers.find_color_ramp_parm(node)
         if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                f'"{node.name()}" ({node.type().name()}) has no color '
-                "ramp parameter to set."
-            )
-            return
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.setStatusMessage(
+                    "Amaze: %s has no color ramp to take the gradient"
+                    % node.name(),
+                    severity=hou.severityType.Warning,
+                )
+            return False
         with hou.undos.group("Amaze Apply Gradient"):
             parm.set(self._entry_ramp(entry))
+        return True
 
     def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
         """"Save Gradient to <app>" (node right-click, or any caller
@@ -6310,12 +6336,151 @@ class MatLibPanel(QtWidgets.QWidget):
         at all."""
         parm = helpers.find_file_parm(node)
         if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                f'"{node.name()}" ({node.type().name()}) has no '
-                "file/image parameter to set."
-            )
+            self._cannot_load_here()
             return
         parm.set(self._scene_path(path))
+
+    #: The ONE double-click refusal, everywhere (ROADMAP - the
+    #: interaction matrix; exact copy also in ui-text.md). The drag
+    #: door never dialogs - it has the miss indicator.
+    CANNOT_LOAD_HERE = "This content can not be loaded into this context."
+
+    #: What the Code section creates per language and per network kind
+    #: - names from the shipped manual (sop/attribwrangle, cop/wrangle,
+    #: lop/attribwrangle, sop+cop/opencl, sop/python). A pair absent
+    #: here, or a type this Houdini does not carry, refuses.
+    CODE_CARRIERS = {
+        "vex": {"Sop": "attribwrangle", "Lop": "attribwrangle",
+                "Cop": "wrangle"},
+        "opencl": {"Sop": "opencl", "Cop": "opencl"},
+        "python": {"Sop": "python"},
+    }
+
+    def _cannot_load_here(self) -> None:
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(self.CANNOT_LOAD_HERE)  # type: ignore
+
+    def _network_under_release(self) -> hou.Node | None:
+        """The network a no-node release happened INSIDE - the editor
+        under the cursor answers with its pwd. None off any editor."""
+        return self._drop_context_under_cursor(lambda _node: False)
+
+    def _double_click_network(self) -> hou.Node | None:
+        """The double-click aim when nothing is selected: the active
+        network editor's pwd, None headless."""
+        if getattr(hou, "ui", None) is None:
+            return None
+        return self._active_network_pwd()
+
+    def _create_carrier(self, dest, type_name: str, name: str):
+        """Create `type_name` inside `dest` when that network can hold
+        one - the type existing in the network's child category IS the
+        capability test - or answer None. The carrier half of the
+        matrix's creation rule; the caller loads the payload and owns
+        the undo group."""
+        if dest is None:
+            return None
+        try:
+            category = dest.childTypeCategory()
+        except (AttributeError, hou.OperationFailed):
+            return None
+        if category is None or hou.nodeType(category, type_name) is None:
+            return None
+        try:
+            node = dest.createNode(type_name)
+        except hou.Error:
+            return None
+        if name:
+            try:
+                node.setName(name, unique_name=True)
+            except hou.OperationFailed:
+                pass
+        node.moveToGoodPosition()
+        return node
+
+    def create_image_node_in(self, index, dest) -> bool:
+        """The image creation rule: a release on empty network space
+        (or a double-click with nothing selected) makes a mtlximage
+        carrying the spelled path, wherever the network can hold one."""
+        path = index.data(self.file_files_model.PathRole)
+        if not path:
+            return False
+        base = helpers.sanitize_usd_path(
+            os.path.splitext(os.path.basename(path))[0]) or "image"
+        with hou.undos.group("Amaze Create Image Node"):
+            node = self._create_carrier(dest, "mtlximage", base)
+            if node is None:
+                return False
+            parm = helpers.find_file_parm(node)
+            if parm is None:
+                node.destroy()
+                return False
+            parm.set(self._scene_path(path))
+        return True
+
+    def create_gradient_node_in(self, index, dest) -> bool:
+        """The gradient creation rule: a MtlX colour ramp carrying the
+        combination, wherever the network can hold one."""
+        if index is None or not index.isValid():
+            return False
+        source_index = self.gradient_sorted_model.mapToSource(index)
+        entry = self.gradient_model.entry(source_index.row())
+        if entry is None:
+            return False
+        return self._create_gradient_carrier(entry, dest)
+
+    def _create_gradient_carrier(self, entry, dest, basis: str = "") -> bool:
+        """The carrier half shared by the drag door (an index) and the
+        double-click and menu doors (an entry, optionally re-based by
+        Apply as)."""
+        name = helpers.sanitize_usd_path(
+            str(entry.get("name") or "")) or "gradient"
+        with hou.undos.group("Amaze Create Gradient Node"):
+            node = self._create_carrier(dest, "hmtlxrampc", name)
+            if node is None:
+                return False
+            parm = helpers.find_color_ramp_parm(node)
+            if parm is None:
+                node.destroy()
+                return False
+            parm.set(self._entry_ramp(entry, basis))
+        return True
+
+    def create_code_node_in(self, index, dest) -> bool:
+        """The code creation rule: the language's own carrier - a
+        wrangle, an opencl, a python - wherever the network kind has
+        one, loaded through the same apply the node drop uses."""
+        if index is None or not index.isValid() or not self.code_model:
+            return False
+        source_index = self.code_sorted_model.mapToSource(index)
+        row = source_index.row()
+        if not 0 <= row < len(self.code_model.assets):
+            return False
+        asset = self.code_model.assets[row]
+        language = str(getattr(asset, "renderer", "") or "").lower()
+        by_category = self.CODE_CARRIERS.get(language, {})
+        if dest is None:
+            return False
+        try:
+            category = dest.childTypeCategory()
+        except (AttributeError, hou.OperationFailed):
+            return False
+        type_name = by_category.get(
+            category.name() if category is not None else "")
+        if not type_name:
+            return False
+        name = helpers.sanitize_usd_path(
+            str(getattr(asset, "name", "") or "")) or "snippet"
+        with hou.undos.group("Amaze Create Code Node"):
+            node = self._create_carrier(dest, type_name, name)
+            if node is None:
+                return False
+            ok, _reason = self.code_model.apply_to_node(row, node)
+            if not ok:
+                node.destroy()
+                return False
+        return True
 
     def drop_file_path_on_node(self, index, node) -> bool:
         """A File row released on a node: the node's FIRST file
@@ -6356,12 +6521,13 @@ class MatLibPanel(QtWidgets.QWidget):
             return
 
         sel = hou.selectedNodes()
-        if len(sel) != 1:
-            hou.ui.displayMessage(  # type: ignore
-                "Select a single node with a file/image parameter first."
-            )
+        if len(sel) == 1:
+            self._apply_texture_to_node(sel[0], path)
             return
-        self._apply_texture_to_node(sel[0], path)
+        if not sel and self.create_image_node_in(
+                index, self._double_click_network()):
+            return
+        self._cannot_load_here()
 
     def import_asset_to_mat(self):
         """Explicitly import the selected materials into /mat."""
