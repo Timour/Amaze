@@ -8,6 +8,7 @@ import hou
 from amaze.core import debug, dragengine, file_library
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
+from amaze.panel import sections
 
 
 def _find_panel(widget: QtWidgets.QWidget):
@@ -49,19 +50,14 @@ class GridGestureMixin:
     re-verified adversarially by a 59-agent research round (devlog #80).
     """
 
-    #: Non-real-path sections resolve their drop TARGET from a scene NODE
-    #: under the cursor (vs a network CONTEXT). Only these look one up at
-    #: release; the rest resolve a network context themselves.
-    NODE_TARGET_SECTIONS = ("gradient", "code")
-    #: Every section that can arm a drag - ALL of them. Four ride the
-    #: black SELF-MANAGED gesture (one look, one mechanism, live event
-    #: loop - the Drag & Drop Engine's transport). The File section
-    #: splits PER ROW KIND at move time instead: image/other rows hand
-    #: off a real file-path mime that Houdini's parm fields accept
-    #: natively (the old texture drag), geometry rows ride the
-    #: self-managed gesture to their import handler, and hip rows load
-    #: the scene on a release outside the panel - drag does what
-    #: double-click does, per the function sheet.
+    #: Every section that can arm a drag - ALL of them, riding the one
+    #: self-managed gesture (one look, one mechanism, live event loop -
+    #: the Drag & Drop Engine's transport). What a RELEASE does is not
+    #: written here: each section declares its doors (sections.DropRule)
+    #: and _apply_drop_rule walks them in one fixed order. The one
+    #: real-QDrag hand-off is a File gesture crossing a Parameters
+    #: pane (_promote_to_field_drag) - a field is a Qt widget and only
+    #: mime fills it.
     ARMED_SECTIONS = ("material", "gradient", "cop", "code", "file")
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
@@ -559,80 +555,16 @@ class GridGestureMixin:
                     if category is not None:
                         panel.assign_category_active(category)
                         outcome = True
-                    # Network-context sections resolve where they landed
-                    # themselves; node-target sections need the node
-                    # under the cursor - resolved ONCE here.
-                    elif section == "material":
-                        outcome = panel.drop_material_at_release(idx)
-                    elif section == "cop":
-                        outcome = bool(panel.drop_cop_at_release(idx))
-                    elif section == "file":
-                        kind = idx.data(
-                            panel.file_files_model.KindRole) or ""
-                        # ONE rule on nodes, every kind (ROADMAP -
-                        # the interaction matrix): the release hands
-                        # the node the spelled path, and a node that
-                        # takes nothing is a MISS - no per-kind
-                        # fallback. The verbs below serve releases
-                        # that hit NO node; the behaviour table makes
-                        # them per-section declarations.
-                        node = panel._node_under_cursor()
-                        if node is not None:
-                            outcome = bool(panel.drop_file_path_on_node(
-                                idx, node))
-                        elif kind == file_library.KIND_GEO:
-                            outcome = bool(panel.drop_geo_at_release(idx))
-                        elif kind == file_library.KIND_HIP:
-                            # Drag does what double-click does (the
-                            # function sheet): released OUTSIDE the
-                            # panel, the scene loads - with Houdini's
-                            # own save prompt still in charge. Inside
-                            # the panel a release stays silent.
-                            global_pos = event.globalPosition().toPoint()
-                            local = panel.mapFromGlobal(global_pos)
-                            if not panel.rect().contains(local):
-                                panel.open_hip_scene(idx)
-                                outcome = True
-                        elif kind == file_library.KIND_IMAGE:
-                            # The creation rule: an image released on
-                            # empty network space becomes a mtlximage
-                            # where the network can hold one. Off any
-                            # editor there is no network and nothing
-                            # is consulted - a plain miss.
-                            net = panel._network_under_release()
-                            outcome = bool(
-                                net is not None
-                                and panel.create_image_node_in(
-                                    idx, net,
-                                    panel._release_position()))
-                    elif section in self.NODE_TARGET_SECTIONS:
-                        # A node takes the payload or refuses (a miss);
-                        # empty network space runs the creation rule.
-                        node = panel._node_under_cursor()
-                        if section == "gradient":
-                            if node is not None:
-                                outcome = bool(
-                                    panel.apply_gradient_to_node(idx, node))
-                            else:
-                                net = panel._network_under_release()
-                                outcome = bool(
-                                    net is not None
-                                    and panel.create_gradient_node_in(
-                                        idx, net,
-                                        panel._release_position()))
-                        elif section == "code":
-                            if node is not None:
-                                outcome = bool(
-                                    panel.drop_code_at_release(idx, node))
-                            else:
-                                net = panel._network_under_release()
-                                outcome = bool(
-                                    net is not None
-                                    and panel.create_code_node_in(
-                                        idx, net,
-                                        panel._release_position()))
-                    # A release over nothing stays silent - and the tag
-                    # flies back to its tile to SAY so.
+                    # THE BEHAVIOUR TABLE: the section declares its
+                    # doors (sections.DropRule) and one walk serves
+                    # every section. A section with no rule for this
+                    # row - and a release over nothing - stays silent;
+                    # the tag flies back to its tile to SAY so.
+                    else:
+                        rule = self._drop_rule(panel, section, idx)
+                        if rule is not None:
+                            outcome = self._apply_drop_rule(
+                                rule, panel, idx, event)
             except hou.PermissionError as refusal:
                 # HOUDINI REFUSING IS NOT A BUG. Dropping onto a locked
                 # asset raises `Cannot create a node inside a locked
@@ -668,6 +600,54 @@ class GridGestureMixin:
                     )
             finally:
                 self._finish_preview(outcome)
+
+    @staticmethod
+    def _drop_rule(panel, section, idx):
+        """This row's declared behaviour: the section's one DropRule,
+        or - for the File section, whose rows are different THINGS -
+        the rule its kind table declares for the row's KindRole."""
+        cls = sections.SECTION_INDEX.get(section)
+        if cls is None:
+            return None
+        if cls.DROP_BY_KIND:
+            kind = idx.data(panel.file_files_model.KindRole) or ""
+            return cls.DROP_BY_KIND.get(kind)
+        return cls.DROP
+
+    @staticmethod
+    def _apply_drop_rule(rule, panel, idx, event) -> bool:
+        """ONE precedence for every section, fixed here and nowhere
+        else. A declared door that does not apply falls through to the
+        next; no door left is the uniform miss (False - the tag flies
+        home). Doors, in order:
+
+        on_node   a node under the release takes the payload - and its
+                  refusal is FINAL, never a fallback into another door
+        outside   released outside the panel (hip scenes; the scene
+                  loader owns any save prompt, so landing IS the hit)
+        resolve   the verb aims itself (material, cop, geometry)
+        on_space  the creation rule on empty network space - off any
+                  editor there is no network and nothing is consulted
+        """
+        if rule.on_node is not None:
+            node = panel._node_under_cursor()
+            if node is not None:
+                return bool(getattr(panel, rule.on_node)(idx, node))
+        if rule.outside is not None:
+            global_pos = event.globalPosition().toPoint()
+            local = panel.mapFromGlobal(global_pos)
+            if not panel.rect().contains(local):
+                getattr(panel, rule.outside)(idx)
+                return True
+        if rule.resolve is not None:
+            return bool(getattr(panel, rule.resolve)(idx))
+        if rule.on_space is not None:
+            net = panel._network_under_release()
+            return bool(
+                net is not None
+                and getattr(panel, rule.on_space)(
+                    idx, net, panel._release_position()))
+        return False
 
 
 def _node_paths_from_mime(mime) -> list:

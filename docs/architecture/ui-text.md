@@ -680,6 +680,34 @@ button says **Delete** (never "OK"), with Cancel as the default:
 
 ---
 
+## The interaction matrix (drag release and double-click)
+
+One behaviour, two aiming methods: a DRAG hands the payload to what
+is under the cursor; a DOUBLE-CLICK aims at the selected node, else a
+network that can hold the payload. Declared per section as a
+`DropRule` in `panel/sections.py` (doors: on_node / outside / resolve
+/ on_space, walked in that order by the gesture engine); this table
+is the register of what those declarations say.
+
+| Payload | On a node | On empty network space | Elsewhere |
+| --- | --- | --- | --- |
+| Material | into a material library node under the release | a copy created where materials can live, at the release point | miss |
+| Node network | resolves its own destination (fill rule) | built where the context allows, at the release point | miss |
+| Gradient | a node with a ramp takes it | a MaterialX ramp carrier is created where supported | miss |
+| Code snippet | a node with a snippet parameter takes it | a wrangle is created where supported | miss |
+| Image file | first file parameter takes the spelled path | a `mtlximage` carrying the path, where supported | miss |
+| Geometry file | first file parameter takes the spelled path | imports, landing at the release point | miss |
+| Scene (hip) file | first file parameter takes the spelled path | miss | outside the panel: loads the scene |
+| Unknown file | first file parameter takes the spelled path | miss | miss |
+
+A node's refusal is final — it never falls back into another door.
+The sidebar outranks everything: a release over a category
+recategorises the selection. A DRAG miss shows the red indicator and
+the name tag flies home, one status line, never a dialog; a
+DOUBLE-CLICK miss says the one sentence below.
+
+---
+
 ## Common messages & confirmations
 
 - `This content can not be loaded into this context.` — the ONE
