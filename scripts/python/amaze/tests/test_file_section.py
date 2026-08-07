@@ -453,6 +453,74 @@ class KindRouterTest(unittest.TestCase):
             self.assertEqual(kind, file_library.kind_for(name), name)
 
 
+class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
+    """Every path Amaze writes INTO THE SCENE goes through
+    _scene_path - the function-sheet decision covered Copy Path and
+    every path handed to the user after it, but the texture funnel,
+    the geometry loader and the drag payload's text all wrote raw
+    absolutes. Reported live 2026-08-07: Write Paths As on its
+    default, absolute paths from every door."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _home(self):
+        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
+        if not home or home in ("/", "."):
+            self.skipTest("no HOME variable in this session")
+        return home
+
+    def test_the_texture_funnel_writes_the_spelled_path(self):
+        home = self._home()
+        geo = hou.node("/obj").createNode("geo", "amaze_pathtest_tex")
+        self.addCleanup(geo.destroy)
+        loader = geo.createNode("file")
+        self.panel._apply_texture_to_node(
+            loader, home + "/textures/amaze_spelling.png")
+        self.assertEqual(
+            "$HOME/textures/amaze_spelling.png",
+            loader.parm("file").rawValue(),
+            "double-click and Load to Node write the raw absolute "
+            "path, not the spelling Preferences asks for")
+
+    def test_the_geometry_loader_writes_the_spelled_path(self):
+        home = self._home()
+        geo = hou.node("/obj").createNode("geo", "amaze_pathtest_dest")
+        self.addCleanup(geo.destroy)
+        self.panel._import_geo_in_context(
+            home + "/models/amaze_spelling.obj", geo)
+        loaders = [n for n in geo.children() if n.type().name() == "file"]
+        self.assertTrue(loaders, "no loader SOP was created")
+        self.assertEqual(
+            "$HOME/models/amaze_spelling.obj",
+            loaders[0].parm("file").rawValue(),
+            "the geometry import writes the raw absolute path")
+
+    def test_the_drag_payload_text_is_spelled_and_the_url_is_raw(self):
+        home = self._home()
+        raw = home + "/textures/amaze_spelling.png"
+        mime = self.panel.thumblist._file_drag_mime(self.panel, raw)
+        self.assertEqual("$HOME/textures/amaze_spelling.png",
+                         mime.text(),
+                         "the drag's text flavour is not spelled per "
+                         "the preference")
+        self.assertEqual(raw, mime.urls()[0].toLocalFile(),
+                         "the URL flavour must stay a real local "
+                         "file - it is an OS handle, not a spelling")
+
+    def test_no_raw_parm_set_of_a_path_remains(self):
+        panel_py = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "panel", "panel.py")
+        with open(panel_py, encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertNotIn(
+            "parm.set(path)", source,
+            "a raw parm.set of a path returned to panel.py - scene "
+            "paths go through _scene_path")
+
+
 class HoudiniPathTest(unittest.TestCase):
     """Copy Path writes paths the way Houdini writes them."""
 

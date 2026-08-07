@@ -421,6 +421,19 @@ class GridGestureMixin:
         return self._file_drag_kind() in (
             file_library.KIND_IMAGE, file_library.KIND_OTHER)
 
+    @staticmethod
+    def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
+        """One mime for a file-path drag. The TEXT flavour is spelled
+        per Write Paths As - it is what lands wherever text wins. The
+        URL flavour stays the raw local file: a QUrl is an OS handle,
+        not a spelling, and an encoded string inside it points at
+        nothing."""
+        mime_data = QtCore.QMimeData()
+        mime_data.setUrls([QtCore.QUrl.fromLocalFile(path)])
+        mime_data.setText(file_library.houdini_path(
+            path, getattr(panel.prefs, "path_style", "home")))
+        return mime_data
+
     def _run_file_path_drag(self) -> None:
         """Drags the pressed row's file path as real file mime data
         (QUrl + plain text, matching what dragging a file from Finder
@@ -447,10 +460,7 @@ class GridGestureMixin:
         if not path:
             return
         drag = QtGui.QDrag(self)
-        mime_data = QtCore.QMimeData()
-        mime_data.setUrls([QtCore.QUrl.fromLocalFile(path)])
-        mime_data.setText(path)
-        drag.setMimeData(mime_data)
+        drag.setMimeData(self._file_drag_mime(panel, path))
         name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
         drag.setPixmap(ui_helpers.name_tag_pixmap(name))
         drag.exec(QtCore.Qt.DropAction.CopyAction)
