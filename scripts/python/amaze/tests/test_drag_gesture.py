@@ -96,6 +96,9 @@ class _StubPanel(QtWidgets.QWidget):
         self.calls.append("geo")
         return True
 
+    def open_hip_scene(self, idx):
+        self.calls.append("open_hip")
+
     def assign_category_active(self, category):
         self.calls.append("category:%s" % category)
 
@@ -129,7 +132,17 @@ class _StubPanel(QtWidgets.QWidget):
 
 
 def _event(kind, pos, button=QtCore.Qt.MouseButton.LeftButton,
-           buttons=None):
+           buttons=None, global_pos=None):
+    if global_pos is not None:
+        # The short ctor takes the GLOBAL position from the live
+        # cursor, which a headless run cannot aim - the hip cells
+        # need it spelled out (release inside vs outside the panel).
+        return QtGui.QMouseEvent(
+            kind, QtCore.QPointF(pos), QtCore.QPointF(pos),
+            QtCore.QPointF(global_pos), button,
+            buttons if buttons is not None else button,
+            QtCore.Qt.KeyboardModifier.NoModifier,
+        )
     return QtGui.QMouseEvent(
         kind, QtCore.QPointF(pos), button,
         buttons if buttons is not None else button,
@@ -173,9 +186,10 @@ class _Harness:
             QtCore.Qt.MouseButton.NoButton,
             QtCore.Qt.MouseButton.LeftButton))
 
-    def release(self, pos=None):
+    def release(self, pos=None, global_pos=None):
         self.view.mouseReleaseEvent(_event(
-            QtCore.QEvent.Type.MouseButtonRelease, pos or self.item_pos()))
+            QtCore.QEvent.Type.MouseButtonRelease, pos or self.item_pos(),
+            global_pos=global_pos))
 
 
 class TestGestureArming(unittest.TestCase):
@@ -567,6 +581,104 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
                          "not load the scene")
 
 
+class TheBehaviourTableCells(unittest.TestCase):
+    """The interaction matrix, one cell per release situation - the
+    RECORDED baseline for retiring the release ladder (ROADMAP, the
+    behaviour table). Written green against the ladder; the table
+    engine must keep every cell green untouched.
+
+    A cell is (section, row kind, what is under the release) and its
+    expected dispatch. Aim states: a sidebar category, a scene node,
+    empty network space, nothing at all - plus inside/outside the
+    panel for hip scenes."""
+
+    CELLS = (
+        ("material aims itself", "material", None,
+         dict(node=True), ["material"]),
+        ("material over nothing still aims itself", "material", None,
+         dict(), ["material"]),
+        ("node networks aim themselves", "cop", None,
+         dict(), ["cop"]),
+        ("a gradient hands to the node", "gradient", None,
+         dict(node=True), ["gradient"]),
+        ("a gradient creates on network space", "gradient", None,
+         dict(network=True), ["create_gradient"]),
+        ("a gradient over nothing misses", "gradient", None,
+         dict(), []),
+        ("the node wins over the network behind it", "gradient", None,
+         dict(node=True, network=True), ["gradient"]),
+        ("code hands to the node", "code", None,
+         dict(node=True), ["code"]),
+        ("code creates on network space", "code", None,
+         dict(network=True), ["create_code"]),
+        ("code over nothing misses", "code", None,
+         dict(), []),
+        ("an image hands the path to the node", "file", "image",
+         dict(node=True), ["file_path"]),
+        ("an image creates on network space", "file", "image",
+         dict(network=True), ["create_image"]),
+        ("an image over nothing misses", "file", "image",
+         dict(), []),
+        ("geometry hands the path to the node", "file", "geo",
+         dict(node=True), ["file_path"]),
+        ("geometry imports when no node takes it", "file", "geo",
+         dict(), ["geo"]),
+        ("geometry ignores the network - its import aims itself",
+         "file", "geo", dict(network=True), ["geo"]),
+        ("a hip hands the path to the node", "file", "hip",
+         dict(node=True), ["file_path"]),
+        ("a hip inside the panel misses", "file", "hip",
+         dict(inside=True), []),
+        ("a hip outside the panel loads the scene", "file", "hip",
+         dict(outside=True), ["open_hip"]),
+        ("an unknown file hands the path to the node", "file", "other",
+         dict(node=True), ["file_path"]),
+        ("an unknown file has no creation rule", "file", "other",
+         dict(network=True), []),
+        ("the sidebar category outranks every target", "gradient", None,
+         dict(node=True, category="Metals"), ["category:Metals"]),
+    )
+
+    _KINDS = None
+
+    def _kind(self, name):
+        from amaze.core import file_library
+        return {
+            "image": file_library.KIND_IMAGE,
+            "geo": file_library.KIND_GEO,
+            "hip": file_library.KIND_HIP,
+            "other": file_library.KIND_OTHER,
+        }[name]
+
+    def test_every_cell_of_the_matrix(self):
+        for name, section, kind, aim, expected in self.CELLS:
+            with self.subTest(cell=name):
+                h = _Harness(self, section=section,
+                             kind=self._kind(kind) if kind else None)
+                h.panel.resize(400, 300)
+                if aim.get("node"):
+                    h.panel._node = object()
+                if aim.get("network"):
+                    h.panel._network = object()
+                if aim.get("category"):
+                    h.panel._category = aim["category"]
+                h.press()
+                # Armed directly, as TestGestureRelease does: the cells
+                # pin the RELEASE dispatch; the move machinery (hover,
+                # promotion) has its own tests.
+                h.view._dragging = True
+                h.view._drag_panel = h.panel
+                global_pos = None
+                if aim.get("outside"):
+                    global_pos = QtCore.QPoint(2000, 2000)
+                elif aim.get("inside"):
+                    global_pos = QtCore.QPoint(50, 50)
+                h.release(global_pos=global_pos)
+                self.assertEqual(expected, h.panel.calls, name)
+                self.assertFalse(h.view._dragging,
+                                 "the gesture stayed live after: " + name)
+
+
 class TheParameterPaneHandOff(unittest.TestCase):
     """A File gesture crossing into a Parameters pane becomes the one
     real QDrag - a field is a Qt widget and only mime fills it. Every
@@ -791,13 +903,11 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
 
     def test_the_table_view_carries_the_arming_rules(self):
         """The rules are class data on the mixin; a view that lost them
-        would arm on nothing, or on everything."""
+        would arm on nothing, or on everything. (What a RELEASE does is
+        no longer view data at all - the sections declare it.)"""
         table = dragdrop_widgets.DragDropTableView
         self.assertEqual(dragdrop_widgets.GridGestureMixin.ARMED_SECTIONS,
                          table.ARMED_SECTIONS)
-        self.assertEqual(
-            dragdrop_widgets.GridGestureMixin.NODE_TARGET_SECTIONS,
-            table.NODE_TARGET_SECTIONS)
 
     def test_the_table_view_selects_ROWS_and_MANY(self):
         """QTableView defaults to ExtendedSelection where QListView

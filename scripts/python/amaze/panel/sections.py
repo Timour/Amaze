@@ -72,6 +72,21 @@ CommentSubject = collections.namedtuple(
 FileLocation = collections.namedtuple(
     "FileLocation", "path label colour")
 
+#: WHAT A GESTURE RELEASE DOES HERE (ROADMAP - the interaction matrix).
+#: Four doors, each a panel VERB NAME or None, tried by the engine in
+#: one fixed order for every section (GridGestureMixin._apply_drop_rule
+#: is the only reader): a node under the release takes the payload
+#: `(index, node)`; a release outside the panel runs `outside(index)`;
+#: a self-aiming verb `resolve(index)` finds its own landing; empty
+#: network space runs the creation rule `(index, network, position)`.
+#: Undeclared doors fall through; no door left = the uniform miss.
+#: This retired the release ladder - five sections' dispatch written
+#: as branches, where the File kinds each grew their own wording.
+DropRule = collections.namedtuple(
+    "DropRule", "on_node on_space resolve outside",
+    defaults=(None, None, None, None),
+)
+
 
 #: ONE ROW OF A GRID RIGHT-CLICK MENU - data, never a callable.
 #:
@@ -193,6 +208,13 @@ class Section:
     #: THIS SECTION'S SIDEBAR RIGHT-CLICK MENU, same shape, same
     #: builder. Three hand-written menus until 2026-08-04.
     SIDEBAR_MENU: tuple = ()
+    #: WHAT A GESTURE RELEASE DOES HERE - one DropRule, or None for a
+    #: section that never arms a drag (the online catalogue). The File
+    #: section declares per row KIND instead, in DROP_BY_KIND; a
+    #: non-empty kind table wins over DROP. Read only by the gesture
+    #: engine (GridGestureMixin).
+    DROP = None
+    DROP_BY_KIND: dict = {}
     #: What the shared Filter Box says while this section is active.
     #: Per-ARCHETYPE rather than per-section, because the archetype is
     #: what decides the answer: filter_text below understands ":tag",
@@ -946,6 +968,10 @@ class MaterialSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
+    #: A material import finds its own landing - the verb checks the
+    #: release for a material library node or a network itself.
+    DROP = DropRule(resolve="drop_material_at_release")
+
 
     def selection_has_redshift(self, indexes, current) -> bool:
         return self.panel._selection_has_redshift()
@@ -1057,6 +1083,10 @@ class CopSection(AssetSection):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
+    #: A saved network builds where the context allows - the verb
+    #: resolves the destination itself (fill rule, approved).
+    DROP = DropRule(resolve="drop_cop_at_release")
+
 
     def menu_load(self, indexes, current, payload=None) -> None:
         self.panel.import_cop_assets()
@@ -1133,6 +1163,11 @@ class CodeSection(AssetSection):
         MenuEntry("Edit", verb="menu_edit", needs="one"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
+
+    #: A snippet hands to the node under the release; on empty network
+    #: space the carrier wrangle is created where supported.
+    DROP = DropRule(on_node="drop_code_at_release",
+                    on_space="create_code_node_in")
 
 
     def menu_new_snippet(self, indexes, current, payload=None) -> None:
@@ -1541,6 +1576,28 @@ class FileSection(FolderSection):
                   needs="menu_capture_enabled", shown="selection_has_scene"),
     ) + GRID_MENU_TAIL
 
+    #: Per row KIND - the one section whose rows are different things.
+    #: Every kind hands its spelled path to a node (ONE rule, no
+    #: exceptions); what differs is the no-node door: geometry's import
+    #: aims itself, a hip loads only outside the panel, an image
+    #: creates its carrier on network space, anything else misses.
+    #: The un-kinded "" row is a real case (a model that answers no
+    #: KindRole) and behaves like unknown.
+    _PATH_ONLY = DropRule(on_node="drop_file_path_on_node")
+    DROP_BY_KIND = {
+        file_library.KIND_IMAGE: DropRule(
+            on_node="drop_file_path_on_node",
+            on_space="create_image_node_in"),
+        file_library.KIND_GEO: DropRule(
+            on_node="drop_file_path_on_node",
+            resolve="drop_geo_at_release"),
+        file_library.KIND_HIP: DropRule(
+            on_node="drop_file_path_on_node",
+            outside="open_hip_scene"),
+        file_library.KIND_OTHER: _PATH_ONLY,
+        "": _PATH_ONLY,
+    }
+
     #: The same spine with a location's own vocabulary: Rename is a
     #: LABEL submenu (a location is not a category - Add sets a custom
     #: name for the link, Remove clears it back to the path), Locate
@@ -1852,6 +1909,11 @@ class GradientSection(Section):
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
+    #: A gradient hands to a node with a ramp; on empty network space
+    #: the MaterialX ramp carrier is created where supported.
+    DROP = DropRule(on_node="apply_gradient_to_node",
+                    on_space="create_gradient_node_in")
+
     takes_category_drops = True
 
     def accepts_category_drop(self, index, name: str) -> bool:
@@ -2064,6 +2126,11 @@ SECTION_CLASSES = (
     CodeSection,
     FileSection,
 )
+
+#: The same registry keyed for lookup. CLASS-level, deliberately: the
+#: gesture engine reads declarations (DROP, DROP_BY_KIND), so tests
+#: drive the real tables without building a panel's worth of models.
+SECTION_INDEX = {cls.key: cls for cls in SECTION_CLASSES}
 
 
 def all_sections() -> tuple:
