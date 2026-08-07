@@ -2501,6 +2501,15 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
 
+    def _scene_path(self, path: str) -> str:
+        """Every path Amaze WRITES INTO THE SCENE goes through here,
+        spelled per Preferences - Write Paths As. The function-sheet
+        decision covers Copy Path and every path handed to the user
+        after it; loads and existence checks stay on the raw path,
+        which is a location, not a spelling."""
+        return file_library.houdini_path(
+            path, getattr(self.prefs, "path_style", "home"))
+
     def copy_file_paths(self, proxy_indexes) -> None:
         """Copy the selection's paths to the clipboard, one per line,
         written as Houdini paths ($HIP/... $JOB/... $HOME/...) - the
@@ -4556,7 +4565,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 f'The "{loader_type}" SOP has no file parameter to set.'
             )
             return
-        parm.set(path)
+        parm.set(self._scene_path(path))
         try:
             loader.setName(name, unique_name=True)
         except hou.OperationFailed:
@@ -6306,7 +6315,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 "file/image parameter to set."
             )
             return
-        parm.set(path)
+        parm.set(self._scene_path(path))
 
     def set_texture_on_selected_node(self, index: QtCore.QModelIndex | None) -> None:
         """Double-click on an image in the File section: push the path onto
