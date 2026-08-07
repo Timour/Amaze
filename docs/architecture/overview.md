@@ -593,6 +593,23 @@ interface and values - in a form that is parsed. Measured on a real
 548-asset library: with sidecars present, every importable asset
 reproduces byte-identically without executing a line.
 
+### Where version files live — settled 2026-08-08, before Versions is built
+
+    mat/versions/<asset id>/<writer>-<n>.mat
+    mat/versions/<asset id>/<writer>-<n>.interface
+    mat/versions/<asset id>/<writer>-<n>.png
+
+A directory per asset id, and a file trio per version named for its
+writer and an increasing number. Settled ahead of the build so that
+Clean Library's classifier can be written against a shape that is
+known rather than guessed: it whitelists only recognised stems, so
+anything it does not recognise is skipped and logged, never swept.
+Without a decided name, the first Clean Library run after Versions
+ships would have read every version file as an orphan.
+
+`<writer>` is the artist's own `version_author` preference, never a
+harvested machine or account name.
+
 ### `policy.json` — a per-library write policy, on disk only
 
 One key today, `allow_overwrite`, default **true**. When false,
