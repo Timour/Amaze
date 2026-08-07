@@ -72,7 +72,7 @@ Actively developed (AI-assisted). Found a bug? Open an issue — but check the W
 
 ## Acknowledgements
 
-- **[Elmar Glaubauf](https://github.com/eglaubauf)** — Amaze began as his egMatLib. Thank you for the foundation to build on.
+- **[Elmar Glaubauf](https://github.com/eglaubauf)** — Amaze is its own product, and it contains code from egMatLib, the foundation it grew from. Thank you.
 - Color palette sources: Sanzo Wada (public domain, via [dblodorn/sanzo-wada](https://github.com/dblodorn/sanzo-wada)), Paul Klee, Josef Albers, Johannes Itten (interpretive palettes from public-domain works).
 
 ## License
