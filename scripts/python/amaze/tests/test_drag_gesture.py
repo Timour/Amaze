@@ -112,15 +112,18 @@ class _StubPanel(QtWidgets.QWidget):
     def _network_under_release(self):
         return self._network
 
-    def create_image_node_in(self, idx, dest):
+    def _release_position(self):
+        return None
+
+    def create_image_node_in(self, idx, dest, position=None):
         self.calls.append("create_image")
         return dest is not None
 
-    def create_gradient_node_in(self, idx, dest):
+    def create_gradient_node_in(self, idx, dest, position=None):
         self.calls.append("create_gradient")
         return dest is not None
 
-    def create_code_node_in(self, idx, dest):
+    def create_code_node_in(self, idx, dest, position=None):
         self.calls.append("create_code")
         return dest is not None
 
