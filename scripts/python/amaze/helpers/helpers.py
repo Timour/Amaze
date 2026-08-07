@@ -344,3 +344,25 @@ def sanitize_usd_path(path: str) -> str:
     if clean and clean[0].isdigit():
         clean = "_" + clean
     return clean
+
+
+def place_nodes(nodes, position) -> None:
+    """Move created nodes as a GROUP so their centroid lands at
+    `position`, preserving their relative layout - the ONE placement
+    rule of the interaction system, fed by the import seam's created
+    list. None position, or nothing created: the import's own
+    placement stands."""
+    nodes = [node for node in nodes if node is not None]
+    if position is None or not nodes:
+        return
+    centroid_x = sum(n.position().x() for n in nodes) / len(nodes)
+    centroid_y = sum(n.position().y() for n in nodes) / len(nodes)
+    shift_x = position.x() - centroid_x
+    shift_y = position.y() - centroid_y
+    for node in nodes:
+        try:
+            node.setPosition(hou.Vector2(
+                node.position().x() + shift_x,
+                node.position().y() + shift_y))
+        except (hou.OperationFailed, hou.ObjectWasDeleted):
+            pass

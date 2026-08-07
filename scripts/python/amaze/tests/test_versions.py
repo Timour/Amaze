@@ -329,7 +329,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
         # update. Building a fresh network would be structural.
         row = self._karma_row()
         mat = self.model.assets[row]
-        ok, reason = self.model.import_asset_to_scene(
+        ok, reason, _created = self.model.import_asset_to_scene(
             self.model.index(row, 0), target="mat")
         self.assertTrue(ok, reason)
         imported = next(n for n in hou.node("/mat").children()

@@ -218,7 +218,7 @@ class TestRoundTrip(unittest.TestCase):
         asset = self.model.assets[-1]
 
         handler = nodes.NodeHandler(self.prefs)
-        ok, reason = handler.import_asset_to_scene(asset, target="mat")
+        ok, reason, _created = handler.import_asset_to_scene(asset, target="mat")
         self.assertTrue(ok, reason)
 
         imported = handler.builder_node
@@ -257,7 +257,7 @@ class TestRoundTrip(unittest.TestCase):
             "the saved asset did not record that it WAS a builder, so "
             "load_interface_mantra will skip the saved .interface")
 
-        ok, reason = nodes.NodeHandler(self.prefs).import_asset_to_scene(
+        ok, reason, _created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
             asset, target="mat")
         self.assertTrue(ok, reason)
 
@@ -406,7 +406,7 @@ class TestRoundTrip(unittest.TestCase):
         self.assertIn("RoundTrip", asset.categories)
 
         # RE-IMPORT through the real importer, into /mat.
-        ok, reason = reloaded.import_asset_to_scene(
+        ok, reason, _created = reloaded.import_asset_to_scene(
             reloaded.index(row, 0), target="mat"
         )
         self.assertTrue(ok, reason)
@@ -438,7 +438,7 @@ class TestRoundTrip(unittest.TestCase):
         self.model.add_asset(builder, "RoundTrip", "", False)
         row = self.model.rowCount() - 1
         for _ in range(2):
-            ok, reason = self.model.import_asset_to_scene(
+            ok, reason, _created = self.model.import_asset_to_scene(
                 self.model.index(row, 0), target="mat"
             )
             self.assertTrue(ok, reason)
@@ -504,7 +504,7 @@ class TestRoundTrip(unittest.TestCase):
         os.remove(os.path.join(self.prefs.dir, self.prefs.asset_dir,
                                mat_id + self.prefs.ext))
         try:
-            ok, reason = self.model.import_asset_to_scene(
+            ok, reason, _created = self.model.import_asset_to_scene(
                 self.model.index(row, 0), target="mat"
             )
         except hou.Error:
@@ -706,7 +706,7 @@ class TestUnsafeAssetIds(unittest.TestCase):
         self.assertNotEqual(row, -1, "premise: the tampered row loaded")
 
         before = set(hou.node("/mat").children())
-        ok, reason = model.import_asset_to_scene(model.index(row, 0),
+        ok, reason, _created = model.import_asset_to_scene(model.index(row, 0),
                                                  target="mat")
         self.assertFalse(ok, "a traversal id was imported")
         self.assertIn("tampered", reason)
