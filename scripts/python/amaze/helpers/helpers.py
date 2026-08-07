@@ -350,13 +350,31 @@ def sanitize_usd_path(path: str) -> str:
 @contextlib.contextmanager
 def preserving_selection_and_current():
     """A drop leaves the artist where they were - the interaction
-    system's rule. Imports and creations arrive SELECTED and current
-    (hou.moveNodesTo tags them - research.md), the network editor
-    follows the current node, so a drop scrolled the view away and
-    the newborn hijacked the next double-click's aim. Around any
-    Amaze import or creation: remember the selection and each visible
-    editor's current node, and put both back on the way out - deleted
-    nodes skipped, newborn selection cleared."""
+    system's rule.
+
+    THREE things are remembered, because the view moves for three
+    different reasons. An import arrives SELECTED and CURRENT
+    (`hou.moveNodesTo` tags both; the selected tagging is documented,
+    the current tagging is incidental - research.md ▸ Node graph says
+    do not build on it, DO DEFEND AGAINST IT), and an unpinned editor
+    is in the `FollowSelection` link group, so it DIVES to wherever
+    the current node now lives (#226). Restoring the current node
+    alone was not enough - live, the editor surfaced at root with
+    `mat` boxed - so each editor's PWD is remembered and restored too
+    (`PathBasedPaneTab.pwd`/`setPwd`, documented).
+
+    THE WHOLE RESTORE RUNS UNDER `hou.undos.disabler()`: selection
+    calls push `Change Selection` entries onto the undo stack
+    (research.md ▸ Viewport & picking), so putting the artist's
+    selection back would otherwise spray undo steps on every drop -
+    the disabler exists for exactly this.
+
+    A MENU action is deliberately NOT wrapped: fronting what you just
+    asked for is the host's own behaviour (`lop_dragdrop.py` calls
+    `setCurrent(True, True)` on every node it creates). This is the
+    DROP rule, where the artist is already looking at the right
+    place.
+    """
     try:
         before = list(hou.selectedNodes())
     except hou.Error:
@@ -367,35 +385,46 @@ def preserving_selection_and_current():
         try:
             for pane_tab in ui.paneTabs():
                 if pane_tab.type() == hou.paneTabType.NetworkEditor:
-                    editors.append((pane_tab, pane_tab.currentNode()))
+                    editors.append((pane_tab, pane_tab.currentNode(),
+                                    pane_tab.pwd()))
         except (AttributeError, hou.Error):
             editors = []
     try:
         yield
     finally:
-        try:
-            after = hou.selectedNodes()
-        except hou.Error:
-            after = ()
-        for node in after:
-            if node not in before:
+        with hou.undos.disabler():
+            try:
+                after = hou.selectedNodes()
+            except hou.Error:
+                after = ()
+            for node in after:
+                if node not in before:
+                    try:
+                        node.setSelected(False)
+                    except (hou.OperationFailed, hou.ObjectWasDeleted):
+                        pass
+            for node in before:
                 try:
-                    node.setSelected(False)
+                    node.setSelected(True)
                 except (hou.OperationFailed, hou.ObjectWasDeleted):
                     pass
-        for node in before:
-            try:
-                node.setSelected(True)
-            except (hou.OperationFailed, hou.ObjectWasDeleted):
-                pass
-        for pane_tab, current in editors:
-            if current is None:
-                continue
-            try:
-                pane_tab.setCurrentNode(current)
-            except (AttributeError, hou.OperationFailed,
-                    hou.ObjectWasDeleted):
-                pass
+            for pane_tab, current, pwd in editors:
+                # PWD FIRST, then the current node: setCurrentNode on a
+                # node in another network is itself a dive, so putting
+                # the network back afterwards would fight it.
+                try:
+                    if pwd is not None and pane_tab.pwd() != pwd:
+                        pane_tab.setPwd(pwd)
+                except (AttributeError, hou.OperationFailed,
+                        hou.ObjectWasDeleted):
+                    pass
+                if current is None:
+                    continue
+                try:
+                    pane_tab.setCurrentNode(current)
+                except (AttributeError, hou.OperationFailed,
+                        hou.ObjectWasDeleted):
+                    pass
 
 
 def auto_place(node) -> None:

@@ -764,6 +764,76 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual((a,), hou.selectedNodes(),
                          "the block did not put the selection back")
 
+    def test_the_editor_is_put_back_in_its_own_network(self):
+        """Reported live: a material drop surfaced the editor at ROOT
+        with `mat` boxed. An import tags its nodes current
+        (`hou.moveNodesTo`, incidental - research.md), and an unpinned
+        editor is in the FollowSelection link group, so it DIVES.
+        Restoring the current node alone does not undo the dive: the
+        editor's PWD is remembered and restored too."""
+        from unittest import mock
+        import types
+        from amaze.helpers import helpers
+        home = self._geo()
+        away = hou.node("/mat")
+        anchor = home.createNode("box")
+        seen = []
+
+        class _Tab:
+            def type(self):
+                return hou.paneTabType.NetworkEditor
+
+            def pwd(self):
+                return self._pwd
+
+            def setPwd(self, node):
+                self._pwd = node
+                seen.append(("pwd", node.path()))
+
+            def currentNode(self):
+                return anchor
+
+            def setCurrentNode(self, node):
+                seen.append(("current", node.path()))
+
+        tab = _Tab()
+        tab._pwd = home
+        ui = types.SimpleNamespace(paneTabs=lambda: [tab])
+        with mock.patch.object(hou, "ui", ui, create=True):
+            with helpers.preserving_selection_and_current():
+                tab._pwd = away          # the dive an import causes
+        self.assertEqual(home, tab.pwd(),
+                         "the editor was left in the network the "
+                         "import dived into")
+        self.assertIn(("pwd", home.path()), seen)
+
+    def test_putting_the_selection_back_costs_no_undo_steps(self):
+        """Selection calls push `Change Selection` entries
+        (research.md ▸ Viewport & picking), so restoring the artist's
+        selection would spray undo steps on EVERY drop. The whole
+        restore runs under hou.undos.disabler()."""
+        from unittest import mock
+        from amaze.helpers import helpers
+        net = self._geo()
+        a = net.createNode("box")
+        b = net.createNode("sphere")
+        hou.clearAllSelected()
+        a.setSelected(True)
+        real = hou.undos.disabler
+        used = []
+
+        def _watch():
+            used.append(True)
+            return real()
+
+        with mock.patch.object(hou.undos, "disabler", _watch):
+            with helpers.preserving_selection_and_current():
+                a.setSelected(False)
+                b.setSelected(True)
+        self.assertTrue(used, "the restore ran outside a disabler - "
+                              "every drop now costs undo steps")
+        self.assertEqual((a,), hou.selectedNodes())
+
     def test_a_selected_node_that_cannot_take_it_still_creates(self):
         """Reported live: a geo network open, a SPHERE selected (in
         Houdini something almost always is), a VEX snippet
