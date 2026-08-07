@@ -617,6 +617,90 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
         cop.assert_not_called()
 
 
+class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
+    """Dropping onto a wire inserts what landed into that chain.
+
+    Reported live: the wire highlighted but nothing was inserted -
+    the splice had been wired into the CREATION door only, while a
+    node or material payload lands through its own import door. What
+    every door DOES share is the placement funnel, so the splice asks
+    that instead of diffing a network's children (the child-diff
+    version of this was withdrawn once already - practice.md ▸ DONT
+    PATCH, DONT HAND-ROLL)."""
+
+    def setUp(self):
+        self.net = hou.node("/obj").createNode("geo")
+        self.addCleanup(self.net.destroy)
+        from amaze.helpers import helpers
+        helpers.forget_placed()
+
+    def test_every_door_leaves_its_nodes_in_the_funnel(self):
+        from amaze.helpers import helpers
+        made = self.net.createNode("box")
+        helpers.forget_placed()
+        self.assertEqual([], helpers.placed_nodes(),
+                         "the funnel remembered across gestures")
+        # The creation door's form...
+        helpers.place_nodes([made], hou.Vector2(1.0, 1.0))
+        self.assertEqual([made], helpers.placed_nodes())
+        # ...and the no-drop-point form every import falls back to.
+        other = self.net.createNode("sphere")
+        helpers.auto_place(other)
+        self.assertEqual([other], helpers.placed_nodes(),
+                         "auto placement did not report what it placed")
+
+    def test_the_splice_calls_the_hosts_own_function(self):
+        """The rewiring is SideFX's, not ours: `insertItemsIntoWire`
+        reads the wire's four facts and handles chains, dots and
+        network boxes. It is GUI-only - the module touches
+        `hou.ui.colorFromName` at import, like `lop_dragdrop.py`
+        (research.md) - so this pins the CONTRACT headless: the right
+        connection, the landed nodes, and the flag that removes the
+        existing connections. The rewiring itself was proven in a
+        live session (2026-08-07): a null dropped on a wire ended up
+        between the two nodes, and the downstream one read from it.
+        """
+        import sys
+        import types
+        from unittest import mock
+        from amaze.core import dragengine
+        a = self.net.createNode("box")
+        b = self.net.createNode("merge")
+        b.setInput(0, a)
+        wire = b.inputConnections()[0]
+        fresh = self.net.createNode("xform")
+        seen = {}
+
+        stub = types.ModuleType("nodegraphutils")
+        stub.insertItemsIntoWire = (
+            lambda conn, chain, every, remove_existing_connections=False:
+            seen.update(conn=conn, chain=list(chain),
+                        remove=remove_existing_connections))
+        with mock.patch.dict(sys.modules, {"nodegraphutils": stub}):
+            self.assertTrue(dragengine.splice_into_wire(wire, [fresh]))
+        self.assertEqual(wire, seen.get("conn"),
+                         "a different wire was spliced than the one "
+                         "under the release")
+        self.assertEqual([fresh], seen.get("chain"),
+                         "the nodes that landed were not the ones "
+                         "inserted")
+        self.assertTrue(seen.get("remove"),
+                        "the existing connection was left in place, "
+                        "so the insert would double-wire the chain")
+
+    def test_nothing_landed_means_nothing_is_spliced(self):
+        from amaze.core import dragengine
+        from amaze.helpers import helpers
+        a = self.net.createNode("box")
+        b = self.net.createNode("merge")
+        b.setInput(0, a)
+        wire = b.inputConnections()[0]
+        helpers.forget_placed()
+        self.assertFalse(dragengine.splice_into_wire(wire, []),
+                         "an empty landing still rewired the chain")
+        self.assertEqual(a, b.inputs()[0], "the chain was disturbed")
+
+
 class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
     """Reported live: a drop rearranged the network - other nodes
     slid away from where the artist had put them.

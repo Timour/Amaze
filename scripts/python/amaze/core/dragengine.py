@@ -162,6 +162,17 @@ _ghosted: list = []
 
 GHOST_SIZE = (1.1296, 0.2824)
 
+#: The outline's colour (2026-08-07): #fcb900 at 75%.
+GHOST_COLOUR = (0.988, 0.725, 0.0)
+GHOST_ALPHA = 0.75
+
+#: The shape a carrier with no shape of its own wears. `rect` is
+#: Houdini's own default node shape - rounded corners, drawn by the
+#: editor rather than approximated by us - and it is the first entry
+#: in `editor.nodeShapes()` (read live 2026-08-07). A NetworkShapeBox
+#: would draw hard corners that no Houdini node has.
+GHOST_FALLBACK_SHAPE = "rect"
+
 
 def _shape_for(type_name: str) -> str:
     """The node shape a created carrier would wear, or "" for a plain
@@ -182,8 +193,10 @@ def _shape_for(type_name: str) -> str:
     return ""
 
 
-def ghost_show(editor, position, type_name: str = "") -> None:
-    """Draw the outline at `position` in `editor`'s network space."""
+def ghost_show(editor, position, type_name: str = "",
+               connection=None) -> None:
+    """Draw the outline at `position` in `editor`'s network space -
+    and, over a wire, the two connections the splice would make."""
     if editor is None or position is None:
         return
     try:
@@ -192,14 +205,12 @@ def ghost_show(editor, position, type_name: str = "") -> None:
             position.y() - GHOST_SIZE[1] / 2.0,
             position.x() + GHOST_SIZE[0] / 2.0,
             position.y() + GHOST_SIZE[1] / 2.0)
-        colour = hou.ui.colorFromName("GraphPreSelection")  # type: ignore
-        shape = _shape_for(type_name)
-        if shape:
-            drawn = hou.NetworkShapeNodeShape(rect, shape, colour, 0.7,
-                                              True, False)
-        else:
-            drawn = hou.NetworkShapeBox(rect, colour, 0.7, True, False)
-        editor.setOverlayShapes([drawn])
+        colour = hou.Color(GHOST_COLOUR)
+        drawn = hou.NetworkShapeNodeShape(
+            rect, _shape_for(type_name) or GHOST_FALLBACK_SHAPE,
+            colour, GHOST_ALPHA, True, False)
+        editor.setOverlayShapes(
+            splice_preview(editor, connection, position, (drawn,)))
     except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
         return
     if editor not in _ghosted:
@@ -212,8 +223,151 @@ def ghost_clear() -> None:
         editor = _ghosted.pop()
         try:
             editor.setOverlayShapes([])
+            editor.setDropTargetItem(None, "", -1)
         except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
             pass
+
+
+# --------------------------------------------------------- the wire
+#
+# DROP ONTO A WIRE TO INSERT INTO IT - the host's own gesture, and its
+# own machinery: `networkItemsInBox(for_drop=True)` returns wires among
+# its triples (measured live 2026-08-07: a wire came back as
+# `(OpNodeConnection, "wire", 0)` carrying merge1 -> camera1), the
+# radius is `lengthToScreen(0.25)` so it scales with zoom
+# (nodegraphutils.getDropTargetRadius), `setDropTargetItem` is the
+# documented way to highlight what a release would hit, and
+# `nodegraphutils.insertItemsIntoWire` is the splice Houdini performs
+# for its own inserts.
+
+#: The stock drop-target radius in NETWORK units - the host's constant.
+DROP_TARGET_RADIUS = 0.25
+
+
+def wire_under_cursor(editor, position):
+    """The connection a release at `position` would land on, with the
+    triple `setDropTargetItem` wants - or (None, "", -1).
+
+    Nodes and connectors WIN over the wire behind them: the triples
+    come back sorted by distance from the box centre, so the first
+    droppable item decides, which is the host's own precedence.
+    """
+    if editor is None or position is None:
+        return (None, "", -1)
+    try:
+        spot = editor.posToScreen(position)
+        radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
+        found = editor.networkItemsInBox(
+            hou.Vector2(spot.x() - radius, spot.y() - radius),
+            hou.Vector2(spot.x() + radius, spot.y() + radius),
+            for_drop=True)
+    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+        return (None, "", -1)
+    # THE HOST'S OWN PRECEDENCE (nodegraph.py, getPreferredDropTarget):
+    # scan for the FIRST connection anywhere in the list - nodes and
+    # connectors in front of it are skipped, not treated as a veto.
+    # Measured live: with the cursor exactly on a wire midpoint the
+    # triples came back `input, node, wire`, so a first-item-wins rule
+    # never sees the wire at all.
+    if not _drop_on_wire_allowed(editor):
+        return (None, "", -1)
+    for item, name, index in found:
+        if isinstance(item, hou.NodeConnection):
+            return (item, name, index)
+    return (None, "", -1)
+
+
+def _drop_on_wire_allowed(editor) -> bool:
+    """The artist's own preference decides, not us.
+
+    Houdini carries a Drop On Wire preference with a live hotkey
+    toggle, and forbids it outright in COP, VOP and APEX networks
+    (nodegraphprefs.allowDropOnWireNetworkSpecific). Reading the same
+    preference means our insert appears exactly where the host's own
+    would, and vanishes when they switch it off.
+    """
+    try:
+        import nodegraphprefs
+        return bool(nodegraphprefs.allowDropOnWireNetworkSpecific(
+            editor, []))
+    except (ImportError, AttributeError, hou.OperationFailed):
+        return True
+
+
+def wire_highlight(editor, target) -> None:
+    """Light the wire a release would splice into, the way Houdini
+    lights its own drop targets."""
+    item, name, index = target
+    try:
+        editor.setDropTargetItem(item, name, index)
+    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+        return
+    if editor not in _ghosted:
+        _ghosted.append(editor)
+
+
+def splice_preview(editor, connection, position, shapes=()) -> tuple:
+    """The two wires the splice WOULD make, drawn as the editor draws
+    its own: from the upstream node into the ghost, and from the ghost
+    on to the downstream node.
+
+    `NetworkShapeConnection` takes a position and a DIRECTION per end,
+    and the editor answers both for a real item
+    (`itemOutputPos`/`itemOutputDir`, `itemInputPos`/`itemInputDir`) -
+    so the stubs leave and enter exactly where a real wire would.
+    """
+    if editor is None or connection is None or position is None:
+        return tuple(shapes)
+    try:
+        colour = hou.Color(GHOST_COLOUR)
+        upstream = connection.inputItem()
+        downstream = connection.outputItem()
+        out_pos = editor.itemOutputPos(
+            upstream, connection.inputItemOutputIndex())
+        out_dir = editor.itemOutputDir(
+            upstream, connection.inputItemOutputIndex())
+        in_pos = editor.itemInputPos(downstream, connection.inputIndex())
+        in_dir = editor.itemInputDir(downstream, connection.inputIndex())
+        half = hou.Vector2(0.0, GHOST_SIZE[1] / 2.0)
+        top = position + half
+        bottom = position - half
+        return tuple(shapes) + (
+            hou.NetworkShapeConnection(top, hou.Vector2(0, 1),
+                                       out_pos, out_dir, colour, 0.8),
+            hou.NetworkShapeConnection(in_pos, in_dir,
+                                       bottom, hou.Vector2(0, -1),
+                                       colour, 0.8),
+        )
+    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+        return tuple(shapes)
+
+
+def splice_into_wire(connection, nodes) -> bool:
+    """Insert `nodes` into `connection`, through the host's own
+    function so the wiring rules stay SideFX's.
+
+    `insertItemsIntoWire` reads the four facts off the connection -
+    input item, its output index, output item, its input index - and
+    rewires around the chain. Ours is a one-node chain today; the
+    signature takes a list because the host's does.
+    """
+    nodes = [n for n in nodes if n is not None]
+    if connection is None or not nodes:
+        return False
+    try:
+        import nodegraphutils
+    except ImportError:
+        return False
+    try:
+        with hou.undos.group("Amaze Insert Into Wire"):
+            nodegraphutils.insertItemsIntoWire(
+                connection, nodes, nodes,
+                remove_existing_connections=True)
+    except (AttributeError, hou.OperationFailed, hou.PermissionError,
+            hou.ObjectWasDeleted):
+        return False
+    _dbg("spliced into a wire", nodes=[n.path() for n in nodes])
+    return True
 
 
 # ------------------------------------------------------------ picking

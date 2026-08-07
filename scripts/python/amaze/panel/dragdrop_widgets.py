@@ -582,8 +582,11 @@ class GridGestureMixin:
                     else:
                         rule = self._drop_rule(panel, section, idx)
                         if rule is not None:
+                            helpers.forget_placed()
                             outcome = self._apply_drop_rule(
                                 rule, panel, idx, event)
+                            if outcome:
+                                self._splice_if_on_a_wire(panel, event)
             except hou.PermissionError as refusal:
                 # HOUDINI REFUSING IS NOT A BUG. Dropping onto a locked
                 # asset raises `Cannot create a node inside a locked
@@ -671,9 +674,19 @@ class GridGestureMixin:
             if spot is None:
                 dragengine.ghost_clear()
                 return
+            # A WIRE UNDER THE CURSOR is an INSERT: the editor's own
+            # highlight says which wire, and the ghost grows the two
+            # connections the splice would make. Only where the
+            # payload could BE a link in a chain - a created carrier
+            # or an imported network.
+            target = (None, "", -1)
+            if rule.on_space or rule.resolve:
+                target = dragengine.wire_under_cursor(pane_tab, spot)
+                dragengine.wire_highlight(pane_tab, target)
             dragengine.ghost_show(
                 pane_tab, spot,
-                self._ghost_type(panel, rule, section, net))
+                self._ghost_type(panel, rule, section, net),
+                connection=target[0])
         except (AttributeError, hou.OperationFailed):
             dragengine.ghost_clear()
 
@@ -719,15 +732,36 @@ class GridGestureMixin:
             return bool(getattr(panel, rule.resolve)(idx))
         if rule.on_space is not None:
             net = panel._network_under_release()
+            if net is None:
+                return False
             # The GATED position: coordinates cross into the
             # destination only when the release editor is showing
             # that network itself (the seam's rule; panel.
             # _release_position_in says why).
-            return bool(
-                net is not None
-                and getattr(panel, rule.on_space)(
-                    idx, net, panel._release_position_in(net)))
+            return bool(getattr(panel, rule.on_space)(
+                idx, net, panel._release_position_in(net)))
         return False
+
+    @staticmethod
+    def _splice_if_on_a_wire(panel, event) -> None:
+        """A release over a WIRE inserts what landed into that chain.
+
+        Read from the placement funnel, not from a diff of the
+        network's children: every door that lands nodes goes through
+        `helpers.place_nodes`/`auto_place`, so one question answers
+        for the creation door, the import doors and anything added
+        later. The child-diff version of this was withdrawn once
+        already (practice.md ▸ DONT PATCH, DONT HAND-ROLL).
+        """
+        landed = helpers.placed_nodes()
+        if not landed:
+            return
+        editor = dragengine.pane_tab_under_cursor()
+        net = panel._network_under_release()
+        spot = panel._release_position_in(net) if net is not None else None
+        wire, _name, _index = dragengine.wire_under_cursor(editor, spot)
+        if wire is not None:
+            dragengine.splice_into_wire(wire, landed)
 
 
 def _node_paths_from_mime(mime) -> list:
