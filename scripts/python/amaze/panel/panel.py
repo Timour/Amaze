@@ -2537,7 +2537,17 @@ class MatLibPanel(QtWidgets.QWidget):
         if kind == file_library.KIND_IMAGE:
             self.set_texture_on_selected_node(index)
         elif kind == file_library.KIND_GEO:
-            self.import_geo_asset(index)
+            # Aimed by the selection first, exactly like images (the
+            # matrix): a selected node with a file parameter takes the
+            # spelled path; the import serves the empty selection.
+            sel = self._visible_selected_nodes()
+            if len(sel) == 1:
+                if not self.drop_file_path_on_node(index, sel[0]):
+                    self._cannot_load_here()
+            elif sel:
+                self._cannot_load_here()
+            else:
+                self.import_geo_asset(index)
         elif kind == file_library.KIND_HIP:
             self.open_hip_scene(index)
         else:
