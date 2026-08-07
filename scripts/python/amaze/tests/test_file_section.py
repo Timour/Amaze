@@ -605,10 +605,15 @@ class CreationRuleTest(unittest.TestCase):
         self.addCleanup(net.destroy)
         return net
 
-    def _index_for(self, path):
+    def _index_for(self, path, kind=None):
         import types
-        return types.SimpleNamespace(data=lambda role: path,
-                                     isValid=lambda: True)
+        from amaze.core import file_library
+        roles = {file_library.FileFiles.PathRole: path}
+        if kind is not None:
+            roles[file_library.FileFiles.KindRole] = kind
+        return types.SimpleNamespace(
+            data=lambda role: roles.get(role, path),
+            isValid=lambda: True)
 
     def test_an_image_becomes_a_mtlximage_with_the_spelled_path(self):
         from amaze.helpers import helpers
@@ -739,7 +744,7 @@ class CreationRuleTest(unittest.TestCase):
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         hou.clearAllSelected()
-        self.panel._apply_code_index(index)
+        self.panel.click_on_row(self.panel.sections["code"], index)
         self.assertEqual(1, len(sop.children()), "premise: created")
         self.assertEqual(
             (), hou.selectedNodes(),
@@ -758,6 +763,61 @@ class CreationRuleTest(unittest.TestCase):
             b.setSelected(True)
         self.assertEqual((a,), hou.selectedNodes(),
                          "the block did not put the selection back")
+
+    def test_a_selected_node_that_cannot_take_it_still_creates(self):
+        """Reported live: a geo network open, a SPHERE selected (in
+        Houdini something almost always is), a VEX snippet
+        double-clicked - and the one refusal sentence. The door aimed
+        at the selection, the sphere has no snippet parm, and it
+        refused instead of creating in the visible network.
+        The selection is a HINT for the click door, not a veto."""
+        sop = self._geo()
+        sphere = sop.createNode("sphere")
+        hou.clearAllSelected()
+        sphere.setSelected(True)
+        self._with_view_networks([sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        self.panel.click_on_row(self.panel.sections["code"], index)
+        wrangles = [c for c in sop.children()
+                    if "wrangle" in c.type().name()]
+        self.assertEqual(
+            1, len(wrangles),
+            "a selected node that cannot take the snippet blocked the "
+            "creation instead of falling through to the network")
+
+    def test_a_locked_asset_is_skipped_and_the_editable_one_takes_it(self):
+        """The live case, corrected by the probe: a SOP Create is a
+        LOCKED HDA - Houdini refuses creation in it and in its sopnet
+        - and the `create` subnet inside is the one node the asset
+        MARKS editable, where creation succeeds. The walk must skip
+        the locked levels (saying why in the log) and land in the
+        editable one, never unlock the asset."""
+        stage = hou.node("/stage")
+        sc = stage.createNode("sopcreate")
+        self.addCleanup(sc.destroy)
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        section = self.panel.sections["code"]
+        editable = sc.node("sopnet/create")
+        self.assertTrue(editable.isEditableInsideLockedHDA(),
+                        "premise: the create subnet is marked editable")
+        # The locked levels first, then the editable one - the walk
+        # sees all three and only the last can take the carrier.
+        self._with_view_networks([sc, sc.node("sopnet"), editable])
+        hou.clearAllSelected()
+        before = len(editable.children())
+        self.panel.click_on_row(section, index)
+        self.assertEqual(before + 1, len(editable.children()),
+                         "the walk did not reach the editable subnet")
+        self.assertTrue(sc.isLockedHDA(),
+                        "the asset was UNLOCKED to make room - never")
 
     def test_a_geo_double_click_fills_the_selected_node(self):
         """Live find: the file door's geo branch imported no matter
@@ -804,7 +864,7 @@ class CreationRuleTest(unittest.TestCase):
         asset = self.panel.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.panel._apply_code_index(index)
+        self.panel.click_on_row(self.panel.sections["code"], index)
         self.assertEqual(
             1, len(sop.children()),
             "an invisible selected node hijacked the click door")
@@ -815,8 +875,10 @@ class CreationRuleTest(unittest.TestCase):
         home = self._home()
         net = self._matnet()
         self._with_view_networks([net])
-        self.panel.set_texture_on_selected_node(
-            self._index_for(home + "/textures/amaze_dbl.png"))
+        self.panel.click_on_row(
+            self.panel.sections["file"],
+            self._index_for(home + "/textures/amaze_dbl.png",
+                            kind=file_library.KIND_IMAGE))
         children = net.children()
         self.assertEqual(1, len(children),
                          "the empty-selection double-click did not "
@@ -840,7 +902,7 @@ class CreationRuleTest(unittest.TestCase):
         asset = self.panel.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.panel._apply_code_index(index)
+        self.panel.click_on_row(self.panel.sections["code"], index)
         self.assertEqual((), vop.children(),
                          "the refusing network gained the carrier")
         children = sop.children()
