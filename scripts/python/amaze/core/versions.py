@@ -23,6 +23,7 @@ scratch atomic path as every database.
 
 from __future__ import annotations
 
+import filecmp
 import json
 import os
 import shutil
@@ -330,6 +331,49 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
         return False
     debug.event("versions", "active version switched",
                 mat_id=str(mat_id), n=number)
+    return True
+
+
+def record_render(preferences, mat_id: str) -> bool:
+    """Copy the base thumbnail into the ACTIVE version's archive slot.
+
+    The archive is each version's DURABLE thumbnail - it lives until
+    the version goes - but a version is minted at save time, BEFORE
+    that save's render lands, so a fresh slot starts holding the
+    previous version's picture. Running this wherever a row's PNG is
+    declared fresh keeps the active slot true to what was last
+    rendered while its version was active. Identical bytes are left
+    untouched, so the call after a switch costs no write and no sync
+    churn.
+    """
+    active = 0
+    try:
+        ledger = read_ledger(preferences, mat_id)
+        if ledger.get("unreadable") or not ledger.get("versions"):
+            return False
+        active = int(ledger.get("active", 0) or 0)
+        if active not in {int(v.get("n", 0)) for v in ledger["versions"]}:
+            return False
+        source = _base_paths(preferences, mat_id)[".png"]
+        if not os.path.exists(source):
+            return False
+        target = _archive_paths(preferences, mat_id, active)[".png"]
+        if os.path.exists(target) and filecmp.cmp(source, target,
+                                                  shallow=False):
+            return True
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        scratch = hostos.unique_scratch(target)
+        shutil.copyfile(source, scratch)
+        hostos.promote_scratch(scratch, target)
+    except (OSError, hostos.PathEscape) as exc:
+        # Best-effort by design: this FOLLOWS a thumbnail refresh, so
+        # a library whose paths refuse to compose gets an event and a
+        # False, never an exception up through the refresh.
+        debug.event("versions", "render not recorded to the active slot",
+                    mat_id=str(mat_id), n=active, error=str(exc))
+        return False
+    debug.event("versions", "render recorded to the active slot",
+                mat_id=str(mat_id), n=active)
     return True
 
 

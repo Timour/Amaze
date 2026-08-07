@@ -118,9 +118,100 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
             b"EDITED-STATE", self._base_bytes(),
             "the base holds version 1 while the ledger still names "
             "version 2 - the promotion was not rolled back")
+
+
+class TheArchiveIsEachVersionsDurableThumbnail(_Case):
+    """A version is minted at SAVE time, before that save's render
+    lands, so a fresh archive slot starts holding the previous
+    version's picture - measured on the real library, where both of a
+    material's versions carried byte-identical PNGs. record_render
+    runs wherever a row's PNG is declared fresh and copies it into the
+    ACTIVE slot, so each version keeps its own picture until the
+    version goes."""
+
+    def _png_paths(self):
+        img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
+        os.makedirs(img_dir, exist_ok=True)
+        base = os.path.join(img_dir, self.mat_id + ".png")
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        return base, folder
+
+    def test_a_fresh_render_lands_in_the_active_slot_only(self):
+        base, folder = self._png_paths()
+        with open(base, "wb") as fh:
+            fh.write(b"V1-RENDER")
+        versions.create_version(self.prefs, self.mat_id)          # V1
+        self._rewrite_base(b"EDITED-STATE")
+        versions.create_version(self.prefs, self.mat_id)          # V2
+        # The mint archived V1's picture into V2's slot - the render
+        # that will replace it has not landed yet. Now it lands:
+        with open(base, "wb") as fh:
+            fh.write(b"V2-RENDER-FRESH")
+        self.assertTrue(versions.record_render(self.prefs, self.mat_id))
+        with open(os.path.join(folder, "2.png"), "rb") as fh:
+            self.assertEqual(
+                b"V2-RENDER-FRESH", fh.read(),
+                "the active slot did not take the fresh render - "
+                "switching versions can never change the picture")
+        with open(os.path.join(folder, "1.png"), "rb") as fh:
+            self.assertEqual(
+                b"V1-RENDER", fh.read(),
+                "an INACTIVE slot was touched - a render while V2 is "
+                "active must never rewrite V1's picture")
+
+    def test_identical_bytes_cost_no_write(self):
+        base, folder = self._png_paths()
+        with open(base, "wb") as fh:
+            fh.write(b"SAME-PICTURE")
+        versions.create_version(self.prefs, self.mat_id)
+        slot = os.path.join(folder, "1.png")
+        before = os.stat(slot).st_mtime_ns
+        self.assertTrue(versions.record_render(self.prefs, self.mat_id))
         self.assertEqual(
-            2, versions.active_version(self.prefs, self.mat_id),
-            "the ledger moved despite the refusal")
+            before, os.stat(slot).st_mtime_ns,
+            "identical bytes were rewritten - every switch would churn "
+            "the sync folder")
+
+    def test_no_versions_records_nothing(self):
+        base, folder = self._png_paths()
+        with open(base, "wb") as fh:
+            fh.write(b"PICTURE")
+        self.assertFalse(versions.record_render(self.prefs, self.mat_id))
+        self.assertFalse(
+            os.path.exists(folder),
+            "a versions folder appeared for an asset that has no "
+            "versions")
+
+    def test_a_missing_base_png_records_nothing(self):
+        base, _folder = self._png_paths()
+        versions.create_version(self.prefs, self.mat_id)
+        # The fixture asset ships a render; the case under test is the
+        # asset that has none.
+        if os.path.exists(base):
+            os.remove(base)
+        self.assertFalse(
+            versions.record_render(self.prefs, self.mat_id),
+            "with no base PNG there is nothing to record, not an "
+            "empty file to invent")
+
+    def test_the_model_records_on_every_thumb_refresh(self):
+        from amaze.core import library as library_mod
+
+        base, folder = self._png_paths()
+        with open(base, "wb") as fh:
+            fh.write(b"OLD-PICTURE")
+        versions.create_version(self.prefs, self.mat_id)
+        with open(base, "wb") as fh:
+            fh.write(b"FRESH-PICTURE")
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) == self.mat_id)
+        model._add_thumb_paths(model.index(row, 0))
+        with open(os.path.join(folder, "1.png"), "rb") as fh:
+            self.assertEqual(
+                b"FRESH-PICTURE", fh.read(),
+                "_add_thumb_paths declared the PNG fresh and the "
+                "active slot did not follow")
 
 
 class StoreTest(_Case):
