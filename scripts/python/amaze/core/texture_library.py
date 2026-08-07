@@ -36,6 +36,12 @@ IMAGE_EXTENSIONS = (
     # fires instead of serving garbage. Rendered thumbnails and Load
     # to Node both apply - a .rat on a texture parm is its whole job.
     ".rat",
+    # Camera raw in the one container macOS decodes natively. Probed
+    # 2026-08-07 on a real Sigma DNG: sips converts it in ~2.3s;
+    # Pillow declines fast, so the FORMAT order reaches sips cleanly.
+    # A photographer's archive folder is full of these, and without
+    # the extension the rows were not images at all.
+    ".dng",
 )
 
 

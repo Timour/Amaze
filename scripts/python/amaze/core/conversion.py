@@ -431,15 +431,18 @@ _FIT_ADAPTERS = (
     ("pillow", _produce_pillow),
 )
 
-#: The FORMAT order: anything that writes a Qt-readable file. sips
-#: first for speed (~0.08s EXR, ~1.0s HDR), then iconvert, which is
-#: slower (measured 1.27s on the HDR fixture) and correct for
-#: everything Houdini reads, then Pillow for the platforms with no
-#: sips.
+#: The FORMAT order: anything that writes a Qt-readable file. PILLOW
+#: FIRST, measured 2026-08-07 on a real 117MB camera TIFF: pillow
+#: answered in 0.3s while sips and iconvert each burned their full
+#: 30s timeout in front of it - a two-minute thumbnail for a
+#: photographer's ordinary file. A pillow decline costs milliseconds
+#: (in-process, no subprocess, no timeout to wait out), so the
+#: formats pillow cannot read - EXR, HDR, DNG - fall through to sips
+#: (~0.08s EXR, ~2.3s DNG) and then iconvert at the old speed.
 _FORMAT_ADAPTERS = (
+    ("pillow", _produce_pillow),
     ("sips (format only)", _SIPS_FORMAT),
     ("iconvert", _produce_iconvert),
-    ("pillow", _produce_pillow),
 )
 
 # There was a "Force iconvert only" preference here, and a second
