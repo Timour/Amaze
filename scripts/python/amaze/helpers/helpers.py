@@ -408,23 +408,73 @@ def preserving_selection_and_current():
                     node.setSelected(True)
                 except (hou.OperationFailed, hou.ObjectWasDeleted):
                     pass
-            for pane_tab, current, pwd in editors:
-                # PWD FIRST, then the current node: setCurrentNode on a
-                # node in another network is itself a dive, so putting
-                # the network back afterwards would fight it.
-                try:
-                    if pwd is not None and pane_tab.pwd() != pwd:
-                        pane_tab.setPwd(pwd)
-                except (AttributeError, hou.OperationFailed,
-                        hou.ObjectWasDeleted):
-                    pass
-                if current is None:
-                    continue
-                try:
-                    pane_tab.setCurrentNode(current)
-                except (AttributeError, hou.OperationFailed,
-                        hou.ObjectWasDeleted):
-                    pass
+            _put_editors_back(editors, "immediate")
+        # AND AGAIN ON THE NEXT EVENT-LOOP TURN. Houdini POSTS its
+        # pane sync, so the follow-the-current-node dive is processed
+        # after this call returns and overwrites a restore made inside
+        # the drop - measured: the immediate pass ran and the editor
+        # still surfaced at root. Deferred the way the drop-dialog
+        # case is (research.md ▸ Qt). Each pass names itself in the
+        # log, so which one held is readable.
+        try:
+            from PySide6 import QtCore
+            QtCore.QTimer.singleShot(
+                0, lambda: _put_editors_back(editors, "deferred"))
+        except Exception:                                    # noqa: BLE001
+            pass
+
+
+def _put_editors_back(editors, pass_name: str) -> None:
+    """Return each editor to the network and current node it had."""
+    from amaze.core import debug
+    moved = []
+    with hou.undos.disabler():
+        for pane_tab, current, pwd in editors:
+            # PWD FIRST, then the current node: setCurrentNode on a
+            # node in another network is itself a dive, so putting
+            # the network back afterwards would fight it.
+            try:
+                showing = pane_tab.pwd()
+                if pwd is not None and showing != pwd:
+                    moved.append((showing.path(), pwd.path()))
+                    pane_tab.setPwd(pwd)
+            except (AttributeError, hou.OperationFailed,
+                    hou.ObjectWasDeleted):
+                pass
+            if current is None:
+                continue
+            try:
+                pane_tab.setCurrentNode(current)
+            except (AttributeError, hou.OperationFailed,
+                    hou.ObjectWasDeleted):
+                pass
+    if moved:
+        debug.event("interact", "editor put back after a dive",
+                    pass_name=pass_name, moves=moved)
+
+
+#: WHAT THE LAST PLACEMENT PUT DOWN - every door that lands nodes
+#: passes them through place_nodes or auto_place, so this is the one
+#: funnel that knows, whichever door ran. The wire splice reads it
+#: instead of diffing a network's children: the child-diff bolt-on
+#: was withdrawn once already (practice.md ▸ DONT PATCH, DONT
+#: HAND-ROLL) and re-inventing it per door is the same mistake twice.
+_last_placed: list = []
+
+
+def placed_nodes() -> list:
+    """The nodes the most recent placement landed."""
+    return [n for n in _last_placed if n is not None]
+
+
+def forget_placed() -> None:
+    """Start a gesture with nothing remembered."""
+    del _last_placed[:]
+
+
+def _remember_placed(nodes) -> None:
+    del _last_placed[:]
+    _last_placed.extend(n for n in nodes if n is not None)
 
 
 def auto_place(node) -> None:
@@ -442,6 +492,7 @@ def auto_place(node) -> None:
     """
     if node is None:
         return
+    _remember_placed([node])
     try:
         node.moveToGoodPosition(move_inputs=False, move_outputs=False,
                                 move_unconnected=False)
@@ -459,6 +510,7 @@ def place_nodes(nodes, position) -> None:
     nodes = [node for node in nodes if node is not None]
     if not nodes:
         return
+    _remember_placed(nodes)
     if position is None:
         # NOT a placement - the import's own layout stands. Logged
         # because a node that missed the drop point and a node that
