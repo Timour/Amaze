@@ -643,10 +643,14 @@ class GridGestureMixin:
             return bool(getattr(panel, rule.resolve)(idx))
         if rule.on_space is not None:
             net = panel._network_under_release()
+            # The GATED position: coordinates cross into the
+            # destination only when the release editor is showing
+            # that network itself (the seam's rule; panel.
+            # _release_position_in says why).
             return bool(
                 net is not None
                 and getattr(panel, rule.on_space)(
-                    idx, net, panel._release_position()))
+                    idx, net, panel._release_position_in(net)))
         return False
 
 

@@ -4308,7 +4308,7 @@ class MatLibPanel(QtWidgets.QWidget):
         Apply): ONE selected node takes the snippet; nothing selected
         creates the language's carrier in the active network; every
         other outcome is the one refusal sentence."""
-        sel = hou.selectedNodes()
+        sel = self._visible_selected_nodes()
         if len(sel) == 1:
             source_index = self.code_sorted_model.mapToSource(index)
             with hou.undos.group("Amaze Apply Code Snippet"):
@@ -4645,7 +4645,7 @@ class MatLibPanel(QtWidgets.QWidget):
         gradient; nothing selected creates the MtlX ramp carrier in
         the active network (re-based when Apply as asked for one);
         every other outcome is the one refusal sentence."""
-        sel = hou.selectedNodes()
+        sel = self._visible_selected_nodes()
         if len(sel) == 1:
             parm = helpers.find_color_ramp_parm(sel[0])
             if parm is None:
@@ -6413,6 +6413,43 @@ class MatLibPanel(QtWidgets.QWidget):
         except AttributeError:
             return None
 
+    def _release_position_in(self, net):
+        """The release position, ONLY when the editor under the cursor
+        is showing `net` itself. A release over a container node
+        resolves INSIDE it while the cursor's coordinates stay in the
+        OUTER editor's plane - stage coordinates applied inside a
+        material library put the node anywhere but the cursor (the
+        live find). Cross-space answers None and the carrier
+        auto-places, exactly like the import seam's gate."""
+        pane_tab = dragengine.pane_tab_under_cursor()
+        if pane_tab is None or net is None:
+            return None
+        try:
+            if pane_tab.type() != hou.paneTabType.NetworkEditor:
+                return None
+            if pane_tab.pwd() != net:
+                return None
+            return pane_tab.cursorPosition()
+        except AttributeError:
+            return None
+
+    def _visible_selected_nodes(self) -> list:
+        """The double-click doors' idea of THE SELECTION: only nodes
+        the user can SEE - children of a visible editor's network.
+        Houdini tags imported nodes selected (research.md -
+        moveNodesTo), so the global hou.selectedNodes() carries
+        invisible leftovers of the previous import, and the doors
+        applied to a node the user was not looking at and refused,
+        every time - the live find. Menu verbs keep the global read:
+        their sentences name the selection explicitly."""
+        networks = self._view_create_networks()
+        every = hou.selectedNodes()
+        sel = [node for node in every if node.parent() in networks]
+        debug.event("interact", "click door selection",
+                    visible=len(sel), total=len(every),
+                    networks=len(networks))
+        return sel
+
     def _view_create_networks(self) -> list:
         """The click doors' aim when nothing is selected: every
         visible network editor's pwd, current tabs first. The caller
@@ -6466,8 +6503,14 @@ class MatLibPanel(QtWidgets.QWidget):
                 node.setName(name, unique_name=True)
             except hou.OperationFailed:
                 pass
-        node.moveToGoodPosition()
-        helpers.place_nodes([node], position)
+        # A given position IS the placement. Auto-place is only the
+        # no-position fallback: moveToGoodPosition may shove
+        # unconnected siblings aside to make room, which read live as
+        # every other node moving away from the drop.
+        if position is None:
+            node.moveToGoodPosition()
+        else:
+            helpers.place_nodes([node], position)
         debug.event("interact", "carrier created", carrier=type_name,
                     dest=dest.path())
         return node
@@ -6586,17 +6629,17 @@ class MatLibPanel(QtWidgets.QWidget):
         return True
 
     def set_texture_on_selected_node(self, index: QtCore.QModelIndex | None) -> None:
-        """Double-click on an image in the File section: push the path onto
-        the file parm of whichever single node is currently selected in
-        the scene - hou.selectedNodes() is the same source save_asset()
-        already uses for "what node is the user pointing at"."""
+        """Double-click on an image in the File section: push the path
+        onto the file parm of whichever single VISIBLE node is
+        selected (_visible_selected_nodes says why the global read
+        broke live)."""
         if index is None or not index.isValid():
             return
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
 
-        sel = hou.selectedNodes()
+        sel = self._visible_selected_nodes()
         if len(sel) == 1:
             self._apply_texture_to_node(sel[0], path)
             return

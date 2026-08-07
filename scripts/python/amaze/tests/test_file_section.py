@@ -673,6 +673,72 @@ class CreationRuleTest(unittest.TestCase):
         self.addCleanup(
             lambda: self.panel.__dict__.pop("_view_create_networks", None))
 
+    def test_a_positioned_carrier_never_auto_places(self):
+        """Live find: the carrier ran moveToGoodPosition BEFORE taking
+        its position - and that call may shove unconnected siblings
+        aside to make room, which read as every other node moving
+        away. A given position IS the placement; auto-place is only
+        the no-position fallback."""
+        from unittest import mock
+        net = self._matnet()
+        spot = hou.Vector2(-3.5, -2.25)
+        with mock.patch.object(hou.Node, "moveToGoodPosition") as auto:
+            ok = self.panel.create_image_node_in(
+                self._index_for(self._home() + "/x.png"), net,
+                position=spot)
+        self.assertTrue(ok)
+        auto.assert_not_called()
+        child = net.children()[0]
+        self.assertEqual((spot.x(), spot.y()),
+                         (child.position().x(), child.position().y()),
+                         "the carrier is not at the release point")
+
+    def test_the_release_position_stays_in_its_own_space(self):
+        """Live find: a release over a container node resolves INSIDE
+        it while the cursor position stays in the OUTER editor's
+        plane - stage coordinates applied inside a material library
+        put the node anywhere but the cursor. The gated resolver
+        answers only when the editor under the cursor is showing the
+        destination network itself."""
+        from unittest import mock
+        import types
+        inside = self._matnet()
+        outer = self._geo()
+        editor = types.SimpleNamespace(
+            type=lambda: hou.paneTabType.NetworkEditor,
+            pwd=lambda: outer,
+            cursorPosition=lambda: hou.Vector2(9.0, 9.0))
+        from amaze.core import dragengine
+        with mock.patch.object(dragengine, "pane_tab_under_cursor",
+                               return_value=editor):
+            self.assertIsNone(
+                self.panel._release_position_in(inside),
+                "a foreign editor's coordinates crossed into the "
+                "destination network")
+            got = self.panel._release_position_in(outer)
+        self.assertEqual((9.0, 9.0), (got.x(), got.y()))
+
+    def test_an_invisible_selection_cannot_hijack_the_click_door(self):
+        """Live find: an import leaves its nodes SELECTED (Houdini
+        tags moved nodes), so the next double-click read a selection
+        the user could not see, applied to it, and refused - every
+        time, in every section. The door considers only selection
+        inside the visible editors' networks."""
+        sop = self._geo()
+        elsewhere = self._matnet()
+        stray = elsewhere.createNode("mtlxstandard_surface")
+        stray.setSelected(True)
+        self._with_view_networks([sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        self.panel._apply_code_index(index)
+        self.assertEqual(
+            1, len(sop.children()),
+            "an invisible selected node hijacked the click door")
+
     def test_double_click_with_nothing_selected_creates_the_carrier(self):
         from amaze.helpers import helpers
 

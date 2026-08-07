@@ -118,6 +118,10 @@ class _StubPanel(QtWidgets.QWidget):
     def _release_position(self):
         return None
 
+    def _release_position_in(self, net):
+        """The gated resolver the engine passes to creation doors."""
+        return None
+
     def create_image_node_in(self, idx, dest, position=None):
         self.calls.append("create_image")
         return dest is not None
