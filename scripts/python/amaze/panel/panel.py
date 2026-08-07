@@ -6624,6 +6624,30 @@ class MatLibPanel(QtWidgets.QWidget):
                     dest=dest.path())
         return node
 
+    def code_carrier_type(self, index, dest) -> str:
+        """WHICH carrier a snippet becomes in `dest` - a wrangle, an
+        opencl, a python - or "" where this network kind has none.
+
+        ONE ANSWER, TWO READERS: `create_code_node_in` builds it, and
+        the drag ghost draws its shape before the drop happens. A
+        ghost that computed its own type could promise a wrangle and
+        deliver nothing.
+        """
+        if index is None or not index.isValid() or not self.code_model:
+            return ""
+        source_index = self.code_sorted_model.mapToSource(index)
+        row = source_index.row()
+        if not 0 <= row < len(self.code_model.assets) or dest is None:
+            return ""
+        asset = self.code_model.assets[row]
+        language = str(getattr(asset, "renderer", "") or "").lower()
+        try:
+            category = dest.childTypeCategory()
+        except (AttributeError, hou.OperationFailed):
+            return ""
+        return self.CODE_CARRIERS.get(language, {}).get(
+            category.name() if category is not None else "", "")
+
     def create_image_node_in(self, index, dest, position=None) -> bool:
         """The image creation rule: a release on empty network space
         (or a double-click with nothing selected) makes a mtlximage
@@ -6686,16 +6710,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not 0 <= row < len(self.code_model.assets):
             return False
         asset = self.code_model.assets[row]
-        language = str(getattr(asset, "renderer", "") or "").lower()
-        by_category = self.CODE_CARRIERS.get(language, {})
-        if dest is None:
-            return False
-        try:
-            category = dest.childTypeCategory()
-        except (AttributeError, hou.OperationFailed):
-            return False
-        type_name = by_category.get(
-            category.name() if category is not None else "")
+        type_name = self.code_carrier_type(index, dest)
         if not type_name:
             return False
         name = helpers.sanitize_usd_path(
