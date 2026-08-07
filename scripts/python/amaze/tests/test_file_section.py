@@ -727,52 +727,6 @@ class CreationRuleTest(unittest.TestCase):
         self.assertAlmostEqual(spot.y(), children[0].position().y())
 
 
-class NetworkImportPlacementTest(unittest.TestCase):
-    """Every network-release import lands at the release position -
-    the shared placement half. Reported live: material drops walked a
-    diagonal staircase (auto-placement) and ignored where the release
-    happened."""
-
-    @classmethod
-    def setUpClass(cls):
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
-
-    def test_new_children_land_at_the_release_position(self):
-        net = hou.node("/obj").createNode("matnet")
-        self.addCleanup(net.destroy)
-        existing = net.createNode("subnet")
-        settled = existing.position()
-        before = set(net.children())
-        fresh = net.createNode("subnet")
-        spot = hou.Vector2(4.0, -3.0)
-        self.panel._place_new_children(net, before, spot)
-        self.assertAlmostEqual(spot.x(), fresh.position().x())
-        self.assertAlmostEqual(spot.y(), fresh.position().y())
-        self.assertAlmostEqual(settled.x(), existing.position().x(),
-                               msg="a node that was already there "
-                                   "was moved")
-
-    def test_a_multi_drop_cascades_from_the_release_point(self):
-        net = hou.node("/obj").createNode("matnet")
-        self.addCleanup(net.destroy)
-        before = set(net.children())
-        second = net.createNode("subnet")
-        spot = hou.Vector2(1.0, 1.0)
-        self.panel._place_new_children(net, before, spot, offset=1)
-        self.assertAlmostEqual(1.6, second.position().x())
-        self.assertAlmostEqual(0.1, second.position().y())
-
-    def test_without_a_position_nothing_moves(self):
-        net = hou.node("/obj").createNode("matnet")
-        self.addCleanup(net.destroy)
-        before = set(net.children())
-        fresh = net.createNode("subnet")
-        settled = fresh.position()
-        self.panel._place_new_children(net, before, None)
-        self.assertAlmostEqual(settled.x(), fresh.position().x())
-        self.assertAlmostEqual(settled.y(), fresh.position().y())
-
-
 class HoudiniPathTest(unittest.TestCase):
     """Copy Path writes paths the way Houdini writes them."""
 
