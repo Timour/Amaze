@@ -4318,9 +4318,10 @@ class MatLibPanel(QtWidgets.QWidget):
                 self._cannot_load_here()
             return
         if not sel:
-            for network in self._view_create_networks():
-                if self.create_code_node_in(index, network):
-                    return
+            with helpers.preserving_selection_and_current():
+                for network in self._view_create_networks():
+                    if self.create_code_node_in(index, network):
+                        return
         self._cannot_load_here()
 
 
@@ -4621,8 +4622,9 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         with hou.undos.group("Amaze Import Geometry"):
             created = self._import_geo_in_context(path, context)
-        if created is not None and context == self._network_under_release():
-            helpers.place_nodes([created], self._release_position())
+        if created is not None:
+            helpers.place_nodes([created],
+                                self._release_position_in(context))
         return True
 
 
@@ -4655,9 +4657,10 @@ class MatLibPanel(QtWidgets.QWidget):
                 parm.set(self._entry_ramp(entry, basis))
             return
         if not sel:
-            for network in self._view_create_networks():
-                if self._create_gradient_carrier(entry, network, basis):
-                    return
+            with helpers.preserving_selection_and_current():
+                for network in self._view_create_networks():
+                    if self._create_gradient_carrier(entry, network, basis):
+                        return
         self._cannot_load_here()
 
     @staticmethod
@@ -4790,8 +4793,9 @@ class MatLibPanel(QtWidgets.QWidget):
             )
         if not ok and reason:
             hou.ui.displayMessage(reason)  # type: ignore
-        if ok and context == self._network_under_release():
-            helpers.place_nodes(created, self._release_position())
+        if ok:
+            helpers.place_nodes(created,
+                                self._release_position_in(context))
         return True
 
     def _import_material_builder(self, asset_id, target, context_node=None):
@@ -4938,8 +4942,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
-        position = (self._release_position()
-                    if context == self._network_under_release() else None)
+        position = self._release_position_in(context)
         self._import_materials_into_context(context, ids, position)
         return True
 
@@ -6397,22 +6400,6 @@ class MatLibPanel(QtWidgets.QWidget):
         under the cursor answers with its pwd. None off any editor."""
         return self._drop_context_under_cursor(lambda _node: False)
 
-    def _release_position(self):
-        """Where in that network the release happened - the editor
-        under the cursor answers in NETWORK coords, which is the space
-        setPosition takes (research.md - Node graph: the documented
-        drop-placement pattern). None off any editor, and the carrier
-        falls back to auto-placement."""
-        pane_tab = dragengine.pane_tab_under_cursor()
-        if pane_tab is None:
-            return None
-        try:
-            if pane_tab.type() != hou.paneTabType.NetworkEditor:
-                return None
-            return pane_tab.cursorPosition()
-        except AttributeError:
-            return None
-
     def _release_position_in(self, net):
         """The release position, ONLY when the editor under the cursor
         is showing `net` itself. A release over a container node
@@ -6644,9 +6631,10 @@ class MatLibPanel(QtWidgets.QWidget):
             self._apply_texture_to_node(sel[0], path)
             return
         if not sel:
-            for network in self._view_create_networks():
-                if self.create_image_node_in(index, network):
-                    return
+            with helpers.preserving_selection_and_current():
+                for network in self._view_create_networks():
+                    if self.create_image_node_in(index, network):
+                        return
         self._cannot_load_here()
 
     def import_asset_to_mat(self):

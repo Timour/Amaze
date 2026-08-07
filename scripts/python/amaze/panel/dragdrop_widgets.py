@@ -6,6 +6,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
 from amaze.core import debug, dragengine, file_library
+from amaze.helpers import helpers
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze.panel import sections
@@ -543,6 +544,13 @@ class GridGestureMixin:
             if panel is not None:
                 panel._set_drag_hover_row(-1)   # clear the drop-target glow
             outcome = False
+            # A drop leaves the artist where they were: selection,
+            # current node and therefore the view survive the dispatch
+            # (helpers.preserving_selection_and_current says why).
+            # Entered by hand because the PermissionError handler below
+            # must stay OUTSIDE the restoration.
+            keeper = helpers.preserving_selection_and_current()
+            keeper.__enter__()
             try:
                 if panel is not None and idx is not None:
                     section = self._drag_section
@@ -599,6 +607,7 @@ class GridGestureMixin:
                         severity=hou.severityType.Warning,
                     )
             finally:
+                keeper.__exit__(None, None, None)
                 self._finish_preview(outcome)
 
     @staticmethod
