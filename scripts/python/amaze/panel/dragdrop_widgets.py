@@ -602,7 +602,9 @@ class GridGestureMixin:
                             net = panel._network_under_release()
                             outcome = bool(
                                 net is not None
-                                and panel.create_image_node_in(idx, net))
+                                and panel.create_image_node_in(
+                                    idx, net,
+                                    panel._release_position()))
                     elif section in self.NODE_TARGET_SECTIONS:
                         # A node takes the payload or refuses (a miss);
                         # empty network space runs the creation rule.
@@ -616,7 +618,8 @@ class GridGestureMixin:
                                 outcome = bool(
                                     net is not None
                                     and panel.create_gradient_node_in(
-                                        idx, net))
+                                        idx, net,
+                                        panel._release_position()))
                         elif section == "code":
                             if node is not None:
                                 outcome = bool(
@@ -626,7 +629,8 @@ class GridGestureMixin:
                                 outcome = bool(
                                     net is not None
                                     and panel.create_code_node_in(
-                                        idx, net))
+                                        idx, net,
+                                        panel._release_position()))
                     # A release over nothing stays silent - and the tag
                     # flies back to its tile to SAY so.
             except hou.PermissionError as refusal:

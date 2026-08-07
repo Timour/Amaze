@@ -668,14 +668,17 @@ class CreationRuleTest(unittest.TestCase):
         self.assertFalse(self.panel.create_code_node_in(index, net))
         self.assertEqual((), net.children())
 
+    def _with_view_networks(self, networks):
+        self.panel._view_create_networks = lambda: list(networks)
+        self.addCleanup(
+            lambda: self.panel.__dict__.pop("_view_create_networks", None))
+
     def test_double_click_with_nothing_selected_creates_the_carrier(self):
         from amaze.helpers import helpers
 
         home = self._home()
         net = self._matnet()
-        self.panel._double_click_network = lambda: net
-        self.addCleanup(
-            lambda: self.panel.__dict__.pop("_double_click_network", None))
+        self._with_view_networks([net])
         self.panel.set_texture_on_selected_node(
             self._index_for(home + "/textures/amaze_dbl.png"))
         children = net.children()
@@ -685,6 +688,43 @@ class CreationRuleTest(unittest.TestCase):
         self.assertEqual(
             "$HOME/textures/amaze_dbl.png",
             helpers.find_file_parm(children[0]).rawValue())
+
+    def test_the_click_doors_find_the_network_that_supports_the_payload(self):
+        """The live find: a code double-click with a material editor
+        listed first must still land its wrangle in the geometry
+        network - ONE resolver walks the visible networks and the
+        first that can hold the carrier wins. Reported live: the drag
+        created the wrangle and the double-click refused, because the
+        two doors resolved the network with two different heads."""
+        vop = self._matnet()
+        sop = self._geo()
+        self._with_view_networks([vop, sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        self.panel._apply_code_index(index)
+        self.assertEqual((), vop.children(),
+                         "the refusing network gained the carrier")
+        children = sop.children()
+        self.assertEqual(1, len(children),
+                         "the supporting network never got the "
+                         "carrier - the door gave up on the first "
+                         "refusal")
+        self.assertIn("attribwrangle", children[0].type().name())
+
+    def test_a_drop_created_node_lands_at_the_release_position(self):
+        home = self._home()
+        net = self._matnet()
+        spot = hou.Vector2(3.5, -2.25)
+        self.assertTrue(self.panel.create_image_node_in(
+            self._index_for(home + "/textures/amaze_pos.png"), net,
+            spot))
+        children = net.children()
+        self.assertEqual(1, len(children))
+        self.assertAlmostEqual(spot.x(), children[0].position().x())
+        self.assertAlmostEqual(spot.y(), children[0].position().y())
 
 
 class HoudiniPathTest(unittest.TestCase):

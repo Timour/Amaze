@@ -4314,9 +4314,10 @@ class MatLibPanel(QtWidgets.QWidget):
             if not ok:
                 self._cannot_load_here()
             return
-        if not sel and self.create_code_node_in(
-                index, self._double_click_network()):
-            return
+        if not sel:
+            for network in self._view_create_networks():
+                if self.create_code_node_in(index, network):
+                    return
         self._cannot_load_here()
 
 
@@ -4645,9 +4646,10 @@ class MatLibPanel(QtWidgets.QWidget):
             with hou.undos.group("Amaze Apply Gradient"):
                 parm.set(self._entry_ramp(entry, basis))
             return
-        if not sel and self._create_gradient_carrier(
-                entry, self._double_click_network(), basis):
-            return
+        if not sel:
+            for network in self._view_create_networks():
+                if self._create_gradient_carrier(entry, network, basis):
+                    return
         self._cannot_load_here()
 
     @staticmethod
@@ -6366,19 +6368,56 @@ class MatLibPanel(QtWidgets.QWidget):
         under the cursor answers with its pwd. None off any editor."""
         return self._drop_context_under_cursor(lambda _node: False)
 
-    def _double_click_network(self) -> hou.Node | None:
-        """The double-click aim when nothing is selected: the active
-        network editor's pwd, None headless."""
-        if getattr(hou, "ui", None) is None:
+    def _release_position(self):
+        """Where in that network the release happened - the editor
+        under the cursor answers in NETWORK coords, which is the space
+        setPosition takes (research.md - Node graph: the documented
+        drop-placement pattern). None off any editor, and the carrier
+        falls back to auto-placement."""
+        pane_tab = dragengine.pane_tab_under_cursor()
+        if pane_tab is None:
             return None
-        return self._active_network_pwd()
+        try:
+            if pane_tab.type() != hou.paneTabType.NetworkEditor:
+                return None
+            return pane_tab.cursorPosition()
+        except AttributeError:
+            return None
 
-    def _create_carrier(self, dest, type_name: str, name: str):
+    def _view_create_networks(self) -> list:
+        """The click doors' aim when nothing is selected: every
+        visible network editor's pwd, current tabs first. The caller
+        creates in the FIRST network that can hold the carrier - one
+        resolver for every door, and a payload finds the network that
+        supports it instead of failing on whichever editor happened to
+        be listed first."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return []
+        editors = [
+            pt
+            for pt in ui.paneTabs()  # type: ignore
+            if pt.type() == hou.paneTabType.NetworkEditor
+        ]
+        editors.sort(key=lambda editor: not editor.isCurrentTab())
+        networks = []
+        for editor in editors:
+            try:
+                pwd = editor.pwd()
+            except AttributeError:
+                continue
+            if pwd is not None and pwd not in networks:
+                networks.append(pwd)
+        return networks
+
+    def _create_carrier(self, dest, type_name: str, name: str,
+                        position=None):
         """Create `type_name` inside `dest` when that network can hold
         one - the type existing in the network's child category IS the
         capability test - or answer None. The carrier half of the
         matrix's creation rule; the caller loads the payload and owns
-        the undo group."""
+        the undo group. A position places the node where the release
+        happened; without one it auto-places."""
         if dest is None:
             return None
         try:
@@ -6386,6 +6425,8 @@ class MatLibPanel(QtWidgets.QWidget):
         except (AttributeError, hou.OperationFailed):
             return None
         if category is None or hou.nodeType(category, type_name) is None:
+            debug.event("interact", "no carrier for this network",
+                        carrier=type_name, dest=dest.path())
             return None
         try:
             node = dest.createNode(type_name)
@@ -6396,10 +6437,18 @@ class MatLibPanel(QtWidgets.QWidget):
                 node.setName(name, unique_name=True)
             except hou.OperationFailed:
                 pass
-        node.moveToGoodPosition()
+        if position is not None:
+            try:
+                node.setPosition(position)
+            except (hou.OperationFailed, TypeError):
+                node.moveToGoodPosition()
+        else:
+            node.moveToGoodPosition()
+        debug.event("interact", "carrier created", carrier=type_name,
+                    dest=dest.path())
         return node
 
-    def create_image_node_in(self, index, dest) -> bool:
+    def create_image_node_in(self, index, dest, position=None) -> bool:
         """The image creation rule: a release on empty network space
         (or a double-click with nothing selected) makes a mtlximage
         carrying the spelled path, wherever the network can hold one."""
@@ -6409,7 +6458,7 @@ class MatLibPanel(QtWidgets.QWidget):
         base = helpers.sanitize_usd_path(
             os.path.splitext(os.path.basename(path))[0]) or "image"
         with hou.undos.group("Amaze Create Image Node"):
-            node = self._create_carrier(dest, "mtlximage", base)
+            node = self._create_carrier(dest, "mtlximage", base, position)
             if node is None:
                 return False
             parm = helpers.find_file_parm(node)
@@ -6419,7 +6468,7 @@ class MatLibPanel(QtWidgets.QWidget):
             parm.set(self._scene_path(path))
         return True
 
-    def create_gradient_node_in(self, index, dest) -> bool:
+    def create_gradient_node_in(self, index, dest, position=None) -> bool:
         """The gradient creation rule: a MtlX colour ramp carrying the
         combination, wherever the network can hold one."""
         if index is None or not index.isValid():
@@ -6428,16 +6477,19 @@ class MatLibPanel(QtWidgets.QWidget):
         entry = self.gradient_model.entry(source_index.row())
         if entry is None:
             return False
-        return self._create_gradient_carrier(entry, dest)
+        return self._create_gradient_carrier(entry, dest,
+                                             position=position)
 
-    def _create_gradient_carrier(self, entry, dest, basis: str = "") -> bool:
+    def _create_gradient_carrier(self, entry, dest, basis: str = "",
+                                 position=None) -> bool:
         """The carrier half shared by the drag door (an index) and the
         double-click and menu doors (an entry, optionally re-based by
         Apply as)."""
         name = helpers.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
         with hou.undos.group("Amaze Create Gradient Node"):
-            node = self._create_carrier(dest, "hmtlxrampc", name)
+            node = self._create_carrier(dest, "hmtlxrampc", name,
+                                        position)
             if node is None:
                 return False
             parm = helpers.find_color_ramp_parm(node)
@@ -6447,7 +6499,7 @@ class MatLibPanel(QtWidgets.QWidget):
             parm.set(self._entry_ramp(entry, basis))
         return True
 
-    def create_code_node_in(self, index, dest) -> bool:
+    def create_code_node_in(self, index, dest, position=None) -> bool:
         """The code creation rule: the language's own carrier - a
         wrangle, an opencl, a python - wherever the network kind has
         one, loaded through the same apply the node drop uses."""
@@ -6473,7 +6525,7 @@ class MatLibPanel(QtWidgets.QWidget):
         name = helpers.sanitize_usd_path(
             str(getattr(asset, "name", "") or "")) or "snippet"
         with hou.undos.group("Amaze Create Code Node"):
-            node = self._create_carrier(dest, type_name, name)
+            node = self._create_carrier(dest, type_name, name, position)
             if node is None:
                 return False
             ok, _reason = self.code_model.apply_to_node(row, node)
@@ -6524,9 +6576,10 @@ class MatLibPanel(QtWidgets.QWidget):
         if len(sel) == 1:
             self._apply_texture_to_node(sel[0], path)
             return
-        if not sel and self.create_image_node_in(
-                index, self._double_click_network()):
-            return
+        if not sel:
+            for network in self._view_create_networks():
+                if self.create_image_node_in(index, network):
+                    return
         self._cannot_load_here()
 
     def import_asset_to_mat(self):
