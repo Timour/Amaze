@@ -565,6 +565,128 @@ class DropFilePathOnNodeTest(unittest.TestCase):
             "a node with nothing to take the path claimed success")
 
 
+class CreationRuleTest(unittest.TestCase):
+    """The matrix's creation rule on real nodes: a release on empty
+    network space (and a double-click with nothing selected) creates
+    the payload's carrier - mtlximage, the MtlX colour ramp, the
+    language's wrangle - wherever the network can hold one, and
+    refuses with False where it cannot. Type names from the shipped
+    manual; the type existing in the network's child category IS the
+    capability test."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        hou.clearAllSelected()
+
+    def _home(self):
+        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
+        if not home or home in ("/", "."):
+            self.skipTest("no HOME variable in this session")
+        return home
+
+    def _matnet(self):
+        net = hou.node("/obj").createNode("matnet")
+        self.addCleanup(net.destroy)
+        return net
+
+    def _geo(self):
+        net = hou.node("/obj").createNode("geo")
+        self.addCleanup(net.destroy)
+        return net
+
+    def _index_for(self, path):
+        import types
+        return types.SimpleNamespace(data=lambda role: path,
+                                     isValid=lambda: True)
+
+    def test_an_image_becomes_a_mtlximage_with_the_spelled_path(self):
+        from amaze.helpers import helpers
+
+        home = self._home()
+        net = self._matnet()
+        self.assertTrue(self.panel.create_image_node_in(
+            self._index_for(home + "/textures/amaze_create.png"), net))
+        children = net.children()
+        self.assertEqual(1, len(children), "exactly one carrier")
+        self.assertIn("mtlximage", children[0].type().name())
+        self.assertEqual(
+            "$HOME/textures/amaze_create.png",
+            helpers.find_file_parm(children[0]).rawValue(),
+            "the carrier holds a raw absolute path")
+
+    def test_a_sop_network_refuses_the_image_carrier(self):
+        net = self._geo()
+        self.assertFalse(self.panel.create_image_node_in(
+            self._index_for(self._home() + "/x.png"), net))
+        self.assertEqual((), net.children(),
+                         "a refusing network gained a child anyway")
+
+    def test_a_gradient_becomes_the_mtlx_ramp_carrier(self):
+        from amaze.helpers import helpers
+
+        net = self._matnet()
+        index = self.panel.gradient_sorted_model.index(0, 0)
+        self.assertTrue(index.isValid(),
+                        "premise: the fixture has gradients")
+        self.assertTrue(self.panel.create_gradient_node_in(index, net))
+        children = net.children()
+        self.assertEqual(1, len(children))
+        self.assertIn("hmtlxrampc", children[0].type().name())
+        self.assertIsNotNone(
+            helpers.find_color_ramp_parm(children[0]),
+            "the carrier has no ramp to have taken the gradient")
+
+    def test_a_vex_snippet_becomes_a_wrangle_in_a_sop_network(self):
+        from amaze.helpers import helpers
+
+        net = self._geo()
+        index = self.panel.code_sorted_model.index(0, 0)
+        self.assertTrue(index.isValid(),
+                        "premise: the fixture has snippets")
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        self.assertTrue(self.panel.create_code_node_in(index, net))
+        children = net.children()
+        self.assertEqual(1, len(children))
+        self.assertIn("attribwrangle", children[0].type().name())
+        self.assertEqual(
+            asset.code, helpers.find_code_parm(children[0]).eval(),
+            "the wrangle does not carry the snippet")
+
+    def test_a_vop_network_refuses_a_vex_snippet(self):
+        net = self._matnet()
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        self.assertFalse(self.panel.create_code_node_in(index, net))
+        self.assertEqual((), net.children())
+
+    def test_double_click_with_nothing_selected_creates_the_carrier(self):
+        from amaze.helpers import helpers
+
+        home = self._home()
+        net = self._matnet()
+        self.panel._double_click_network = lambda: net
+        self.addCleanup(
+            lambda: self.panel.__dict__.pop("_double_click_network", None))
+        self.panel.set_texture_on_selected_node(
+            self._index_for(home + "/textures/amaze_dbl.png"))
+        children = net.children()
+        self.assertEqual(1, len(children),
+                         "the empty-selection double-click did not "
+                         "create the carrier")
+        self.assertEqual(
+            "$HOME/textures/amaze_dbl.png",
+            helpers.find_file_parm(children[0]).rawValue())
+
+
 class HoudiniPathTest(unittest.TestCase):
     """Copy Path writes paths the way Houdini writes them."""
 

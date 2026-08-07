@@ -593,14 +593,40 @@ class GridGestureMixin:
                             if not panel.rect().contains(local):
                                 panel.open_hip_scene(idx)
                                 outcome = True
+                        elif kind == file_library.KIND_IMAGE:
+                            # The creation rule: an image released on
+                            # empty network space becomes a mtlximage
+                            # where the network can hold one. Off any
+                            # editor there is no network and nothing
+                            # is consulted - a plain miss.
+                            net = panel._network_under_release()
+                            outcome = bool(
+                                net is not None
+                                and panel.create_image_node_in(idx, net))
                     elif section in self.NODE_TARGET_SECTIONS:
+                        # A node takes the payload or refuses (a miss);
+                        # empty network space runs the creation rule.
                         node = panel._node_under_cursor()
-                        if node is not None:
-                            if section == "gradient":
-                                panel.apply_gradient_to_node(idx, node)
-                            elif section == "code":
-                                panel.drop_code_at_release(idx, node)
-                            outcome = True
+                        if section == "gradient":
+                            if node is not None:
+                                outcome = bool(
+                                    panel.apply_gradient_to_node(idx, node))
+                            else:
+                                net = panel._network_under_release()
+                                outcome = bool(
+                                    net is not None
+                                    and panel.create_gradient_node_in(
+                                        idx, net))
+                        elif section == "code":
+                            if node is not None:
+                                outcome = bool(
+                                    panel.drop_code_at_release(idx, node))
+                            else:
+                                net = panel._network_under_release()
+                                outcome = bool(
+                                    net is not None
+                                    and panel.create_code_node_in(
+                                        idx, net))
                     # A release over nothing stays silent - and the tag
                     # flies back to its tile to SAY so.
             except hou.PermissionError as refusal:

@@ -44,6 +44,9 @@ class _StubPanel(QtWidgets.QWidget):
         self.hover_rows = []
         self._category = None
         self._node = None
+        #: None = the release was over nothing (no editor); a test
+        #: that means empty NETWORK SPACE sets a sentinel.
+        self._network = None
         self._file_path_outcome = True
         # The File section's release dispatch reads the row KIND
         # through this attribute; the harness stamps kinds onto its
@@ -105,6 +108,21 @@ class _StubPanel(QtWidgets.QWidget):
     def drop_file_path_on_node(self, idx, node):
         self.calls.append("file_path")
         return self._file_path_outcome
+
+    def _network_under_release(self):
+        return self._network
+
+    def create_image_node_in(self, idx, dest):
+        self.calls.append("create_image")
+        return dest is not None
+
+    def create_gradient_node_in(self, idx, dest):
+        self.calls.append("create_gradient")
+        return dest is not None
+
+    def create_code_node_in(self, idx, dest):
+        self.calls.append("create_code")
+        return dest is not None
 
 
 def _event(kind, pos, button=QtCore.Qt.MouseButton.LeftButton,
@@ -458,13 +476,54 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
         h.release()
         self.assertEqual(["file_path"], h.panel.calls)
 
-    def test_no_node_under_the_release_is_a_miss_not_an_action(self):
+    def test_an_image_on_empty_network_space_runs_the_creation_rule(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
+        h.panel._network = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["create_image"], h.panel.calls,
+                         "an image released on empty network space "
+                         "must run the creation rule")
+        self.assertFalse(h.view._dragging, "the gesture stayed live")
+
+    def test_an_image_over_nothing_at_all_is_a_silent_miss(self):
         from amaze.core import file_library
         h = _Harness(self, section="file", kind=file_library.KIND_IMAGE)
         self._drag(h)
         h.release()
-        self.assertEqual([], h.panel.calls)
-        self.assertFalse(h.view._dragging, "the gesture stayed live")
+        self.assertEqual([], h.panel.calls,
+                         "off any editor there is no network and "
+                         "nothing is consulted")
+
+    def test_an_unknown_file_on_no_node_is_still_a_miss(self):
+        from amaze.core import file_library
+        h = _Harness(self, section="file", kind=file_library.KIND_OTHER)
+        self._drag(h)
+        h.release()
+        self.assertEqual([], h.panel.calls,
+                         "an unknown file has no creation rule")
+
+    def test_a_gradient_on_empty_network_space_runs_the_creation_rule(self):
+        h = _Harness(self, section="gradient")
+        h.panel._network = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["create_gradient"], h.panel.calls)
+
+    def test_a_gradient_on_a_node_hands_over_instead(self):
+        h = _Harness(self, section="gradient")
+        h.panel._node = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["gradient"], h.panel.calls)
+
+    def test_code_on_empty_network_space_runs_the_creation_rule(self):
+        h = _Harness(self, section="code")
+        h.panel._network = object()
+        self._drag(h)
+        h.release()
+        self.assertEqual(["create_code"], h.panel.calls)
 
     def test_a_node_that_takes_nothing_is_a_MISS_for_geometry_too(self):
         """ONE rule on nodes, no per-kind fallback: a refused hand-over
