@@ -497,7 +497,12 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
             loaders[0].parm("file").rawValue(),
             "the geometry import writes the raw absolute path")
 
-    def test_the_drag_payload_text_is_spelled_and_the_url_is_raw(self):
+    def test_the_drag_payload_is_the_spelled_text_and_nothing_else(self):
+        """Live find: a file URL is an OS open-this handle. Houdini
+        honoured it - a promoted drag released anywhere but a field
+        offered to CLEAR THE SCENE and open the file, for every kind -
+        and inside a field it beat the spelled text, which is why
+        drops wrote absolute paths. One flavour only."""
         home = self._home()
         raw = home + "/textures/amaze_spelling.png"
         mime = self.panel.thumblist._file_drag_mime(self.panel, raw)
@@ -505,9 +510,9 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
                          mime.text(),
                          "the drag's text flavour is not spelled per "
                          "the preference")
-        self.assertEqual(raw, mime.urls()[0].toLocalFile(),
-                         "the URL flavour must stay a real local "
-                         "file - it is an OS handle, not a spelling")
+        self.assertFalse(mime.hasUrls(),
+                         "the drag carries a file URL again - Houdini "
+                         "reads it as open-this-file")
 
     def test_no_raw_parm_set_of_a_path_remains(self):
         panel_py = os.path.join(
@@ -750,6 +755,35 @@ class CreationRuleTest(unittest.TestCase):
             b.setSelected(True)
         self.assertEqual((a,), hou.selectedNodes(),
                          "the block did not put the selection back")
+
+    def test_a_geo_double_click_fills_the_selected_node(self):
+        """Live find: the file door's geo branch imported no matter
+        what was selected. The matrix aims a double-click at the
+        selection first - a selected node with a file parameter takes
+        the spelled path, exactly as the image branch beside it."""
+        import types
+        from amaze.core import file_library
+        from amaze.helpers import helpers
+        sop = self._geo()
+        loader = sop.createNode("file")
+        hou.clearAllSelected()
+        loader.setSelected(True)
+        self._with_view_networks([sop])
+        path = self._home() + "/models/amaze_click.obj"
+        roles = {file_library.FileFiles.KindRole: file_library.KIND_GEO,
+                 file_library.FileFiles.PathRole: path}
+        index = types.SimpleNamespace(
+            data=lambda role: roles.get(role, path),
+            isValid=lambda: True)
+        self.panel.file_double_click(index)
+        self.assertEqual(
+            "$HOME/models/amaze_click.obj",
+            helpers.find_file_parm(loader).rawValue(),
+            "the selected file node did not take the spelled path")
+        self.assertEqual(
+            1, len(sop.children()),
+            "the door imported beside the selection instead of "
+            "filling it")
 
     def test_an_invisible_selection_cannot_hijack_the_click_door(self):
         """Live find: an import leaves its nodes SELECTED (Houdini
@@ -1131,6 +1165,11 @@ class _RecordingPanel:
     def __init__(self):
         self.calls = []
         self.prefs = _Prefs([])
+
+    def _visible_selected_nodes(self):
+        """Nothing selected - the dispatch test drives the per-kind
+        routing, not the selection door."""
+        return []
 
     def set_texture_on_selected_node(self, index):
         self.calls.append("image")

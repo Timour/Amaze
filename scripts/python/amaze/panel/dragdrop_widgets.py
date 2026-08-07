@@ -440,13 +440,19 @@ class GridGestureMixin:
 
     @staticmethod
     def _file_drag_mime(panel, path: str) -> QtCore.QMimeData:
-        """One mime for a file-path drag. The TEXT flavour is spelled
-        per Write Paths As - it is what lands wherever text wins. The
-        URL flavour stays the raw local file: a QUrl is an OS handle,
-        not a spelling, and an encoded string inside it points at
-        nothing."""
+        """One mime for a file-path drag: the spelled TEXT, and NOTHING
+        else.
+
+        The URL flavour is deliberately absent. A file URL is an OS
+        open-this handle, and Houdini honours it as such: a promoted
+        drag released anywhere but a field - a node with no file parm,
+        empty editor space - reached Houdini's own handler and offered
+        to CLEAR THE SCENE and open the file, for every kind, not just
+        hip (live, with the save-changes prompt as proof). It also won
+        inside the field, which is why a drop filled an absolute path
+        while Write Paths As said $HOME. One flavour, one spelling,
+        and a miss stays a miss."""
         mime_data = QtCore.QMimeData()
-        mime_data.setUrls([QtCore.QUrl.fromLocalFile(path)])
         mime_data.setText(file_library.houdini_path(
             path, getattr(panel.prefs, "path_style", "home")))
         return mime_data
