@@ -1051,7 +1051,7 @@ class MaterialSection(AssetSection):
         path, and the grid would be showing the local library.
         """
         if getattr(self.panel, "online_mode", False):
-            self.panel._activate_online_materials()
+            self.panel.enter_online()
             return
         super().activate()
 

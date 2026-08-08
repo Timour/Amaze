@@ -573,16 +573,20 @@ class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
 
 
 class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
-    """The direction of travel, asserted so batches 4-9 can be measured
-    against it rather than argued about.
+    """The direction of travel, and it has arrived.
 
-    `FolderSection.activate()` already binds through named attributes
-    and differs from a sibling only by which models it names. The other
-    four still call back into `_activate_*` bodies inside the panel.
-    This test does not demand the move - it RECORDS how far it has got,
-    and its number is what a later batch changes deliberately."""
+    Every section activates through its own `activate()`, binding by
+    named attributes and differing from a sibling only by which models
+    it names. No activation body is left in the panel - this used to
+    record how far the move had got, and now it is the BAN that keeps
+    one from coming back.
 
-    def test_how_many_activation_bodies_still_live_in_the_panel(self):
+    The online world is the one thing that never became a Section: it
+    is deliberately absent from `enabled_sections`, so its entry point
+    lives on the panel as `enter_online()`, named for what it does.
+    """
+
+    def test_no_activation_body_lives_in_the_panel(self):
         import ast
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -593,11 +597,12 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             if isinstance(node, ast.FunctionDef)
             and node.name.startswith("_activate_"))
         self.assertEqual(
-            ["_activate_online_materials"], bodies,
-            "the set of activation bodies inside the panel changed. That "
-            "is the point of batches 4 and 5 - update this list IN the "
-            "batch that moves one, so the move is a deliberate line and "
-            "not a green suite nobody looked at: %s" % bodies)
+            [], bodies,
+            "an activation body is back in the panel. Activation belongs "
+            "to the section that owns it (FolderSection.activate is the "
+            "pattern); the online world's entry is enter_online(), which "
+            "routes through _apply_context like every section: %s"
+            % bodies)
 
     def test_every_scene_importing_menu_verb_preserves_the_view(self):
         """The drag and click dispatchers wrap the artist's selection,

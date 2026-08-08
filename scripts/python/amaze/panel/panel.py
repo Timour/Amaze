@@ -3857,7 +3857,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if self.section_tabs is not None:
             self.section_tabs.setChecked(source_name, emit=False)
         self.matx_online_model.set_source(source_name)
-        self._activate_online_materials()
+        self.enter_online()
         # Picking a source starts you on "All" - not a stale category from
         # a previous source and not an unhighlighted sidebar. Done here (on
         # the explicit source-pick) rather than in _activate_online_
@@ -3896,7 +3896,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # re-activating ONLY the material section, which left the grid
         # pointed at the online model for the other four.
 
-    def _activate_online_materials(self) -> None:
+    def enter_online(self) -> None:
         """Enter the online world through the SAME path a section takes.
 
         The body that used to be here - four setModel calls and a
@@ -3905,6 +3905,12 @@ class MatLibPanel(QtWidgets.QWidget):
         and the Comments subject follow it the way they follow every
         section. They did not, before, and that was three defects with
         one cause.
+
+        Named for what it DOES rather than `_activate_online_materials`.
+        Every other `_activate_*` moved onto its own section; this one
+        cannot, because the online world is deliberately not a Section
+        and never appears in `enabled_sections`. A ban test keeps the
+        old shape from coming back.
         """
         self._apply_context(self.online_context, self.online_context.key)
 
