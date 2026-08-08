@@ -381,6 +381,36 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual(renderer, "karma")
         mock_handler.save_node.assert_called_once()
 
+    def test_add_asset_says_no_when_the_save_did_not_happen(self):
+        """THE RENDERER-STRING CONTRACT, which the two sibling
+        add_assets already honour and this one did not: a renderer
+        name means the asset is IN the library, "" means it is not.
+        This returned the renderer whether or not save_node worked, so
+        all six call sites read a failed save as a good one - and the
+        only trace was a debug record nobody reads mid-save."""
+        mock_node = Mock()
+        mock_node.name.return_value = "RefusedMaterial"
+
+        mock_handler = Mock()
+        mock_handler.get_renderer_from_node.return_value = "karma"
+        mock_handler.save_node.return_value = False
+        self.mock_nodes_cls.return_value = mock_handler
+
+        new_mat = Mock()
+        new_mat.mat_id = "mat_refused"
+        self.mock_material_cls.return_value = new_mat
+
+        before = len(self.library.assets)
+        renderer = self.library.add_asset(mock_node, "metal", "x", False)
+
+        self.assertEqual(
+            "", renderer,
+            "a refused save answered with a renderer, which every "
+            "caller reads as success")
+        self.assertEqual(
+            before, len(self.library.assets),
+            "a refused save still added a row")
+
     def test_flags(self):
         """Test flags returns correct item flags"""
         index = self.library.index(0, 0)
