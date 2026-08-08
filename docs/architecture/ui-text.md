@@ -263,7 +263,8 @@ have "fixed" the working half.)*
   material into the scene, and Import now belongs to the File section)*
   - /mat  *(was `MAT` until 2026-08-01 — the entries name the
     destination the way Houdini writes it)*
-  - /Solaris  *(was `LOP`)*
+  - /stage  *(was `LOP`, then `/Solaris` until 2026-08-08 — the path,
+    not the marketing name)*
 - Convert to Karma  (conditional — a Redshift material is selected; the summary dialog lists what each conversion skipped or approximated)
 - ---- divider ----
 - Update Preview  *(was "Rerender Thumbnail", then "Render Thumbnail")*
@@ -705,6 +706,46 @@ The sidebar outranks everything: a release over a category
 recategorises the selection. A DRAG miss shows the red indicator and
 the name tag flies home, one status line, never a dialog; a
 DOUBLE-CLICK miss says the one sentence below.
+
+### The audit matrix (verified 2026-08-08, code + live session + host source)
+
+Three doors per section — drag release, double-click, menu verb — and
+three promises per door, each checked against Houdini's own
+behaviour (`$HH/scripts/scene/lop_dragdrop.py`, `nodegraph.py`, the
+HOM manual):
+
+**Where it lands.** Every landing door places at the gated release
+position, centred under the pointer (the manual's own
+`cursorPosition` pattern); a double-click aims at the visible
+selection, else a network that can hold the payload; menu verbs act
+on the grid selection. The one deliberate placement exception: a
+material released on a material library goes inside it.
+
+**What moves.** Nothing else — measured live per door: a code
+double-click into a populated network and a Copy To into a populated
+/mat both left every neighbour exactly where it was. Houdini's own
+material drop re-arranges (`moveToGoodPosition`) and dives the
+editor (`setCurrent(True, True)`); Amaze diverges deliberately on
+both, and restores the artist's selection where the host leaves the
+newborn selected. These divergences are the app's view-never-jumps
+law, not omissions.
+
+**What the undo stack gets.** One entry per gesture: every
+scene-touching door and menu verb wraps in a single undo group;
+conversion scratch and thumbnail scaffolds run under the undo
+disabler; verbs that never touch scene nodes (Capture, New File,
+scene load) correctly add nothing.
+
+**Refusals.** Houdini saying no (a locked network) is absorbed
+identically at all three doors: the drag shows the fly-back plus
+Houdini's own sentence in the status bar; the double-click the same
+sentence, same bar; a genuine defect still raises where it can be
+seen. Matches the host's information, delivered without a dialog.
+
+**Menu-verb contracts** (the third door, swept 2026-08-08): Load,
+Copy To and the online Import to Scene carry the same
+selection/current/view preservation the drag and click dispatchers
+give every gesture; the File menu's Import always did.
 
 ---
 

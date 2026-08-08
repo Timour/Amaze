@@ -754,6 +754,84 @@ class CreationRuleTest(unittest.TestCase):
             "the newborn carrier stayed selected - it will hijack "
             "the next double-click")
 
+    def test_a_menu_copy_to_leaves_the_artists_scene_state_alone(self):
+        """The Materials menu's Copy To imports the selected asset into
+        /mat - and the artist's scene selection must survive it,
+        exactly as it survives a drop. The import tags its newborns
+        current and selected; the verb's wrapper puts the artist
+        back."""
+        net = self._geo()
+        self._with_view_networks([net])
+        keeper = net.createNode("box", "the_artists_own")
+        keeper.setSelected(True, clear_all_selected=True)
+        proxy = self.panel.material_sorted_model
+        index = None
+        for row in range(proxy.rowCount()):
+            candidate = proxy.index(row, 0)
+            source = proxy.mapToSource(candidate)
+            asset = self.panel.material_model.assets[source.row()]
+            if str(getattr(asset, "renderer", "")):
+                index = candidate
+                break
+        if index is None:
+            self.skipTest("no fixture material carries a renderer")
+        self.panel.material_selection_model.select(
+            index,
+            QtCore.QItemSelectionModel.ClearAndSelect
+            | QtCore.QItemSelectionModel.Rows)
+        mat_net = hou.node("/mat")
+        before = len(mat_net.children())
+        self.panel.sections["material"].menu_copy_to(
+            (index,), index, payload="mat")
+        if len(mat_net.children()) == before:
+            self.skipTest("the fixture material did not import")
+        self.assertEqual(
+            (keeper,), hou.selectedNodes(),
+            "a menu Copy To moved the artist's scene selection")
+
+    def test_a_refused_click_is_absorbed_like_a_refused_drop(self):
+        """Houdini answering no (a locked network) must not escape the
+        click dispatcher as a slot crash - the drag dispatch already
+        absorbs exactly this class and says why."""
+        from amaze.panel import sections as sections_module
+
+        class RefusingSection:
+            key = "refusing"
+            DROP = sections_module.DropRule(
+                click_resolve="refuse_for_the_test")
+
+        def refuse(_index):
+            raise hou.PermissionError(
+                "Cannot create a node inside a locked asset")
+
+        self.panel.refuse_for_the_test = refuse
+        index = self.panel.code_sorted_model.index(0, 0)
+        try:
+            self.panel.click_on_row(RefusingSection(), index)
+        finally:
+            del self.panel.refuse_for_the_test
+
+    def test_a_genuine_crash_still_escapes_the_click_dispatcher(self):
+        """Only the permission class is absorbed - a programming error
+        must still crash where it can be seen."""
+        from amaze.panel import sections as sections_module
+
+        class CrashingSection:
+            key = "crashing"
+            DROP = sections_module.DropRule(
+                click_resolve="crash_for_the_test")
+
+        def crash(_index):
+            raise RuntimeError("a real defect")
+
+        self.panel.crash_for_the_test = crash
+        index = self.panel.code_sorted_model.index(0, 0)
+        try:
+            with self.assertRaises(RuntimeError):
+                self.panel.click_on_row(CrashingSection(), index)
+        finally:
+            del self.panel.crash_for_the_test
+
     def test_the_preserving_helper_restores_what_was(self):
         from amaze.helpers import helpers
         net = self._geo()

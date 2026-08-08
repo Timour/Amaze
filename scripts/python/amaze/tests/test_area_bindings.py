@@ -599,6 +599,32 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "batch that moves one, so the move is a deliberate line and "
             "not a green suite nobody looked at: %s" % bodies)
 
+    def test_every_scene_importing_menu_verb_preserves_the_view(self):
+        """The drag and click dispatchers wrap the artist's selection,
+        current node and therefore the view; the menu dispatcher does
+        not, so each scene-importing verb must carry the wrapper
+        itself - the File section's import verb already does. The
+        three that reach the scene are pinned here so a fourth cannot
+        ship bare."""
+        import ast
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        source = open(os.path.join(root, "panel", "sections.py"),
+                      encoding="utf-8").read()
+        tree = ast.parse(source)
+        bare = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name in (
+                    "menu_load", "menu_copy_to", "menu_import_to_scene"):
+                body = ast.get_source_segment(source, node) or ""
+                if "preserving_selection_and_current" not in body:
+                    bare.append("%s:%d" % (node.name, node.lineno))
+        self.assertEqual(
+            [], bare,
+            "these menu verbs import into the scene without the "
+            "preserve wrapper, so a menu import can jump the view: %s"
+            % bare)
+
     def test_no_section_dispatches_back_into_the_panel_to_activate(self):
         """BATCH 4 moved four of the five. What is left is the ONLINE
         world's, and batch 5 is where that goes - so this asserts the
