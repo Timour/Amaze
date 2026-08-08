@@ -136,6 +136,99 @@ def qt_refuses(target, declared=OVERSIZED, only_first=False):
     return mock.patch.object(conversion, "_read_qt", fake)
 
 
+class _StubSignal:
+    def __init__(self):
+        self.slots = []
+
+    def connect(self, slot):
+        self.slots.append(slot)
+
+
+class _StubProcess:
+    """A killed child, scripted: whether it dies inside the reap's
+    half-second, or defers SIGKILL the way uninterruptible disk I/O
+    does."""
+
+    def __init__(self, reaps=True, running=True):
+        self._reaps = reaps
+        self._running = running
+        self.killed = False
+        self.deleted = False
+        self.finished = _StubSignal()
+
+    def state(self):
+        running = QtCore.QProcess.ProcessState.Running
+        gone = QtCore.QProcess.ProcessState.NotRunning
+        return running if self._running else gone
+
+    def kill(self):
+        self.killed = True
+
+    def waitForFinished(self, _ms):
+        if self._reaps:
+            self._running = False
+            return True
+        return False
+
+    def program(self):
+        return "/usr/bin/stub"
+
+    def deleteLater(self):
+        self.deleted = True
+
+
+class TheGraveyardBoundsTheStall(unittest.TestCase):
+    """A killed child that defers SIGKILL must cost its caller half a
+    second, not the destructor's thirty: it is parked in the module
+    graveyard and collects itself when the kernel lets go. Measured
+    2026-08-08: 71 deferred children turned a 134s suite into 1211s
+    and starved the thumbnail workers - the shape behind the hanging
+    File-tab thumbnails."""
+
+    def tearDown(self):
+        conversion._ABANDONED.clear()
+
+    def test_a_child_that_dies_in_time_is_simply_reaped(self):
+        child = _StubProcess(reaps=True)
+        self.assertTrue(conversion._reap_or_abandon(child))
+        self.assertTrue(child.killed)
+        self.assertEqual([], conversion._ABANDONED)
+
+    def test_an_already_dead_child_needs_nothing(self):
+        child = _StubProcess(running=False)
+        self.assertTrue(conversion._reap_or_abandon(child))
+        self.assertFalse(child.killed)
+
+    def test_a_sigkill_deferring_child_is_abandoned_not_awaited(self):
+        child = _StubProcess(reaps=False)
+        self.assertFalse(conversion._reap_or_abandon(child))
+        self.assertIn(child, conversion._ABANDONED)
+        self.assertTrue(child.finished.slots,
+                        "nothing collects the corpse later")
+        # The kernel finally releases it: the connected slot must
+        # remove it from the graveyard and delete the Qt object.
+        child._running = False
+        child.finished.slots[0]()
+        self.assertNotIn(child, conversion._ABANDONED)
+        self.assertTrue(child.deleted)
+
+    def test_a_child_dying_during_the_handover_is_still_collected(self):
+        child = _StubProcess(reaps=False)
+        # Dead by the time the post-connect check runs - the finished
+        # signal already fired and will never come again.
+        original_wait = child.waitForFinished
+
+        def wait_then_die(ms):
+            result = original_wait(ms)
+            child._running = False
+            return result
+
+        child.waitForFinished = wait_then_die
+        self.assertFalse(conversion._reap_or_abandon(child))
+        self.assertNotIn(child, conversion._ABANDONED)
+        self.assertTrue(child.deleted)
+
+
 class ConversionCase(unittest.TestCase):
     """Shared fixtures. Every path here is inside a temp dir."""
 

@@ -285,9 +285,44 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
         # hurry. If the child outlives the bound the destructor still
         # blocks, as it does today: this makes that the rare case
         # instead of the routine one on three unguarded paths.
-        if process.state() != QtCore.QProcess.ProcessState.NotRunning:
-            process.kill()
-            process.waitForFinished(500)
+        _reap_or_abandon(process)
+
+
+#: Killed children that survived their reap: a process in
+#: uninterruptible disk I/O defers even SIGKILL, and ~QProcess blocks
+#: up to thirty seconds waiting for it. Parked here, each cleans
+#: itself up whenever the kernel lets go, and the caller returned in
+#: half a second. Measured 2026-08-08: a suite of 134s ran 1211s with
+#: 71 such children, each stalling its frame the full thirty.
+_ABANDONED: list = []
+
+
+def _reap_or_abandon(process) -> bool:
+    """True = the child is dead and reaped. False = it outlived
+    SIGKILL's half-second grace and was handed to the graveyard so
+    THIS frame returns now instead of the destructor blocking."""
+    if process.state() == QtCore.QProcess.ProcessState.NotRunning:
+        return True
+    process.kill()
+    if process.waitForFinished(500):
+        return True
+
+    def _gone(*_args, process=process):
+        try:
+            _ABANDONED.remove(process)
+        except ValueError:
+            return                      # already collected once
+        process.deleteLater()
+
+    _ABANDONED.append(process)
+    process.finished.connect(_gone)
+    debug.event("convert", "helper abandoned to the graveyard",
+                program=process.program())
+    # It may have died between the failed wait and the connect - the
+    # signal is then never coming, so collect it here.
+    if process.state() == QtCore.QProcess.ProcessState.NotRunning:
+        _gone()
+    return False
 
 
 @functools.lru_cache(maxsize=1)
