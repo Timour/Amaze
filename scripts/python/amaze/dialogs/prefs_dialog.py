@@ -27,6 +27,7 @@ from amaze.core import tile_icons
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze.panel import sections as sections_module
+from amaze.prefs import prefs as prefs_mod
 
 
 #: Links in the About tab: a step darker than the body text, so they
@@ -296,7 +297,56 @@ class PrefsDialog(QtWidgets.QDialog):
             "Throw away the preview copies. They are remade as you "
             "browse, the library is untouched."))
         form.addRow(self._label(""), clear_cache_btn)
+
+        self._add_divider(form)
+        # TEST LIBRARY. One switch and one folder, so a session can be
+        # pointed at throwaway data and back again without either real
+        # path ever being written (prefs.dir and prefs.cache_dir are
+        # overlays while this is on).
+        #
+        # Not attached to Debug Mode: verbose logging exists to
+        # diagnose the REAL library, so swapping the library out with
+        # it would remove the one thing it is for.
+        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")
+        self._cbx_test_mode.setChecked(self._prefs.test_mode)
+        self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
+            "Work against a throwaway library instead of the real one. "
+            "Point it at any folder: Amaze uses the lib folder inside "
+            "it as the library and the cache folder as the preview "
+            "cache, making either if it is missing. Your real Library "
+            "Path and Cache Path are left exactly as they are and come "
+            "back when you switch this off."))
+        self._cbx_test_mode.toggled.connect(self.set_test_mode)
+        form.addRow(self._label(""), self._cbx_test_mode)
+
+        self.line_test_dir = QtWidgets.QLineEdit(self._prefs.test_dir)
+        self.line_test_dir.setReadOnly(True)
+        self.line_test_dir.setToolTip(ui_helpers.tooltip_text(
+            "The folder holding the test lib and cache folders."))
+        self._browse_test = QtWidgets.QPushButton("...")
+        self._browse_test.setFixedWidth(theme.ui_px(28))
+        self._browse_test.clicked.connect(self.change_test_path)
+        form.addRow(self._label("Test Folder"),
+                    self._path_row(self.line_test_dir, self._browse_test))
+
+        # The real-path rows are INERT while the switch is on - they
+        # would be showing the test paths and writing the real fields,
+        # which is the one combination that could lose a library. Same
+        # treatment the accent rows get under a theme.
+        self._real_path_widgets = (self.line_workdir, browse_lib,
+                                   self.line_cache, browse_cache)
+        self._sync_test_mode_rows()
         return page
+
+    def _sync_test_mode_rows(self) -> None:
+        """Show where the library and cache actually point, and freeze
+        the real-path rows while the test switch is on."""
+        on = bool(self._prefs.test_mode and self._prefs.test_dir)
+        for widget in getattr(self, "_real_path_widgets", ()):
+            widget.setEnabled(not on)
+        self.line_workdir.setText(self._prefs.dir)
+        self.line_cache.setText(self._prefs.cache_dir
+                                or hostos.cache_root())
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
@@ -796,6 +846,63 @@ class PrefsDialog(QtWidgets.QDialog):
         self._prefs.save()
         hostos.set_cache_override(self._prefs.cache_dir)
         self.line_cache.setText(self._prefs.cache_dir)
+
+    def change_test_path(self) -> None:
+        """Pick the folder holding the test lib and cache.
+
+        Seeded on the way in, not on first use: a library directory
+        with no index does not load, so choosing an empty folder and
+        switching on would otherwise answer with a traceback.
+        """
+        start = self._prefs.test_dir or self._prefs.dir
+        path = hou.ui.selectFile(
+            start_directory=start, file_type=hou.fileType.Directory
+        )
+        if not path:
+            return
+        folder = hou.expandString(path).rstrip("/")
+        ok, what = prefs_mod.seed_test_folder(folder)
+        if not ok:
+            hou.ui.displayMessage(  # type: ignore
+                "That folder could not be prepared:\n\n%s" % what)
+            return
+        self._prefs.test_dir = folder
+        self._prefs.save()
+        self.line_test_dir.setText(folder)
+        self._apply_test_mode()
+
+    def set_test_mode(self, on: bool) -> None:
+        """Switch the library and cache onto the test folder, or back.
+
+        Turning it on with no folder chosen asks for one first, rather
+        than half-applying: the overlay ignores a blank folder, so the
+        switch would otherwise read ON while nothing had moved.
+        """
+        self._prefs.test_mode = bool(on)
+        if on and not self._prefs.test_dir:
+            self._prefs.save()
+            self.change_test_path()
+            if not self._prefs.test_dir:
+                # Still nothing chosen - the switch cannot mean
+                # anything, so put it back rather than leave it lying.
+                self._prefs.test_mode = False
+                self._cbx_test_mode.setChecked(False)
+                self._prefs.save()
+            return
+        if on:
+            prefs_mod.seed_test_folder(self._prefs.test_dir)
+        self._prefs.save()
+        self._apply_test_mode()
+
+    def _apply_test_mode(self) -> None:
+        """Point the running session at whichever library now applies."""
+        hostos.set_cache_override(self._prefs.cache_dir)
+        self._sync_test_mode_rows()
+        debug.event("prefs", "test library switched",
+                    on=self._prefs.test_mode, folder=self._prefs.test_dir,
+                    library=self._prefs.dir)
+        if self._panel is not None:
+            self._panel.open()
 
     def clear_texture_cache(self) -> None:
         """Delete all cached image+geometry thumbnails from disk (every

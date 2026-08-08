@@ -532,6 +532,25 @@ TOGGLE SWITCHES, not tick checkboxes.)*
     tooltip says so)*
   - Clear Log
 
+#### Test Library *(Preferences ▸ Library, bottom, 2026-08-08)*
+
+- Toggle: `Test Library`
+  Tooltip: `Work against a throwaway library instead of the real
+  one. Point it at any folder: Amaze uses the lib folder inside it as
+  the library and the cache folder as the preview cache, making
+  either if it is missing. Your real Library Path and Cache Path are
+  left exactly as they are and come back when you switch this off.`
+- Field: `Test Folder` *(read-only + browse, like the other paths)*
+  Tooltip: `The folder holding the test lib and cache folders.`
+- While the toggle is ON the `Library Path` and `Cache Path` rows are
+  DISABLED and show where the library actually points — the same
+  treatment the accent-colour rows get under a theme. Their browse
+  buttons write the real fields, so leaving them live is the one
+  combination that could lose a library.
+- Failure: `That folder could not be prepared:` + the reason, when the
+  chosen folder cannot be seeded.
+- No success dialog — the reloaded grid is the announcement.
+
 ### Save Dialog (Material / Node — "Save to Amaze")
 
 - Title: `Save to Amaze`

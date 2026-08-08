@@ -1166,6 +1166,53 @@ class HoudiniPathTest(unittest.TestCase):
                          "Write Paths As should offer exactly "
                          "$HOME / $JOB / $HIP / Absolute")
 
+    def test_the_test_library_switch_freezes_the_real_path_rows(self):
+        """Preferences > Library carries a Test Library switch and a
+        Test Folder row. While it is on, the Library Path and Cache
+        Path rows are INERT: they show where the library actually
+        points, and their browse buttons would otherwise write the
+        real fields with a test path - the one combination that could
+        lose a library.
+        """
+        import os
+        import shutil
+        import tempfile
+        from amaze.dialogs import prefs_dialog
+        from amaze.prefs import prefs as prefs_mod
+
+        p = test_support.fixture_prefs(self)
+        real_library = p.dir
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+
+        self.assertEqual("Test Library", dlg._cbx_test_mode.text())
+        self.assertTrue(dlg.line_workdir.isEnabled(),
+                        "the Library Path row starts frozen")
+        self.assertEqual(real_library, dlg.line_workdir.text())
+
+        folder = tempfile.mkdtemp(prefix="amaze_switch_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        prefs_mod.seed_test_folder(folder)
+        p.test_dir = folder
+        p.test_mode = True
+        dlg._sync_test_mode_rows()
+
+        self.assertEqual(os.path.join(folder, "lib") + "/", p.dir)
+        self.assertEqual(p.dir, dlg.line_workdir.text(),
+                         "the row still shows the real library while "
+                         "the panel reads the test one")
+        self.assertFalse(dlg.line_workdir.isEnabled(),
+                         "the Library Path row is live while Test "
+                         "Library is on - its browse writes the real "
+                         "field")
+        self.assertFalse(dlg.line_cache.isEnabled())
+
+        p.test_mode = False
+        dlg._sync_test_mode_rows()
+        self.assertEqual(real_library, p.dir,
+                         "the real library did not come back")
+        self.assertTrue(dlg.line_workdir.isEnabled())
+
     def test_the_version_author_field_shows_a_real_name(self):
         """Preferences > Library shows the name this machine signs
         versions with. A fresh prefs gets its colour name minted
