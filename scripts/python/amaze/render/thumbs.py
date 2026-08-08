@@ -897,8 +897,17 @@ class ThumbNailRenderer:
             picture_parm.set(out_path)
             rop.render()
             if not os.path.exists(out_path):
-                debug.note("geometry thumbnail - render finished but "
-                    "wrote no image for " + base)
+                # NOT "finished": an ESC lands here too. The flipbook
+                # returns without raising when interrupted mid-render,
+                # so a big file whose render was escaped is
+                # indistinguishable from a renderer that declined -
+                # and the old sentence claimed the first was the
+                # second, which cost a chase (2026-08-08, a 233MB STL
+                # escaped 7s in, logged as wrote-no-image while the
+                # very next line said the pass was interrupted).
+                debug.note("geometry thumbnail - render ended without "
+                    "an image for " + base + " (interrupted mid-"
+                    "render, or the renderer declined the file)")
                 return False
             return True
         finally:
