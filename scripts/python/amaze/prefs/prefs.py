@@ -132,10 +132,15 @@ def _encode_paths(paths):
     return [_encode_path(p) for p in paths]
 
 
-#: The two folders a test folder is made of. Named once, because the
-#: dialog, the seeder and both overlay properties all have to agree.
+#: The library inside a test folder. Named once, because the dialog,
+#: the seeder and the overlay all have to agree.
+#:
+#: There is no cache subfolder any more: Test Mode moves the LIBRARY
+#: only. The thumbnail caches are keyed by file path on disk, so
+#: moving them regenerated thousands of valid images per switch and
+#: protected nothing (`cache_dir` says the measurement). A `cache/`
+#: left in an existing test folder is inert.
 TEST_LIB_SUBDIR = "lib"
-TEST_CACHE_SUBDIR = "cache"
 
 
 def test_library_dir(folder: str) -> str:
@@ -144,14 +149,6 @@ def test_library_dir(folder: str) -> str:
     if not folder:
         return ""
     return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
-
-
-def test_cache_dir(folder: str) -> str:
-    """The cache inside a test folder. No trailing separator: this is
-    handed to `hostos.set_cache_override`, which joins onto it."""
-    if not folder:
-        return ""
-    return os.path.join(folder, TEST_CACHE_SUBDIR).replace("\\", "/")
 
 
 def _normalised_dir(path: str) -> str:
@@ -182,11 +179,10 @@ def seed_test_folder(folder: str) -> tuple:
         return (False, "no folder")
     made = []
     try:
-        for sub in (TEST_LIB_SUBDIR, TEST_CACHE_SUBDIR):
-            path = os.path.join(folder, sub)
-            if not os.path.isdir(path):
-                os.makedirs(path, exist_ok=True)
-                made.append(sub + "/")
+        path = os.path.join(folder, TEST_LIB_SUBDIR)
+        if not os.path.isdir(path):
+            os.makedirs(path, exist_ok=True)
+            made.append(TEST_LIB_SUBDIR + "/")
         index = os.path.join(folder, TEST_LIB_SUBDIR, "library.json")
         if not os.path.exists(index):
             with open(index, "w", encoding="utf-8") as handle:
@@ -1966,18 +1962,19 @@ class Prefs:
     def cache_dir(self) -> str:
         """Custom thumbnail-cache root; "" = the per-OS default.
 
-        The TEST cache while Test Mode is on, for the same reason the
-        library moves: a sabotage run that reused the real cache would
-        leave its thumbnails behind in it.
+        TEST MODE DOES NOT MOVE THIS. The File section's thumbnails are
+        keyed by file path on disk and say nothing about which library
+        is open, so moving the cache threw away thousands of valid
+        images on every switch and regenerated them (measured
+        2026-08-08: 2496 texture and 503 geometry thumbnails against a
+        test cache holding 106 and none). There is nothing to protect
+        the real cache from either - a test session only ever adds
+        thumbnails that are correct and reusable.
         """
-        if getattr(self, "_test_mode", False) and getattr(
-                self, "_test_dir", ""):
-            return test_cache_dir(self._test_dir)
         return self._cache_dir
 
     @cache_dir.setter
     def cache_dir(self, val: str) -> None:
-        # The REAL path, as with `dir` above.
         self._cache_dir = str(val or "")
 
     @property

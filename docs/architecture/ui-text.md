@@ -536,22 +536,26 @@ TOGGLE SWITCHES, not tick checkboxes.)*
 
 - Toggle: `Test Library`
   Tooltip: `Work against a throwaway library instead of the real
-  one. Point it at any folder: Amaze uses the lib folder inside it as
-  the library and the cache folder as the preview cache, making
-  either if it is missing. Your real Library Path, Cache Path and
-  registered folders are left exactly as they are and come back when
-  you switch this off.`
+  one. Point it at any folder: Amaze uses the lib folder inside it,
+  making it if it is missing. Your real Library Path and registered
+  folders are left exactly as they are and come back when you switch
+  this off.`
 - Registered File locations stay ISOLATED in both directions: the test
   library gets its own (empty until you add some) and never seeds from
   the settings copy, and it never writes that copy back — the copy is
   the seed a later repair of the REAL library reads.
 - Field: `Test Folder` *(read-only + browse, like the other paths)*
-  Tooltip: `The folder holding the test lib and cache folders.`
-- While the toggle is ON the `Library Path` and `Cache Path` rows are
-  DISABLED and show where the library actually points — the same
-  treatment the accent-colour rows get under a theme. Their browse
-  buttons write the real fields, so leaving them live is the one
-  combination that could lose a library.
+  Tooltip: `The folder holding the test lib folder.`
+- While the toggle is ON the `Library Path` row is DISABLED and shows
+  where the library actually points — the same treatment the
+  accent-colour rows get under a theme. Its browse button writes the
+  real field, so leaving it live is the one combination that could
+  lose a library.
+- The CACHE does not move with the library (2026-08-08). Thumbnails
+  are keyed by file path on disk and say nothing about which library
+  is open, so moving them regenerated thousands on every switch and
+  protected nothing. The `Cache Path` rows stay live under Test
+  Library, and `Delete Local Cache` remains the one deliberate wipe.
 - Failure: `That folder could not be prepared:` + the reason, when the
   chosen folder cannot be seeded.
 - No success dialog — the reloaded grid is the announcement.

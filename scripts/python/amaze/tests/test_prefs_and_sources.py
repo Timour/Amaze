@@ -233,12 +233,23 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual(self.REAL_LIB, p.dir)
         self.assertEqual(self.REAL_CACHE, p.cache_dir)
 
-    def test_on_moves_both_paths_into_the_folder(self):
+    def test_on_moves_the_library_into_the_folder(self):
         p = self._prefs()
         p.test_dir = "/tmp/amaze_probe"
         p.test_mode = True
         self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
-        self.assertEqual("/tmp/amaze_probe/cache", p.cache_dir)
+
+    def test_the_cache_does_not_move_with_the_library(self):
+        """The File section's thumbnails are keyed by file path on
+        disk, so they say nothing about which library is open. Moving
+        them threw away 2496 texture and 503 geometry thumbnails on
+        every switch and regenerated them, and protected nothing - a
+        test session only adds images that are correct and reusable.
+        """
+        p = self._prefs()
+        p.test_dir = "/tmp/amaze_probe"
+        p.test_mode = True
+        self.assertEqual(self.REAL_CACHE, p.cache_dir)
 
     def test_the_real_paths_survive_the_round_trip(self):
         """The one that would cost a real library if it broke."""
@@ -274,7 +285,9 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
 
         self.assertTrue(ok, what)
         self.assertTrue(os.path.isdir(os.path.join(folder, "lib")))
-        self.assertTrue(os.path.isdir(os.path.join(folder, "cache")))
+        self.assertFalse(
+            os.path.isdir(os.path.join(folder, "cache")),
+            "a cache folder was made - the cache does not move")
         index = os.path.join(folder, "lib", "library.json")
         self.assertTrue(os.path.isfile(index),
                         "no library.json - the library would not load")

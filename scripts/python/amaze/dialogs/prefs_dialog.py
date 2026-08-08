@@ -307,25 +307,25 @@ class PrefsDialog(QtWidgets.QDialog):
             "browse, the library is untouched."))
         form.addRow(self._label(""), clear_cache_btn)
 
-        # The real-path rows are INERT while the switch is on - they
-        # would be showing the test paths and writing the real fields,
-        # which is the one combination that could lose a library. Same
-        # treatment the accent rows get under a theme.
-        self._real_path_widgets = (self.line_workdir, browse_lib,
-                                   self.line_cache, browse_cache,
-                                   self._default_cache)
+        # The LIBRARY row is inert while the switch is on - it would be
+        # showing the test path and writing the real field, which is the
+        # one combination that could lose a library. Same treatment the
+        # accent rows get under a theme.
+        #
+        # The CACHE rows stay live: Test Mode does not move the cache
+        # (prefs.py ▸ cache_dir), so they still describe and set the one
+        # cache there is.
+        self._real_path_widgets = (self.line_workdir, browse_lib)
         self._sync_test_mode_rows()
         return page
 
     def _sync_test_mode_rows(self) -> None:
-        """Show where the library and cache actually point, and freeze
-        the real-path rows while the test switch is on."""
+        """Show where the library actually points, and freeze the
+        library row while the test switch is on."""
         on = bool(self._prefs.test_mode and self._prefs.test_dir)
         for widget in getattr(self, "_real_path_widgets", ()):
             widget.setEnabled(not on)
         self.line_workdir.setText(self._prefs.dir)
-        self.line_cache.setText(self._prefs.cache_dir
-                                or hostos.cache_root())
 
     def _build_render_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
@@ -929,8 +929,12 @@ class PrefsDialog(QtWidgets.QDialog):
         self._apply_test_mode()
 
     def _apply_test_mode(self) -> None:
-        """Point the running session at whichever library now applies."""
-        hostos.set_cache_override(self._prefs.cache_dir)
+        """Point the running session at whichever library now applies.
+
+        The cache is not touched: it does not move with the library
+        (prefs.py ▸ cache_dir), so the thumbnails already generated
+        stay valid and the switch costs nothing.
+        """
         self._sync_test_mode_rows()
         debug.event("prefs", "test library switched",
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,

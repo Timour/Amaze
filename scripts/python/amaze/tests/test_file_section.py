@@ -1205,7 +1205,9 @@ class HoudiniPathTest(unittest.TestCase):
                          "the Library Path row is live while Test "
                          "Library is on - its browse writes the real "
                          "field")
-        self.assertFalse(dlg.line_cache.isEnabled())
+        self.assertTrue(dlg.line_cache.isEnabled(),
+                        "the Cache Path row was frozen - the cache "
+                        "does not move with the library")
 
         p.test_mode = False
         dlg._sync_test_mode_rows()
