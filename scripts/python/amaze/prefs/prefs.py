@@ -1359,8 +1359,16 @@ class Prefs:
 
         Trailing separator, like `_directory` carries: the connectors
         build a path as `self._path + self._filename`.
+
+        getattr, because a Prefs built through `__new__` is a
+        SANCTIONED fixture shape - a real one under hython resolves
+        $AMAZE to the live install, which is how a test overwrote real
+        settings once, so several fixtures borrow the accessors
+        without the constructor. A property added later has to answer
+        for those too.
         """
-        if self._test_mode and self._test_dir:
+        if getattr(self, "_test_mode", False) and getattr(
+                self, "_test_dir", ""):
             return test_library_dir(self._test_dir)
         return self._directory
 
@@ -1951,7 +1959,8 @@ class Prefs:
         library moves: a sabotage run that reused the real cache would
         leave its thumbnails behind in it.
         """
-        if self._test_mode and self._test_dir:
+        if getattr(self, "_test_mode", False) and getattr(
+                self, "_test_dir", ""):
             return test_cache_dir(self._test_dir)
         return self._cache_dir
 

@@ -1148,11 +1148,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
-        live = prefs_mod.Prefs()
-        live.load()
-        if not live.dir or not os.path.exists(
-                os.path.join(live.dir, "library.json")):
-            self.skipTest("no live library on this machine")
+        live = test_support.live_library_to_rehearse_on(self)
         self.live = live
         self.dir = tempfile.mkdtemp(prefix="amaze_repair_real_") + os.sep
         self.addCleanup(shutil.rmtree, self.dir, True)

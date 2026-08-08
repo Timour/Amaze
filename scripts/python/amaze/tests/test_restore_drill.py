@@ -29,6 +29,8 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 RESTORE = os.path.join(REPO, "tools", "restore.py")
 
+from amaze.tests import test_support             # noqa: E402
+
 
 #: restore.py is pure stdlib on purpose - a restore must work when
 #: Houdini does not start. Driving it with the SYSTEM python keeps the
@@ -249,12 +251,8 @@ class TestDrillAgainstRealSnapshots(unittest.TestCase):
     that matters, since it uses the real file's real snapshots."""
 
     def test_live_library_snapshots_are_restorable(self):
-        from amaze.prefs import prefs as prefs_mod
-        prefs = prefs_mod.Prefs()
-        prefs.load()
+        prefs = test_support.live_library_to_rehearse_on(self)
         live = os.path.join(prefs.dir, "library.json")
-        if not os.path.exists(live):
-            self.skipTest("no live library on this machine")
         tmp = tempfile.mkdtemp(prefix="amaze_drill_live_")
         self.addCleanup(shutil.rmtree, tmp, True)
         target = os.path.join(tmp, "library.json")

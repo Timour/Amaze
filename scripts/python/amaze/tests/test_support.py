@@ -263,6 +263,40 @@ def captured_log():
         shutil.rmtree(directory, True)
 
 
+def live_library_to_rehearse_on(testcase):
+    """The machine's configured library, or a skip.
+
+    The two disaster REHEARSALS - the restore drill and the repair
+    rehearsal - recover from a SNAPSHOT, so what they need is a
+    snapshot with rows in it. The current index having rows is not the
+    same thing and is not enough: measured 2026-08-08 on a young
+    library, `library.json` held two assets while `bak-1` and
+    `bak-first` held none, because the snapshots were taken before
+    anything was saved. The drill then restored a genuinely empty
+    tier, exactly as it should, and reported it as a failure.
+
+    A young or empty configured library is an ordinary state now, not
+    a broken machine - a test library is pointed at on purpose. So
+    this SKIPS with a sentence naming why, as the absent-library case
+    already did.
+    """
+    live = prefs.Prefs()
+    live.load()
+    index = os.path.join(live.dir, "library.json") if live.dir else ""
+    if not index or not os.path.exists(index):
+        testcase.skipTest("no live library on this machine")
+    for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
+        try:
+            with open("%s.%s" % (index, tier), encoding="utf-8-sig") as fh:
+                if json.load(fh).get("assets"):
+                    return live
+        except (OSError, ValueError, AttributeError):
+            continue
+    testcase.skipTest(
+        "the configured library has no snapshot with any assets in "
+        "it - nothing to rehearse a recovery on")
+
+
 def fixture_prefs(testcase):
     """Preferences pointing at a fresh fixture copy - inject into model
     constructors (Categories(preferences=...)) so nothing ever touches
