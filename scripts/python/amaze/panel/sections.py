@@ -1018,9 +1018,10 @@ class MaterialSection(AssetSection):
 
     def copy_to_targets(self, indexes, current) -> tuple:
         """WHERE the saved material lands. The entries name the
-        destination the way Houdini writes it (2026-08-01)."""
+        destination the way Houdini writes the PATH - /stage, not the
+        Solaris marketing name (2026-08-08)."""
         return (("/mat", "mat", "", True),
-                ("/Solaris", "lop", "", True))
+                ("/stage", "lop", "", True))
 
     def menu_info(self, indexes, current, payload=None) -> None:
         # Through `edit_dialog`, the Section API's own hook for it -
@@ -1029,10 +1030,14 @@ class MaterialSection(AssetSection):
         self.edit_dialog()
 
     def menu_copy_to(self, indexes, current, payload=None) -> None:
-        if payload == "lop":
-            self.panel.import_asset_to_lop()
-        else:
-            self.panel.import_asset_to_mat()
+        # A menu import leaves the artist where they were, like a drop:
+        # the drag and click dispatchers wrap; the menu dispatcher does
+        # not, so the scene-importing verbs carry it themselves.
+        with helpers.preserving_selection_and_current():
+            if payload == "lop":
+                self.panel.import_asset_to_lop()
+            else:
+                self.panel.import_asset_to_mat()
 
     def menu_convert_to_karma(self, indexes, current, payload=None) -> None:
         self.panel.convert_selected_to_karma()
@@ -1128,7 +1133,10 @@ class CopSection(AssetSection):
 
 
     def menu_load(self, indexes, current, payload=None) -> None:
-        self.panel.import_cop_assets()
+        # Same wrapper as menu_copy_to: a menu import must not move
+        # the artist's selection, current node or view.
+        with helpers.preserving_selection_and_current():
+            self.panel.import_cop_assets()
     model_attr = "cop_model"
     proxy_attr = "cop_sorted_model"
     selection_attr = "cop_selection_model"
@@ -1870,7 +1878,11 @@ class OnlineContext(Section):
         self.panel._import_online_records(self._records(indexes))
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
-        self.panel._import_online_records_to_scene(self._records(indexes))
+        # Same wrapper as menu_copy_to: a menu import must not move
+        # the artist's selection, current node or view.
+        with helpers.preserving_selection_and_current():
+            self.panel._import_online_records_to_scene(
+                self._records(indexes))
 
     def menu_refresh(self, indexes, current, payload=None) -> None:
         """Refresh is the user asking us to go and LOOK: sources that

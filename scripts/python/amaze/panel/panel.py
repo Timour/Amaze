@@ -4337,8 +4337,24 @@ class MatLibPanel(QtWidgets.QWidget):
         if rule is None:
             self._cannot_load_here()
             return
-        with helpers.preserving_selection_and_current():
-            landed = self._apply_click_rule(rule, index)
+        try:
+            with helpers.preserving_selection_and_current():
+                landed = self._apply_click_rule(rule, index)
+        except hou.PermissionError as refusal:
+            # HOUDINI REFUSING IS NOT A BUG - the same absorption the
+            # drag dispatch carries (dragdrop_widgets, drop refused):
+            # a click into a locked network gets Houdini's own
+            # sentence in the status bar, a log record, and no slot
+            # crash. Only this class; a genuine defect still raises.
+            debug.exception("click refused", refusal,
+                            section=getattr(section, "key", ""))
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.setStatusMessage(
+                    "Amaze: %s" % refusal,
+                    severity=hou.severityType.Warning,
+                )
+            return
         if not landed:
             self._cannot_load_here()
 
