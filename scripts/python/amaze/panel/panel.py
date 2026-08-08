@@ -852,17 +852,35 @@ class MatLibPanel(QtWidgets.QWidget):
             # gap versus open()/show_prefs(), which always switched all
             # four. Colors was the last one missing (2026-08-02): the
             # only library-backed model in none of the three lists.
-            models = [
-                self.material_model, self.category_model,
-                self.cop_model, self.cop_category_model,
-                self.code_model, self.code_category_model,
-                getattr(self, "gradient_model", None),
-            ]
-            models = [m for m in models if m]
-            with ui_helpers.relayout(*models):
-                for m in models:
-                    m.switch_model_data()
-                self.click_slider.setValue(self._active_thumbsize())
+            self.switch_all_models()
+
+    def switch_all_models(self) -> None:
+        """Re-point every library-backed model at `prefs.dir`.
+
+        THE ONE ROUTE ONTO ANOTHER LIBRARY. `open()` reloads the
+        current one; only this re-points the connectors, and a switch
+        that skipped it left them serving the previous library and
+        every save refused (measured 2026-08-08 through the Test
+        Library toggle, which called `open()`).
+
+        Extracted so the toggle and the Library Path browse cannot
+        drift apart - leaving the Cop and Code stacks on the old
+        library was a long-standing gap versus open()/show_prefs(),
+        and Colors was still missing as late as 2026-08-02.
+        """
+        models = [
+            self.material_model, self.category_model,
+            self.cop_model, self.cop_category_model,
+            self.code_model, self.code_category_model,
+            getattr(self, "gradient_model", None),
+        ]
+        models = [m for m in models if m]
+        if not models:
+            return
+        with ui_helpers.relayout(*models):
+            for m in models:
+                m.switch_model_data()
+            self.click_slider.setValue(self._active_thumbsize())
 
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""

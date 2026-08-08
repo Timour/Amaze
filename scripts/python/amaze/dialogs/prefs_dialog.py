@@ -307,37 +307,6 @@ class PrefsDialog(QtWidgets.QDialog):
             "browse, the library is untouched."))
         form.addRow(self._label(""), clear_cache_btn)
 
-        self._add_divider(form)
-        # TEST LIBRARY. One switch and one folder, so a session can be
-        # pointed at throwaway data and back again without either real
-        # path ever being written (prefs.dir and prefs.cache_dir are
-        # overlays while this is on).
-        #
-        # Not attached to Debug Mode: verbose logging exists to
-        # diagnose the REAL library, so swapping the library out with
-        # it would remove the one thing it is for.
-        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")
-        self._cbx_test_mode.setChecked(self._prefs.test_mode)
-        self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
-            "Work against a throwaway library instead of the real one. "
-            "Point it at any folder: Amaze uses the lib folder inside "
-            "it as the library and the cache folder as the preview "
-            "cache, making either if it is missing. Your real Library "
-            "Path and Cache Path are left exactly as they are and come "
-            "back when you switch this off."))
-        self._cbx_test_mode.toggled.connect(self.set_test_mode)
-        form.addRow(self._label(""), self._cbx_test_mode)
-
-        self.line_test_dir = QtWidgets.QLineEdit(self._prefs.test_dir)
-        self.line_test_dir.setReadOnly(True)
-        self.line_test_dir.setToolTip(ui_helpers.tooltip_text(
-            "The folder holding the test lib and cache folders."))
-        self._browse_test = QtWidgets.QPushButton("...")
-        self._browse_test.setFixedWidth(theme.ui_px(28))
-        self._browse_test.clicked.connect(self.change_test_path)
-        form.addRow(self._label("Test Folder"),
-                    self._path_row(self.line_test_dir, self._browse_test))
-
         # The real-path rows are INERT while the switch is on - they
         # would be showing the test paths and writing the real fields,
         # which is the one combination that could lose a library. Same
@@ -705,6 +674,39 @@ class PrefsDialog(QtWidgets.QDialog):
         row.addWidget(clear_btn)
 
         form.addRow(self._label(""), debug_row)
+
+        self._add_divider(form)
+        # TEST LIBRARY, under Debug Mode because both are developer
+        # switches - but NOT attached to it. Verbose logging exists to
+        # diagnose the REAL library, so swapping the library out with
+        # it would remove the one thing it is for.
+        #
+        # Library and cache both move; neither real path is written
+        # while it is on (prefs.dir and prefs.cache_dir are overlays),
+        # and locations stay isolated in both directions
+        # (core/locations.py ▸ isolated).
+        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")
+        self._cbx_test_mode.setChecked(self._prefs.test_mode)
+        self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
+            "Work against a throwaway library instead of the real one. "
+            "Point it at any folder: Amaze uses the lib folder inside "
+            "it as the library and the cache folder as the preview "
+            "cache, making either if it is missing. Your real Library "
+            "Path, Cache Path and registered folders are left exactly "
+            "as they are and come back when you switch this off."))
+        self._cbx_test_mode.toggled.connect(self.set_test_mode)
+        form.addRow(self._label(""), self._cbx_test_mode)
+
+        self.line_test_dir = QtWidgets.QLineEdit(self._prefs.test_dir)
+        self.line_test_dir.setReadOnly(True)
+        self.line_test_dir.setToolTip(ui_helpers.tooltip_text(
+            "The folder holding the test lib and cache folders."))
+        self._browse_test = QtWidgets.QPushButton("...")
+        self._browse_test.setFixedWidth(theme.ui_px(28))
+        self._browse_test.clicked.connect(self.change_test_path)
+        form.addRow(self._label("Test Folder"),
+                    self._path_row(self.line_test_dir, self._browse_test))
+
         outer.addLayout(form)
         return page
 
@@ -934,7 +936,10 @@ class PrefsDialog(QtWidgets.QDialog):
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,
                     library=self._prefs.dir)
         if self._panel is not None:
-            self._panel.open()
+            # switch_all_models, not open(): open() reloads the library
+            # already bound, so the connectors kept serving the previous
+            # one and every save was refused.
+            self._panel.switch_all_models()
 
     def clear_texture_cache(self) -> None:
         """Delete all cached image+geometry thumbnails from disk (every

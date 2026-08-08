@@ -532,14 +532,19 @@ TOGGLE SWITCHES, not tick checkboxes.)*
     tooltip says so)*
   - Clear Log
 
-#### Test Library *(Preferences ▸ Library, bottom, 2026-08-08)*
+#### Test Library *(Preferences ▸ About, under Debug Mode, 2026-08-08)*
 
 - Toggle: `Test Library`
   Tooltip: `Work against a throwaway library instead of the real
   one. Point it at any folder: Amaze uses the lib folder inside it as
   the library and the cache folder as the preview cache, making
-  either if it is missing. Your real Library Path and Cache Path are
-  left exactly as they are and come back when you switch this off.`
+  either if it is missing. Your real Library Path, Cache Path and
+  registered folders are left exactly as they are and come back when
+  you switch this off.`
+- Registered File locations stay ISOLATED in both directions: the test
+  library gets its own (empty until you add some) and never seeds from
+  the settings copy, and it never writes that copy back — the copy is
+  the seed a later repair of the REAL library reads.
 - Field: `Test Folder` *(read-only + browse, like the other paths)*
   Tooltip: `The folder holding the test lib and cache folders.`
 - While the toggle is ON the `Library Path` and `Cache Path` rows are

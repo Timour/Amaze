@@ -72,6 +72,81 @@ class StoreCase(unittest.TestCase):
             return json.load(handle)
 
 
+class TestModeKeepsItsLocationsToItself(StoreCase):
+    """A test library gets its OWN locations, in both directions.
+
+    The settings copy is a MIGRATION SEED. Pointing at another library
+    is indistinguishable from the two accidents that seeding exists
+    for - a restored snapshot, a hand-deleted `locations.json` - so on
+    2026-08-08 the very first switch handed the test library the real
+    library's registered folders, and the mirror would then have
+    carried the test set back into the copy, arming a future repair of
+    the REAL library with test data.
+    """
+
+    def _switched(self, keep_calls):
+        """A prefs the way the switch leaves one: Test Mode on, a copy
+        of the real library's folders still in settings, and a library
+        that has never held a locations.json."""
+        p = _Prefs(self.dir)
+        p.test_mode = True
+        p.test_dir = self.dir
+        p.data = {locations.MIGRATED_KEY: True}
+        p.last_known_folders = ["/Users/someone/Real/Textures"]
+        p.last_known_records = {
+            "/Users/someone/Real/Textures": {"registered": True}}
+        p.keep_last_known = lambda *a: keep_calls.append(a)
+        # The migration persists, and the shared stub is deliberately
+        # minimal - so this supplies what only that path needs.
+        p.save = lambda: None
+        return p
+
+    def test_the_real_folders_are_not_seeded_into_it(self):
+        calls = []
+        p = self._switched(calls)
+
+        self.assertEqual([], locations.paths(p),
+                         "the real library's folders were copied into "
+                         "the test library")
+        self.assertFalse(
+            os.path.exists(self.path("locations.json")),
+            "a locations.json was written into the test library")
+
+    def test_the_settings_copy_is_never_written_from_it(self):
+        """The dangerous direction: the copy is what a later repair of
+        the REAL library reads."""
+        calls = []
+        p = self._switched(calls)
+        locations.register(p, os.path.join(self.dir, "probe"))
+
+        self.assertEqual(
+            [], calls,
+            "the test library rewrote the settings copy, which is the "
+            "seed a repair of the real library reads")
+
+    def test_its_own_locations_still_work(self):
+        """Isolated, not disabled - the test library keeps what is
+        registered in it."""
+        calls = []
+        p = self._switched(calls)
+        folder = os.path.join(self.dir, "probe")
+        locations.register(p, folder)
+
+        self.assertIn(folder, locations.registered_paths(p))
+
+    def test_a_normal_library_still_migrates(self):
+        """The isolation is keyed on Test Mode alone: with it off, the
+        seeding that recovers a restored snapshot is untouched."""
+        calls = []
+        p = self._switched(calls)
+        p.test_mode = False
+
+        self.assertEqual(["/Users/someone/Real/Textures"],
+                         locations.paths(p),
+                         "the migration stopped running for ordinary "
+                         "libraries too")
+
+
 class AbsenceIsAVerdict(StoreCase):
     """`if os.path.exists(path):` with no `else` is what icons.json
     was: a missing file read as "this library has no chosen icons", so

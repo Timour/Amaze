@@ -342,6 +342,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._row_specs: list = []
         self._key_rows: dict = {}
         self._image_cache = None
+        self._image_cache_key = None
         self._geo_cache = None
         self._geo_cache_key = None
         self._pending_writes: dict = {}
@@ -388,10 +389,21 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
     def _get_image_cache(self):
         """The texture pipeline's cache, exact same prefix and keys -
-        every thumbnail generated before the merge is still a hit."""
-        size = self.preferences.rendersize
-        if self._image_cache is None or self._image_cache.size != size:
-            self._image_cache = texture_library.ThumbnailCache(size)
+        every thumbnail generated before the merge is still a hit.
+
+        Keyed on the cache GENERATION as well as the size, because
+        `ThumbnailCache.__init__` resolves the root once and then holds
+        its directory, its manifest path and its disk state. Changing
+        the cache location - Preferences, Default, or Test Mode moving
+        it into the test folder - left every cache built beforehand
+        writing to the old root (measured 2026-08-08, the test cache
+        looked like it did nothing). `set_cache_override` bumps the
+        counter; hip_library has always keyed on it.
+        """
+        key = (self.preferences.rendersize, hostos.cache_generation())
+        if self._image_cache is None or self._image_cache_key != key:
+            self._image_cache = texture_library.ThumbnailCache(key[0])
+            self._image_cache_key = key
         return self._image_cache
 
     def _get_geo_cache(self):
@@ -400,7 +412,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         mode = getattr(
             self.preferences, "geometry_shading_mode", "hiddenlineghost")
         bg = getattr(self.preferences, "geometry_bg", "black")
-        key = (size, mode, bg)
+        key = (size, mode, bg, hostos.cache_generation())
         if self._geo_cache is None or self._geo_cache_key != key:
             self._geo_cache = texture_library.ThumbnailCache(
                 size, prefix="geo_thumbnails_%s_%s" % (mode, bg))

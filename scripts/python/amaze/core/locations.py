@@ -125,6 +125,25 @@ def library_present(preferences) -> bool:
     return bool(directory) and os.path.isdir(directory)
 
 
+def isolated(preferences) -> bool:
+    """Test Mode: this library keeps its OWN locations, and the
+    settings copy is neither read into it nor written from it.
+
+    THE COPY IS A MIGRATION SEED, and a deliberate switch to another
+    library is indistinguishable from the two accidents the seeding
+    exists for - a restored snapshot, a hand-deleted `locations.json`.
+    Measured 2026-08-08 on the first switch: the test library was
+    handed the real library's folders, and the mirror would then have
+    carried the test set back into the copy, leaving it as the seed
+    for a future repair of the REAL library.
+
+    So under Test Mode the store is the only truth. A fresh test
+    library starts with no locations, which is the honest answer.
+    """
+    return bool(getattr(preferences, "test_mode", False)
+                and getattr(preferences, "test_dir", ""))
+
+
 def showing_last_known(preferences) -> bool:
     """Is the File section showing the settings.json copy rather than
     the library's own answer? What the sidebar marks as unreachable."""
@@ -146,6 +165,12 @@ def _ready(preferences) -> bool:
         return False
     if not _store(preferences).writable:
         return False
+    if isolated(preferences):
+        # NO MIGRATION UNDER TEST MODE. The store is present and
+        # writable, so it is the answer - empty if this test library is
+        # new, which is the truth about it. Falling through would seed
+        # it from the real library's copy.
+        return True
     data = getattr(preferences, "data", None)
     if isinstance(data, dict) and data.get(MIGRATED_KEY, False) \
             and _store_was_lost(preferences):
@@ -436,6 +461,11 @@ def _sync_mirror(preferences) -> None:
     fact is the whole defect this module exists to end.
     """
     if not library_present(preferences):
+        return
+    if isolated(preferences):
+        # THE OTHER DIRECTION, and the dangerous one. The copy is the
+        # seed a future repair of the REAL library reads, so letting a
+        # test library write it would arm that repair with test data.
         return
     store = _store(preferences)
     favourites = _favourites_store(preferences)
