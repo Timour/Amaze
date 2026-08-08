@@ -221,8 +221,15 @@ class ThumbNailRenderer:
         lib = None
         copnet = None
         try:
-            lib = net.createNode("materiallibrary")
-            lib.setFirstInput(lib1)
+            # OFF THE UNDO STACK, like the scaffold that holds them.
+            # build_karma_scaffold disables its create and its destroy
+            # for the reason research.md - Undo records; these
+            # per-material children were the half still landing on the
+            # stack, so rendering a thumbnail put entries in front of
+            # the artist's own last edit.
+            with hou.undos.disabler():
+                lib = net.createNode("materiallibrary")
+                lib.setFirstInput(lib1)
 
             curr_items = node
             if not isinstance(node, list):

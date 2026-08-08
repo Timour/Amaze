@@ -502,10 +502,19 @@ def _record(kind: str, message: str, **data) -> None:
 def parses_as_json(raw: bytes) -> bool:
     """Whether `raw` is a document this package could load.
 
-    utf-8-sig, matching every reader in the package: a byte-order mark is
-    an ordinary artifact of a file that has been through a Windows editor
-    or a sync client's conflict helper, and database.load() reads one
-    fine - so a BOM must not make a healthy file look like garbage here.
+    utf-8-sig, matching every reader of a library-owned JSON file: a
+    byte-order mark is an ordinary artifact of a file that has been
+    through a Windows editor or a sync client's conflict helper, and
+    the loaders read one fine - so a BOM must not make a healthy file
+    look like garbage here.
+
+    The docstring used to claim "every reader in the package" and that
+    was false for three of them (settings.json, gradients.json,
+    policy.json read plain utf-8 until 2026-08-08), so this helper
+    called a file healthy, the backup tier copied it into the
+    write-once tier, and only the loader refused it. The claim is
+    narrowed to what it can enforce; the divergent readers were
+    brought across in the same change.
     """
     try:
         json.loads(raw.decode("utf-8-sig"))
@@ -545,8 +554,25 @@ def existed_before(path: str, markers: tuple = ()) -> str:
     markers that apply to ITS database; the answer is a name, so the
     refusal can tell the user which trace it is going on.
     """
+    found = existed_before_all(path, markers)
+    return found[0] if found else ""
+
+
+def existed_before_all(path: str, markers: tuple = ()) -> list:
+    """EVERY surviving trace, not just the first - the list a refusal
+    must name.
+
+    `existed_before` answers the yes/no question and returns one name,
+    and three refusals interpolated that one name as the complete
+    instruction ("remove %s as well and the next launch starts a fresh
+    one"). Measured on the real library: cops.json and library.json
+    each carry four traces, so following the sentence verbatim removed
+    one and the next launch named the next - four runs, four different
+    sentences, each spending a recovery copy. Same order as before:
+    the .bak tiers sorted, then .unreadable, then the markers.
+    """
     if not path:
-        return ""
+        return []
     # glob, not a fixed .bak-1..3 list: `keep` is a parameter of
     # snapshot_before_write, so the highest N is not this function's to
     # assume. escape() because a library directory is a user-chosen path
@@ -556,12 +582,10 @@ def existed_before(path: str, markers: tuple = ()) -> str:
     if os.path.exists(unreadable):
         traces.append(unreadable)
     if traces:
-        return os.path.basename(traces[0])
+        return [os.path.basename(trace) for trace in traces]
     directory = os.path.dirname(path)
-    for marker in markers:
-        if marker and os.path.exists(os.path.join(directory, marker)):
-            return marker
-    return ""
+    return [marker for marker in markers
+            if marker and os.path.exists(os.path.join(directory, marker))]
 
 
 #: How many daily history entries to keep per file. A database is

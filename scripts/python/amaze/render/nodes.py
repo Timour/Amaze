@@ -1162,7 +1162,12 @@ class NodeHandler:
             if material.is_karma_renderer(mat.renderer):
                 self.load_interface_mtlx(parms_file_name, mat)
                 self.load_items_file_mtlx(mat)
-            elif mat.renderer == "Mantra":
+            # SUBSTRING, matching the save side and its two classic
+            # siblings below. Import matched exact equality while
+            # save_node matched containment, so Mantra was the one
+            # renderer whose label could save one way and fail to
+            # import - falling into the unrecognised-renderer refusal.
+            elif "Mantra" in mat.renderer:
                 self.load_interface_mantra(parms_file_name, mat)
                 # move_builder=True: the .mat stores the builder's
                 # CHILDREN, so the rebuilt builder has to be kept and

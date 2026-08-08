@@ -562,7 +562,7 @@ class Prefs:
         if current is None or getattr(self, "_disk_stat", None) == current:
             return
         try:
-            with open(final, encoding="utf-8") as handle:
+            with open(final, encoding="utf-8-sig") as handle:
                 theirs = json.load(handle)
         except (OSError, ValueError):
             return          # unreadable peers are load()'s business

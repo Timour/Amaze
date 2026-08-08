@@ -70,6 +70,77 @@ class _Case(unittest.TestCase):
             return json.load(handle)
 
 
+class TheSmallBatchTest(_Case):
+    """Five behaviours from the 2026-08-08 small sweep that are not
+    already covered by a sibling test file: the version-key guards,
+    every-trace refusals, and the SVG cache. Sabotage each named fix
+    and exactly one of these goes red."""
+
+    def test_a_malformed_version_key_is_read_as_legacy(self):
+        """int(None) raises TypeError - the one class no caller here
+        catches, because every database guard catches (OSError,
+        ValueError). It must never leave _migrate."""
+        for broken in (None, [], {}, "not a number"):
+            with self.subTest(version=broken):
+                document = self._document()
+                document["version"] = broken
+                self._write(document)
+                test_support.reset_database_singletons()
+                db, data = self._load()
+                self.assertEqual(3, len(data["assets"]),
+                                 "a malformed version cost the rows")
+
+    def test_a_library_switch_forgets_the_old_schema_number(self):
+        """The seed branch never calls _migrate, so a fresh database
+        in the NEW library was stamped with the OLD library's number -
+        and a file marked upgraded is never migrated again."""
+        ahead = self._document()
+        ahead["version"] = 99
+        self._write(ahead)
+        db, _ = self._load()
+        self.assertEqual(99, db._loaded_version, "premise")
+        second = tempfile.mkdtemp(prefix="amaze_dbhard2_")
+        self.addCleanup(shutil.rmtree, second, ignore_errors=True)
+        db.reload_with_path(second + os.sep)
+        self.assertEqual(
+            database.SCHEMA_VERSION, db._loaded_version,
+            "the new library inherited the old one's schema number")
+
+    def test_a_refusal_names_every_trace_not_the_first(self):
+        """Four traces beside a file meant four runs and four
+        different sentences, each spending a recovery copy."""
+        self._write(self._document())
+        for tier in ("bak-1", "bak-2", "bak-3"):
+            shutil.copyfile(self.path, "%s.%s" % (self.path, tier))
+        os.remove(self.path)
+        with test_support.captured_log() as log:
+            self._load()
+        notes = [str(record.get("msg", "")) for record in log.records()]
+        named = [note for note in notes
+                 if all("%s.%s" % (self.FILENAME, tier) in note
+                        for tier in ("bak-1", "bak-2", "bak-3"))]
+        self.assertTrue(
+            named,
+            "no single sentence names all three traces, so following "
+            "it costs a run and a recovery copy each time: %s" % notes)
+
+    def test_the_online_search_takes_a_tags_only_prefix(self):
+        from amaze.core import matx_library
+        self.assertEqual(("stone", False),
+                         matx_library.split_search("stone"))
+        self.assertEqual(("stone", True),
+                         matx_library.split_search(":stone"))
+        self.assertEqual(("stone", True),
+                         matx_library.split_search(": stone "))
+        self.assertEqual(
+            ("", False), matx_library.split_search(""),
+            "an empty box is not a search")
+        self.assertEqual(
+            "", matx_library.split_search(":")[0],
+            "a bare colon is mid-typing - an empty needle, so the "
+            "grid is not narrowed to nothing between keystrokes")
+
+
 class TheLibraryFormatStampTest(_Case):
     """An older build refuses a newer library before writing a byte.
 

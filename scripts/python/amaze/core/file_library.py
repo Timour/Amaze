@@ -345,6 +345,10 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._geo_cache = None
         self._geo_cache_key = None
         self._pending_writes: dict = {}
+        #: Registered folders that could not be READ this scan, so the
+        #: empty state has a fact to speak from rather than teaching an
+        #: offline archive as an empty one.
+        self._unreadable_folders: set = set()
         self._progress_keys: set = set()
         self._progress_done = 0
         self._progress_total = 0
@@ -433,7 +437,18 @@ class FileFiles(grid_columns.GridColumnsMixin,
         column stay correct per subfolder."""
         results = []
         if not folder or not os.path.isdir(folder):
+            # AN UNREACHABLE FOLDER IS NOT AN EMPTY ONE. An unmounted
+            # share and a disconnected drive both look exactly like
+            # isdir() saying no, and the grid then showed the
+            # nothing-here-yet empty state - which teaches the wrong
+            # thing about somebody's archive that is merely offline.
+            # Recorded so the state has a fact behind it.
+            if folder:
+                self._unreadable_folders.add(folder)
+                debug.event("file", "a registered folder could not be "
+                            "read", folder=folder, reason="not there")
             return results
+        self._unreadable_folders.discard(folder)
         if locations.record(self.preferences, folder).get("recursive"):
             for dirpath, dirnames, filenames in \
                     folders.walk_following_links(folder):
@@ -449,7 +464,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
         else:
             try:
                 names = sorted(os.listdir(folder), key=str.lower)
-            except OSError:
+            except OSError as exc:
+                # Present but unreadable - a permissions change, a
+                # share that dropped mid-session. Same rule as above:
+                # say so rather than showing an empty folder.
+                self._unreadable_folders.add(folder)
+                debug.event("file", "a registered folder could not be "
+                            "read", folder=folder, error=str(exc))
                 return []
             for name in names:
                 full = os.path.join(folder, name)

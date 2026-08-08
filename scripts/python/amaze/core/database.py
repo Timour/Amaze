@@ -41,6 +41,14 @@ _MIGRATIONS[1] = _migration_v1
 #: Survives the module reload; the class attribute points at it.
 _INSTANCES: dict = globals().get("_INSTANCES", {})
 
+#: Findings the next Clean Library report should surface, keyed by
+#: filename. MODULE-LEVEL with the same reload-survival trick as
+#: _INSTANCES above: panel.py reloads this module on every panel open,
+#: and reload re-executes the `class` statement - so a class-body dict
+#: was written to by generation 1 and read from generation 2, and a
+#: Clean Library after any panel reopen reported nothing at all.
+_INTEGRITY_NOTES: dict = globals().get("_INTEGRITY_NOTES", {})
+
 
 #: Per-database sibling files that prove that database was here before,
 #: for the case where it is momentarily ABSENT. Beyond the .bak-N /
@@ -78,6 +86,25 @@ def absent_but_known(directory: str, filename: str) -> str:
     the exact two-step that deleted 21 live files.
     """
     return hostos.existed_before(
+        os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
+    )
+
+
+def _and_list(names) -> str:
+    """a / a and b / a, b and c - for a sentence the user has to act
+    on. Its own copy rather than library.py's: library imports this
+    module, so importing back would be a cycle, and the alternative
+    (a shared helper module for four lines) buys nothing."""
+    names = list(names)
+    if len(names) <= 1:
+        return names[0] if names else ""
+    return "%s and %s" % (", ".join(names[:-1]), names[-1])
+
+
+def absent_traces(directory: str, filename: str) -> list:
+    """EVERY trace proving the file was here - what a refusal must
+    name so its instruction works in one pass."""
+    return hostos.existed_before_all(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
     )
 
@@ -459,7 +486,18 @@ class DatabaseConnector:
         a partial document with no stale-write baseline behind it
         (_remember_disk_state never ran) - i.e. exactly the state save()
         is least able to write safely."""
-        version = int(data.get("version", 1))
+        try:
+            version = int(data.get("version", 1))
+        except (TypeError, ValueError):
+            # A null, list or dict version raises TypeError - the ONE
+            # class no caller in this package catches, because every
+            # database guard here catches (OSError, ValueError), the
+            # pair a truncated file raises. The merge already guards
+            # the identical expression this way; this is its twin.
+            debug.event("database", "unreadable version stamp - read "
+                        "as legacy", file=self._filename,
+                        found=repr(data.get("version")))
+            version = 1
         self._loaded_version = version
         # Re-derived on every read, never remembered: this connector can
         # be pointed at another library at any time, and a gap in ONE
@@ -535,9 +573,9 @@ class DatabaseConnector:
         if not self._data:
             full = self._path + self._filename
             if not os.path.exists(full) and self._filename != "library.json":
-                evidence = absent_but_known(self._path, self._filename)
-                if evidence:
-                    self._refuse_absent(full, evidence)
+                traces = absent_traces(self._path, self._filename)
+                if traces:
+                    self._refuse_absent(full, traces)
                     return self._data
                 # "_All", not "All": the leading underscore is the
                 # library's long-standing sort trick - it sorts before
@@ -602,11 +640,12 @@ class DatabaseConnector:
         return self._data
 
     #: Findings the next Clean Library report should surface: a list of
-    #: plain-language sentences, per filename, PERSISTED on the class -
-    #: a transient console note is easy to miss and invisible on
-    #: Windows, and the person who should read it is the one about to
-    #: run a cleanup against this data.
-    _integrity_notes: dict = {}
+    #: plain-language sentences, per filename - a transient console
+    #: note is easy to miss and invisible on Windows, and the person
+    #: who should read it is the one about to run a cleanup against
+    #: this data. Bound to the MODULE-level dict, which survives the
+    #: reload chain (see _INTEGRITY_NOTES).
+    _integrity_notes: dict = _INTEGRITY_NOTES
 
     @classmethod
     def take_integrity_notes(cls) -> list:
@@ -651,7 +690,7 @@ class DatabaseConnector:
         except (OSError, ValueError, TypeError):
             return                          # the note must never cost a load
 
-    def _refuse_absent(self, full: str, evidence: str) -> None:
+    def _refuse_absent(self, full: str, traces) -> None:
         """A secondary database that is gone but was here: hold an empty
         library in memory so the panel still builds, and block every
         write for the session so that emptiness cannot reach disk.
@@ -683,14 +722,20 @@ class DatabaseConnector:
             "  Expected at: %s\n"
             # The way OUT of the refusal, named. Without it the guard is
             # permanent for anyone who deleted the database deliberately
-            # - the trace stays behind and keeps answering "it was here"
+            # - the trace stays behind and keeps answering it-was-here
             # forever, with nothing on screen saying what to do about it.
-            # Bare name, not a second full path: "Expected at" above
-            # already gives the directory, and both files are in it.
+            # Bare names, not second full paths: Expected-at above
+            # already gives the directory, and they are all in it.
+            #
+            # EVERY trace, not the first. This named one of the four
+            # the real library carries, so following it removed one
+            # and the next launch named the next - four runs, each
+            # spending a recovery copy.
             "  If you removed it on purpose, remove %s as well and the "
             "next launch starts a fresh one."
-            % (section_name(self._filename), evidence, full, evidence),
-            file=full, evidence=evidence)
+            % (section_name(self._filename), _and_list(traces), full,
+               _and_list(traces)),
+            file=full, evidence=", ".join(traces))
         # _block_reported deliberately NOT set here. Being told once at
         # panel open is not the same as being told at the moment an edit
         # is dropped, which can be an hour later and is the point at
@@ -1323,6 +1368,12 @@ class DatabaseConnector:
         # carrying it into the next one would hold that library's version
         # stamp back for no reason. load() re-derives it.
         self._migration_incomplete = False
+        # AND THE VERSION STAMP ITSELF. It is re-derived by _migrate on
+        # every read - but the SEED branch never calls _migrate, so a
+        # brand-new database in the new library was stamped with the
+        # OLD library's number, and a file marked as upgraded is never
+        # migrated again by any build.
+        self._loaded_version = SCHEMA_VERSION
         # The format latch is a fact about THIS library too - the next
         # one deserves a fresh read, and load() re-derives all three.
         self._loaded_format = 0
