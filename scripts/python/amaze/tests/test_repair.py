@@ -1451,6 +1451,50 @@ class TheRebuildDrillTest(unittest.TestCase):
                          "an asset has no recovery stamp, so a rebuild "
                          "would silently lose it")
 
+    def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
+        """`mat/` is SHARED by Materials, Nodes and Code, so the
+        stamps in it belong to three indexes. A rebuild that claims
+        all of them hands this one the other sections' assets -
+        measured on a real 553-material library holding 580 stamps,
+        the other 27 Nodes and Code.
+
+        Asked through database.ids_claimed_by, the same classifier
+        Clean Library's pass 3 asks, so the two readers of these
+        folders cannot answer it differently.
+        """
+        import json as json_mod
+        mine = {str(a.mat_id) for a in self.model.assets}
+        self.assertTrue(mine, "premise: this library has materials")
+
+        # A snippet with a stamp beside the materials', listed only in
+        # code.json - exactly what a saved Code asset leaves.
+        stranger = "c0de0000000040008000000000000001"
+        with open(os.path.join(self.prefs.dir, self.prefs.asset_dir,
+                               stranger + ".stamp.json"), "w",
+                  encoding="utf-8") as handle:
+            json_mod.dump({"id": stranger, "name": "Jitter Points",
+                           "categories": ["Toolbox"], "renderer": "VEX",
+                           "code": "// snippet"}, handle)
+        with open(os.path.join(self.prefs.dir, "code.json"), "w",
+                  encoding="utf-8") as handle:
+            json_mod.dump({"version": 2, "categories": ["_All"], "tags": [],
+                           "assets": [{"id": stranger}]}, handle)
+
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
+                                             self.prefs.asset_dir)
+
+        ids = {str(r.get("id")) for r in rebuilt["assets"]}
+        self.assertNotIn(
+            stranger, ids,
+            "the rebuilt material index claimed a Code snippet")
+        self.assertEqual(
+            mine, ids,
+            "the rebuild did not return exactly this library's own "
+            "assets")
+        self.assertNotIn(
+            "Toolbox", rebuilt["categories"],
+            "a category that belongs to Code came with it")
+
     def test_the_index_can_be_rebuilt_after_it_is_deleted(self):
         before = {str(a.mat_id): a.get_as_dict() for a in self.model.assets}
         os.remove(os.path.join(self.prefs.dir, "library.json"))

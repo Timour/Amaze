@@ -155,6 +155,57 @@ _SECTION_HOLDS = {
 #: cannot own the file must appear in neither.
 ASSET_FILE_OWNERS = ("library.json", "cops.json")
 
+#: Every database that can CLAIM an asset id in the shared folders.
+#: Wider than ASSET_FILE_OWNERS on purpose: a Code snippet owns no
+#: .mat, but it does own a recovery stamp beside the materials' and an
+#: icon in the shared image folder, so anything asking "is this file
+#: unowned" has to count it.
+ID_CLAIMING_DATABASES = ("library.json", "cops.json", "code.json")
+
+
+def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
+    """Which asset ids each database in `directory` claims.
+
+    Returns `(by_file, unreadable)` - a dict of filename -> set of ids
+    for every database that could be READ, and a list of the filenames
+    that exist and could not be. Absent files appear in neither: they
+    claim nothing, and whether that absence is suspicious is a policy
+    question this function deliberately does not answer (see
+    `absent_but_known`, and MaterialLibrary._all_known_asset_ids, which
+    refuses the sweep on it).
+
+    ONE HOME FOR "WHO OWNS THIS ID", beside the other classifiers here
+    for the same reason they are here: `mat/` and `img/` are SHARED by
+    Materials, Nodes and Code, so every reader of those folders has to
+    ask this, and two readers that answer it differently is the defect.
+    Clean Library's pass 3 has always asked it; `repair
+    .rebuild_from_stamps` did not, and claimed all 20 stamps in a
+    4-material library - 16 of them Nodes and Code (measured
+    2026-08-08).
+    """
+    by_file, unreadable = {}, []
+    for filename in (filenames or ID_CLAIMING_DATABASES):
+        full = os.path.join(directory, filename)
+        if not os.path.exists(full):
+            continue
+        try:
+            with open(full, encoding="utf-8-sig") as handle:
+                data = json.load(handle)
+            malformed = wrong_shape(data)
+            if malformed:
+                raise ValueError(malformed)
+        except (OSError, ValueError, AttributeError, TypeError) as exc:
+            unreadable.append(filename)
+            debug.event("database", "a database claiming ids could not "
+                                    "be read", file=full, error=str(exc))
+            continue
+        found = set()
+        for asset in data.get("assets") or []:
+            if isinstance(asset, dict):
+                found.add(str(asset.get("id", asset.get("mat_id", ""))))
+        by_file[filename] = found
+    return (by_file, unreadable)
+
 
 def asset_id_for_file(name: str, extensions: tuple,
                       tail: str = "") -> str | None:

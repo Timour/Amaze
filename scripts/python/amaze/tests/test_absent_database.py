@@ -122,12 +122,25 @@ class TheUnreadableIndexDialogTest(unittest.TestCase):
         calls, index_path)."""
         first = test_support.fixture_panel(self)
         index_path = os.path.join(first.prefs.dir, "library.json")
+        # A SAVE is what writes stamps - _StampWriter refreshes after a
+        # successful index write, never before. The fixture builds its
+        # materials without one, so nothing here was stamped and the
+        # recovery below had nothing of its own to rebuild from.
+        first.material_model.save()
         premise = os.path.join(
             first.prefs.dir, first.prefs.asset_dir)
+        # MATERIAL stamps, counted against the index. `mat/` is shared
+        # with Nodes and Code, so a premise asking only whether ANY
+        # stamp file exists was satisfied by the shipped Code starter
+        # alone: this test passed for as long as it did because the
+        # rebuild claimed those 15 snippets as materials, and the
+        # assertion that the library recovered was reading them.
+        mine = {str(a.mat_id) for a in first.material_model.assets}
         stamps = [name for name in os.listdir(premise)
-                  if name.endswith(".stamp.json")]
+                  if name.endswith(".stamp.json")
+                  and name[: -len(".stamp.json")] in mine]
         self.assertTrue(stamps, "premise: the first build must have "
-                        "backfilled recovery stamps")
+                        "stamped its own materials")
         with open(index_path, "wb") as handle:
             handle.write(b"{ this is not json")
         test_support.reset_database_singletons()

@@ -291,8 +291,13 @@ def _unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
     return found
 
 
-def rebuild_from_stamps(directory: str, asset_dir: str = "mat/") -> dict:
+def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
+                        index_filename: str = "library.json") -> dict:
     """Reconstruct a library index from the per-asset recovery stamps.
+
+    `index_filename` names WHICH index is being rebuilt, because the
+    stamps in `asset_dir` belong to several: the ids the other
+    databases claim are left out of the result.
 
     THE DISASTER PATH, and the only reader of a stamp. Before stamps
     existed the answer to "can this library survive losing
@@ -325,10 +330,35 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/") -> dict:
                     folder=folder, error=str(exc))
         return {"assets": [], "categories": [], "tags": [], "damaged": []}
 
+    # WHOSE STAMPS ARE THESE? `mat/` is shared by Materials, Nodes and
+    # Code, so a rebuild that claims every stamp in it hands this index
+    # the other sections' assets - measured on a 4-material library
+    # holding 20 stamps, 16 of them Nodes and Code. The ids the SIBLING
+    # databases claim are asked for through the one classifier that
+    # owns that question, the same one Clean Library's pass 3 asks
+    # (database.ids_claimed_by).
+    #
+    # A sibling that will not READ claims nothing here, and that is the
+    # safe direction for a REBUILD: this path only ever adds rows to an
+    # index that is already lost, and a row too many is visible and
+    # deletable where a row missing is gone. It is the opposite of the
+    # sweep's direction, which refuses on the same evidence because it
+    # DELETES.
+    owned_elsewhere = set()
+    by_file, unreadable = database.ids_claimed_by(directory)
+    for filename, ids in by_file.items():
+        if filename != index_filename:
+            owned_elsewhere |= ids
+    if unreadable:
+        debug.event("repair", "a sibling database could not be read "
+                               "while rebuilding", files=unreadable)
+
     for name in names:
         if not name.endswith(STAMP_SUFFIX):
             continue
         asset_id = name[: -len(STAMP_SUFFIX)]
+        if asset_id in owned_elsewhere:
+            continue
         try:
             with open(os.path.join(folder, name), encoding="utf-8") as handle:
                 record = json.load(handle)
