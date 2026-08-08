@@ -779,6 +779,16 @@ give every gesture; the File menu's Import always did.
   the Amaze shelf can tell you more.` No success dialog — the
   recovered grid is the announcement, plus one status-bar line.
 
+- `Some materials could not be saved:` followed by one
+  `"<name>": the save did not complete` line per material — the
+  multi-save dialog. The per-material line is new (2026-08-08):
+  a refused save used to be counted as a success, so a batch could
+  report nothing while silently dropping a material. Two of the
+  three refusal causes have already shown their own dialog naming
+  the reason ($OCIO unset, the node not being a material builder),
+  so this line only says WHICH material out of the batch never
+  made it.
+
 *(The rest not listed yet — the `hou.ui.displayMessage` /
 `displayConfirmation` strings. Ask for the messages and every one
 gets listed with its trigger.)*

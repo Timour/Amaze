@@ -1221,7 +1221,11 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             asset.rename_category(old, new)
 
     def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool) -> str:
-        """Add a Material to this Library"""
+        """Add a Material to this Library.
+
+        Returns the renderer string on success, "" when the save was
+        refused - the same contract the cop and code add_assets keep.
+        """
         handler = nodes.NodeHandler(self.preferences)
         renderer = handler.get_renderer_from_node(node)
         new_mat = material.Material()
@@ -1279,7 +1283,18 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 node.setUserData("assetlib_id", str(new_mat.mat_id))
             except hou.OperationFailed:
                 pass
-        return renderer
+            return renderer
+        # THE RENDERER-STRING CONTRACT: a renderer name means the asset
+        # is IN the library, "" means it is not. Both sibling
+        # add_assets (cop_library, code_library) have always answered
+        # this way, and code_library's docstring even names it as the
+        # contract - this one returned the renderer whether or not
+        # save_node worked, so all six call sites read a refused save
+        # as a good one and the only trace was a debug record.
+        debug.event("save", "add_asset refused - the node was not saved",
+                    name=new_mat.name, node=node.path(),
+                    mat_id=new_mat.mat_id)
+        return ""
 
     def find_asset_row_by_id(self, mat_id: str) -> int:
         """Row of the asset with the given id, or -1."""
@@ -2440,8 +2455,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             report = report_holder.get("report")
             if mtlx_node is None:
                 return False, report
-            self.add_asset(builder, ",".join(mat.categories), ",".join(mat.tags), False)
-            return True, report
+            saved = self.add_asset(
+                builder, ",".join(mat.categories), ",".join(mat.tags), False)
+            # The scratch network is destroyed in the finally below, so
+            # a refused save leaves NOTHING behind - answering True
+            # here would tell the convert-all sweep that a material it
+            # can no longer reach is in the library.
+            return bool(saved), report
         finally:
             # The live Karma network only exists to be copied by
             # add_asset()'s own save path - never left in the scene,

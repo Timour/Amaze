@@ -6425,6 +6425,15 @@ class MatLibPanel(QtWidgets.QWidget):
                 debug.exception("save_asset", exc, node=asset.path())
                 failures.append('"%s": %s' % (asset.name(), exc))
                 continue
+            if not renderer:
+                # A refused save answers "" now, and a refused save is
+                # exactly what this dialog exists to report. Two of the
+                # three causes have already shown their own dialog
+                # naming the reason, so this line only has to say WHICH
+                # material out of the batch never made it.
+                failures.append('"%s": the save did not complete'
+                                % asset.name())
+                continue
             renderers.append(renderer)
             # Let the fresh tile PAINT before the next material's
             # blocking render starts - add_asset emits real row-insert

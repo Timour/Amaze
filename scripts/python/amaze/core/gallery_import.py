@@ -162,7 +162,15 @@ def import_entries(model, entries, staging_parent=None,
                         summary["skipped"] += 1
                         continue
                     node.setGenericFlag(hou.nodeFlag.Material, True)
-                    model.add_asset(node, category, "gallery", False)
+                    if not model.add_asset(node, category, "gallery", False):
+                        # "" is the refused-save answer. The summary
+                        # this returns is the only thing the user reads
+                        # after a gallery import, so a refused entry
+                        # has to land in failed, not in imported.
+                        summary["failed"] += 1
+                        debug.event("gallery", "entry was not saved",
+                                    entry=entry.name(), type=type_name)
+                        continue
                     summary["imported"] += 1
                     summary["categories"][category] = summary[
                         "categories"
