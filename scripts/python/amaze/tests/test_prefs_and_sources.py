@@ -208,6 +208,101 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
             "load() assigns these keys raw again")
 
 
+class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
+    """One switch, one folder: on, and the library reads
+    `<folder>/lib/` and the cache `<folder>/cache/`.
+
+    THE CONTRACT THAT MATTERS IS THE WAY BACK. The real library path
+    and the real cache path must be untouched the whole time the
+    switch is on, because they are the only route to the real library
+    - a switch that wrote over them would be a one-way door.
+    """
+
+    REAL_LIB = "/Users/someone/Cloud/3D/Library/"
+    REAL_CACHE = "/Users/someone/Library/Caches/Amaze"
+
+    def _prefs(self):
+        p = prefs_mod.Prefs()
+        p.dir = self.REAL_LIB
+        p.cache_dir = self.REAL_CACHE
+        return p
+
+    def test_off_by_default_and_the_real_paths_answer(self):
+        p = self._prefs()
+        self.assertFalse(p.test_mode)
+        self.assertEqual(self.REAL_LIB, p.dir)
+        self.assertEqual(self.REAL_CACHE, p.cache_dir)
+
+    def test_on_moves_both_paths_into_the_folder(self):
+        p = self._prefs()
+        p.test_dir = "/tmp/amaze_probe"
+        p.test_mode = True
+        self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
+        self.assertEqual("/tmp/amaze_probe/cache", p.cache_dir)
+
+    def test_the_real_paths_survive_the_round_trip(self):
+        """The one that would cost a real library if it broke."""
+        p = self._prefs()
+        p.test_dir = "/tmp/amaze_probe"
+        p.test_mode = True
+        p.test_mode = False
+        self.assertEqual(self.REAL_LIB, p.dir)
+        self.assertEqual(self.REAL_CACHE, p.cache_dir)
+
+    def test_on_with_no_folder_chosen_changes_nothing(self):
+        """Half-configured is the state between ticking the box and
+        picking a folder. Answering `/lib/` there would point the
+        library at the filesystem root."""
+        p = self._prefs()
+        p.test_mode = True
+        self.assertEqual(self.REAL_LIB, p.dir)
+        self.assertEqual(self.REAL_CACHE, p.cache_dir)
+
+    def test_the_library_path_keeps_its_trailing_separator(self):
+        """The connectors build `self._path + self._filename`, so a
+        missing separator silently reads `libATlibrary.json`."""
+        p = self._prefs()
+        p.test_dir = "/tmp/amaze_probe"
+        p.test_mode = True
+        self.assertTrue(p.dir.endswith("/"), p.dir)
+
+    def test_a_fresh_folder_is_seeded_into_a_real_library(self):
+        folder = tempfile.mkdtemp(prefix="amaze_testlib_seed_")
+        self.addCleanup(shutil.rmtree, folder, True)
+
+        ok, what = prefs_mod.seed_test_folder(folder)
+
+        self.assertTrue(ok, what)
+        self.assertTrue(os.path.isdir(os.path.join(folder, "lib")))
+        self.assertTrue(os.path.isdir(os.path.join(folder, "cache")))
+        index = os.path.join(folder, "lib", "library.json")
+        self.assertTrue(os.path.isfile(index),
+                        "no library.json - the library would not load")
+        import json
+        with open(index, encoding="utf-8") as handle:
+            self.assertEqual(["_All"], json.load(handle)["categories"])
+
+    def test_seeding_never_overwrites_what_is_already_there(self):
+        """Run twice, or run on a folder holding real saved test
+        materials: the second pass must add nothing."""
+        import json
+        folder = tempfile.mkdtemp(prefix="amaze_testlib_reseed_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        prefs_mod.seed_test_folder(folder)
+        index = os.path.join(folder, "lib", "library.json")
+        with open(index, "w", encoding="utf-8") as handle:
+            json.dump({"categories": ["_All", "metal"], "tags": [],
+                       "assets": [{"id": "mat_001"}]}, handle)
+
+        ok, _what = prefs_mod.seed_test_folder(folder)
+
+        self.assertTrue(ok)
+        with open(index, encoding="utf-8") as handle:
+            kept = json.load(handle)
+        self.assertEqual([{"id": "mat_001"}], kept["assets"],
+                         "re-seeding erased the test library's content")
+
+
 class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
     """`texture_force_iconvert` was removed from this build on
     2026-08-03 - the Conversion Engine catches by itself the failure

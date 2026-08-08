@@ -132,6 +132,74 @@ def _encode_paths(paths):
     return [_encode_path(p) for p in paths]
 
 
+#: The two folders a test folder is made of. Named once, because the
+#: dialog, the seeder and both overlay properties all have to agree.
+TEST_LIB_SUBDIR = "lib"
+TEST_CACHE_SUBDIR = "cache"
+
+
+def test_library_dir(folder: str) -> str:
+    """The library inside a test folder, with the trailing separator
+    the connectors need (they build `self._path + self._filename`)."""
+    if not folder:
+        return ""
+    return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
+
+
+def test_cache_dir(folder: str) -> str:
+    """The cache inside a test folder. No trailing separator: this is
+    handed to `hostos.set_cache_override`, which joins onto it."""
+    if not folder:
+        return ""
+    return os.path.join(folder, TEST_CACHE_SUBDIR).replace("\\", "/")
+
+
+def _normalised_dir(path: str) -> str:
+    """Forward slashes and one trailing slash - the shape save()
+    already forces on `directory`, so the overlay cannot hand out a
+    differently-shaped path than the field it stands in for."""
+    out = str(path).replace("\\", "/")
+    if out and not out.endswith("/"):
+        out += "/"
+    return out
+
+
+def seed_test_folder(folder: str) -> tuple:
+    """Make `folder` usable as a test library. Returns (ok, what).
+
+    A library directory with no `library.json` does not load - absence
+    of the PRIMARY database is a real error the caller must surface,
+    not something the connector papers over (core/database.py). So
+    switching Test Mode on at a fresh folder has to seed one, or the
+    switch would hand back a traceback.
+
+    The index written here is the same document the connector writes
+    for an absent SIBLING database, so a seeded library and a
+    self-created one are the same thing. Existing files are never
+    touched: this only ever adds what is missing.
+    """
+    if not folder:
+        return (False, "no folder")
+    made = []
+    try:
+        for sub in (TEST_LIB_SUBDIR, TEST_CACHE_SUBDIR):
+            path = os.path.join(folder, sub)
+            if not os.path.isdir(path):
+                os.makedirs(path, exist_ok=True)
+                made.append(sub + "/")
+        index = os.path.join(folder, TEST_LIB_SUBDIR, "library.json")
+        if not os.path.exists(index):
+            with open(index, "w", encoding="utf-8") as handle:
+                json.dump({"categories": ["_All"], "tags": [],
+                           "assets": []}, handle)
+            made.append("library.json")
+    except OSError as exc:
+        debug.event("prefs", "test folder could not be seeded",
+                    folder=folder, error=str(exc))
+        return (False, str(exc))
+    return (True, ", ".join(made) if made else "already complete")
+
+
 def _default_sections() -> list:
     """Every registered section key, in tab order.
 
@@ -387,6 +455,17 @@ class Prefs:
         # convention via hostos.cache_root()). Stored portable like
         # every other path pref.
         self._cache_dir = ""
+        # THE TEST LIBRARY OVERLAY. One switch and one folder: on, and
+        # the library reads <folder>/lib/ and the cache <folder>/cache/.
+        # An OVERLAY, never a write: _directory and _cache_dir keep the
+        # real paths untouched the whole time it is on, because the only
+        # way back is for them to still be there.
+        #
+        # Deliberately NOT tied to Debug Mode. Verbose logging exists to
+        # diagnose the REAL library, so a rider that swapped the library
+        # out would remove the one thing it is for.
+        self._test_mode = False
+        self._test_dir = ""
         # v2: hide sidebar categories with zero visible assets (for
         # Materials, "visible" respects the active renderer filter).
         # OFF = always show every category, the pre-hiding behavior.
@@ -712,6 +791,8 @@ class Prefs:
         self.data["sidebar_counts"] = self._sidebar_counts
         self.data["ram_cache_mb"] = self._ram_cache_mb
         self.data["cache_dir"] = _encode_path(self._cache_dir)
+        self.data["test_mode"] = self._test_mode
+        self.data["test_dir"] = _encode_path(self._test_dir)
         self.data["hide_empty_categories"] = self._hide_empty_categories
         self.data["enabled_sections"] = self._enabled_sections
         self.data["geometry_folders"] = _encode_paths(self._geometry_folders)
@@ -1061,6 +1142,8 @@ class Prefs:
         _through_setter(self, "ram_cache_mb",
                         data.get("ram_cache_mb", 256), 256)
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
+        self._test_mode = bool(data.get("test_mode", False))
+        self._test_dir = _decode_path(data.get("test_dir", ""))
         self._hide_empty_categories = data.get(
             "hide_empty_categories", True
         )
@@ -1268,11 +1351,44 @@ class Prefs:
 
     @property
     def dir(self) -> str:
+        """The library directory - the TEST one while Test Mode is on.
+
+        A property, so the overlay is invisible to every caller: the
+        models, the sweeps and the dialogs all keep asking one question
+        and stop needing to know which world they are in.
+
+        Trailing separator, like `_directory` carries: the connectors
+        build a path as `self._path + self._filename`.
+        """
+        if self._test_mode and self._test_dir:
+            return test_library_dir(self._test_dir)
         return self._directory
 
     @dir.setter
     def dir(self, val: str) -> None:
+        # The REAL path, always. Writing the overlay through here would
+        # destroy the only route back to the real library, so the
+        # Preferences rows that set it are disabled while the switch is
+        # on and this stays the real field.
         self._directory = val
+
+    @property
+    def test_mode(self) -> bool:
+        """Library and cache point at the test folder instead."""
+        return self._test_mode
+
+    @test_mode.setter
+    def test_mode(self, val: bool) -> None:
+        self._test_mode = bool(val)
+
+    @property
+    def test_dir(self) -> str:
+        """The folder holding `lib/` and `cache/`; "" = none chosen."""
+        return self._test_dir
+
+    @test_dir.setter
+    def test_dir(self, val: str) -> None:
+        self._test_dir = str(val or "")
 
     @property
     def rendersize(self) -> int:
@@ -1829,11 +1945,19 @@ class Prefs:
 
     @property
     def cache_dir(self) -> str:
-        """Custom thumbnail-cache root; "" = the per-OS default."""
+        """Custom thumbnail-cache root; "" = the per-OS default.
+
+        The TEST cache while Test Mode is on, for the same reason the
+        library moves: a sabotage run that reused the real cache would
+        leave its thumbnails behind in it.
+        """
+        if self._test_mode and self._test_dir:
+            return test_cache_dir(self._test_dir)
         return self._cache_dir
 
     @cache_dir.setter
     def cache_dir(self, val: str) -> None:
+        # The REAL path, as with `dir` above.
         self._cache_dir = str(val or "")
 
     @property
