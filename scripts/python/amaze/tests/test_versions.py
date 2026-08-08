@@ -406,6 +406,38 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self.assertNotEqual(b"EDITED PAST VERSION ONE",
                             self._base_bytes())
 
+    def test_one_listdir_seeds_the_tile_caches(self):
+        """First paint used to stat mat/versions/<id>/versions.json
+        once per visible tile. One listdir at model build now answers
+        for every asset WITHOUT a versions folder - the overwhelming
+        case - so asking both version roles across the whole model
+        reads the ledger only for assets that really have one."""
+        from unittest import mock
+        from amaze.core import library as library_mod
+
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        asked = []
+        real = versions.read_ledger
+
+        def counting(preferences, mat_id):
+            asked.append(str(mat_id))
+            return real(preferences, mat_id)
+
+        with mock.patch.object(versions, "read_ledger",
+                               side_effect=counting):
+            for row in range(len(model.assets)):
+                index = model.index(row, 0)
+                model.data(index, model.VersionsRole)
+                model.data(index, model.ActiveVersionRole)
+        self.assertLessEqual(
+            set(asked), {self.mat_id},
+            "an asset with no versions folder read the ledger: %s"
+            % sorted(set(asked) - {self.mat_id}))
+        self.assertTrue(asked, "the versioned asset must still read "
+                        "its ledger - the seed only answers absence")
+
     def test_the_ledger_has_a_snapshot_tier(self):
         """versions.json was the one store without one."""
         self.prefs.version_author = "Crimson"
