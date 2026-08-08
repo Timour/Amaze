@@ -1381,6 +1381,17 @@ class Prefs:
         self._directory = val
 
     @property
+    def real_dir(self) -> str:
+        """The configured library, ignoring the Test Mode overlay.
+
+        For the few callers whose subject is the REAL library whatever
+        the session is pointed at - the disaster rehearsals, which
+        recover the owner's own snapshots and mean nothing against a
+        throwaway.
+        """
+        return self._directory
+
+    @property
     def test_mode(self) -> bool:
         """Library and cache point at the test folder instead."""
         return self._test_mode

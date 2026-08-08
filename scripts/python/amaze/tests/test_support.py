@@ -266,35 +266,37 @@ def captured_log():
 def live_library_to_rehearse_on(testcase):
     """The machine's configured library, or a skip.
 
-    The two disaster REHEARSALS - the restore drill and the repair
-    rehearsal - recover from a SNAPSHOT, so what they need is a
-    snapshot with rows in it. The current index having rows is not the
-    same thing and is not enough: measured 2026-08-08 on a young
-    library, `library.json` held two assets while `bak-1` and
-    `bak-first` held none, because the snapshots were taken before
-    anything was saved. The drill then restored a genuinely empty
-    tier, exactly as it should, and reported it as a failure.
+    THE REAL LIBRARY, NOT THE SESSION'S. Both rehearsals recover the
+    owner's own snapshots, which is the whole reason they exist - so
+    they read `real_dir`, the configured path, and Test Mode's overlay
+    cannot point them at a throwaway. Measured 2026-08-08: pointed at
+    a young test library they failed twice for reasons that were true
+    of that library and meaningless about recovery - `bak-1` empty
+    because it predated the first save, then `bak-3` empty for the
+    same reason once `bak-1` had grown.
 
-    A young or empty configured library is an ordinary state now, not
-    a broken machine - a test library is pointed at on purpose. So
-    this SKIPS with a sentence naming why, as the absent-library case
-    already did.
+    Still skips when there is nothing to rehearse ON, so a fresh
+    machine and a brand-new library say so rather than fail.
     """
     live = prefs.Prefs()
     live.load()
-    index = os.path.join(live.dir, "library.json") if live.dir else ""
+    # The overlay is switched off on THIS instance - the helper's own,
+    # never a shared one - so every `live.dir` downstream is the real
+    # library without each call site having to remember.
+    live.test_mode = False
+    directory = getattr(live, "real_dir", "") or live.dir
+    index = os.path.join(directory, "library.json") if directory else ""
     if not index or not os.path.exists(index):
-        testcase.skipTest("no live library on this machine")
-    for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
-        try:
-            with open("%s.%s" % (index, tier), encoding="utf-8-sig") as fh:
-                if json.load(fh).get("assets"):
-                    return live
-        except (OSError, ValueError, AttributeError):
-            continue
-    testcase.skipTest(
-        "the configured library has no snapshot with any assets in "
-        "it - nothing to rehearse a recovery on")
+        testcase.skipTest("no library configured on this machine")
+    try:
+        with open(index, encoding="utf-8-sig") as handle:
+            if not (json.load(handle).get("assets") or []):
+                testcase.skipTest(
+                    "the configured library is empty - nothing to "
+                    "rehearse a recovery on")
+    except (OSError, ValueError, AttributeError):
+        testcase.skipTest("the configured library could not be read")
+    return live
 
 
 def fixture_prefs(testcase):
