@@ -7,6 +7,7 @@ import os
 import hashlib
 from typing import Self
 
+from amaze import branding
 from amaze.core import debug
 from amaze.helpers import hostos
 
@@ -397,6 +398,14 @@ class DatabaseConnector:
             #: something to reset rather than an attribute that may or
             #: may not exist.
             inst._write_blocked = False
+            #: The LIBRARY FORMAT as read from disk (0 = pre-stamp),
+            #: and the read-only latch a stamp ahead of
+            #: branding.LIBRARY_FORMAT sets. Unlike _write_blocked it
+            #: never heals mid-session: the way out is updating Amaze,
+            #: not retrying the write.
+            inst._loaded_format = 0
+            inst._format_ahead = False
+            inst._format_reported = False
             #: Whether the user has been TOLD that saving is off. Once
             #: per connector per session: save() is called from ordinary
             #: sidebar use, so a line per save would be a wall of text.
@@ -456,6 +465,27 @@ class DatabaseConnector:
         # be pointed at another library at any time, and a gap in ONE
         # library's chain must not follow the user into the next.
         self._migration_incomplete = False
+        # THE FORMAT STAMP - a separate contract from the schema chain:
+        # schema migrates shapes this build knows, format says whether
+        # this build may WRITE the file at all. Ahead of what this
+        # build knows = the session is read-only for this file, said
+        # ONCE, and the latch never heals - the way out is updating
+        # Amaze, not retrying.
+        try:
+            self._loaded_format = int(data.get("format", 0) or 0)
+        except (TypeError, ValueError):
+            self._loaded_format = 0
+        self._format_ahead = (
+            self._loaded_format > branding.LIBRARY_FORMAT)
+        if self._format_ahead:
+            debug.event("database", "library format ahead - read-only",
+                        file=self._filename, found=self._loaded_format,
+                        known=branding.LIBRARY_FORMAT)
+            debug.alert(
+                "This library was saved by a newer Amaze. To keep it "
+                "safe, this machine opens it read-only - update "
+                "Amaze, then everything works as normal.",
+                key="format-ahead-%s" % self._filename)
         if version > SCHEMA_VERSION:
             debug.event(
                 "database", "newer schema than this build",
@@ -824,6 +854,34 @@ class DatabaseConnector:
             debug.event("database", "save", file=self._filename,
                         outcome=self._save_outcome, dir_key=digest)
 
+    def _refuse_unreadable_peer(self, full: str) -> bool:
+        """The stale-write merge could not READ the other session's
+        copy: preserve theirs, latch writes for the session, say it
+        once in full. Extracted from _save_inner when the format
+        latch gained its own refusal beside this one."""
+        kept = hostos.preserve_unreadable(
+            full, why="another session's database would not parse")
+        self._write_blocked = True
+        # ONLY CLAIM THE COPY WHEN THERE IS ONE. preserve_unreadable
+        # has two paths that create nothing - a 0-byte source and a
+        # failed copy - and a reassurance that is not quite true is
+        # worse than none.
+        copy_sentence = (
+            " A copy of it is beside it as %s."
+            % os.path.basename(kept)) if kept else ""
+        debug.note(
+            "could not read the other session's %s, so this "
+            "library will not be saved this session - their "
+            "copy is left untouched.%s Reopen Amaze once the "
+            "other machine has finished writing."
+            % (self._filename, copy_sentence),
+            file=full)
+        # Said in full here, so the once-per-session line in
+        # _save_inner does not repeat it on the next save.
+        self._block_reported = True
+        self._save_outcome = "merge-refused"
+        return False
+
     def _save_inner(self) -> bool:
         """Save Data to Disk. True only when the data reached the file.
 
@@ -874,31 +932,16 @@ class DatabaseConnector:
             # snapshot_before_write is once-per-session, so a second
             # save in the same session left no copy at all.
             if not self._merge_from_disk(full):
-                kept = hostos.preserve_unreadable(
-                    full, why="another session's database would not parse")
-                self._write_blocked = True
-                # ONLY CLAIM THE COPY WHEN THERE IS ONE. This sentence
-                # was unconditional, and preserve_unreadable has two
-                # paths that create nothing - a 0-byte source, and a
-                # failed copy - so the message sent people looking for a
-                # .unreadable file that was not there. A reassurance that
-                # is not quite true is worse than none, because they stop
-                # believing the next one.
-                copy_sentence = (
-                    " A copy of it is beside it as %s."
-                    % os.path.basename(kept)) if kept else ""
-                debug.note(
-                    "could not read the other session's %s, so this "
-                    "library will not be saved this session - their "
-                    "copy is left untouched.%s Reopen Amaze once the "
-                    "other machine has finished writing."
-                    % (self._filename, copy_sentence),
-                    file=full)
-                # Said in full here, so the once-per-session line below
-                # does not repeat it on the next save.
-                self._block_reported = True
-                self._save_outcome = "merge-refused"
-                return False
+                if getattr(self, "_format_ahead", False):
+                    # The merge READ the peer fine - it refused because
+                    # the peer's format is ahead. That is the format
+                    # latch's case, not an unreadable-file case: fall
+                    # through to the guard below, which says the true
+                    # sentence and preserves nothing (their file needs
+                    # no rescue - it is the newer one).
+                    pass
+                else:
+                    return self._refuse_unreadable_peer(full)
         if getattr(self, "_write_blocked", False):
             # Set when a merge could not be performed, or when load()
             # refused an absent-but-known file. Refusing ONCE is not
@@ -928,6 +971,25 @@ class DatabaseConnector:
             debug.event("database", "save refused - writes blocked "
                         "this session", file=self._filename)
             self._save_outcome = "write-blocked"
+            return False
+        if getattr(self, "_format_ahead", False):
+            # THE FORMAT LATCH: this library was saved by a newer
+            # Amaze, so this build must not write a byte of it. Said
+            # once per connector per session; the load-time alert
+            # already told the user in full.
+            if not getattr(self, "_format_reported", False):
+                self._format_reported = True
+                debug.note(
+                    "not saving %s - it was saved by a newer Amaze, "
+                    "and writing it from this one could damage it. "
+                    "Your change is still on screen but NOT on disk. "
+                    "Update Amaze, then save again."
+                    % section_name(self._filename), file=full)
+            debug.event("database", "save refused - library format "
+                        "ahead", file=self._filename,
+                        found=getattr(self, "_loaded_format", 0),
+                        known=branding.LIBRARY_FORMAT)
+            self._save_outcome = "format-ahead"
             return False
         loaded_version = int(
             getattr(self, "_loaded_version", SCHEMA_VERSION) or 0)
@@ -963,6 +1025,13 @@ class DatabaseConnector:
             # its whole migration chain over already-migrated data on the
             # next open.
             self._data["version"] = max(loaded_version, SCHEMA_VERSION)
+        # THE FORMAT STAMP rides every write, never downgrading: a
+        # newer peer's stamp survives the same way the schema version
+        # does (and format-ahead already refused above, so reaching
+        # here means ours is current or the file's is older).
+        self._data["format"] = max(
+            int(getattr(self, "_loaded_format", 0) or 0),
+            branding.LIBRARY_FORMAT)
         # SKIP A WRITE THAT CHANGES NOTHING. The serialised document is
         # compared to what is on disk, and an identical one is not
         # written: every write costs a snapshot rotation, a sync upload
@@ -1105,6 +1174,23 @@ class DatabaseConnector:
         elif theirs_version > int(
                 getattr(self, "_loaded_version", SCHEMA_VERSION) or 0):
             self._loaded_version = theirs_version
+        # A peer stamped AHEAD of this build's format arrived while we
+        # ran - the other machine updated Amaze mid-session. Merging
+        # our old-format state over its file is exactly the write the
+        # stamp exists to stop, so the latch closes here and this save
+        # refuses through the format guard.
+        try:
+            theirs_format = int(disk.get("format", 0) or 0)
+        except (TypeError, ValueError):
+            theirs_format = 0
+        if theirs_format > branding.LIBRARY_FORMAT:
+            self._loaded_format = theirs_format
+            self._format_ahead = True
+            debug.event("database", "peer library format ahead - "
+                        "latched read-only mid-session",
+                        file=self._filename, theirs=theirs_format,
+                        known=branding.LIBRARY_FORMAT)
+            return False
         ours = {
             str(a.get("id")): a for a in self._data.get("assets", [])
             if isinstance(a, dict)
@@ -1225,7 +1311,10 @@ class DatabaseConnector:
                     getattr(self, "_loaded_version", SCHEMA_VERSION),
                     getattr(self, "_migration_incomplete", False),
                     getattr(self, "_write_blocked", False),
-                    getattr(self, "_block_reported", False))
+                    getattr(self, "_block_reported", False),
+                    getattr(self, "_loaded_format", 0),
+                    getattr(self, "_format_ahead", False),
+                    getattr(self, "_format_reported", False))
         self._data = None
         self._write_blocked = False
         self._block_reported = False
@@ -1234,6 +1323,11 @@ class DatabaseConnector:
         # carrying it into the next one would hold that library's version
         # stamp back for no reason. load() re-derives it.
         self._migration_incomplete = False
+        # The format latch is a fact about THIS library too - the next
+        # one deserves a fresh read, and load() re-derives all three.
+        self._loaded_format = 0
+        self._format_ahead = False
+        self._format_reported = False
         try:
             return self.load(path)
         except Exception:
@@ -1242,7 +1336,9 @@ class DatabaseConnector:
             # inherit a connector that can no longer write.
             (self._data, self._path, self._disk_stat, self._loaded_ids,
              self._loaded_version, self._migration_incomplete,
-             self._write_blocked, self._block_reported) = previous
+             self._write_blocked, self._block_reported,
+             self._loaded_format, self._format_ahead,
+             self._format_reported) = previous
             debug.event("database", "library switch failed - previous "
                         "library restored", file=self._filename,
                         attempted=path)

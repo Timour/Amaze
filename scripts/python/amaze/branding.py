@@ -44,3 +44,10 @@ APP_TAGLINE = "Browse it, save it, drag it."
 #: else reports one.
 APP_VERSION = "1.0"
 
+#: The LIBRARY FORMAT stamp, written into every database this build
+#: saves. An older build that opens a library stamped AHEAD of what it
+#: knows latches read-only and says so once, instead of writing into a
+#: format it cannot understand. Bump this only when the on-disk shape
+#: genuinely changes; the app version above moves freely without it.
+LIBRARY_FORMAT = 1
+

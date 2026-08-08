@@ -763,6 +763,12 @@ give every gesture; the File menu's Import always did.
   multi-selection, or a network with no carrier for it. The DRAG door
   never dialogs — a miss shows the red indicator and the tag flies
   home, with one status-bar line.
+- `This library was saved by a newer Amaze. To keep it safe, this
+  machine opens it read-only - update Amaze, then everything works
+  as normal.` — the library FORMAT stamp (2026-08-08): shown once
+  per session when a database carries a format number ahead of this
+  build's. Reads work, every save refuses. The updater's offer joins
+  this dialog when the in-Houdini updater ships.
 
 *(The rest not listed yet — the `hou.ui.displayMessage` /
 `displayConfirmation` strings. Ask for the messages and every one
