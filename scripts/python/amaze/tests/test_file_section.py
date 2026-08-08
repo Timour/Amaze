@@ -2000,8 +2000,8 @@ class LocationManagementTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, bad_dir, ignore_errors=True)
 
         # A capture store with content that must survive.
-        from amaze.core import hip_library
-        capture_dir = hip_library.thumb_dir()
+        from amaze.core import scene_captures
+        capture_dir = scene_captures.thumb_dir()
         marker = os.path.join(capture_dir, "sweep_canary.png")
         with open(marker, "wb") as handle:
             handle.write(b"capture")

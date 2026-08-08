@@ -104,7 +104,7 @@ Plus one *view mode*, not a section:
   convert in the background (`('tex', path, size)` engine keys),
   geometry renders in the blocking ESC-interruptable pass
   (`('geo', path, cache_dir)`), scene rows serve viewport CAPTURES
-  from `hip_library`'s durable store, and unknown files draw their OS
+  from `scene_captures`'s durable store, and unknown files draw their OS
   icon. Per-location recursion, custom names and the remove-time cache
   sweep live on `FileFolders`.
 
@@ -501,7 +501,7 @@ test `sys.platform` or hardcode an OS path convention.
 | **Sidebar Proxy** | Sorts categories and hides empty ones (renderer-aware). | `category.CategoriesSidebarProxy` |
 | **Filter Proxy** | The Grid's search/renderer/favourite/tag filter (Asset sections). | `core/multifilterproxy_model.py` |
 | **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `sections.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
-| **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderListModel` (counts, All row, add/remove/relocate); each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `hip_library.py` |
+| **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderListModel` (counts, All row, add/remove/relocate); each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `scene_captures.py` |
 | **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns amber — the colour is the whole signal — and the tab strip becomes the SOURCES in source order (GPUOpen, PolyHaven, PhysicallyBased, RGL) from `matx_sources.all_sources()`. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"`. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_world` / `leave_online_world`, `core/matx_sources.py` |
 
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN AND IN WHAT ORDER. `setDynamicSortFilter(False)`, set for performance, turns off three things at once, and each came back as a caller remembering: the re-sort after a filter change (2026-08-01 — picking a category then going back to All came back unsorted), the re-sort after an INSERT (2026-08-03 — a newly saved asset landed at the bottom of 548), and the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off). The re-test is role-aware (`watched_roles`) and every pass is coalesced onto one per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
@@ -753,7 +753,7 @@ core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowled
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)
 prefs/prefs.py            Prefs (settings.json)
 core/folders.py           FolderListModel (shared Folder-archetype base)
-core/hip_library.py       scene capture store + open-scene state
+core/scene_captures.py       scene capture store + open-scene state
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/                  theme, ui widgets, vex syntax, generic helpers
 dialogs/                  save / preferences / about / code / gradient dialogs

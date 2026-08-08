@@ -46,7 +46,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import database  # noqa: E402
-from amaze.core import hip_library  # noqa: E402
+from amaze.core import scene_captures  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import library_policy  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
@@ -416,14 +416,14 @@ class TheCaptureManifestSurvivesACrashMidWrite(unittest.TestCase):
     def setUp(self):
         self.store = tempfile.mkdtemp(prefix="amaze_hip_case_")
         self.addCleanup(shutil.rmtree, self.store, True)
-        real = hip_library.thumb_dir
-        self.addCleanup(setattr, hip_library, "thumb_dir", real)
-        hip_library.thumb_dir = lambda: self.store
+        real = scene_captures.thumb_dir
+        self.addCleanup(setattr, scene_captures, "thumb_dir", real)
+        scene_captures.thumb_dir = lambda: self.store
 
     def test_a_crash_mid_write_does_not_truncate_the_manifest(self):
         for n in range(20):
-            hip_library._record_manifest("/scenes/%d.hip" % n, "%d.png" % n)
-        path = hip_library._manifest_path()
+            scene_captures._record_manifest("/scenes/%d.hip" % n, "%d.png" % n)
+        path = scene_captures._manifest_path()
         with open(path, encoding="utf-8") as fh:
             before = len(json.load(fh))
         self.assertEqual(20, before)
@@ -437,7 +437,7 @@ class TheCaptureManifestSurvivesACrashMidWrite(unittest.TestCase):
         json.dump = dies_partway
         self.addCleanup(setattr, json, "dump", real_dump)
         try:
-            hip_library._record_manifest("/scenes/new.hip", "new.png")
+            scene_captures._record_manifest("/scenes/new.hip", "new.png")
         except KeyboardInterrupt:
             pass
         finally:

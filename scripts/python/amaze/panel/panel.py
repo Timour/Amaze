@@ -18,7 +18,7 @@ from amaze.panel import (dragdrop_widgets, grid, notes_panel, sections,
 from amaze.core import debug, library_policy, repair
 from amaze.core import versions
 from amaze.core import notes
-from amaze.core import hip_library
+from amaze.core import scene_captures
 from amaze.core import (
     folders,
     material,
@@ -136,7 +136,7 @@ _reload(gradient_library)
 _reload(cop_library)
 # After texture_library - geo_library reuses its ThumbnailCache/proxy.
 _reload(geo_library)
-_reload(hip_library)
+_reload(scene_captures)
 # After texture/geo/hip - file_library composes all three engines.
 _reload(file_library)
 # Before code_library/code_dialog - both consume its palette/tokenizer.
@@ -2754,22 +2754,22 @@ class MatLibPanel(QtWidgets.QWidget):
                 severity=hou.severityType.Error)
             debug.event("hip", "open failed", file=path, error=str(exc))
             return
-        hip_library.note_opened(path)
+        scene_captures.note_opened(path)
         debug.event("hip", "scene opened", file=path)
 
     def _capture_and_report(self, target: str = "") -> None:
         """Run the shared capture and SAY WHY if it refuses.
 
         Both entry points end here, and every check lives one layer
-        down in hip_library.capture_open_scene - so the tile menu, the
+        down in scene_captures.capture_open_scene - so the tile menu, the
         toolbar button and the shelf tool cannot grow three wordings of
         the same refusal, which is what they had.
 
         An empty target means "whatever is open".
         """
         try:
-            hip_library.capture_open_scene(target)
-        except hip_library.CaptureRefused as exc:
+            scene_captures.capture_open_scene(target)
+        except scene_captures.CaptureRefused as exc:
             # A capture that silently does nothing teaches the user that
             # the feature is broken.
             debug.event("hip", "capture refused", file=target,
@@ -2798,7 +2798,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not target:
             return
         self._capture_and_report(target)
-        # No refresh here: hip_library announces a landed capture and
+        # No refresh here: scene_captures announces a landed capture and
         # every live model repaints itself. Doing it again discarded the
         # cached image and emitted dataChanged a second time, and it hid
         # which layer actually owns the refresh.

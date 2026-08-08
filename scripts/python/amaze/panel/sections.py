@@ -41,7 +41,7 @@ import collections
 import hou
 from PySide6 import QtCore
 
-from amaze.core import debug, file_library, grid_columns, hip_library, notes
+from amaze.core import debug, file_library, grid_columns, scene_captures, notes
 from amaze.helpers import helpers, hostos, ui_helpers
 from amaze.panel import grid
 
@@ -1454,7 +1454,7 @@ class FolderSection(Section):
         """
         path = self._path_of(current)
         return (len(indexes) == 1 and bool(path)
-                and path == hip_library.current_scene_path())
+                and path == scene_captures.current_scene_path())
 
     def menu_import(self, indexes, current, payload=None) -> None:
         files = self._p(self.files_attr)

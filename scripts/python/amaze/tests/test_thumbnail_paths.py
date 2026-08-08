@@ -50,7 +50,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import hip_library, thumbnails, tile_icons  # noqa: E402
+from amaze.core import scene_captures, thumbnails, tile_icons  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
@@ -551,8 +551,8 @@ class TheCaptureDirectoryIsResolvedOncePerPaint(unittest.TestCase):
         self.addCleanup(shutil.rmtree, store, True)
         hostos.set_cache_override(store)
         self.addCleanup(hostos.set_cache_override, "")
-        hip_library.forget_thumb_dir()
-        self.addCleanup(hip_library.forget_thumb_dir)
+        scene_captures.forget_thumb_dir()
+        self.addCleanup(scene_captures.forget_thumb_dir)
 
         calls = {"n": 0}
         real_isdir = os.path.isdir
@@ -561,12 +561,12 @@ class TheCaptureDirectoryIsResolvedOncePerPaint(unittest.TestCase):
             calls["n"] += 1
             return real_isdir(path)
 
-        hip_library.thumb_path("/scenes/warm.hip")        # first resolve
+        scene_captures.thumb_path("/scenes/warm.hip")        # first resolve
         os.path.isdir = counting
         self.addCleanup(setattr, os.path, "isdir", real_isdir)
         try:
             for _ in range(20):
-                hip_library.thumb_path("/scenes/a.hip")
+                scene_captures.thumb_path("/scenes/a.hip")
         finally:
             os.path.isdir = real_isdir
 
@@ -586,18 +586,18 @@ class TheCaptureDirectoryIsResolvedOncePerPaint(unittest.TestCase):
         self.addCleanup(shutil.rmtree, first, True)
         self.addCleanup(shutil.rmtree, second, True)
         self.addCleanup(hostos.set_cache_override, "")
-        self.addCleanup(hip_library.forget_thumb_dir)
+        self.addCleanup(scene_captures.forget_thumb_dir)
 
         real_config = hostos.config_root
         self.addCleanup(setattr, hostos, "config_root", real_config)
 
         hostos.config_root = lambda: first
         hostos.set_cache_override(first)
-        one = hip_library.thumb_dir()
+        one = scene_captures.thumb_dir()
 
         hostos.config_root = lambda: second
         hostos.set_cache_override(second)
-        two = hip_library.thumb_dir()
+        two = scene_captures.thumb_dir()
 
         self.assertNotEqual(
             one, two,

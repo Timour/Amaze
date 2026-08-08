@@ -331,7 +331,7 @@ class CaptureIsDecidedInOnePlace(unittest.TestCase):
     def test_the_shared_policy_still_does_not_require_it(self):
         self.assertNotIn(
             "amaze_opened_current_scene",
-            func_source("core/hip_library.py", "capture_open_scene"),
+            func_source("core/scene_captures.py", "capture_open_scene"),
             "the shared policy grew the retired clause back")
 
 

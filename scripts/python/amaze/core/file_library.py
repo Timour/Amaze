@@ -12,7 +12,7 @@ AmazeNotes/ROADMAP.md):
   ESC-interruptable main-thread pass, double-click imports in context.
 * **hip** - thumbnails are hand-framed CAPTURES from the store under
   config_root (never rendered, never mtime-invalidated - see
-  hip_library's module docstring for why both rules exist).
+  scene_captures's module docstring for why both rules exist).
 * **other** - any file Amaze does not recognise, shown with its OS icon
   (QFileIconProvider - verified to never come back empty) and exactly
   one action: Copy Path. Houdini often cannot open these; a path pasted
@@ -20,7 +20,7 @@ AmazeNotes/ROADMAP.md):
 
 THE ENGINES STAY WHERE THEY WERE. This module composes
 texture_library's convert pipeline, geo_library's render pass and
-hip_library's capture store - it does not fork them. Every cache key
+scene_captures's capture store - it does not fork them. Every cache key
 keeps its old shape (('tex', path, size), ('geo', path, cache_dir),
 ('hip', path, thumb_dir)) and tile-icon keys stay raw joined paths, so
 nothing a user already generated is orphaned or re-rendered by the
@@ -41,7 +41,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from amaze.core import debug, folders, geo_library, hip_library
+from amaze.core import debug, folders, geo_library, scene_captures
 from amaze.core import grid_columns
 from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
@@ -59,7 +59,7 @@ def kind_for(name: str) -> str:
     """Which per-type behaviour a filename gets. The three recognisers
     are the sections' own - one source for what counts as an image, a
     geometry file or a scene."""
-    if hip_library.matched_extension(name):
+    if scene_captures.matched_extension(name):
         return KIND_HIP
     if texture_library.matched_extension(name):
         return KIND_IMAGE
@@ -365,7 +365,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         # paint of a row and kept, because the alternative is a stat
         # per visible scene row per FRAME - data(DecorationRole) is
         # what a repaint calls, and scroll, hover and resize are all
-        # repaints. hip_library's own thumb_dir() memo closed the
+        # repaints. scene_captures's own thumb_dir() memo closed the
         # DIRECTORY half of this same path for the same reason (its
         # note measures 10 thumb_path() calls at 20 makedirs + 40
         # isdir); this is the file half. Cheap on a warm local disk,
@@ -383,7 +383,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self._on_convert_attempted)
         # A capture from anywhere - the tile menu, the shelf tool -
         # repaints this model's row for that scene.
-        hip_library.signals.captured.connect(self._on_capture_landed)
+        scene_captures.signals.captured.connect(self._on_capture_landed)
 
     # -- caches, one per engine ---------------------------------------
 
@@ -398,7 +398,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         it into the test folder - left every cache built beforehand
         writing to the old root (measured 2026-08-08, the test cache
         looked like it did nothing). `set_cache_override` bumps the
-        counter; hip_library has always keyed on it.
+        counter; scene_captures has always keyed on it.
         """
         key = (self.preferences.rendersize, hostos.cache_generation())
         if self._image_cache is None or self._image_cache_key != key:
@@ -583,7 +583,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     self._row_specs.append((key, "render", full))
                     geo_misses.append((row, full))
             elif kind == KIND_HIP:
-                key = ("hip", full, hip_library.thumb_dir())
+                key = ("hip", full, scene_captures.thumb_dir())
                 self._key_rows.setdefault(key, []).append(row)
                 self._row_specs.append((key, "capture", full))
             else:
@@ -809,7 +809,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         """
         seen = self._capture_seen.get(hip_path)
         if seen is None:
-            png = hip_library.thumb_path(hip_path)
+            png = scene_captures.thumb_path(hip_path)
             seen = png if (png and os.path.isfile(png)) else ""
             self._capture_seen[hip_path] = seen
         return seen
@@ -1080,7 +1080,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     if image is not None:
                         return image
                 # No capture yet - the resting state, not a wait.
-                return hip_library.placeholder_image()
+                return scene_captures.placeholder_image()
             # convert / render rows: serve what has landed; after
             # eviction the disk cache takes over as a file load.
             image = thumbnails.engine.peek(key)
@@ -1107,7 +1107,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     name).lstrip(".").upper()
             if kind == KIND_HIP:
                 # "Hiplc", not "HIPLC" - a scene extension is a word.
-                return hip_library.matched_extension(
+                return scene_captures.matched_extension(
                     name).lstrip(".").capitalize()
             if kind == KIND_IMAGE:
                 # Its own recogniser now, like the other two kinds. The
@@ -1141,5 +1141,5 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if role == self.OpenSceneRole:
             if kind != KIND_HIP:
                 return False
-            return self._full_path(row) == hip_library.current_scene_path()
+            return self._full_path(row) == scene_captures.current_scene_path()
         return None

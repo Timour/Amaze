@@ -383,12 +383,12 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         The extension still has to survive - Houdini picks the image FORMAT
         from it, and an earlier `.new` suffix made it write PIC2 bytes into
         a file everything downstream read as a PNG."""
-        from amaze.core import hip_library
+        from amaze.core import scene_captures
 
         out = os.path.join(self.dir, "abc123.png")
         seen = set()
         for _ in range(6):
-            scratch = hip_library._capture_scratch(out)
+            scratch = scene_captures._capture_scratch(out)
             self.assertTrue(scratch.endswith(".png"),
                             "the scratch name does not end in .png, so "
                             "Houdini would choose a different image format")
@@ -412,9 +412,9 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         keeps them for. Comments stripped first: an earlier test in this
         project failed on the comment documenting the fix it checked."""
         import inspect
-        from amaze.core import hip_library
+        from amaze.core import scene_captures
 
-        source = inspect.getsource(hip_library.capture_thumbnail)
+        source = inspect.getsource(scene_captures.capture_thumbnail)
         body = "\n".join(line.split("#")[0]
                          for line in source.splitlines())
         assigns = [line.strip() for line in body.splitlines()

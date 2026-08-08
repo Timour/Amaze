@@ -184,7 +184,7 @@ CACHE_DIR_ENV = "AMAZE_CACHE_DIR"
 
 
 #: Bumped whenever the cache root moves. Callers that MEMOISE a path
-#: derived from it (hip_library's capture directory) store this number
+#: derived from it (scene_captures's capture directory) store this number
 #: with their memo and re-resolve when it changes - reading an int is
 #: free, where re-deriving the path is the migration this exists to
 #: stop running per paint. A counter rather than a callback registry:
@@ -1241,7 +1241,7 @@ def matched_extension(name: str, extensions) -> str:
     are (".PNG" is the same file as ".png" on macOS and Windows), which
     is why this lives with the other path semantics rather than beside
     any one section's extension list. There were three of these: two
-    identical copies in geo_library and hip_library, and a third shape
+    identical copies in geo_library and scene_captures, and a third shape
     in file_library that used `str.endswith(tuple)` and therefore could
     not say WHICH extension matched - the reason its FormatRole needed
     a separate branch for images.

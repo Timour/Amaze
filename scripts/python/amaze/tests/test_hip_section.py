@@ -31,7 +31,7 @@ from PySide6 import QtWidgets  # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
-from amaze.core import file_library, hip_library, thumbnails  # noqa: E402
+from amaze.core import file_library, scene_captures, thumbnails  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
@@ -95,13 +95,13 @@ class ExtensionsAreOneTypeTest(unittest.TestCase):
     def test_every_houdini_scene_extension_is_recognised(self):
         for name in ("a.hip", "b.hiplc", "c.hipnc",
                      "D.HIP", "E.HipLC"):
-            self.assertTrue(hip_library.matched_extension(name),
+            self.assertTrue(scene_captures.matched_extension(name),
                             "%s was not recognised as a scene file" % name)
 
     def test_non_scene_files_are_not(self):
         for name in ("a.hda", "b.bgeo", "c.usd", "d.hip.bak", "e.txt",
                      "notahip"):
-            self.assertFalse(hip_library.matched_extension(name),
+            self.assertFalse(scene_captures.matched_extension(name),
                              "%s was wrongly taken for a scene file" % name)
 
     def test_the_listing_shows_all_three_flavours(self):
@@ -144,10 +144,10 @@ class ThumbnailStoreTest(unittest.TestCase):
     def setUp(self):
         self.tmp = _Tmp(self)
         self.scene = self.tmp.touch("scene.hiplc")
-        real = hip_library.thumb_dir
-        self.addCleanup(setattr, hip_library, "thumb_dir", real)
+        real = scene_captures.thumb_dir
+        self.addCleanup(setattr, scene_captures, "thumb_dir", real)
         self.store = os.path.join(self.tmp.dir, "store")
-        hip_library.thumb_dir = lambda: self.store
+        scene_captures.thumb_dir = lambda: self.store
 
     def test_the_slot_is_a_hash_of_the_path(self):
         """An external reader - Anchorpoint, say - has to be able to go
@@ -158,24 +158,24 @@ class ThumbnailStoreTest(unittest.TestCase):
             hostos.canonical_path_key(self.scene).encode("utf-8")
         ).hexdigest() + ".png"
         self.assertEqual(expected,
-                         os.path.basename(hip_library.thumb_path(self.scene)))
+                         os.path.basename(scene_captures.thumb_path(self.scene)))
 
     def test_two_scenes_never_share_a_slot(self):
         other = self.tmp.touch("other.hiplc")
-        self.assertNotEqual(hip_library.thumb_path(self.scene),
-                            hip_library.thumb_path(other))
+        self.assertNotEqual(scene_captures.thumb_path(self.scene),
+                            scene_captures.thumb_path(other))
 
     def test_has_thumbnail_is_false_until_one_exists(self):
-        self.assertFalse(hip_library.has_thumbnail(self.scene))
+        self.assertFalse(scene_captures.has_thumbnail(self.scene))
         os.makedirs(self.store, exist_ok=True)
-        with open(hip_library.thumb_path(self.scene), "wb") as fh:
+        with open(scene_captures.thumb_path(self.scene), "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n")
-        self.assertTrue(hip_library.has_thumbnail(self.scene))
+        self.assertTrue(scene_captures.has_thumbnail(self.scene))
 
     def test_an_empty_file_does_not_count_as_a_thumbnail(self):
         os.makedirs(self.store, exist_ok=True)
-        open(hip_library.thumb_path(self.scene), "wb").close()
-        self.assertFalse(hip_library.has_thumbnail(self.scene),
+        open(scene_captures.thumb_path(self.scene), "wb").close()
+        self.assertFalse(scene_captures.has_thumbnail(self.scene),
                          "a zero-byte file was reported as a thumbnail")
 
     def test_the_thumbnail_survives_the_scene_being_re_saved(self):
@@ -183,13 +183,13 @@ class ThumbnailStoreTest(unittest.TestCase):
         ThumbnailCache would drop the entry here, silently destroying a
         capture the user framed by hand."""
         os.makedirs(self.store, exist_ok=True)
-        with open(hip_library.thumb_path(self.scene), "wb") as fh:
+        with open(scene_captures.thumb_path(self.scene), "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n")
         os.utime(self.scene, (1, 1))
         with open(self.scene, "a", encoding="utf-8") as fh:
             fh.write("the scene changed")
         self.assertTrue(
-            hip_library.has_thumbnail(self.scene),
+            scene_captures.has_thumbnail(self.scene),
             "re-saving the scene erased a hand-framed capture")
 
 
@@ -198,12 +198,12 @@ class CaptureRefusesOutLoudTest(unittest.TestCase):
     which makes this the right place to pin that it FAILS LOUDLY."""
 
     def test_no_path_is_refused(self):
-        with self.assertRaises(hip_library.CaptureRefused):
-            hip_library.capture_thumbnail("")
+        with self.assertRaises(scene_captures.CaptureRefused):
+            scene_captures.capture_thumbnail("")
 
     def test_headless_refusal_names_the_reason(self):
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_thumbnail("/tmp/nothing.hiplc")
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_thumbnail("/tmp/nothing.hiplc")
         message = str(caught.exception)
         self.assertTrue(message.strip(), "refused with no reason given")
         self.assertTrue(
@@ -213,8 +213,8 @@ class CaptureRefusesOutLoudTest(unittest.TestCase):
 
     def test_a_refusal_is_never_a_quiet_return(self):
         try:
-            result = hip_library.capture_thumbnail("/tmp/nothing.hiplc")
-        except hip_library.CaptureRefused:
+            result = scene_captures.capture_thumbnail("/tmp/nothing.hiplc")
+        except scene_captures.CaptureRefused:
             return
         self.fail("capture_thumbnail returned %r instead of refusing"
                   % (result,))
@@ -271,10 +271,10 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
     def setUp(self):
         self.tmp = _Tmp(self)
         self.scene = self.tmp.touch("scene.hiplc")
-        real_dir = hip_library.thumb_dir
-        self.addCleanup(setattr, hip_library, "thumb_dir", real_dir)
+        real_dir = scene_captures.thumb_dir
+        self.addCleanup(setattr, scene_captures, "thumb_dir", real_dir)
         self.store = os.path.join(self.tmp.dir, "store")
-        hip_library.thumb_dir = lambda: self.store
+        scene_captures.thumb_dir = lambda: self.store
 
         from husd import assetutils
         real_save = assetutils.saveThumbnailFromViewer
@@ -294,7 +294,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
         assetutils.saveThumbnailFromViewer = record
 
     def test_the_scratch_file_is_still_a_png(self):
-        hip_library.capture_thumbnail(self.scene, viewer=_FakeViewer())
+        scene_captures.capture_thumbnail(self.scene, viewer=_FakeViewer())
         self.assertTrue(self.asked_for, "the flipbook was never called")
         scratch = self.asked_for[0]
         self.assertEqual(
@@ -304,16 +304,16 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
             % os.path.basename(scratch))
 
     def test_the_scratch_does_not_collide_with_the_real_slot(self):
-        hip_library.capture_thumbnail(self.scene, viewer=_FakeViewer())
-        self.assertNotEqual(hip_library.thumb_path(self.scene),
+        scene_captures.capture_thumbnail(self.scene, viewer=_FakeViewer())
+        self.assertNotEqual(scene_captures.thumb_path(self.scene),
                             self.asked_for[0],
                             "the capture wrote straight over the live "
                             "thumbnail - the write-aside is gone")
 
     def test_the_capture_lands_on_the_real_slot(self):
-        result = hip_library.capture_thumbnail(self.scene,
+        result = scene_captures.capture_thumbnail(self.scene,
                                                viewer=_FakeViewer())
-        self.assertEqual(hip_library.thumb_path(self.scene), result)
+        self.assertEqual(scene_captures.thumb_path(self.scene), result)
         self.assertTrue(os.path.isfile(result))
         self.assertFalse(os.path.isfile(self.asked_for[0]),
                          "the scratch file was left behind")
@@ -326,34 +326,34 @@ class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
     result looks entirely plausible."""
 
     def setUp(self):
-        self.addCleanup(hip_library.note_opened, "")
+        self.addCleanup(scene_captures.note_opened, "")
 
     def test_nothing_opened_means_not_ours(self):
-        hip_library.note_opened("")
-        self.assertFalse(hip_library.amaze_opened_current_scene())
+        scene_captures.note_opened("")
+        self.assertFalse(scene_captures.amaze_opened_current_scene())
 
     def test_a_mismatch_with_the_live_scene_is_rejected(self):
-        hip_library.note_opened("/tmp/some_other_scene.hiplc")
+        scene_captures.note_opened("/tmp/some_other_scene.hiplc")
         self.assertFalse(
-            hip_library.amaze_opened_current_scene(),
+            scene_captures.amaze_opened_current_scene(),
             "a scene Amaze did not open was accepted as capturable")
 
     def test_a_match_is_accepted(self):
-        real = hip_library.current_scene_path
-        self.addCleanup(setattr, hip_library, "current_scene_path", real)
-        hip_library.current_scene_path = lambda: "/tmp/match.hiplc"
-        hip_library.note_opened("/tmp/match.hiplc")
-        self.assertTrue(hip_library.amaze_opened_current_scene())
+        real = scene_captures.current_scene_path
+        self.addCleanup(setattr, scene_captures, "current_scene_path", real)
+        scene_captures.current_scene_path = lambda: "/tmp/match.hiplc"
+        scene_captures.note_opened("/tmp/match.hiplc")
+        self.assertTrue(scene_captures.amaze_opened_current_scene())
 
     def test_the_check_is_a_comparison_not_a_flag(self):
         """Guards the guard: if it ever becomes 'did Amaze open
         anything', these tests pass while the protection is gone."""
-        real = hip_library.current_scene_path
-        self.addCleanup(setattr, hip_library, "current_scene_path", real)
-        hip_library.note_opened("/tmp/a.hiplc")
-        hip_library.current_scene_path = lambda: "/tmp/b.hiplc"
+        real = scene_captures.current_scene_path
+        self.addCleanup(setattr, scene_captures, "current_scene_path", real)
+        scene_captures.note_opened("/tmp/a.hiplc")
+        scene_captures.current_scene_path = lambda: "/tmp/b.hiplc"
         self.assertFalse(
-            hip_library.amaze_opened_current_scene(),
+            scene_captures.amaze_opened_current_scene(),
             "the check no longer compares paths - any opened scene "
             "would now authorise a capture")
 
@@ -361,9 +361,9 @@ class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
         """The panel reloads modules in place; a plain assignment would
         forget which scene was opened on every reload."""
         import importlib
-        hip_library.note_opened("/tmp/kept.hiplc")
-        importlib.reload(hip_library)
-        self.assertEqual("/tmp/kept.hiplc", hip_library.opened_path(),
+        scene_captures.note_opened("/tmp/kept.hiplc")
+        importlib.reload(scene_captures)
+        self.assertEqual("/tmp/kept.hiplc", scene_captures.opened_path(),
                          "the opened scene was forgotten on reload")
 
 
@@ -432,10 +432,18 @@ class NoAutomaticCaptureTest(unittest.TestCase):
                                       "test is not exercising anything")
         end = code.find("def ", start + 10)
         body = code[start:end if end > 0 else len(code)]
-        self.assertNotIn(
-            "capture", body,
-            "opening a scene triggers a capture; it must only record "
-            "which scene was opened")
+        # THE CALLS, not the word. A bare substring scan for "capture"
+        # read the module name in `scene_captures.note_opened(path)` -
+        # which is the recording this method is SUPPOSED to do - and
+        # called it a capture. Naming the entry points keeps the test
+        # aimed at the 86GB behaviour it was written for; a new one
+        # joins this tuple.
+        for verb in ("capture_thumbnail(", "capture_open_scene(",
+                     "_capture_and_report(", "capture_hip_thumbnail("):
+            self.assertNotIn(
+                verb, body,
+                "opening a scene calls %s; it must only record which "
+                "scene was opened" % verb)
 
     def test_the_scan_can_actually_see_the_panel(self):
         """Guards the guard: an empty read passes every assertion
@@ -456,11 +464,11 @@ class PlaceholderTest(unittest.TestCase):
     def setUp(self):
         self.tmp = _Tmp(self)
         self.scene = self.tmp.touch("uncaptured.hiplc")
-        real = hip_library.thumb_dir
-        self.addCleanup(setattr, hip_library, "thumb_dir", real)
-        hip_library.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
-        hip_library._placeholder.clear()
-        self.addCleanup(hip_library._placeholder.clear)
+        real = scene_captures.thumb_dir
+        self.addCleanup(setattr, scene_captures, "thumb_dir", real)
+        scene_captures.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
+        scene_captures._placeholder.clear()
+        self.addCleanup(scene_captures._placeholder.clear)
 
     def test_an_uncaptured_scene_gets_the_placeholder(self):
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))
@@ -494,7 +502,7 @@ class PlaceholderTest(unittest.TestCase):
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))
         model.set_folder(self.tmp.dir)
 
-        png = hip_library.thumb_path(self.scene)
+        png = scene_captures.thumb_path(self.scene)
         os.makedirs(os.path.dirname(png), exist_ok=True)
         with open(png, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n")
@@ -528,7 +536,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
     a sleeping external volume turns up (research.md > *Volume mounts
     on macOS*), and there it is not cheap.
 
-    `hip_library.thumb_dir()`'s own memo closed the DIRECTORY half of
+    `scene_captures.thumb_dir()`'s own memo closed the DIRECTORY half of
     this same path for this same reason - its note measures ten
     `thumb_path()` calls at 20 makedirs and 40 isdir - and named
     `folders.py`'s "cached so painting the sidebar never touches the
@@ -542,11 +550,11 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
     def setUp(self):
         self.tmp = _Tmp(self)
         self.scene = self.tmp.touch("scene.hiplc")
-        real = hip_library.thumb_dir
-        self.addCleanup(setattr, hip_library, "thumb_dir", real)
-        hip_library.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
-        hip_library._placeholder.clear()
-        self.addCleanup(hip_library._placeholder.clear)
+        real = scene_captures.thumb_dir
+        self.addCleanup(setattr, scene_captures, "thumb_dir", real)
+        scene_captures.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
+        scene_captures._placeholder.clear()
+        self.addCleanup(scene_captures._placeholder.clear)
 
     def _stats_of_the_capture(self):
         """Stats aimed at THIS scene's PNG slot.
@@ -556,7 +564,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         under test are counted, and an unrelated stat somewhere else
         in the paint cannot inflate or excuse the number.
         """
-        wanted = hip_library.thumb_path(self.scene)
+        wanted = scene_captures.thumb_path(self.scene)
         calls = []
         real = os.path.isfile
 
@@ -597,7 +605,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         model.set_folder(self.tmp.dir)
         self._paint(model, times=2)          # remembers "no capture"
 
-        png = hip_library.thumb_path(self.scene)
+        png = scene_captures.thumb_path(self.scene)
         os.makedirs(os.path.dirname(png), exist_ok=True)
         with open(png, "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n")
@@ -620,12 +628,12 @@ class ViewportStateTest(unittest.TestCase):
     def test_the_houdini_delegates_are_fast(self):
         for name in ("Houdini VK", "Houdini GL", "houdini vk",
                      "  Houdini VK  "):
-            self.assertTrue(hip_library.delegate_is_fast(name),
+            self.assertTrue(scene_captures.delegate_is_fast(name),
                             "%r should be treated as cheap" % name)
 
     def test_renderers_are_not(self):
         for name in ("Karma CPU", "Karma XPU", "Redshift", "Arnold"):
-            self.assertFalse(hip_library.delegate_is_fast(name),
+            self.assertFalse(scene_captures.delegate_is_fast(name),
                              "%r would stall a capture" % name)
 
     def test_an_obj_viewport_is_not_blocked(self):
@@ -643,7 +651,7 @@ class ViewportStateTest(unittest.TestCase):
             def isRendererPaused(self):
                 raise AttributeError("no renderer")
 
-        state = hip_library.viewport_state(_ObjViewport())
+        state = scene_captures.viewport_state(_ObjViewport())
         self.assertFalse(
             state["blocking"],
             "an OBJ viewport was blocked from capturing")
@@ -653,7 +661,7 @@ class ViewportStateTest(unittest.TestCase):
         """Only a delegate we POSITIVELY recognise as a renderer stands
         in the way. Everything else proceeds and fails later with its
         own reason, if it fails at all."""
-        state = hip_library.viewport_state()
+        state = scene_captures.viewport_state()
         self.assertFalse(state.get("blocking"))
 
     def test_a_renderer_blocks_and_is_named_in_the_state(self):
@@ -664,7 +672,7 @@ class ViewportStateTest(unittest.TestCase):
             def isRendererPaused(self):
                 return True
 
-        state = hip_library.viewport_state(_Viewer())
+        state = scene_captures.viewport_state(_Viewer())
         self.assertEqual("Karma CPU", state["renderer"])
         self.assertTrue(state["blocking"])
         self.assertTrue(state["readable"])
@@ -677,7 +685,7 @@ class ViewportStateTest(unittest.TestCase):
             def isRendererPaused(self):
                 return False
 
-        self.assertFalse(hip_library.viewport_state(_Viewer())["blocking"])
+        self.assertFalse(scene_captures.viewport_state(_Viewer())["blocking"])
 
 
 class SlowCapturePromptTest(unittest.TestCase):
@@ -685,7 +693,7 @@ class SlowCapturePromptTest(unittest.TestCase):
 
     Was source-derived against panel.py, reading the message text and
     the order of two statements out of the method body. The policy moved
-    into hip_library.capture_open_scene (one home, two callers) and
+    into scene_captures.capture_open_scene (one home, two callers) and
     every one of these went red on the move - a test pinned to WHERE the
     code lives rather than to what it does. They are behavioural now:
     capture_open_scene never touches hou.ui, so the real decision runs
@@ -693,9 +701,9 @@ class SlowCapturePromptTest(unittest.TestCase):
     """
 
     def _patch(self, name, value):
-        original = getattr(hip_library, name)
-        setattr(hip_library, name, value)
-        self.addCleanup(setattr, hip_library, name, original)
+        original = getattr(scene_captures, name)
+        setattr(scene_captures, name, value)
+        self.addCleanup(setattr, scene_captures, name, original)
 
     def _blocking(self, debug_on=False):
         """A viewport rendering through Karma, with capture sabotaged so
@@ -709,16 +717,16 @@ class SlowCapturePromptTest(unittest.TestCase):
         self._patch("capture_thumbnail", lambda p, v=None: self.fail(
             "captured through a rendering delegate - the refusal fell "
             "through into an unbounded stall"))
-        original = hip_library.debug.is_on
-        hip_library.debug.is_on = lambda: debug_on
-        self.addCleanup(setattr, hip_library.debug, "is_on", original)
+        original = scene_captures.debug.is_on
+        scene_captures.debug.is_on = lambda: debug_on
+        self.addCleanup(setattr, scene_captures.debug, "is_on", original)
 
     def test_the_message_does_not_lecture(self):
         """One line. The person reading it knows what renderer they
         picked; repeating it back is noise."""
         self._blocking()
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene(self.scene)
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene(self.scene)
         message = str(caught.exception)
         self.assertIn("Please stop the viewport render", message)
         self.assertNotIn("The scene view is using", message)
@@ -727,8 +735,8 @@ class SlowCapturePromptTest(unittest.TestCase):
 
     def test_the_renderer_name_is_debug_mode_only(self):
         self._blocking(debug_on=True)
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene(self.scene)
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene(self.scene)
         self.assertIn("Detected: Karma CPU", str(caught.exception),
                       "in Debug Mode the delegate is the whole point")
 
@@ -744,7 +752,7 @@ class SlowCapturePromptTest(unittest.TestCase):
                     lambda *a: order.append("state") or {"blocking": False})
         self._patch("capture_thumbnail",
                     lambda p, v=None: order.append("capture") or "/tmp/s.png")
-        hip_library.capture_open_scene(self.scene)
+        scene_captures.capture_open_scene(self.scene)
         self.assertEqual(["state", "capture"], order)
 
     def test_it_refuses_rather_than_offering_to_proceed(self):
@@ -755,8 +763,8 @@ class SlowCapturePromptTest(unittest.TestCase):
         The sabotaged capture_thumbnail in _blocking is what proves it:
         if the refusal ever falls through, the test fails there."""
         self._blocking()
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene(self.scene)
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene(self.scene)
         self.assertNotIn("anyway", str(caught.exception).lower())
 
 
@@ -837,8 +845,8 @@ class OpenSceneBadgeTest(unittest.TestCase):
         self.b = self.tmp.touch("b.hiplc")
         self.model = file_library.FileFiles(_Prefs([self.tmp.dir]))
         self.model.set_folder(self.tmp.dir)
-        real = hip_library.current_scene_path
-        self.addCleanup(setattr, hip_library, "current_scene_path", real)
+        real = scene_captures.current_scene_path
+        self.addCleanup(setattr, scene_captures, "current_scene_path", real)
 
     def _flags(self):
         return [
@@ -849,12 +857,12 @@ class OpenSceneBadgeTest(unittest.TestCase):
 
     def test_exactly_the_open_scene_is_marked(self):
         from amaze.helpers import hostos
-        hip_library.current_scene_path = \
+        scene_captures.current_scene_path = \
             lambda: hostos.canonical_path_key(self.a)
         self.assertEqual([True, False], self._flags())
 
     def test_nothing_is_marked_when_no_scene_matches(self):
-        hip_library.current_scene_path = lambda: "/tmp/elsewhere.hiplc"
+        scene_captures.current_scene_path = lambda: "/tmp/elsewhere.hiplc"
         self.assertEqual([False, False], self._flags())
 
     def test_the_badge_follows_the_LIVE_scene_not_what_amaze_opened(self):
@@ -862,9 +870,9 @@ class OpenSceneBadgeTest(unittest.TestCase):
         answers "is this the one on screen?", which has one true answer
         regardless of who opened it."""
         from amaze.helpers import hostos
-        hip_library.note_opened("")
-        self.addCleanup(hip_library.note_opened, "")
-        hip_library.current_scene_path = \
+        scene_captures.note_opened("")
+        self.addCleanup(scene_captures.note_opened, "")
+        scene_captures.current_scene_path = \
             lambda: hostos.canonical_path_key(self.b)
         self.assertEqual([False, True], self._flags())
 
@@ -1301,14 +1309,14 @@ class CaptureDecisionPathTest(unittest.TestCase):
     lets these run headless at all."""
 
     def _patch(self, name, value):
-        original = getattr(hip_library, name)
-        setattr(hip_library, name, value)
-        self.addCleanup(setattr, hip_library, name, original)
+        original = getattr(scene_captures, name)
+        setattr(scene_captures, name, value)
+        self.addCleanup(setattr, scene_captures, name, original)
 
     def test_no_open_scene_is_refused_with_a_reason(self):
         self._patch("current_scene_path", lambda: "")
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene()
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene()
         self.assertIn("nothing to capture", str(caught.exception).lower())
 
     def test_a_target_that_is_not_open_is_refused(self):
@@ -1316,8 +1324,8 @@ class CaptureDecisionPathTest(unittest.TestCase):
         self._patch("current_scene_path", lambda: self.scene)
         self._patch("opened_path", lambda: self.scene)
         self._patch("amaze_opened_current_scene", lambda: True)
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene(_real_scene(self, "other.hiplc"))
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene(_real_scene(self, "other.hiplc"))
         self.assertIn("different scene", str(caught.exception))
 
     def test_a_rendering_viewport_is_refused(self):
@@ -1329,8 +1337,8 @@ class CaptureDecisionPathTest(unittest.TestCase):
                     lambda *a: {"blocking": True, "renderer": "Karma CPU"})
         self._patch("capture_thumbnail",
                     lambda p, v=None: self.fail("captured through a renderer"))
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene(self.scene)
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene(self.scene)
         self.assertIn("stop the viewport render", str(caught.exception))
 
     def test_the_guard_and_the_capture_get_the_SAME_viewport(self):
@@ -1355,7 +1363,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
                     or {"blocking": False})
         self._patch("capture_thumbnail",
                     lambda p, v=None: handed.append(("shot", v)) or "/tmp/s.png")
-        hip_library.capture_open_scene(self.scene)
+        scene_captures.capture_open_scene(self.scene)
         self.assertEqual(2, len(handed), "guard or capture did not run")
         self.assertEqual(
             handed[0][1], handed[1][1],
@@ -1377,7 +1385,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("capture_thumbnail",
                     lambda p, v=None: taken.append(p) or "/tmp/shot.png")
-        out = hip_library.capture_open_scene()
+        out = scene_captures.capture_open_scene()
         self.assertEqual([self.scene], taken)
         self.assertEqual("/tmp/shot.png", out)
 
@@ -1445,7 +1453,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         model.dataChanged.connect(
             lambda tl, br, roles=None: painted.append(tl.row()))
 
-        hip_library.signals.captured.emit(scene)
+        scene_captures.signals.captured.emit(scene)
 
         self.assertEqual(
             [model.row_for_path(scene)], painted,
@@ -1461,7 +1469,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         model.set_folder(tmp.dir)
         painted = []
         model.dataChanged.connect(lambda *a, **k: painted.append(1))
-        hip_library.signals.captured.emit("/elsewhere/other.hiplc")
+        scene_captures.signals.captured.emit("/elsewhere/other.hiplc")
         self.assertEqual([], painted,
                          "a capture elsewhere repainted this model")
 
@@ -1493,7 +1501,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         capture must emit, and the model must listen."""
         package = os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))
-        with open(os.path.join(package, "core", "hip_library.py"),
+        with open(os.path.join(package, "core", "scene_captures.py"),
                   encoding="utf-8") as handle:
             code = handle.read()
         self.assertIn("signals.captured.emit(", code,
@@ -1515,9 +1523,9 @@ class ReviewFixesTest(unittest.TestCase):
     which shipped and none of which any existing test caught."""
 
     def _patch(self, name, value):
-        original = getattr(hip_library, name)
-        setattr(hip_library, name, value)
-        self.addCleanup(setattr, hip_library, name, original)
+        original = getattr(scene_captures, name)
+        setattr(scene_captures, name, value)
+        self.addCleanup(setattr, scene_captures, name, original)
 
     # --- the blank check refused REAL frames -------------------------
     def _png(self, colours):
@@ -1533,30 +1541,30 @@ class ReviewFixesTest(unittest.TestCase):
         return path
 
     def test_one_flat_colour_is_blank(self):
-        self.assertTrue(hip_library._looks_blank(self._png(["#000000"])))
+        self.assertTrue(scene_captures._looks_blank(self._png(["#000000"])))
 
     def test_two_colours_is_a_REAL_frame(self):
         """Houdini's shipped default scheme is flat black, so a
         wireframe or flat-shaded view samples exactly two colours. The
         old threshold called that blank and refused the capture."""
         self.assertFalse(
-            hip_library._looks_blank(self._png(["#000000", "#c8c8c8"])),
+            scene_captures._looks_blank(self._png(["#000000", "#c8c8c8"])),
             "a two-tone frame is still reported blank")
 
     # --- "" must not canonicalise to "." -----------------------------
     def test_an_empty_path_stays_empty(self):
-        self.assertEqual("", hip_library._key(""))
-        hip_library.note_opened("")
-        self.assertEqual("", hip_library.opened_path())
+        self.assertEqual("", scene_captures._key(""))
+        scene_captures.note_opened("")
+        self.assertEqual("", scene_captures.opened_path())
         self.assertFalse(
-            hip_library.opened_path(),
+            scene_captures.opened_path(),
             "an empty opened path is truthy, so the guard never fires")
 
     def test_a_reset_does_not_claim_amaze_opened_the_scene(self):
         self._patch("current_scene_path", lambda: "")
-        hip_library.note_opened("")
+        scene_captures.note_opened("")
         self.assertFalse(
-            hip_library.amaze_opened_current_scene(),
+            scene_captures.amaze_opened_current_scene(),
             "after a reset Amaze claims to have opened the open scene")
 
     # --- an unsaved scene has nothing to file against ----------------
@@ -1564,8 +1572,8 @@ class ReviewFixesTest(unittest.TestCase):
         self._patch("current_scene_path", lambda: "/nope/untitled.hip")
         self._patch("capture_thumbnail", lambda p, v=None: self.fail(
             "captured a scene that is not on disk"))
-        with self.assertRaises(hip_library.CaptureRefused) as caught:
-            hip_library.capture_open_scene()
+        with self.assertRaises(scene_captures.CaptureRefused) as caught:
+            scene_captures.capture_open_scene()
         self.assertIn("not been saved", str(caught.exception))
 
     # --- the refusal must not contradict the screen ------------------
@@ -1581,13 +1589,13 @@ class ReviewFixesTest(unittest.TestCase):
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("scene_viewer", lambda: "V")
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/s.png")
-        hip_library.capture_open_scene(scene)      # must NOT raise
+        scene_captures.capture_open_scene(scene)      # must NOT raise
 
     # --- the relay guard must notice a changed signature -------------
     def test_the_relay_guard_checks_shape_not_just_presence(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "hip_library.py")
+            "core", "scene_captures.py")
         with open(path, encoding="utf-8") as handle:
             code = handle.read()
         self.assertIn("_RELAY_VERSION", code)
@@ -1632,9 +1640,9 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
             return _Node()
 
     def _patch(self, name, value):
-        original = getattr(hip_library, name)
-        setattr(hip_library, name, value)
-        self.addCleanup(setattr, hip_library, name, original)
+        original = getattr(scene_captures, name)
+        setattr(scene_captures, name, value)
+        self.addCleanup(setattr, scene_captures, name, original)
 
     def _capture_from(self, category):
         scene = _real_scene(self)
@@ -1644,7 +1652,7 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
         self._patch("scene_viewer", lambda: self._Viewer(category))
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/shot.png")
-        return hip_library.capture_open_scene(scene)
+        return scene_captures.capture_open_scene(scene)
 
     def test_every_context_including_COP_is_captured(self):
         for category in ("Object", "Lop", "Sop", "Dop", "Cop", "Chop", "Vop"):
@@ -1664,7 +1672,7 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
         import re
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "core", "hip_library.py")
+            "core", "scene_captures.py")
         with open(path, encoding="utf-8") as handle:
             code = handle.read()
         start = code.find("def capture_open_scene")
@@ -1887,7 +1895,7 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
             self.addCleanup(setattr, hostos, name, real)
 
     def test_the_directory_is_under_config_root(self):
-        home = hip_library.thumb_dir()
+        home = scene_captures.thumb_dir()
         self.assertTrue(home.startswith(self.config),
                         "captures still live in the disposable cache: %s"
                         % home)
@@ -1897,7 +1905,7 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
         os.makedirs(legacy)
         with open(os.path.join(legacy, "scene.png"), "wb") as fh:
             fh.write(b"png-bytes")
-        home = hip_library.thumb_dir()
+        home = scene_captures.thumb_dir()
         self.assertTrue(
             os.path.exists(os.path.join(home, "scene.png")),
             "a capture in the old cache location did not migrate - it "
@@ -1906,10 +1914,10 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
                          "the migration left the old folder behind")
 
     def test_a_second_call_is_stable(self):
-        first = hip_library.thumb_dir()
+        first = scene_captures.thumb_dir()
         with open(os.path.join(first, "kept.png"), "wb") as fh:
             fh.write(b"x")
-        second = hip_library.thumb_dir()
+        second = scene_captures.thumb_dir()
         self.assertEqual(first, second)
         self.assertTrue(os.path.exists(os.path.join(second, "kept.png")))
 
@@ -1922,7 +1930,7 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
         os.makedirs(legacy)
         with open(os.path.join(legacy, "scene.png"), "wb") as fh:
             fh.write(b"older")
-        hip_library.thumb_dir()
+        scene_captures.thumb_dir()
         with open(os.path.join(home_dir, "scene.png"), "rb") as fh:
             self.assertEqual(b"newer", fh.read(),
                              "an interrupted migration overwrote a newer "
