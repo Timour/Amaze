@@ -476,9 +476,10 @@ TOGGLE SWITCHES, not tick checkboxes.)*
     Save New / Cancel when off)*
   - Version Author  *(text field, added 2026-08-08 — the name version
     FILES are signed with, `<name>-<n>.mat`, so two machines can never
-    write the same file. Placeholder text: "a colour name is picked
-    for you" — left blank, the store mints one colour name per machine
-    at the first version write; never the OS user or machine name)*
+    write the same file. The box always shows the real name: a fresh
+    machine's colour name is minted the moment the dialog opens, and
+    the field is free to overwrite; never the OS user or machine
+    name)*
   - ---- divider ----
   - Cache Path  *(read-only field + `...` browse)*
   - Delete Local Cache
