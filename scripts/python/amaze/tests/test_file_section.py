@@ -1166,6 +1166,22 @@ class HoudiniPathTest(unittest.TestCase):
                          "Write Paths As should offer exactly "
                          "$HOME / $JOB / $HIP / Absolute")
 
+    def test_the_version_author_field_saves_what_is_typed(self):
+        """Preferences > Library carries the name version files are
+        signed with; typing one persists it, and the field never
+        invents a value on its own - the placeholder is the store's
+        to mint, at the first version write."""
+        from amaze.dialogs import prefs_dialog
+        p = test_support.fixture_prefs(self)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        self.assertEqual("", dlg.line_version_author.text(),
+                         "a fresh prefs must show a BLANK field")
+        dlg.line_version_author.setText("  Crimson  ")
+        dlg._save_version_author()
+        self.assertEqual("Crimson", p.version_author,
+                         "typed name (trimmed) did not reach prefs")
+
     def test_the_default_style_pins_home(self):
         """Preferences > Write Paths As defaults to $HOME (the
         decided default): a path under $HIP still says $HOME/...

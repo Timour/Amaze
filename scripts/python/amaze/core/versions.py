@@ -26,11 +26,37 @@ from __future__ import annotations
 import filecmp
 import json
 import os
+import random
+import re
 import shutil
 import time
 
 from amaze.core import debug
 from amaze.helpers import hostos
+
+#: The placeholder pool for a blank author: colour names, minted once
+#: per machine and saved to prefs, so two machines with untouched
+#: settings still sign different filenames. Deliberately NEVER the OS
+#: user or the machine name (practice.md - legal/identity terms), and
+#: colour words because this app already speaks colour.
+PLACEHOLDER_NAMES = (
+    "Amber", "Aqua", "Auburn", "Azure", "Beige", "Blush", "Bronze",
+    "Burgundy", "Carmine", "Celadon", "Cerise", "Cerulean", "Charcoal",
+    "Chartreuse", "Cinnabar", "Cobalt", "Copper", "Coral", "Cream",
+    "Crimson", "Cyan", "Ebony", "Emerald", "Fawn", "Fuchsia", "Gold",
+    "Heliotrope", "Indigo", "Ivory", "Jade", "Lavender", "Lilac",
+    "Magenta", "Mahogany", "Maroon", "Mauve", "Mint", "Moss", "Ochre",
+    "Olive", "Onyx", "Orchid", "Pearl", "Periwinkle", "Pewter", "Plum",
+    "Rose", "Ruby", "Russet", "Rust", "Saffron", "Sage", "Salmon",
+    "Sapphire", "Scarlet", "Sepia", "Sienna", "Silver", "Slate",
+    "Tangerine", "Taupe", "Teal", "Terracotta", "Turquoise", "Ultramarine",
+    "Umber", "Vermilion", "Violet", "Viridian", "Wisteria",
+)
+
+#: A stem is `<writer>-<n>`, or bare `<n>` from libraries written
+#: before writers signed their files. The trailing number IS the
+#: version number either way.
+_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")
 
 #: The file kinds a version archives - the asset's whole payload.
 #: A missing .builder.json or .png is fine (older assets, no capture);
@@ -71,13 +97,16 @@ def read_ledger(preferences, mat_id: str) -> dict:
     refuse on an unreadable ledger rather than write blind over it."""
     path = _ledger_path(preferences, mat_id)
     if not os.path.exists(path):
-        return {"active": 0, "versions": []}
+        data = {"active": 0, "versions": []}
+        _adopt_strays(preferences, mat_id, data)
+        return data
     try:
         with open(path, encoding="utf-8-sig") as handle:
             data = json.load(handle)
         if not isinstance(data, dict) or \
                 not isinstance(data.get("versions"), list):
             raise ValueError("not a ledger")
+        _adopt_strays(preferences, mat_id, data)
         return data
     except (OSError, ValueError) as exc:
         debug.event("versions", "ledger unreadable - versions hidden "
@@ -85,10 +114,65 @@ def read_ledger(preferences, mat_id: str) -> dict:
         return {"active": 0, "versions": [], "unreadable": True}
 
 
+def _adopt_strays(preferences, mat_id: str, ledger: dict) -> None:
+    """Adopt version files the ledger does not know.
+
+    The ledger is one JSON file, so a sync between two machines is
+    last-write-wins: the row a losing machine wrote vanishes while its
+    ARCHIVE FILES arrive intact (writer-stemmed names cannot collide).
+    Reading the directory back into the ledger makes the files the
+    truth - the same rule the whole store is built on - so a version
+    can be lost to sync only if its files are, and losing the ledger
+    entirely now costs only names and dates, not the versions.
+    Best-effort persist; adopting again next read costs nothing."""
+    try:
+        names = os.listdir(versions_dir(preferences, mat_id))
+    except OSError:
+        return
+    rows = ledger.get("versions", [])
+    known = {_row_stem(row) for row in rows}
+    taken = {int(row.get("n", 0)) for row in rows}
+    adopted = 0
+    for filename in sorted(names):
+        if not filename.endswith(".mat"):
+            continue
+        stem = filename[:-len(".mat")]
+        if stem in known:
+            continue
+        match = _STEM_NUMBER.search(stem)
+        if not match:
+            continue          # not a version file - never guess
+        number = int(match.group(1))
+        writer = stem[:match.start()].rstrip("-")
+        if number in taken:
+            number = max(taken | {0}) + 1
+        taken.add(number)
+        known.add(stem)
+        rows.append({
+            "n": number,
+            "name": "Version %d" % number,
+            "author": writer,
+            "date": "",
+            "file": stem,
+        })
+        adopted += 1
+    if not adopted:
+        return
+    rows.sort(key=lambda row: int(row.get("n", 0)))
+    debug.event("versions", "stray archives adopted into the ledger",
+                mat_id=str(mat_id), adopted=adopted)
+    _write_ledger(preferences, mat_id, ledger)
+
+
 def _write_ledger(preferences, mat_id: str, ledger: dict) -> bool:
     path = _ledger_path(preferences, mat_id)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
+        # The snapshot tier every other store has - guarded on
+        # existence so the session's once-per-file slot is not spent
+        # on the ledger's own birth, when there is nothing to copy.
+        if os.path.exists(path):
+            hostos.snapshot_before_write(path)
         hostos.write_json_atomic(path, ledger, indent=1)
         return True
     except OSError as exc:
@@ -150,9 +234,52 @@ def _base_paths(preferences, mat_id: str) -> dict:
     }
 
 
-def _archive_paths(preferences, mat_id: str, number: int) -> dict:
+def writer_tag(preferences) -> str:
+    """The signature version FILES carry: the author preference, or a
+    colour-name placeholder minted ONCE and saved back to prefs when
+    the author is blank. Two machines can then never mint the same
+    filename even with untouched settings. Never the OS user, never
+    the machine name."""
+    try:
+        author = str(preferences.version_author or "").strip()
+    except AttributeError:
+        return ""
+    if not author:
+        author = random.choice(PLACEHOLDER_NAMES)
+        try:
+            preferences.version_author = author
+            preferences.save()
+        except (AttributeError, OSError):
+            # A prefs that cannot hold it signs nothing this call;
+            # the next call mints again.
+            return ""
+        debug.event("versions", "placeholder author minted",
+                    author=author)
+    return "".join(ch for ch in author if ch.isalnum())[:24]
+
+
+def _stem(tag: str, number: int) -> str:
+    return "%s-%d" % (tag, int(number)) if tag else "%d" % int(number)
+
+
+def _row_stem(row: dict) -> str:
+    """The stem a ledger row's files use - recorded at write time, or
+    the bare number for rows from before writers signed files."""
+    return str(row.get("file") or int(row.get("n", 0)))
+
+
+def _row_for(ledger: dict, number: int) -> dict | None:
+    for row in ledger.get("versions", []):
+        if int(row.get("n", 0)) == int(number):
+            return row
+    return None
+
+
+def _archive_paths(preferences, mat_id: str, stem) -> dict:
+    """The archive file set for one stem (`<writer>-<n>` or a bare
+    legacy `<n>` - accepted forever)."""
     folder = versions_dir(preferences, mat_id)
-    return {kind: os.path.join(folder, "%d%s" % (number, kind))
+    return {kind: os.path.join(folder, "%s%s" % (stem, kind))
             for kind, _required in _KINDS}
 
 
@@ -274,7 +401,13 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
     sources = source_paths or _base_paths(preferences, mat_id)
-    if not _copy_set(sources, _archive_paths(preferences, mat_id, number)):
+    # The stem carries the WRITER, so two machines minting the same
+    # number offline still write different files - and the row records
+    # the stem it wrote, so readers never re-derive it.
+    tag = writer_tag(preferences)
+    stem = _stem(tag, number)
+    if not _copy_set(sources,
+                     _archive_paths(preferences, mat_id, stem)):
         return 0
     author = ""
     try:
@@ -286,6 +419,7 @@ def create_version(preferences, mat_id: str, name: str = "",
         "name": name or ("Version %d" % number),
         "author": author,
         "date": time.strftime("%Y-%m-%d %H:%M"),
+        "file": stem,
     })
     ledger["active"] = number
     if not _write_ledger(preferences, mat_id, ledger):
@@ -303,14 +437,15 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
     ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
-    known = {int(v.get("n", 0)) for v in ledger["versions"]}
-    if int(number) not in known:
+    row = _row_for(ledger, number)
+    if row is None:
         debug.event("versions", "switch refused - no such version",
                     mat_id=str(mat_id), n=number)
         return False
     previous = ledger.get("active")
-    if not _copy_set(_archive_paths(preferences, mat_id, int(number)),
-                     _base_paths(preferences, mat_id)):
+    if not _copy_set(
+            _archive_paths(preferences, mat_id, _row_stem(row)),
+            _base_paths(preferences, mat_id)):
         return False
     ledger["active"] = int(number)
     if not _write_ledger(preferences, mat_id, ledger):
@@ -319,10 +454,13 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
         # disagreement _copy_set's two-phase design prevents one layer
         # down. The previous active's archive is still complete, so the
         # rollback is one more promote.
+        previous_row = (_row_for(ledger, previous)
+                        if previous is not None else None)
         rolled_back = (
-            previous is not None and int(previous) in known
+            previous_row is not None
             and _copy_set(
-                _archive_paths(preferences, mat_id, int(previous)),
+                _archive_paths(preferences, mat_id,
+                               _row_stem(previous_row)),
                 _base_paths(preferences, mat_id)))
         debug.event("versions",
                     "switch refused - ledger write failed",
@@ -352,12 +490,14 @@ def record_render(preferences, mat_id: str) -> bool:
         if ledger.get("unreadable") or not ledger.get("versions"):
             return False
         active = int(ledger.get("active", 0) or 0)
-        if active not in {int(v.get("n", 0)) for v in ledger["versions"]}:
+        active_row = _row_for(ledger, active)
+        if active_row is None:
             return False
         source = _base_paths(preferences, mat_id)[".png"]
         if not os.path.exists(source):
             return False
-        target = _archive_paths(preferences, mat_id, active)[".png"]
+        target = _archive_paths(preferences, mat_id,
+                                _row_stem(active_row))[".png"]
         if os.path.exists(target) and filecmp.cmp(source, target,
                                                   shallow=False):
             return True
