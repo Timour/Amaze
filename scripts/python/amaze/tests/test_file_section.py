@@ -1213,6 +1213,29 @@ class HoudiniPathTest(unittest.TestCase):
                          "the real library did not come back")
         self.assertTrue(dlg.line_workdir.isEnabled())
 
+    def test_default_puts_the_cache_path_back(self):
+        """Preferences > Library > Cache Path carries a Default beside
+        the browse button. It CLEARS the preference rather than
+        writing today's default as a literal path, so the cache keeps
+        following this machine's own convention.
+        """
+        from amaze.dialogs import prefs_dialog
+        from amaze.helpers import hostos as hostos_mod
+
+        p = test_support.fixture_prefs(self)
+        p.cache_dir = "/somewhere/else"
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        self.assertEqual("Default", dlg._default_cache.text())
+
+        dlg.reset_cache_path()
+
+        self.assertEqual("", p.cache_dir,
+                         "a literal path was written instead of the "
+                         "preference being cleared")
+        self.assertEqual(hostos_mod.cache_root(), dlg.line_cache.text(),
+                         "the field still shows the old path")
+
     def test_the_version_author_field_shows_a_real_name(self):
         """Preferences > Library shows the name this machine signs
         versions with. A fresh prefs gets its colour name minted

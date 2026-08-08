@@ -290,7 +290,16 @@ class PrefsDialog(QtWidgets.QDialog):
         browse_cache = QtWidgets.QPushButton("...")
         browse_cache.setFixedWidth(theme.ui_px(28))
         browse_cache.clicked.connect(self.change_cache_path)
-        form.addRow(self._label("Cache Path"), self._path_row(self.line_cache, browse_cache))
+        self._default_cache = QtWidgets.QPushButton("Default")
+        self._default_cache.clicked.connect(self.reset_cache_path)
+        self._default_cache.setToolTip(ui_helpers.tooltip_text(
+            "Put the preview cache back where this machine keeps it. "
+            "Nothing is deleted - previews at the old location stay "
+            "where they are, and remake themselves at the new one as "
+            "you browse."))
+        form.addRow(self._label("Cache Path"),
+                    self._path_row(self.line_cache, browse_cache,
+                                   self._default_cache))
         clear_cache_btn = QtWidgets.QPushButton("Delete Local Cache")
         clear_cache_btn.clicked.connect(self.clear_texture_cache)
         clear_cache_btn.setToolTip(ui_helpers.tooltip_text(
@@ -334,7 +343,8 @@ class PrefsDialog(QtWidgets.QDialog):
         # which is the one combination that could lose a library. Same
         # treatment the accent rows get under a theme.
         self._real_path_widgets = (self.line_workdir, browse_lib,
-                                   self.line_cache, browse_cache)
+                                   self.line_cache, browse_cache,
+                                   self._default_cache)
         self._sync_test_mode_rows()
         return page
 
@@ -737,13 +747,17 @@ class PrefsDialog(QtWidgets.QDialog):
         combo.currentIndexChanged.connect(_changed)
         return combo
 
-    def _path_row(self, line_edit, browse_btn) -> QtWidgets.QWidget:
+    def _path_row(self, line_edit, browse_btn, *extra) -> QtWidgets.QWidget:
+        """A path field, its browse button, and any button after it -
+        the cache row carries a Default beside the browse."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(theme.ui_px(4))
         h.addWidget(line_edit, 1)
         h.addWidget(browse_btn)
+        for widget in extra:
+            h.addWidget(widget)
         return row
 
     def _panel_call(self, method_name: str):
@@ -846,6 +860,24 @@ class PrefsDialog(QtWidgets.QDialog):
         self._prefs.save()
         hostos.set_cache_override(self._prefs.cache_dir)
         self.line_cache.setText(self._prefs.cache_dir)
+
+    def reset_cache_path(self) -> None:
+        """Put the cache back to this machine's own location.
+
+        An empty `cache_dir` IS the default - `hostos.cache_root()`
+        falls through to the per-OS convention when no override is
+        set - so this clears the preference rather than writing the
+        current default as a literal path, which would freeze it
+        against a future OS or a different machine.
+
+        Nothing is deleted. Previews at the old location stay there
+        and remake themselves at the new one on demand, which is what
+        Delete Local Cache is for if they are not wanted.
+        """
+        self._prefs.cache_dir = ""
+        self._prefs.save()
+        hostos.set_cache_override("")
+        self.line_cache.setText(hostos.cache_root())
 
     def change_test_path(self) -> None:
         """Pick the folder holding the test lib and cache.
