@@ -294,6 +294,16 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
 #: itself up whenever the kernel lets go, and the caller returned in
 #: half a second. Measured 2026-08-08: a suite of 134s ran 1211s with
 #: 71 such children, each stalling its frame the full thirty.
+#:
+#: WHAT THIS DOES NOT FIX, measured the same day with two stack
+#: samples: the cost MOVES to interpreter shutdown. `_Py_Finalize`
+#: runs PySide's cleanup, which walks every living QObject and
+#: destroys it - so anything still parked here pays the full
+#: ~QProcess wait then, after the suite has already printed its
+#: result. Two runs sat in `poll()` for eleven and twenty minutes
+#: with the tests long finished. The run is fast; the exit is not.
+#: The cure is upstream of both - not spawning a child that cannot
+#: succeed twice (the thumbnail-failure memory).
 _ABANDONED: list = []
 
 
