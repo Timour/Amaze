@@ -70,6 +70,62 @@ class _Case(unittest.TestCase):
             return json.load(handle)
 
 
+class TheLibraryFormatStampTest(_Case):
+    """An older build refuses a newer library before writing a byte.
+
+    The format stamp is a separate contract from the schema version:
+    the schema chain migrates DATA shapes this build knows; the format
+    stamp declares whether this build may WRITE the file at all. A
+    stamp ahead of `branding.LIBRARY_FORMAT` latches the session
+    read-only - rows load, every save refuses, one sentence says why.
+    Sabotage: remove the format guard in `_save_inner` and the
+    refusal tests go red while the stamp test stays green."""
+
+    def test_a_save_stamps_todays_format(self):
+        from amaze import branding
+        self._write(self._document())
+        db, loaded = self._load()
+        self.assertTrue(loaded)
+        db.set(self._document(count=4))
+        self.assertTrue(db.save())
+        self.assertEqual(branding.LIBRARY_FORMAT,
+                         self._on_disk().get("format"))
+
+    def test_a_format_ahead_library_reads_but_never_writes(self):
+        document = self._document()
+        document["format"] = 99
+        self._write(document)
+        with open(self.path, "rb") as handle:
+            frozen = handle.read()
+        db, data = self._load()
+        self.assertEqual(
+            3, len(data["assets"]),
+            "an ahead-format library must still READ - refusing to "
+            "open it helps nobody")
+        db.set(self._document(count=5))
+        self.assertFalse(db.save(),
+                         "a save into a newer format must refuse")
+        with open(self.path, "rb") as handle:
+            self.assertEqual(frozen, handle.read(),
+                             "the refusal wrote bytes anyway")
+
+    def test_a_newer_machines_write_arriving_mid_session_latches(self):
+        self._write(self._document())
+        db, _loaded = self._load()
+        db.set(self._document(count=4))
+        self.assertTrue(db.save(), "premise: this session can write")
+        foreign = self._document(count=6)
+        foreign["format"] = 99
+        self._write(foreign)
+        db.set(self._document(count=5))
+        self.assertFalse(
+            db.save(),
+            "the other machine upgraded mid-session - stamping our "
+            "old format over its file must refuse, not merge")
+        self.assertEqual(99, self._on_disk().get("format"),
+                         "the newer machine's stamp was overwritten")
+
+
 class BomPrefixedDatabaseLoadsTest(_Case):
     """A BOM in front of the document must not cost the library.
 
@@ -106,8 +162,14 @@ class BomPrefixedDatabaseLoadsTest(_Case):
 
     def test_a_bom_less_database_round_trips_byte_identical(self):
         """The accept path, and the reason utf-8-sig is free: it must not
-        change one byte of an ordinary file. Read, save, compare."""
-        self._write(self._document(3))
+        change one byte of an ordinary file. Read, save, compare.
+        The fixture carries today's format stamp - a stampless file's
+        first save legitimately gains one, which is the stamp test's
+        subject, not this one's."""
+        from amaze import branding
+        document = self._document(3)
+        document["format"] = branding.LIBRARY_FORMAT
+        self._write(document)
         with open(self.path, "rb") as handle:
             before = handle.read()
         db, _ = self._load()
