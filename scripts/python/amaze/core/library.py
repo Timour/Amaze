@@ -1455,6 +1455,22 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         # everywhere. A name that outlived its switch would sit in the
         # row claiming the wrong version is loaded.
         self._active_version_cache = {}
+        # ONE listdir seeds both caches for every asset with NO
+        # versions folder - the overwhelming case. First paint used to
+        # stat mat/versions/<id>/versions.json once per visible tile;
+        # negligible on a local SSD, real on a synced or network
+        # library. Assets WITH a folder stay lazy: their first ask
+        # still reads the ledger, which is the honest source.
+        try:
+            have = set(os.listdir(os.path.join(
+                self.preferences.dir, self.preferences.asset_dir,
+                "versions")))
+        except OSError:
+            have = set()
+        for asset in self._assets:
+            if str(asset.mat_id) not in have:
+                self._version_count_cache[str(asset.mat_id)] = 0
+                self._active_version_cache[str(asset.mat_id)] = ""
 
     def update_asset_content(self, row: int, node: hou.Node) -> str:
         """Overwrite an EXISTING library entry's node content from the
