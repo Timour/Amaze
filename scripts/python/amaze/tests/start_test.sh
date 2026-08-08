@@ -222,15 +222,21 @@ else
     run_modules="$MODULES"
 fi
 
+# run_suite.py, not `-m unittest`: same runner, same module names, but
+# it leaves via os._exit once the result is in hand. A helper wedged in
+# uninterruptible I/O used to make PySide's shutdown wait on it - three
+# runs printed OK and then sat for eleven, twenty and twenty-six
+# minutes. sys.path[0] is this directory either way, so the bare module
+# names resolve exactly as before.
 if [ "$isolated" = "1" ]; then
     for module in $run_modules; do
         echo "---------------------------"
         echo "Testing $module"
         echo "---------------------------"
-        hython -m unittest "$module" || status=$?
+        hython "$tests_dir/run_suite.py" "$module" || status=$?
     done
 else
-    hython -m unittest $run_modules || status=$?
+    hython "$tests_dir/run_suite.py" $run_modules || status=$?
 fi
 
 echo "---------------------------"
