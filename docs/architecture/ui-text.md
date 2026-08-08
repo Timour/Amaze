@@ -474,6 +474,11 @@ TOGGLE SWITCHES, not tick checkboxes.)*
     switch governing a SHARED thing travels with the thing. The
     save-over prompt's buttons: Save Version / Save New / Cancel, or
     Save New / Cancel when off)*
+  - Version Author  *(text field, added 2026-08-08 — the name version
+    FILES are signed with, `<name>-<n>.mat`, so two machines can never
+    write the same file. Placeholder text: "a colour name is picked
+    for you" — left blank, the store mints one colour name per machine
+    at the first version write; never the OS user or machine name)*
   - ---- divider ----
   - Cache Path  *(read-only field + `...` browse)*
   - Delete Local Cache

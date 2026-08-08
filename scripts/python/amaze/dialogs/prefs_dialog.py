@@ -164,6 +164,14 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addStretch()
         return page, form
 
+    def _save_version_author(self) -> None:
+        """The name version files are signed with. Saved as typed;
+        blank stays blank here - the store mints a colour placeholder
+        only when a version is actually written, so an untouched
+        field costs nothing."""
+        self._prefs.version_author = self.line_version_author.text()
+        self._prefs.save()
+
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the library's overwrite policy - to the LIBRARY.
 
@@ -253,6 +261,21 @@ class PrefsDialog(QtWidgets.QDialog):
         self._cbx_allow_overwrite.toggled.connect(self.set_allow_overwrite)
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
+
+        self.line_version_author = QtWidgets.QLineEdit(
+            self._prefs.version_author)
+        self.line_version_author.setPlaceholderText(
+            "a colour name is picked for you")
+        self.line_version_author.setToolTip(ui_helpers.tooltip_text(
+            "The name your versions are signed with, inside their "
+            "filenames - so two machines can never write the same "
+            "file. Left empty, a colour name is picked once for this "
+            "machine. Never taken from your computer's user or "
+            "machine name."))
+        self.line_version_author.editingFinished.connect(
+            self._save_version_author)
+        form.addRow(self._label("Version Author"),
+                    self.line_version_author)
 
         self._add_divider(form)
         self.line_cache = QtWidgets.QLineEdit(

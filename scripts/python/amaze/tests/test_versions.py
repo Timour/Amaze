@@ -151,12 +151,14 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         with open(base, "wb") as fh:
             fh.write(b"V2-RENDER-FRESH")
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
-        with open(os.path.join(folder, "2.png"), "rb") as fh:
+        rows = versions.list_versions(self.prefs, self.mat_id)
+        stems = {int(r["n"]): r["file"] for r in rows}
+        with open(os.path.join(folder, stems[2] + ".png"), "rb") as fh:
             self.assertEqual(
                 b"V2-RENDER-FRESH", fh.read(),
                 "the active slot did not take the fresh render - "
                 "switching versions can never change the picture")
-        with open(os.path.join(folder, "1.png"), "rb") as fh:
+        with open(os.path.join(folder, stems[1] + ".png"), "rb") as fh:
             self.assertEqual(
                 b"V1-RENDER", fh.read(),
                 "an INACTIVE slot was touched - a render while V2 is "
@@ -167,7 +169,8 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         with open(base, "wb") as fh:
             fh.write(b"SAME-PICTURE")
         versions.create_version(self.prefs, self.mat_id)
-        slot = os.path.join(folder, "1.png")
+        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
+        slot = os.path.join(folder, stem + ".png")
         before = os.stat(slot).st_mtime_ns
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
         self.assertEqual(
@@ -210,7 +213,8 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) == self.mat_id)
         model._add_thumb_paths(model.index(row, 0))
-        with open(os.path.join(folder, "1.png"), "rb") as fh:
+        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
+        with open(os.path.join(folder, stem + ".png"), "rb") as fh:
             self.assertEqual(
                 b"FRESH-PICTURE", fh.read(),
                 "_add_thumb_paths declared the PNG fresh and the "
@@ -227,8 +231,10 @@ class StoreTest(_Case):
         n = versions.create_version(self.prefs, self.mat_id)
         self.assertEqual(1, n)
         self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
+        stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
         archived = os.path.join(
-            versions.versions_dir(self.prefs, self.mat_id), "1.mat")
+            versions.versions_dir(self.prefs, self.mat_id),
+            stem + ".mat")
         with open(archived, "rb") as fh:
             self.assertEqual(self._base_bytes(), fh.read(),
                              "the archive is not a copy of the base")
@@ -293,10 +299,123 @@ class StoreTest(_Case):
         self.assertEqual("Chosen", versions.list_versions(
             self.prefs, self.mat_id)[0]["author"])
 
-    def test_no_author_means_empty_never_harvested(self):
+    def test_no_author_mints_a_colour_name_never_harvested(self):
+        """A blank author gets a placeholder from the COLOUR list,
+        minted once and saved to prefs - never the OS user, never the
+        machine name. The identity ban stays; the placeholder is what
+        makes two blank machines mint different filenames."""
+        import getpass
+        import platform
         versions.create_version(self.prefs, self.mat_id)
         author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
-        self.assertEqual("", author)
+        self.assertIn(author, versions.PLACEHOLDER_NAMES)
+        self.assertEqual(author, self.prefs.version_author,
+                         "the minted name must persist in prefs")
+        for harvested in (getpass.getuser(), platform.node(),
+                          os.environ.get("USER", "")):
+            if harvested:
+                self.assertNotEqual(harvested.lower(), author.lower())
+        self._rewrite_base(b"EDITED")
+        versions.create_version(self.prefs, self.mat_id)
+        second = versions.list_versions(self.prefs, self.mat_id)[1]["author"]
+        self.assertEqual(author, second,
+                         "the placeholder is minted ONCE, not per save")
+
+
+class VersionFilesCarryTheirWriterTest(_Case):
+    """Two machines can never mint the same file: the archive stem is
+    <writer>-<n>, the writer is the author pref (or its minted colour
+    placeholder), and the ledger row records the stem it wrote."""
+
+    def test_the_stem_carries_the_writer(self):
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        row = versions.list_versions(self.prefs, self.mat_id)[0]
+        self.assertEqual("Crimson-1", row.get("file"))
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        self.assertTrue(
+            os.path.exists(os.path.join(folder, "Crimson-1.mat")))
+
+    def test_two_writers_same_number_never_collide(self):
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        ledger_path = os.path.join(
+            versions.versions_dir(self.prefs, self.mat_id),
+            versions.LEDGER)
+        with open(ledger_path, encoding="utf-8") as fh:
+            frozen = fh.read()
+        self._rewrite_base(b"MACHINE B EDIT")
+        self.prefs.version_author = "Cobalt"
+        versions.create_version(self.prefs, self.mat_id)
+        # The other machine never saw B's ledger write - put A's back,
+        # exactly what a sync's last-write-wins does.
+        with open(ledger_path, "w", encoding="utf-8") as fh:
+            fh.write(frozen)
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        self.assertTrue(
+            os.path.exists(os.path.join(folder, "Crimson-1.mat")))
+        self.assertTrue(
+            os.path.exists(os.path.join(folder, "Cobalt-2.mat")),
+            "the second writer's file survived the ledger overwrite")
+
+    def test_a_stray_archive_is_adopted_on_read(self):
+        """The sync-survival half: a version file the ledger does not
+        know (the row lost to last-write-wins) comes back as a row on
+        the next read, writer parsed from its stem."""
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        with open(os.path.join(folder, "Cobalt-2.mat"), "wb") as fh:
+            fh.write(b"THE OTHER MACHINES VERSION")
+        rows = versions.list_versions(self.prefs, self.mat_id)
+        self.assertEqual(2, len(rows))
+        adopted = rows[-1]
+        self.assertEqual("Cobalt-2", adopted.get("file"))
+        self.assertEqual("Cobalt", adopted.get("author"))
+        self.assertTrue(
+            versions.switch_active(self.prefs, self.mat_id,
+                                   int(adopted["n"])),
+            "an adopted version must be switchable")
+        self.assertEqual(b"THE OTHER MACHINES VERSION",
+                         self._base_bytes())
+
+    def test_legacy_bare_numbers_still_switch(self):
+        """The shape every pre-signing library holds today: 1.mat,
+        2.mat, rows with no stem. Readers accept it forever."""
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        row = versions.list_versions(self.prefs, self.mat_id)[0]
+        legacy = os.path.join(folder, "1.mat")
+        os.rename(os.path.join(folder, "%s.mat" % row["file"]), legacy)
+        for kind in (".interface", ".builder.json", ".png"):
+            source = os.path.join(folder, "%s%s" % (row["file"], kind))
+            if os.path.exists(source):
+                os.rename(source,
+                          os.path.join(folder, "1%s" % kind))
+        ledger_path = os.path.join(folder, versions.LEDGER)
+        with open(ledger_path, encoding="utf-8") as fh:
+            ledger = json.load(fh)
+        for entry in ledger["versions"]:
+            entry.pop("file", None)
+        with open(ledger_path, "w", encoding="utf-8") as fh:
+            json.dump(ledger, fh)
+        self._rewrite_base(b"EDITED PAST VERSION ONE")
+        self.assertTrue(
+            versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertNotEqual(b"EDITED PAST VERSION ONE",
+                            self._base_bytes())
+
+    def test_the_ledger_has_a_snapshot_tier(self):
+        """versions.json was the one store without one."""
+        self.prefs.version_author = "Crimson"
+        versions.create_version(self.prefs, self.mat_id)
+        self._rewrite_base(b"EDITED")
+        versions.create_version(self.prefs, self.mat_id)
+        folder = versions.versions_dir(self.prefs, self.mat_id)
+        traces = [name for name in os.listdir(folder)
+                  if name.startswith(versions.LEDGER + ".bak")]
+        self.assertTrue(traces, "no snapshot beside versions.json")
 
 
 class TheWholeLoopThroughTheModelTest(unittest.TestCase):
