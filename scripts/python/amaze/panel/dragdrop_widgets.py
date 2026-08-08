@@ -174,7 +174,14 @@ class GridGestureMixin:
                 # what the rows actually add up to.
                 content_h=self.contentsRect().height(),
                 expected_h=rows * grid.height() if grid.height() else 0,
-                uniform=self.uniformItemSizes(),
+                # GUARDED like gridSize above, and for the same reason:
+                # a table has neither. This one was not, and the whole
+                # block sits inside `except Exception: pass` - so on a
+                # table view the AttributeError was swallowed and the
+                # entire scroll diagnostic produced nothing, silently,
+                # for the view mode it was most likely to be needed in.
+                uniform=(self.uniformItemSizes()
+                         if hasattr(self, "uniformItemSizes") else None),
             )
         except Exception:
             pass
