@@ -2026,12 +2026,41 @@ class NodeHandler:
         merely reused is left alone - it belongs to another material."""
         created = getattr(self, "_created_cop_net", None)
         self._created_cop_net = None
-        if created is None:
+        if created is not None:
+            try:
+                created.destroy()
+            except hou.Error as exc:
+                debug.event("import", "could not undo the COP companion",
+                            error=str(exc))
+        self._drop_created_cop_root()
+
+    def _drop_created_cop_root(self) -> None:
+        """Take the COP root back out when this import made it and
+        nothing is left in it.
+
+        The companion rollback removed the network and left the root
+        standing, so a refused import told the user nothing could be
+        rebuilt and still put an empty container in their scene - the
+        same complaint the network rollback was written for, one level
+        up. Only a root THIS call created, and only while childless: a
+        network another material restored keeps it, and so does one the
+        user put there.
+
+        NOT under `hou.undos.disabler()`, deliberately. This runs on a
+        failure branch, which makes it a rollback rather than staging,
+        and a rollback's create stays live so the user can undo the
+        result (practice.md > STAGING DESTROYS IN A FINALLY).
+        """
+        root = getattr(self, "_created_cop_root", None)
+        self._created_cop_root = None
+        if root is None:
             return
         try:
-            created.destroy()
+            if root.children():
+                return
+            root.destroy()
         except hou.Error as exc:
-            debug.event("import", "could not undo the COP companion",
+            debug.event("import", "could not undo the COP root",
                         error=str(exc))
 
     def restore_cop_companion(self, mat: material.Material):
@@ -2055,6 +2084,7 @@ class NodeHandler:
             debug.note("COP companion file missing for " + mat.name + " - skipped")
             return
         root = hou.node(self.COP_LIB_ROOT)
+        self._created_cop_root = None
         if root is None:
             root = hou.node("/obj").createNode("subnet")
             try:
@@ -2063,6 +2093,9 @@ class NodeHandler:
                 debug.note("could not create /obj/Amaze - COP restore skipped")
                 root.destroy()
                 return
+            # Remembered so a refusal below, or a failed import later,
+            # can take it back out when it ends up holding nothing.
+            self._created_cop_root = root
         if root.node(info["name"]) is not None:
             debug.event("import", "cop restored",
                         name=info["name"], reused=True)
@@ -2081,6 +2114,10 @@ class NodeHandler:
             debug.event("import", "cop companion load failed",
                         material=mat.name, error=str(exc))
             copnet.destroy()
+            # This arm returns None, so the caller's rollback never
+            # runs and never sees the root - the one exit that has to
+            # take it back out itself.
+            self._drop_created_cop_root()
             return
         helpers.auto_place(copnet)
         debug.event("import", "cop restored",
