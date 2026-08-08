@@ -832,10 +832,20 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        for index in indexes:
-            source = st.proxy.mapToSource(index)
-            if source.isValid():
+        sources = [st.proxy.mapToSource(i) for i in indexes]
+        sources = [s for s in sources if s.isValid()]
+        if not sources:
+            return
+        batch = getattr(st.model, "render_thumbnails", None)
+        if batch is None:
+            # Code repaints from content and has no batch to share.
+            for source in sources:
                 st.model.render_thumbnail(source)
+            return
+        # ONE Karma scaffold for the whole selection - the stage
+        # composition is identical per material and was being paid per
+        # row (core/library.py > render_thumbnails).
+        batch(sources)
 
     def comment_subject(self, index):
         st = self.stack()

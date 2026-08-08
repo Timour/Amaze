@@ -40,7 +40,43 @@ class ThumbNailRenderer:
         # re-run the install migration, and - as it did - silently
         # redirect a test fixture's library back at the real one.
 
-    def create_thumbnail(self) -> None:
+    @staticmethod
+    @contextlib.contextmanager
+    def karma_batch(preferences):
+        """One Karma scaffold for a whole batch, or None.
+
+        The scaffold is a full USD stage composition - the expensive
+        part of a Karma thumbnail, and identical for every material.
+        `build_karma_scaffold` and `render_karma_into` were written to
+        be reused across a batch and had no caller doing it: every
+        render built its own and destroyed it, so re-rendering N
+        materials paid the stage load N times.
+
+        Yields the scaffold to pass into `create_thumbnail`, or None
+        when there is no Scene Viewer to take OCIO display/view from -
+        in which case every render falls back to building its own and
+        the batch simply costs what it always did.
+
+        Destroyed off the undo stack, both ends, for the reason
+        `create_thumb_mtlx` gives: a bare destroy is the half that
+        resurrects the whole scaffold on one Ctrl+Z.
+        """
+        renderer = ThumbNailRenderer(preferences)
+        scaffold = renderer.build_karma_scaffold()
+        try:
+            yield scaffold
+        finally:
+            if scaffold is not None:
+                with hou.undos.disabler():
+                    scaffold["net"].destroy()
+
+    def create_thumbnail(self, scaffold=None) -> None:
+        """Render this material's thumbnail.
+
+        `scaffold` is a Karma scaffold from `karma_batch` when this
+        render is one of a batch; None builds and destroys its own,
+        which is what a single render does.
+        """
         node_handler = nodes.NodeHandler(self._preferences)
         if self._mat:
             # target="mat", NOT "auto". With "auto" the destination is
@@ -74,7 +110,15 @@ class ThumbNailRenderer:
                 "Rendering", "Performing Tasks", open_interrupt_dialog=True
             ):
                 if material.is_karma_renderer(self._mat.renderer):
-                    self.create_thumb_mtlx(node_handler.builder_node, self._mat.mat_id)
+                    if scaffold is not None:
+                        # The batch's scaffold: rendered into, never
+                        # destroyed here - karma_batch owns both ends.
+                        self.render_karma_into(
+                            scaffold, node_handler.builder_node,
+                            self._mat.mat_id)
+                    else:
+                        self.create_thumb_mtlx(
+                            node_handler.builder_node, self._mat.mat_id)
                 elif self._mat.renderer == "Mantra":
                     self.create_thumb_mantra(node_handler.builder_node, self._mat.mat_id)
                 elif self._mat.renderer == "Redshift":

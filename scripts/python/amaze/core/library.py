@@ -2325,9 +2325,28 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         :param index: Description
         :type index: QtCore.QModelIndex
         """
-        renderer = thumbs.ThumbNailRenderer(self.preferences, self._assets[index.row()])
-        renderer.create_thumbnail()
-        self._add_thumb_paths(index)
+        self.render_thumbnails([index])
+
+    def render_thumbnails(self, indexes) -> None:
+        """Re-render every index, building ONE Karma scaffold for the
+        batch.
+
+        The scaffold is a full USD stage composition and is identical
+        for every material, so a per-material build paid the stage
+        load once per row - `build_karma_scaffold` and
+        `render_karma_into` were written to be shared across a batch
+        and had no caller doing it. A single render is just a batch of
+        one and takes the same path.
+        """
+        rows = [i for i in indexes if i.isValid()]
+        if not rows:
+            return
+        with thumbs.ThumbNailRenderer.karma_batch(self.preferences) as scaffold:
+            for index in rows:
+                renderer = thumbs.ThumbNailRenderer(
+                    self.preferences, self._assets[index.row()])
+                renderer.create_thumbnail(scaffold)
+                self._add_thumb_paths(index)
 
     def import_asset_to_scene(
         self,
