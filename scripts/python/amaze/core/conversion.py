@@ -234,7 +234,37 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
             return (False, "cancelled")
 
         if state["timed_out"]:
-            return False, "timed out"
+            # WHICH TIMEOUT IS THIS? Two very different failures reach
+            # here and the record could not tell them apart:
+            #
+            #   still Running  - the child really is slow or stuck, and
+            #                    the timeout is doing its job.
+            #   NotRunning     - the child already EXITED and its
+            #                    `finished` never reached this loop, so
+            #                    a call that was over in a second cost
+            #                    the full thirty.
+            #
+            # Measured 2026-08-08: 18 files logged as timed out, and
+            # the same files convert in ~1s from a shell, on the main
+            # thread, on a worker thread, at 8-way concurrency, and
+            # with the main thread saturated for 40s - none of which
+            # reproduces it. Recording the state at the moment of the
+            # timeout is what makes the next real occurrence say which
+            # of the two it was, instead of being inferred again.
+            already_gone = (process.state()
+                            == QtCore.QProcess.ProcessState.NotRunning)
+            # The FULL path, not a basename: a source scan here bans
+            # every name-reading call, because routing by file name is
+            # how the decode and fit contracts got confused once. A log
+            # line is not worth an exception to that.
+            debug.event("convert", "a converter hit its timeout",
+                        program=program,
+                        timeout_ms=timeout_ms,
+                        child_already_exited=already_gone,
+                        exit_code=(process.exitCode() if already_gone
+                                   else None))
+            return False, ("timed out (the child had already exited)"
+                           if already_gone else "timed out")
 
         if process.error() == QtCore.QProcess.ProcessError.FailedToStart:
             return False, "failed to start"
