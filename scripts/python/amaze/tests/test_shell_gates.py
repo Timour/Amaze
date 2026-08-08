@@ -857,10 +857,16 @@ class TargetedRunTest(unittest.TestCase):
     def test_a_real_module_name_reaches_the_runner(self):
         """Structural, not executed: running it for real would cost a
         full Houdini start. What must hold is that the named modules -
-        not MODULES - are what `hython -m unittest` is handed."""
+        not MODULES - are what the runner is handed.
+
+        The runner is run_suite.py rather than `-m unittest` since
+        2026-08-08: same unittest, same module names, but it leaves
+        via os._exit so a wedged helper cannot hold the process in
+        PySide's shutdown. What this test pins is unchanged - the
+        RESOLVED list is what gets run."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
-        self.assertIn("hython -m unittest $run_modules", source,
+        self.assertIn("run_suite.py\" $run_modules", source,
                       "the runner no longer runs the resolved module "
                       "list, so a named module cannot reach it")
         self.assertIn('run_modules="$wanted_modules"', source,
