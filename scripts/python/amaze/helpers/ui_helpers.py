@@ -226,6 +226,14 @@ def tooltip_text(text: str, max_px: int = 800) -> str:
         cap, body)
 
 
+#: Rasterised SVGs, keyed by (path, size, tint). Module-level with the
+#: reload-survival idiom the connector registry uses: panel.py reloads
+#: this module on every panel open, so a plain literal would throw the
+#: cache away exactly when a reopen is paying for it. Bounded in
+#: practice by the icon set - a few dozen entries of a few KB.
+_SVG_CACHE: dict = globals().get("_SVG_CACHE", {})
+
+
 def render_svg_pixmap(path, size, color_replacements=None):
     """Renders an SVG file onto a transparent square QPixmap, optionally
     swapping literal color strings in the SVG text first (the icon assets
@@ -234,7 +242,23 @@ def render_svg_pixmap(path, size, color_replacements=None):
     SVG engine - that engine's internal rasterization produced an opaque
     black background even onto a transparent destination. Returns a
     blank transparent pixmap if the file is missing, so callers
-    degrade gracefully."""
+    degrade gracefully.
+
+    CACHED per (path, size, tint). Every call was a fresh file read, an
+    XML parse and a raster: ~30-35 of them at panel construction alone,
+    including exact duplicates (a chip's on and off states are
+    byte-identical when no tint differs) and chrome that is hidden at
+    the time. The key carries the tint map because that is what makes
+    two renders of one file genuinely different pictures.
+
+    A COPY is handed out, never the cached pixmap itself: QPixmap is
+    mutable and a caller that paints into what it receives would
+    otherwise poison every later ask for the same icon."""
+    tint = tuple(sorted((color_replacements or {}).items()))
+    key = (path, int(size), tint)
+    cached = _SVG_CACHE.get(key)
+    if cached is not None:
+        return cached.copy()
     pixmap = QtGui.QPixmap(size, size)
     pixmap.fill(QtCore.Qt.GlobalColor.transparent)
     if path and os.path.exists(path):
@@ -245,7 +269,8 @@ def render_svg_pixmap(path, size, color_replacements=None):
         painter = QtGui.QPainter(pixmap)
         QtSvg.QSvgRenderer(QtCore.QByteArray(text.encode("utf-8"))).render(painter)
         painter.end()
-    return pixmap
+    _SVG_CACHE[key] = pixmap
+    return pixmap.copy()
 
 
 class DesignedDialog(QtWidgets.QDialog):

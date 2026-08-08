@@ -92,6 +92,7 @@ class GridGestureMixin:
     # (Linux HiDPI) displays.
     WHEEL_NOTCH_PX = theme.ui_px(60)
 
+    @debug.guarded("DragDropListView.wheelEvent")
     def wheelEvent(self, event: QtGui.QWheelEvent) -> None:
         """One scroll engine, both axes.
 

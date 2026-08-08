@@ -49,6 +49,54 @@ class _ExplodingModel(QtCore.QAbstractListModel):
         return "row %d" % index.row()
 
 
+class TheSvgCacheTest(unittest.TestCase):
+    """Every icon used to be a fresh file read, XML parse and raster -
+    ~30-35 at construction alone, including exact duplicates and
+    chrome that is hidden at the time. Here because a QPixmap needs a
+    QApplication, which this module has and the database tests do
+    not."""
+
+    def setUp(self):
+        from amaze.helpers import ui_helpers
+        self.ui_helpers = ui_helpers
+        self.icon = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "ui", "icon_view.svg")
+        if not os.path.isfile(self.icon):
+            self.skipTest("no shipped icon to render")
+        ui_helpers._SVG_CACHE.clear()
+        self.addCleanup(ui_helpers._SVG_CACHE.clear)
+
+    def test_the_second_ask_does_not_render_again(self):
+        self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        self.assertEqual(1, len(self.ui_helpers._SVG_CACHE))
+        self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        self.assertEqual(1, len(self.ui_helpers._SVG_CACHE),
+                         "the second ask rendered the file again")
+
+    def test_a_different_tint_is_a_different_picture(self):
+        self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        self.ui_helpers.render_svg_pixmap(
+            self.icon, 32, {"#5d7abd": "#ff0000"})
+        self.assertEqual(
+            2, len(self.ui_helpers._SVG_CACHE),
+            "a tinted render reused the untinted picture")
+
+    def test_a_size_is_part_of_the_key(self):
+        self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        self.ui_helpers.render_svg_pixmap(self.icon, 64)
+        self.assertEqual(2, len(self.ui_helpers._SVG_CACHE))
+
+    def test_the_caller_never_receives_the_cached_pixmap_itself(self):
+        """QPixmap is mutable: hand out the cached object and a caller
+        that paints into it poisons every later ask for that icon."""
+        first = self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        second = self.ui_helpers.render_svg_pixmap(self.icon, 32)
+        self.assertIsNot(first, second)
+        cached = self.ui_helpers._SVG_CACHE[(self.icon, 32, ())]
+        self.assertIsNot(first, cached)
+
+
 class PainterBalanceTest(unittest.TestCase):
     """A delegate must hand the painter back exactly as it got it.
 

@@ -269,7 +269,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 path = _def_path(curated["file"])
                 if not path or not os.path.exists(path):
                     continue
-                with open(path, "r", encoding="utf-8") as f:
+                with open(path, "r", encoding="utf-8-sig") as f:
                     combos = json.load(f).get("combinations", [])
                 for combo in combos:
                     colors = combo.get("colors") or []
@@ -384,10 +384,13 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             # the marker present and the file gone, Repair reported
             # "nothing saved here yet" at the exact moment this loader
             # had latched and refused every colour write.
-            evidence = database.absent_but_known(
+            # EVERY trace, so the instruction below works in one pass -
+            # this named the first of however many the library carries.
+            traces = database.absent_traces(
                 os.path.dirname(path), os.path.basename(path))
-            if not evidence:
+            if not traces:
                 return          # genuinely a new library: seed normally
+            evidence = database._and_list(traces)
             self._load_failed = True
             # ONE debug.note, not a print AND a note. note() is the sink
             # the project is moving these lines to: it prints for a user
@@ -424,7 +427,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 file=path, evidence=evidence)
             return
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, "r", encoding="utf-8-sig") as f:
                 data = json.load(f)
             # VALID JSON IS NOT A VALID DATABASE. Every sibling checks
             # this; this loader did not, so a file of the wrong shape
@@ -628,8 +631,20 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._remember_disk_state(path)
             return True
         except OSError as exc:
+            # LOUD, like the other three databases. This was a bare
+            # debug.event, which returns immediately with Debug Mode
+            # off - so a colour edit that never reached disk was
+            # neither shown nor recorded, and the user kept working
+            # against a library that was not saving. The sibling
+            # refusals in this same file already reach for alert
+            # (unreadable, changed-on-disk); this one did not.
             debug.event("library", "gradients save failed",
                         file=path, error=str(exc))
+            debug.alert(
+                "Your colours could not be saved (%s).\n\n"
+                "What you changed is still on screen but it is NOT "
+                "on disk. The next save will try again." % exc,
+                key="gradients-write-failed")
             return False
 
     def _all_entries(self) -> list:

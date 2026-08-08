@@ -34,6 +34,24 @@ from amaze.core import grid_columns
 PREVIEW_DIR_NAME = "matx_previews"
 
 
+def split_search(text) -> tuple:
+    """(needle, tags_only) from what was typed in the filter box.
+
+    A LEADING ":" MEANS TAGS ONLY - the same prefix the Materials box
+    teaches, so the tooltip's promise holds in the online world too. A
+    bare ":" is not a search: it is the moment after typing the colon
+    and before typing the tag, and narrowing to nothing there would
+    empty the grid mid-keystroke.
+
+    Module-level and pure, so the rule can be tested without a Qt
+    model - the parsing is the part with the edge cases.
+    """
+    needle = (text or "").strip().lower()
+    if needle.startswith(":"):
+        return needle[1:].strip(), True
+    return needle, False
+
+
 def preview_cache() -> str:
     """Where downloaded previews are cached right now (local only -
     never the cloud-synced library folder)."""
@@ -254,9 +272,12 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
 
     def _apply_filter(self):
         rows = [r for r in self._all if self._in_source(r)]
-        needle = self._search.lower()
+        needle, tags_only = split_search(self._search)
         if needle:
             def hit(r):
+                if tags_only:
+                    return any(needle in str(tag).lower()
+                               for tag in (r.tags or []))
                 hay = "%s %s %s" % (
                     r.title, r.category, " ".join(r.tags or [])
                 )
