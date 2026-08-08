@@ -44,6 +44,43 @@ if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     echo "sync-install: wired the pre-push gate (core.hooksPath)"
 fi
 
+# THE INSTALL ONLY EVER RECEIVES COMMITTED CODE
+# (practice.md ▸ The install only ever receives committed code).
+#
+# It is the one tree a live Houdini reads and it sits beside real
+# libraries, so code in no commit cannot be reverted, reproduced on the
+# other machine, or told apart from code that was reviewed. Committed
+# rather than pushed is deliberate: run-tests.sh syncs before it tests,
+# so a push requirement would make an uncommitted change untestable.
+#
+# BY CONTENT, NOT BY STAT. `git status` listed 208 modified files here
+# with an empty diff after a line-ending rewrite, because it compares
+# stat first (practice.md ▸ GIT CAN REPORT 208 MODIFIED FILES WITH AN
+# EMPTY DIFF). A status-based check would refuse a clean repo. `diff
+# HEAD` compares content and covers staged work, which is still
+# uncommitted. Untracked files are asked for separately and do count:
+# the mirror copies scripts/ wholesale, and --exclude-standard keeps
+# __pycache__ out.
+if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    dirty="$(
+        git -C "$repo" diff --name-only HEAD 2>/dev/null
+        git -C "$repo" ls-files --others --exclude-standard 2>/dev/null
+    )"
+    if [ -n "$dirty" ]; then
+        echo "sync-install: REFUSING - the repo has uncommitted changes," >&2
+        echo "  so the install would hold code that exists in no commit." >&2
+        echo >&2
+        printf '%s\n' "$dirty" | sed 's/^/    /' >&2
+        echo >&2
+        echo "  Commit them, then run this again. A push is NOT needed." >&2
+        exit 1
+    fi
+else
+    # A zip download has no .git. Say so rather than claiming a check
+    # that did not happen - silence here would read as a clean tree.
+    echo "sync-install: no git repo here, so the commit check was skipped" >&2
+fi
+
 amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"

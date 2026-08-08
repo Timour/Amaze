@@ -424,6 +424,52 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(len(self.suite_calls()), 1,
                          "the suite ran %r times" % self.suite_calls())
 
+    def test_an_uncommitted_file_is_refused_before_anything_ships(self):
+        """The install only ever receives COMMITTED code
+        (practice.md ▸ The install only ever receives committed code).
+        It is the one tree a live Houdini reads, and it sits beside
+        real libraries - code in no commit cannot be reverted,
+        reproduced on the other machine, or told apart from code that
+        was reviewed.
+
+        Untracked counts: the mirror copies scripts/ wholesale, so an
+        uncommitted file ships exactly like a committed one."""
+        _write(os.path.join(self.repo, "scripts", "python", "amaze",
+                            "stray.py"), "# this was never committed\n")
+
+        result = self.sync("green")
+
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("uncommitted changes", self.both(result))
+        self.assertIn("stray.py", self.both(result),
+                      "the refusal did not name what was uncommitted")
+        self.assertFalse(
+            os.path.exists(os.path.join(self.install, "OPmenu.xml")),
+            "it refused and shipped anyway - the check must run BEFORE "
+            "the mirror, not after it")
+        self.assertEqual([], self.suite_calls(),
+                         "the suite ran despite the refusal")
+
+    def test_a_committed_change_ships_without_being_pushed(self):
+        """The other half of the same rule, and why it says COMMITTED
+        rather than PUSHED: run-tests.sh syncs before it tests, so
+        requiring a push would make it impossible to run the suite
+        against a change before pushing it. Nothing is ever pushed to
+        this fixture's upstream, so this commit is genuinely
+        unpushed."""
+        _write(os.path.join(self.repo, "scripts", "python", "amaze",
+                            "widget.py"), "# edited\n")
+        self._git("add", "-A")
+        self._git("commit", "-q", "-m", "an unpushed commit")
+        self.assertNotEqual(
+            self.base_sha, self._git("rev-parse", "HEAD"),
+            "the fixture did not actually commit anything")
+
+        result = self.sync("green")
+
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn(SYNC_GREEN_MSG, result.stdout)
+
     def test_green_run_reaches_its_end(self):
         """The DONE marker must be the LAST line. Bug form 3 lives at
         the `grep -c` lines: on a green suite the count is zero, grep
