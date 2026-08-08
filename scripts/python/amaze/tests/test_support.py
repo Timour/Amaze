@@ -435,6 +435,30 @@ def fixture_panel(testcase):
     return panel
 
 
+def reopened_panel(testcase):
+    """A SECOND panel over the SAME already-redirected fixture scope -
+    the reopen-after-something-happened shape (a repaired index, a
+    relaunch scenario). Valid only after fixture_panel has run in this
+    testcase's scope: it performs no redirection of its own, so
+    without the fixture's config_root patch it would build against
+    the machine's real settings. It asserts that precondition instead
+    of trusting it. Unlike fixture_panel it makes NO demands on what
+    loaded - the whole point is testing panels that open broken."""
+    from amaze.helpers import hostos as hostos_mod
+    from amaze.panel import panel as panel_mod
+
+    probe = hostos_mod.config_root()
+    if not os.path.realpath(probe).startswith(
+            os.path.realpath(tempfile.gettempdir())):
+        raise RuntimeError(
+            "reopened_panel without fixture_panel's redirection - "
+            "config_root is %s, outside the temp directory" % probe)
+    panel = panel_mod.MatLibPanel()
+    testcase.addCleanup(dispose_panel, panel)
+    testcase.addCleanup(stop_panel_workers, panel)
+    return panel
+
+
 def fixture_unconfigured_panel(testcase):
     """A REAL MatLibPanel with NO library configured - the first-run
     state, which is a real machine state the panel must survive

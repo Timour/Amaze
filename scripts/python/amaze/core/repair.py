@@ -358,6 +358,62 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/") -> dict:
     }
 
 
+def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
+    """Put an unreadable library.json right, without a human choosing
+    the route: the newest snapshot that parses wins, else the index is
+    rebuilt from the per-asset recovery stamps. Returns (ok, how) -
+    `how` is a short sentence for the log and the dialog's follow-up.
+
+    Built for the PANEL's own load-failure dialog, which runs before
+    any model exists - the one moment repair.run's a-panel-is-open
+    refusal does not apply, because there is nothing in memory yet to
+    overwrite what this puts back. put_back saves the broken current
+    file beside itself first, so even this route destroys nothing.
+    """
+    target = os.path.join(directory, "library.json")
+    for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
+        source = "%s.%s" % (target, tier)
+        try:
+            with open(source, "rb") as handle:
+                snapshot_bytes = handle.read()
+        except OSError:
+            continue
+        if not hostos.parses_as_json(snapshot_bytes):
+            continue
+        try:
+            outcome = restore_lib.put_back(target, tier)
+        except restore_lib.RestoreRefused as refusal:
+            debug.event("repair", "snapshot refused for the rebuild",
+                        tier=tier, error=str(refusal))
+            continue
+        debug.event("repair", "index restored from a snapshot",
+                    tier=tier, undo=outcome.get("undo", ""))
+        return True, "the newest saved copy was put back"
+    document = rebuild_from_stamps(directory, asset_dir)
+    if not document["assets"]:
+        return False, ("no saved copy parses and no recovery stamps "
+                       "were found")
+    try:
+        hostos.snapshot_before_write(target)
+        hostos.write_json_atomic(target, {
+            "version": 1,
+            "assets": document["assets"],
+            "categories": document["categories"],
+            "tags": document["tags"],
+        }, indent=4)
+    except OSError as exc:
+        debug.event("repair", "stamp rebuild could not be written",
+                    error=str(exc))
+        return False, "the rebuilt list could not be written"
+    how = "the list was rebuilt from what each asset remembers"
+    if document["damaged"]:
+        how += " (%d could not be read)" % len(document["damaged"])
+    debug.event("repair", "index rebuilt from stamps",
+                assets=len(document["assets"]),
+                damaged=len(document["damaged"]))
+    return True, how
+
+
 def unaccounted_total(findings: dict) -> int:
     return sum(len(names) for names in findings["unaccounted"].values())
 
