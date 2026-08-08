@@ -1818,7 +1818,9 @@ class OnlineContext(Section):
     #: and Comments column that no online record can ever fill.
     delegate_attr = "matx_delegate"
     #: The online search is a third thing again - it asks the SOURCE,
-    #: not a proxy - so it says so itself.
+    #: not a proxy. It still shows no placeholder: empty is the 08-01
+    #: decree for every tab, and the box's tooltip is what teaches the
+    #: leading-colon tag search here as everywhere else.
     search_hint = ""
 
     def activate(self) -> None:
