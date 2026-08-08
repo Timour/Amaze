@@ -21,7 +21,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
 from amaze import branding
-from amaze.core import debug, library_policy, texture_library
+from amaze.core import debug, library_policy, texture_library, versions
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -262,16 +262,18 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
+        # The box shows the REAL name, always: a blank pref gets its
+        # colour name minted right here, not promised for later.
+        if not self._prefs.version_author:
+            versions.writer_tag(self._prefs)
         self.line_version_author = QtWidgets.QLineEdit(
             self._prefs.version_author)
-        self.line_version_author.setPlaceholderText(
-            "a colour name is picked for you")
         self.line_version_author.setToolTip(ui_helpers.tooltip_text(
-            "The name your versions are signed with, inside their "
-            "filenames - so two machines can never write the same "
-            "file. Left empty, a colour name is picked once for this "
-            "machine. Never taken from your computer's user or "
-            "machine name."))
+            "The name this machine signs its versions with - picked "
+            "for you, yours to change. It goes into the version "
+            "filenames so two machines can never write the same "
+            "file. Never taken from your computer's user or machine "
+            "name."))
         self.line_version_author.editingFinished.connect(
             self._save_version_author)
         form.addRow(self._label("Version Author"),
