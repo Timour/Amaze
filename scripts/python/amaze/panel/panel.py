@@ -15,7 +15,7 @@ import amaze
 from amaze.core import grid_columns
 from amaze.panel import (dragdrop_widgets, grid, notes_panel, sections,
                          sidebar)
-from amaze.core import debug, library_policy
+from amaze.core import debug, library_policy, repair
 from amaze.core import versions
 from amaze.core import notes
 from amaze.core import hip_library
@@ -118,6 +118,7 @@ _reload(tile_icons)
 _reload(grid_columns)
 _reload(library)
 _reload(category)
+_reload(repair)
 _reload(folders)
 _reload(prefs)
 # Before ui_helpers - its class bodies read theme colors.
@@ -258,9 +259,30 @@ class MatLibPanel(QtWidgets.QWidget):
         # touched - everything downstream resolves hostos.cache_root().
         hostos.set_cache_override(self.prefs.cache_dir)
         if loaded:
-            self.load()
             self.init_ui()
-            self.setup()
+            # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK. The
+            # narrow catch below absorbs exactly one situation - the
+            # primary index is on disk and will not parse - and offers
+            # the repair the shelf tool would run. Everything else
+            # still raises where it can be seen.
+            try:
+                self.load()
+                self.setup()
+            except (ValueError, OSError) as broken:
+                index_path = os.path.join(self.prefs.dir or "",
+                                          "library.json")
+                try:
+                    with open(index_path, "rb") as index_file:
+                        index_bytes = index_file.read()
+                except OSError:
+                    index_bytes = b""
+                if (self.prefs.dir and os.path.isfile(index_path)
+                        and not hostos.parses_as_json(index_bytes)):
+                    if not self._offer_index_repair(broken):
+                        self._open_libraryless()
+                        return
+                else:
+                    raise
             # Construction-complete tripwire: written seconds after the
             # session header through the same engine. A log whose header
             # exists but whose 'panel ready' is missing means logging
@@ -278,23 +300,80 @@ class MatLibPanel(QtWidgets.QWidget):
                 **debug.probe())
         else:
             self.init_ui()
-            self.material_model = None
-            self.category_model = None
-            # Same "no library configured" defaults for the Cop stack -
-            # save_cop_from_node (reachable from a node right-click at
-            # any time) guards on cop_model, and without this the guard
-            # itself would raise AttributeError.
-            self.cop_model = None
-            self.cop_category_model = None
-            self.code_model = None
-            self.code_category_model = None
-            # The File models too: show_prefs hands file_files_model to
-            # the Preferences dialog (which takes None), and Preferences
-            # is the ONLY way to configure a library - leaving the
-            # attribute unset made the gear an AttributeError on
-            # exactly the machine that needs it most, the first run.
-            self.file_files_model = None
-            self.file_folders_model = None
+            self._open_libraryless()
+
+    def _open_libraryless(self) -> None:
+        """The no-library shape of the panel: every model attribute
+        present and None, so the gear (the only way to configure a
+        library) and every guard keep working."""
+        self.material_model = None
+        self.category_model = None
+        # The same unconfigured defaults for the Cop stack -
+        # save_cop_from_node (reachable from a node right-click at
+        # any time) guards on cop_model, and without this the guard
+        # itself would raise AttributeError.
+        self.cop_model = None
+        self.cop_category_model = None
+        self.code_model = None
+        self.code_category_model = None
+        # The File models too: show_prefs hands file_files_model to
+        # the Preferences dialog (which takes None), and Preferences
+        # is the ONLY way to configure a library - leaving the
+        # attribute unset made the gear an AttributeError on
+        # exactly the machine that needs it most, the first run.
+        self.file_files_model = None
+        self.file_folders_model = None
+
+    def _offer_index_repair(self, broken) -> bool:
+        """The dialog an unreadable library.json earns: Repair (the
+        newest saved copy, else the per-asset recovery stamps) or
+        open without a library. True = repaired AND reopened. No
+        success dialog - the recovered grid is the announcement."""
+        debug.exception("library index unreadable at open", broken)
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return False
+        choice = ui.displayMessage(
+            "Your library's list could not be read.\n\n"
+            "Repair puts back the newest saved copy - or, if none "
+            "reads, rebuilds the list from what each asset itself "
+            "remembers. Categories keep their names; their order and "
+            "colours may not survive a rebuild. The broken file is "
+            "kept beside itself either way.\n\n"
+            "Open Without Library leaves the folder untouched.",
+            buttons=("Repair", "Open Without Library"),
+            severity=hou.severityType.Warning,
+            default_choice=0, close_choice=1,
+            title="Amaze")
+        if choice != 0:
+            debug.event("session", "index repair declined")
+            return False
+        ok, how = repair.repair_index(self.prefs.dir,
+                                      self.prefs.asset_dir)
+        if not ok:
+            ui.displayMessage(
+                "Repair could not fix the list: %s.\n\n"
+                "Amaze opens without a library. The Repair tool on "
+                "the Amaze shelf can tell you more." % how,
+                severity=hou.severityType.Warning,
+                title="Amaze")
+            return False
+        try:
+            self.load()
+            self.setup()
+        except (ValueError, OSError) as still:
+            debug.exception("index still unreadable after repair",
+                            still)
+            ui.displayMessage(
+                "The repaired list still could not be read.\n\n"
+                "Amaze opens without a library. The Repair tool on "
+                "the Amaze shelf can tell you more.",
+                severity=hou.severityType.Warning,
+                title="Amaze")
+            return False
+        ui.setStatusMessage("Amaze: %s." % how)
+        debug.event("session", "index repaired at open", how=how)
+        return True
 
     # Menu title -> icon asset, each with a baked-in corner triangle as
     # the "opens a menu" hint. The two were swapped from the original

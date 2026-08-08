@@ -109,6 +109,73 @@ def _stdout_of(func):
     return result, buffer.getvalue()
 
 
+class TheUnreadableIndexDialogTest(unittest.TestCase):
+    """An unparseable library.json at panel open gets ONE dialog -
+    Repair or open without a library - never a traceback, and never
+    the old promise that reopening would help. Sabotage: remove the
+    narrow catch in the constructor and every case here dies on the
+    raw ValueError instead."""
+
+    def _panel_over_broken_index(self, answer):
+        """Build a panel, break its index, build a second panel with
+        hou.ui scripted to `answer` the dialog. Returns (panel,
+        calls, index_path)."""
+        first = test_support.fixture_panel(self)
+        index_path = os.path.join(first.prefs.dir, "library.json")
+        premise = os.path.join(
+            first.prefs.dir, first.prefs.asset_dir)
+        stamps = [name for name in os.listdir(premise)
+                  if name.endswith(".stamp.json")]
+        self.assertTrue(stamps, "premise: the first build must have "
+                        "backfilled recovery stamps")
+        with open(index_path, "wb") as handle:
+            handle.write(b"{ this is not json")
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        calls = []
+
+        def scripted(message, **_kw):
+            calls.append(str(message))
+            return answer
+
+        ui = MagicMock()
+        ui.displayMessage.side_effect = scripted
+        with patch.object(hou, "ui", create=True, new=ui):
+            second = test_support.reopened_panel(self)
+        return second, calls, index_path
+
+    def test_repair_reopens_the_recovered_library(self):
+        panel, calls, index_path = self._panel_over_broken_index(0)
+        self.assertTrue(calls, "no dialog was offered")
+        self.assertIn("could not be read", calls[0])
+        self.assertIsNotNone(panel.material_model,
+                             "repair accepted but no library opened")
+        self.assertTrue(
+            panel.material_model.assets,
+            "the recovered library holds no assets")
+        with open(index_path, encoding="utf-8-sig") as handle:
+            json.load(handle)
+
+    def test_declining_opens_without_a_library_and_touches_nothing(self):
+        panel, calls, index_path = self._panel_over_broken_index(1)
+        self.assertTrue(calls, "no dialog was offered")
+        self.assertIsNone(panel.material_model,
+                          "declined, yet a library opened")
+        with open(index_path, "rb") as handle:
+            self.assertEqual(b"{ this is not json", handle.read(),
+                             "declining still modified the file")
+
+    def test_headless_opens_without_a_library_and_never_raises(self):
+        first = test_support.fixture_panel(self)
+        index_path = os.path.join(first.prefs.dir, "library.json")
+        with open(index_path, "wb") as handle:
+            handle.write(b"{ this is not json")
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        second = test_support.reopened_panel(self)
+        self.assertIsNone(second.material_model)
+
+
 class SecondaryDatabaseAbsenceTest(unittest.TestCase):
     """database.py load(): absent + evidence must not seed and save."""
 

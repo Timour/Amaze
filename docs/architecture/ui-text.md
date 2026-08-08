@@ -769,6 +769,15 @@ give every gesture; the File menu's Import always did.
   per session when a database carries a format number ahead of this
   build's. Reads work, every save refuses. The updater's offer joins
   this dialog when the in-Houdini updater ships.
+- `Your library's list could not be read.` — the unreadable-index
+  dialog (2026-08-08), replacing the raw traceback at panel open.
+  Buttons: `Repair` (default) / `Open Without Library` (also the
+  close action). Body promises: newest saved copy first, else a
+  rebuild from what each asset itself remembers; category names
+  survive, order and colours may not; the broken file is kept
+  beside itself. Failure follow-ups both end on `The Repair tool on
+  the Amaze shelf can tell you more.` No success dialog — the
+  recovered grid is the announcement, plus one status-bar line.
 
 *(The rest not listed yet — the `hou.ui.displayMessage` /
 `displayConfirmation` strings. Ask for the messages and every one
