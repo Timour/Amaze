@@ -686,9 +686,15 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
     rollback: the user may undo the result, so its create stays on the
     stack and this scan deliberately does not match it."""
 
+    #: render/thumbs.py joined 2026-08-08 and was the blind spot that
+    #: mattered: it holds more scene scaffolding than any file here,
+    #: and an unguarded `net.createNode("copnet")` sat against a
+    #: guarded destroy in the same function's finally - the exact pair
+    #: this scan exists to catch, in the one staging-heavy file it did
+    #: not read.
     FILES = ("core/matx_import.py", "core/gallery_import.py",
              "render/nodes.py", "render/material_converter.py",
-             "core/library.py")
+             "core/library.py", "render/thumbs.py")
 
     def test_every_staging_pair_is_off_the_stack(self):
         offenders = []
@@ -712,6 +718,14 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
             for func in ast.walk(tree):
                 if not isinstance(func, ast.FunctionDef):
                     continue
+                # EVERY create for a name, not the last one. One
+                # variable assigned in two branches - `copnet` is
+                # created as a `copnet` on H22 and a `cop2net` before
+                # it - kept a single lineno, and ast.walk is
+                # breadth-first, so which branch survived was not even
+                # source order. A guarded sibling then vouched for an
+                # unguarded create: measured 2026-08-08, sabotaging the
+                # legacy branch left this scan green.
                 creates = {}
                 for node in ast.walk(func):
                     if (isinstance(node, ast.Assign)
@@ -720,7 +734,8 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
                             and isinstance(node.value, ast.Call)
                             and getattr(node.value.func, "attr", "")
                             == "createNode"):
-                        creates[node.targets[0].id] = node.lineno
+                        creates.setdefault(
+                            node.targets[0].id, []).append(node.lineno)
                 if not creates:
                     continue
                 finally_ranges = [
@@ -740,8 +755,9 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
                         continue          # a failure rollback - a RESULT
                     name = node.func.value.id
                     pairs += 1
-                    for half, lineno in (("created", creates[name]),
-                                         ("destroyed", node.lineno)):
+                    halves = [("created", line) for line in creates[name]]
+                    halves.append(("destroyed", node.lineno))
+                    for half, lineno in halves:
                         if not guarded(lineno):
                             offenders.append(
                                 "%s:%d (%s, %s)"

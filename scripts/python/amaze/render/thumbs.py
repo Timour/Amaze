@@ -385,8 +385,16 @@ class ThumbNailRenderer:
                 return False
 
             if hostver.has_new_cops():
-                # Copnet Setup
-                copnet = net.createNode("copnet")
+                # Copnet Setup. OFF THE STACK, like the destroy in the
+                # finally below and like the materiallibrary above:
+                # created unconditionally and destroyed unconditionally
+                # makes this staging, and staging with one half guarded
+                # is the pair that comes back on a Ctrl+Z carrying its
+                # children (practice.md > STAGING DESTROYS IN A
+                # FINALLY). It was the last unguarded create in the
+                # per-material path.
+                with hou.undos.disabler():
+                    copnet = net.createNode("copnet")
                 copnet.setName("exr_to_png", unique_name=True)
 
                 cop_file = copnet.createNode("file")
@@ -410,8 +418,10 @@ class ThumbNailRenderer:
                     cop_out.parm("execute").pressButton()
 
             else:  # Use Old COPs with restricted OCIO Capabilities
-                # Copnet Setup
-                copnet = net.createNode("cop2net")
+                # Copnet Setup - off the stack, same pair rule as the
+                # H22 branch above.
+                with hou.undos.disabler():
+                    copnet = net.createNode("cop2net")
                 copnet.setName("exr_to_png", unique_name=True)
 
                 cop_file = copnet.createNode("file")
