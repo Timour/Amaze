@@ -229,6 +229,64 @@ class TheGraveyardBoundsTheStall(unittest.TestCase):
         self.assertTrue(child.deleted)
 
 
+class ACompletionReapedElsewhere(unittest.TestCase):
+    """Qt hears a child exit through SIGCHLD on this platform, so a
+    handler that auto-reaps steals the notification: the child is gone
+    in milliseconds and the wait burns its WHOLE timeout, then parks a
+    phantom in the graveyard. Probed live 2026-08-08 - a 0.01s echo
+    under a sabotaged handler reported timed out at 3.69s, graveyard
+    0 -> 1, and the same call answered in 0.08s once restored. That is
+    the production signature: 18 real files logged as timed out that
+    convert in ~1s every way they are run by hand.
+
+    The cure under test: a liveness watchdog inside the wait. A pid
+    that no longer exists while the state still reads Running can only
+    mean the exit was reaped elsewhere - a zombie keeps its pid until
+    reaped, so the check cannot fire early on a healthy child.
+    """
+
+    @unittest.skipUnless(os.name == "posix", "SIGCHLD is POSIX-only")
+    def test_a_reaped_child_returns_within_the_watchdog(self):
+        import ctypes
+        import signal as pysignal
+        import time
+
+        libc = ctypes.CDLL(None)
+        libc.signal.restype = ctypes.c_void_p
+        libc.signal.argtypes = [ctypes.c_int, ctypes.c_void_p]
+        # PRIME FIRST. Qt installs its child-exit handler on the first
+        # QProcess start, so a sabotage placed before that is simply
+        # overwritten and the test passes for the wrong reason -
+        # measured: unprimed, this ran green in 0.038s against the
+        # unfixed code. The production state is an already-installed
+        # handler, which is what priming reproduces.
+        ok, err = conversion._run_process("/bin/echo", ["prime"],
+                                          timeout_ms=15000)
+        self.assertTrue(ok, "the priming call itself failed: %r" % err)
+        parked_before = len(conversion._ABANDONED)
+        previous = libc.signal(int(pysignal.SIGCHLD), ctypes.c_void_p(1))
+        try:
+            start = time.monotonic()
+            ok, err = conversion._run_process(
+                "/bin/echo", ["reaped"], timeout_ms=6000)
+            elapsed = time.monotonic() - start
+        finally:
+            libc.signal(int(pysignal.SIGCHLD),
+                        ctypes.c_void_p(previous or 0))
+
+        self.assertTrue(
+            ok, "a child that ran to completion was reported as a "
+                "failure: %r" % err)
+        self.assertLess(
+            elapsed, 3.0,
+            "the wait burned its timeout on a child that had already "
+            "exited (%.2fs)" % elapsed)
+        self.assertEqual(
+            parked_before, len(conversion._ABANDONED),
+            "a phantom was parked in the graveyard - its destruction "
+            "will stall shutdown")
+
+
 class ConversionCase(unittest.TestCase):
     """Shared fixtures. Every path here is inside a temp dir."""
 

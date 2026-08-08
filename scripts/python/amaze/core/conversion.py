@@ -158,6 +158,21 @@ def _scratch_png():
                 debug.event("convert", "temp png cleanup skipped", path=path)
 
 
+class _Child(QtCore.QProcess):
+    """A QProcess that can be told its exit was reaped elsewhere.
+
+    setProcessState is protected in C++; PySide exposes it to a
+    subclass, and it is the one door out of the phantom state:
+    ~QProcess kills and waits only while the state reads Running, so a
+    phantom marked NotRunning destroys in a millisecond instead of
+    holding the destructor for its full internal wait (probed live
+    2026-08-08 - 0.001s, child untouched).
+    """
+
+    def mark_reaped_elsewhere(self):
+        self.setProcessState(QtCore.QProcess.ProcessState.NotRunning)
+
+
 def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
                  cancelled=None) -> tuple:
     """Runs a subprocess to completion and returns (success, stderr_text).
@@ -184,7 +199,7 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
     finished signal, is the standard Qt idiom for synchronously waiting
     on an async operation from a thread with no persistent event loop of
     its own, and pumps Qt's event system properly regardless."""
-    process = QtCore.QProcess()
+    process = _Child()
     loop = QtCore.QEventLoop()
     state = {"timed_out": False, "cancelled": False}
 
@@ -204,34 +219,67 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
 
     timer.timeout.connect(_on_timeout)
 
-    # A cancelled loader must stop HERE, at the subprocess, not survive
-    # to be terminate()d further up: terminating a thread parked in this
-    # event loop orphans the iconvert/sips child and skips the cleanup
-    # of the temp file. Polled, because `cancelled` is set from another
-    # thread and this loop is what is blocking.
-    watchdog = None
-    if cancelled is not None:
-        watchdog = QtCore.QTimer()
-        watchdog.setInterval(100)
-
-        def _check_cancel():
-            if cancelled():
-                state["cancelled"] = True
+    # THE WATCHDOG, always on, two checks per 100ms tick.
+    #
+    # Cancel: a cancelled loader must stop HERE, at the subprocess, not
+    # survive to be terminate()d further up - terminating a thread
+    # parked in this event loop orphans the child and skips the temp
+    # cleanup. Polled, because `cancelled` is set from another thread
+    # and this loop is what is blocking.
+    #
+    # Liveness: Qt hears a child exit through its SIGCHLD handler on
+    # this platform, and anything that replaces or ignores that handler
+    # leaves the child GONE while the state still reads Running - the
+    # wait then burns its whole timeout on a process that finished in
+    # milliseconds, which is the measured shape of 18 real files logged
+    # as timed out that convert in ~1s by every direct route. Probed
+    # live: with the handler sabotaged, a 0.01s echo reported timed out
+    # at 3.69s and parked a phantom; restored, 0.08s. A zombie keeps
+    # its pid until reaped, so a healthy child can never trip this -
+    # the pid vanishing while the state reads Running happens only when
+    # the exit was reaped past Qt.
+    def _check():
+        if cancelled is not None and cancelled():
+            state["cancelled"] = True
+            _quit()
+            return
+        pid = int(process.processId() or 0)
+        if pid and process.state() != QtCore.QProcess.ProcessState.NotRunning:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                state["vanished"] = True
                 _quit()
+            except OSError:
+                pass          # alive but not ours to signal
 
-        watchdog.timeout.connect(_check_cancel)
+    watchdog = QtCore.QTimer()
+    watchdog.setInterval(100)
+    watchdog.timeout.connect(_check)
 
     process.start(program, args)
     timer.start(timeout_ms)
-    if watchdog is not None:
-        watchdog.start()
+    watchdog.start()
     try:
         loop.exec()
         timer.stop()
-        if watchdog is not None:
-            watchdog.stop()
+        watchdog.stop()
         if state.get("cancelled"):
             return (False, "cancelled")
+
+        if state.get("vanished"):
+            # The exit code went with the stolen reap, so the child's
+            # WORK is the verdict: every adapter's output feeds
+            # _read_qt and the uniform guard - the engine verifying
+            # its own output, which also covers the sub-millisecond
+            # race where Qt reaped normally and this fired between the
+            # reap and the state update. Marked NotRunning so the
+            # finally below sees a finished child and nothing is
+            # parked, and the destructor is free.
+            debug.event("convert", "a child's exit was reaped elsewhere",
+                        program=program, waited_ms=timeout_ms)
+            process.mark_reaped_elsewhere()
+            return (True, "")
 
         if state["timed_out"]:
             # WHICH TIMEOUT IS THIS? Two very different failures reach
