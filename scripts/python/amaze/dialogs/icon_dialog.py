@@ -282,11 +282,20 @@ class IconDialog(QtWidgets.QDialog):
                                  position // COLUMNS, position % COLUMNS)
 
     def _apply_filter(self, text: str) -> None:
+        """Show the icons whose name contains `text`.
+
+        The visibility test asks a SET, not the list: it runs once per
+        button against a result that is the same length, so on the 287
+        shipped icons an unfiltered keystroke was 287 x 287 list scans.
+        The list itself stays - `_relayout` places them in order, and
+        order is what a grid is.
+        """
         text = (text or "").strip().lower()
         matching = [n for n in tile_icons.icon_names() if text in n] \
             if text else list(tile_icons.icon_names())
+        visible = set(matching)
         for name, button in self._buttons_by_name.items():
-            button.setVisible(name in matching)
+            button.setVisible(name in visible)
         self._relayout(matching)
 
     def _choose(self, name: str) -> None:
