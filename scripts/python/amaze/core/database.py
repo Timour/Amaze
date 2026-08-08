@@ -201,8 +201,14 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
             continue
         found = set()
         for asset in data.get("assets") or []:
-            if isinstance(asset, dict):
-                found.add(str(asset.get("id", asset.get("mat_id", ""))))
+            if not isinstance(asset, dict):
+                # Not a row, and not ours to guess at. Counting it as
+                # "no id" would put "" in the id set, which matches
+                # nothing and is harmless but misleading in the log.
+                debug.event("database", "skipped a non-record entry",
+                            file=full, entry=repr(asset)[:80])
+                continue
+            found.add(str(asset.get("id", asset.get("mat_id", ""))))
         by_file[filename] = found
     return (by_file, unreadable)
 

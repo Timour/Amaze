@@ -2129,7 +2129,18 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         unreadable = []
         absent_traces = {}
         lists_nothing = []
-        for filename in ("library.json", "cops.json", "code.json"):
+        # THE READ ITSELF IS NOT THIS METHOD'S. "Which ids does each
+        # database claim" is one question with one home
+        # (database.ids_claimed_by), and repair.rebuild_from_stamps
+        # asks it too. A second copy here is exactly how the two
+        # readers of these SHARED folders would come to disagree about
+        # who owns a file - the disagreement this guard exists to
+        # prevent. What stays here is the POLICY, which is this
+        # method's alone: what an absent, unreadable or empty database
+        # MEANS for a sweep that deletes.
+        claimed, unreadable_files = database.ids_claimed_by(
+            self.preferences.dir)
+        for filename in database.ID_CLAIMING_DATABASES:
             full = os.path.join(self.preferences.dir, filename)
             # THIS model's own database is checked too, and that is the
             # point of not skipping straight past it. Its ids are the
@@ -2144,7 +2155,28 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # model is built on is the LAST one whose absence may be
             # waved through.
             own = filename == self.DB_FILENAME
-            if not os.path.exists(full):
+            if filename in unreadable_files:
+                # A sibling that EXISTS and will not parse is the
+                # dangerous case: skipping it makes every file it owns
+                # look orphaned, and pass 3 DELETES orphans. Measured
+                # with cops.json truncated mid-write, which is a
+                # cloud-sync client's normal state - two live COP
+                # assets swept, then their own rows removed by the next
+                # cleanup for missing files, a cascade across two
+                # passes.
+                #
+                # NO PARSE POSITION ON SCREEN: this entry is
+                # interpolated into the message the user acts on, and
+                # the parser's line-and-column reason belongs in the
+                # log, where the shared read already puts it.
+                # section_name here too, so one dialog does not carry
+                # two names for one thing.
+                unreadable.append((database.section_name(filename),
+                                   "Amaze cannot read it"))
+                debug.event("cleanup", "sibling database unreadable",
+                            file=full, own=own)
+                continue
+            if filename not in claimed:
                 # Absent is fine - it owns nothing - ONLY when nothing
                 # beside it says it was ever here. Otherwise this is a
                 # database that has not arrived yet, and the files it
@@ -2170,110 +2202,25 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 debug.event("cleanup", "database absent but known",
                             file=full, evidence=evidence, own=own)
                 continue
-            try:
-                # utf-8-sig, like every other reader of these files: a
-                # byte-order mark is an ordinary half-synced-editor
-                # artifact, database.load() reads one fine, and treating
-                # it as unreadable HERE would abort the sweep for a file
-                # that is perfectly good.
-                with open(full, encoding="utf-8-sig") as fh:
-                    data = json.load(fh)
-                # ONE shared classifier with the connector's merge, so
-                # the two readers of these files cannot disagree about
-                # what counts as readable. Without it a sibling of `[]`
-                # or `{"assets": null}` raised AttributeError/TypeError
-                # straight out of cleanup_db - past the handler below,
-                # which only covers OSError/ValueError - so Clean Library
-                # died mid-sweep with no summary and no dialog.
-                malformed = database.wrong_shape(data)
-                if malformed:
-                    raise ValueError(malformed)
-                # THE MODEL'S OWN DATABASE IS READ TOO. It used to be
-                # skipped here on the grounds that its ids are the
-                # in-memory ones above - but in-memory means "as at our
-                # load", and another session can have added rows since.
-                # A panel left open while the other machine saves cannot
-                # see those rows, so pass 3 reads the files they own as
-                # unowned and deletes them, while the correct, newer
-                # index rows sit on disk untouched. Union, never replace:
-                # the in-memory ids still matter on their own, because a
-                # row this session added has not necessarily reached disk
-                # yet.
-                file_ids = set()
-                for asset in data.get("assets", []):
-                    if not isinstance(asset, dict):
-                        # Not a row, and not ours to guess at. Counting it
-                        # as "no id" would put "" in the id set, which
-                        # matches nothing and is harmless but misleading
-                        # in the log.
-                        debug.event("cleanup", "skipped a non-record entry",
-                                    file=full, entry=repr(asset)[:80])
-                        continue
-                    file_ids.add(str(asset.get("id", asset.get("mat_id", ""))))
-                # A DATABASE THAT LISTS NOTHING IS NOT AUTHORITATIVELY
-                # EMPTY. This was the last way the orphan guard could be
-                # defeated by design: absent-but-known aborts the sweep,
-                # unparseable aborts the sweep, and a file that parses
-                # perfectly into zero rows was taken at its word - "it
-                # owns nothing, so nothing here can belong to it". That is
-                # the exact shape a wrongly-seeded database has (measured
-                # 2026-07-29: cops.json 5,537 bytes / 8 records -> 96
-                # bytes / 0), and it is indistinguishable from a section
-                # the user has genuinely never used.
-                #
-                # THE DANGEROUS CONDITION WAS NEVER "IT LISTS NOTHING".
-                # It is "it lists nothing AND its files are still sitting
-                # there", so that is what the decision is made on - the
-                # files, below, once every sibling has been read. Noted
-                # here rather than acted on here: this loop cannot answer
-                # it yet, because the union it would have to compare
-                # against is still being built.
-                #
-                # ONLY THE LISTS THAT COULD OWN ONE OF THE FILES BEING
-                # WEIGHED. The test below compares against the ASSET
-                # folder, and code.json cannot own anything in it -
-                # code_library: "Storage is INLINE text ... No <id>.mat
-                # /.png files at all", a Code asset owns at most an icon
-                # in the image folder. An empty Code list held the asset
-                # sweep back over a leftover .mat it could not possibly
-                # have owned, which doubled how often the accept path
-                # pays for this guard and bought no safety at all.
-                #
-                # The image folder is deliberately still not weighed
-                # (step 10 is narrow on purpose), and the exposure that
-                # leaves is the smallest of the three: a tile icon is
-                # RENDERED from a spec kept in the list (tile_icons
-                # .render_for, and rerender_tile_icons redoes the lot),
-                # so an icon deleted while its list read empty comes back
-                # with the list. A .mat does not come back at all.
-                if not file_ids and filename in database.ASSET_FILE_OWNERS:
-                    lists_nothing.append(filename)
-                ids |= file_ids
-            except (OSError, ValueError) as exc:
-                # A sibling that EXISTS and will not parse is the
-                # dangerous case: skipping it made every file it owns
-                # look orphaned, and pass 3 DELETES orphans. Measured
-                # with cops.json truncated mid-write (a cloud-sync
-                # client's normal state): Clean Library deleted
-                # COPASSET1.mat and COPASSET1.interface and reported
-                # "2 orphaned file(s) on disk were removed" - and the
-                # COP library's own entries survived, so those assets
-                # would next be removed by ITS cleanup for missing
-                # files. Cascading loss across two passes.
-                #
-                # NO PARSE POSITION ON SCREEN. This entry is interpolated
-                # into the message the user acts on, and "%s (%s)" put
-                # "Expecting property name enclosed in double quotes:
-                # line 1 column 3 (char 2)" in a dialog. The reason goes
-                # to debug.event on the next line, where it belongs; the
-                # sentence is complete without it. section_name here too -
-                # the other three branches say "Nodes (cops.json)", and
-                # one dialog with two names for one thing reads as two
-                # things.
-                unreadable.append((database.section_name(filename),
-                                   "Amaze cannot read it"))
-                debug.event("cleanup", "sibling database unreadable",
-                            file=full, error=str(exc), own=own)
+            # THE MODEL'S OWN DATABASE COUNTS TOO, and its disk rows
+            # are not the in-memory ones: another session can have
+            # added rows since this one loaded. Union, never replace -
+            # a row this session added has not necessarily reached disk
+            # yet (practice.md ▸ DB-HARDENING step 10).
+            file_ids = claimed[filename]
+            # A DATABASE THAT LISTS NOTHING IS NOT AUTHORITATIVELY
+            # EMPTY - it is the shape a wrongly-seeded one has, and it
+            # is indistinguishable from a section nobody has used. The
+            # dangerous condition is emptiness AND files still sitting
+            # in the asset folder, so the decision is made below, once
+            # every sibling has been read; this loop only notes it.
+            # ASSET_FILE_OWNERS narrows it to the lists that could own
+            # one of those files - Code and Colors keep their content
+            # inline and cannot (database.py says so once, for both
+            # readers of that fact).
+            if not file_ids and filename in database.ASSET_FILE_OWNERS:
+                lists_nothing.append(filename)
+            ids |= file_ids
 
         # THE STRICT TEST, and it is narrow on purpose (DB-HARDENING step
         # 10, decided 2026-07-30). A section that lists nothing holds the
