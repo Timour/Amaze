@@ -162,11 +162,17 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row][0])
 
-    def test_the_choice_lands_in_the_store(self):
-        """One icons.json for every section: the pick is keyed by the
-        asset's own id in the shared store, beside the File section's
-        path keys - and stays on the record for one release so the
-        other machine's older build still reads it."""
+    def test_the_choice_lands_in_the_store_and_ONLY_there(self):
+        """One icons.json for every section, and it is the ONE home.
+
+        The record field used to be written too, so an older build
+        elsewhere kept reading the pick. That shim retired 2026-08-09
+        with the library-format bump: a build that does not know this
+        format now latches the whole library read-only and says to
+        update, which is the GENERAL answer to an old build meeting a
+        new library - so a second copy of one field bought nothing and
+        was free to drift.
+        """
         self.model.set_tile_icon(self.row, {"name": "layers",
                                             "bg": "#4af2a1"})
         stored = tile_icons.override_for(
@@ -174,9 +180,10 @@ class ChoiceTest(unittest.TestCase):
         self.assertEqual("layers", stored.get("name"),
                          "the pick never reached the shared store")
         self.assertEqual(
-            "layers", self.model.assets[self.row].icon.get("name"),
-            "the record field stopped being written - the other "
-            "machine's build still reads it")
+            {}, self.model.assets[self.row].icon,
+            "the record field is still being written - two copies of "
+            "one value, and the format latch already covers the case "
+            "the second copy was for")
         self.model.set_tile_icon(self.row, {})
         self.assertEqual({}, tile_icons.override_for(
             self.prefs, self.model.tile_key(self.row)),
@@ -193,8 +200,18 @@ class ChoiceTest(unittest.TestCase):
 
     def test_a_record_icon_migrates_into_the_store_at_load(self):
         """Icons picked before the store move live on the records. The
-        model adopts them on load - counted, never deleting the record
-        - so the store becomes complete without a hand-run step."""
+        model adopts them on load - counted, and the record field is
+        left EXACTLY as loaded.
+
+        Adoption outliving the dual-write is deliberate and is not the
+        same thing: a library written by any older build still carries
+        picks on its records, and reading them is how those picks
+        survive. What retired is WRITING the field back; reading it
+        once, to move it, has to stay for as long as such a library can
+        be opened. The field is not deleted either - a migration that
+        removes the only copy an older build can read would make the
+        move one-way for no gain.
+        """
         asset = self.model.assets[self.row]
         asset.icon = {"name": "layers", "bg": "#4af2a1"}
         self.model.save()
