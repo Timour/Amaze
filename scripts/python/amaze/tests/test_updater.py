@@ -213,6 +213,31 @@ class TheSwapTest(unittest.TestCase):
         updater.apply_update(self.staged, self.install)
         self.assertEqual("newer", self._which(self.install))
 
+    def test_a_failed_swap_puts_the_old_install_back(self):
+        """THE WINDOW between the two renames is the only moment there
+        is no install. A sabotage of the rollback stayed GREEN against
+        the missing-staged test, because that one is refused before any
+        rename happens - so nothing covered this until now."""
+        real = os.rename
+        calls = []
+
+        def failing(src, dst):
+            calls.append(src)
+            if len(calls) == 2:                  # the staged -> install move
+                raise OSError("the second move failed")
+            return real(src, dst)
+
+        os.rename = failing
+        self.addCleanup(setattr, os, "rename", real)
+        with self.assertRaises(OSError):
+            updater.apply_update(self.staged, self.install)
+        os.rename = real
+        self.assertTrue(
+            os.path.isdir(self.install),
+            "the install is GONE - the first move succeeded, the second "
+            "failed, and nothing put it back")
+        self.assertEqual("old", self._which(self.install))
+
     def test_a_missing_staged_update_leaves_the_install_alone(self):
         with self.assertRaises(OSError):
             updater.apply_update(os.path.join(self.root, "nothing"),
