@@ -86,7 +86,7 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.lib._user = [{"name": "mine", "type": "user", "points": []}]
         self.lib._save_user()
         on_disk = self._read()
-        names = [g["name"] for g in on_disk["gradients"]]
+        names = [g["name"] for g in on_disk["assets"]]
         self.assertEqual(
             ["theirs", "theirs2"], names,
             "the other session's gradients were overwritten - this is "
@@ -98,7 +98,7 @@ class GradientStaleWriteTest(unittest.TestCase):
         so nothing would have caught that."""
         self.lib._user = [{"name": "mine", "type": "user", "points": []}]
         self.lib._save_user()
-        names = [g["name"] for g in self._read()["gradients"]]
+        names = [g["name"] for g in self._read()["assets"]]
         self.assertEqual(["mine"], names,
                          "an ordinary save was refused")
 
@@ -109,7 +109,7 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.lib._save_user()
         self.lib._user = [{"name": "second", "type": "user", "points": []}]
         self.lib._save_user()
-        names = [g["name"] for g in self._read()["gradients"]]
+        names = [g["name"] for g in self._read()["assets"]]
         self.assertEqual(
             ["second"], names,
             "the second save was refused - the post-write baseline is "
@@ -356,7 +356,7 @@ class GradientNoteSweepTest(unittest.TestCase):
         from amaze.core import notes
         entry = next(e for e in lib._entries if e["name"] == "klee")
         self.assertNotIn("note", entry, "the field must be consumed")
-        key = notes.note_key("gradient", entry["uid"])
+        key = notes.note_key("gradient", entry["id"])
         texts = [item["text"]
                  for item in notes.note_for(self.prefs, key).get(
                      "items", [])
@@ -365,7 +365,7 @@ class GradientNoteSweepTest(unittest.TestCase):
                       "the words must survive on the Notes page")
         with open(self.path, encoding="utf-8") as fh:
             saved = json.load(fh)
-        by_name = {g["name"]: g for g in saved["gradients"]}
+        by_name = {g["name"]: g for g in saved["assets"]}
         self.assertNotIn("note", by_name["klee"],
                          "the consumed field may not come back on disk")
 
@@ -434,7 +434,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
                 if e["name"] in {"g%d" % i for i in range(12)}]
         self.assertEqual(12, len(mine), "the fixture entries are missing")
         for entry in mine:
-            key = notes.note_key("gradient", entry["uid"])
+            key = notes.note_key("gradient", entry["id"])
             texts = [item["text"] for item
                      in notes.note_for(self.prefs, key).get("items", [])
                      if item.get("t") == "text"]
@@ -453,7 +453,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         if lib._user_file() != self.path:
             self.skipTest("gradient library does not resolve this path")
         self.assertTrue(
-            all(str(e.get("uid") or "") for e in lib._entries),
+            all(str(e.get("id") or "") for e in lib._entries),
             "an entry came out of first open with no identity")
         self.assertLessEqual(
             seen.count("gradients.json"), 2,

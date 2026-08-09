@@ -641,7 +641,7 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
             lib._save_user()
         with open(path, encoding="utf-8") as handle:
             self.assertEqual(
-                ["mine"], [g["name"] for g in json.load(handle)["gradients"]],
+                ["mine"], [g["name"] for g in json.load(handle)["assets"]],
                 "the save was still refused after the repair")
 
 
@@ -1404,7 +1404,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             "the failed snapshot burned the once-per-session marker, so "
             "the file spent its whole session with no restore point")
         with open(first, encoding="utf-8") as handle:
-            self.assertEqual(40, len(json.load(handle)["gradients"]),
+            self.assertEqual(40, len(json.load(handle)["assets"]),
                              "the permanent copy is not the healthy file")
 
     def test_a_good_file_is_still_snapshotted(self):
@@ -1437,14 +1437,14 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         self.hostos.snapshot_before_write(self.path)
         self.hostos._session_snapshots.pop(self.path, None)
         with open(self.path + ".bak-2", encoding="utf-8") as handle:
-            self.assertEqual(3, len(json.load(handle)["gradients"]),
+            self.assertEqual(3, len(json.load(handle)["assets"]),
                              "the older state did not rotate down")
         with open(self.path + ".bak-1", encoding="utf-8") as handle:
-            self.assertEqual(4, len(json.load(handle)["gradients"]))
+            self.assertEqual(4, len(json.load(handle)["assets"]))
         self.hostos.snapshot_before_write(self.path)
         with open(self.path + ".bak-2", encoding="utf-8") as handle:
             self.assertEqual(
-                3, len(json.load(handle)["gradients"]),
+                3, len(json.load(handle)["assets"]),
                 "an identical rewrite consumed a rotation slot")
 
     def test_a_corrupt_file_does_not_rotate_a_good_tier_out(self):
@@ -1458,7 +1458,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         self.hostos.snapshot_before_write(self.path)
         with open(self.path + ".bak-1", encoding="utf-8") as handle:
             self.assertEqual(
-                40, len(json.load(handle)["gradients"]),
+                40, len(json.load(handle)["assets"]),
                 "garbage was rotated into the newest slot, pushing the "
                 "good states one step closer to falling off the end")
 
