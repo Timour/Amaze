@@ -355,6 +355,18 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
     def test_building_a_redshift_scene_restores_the_selection(self):
         if hou.nodeType(hou.ropNodeTypeCategory(), "Redshift_ROP") is None:
             self.skipTest("Redshift is not available in this session")
+        # THE SEAM, not a second skip. This test guarded only on
+        # Redshift while also needing a GUI, so it errored under H21
+        # (no `hou.ui`) and skipped under H22 (no Redshift) - it had
+        # never run anywhere. The display and view are the only things
+        # the viewer supplies; nothing else here needs one.
+        real = thumbnail_scene.ocio_from_viewer
+        thumbnail_scene.ocio_from_viewer = lambda: {
+            "display": "sRGB - Display",
+            "view": "ACES 1.0 - SDR Video",
+            "space": "ACEScg",
+        }
+        self.addCleanup(setattr, thumbnail_scene, "ocio_from_viewer", real)
         with hou.undos.disabler():
             keeper = hou.node("/obj").createNode("null")
         self.addCleanup(lambda: keeper.destroy())

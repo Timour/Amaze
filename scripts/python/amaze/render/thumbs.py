@@ -146,18 +146,13 @@ class ThumbNailRenderer:
         batch instead of paying the USD stage load per material; a
         single render (create_thumb_mtlx) builds and destroys its own.
         """
-        viewer = hou.ui.curDesktop().paneTabOfType(hou.paneTabType.SceneViewer)
-        if not viewer:
+        ocio = thumbnail_scene.ocio_from_viewer()
+        if not ocio:
             return None
 
-        display = viewer.getOCIODisplay()
-        view = viewer.getOCIOView()
-
-        space = "ACEScg"
-        for s in hou.Color.ocio_spaces():
-            if "acescg" in s.lower():
-                space = s
-                break
+        display = ocio["display"]
+        view = ocio["view"]
+        space = ocio["space"]
 
         # OFF the undo stack, like create_thumb_sop's container and
         # for the reason research.md ▸ Undo names thumbnails for

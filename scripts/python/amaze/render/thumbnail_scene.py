@@ -34,6 +34,41 @@ def safe_set(node: hou.Node, parm_name: str, value, **kwargs) -> None:
         )
 
 
+def ocio_from_viewer():
+    """The Scene Viewer's OCIO display, view and working space, or None.
+
+    ONE lookup for both callers. `thumbs.build_karma_scaffold` had a
+    second copy that differed only in the fallback spelling of the
+    working space, and a lookup written twice is one that drifts
+    (practice.md > A LOOKUP WRITTEN FOUR TIMES).
+
+    `hou.ui` DOES NOT EXIST under hython, and asking for it there raised
+    AttributeError rather than reporting "no viewer" - which is why the
+    Redshift scene test could never run headless. Absent GUI and absent
+    viewer are the same answer to the caller: there is nowhere to read a
+    display and view from.
+
+    It is also the SEAM the tests replace, so the parts of a scene build
+    that need no GUI can be exercised without one.
+    """
+    ui = getattr(hou, "ui", None)
+    if ui is None:
+        return None
+    viewer = ui.curDesktop().paneTabOfType(hou.paneTabType.SceneViewer)
+    if not viewer:
+        return None
+    space = "ACEScg"
+    for candidate in hou.Color.ocio_spaces():
+        if "acescg" in candidate.lower():
+            space = candidate
+            break
+    return {
+        "display": viewer.getOCIODisplay(),
+        "view": viewer.getOCIOView(),
+        "space": space,
+    }
+
+
 class ThumbNailScene:
     """
     Generates a Thumbnail Scene and allows for Rendering Material Preview
@@ -44,8 +79,8 @@ class ThumbNailScene:
 
         # Checked BEFORE anything is created in the scene: raising after
         # the subnet existed leaked an orphan /obj/subnet1 per attempt.
-        viewer = hou.ui.curDesktop().paneTabOfType(hou.paneTabType.SceneViewer)
-        if not viewer:
+        ocio = ocio_from_viewer()
+        if not ocio:
             # __init__ can only return None, so a bare "return False" here
             # (the old behaviour) raised a TypeError instead of failing
             # gracefully. Raise a clear error so callers can report it.
@@ -53,6 +88,14 @@ class ThumbNailScene:
                 "Amaze: no Scene Viewer pane is open - cannot build a "
                 "thumbnail scene. Open a Scene Viewer and try again."
             )
+
+        # THE USER'S SELECTION, CAPTURED BEFORE ANYTHING IS CREATED.
+        # `createNode` selects what it creates, so the Redshift branch's
+        # own save-and-restore read a selection this build had already
+        # replaced - it put back the scene's null instead of the user's
+        # nodes. The restore was written and has been wrong since;
+        # nothing noticed because its test could not run headless.
+        self._user_selection = hou.selectedNodes()
 
         # Render Independemt Setup
         self.geo_node = hou.node("/obj").createNode("subnet")
@@ -67,13 +110,9 @@ class ThumbNailScene:
         # one", and leave /obj/Thumbnail_Octane1, 2, 3... in the user's
         # scene, one per save attempt, each carrying a live ROP.
         try:
-            self.display = viewer.getOCIODisplay()
-            self.view = viewer.getOCIOView()
-            self.space = "ACESCg"
-            for s in hou.Color.ocio_spaces():
-                if "acescg" in s.lower():
-                    self.space = s
-                    break
+            self.display = ocio["display"]
+            self.view = ocio["view"]
+            self.space = ocio["space"]
 
             self.build_parm_templates()
 
@@ -412,7 +451,7 @@ class ThumbNailScene:
             # the user's own node selection is set aside and put back:
             # building a thumbnail scene must not eat what they had
             # selected in the network editor.
-            previous = hou.selectedNodes()
+            previous = self._user_selection
             try:
                 self.cam.setSelected(True, True)
                 try:
