@@ -347,9 +347,11 @@ class TheMapNamesEveryModule(unittest.TestCase):
     SHORTHAND = {"gradient_library", "vex_syntax"}
 
     def test_overview_names_every_module_in_the_package(self):
-        overview = os.path.join(
-            os.path.dirname(os.path.dirname(PACKAGE)),
-            "docs", "architecture", "overview.md")
+        # PACKAGE is <repo>/scripts/python/amaze, so the repo is three
+        # levels up - not two, which lands in scripts/ and reads as a
+        # missing map rather than a wrong path.
+        repo = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
+        overview = os.path.join(repo, "docs", "architecture", "overview.md")
         if not os.path.exists(overview):
             self.fail("the system map is missing: %s" % overview)
         with open(overview, encoding="utf-8") as handle:
