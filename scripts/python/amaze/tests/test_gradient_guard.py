@@ -373,9 +373,13 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
+            # STAMPED already: an unstamped entry earns the backfill a
+            # write of its own, correctly, and that would hide whether
+            # the SEED still earns one.
             json.dump(
                 {"categories": [],
                  "gradients": [{"name": "g%d" % i, "points": [],
+                                "uid": "fixtureuid%02d" % i,
                                 "note": "note %d" % i}
                                for i in range(12)]}, fh, indent=1)
         self.prefs = _Prefs(self.dir)
