@@ -1465,78 +1465,39 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
             "that does not exist there: %s" % labels)
 
 
-class TheSwitchListsNameEveryLibraryBackedModel(unittest.TestCase):
-    """A library-backed model missing from panel.py's switch lists
-    keeps the previous library's data and writes it into the new one.
+class EveryLibraryModelClassCanSwitchTest(unittest.TestCase):
+    """Every class the panel builds a library-backed model from
+    answers `switch_model_data`.
 
-    Asserted as an empty SET, not a count: "found none" and "all of
-    them are covered" have to be different answers. Source-derived
-    because the failure is an ABSENCE - no behaviour test notices a
-    model nobody switched, which is why this one went unnoticed while
-    its five siblings were being added to the same three lists.
+    WHAT THIS REPLACED (2026-08-09): a guard that read panel.py's
+    source and required each model to appear in THREE hand-written
+    switch lists - two explicit calls plus one entry in `models[]`.
+    It enforced the duplication rather than the outcome, so once the
+    walk was derived from the sections it failed on the fix; and it
+    never could see the eighth model anyway, because
+    `GradientCategories` spelled its repoint `refresh()` and the
+    regex simply did not match.
+
+    The list-shaped half now lives in `test_area_bindings` ▸
+    *EveryLibraryBackedModelIsDeclaredBySection*, which walks the
+    sections' declarations against a built panel in both directions
+    and needs no list of its own. What is left here is the class
+    contract, which is this module's subject.
     """
 
-    #: Every panel attribute that holds a model with switch_model_data.
-    EXPECTED = {
-        "material_model", "category_model",
-        "cop_model", "cop_category_model",
-        "code_model", "code_category_model",
-        "gradient_model",
-    }
-
-    def test_every_switching_model_appears_in_every_switch_list(self):
-        """THREE sites switch models - open(), the models[] list, and
-        _prefs_closed() - and a model must be in all of them.
-
-        Counted, not merely looked for. A presence check ("is this name
-        mentioned anywhere?") passes while a model sits in two of the
-        three lists, which is a real and silent way to keep the previous
-        library's data: gradient_model was in NONE of them, but the next
-        one to break will be in some. Measured shape: every model has
-        exactly two explicit `self.X.switch_model_data()` calls and one
-        entry in the models[] list.
-        """
-        import inspect
-        import re
-        from amaze.panel import panel as panel_mod
-
-        source = inspect.getsource(panel_mod)
-        wrong = {}
-        for name in sorted(self.EXPECTED):
-            calls = len(re.findall(
-                r"self\.%s\.switch_model_data\(\)" % re.escape(name), source))
-            listed = bool(re.search(
-                r"self\.%s,|\"%s\", None\)," % (re.escape(name),
-                                                re.escape(name)), source))
-            if calls < 2 or not listed:
-                wrong[name] = "explicit calls=%d (want 2), in models[]=%s" % (
-                    calls, listed)
-        self.assertEqual(
-            {}, wrong,
-            "these library-backed models are not switched everywhere "
-            "panel.py switches models, so they keep the previous "
-            "library's data on the paths they are missing from: %s" % wrong)
-
-    def test_the_expected_set_matches_the_models_the_panel_builds(self):
-        """And the list above must not go stale the way the thing it
-        guards did - a new model that switches has to be added here."""
+    def test_every_library_model_class_answers_the_switch_verb(self):
         from amaze.core import (category, code_library, cop_library,
                                 gradient_library, library)
 
-        classes = {
-            "material_model": library.MaterialLibrary,
-            "category_model": category.Categories,
-            "cop_model": cop_library.CopLibrary,
-            "code_model": code_library.CodeLibrary,
-            "gradient_model": gradient_library.GradientLibrary,
-        }
-        for attr, cls in classes.items():
+        for cls in (library.MaterialLibrary, category.Categories,
+                    cop_library.CopLibrary, code_library.CodeLibrary,
+                    gradient_library.GradientLibrary,
+                    gradient_library.GradientCategories):
             self.assertTrue(
                 callable(getattr(cls, "switch_model_data", None)),
-                "%s (%s) has no switch_model_data, so pointing "
-                "Preferences at another library leaves it holding the "
-                "old one" % (attr, cls.__name__))
-            self.assertIn(attr, self.EXPECTED)
+                "%s has no switch_model_data, so pointing Preferences "
+                "at another library leaves it holding the old one"
+                % cls.__name__)
 
 
 class CategorySwitchTest(unittest.TestCase):
