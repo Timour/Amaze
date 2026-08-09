@@ -1409,22 +1409,31 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
     carrying A's label.
     """
 
-    def _library_with_category(self, name):
-        """A library directory whose gradients.json holds one user
-        palette in category `name` - written the way the product
-        writes it, so this cannot pass against a shape we never ship."""
-        import json
+    #: A two-key ramp, the shape add_user_gradient reads.
+    RAMP = {"values": [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]]}
+
+    def _library_with_category(self, prefs, name):
+        """A library directory holding one user palette in category
+        `name`, written THROUGH THE PRODUCT'S OWN API.
+
+        Hand-writing gradients.json was the first attempt and it did
+        not load at all - a fixture that writes a shape we never ship
+        proves nothing about the shape we do (practice.md ▸ *A FIXTURE
+        MUST WRITE FILES THE WAY THE PRODUCT DOES*). add_user_gradient
+        mints the uid and saves, so the file on disk is the real one.
+        """
+        from amaze.core import gradient_library
+
         folder = _empty_library_dir(self)
-        with open(os.path.join(folder, "gradients.json"), "w",
-                  encoding="utf-8") as handle:
-            json.dump({"gradients": [{
-                "uid": "11111111-1111-4111-8111-11111111111%d"
-                       % len(name),
-                "name": "P " + name,
-                "category": name,
-                "colors": ["#112233", "#445566"],
-            }]}, handle)
+        prefs.dir = folder
+        prefs.save()
+        writer = gradient_library.GradientLibrary(preferences=prefs)
+        writer.add_user_gradient("P " + name, name, self.RAMP)
         return folder
+
+    def _labels(self, sidebar):
+        return [sidebar.data(sidebar.index(row, 0))
+                for row in range(sidebar.rowCount())]
 
     def test_the_sidebar_holds_the_NEW_librarys_categories(self):
         from amaze.core import gradient_library
@@ -1432,22 +1441,18 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
 
         prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
-        prefs.dir = self._library_with_category("Alpha")
-        prefs.save()
+        self._library_with_category(prefs, "Alpha")
 
         model = gradient_library.GradientLibrary(preferences=prefs)
         sidebar = gradient_library.GradientCategories(model)
-        self.assertIn("Alpha", [sidebar.data(sidebar.index(row, 0))
-                                for row in range(sidebar.rowCount())],
+        self.assertIn("Alpha", self._labels(sidebar),
                       "premise: the sidebar shows library A's category")
 
-        prefs.dir = self._library_with_category("Beta")
-        prefs.save()
+        self._library_with_category(prefs, "Beta")
         model.switch_model_data()
         sidebar.switch_model_data()
 
-        labels = [sidebar.data(sidebar.index(row, 0))
-                  for row in range(sidebar.rowCount())]
+        labels = self._labels(sidebar)
         self.assertIn(
             "Beta", labels,
             "the Colors sidebar does not show the new library's "

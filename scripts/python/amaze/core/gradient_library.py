@@ -95,6 +95,28 @@ class GradientCategories(QtCore.QAbstractListModel):
         self._rebuild()
         self.endResetModel()
 
+    def switch_model_data(self) -> None:
+        """Re-point at the library the panel now serves.
+
+        THE SAME VERB EVERY OTHER LIBRARY-BACKED MODEL ANSWERS, and
+        that is the whole point of its existing. The work is
+        `refresh()`'s - rebuild the labels from the library, which by
+        now holds the new library's rows - but this model was the ONE
+        that spelled its repoint differently, so the panel's three
+        hand-written switch lists never carried it and the guard
+        watching those lists could not see it either: it searched for
+        `switch_model_data` and found `refresh`. Two names for one
+        event is how a model goes missing from a list nobody can
+        prove is short.
+
+        Kept as two methods rather than one, because they are two
+        events: `refresh()` is "the categories changed inside this
+        library" (a rename, a delete), and this is "the library
+        underneath changed". They agree today; a divergence belongs
+        in whichever one it applies to.
+        """
+        self.refresh()
+
     # The ONE definition lives in category.py; imported so the four
     # sidebar models can never drift apart.
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE

@@ -735,27 +735,11 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             self.setup()
 
-        with ui_helpers.relayout(self.material_model, self.category_model):
-            self.category_model.switch_model_data()
-            self.material_model.switch_model_data()
-            if getattr(self, "cop_model", None):
-                with ui_helpers.relayout(self.cop_model,
-                                         self.cop_category_model):
-                    self.cop_category_model.switch_model_data()
-                    self.cop_model.switch_model_data()
-            if getattr(self, "code_model", None):
-                with ui_helpers.relayout(self.code_model,
-                                         self.code_category_model):
-                    self.code_category_model.switch_model_data()
-                    self.code_model.switch_model_data()
-            # Colors switches too. It was the one library-backed model
-            # left out of all three of these lists, so the Colors tab
-            # kept the PREVIOUS library's palettes and the next colour
-            # edit wrote them into the new library's gradients.json.
-            if getattr(self, "gradient_model", None):
-                self.gradient_model.switch_model_data()
-
-            self.click_slider.setValue(self._active_thumbsize())
+        # THE SAME WALK EVERY OTHER SWITCH SITE USES. This was a
+        # hand-written copy with its own nested relayouts, and it is
+        # one of the three that between them carried seven of the
+        # eight library-backed models.
+        self.switch_all_models()
 
         debug.event("session", "library reloaded")
 
@@ -854,27 +838,41 @@ class MatLibPanel(QtWidgets.QWidget):
             # only library-backed model in none of the three lists.
             self.switch_all_models()
 
+    def library_models(self) -> tuple:
+        """EVERY library-backed model that exists right now, DERIVED
+        from the sections - the way `tile_delegates()` derives.
+
+        Each section declares its own in `library_model_attrs`, so a
+        section arriving with a model of its own joins by existing.
+        There were THREE hand-written lists here instead, each naming
+        seven models where there are eight: the Colors SIDEBAR
+        (`gradient_categories_model`) was in none of them, so a
+        library switch left it showing the previous library's
+        category names beside the new library's counts - every row
+        zero, and a rename aimed at the new library carrying the old
+        label. Five siblings had been added to those same three lists
+        over time, one at a time, which is what a hand-kept list
+        costs.
+        """
+        found = []
+        for section in getattr(self, "sections", {}).values():
+            for attr in getattr(section, "library_model_attrs", ()):
+                model = getattr(self, attr, None)
+                if model is not None and model not in found:
+                    found.append(model)
+        return tuple(found)
+
     def switch_all_models(self) -> None:
         """Re-point every library-backed model at `prefs.dir`.
 
-        THE ONE ROUTE ONTO ANOTHER LIBRARY. `open()` reloads the
-        current one; only this re-points the connectors, and a switch
-        that skipped it left them serving the previous library and
-        every save refused (measured 2026-08-08 through the Test
-        Library toggle, which called `open()`).
-
-        Extracted so the toggle and the Library Path browse cannot
-        drift apart - leaving the Cop and Code stacks on the old
-        library was a long-standing gap versus open()/show_prefs(),
-        and Colors was still missing as late as 2026-08-02.
+        THE ONE ROUTE ONTO ANOTHER LIBRARY, and now the one route
+        that re-points models at all: `open()` and `_prefs_closed()`
+        each carried their own copy of this walk, which is how a list
+        goes short without anything failing. A switch that skipped a
+        model left it serving the previous library with every save
+        refused (measured 2026-08-08 through the Test Library toggle).
         """
-        models = [
-            self.material_model, self.category_model,
-            self.cop_model, self.cop_category_model,
-            self.code_model, self.code_category_model,
-            getattr(self, "gradient_model", None),
-        ]
-        models = [m for m in models if m]
+        models = self.library_models()
         if not models:
             return
         with ui_helpers.relayout(*models):
@@ -3056,19 +3054,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # re-loaded every thumbnail PNG - well over a thousand file
         # reads on every single Preferences close, for nothing.
         if self.prefs.dir != old_dir:
-            self.material_model.switch_model_data()
-            self.category_model.switch_model_data()
-            if getattr(self, "cop_model", None):
-                self.cop_model.switch_model_data()
-            if getattr(self, "cop_category_model", None):
-                self.cop_category_model.switch_model_data()
-            if getattr(self, "code_model", None):
-                self.code_model.switch_model_data()
-            if getattr(self, "code_category_model", None):
-                self.code_category_model.switch_model_data()
-            if getattr(self, "gradient_model", None):
-                self.gradient_model.switch_model_data()
-        self.click_slider.setValue(self._active_thumbsize())
+            self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
         self.texture_progress.set_accent_color(accent)

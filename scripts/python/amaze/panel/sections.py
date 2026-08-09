@@ -221,6 +221,26 @@ class Section:
     #: sweep by existing rather than by being remembered.
     sidebar_attr = ""
     delegate_attr = ""
+
+    #: THE SECTION'S LIBRARY-BACKED MODELS, by panel attribute name -
+    #: the ones holding data read from `prefs.dir`, which must be
+    #: re-pointed when the library changes. Declared HERE, by the
+    #: section that owns them, and walked by `panel.switch_all_models`
+    #: through `panel.library_models()`; there is no list of them in
+    #: panel.py any more.
+    #:
+    #: It was three hand-written lists there, each naming seven models
+    #: where there are eight - and the missing one was the Colors
+    #: sidebar, so a library switch left it showing the previous
+    #: library's categories with the new library's counts. A section
+    #: that arrives with a model of its own now joins by declaring it,
+    #: and `test_area_bindings` fails a model that carries
+    #: `switch_model_data` and appears in no declaration.
+    #:
+    #: EMPTY IS A REAL ANSWER: the File section's data is folders on
+    #: disk, registered per machine, and does not move with the
+    #: library.
+    library_model_attrs: tuple = ()
     #: The Grid's selection model. Named here because a menu acts on
     #: THIS section's selection, whatever the shared view happens to
     #: be pointed at.
@@ -1065,6 +1085,7 @@ class MaterialSection(AssetSection):
             return
         super().activate()
 
+    library_model_attrs = ("material_model", "category_model")
     model_attr = "material_model"
     proxy_attr = "material_sorted_model"
     selection_attr = "material_selection_model"
@@ -1147,6 +1168,7 @@ class CopSection(AssetSection):
         # the artist's selection, current node or view.
         with helpers.preserving_selection_and_current():
             self.panel.import_cop_assets()
+    library_model_attrs = ("cop_model", "cop_category_model")
     model_attr = "cop_model"
     proxy_attr = "cop_sorted_model"
     selection_attr = "cop_selection_model"
@@ -1244,6 +1266,7 @@ class CodeSection(AssetSection):
         source = self.panel.code_sorted_model.mapToSource(current)
         if source.isValid():
             self.panel._edit_code_row(source.row())
+    library_model_attrs = ("code_model", "code_category_model")
     model_attr = "code_model"
     proxy_attr = "code_sorted_model"
     selection_attr = "code_selection_model"
@@ -1943,6 +1966,13 @@ class GradientSection(Section):
 
     key = "gradient"
     label = "Color"
+    #: The GRID model and the SIDEBAR model. The sidebar one is the
+    #: eighth model - the one none of panel.py's three lists carried,
+    #: which is why a library switch left Colors on the old library.
+    #: Note it is a real model here, where an asset section's
+    #: `sidebar_attr` names a PROXY, which is exactly why this cannot
+    #: be derived from `sidebar_attr` across the archetypes.
+    library_model_attrs = ("gradient_model", "gradient_categories_model")
     sidebar_attr = "gradient_categories_model"
     delegate_attr = "gradient_delegate"
     proxy_attr = "gradient_sorted_model"
