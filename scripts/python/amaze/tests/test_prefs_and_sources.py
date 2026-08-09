@@ -201,8 +201,15 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
     def test_load_assigns_through_the_setters(self):
         """Source pin: the values are clamped in the setters, and a
-        raw assignment bypasses every one of them."""
-        body = ast.dump(ast.parse(source_of("prefs/prefs.py")))
+        raw assignment bypasses every one of them.
+
+        Reads `prefs/persistence.py`, where `load()` has lived since
+        2026-08-09. A source pin follows its SUBJECT, never a
+        filename: left on `prefs.py` it would assert about a file that
+        no longer holds the method, and would then pass or fail for
+        reasons unconnected to the invariant it is named for.
+        """
+        body = ast.dump(ast.parse(source_of("prefs/persistence.py")))
         self.assertIn(
             "_through_setter", body,
             "load() assigns these keys raw again")
@@ -377,13 +384,31 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
         test sys.platform or hardcode an OS path convention; a new
         platform quirk gets a function here, not a branch at a call
         site.' prefs.py carried macOS, Linux and Windows home layouts
-        in one regex."""
-        body = source_of("prefs/prefs.py")
-        self.assertNotIn(
-            "Users|home", body,
-            "prefs.py hardcodes the home-directory layouts again - "
-            "they belong in hostos, which is where a fourth one gets "
-            "added")
+        in one regex.
+
+        WALKS THE WHOLE `prefs/` PACKAGE, not one filename. The subject
+        is the preferences LAYER; the package held exactly one file
+        until 2026-08-09, so "no OS layout in prefs.py" and "no OS
+        layout in the preferences layer" were the same sentence by
+        accident rather than by design. `persistence.py` is the moment
+        they stop being the same - and it is the half that carries the
+        path encoding, so it is where a home-directory layout would
+        actually be written.
+        """
+        checked = []
+        for name in sorted(os.listdir(os.path.join(PACKAGE, "prefs"))):
+            if not name.endswith(".py"):
+                continue
+            checked.append(name)
+            self.assertNotIn(
+                "Users|home", source_of("prefs/" + name),
+                "prefs/%s hardcodes the home-directory layouts again - "
+                "they belong in hostos, which is where a fourth one "
+                "gets added" % name)
+        # A walk that finds nothing passes silently, which is how a
+        # guard becomes decoration: name the files it MUST have seen.
+        self.assertIn("prefs.py", checked)
+        self.assertIn("persistence.py", checked)
 
     def test_rehome_only_answers_when_the_result_exists(self):
         home = os.path.expanduser("~").replace("\\", "/").rstrip("/")
