@@ -988,6 +988,57 @@ class CreationRuleTest(unittest.TestCase):
             "a selected node that cannot take the snippet blocked the "
             "creation instead of falling through to the network")
 
+    def test_the_MENU_verb_falls_through_exactly_like_the_click(self):
+        """The audit's finding, as a pair. The test above proves the
+        DOUBLE-CLICK treats a useless selection as a hint; the menu
+        entry beside it, labelled with the same verb, called a
+        refusal directly and created nothing.
+
+        Same tile, same selection, two answers - and the click door's
+        own docstring records that the veto was the bug it was written
+        to remove. Driven through `menu_apply`, the thing the menu
+        table actually names, so it fails if the routing regresses no
+        matter how the body is spelled."""
+        sop = self._geo()
+        sphere = sop.createNode("sphere")
+        hou.clearAllSelected()
+        sphere.setSelected(True)
+        self._with_view_networks([sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        section = self.panel.sections["code"]
+        section.menu_apply([index], index)
+        wrangles = [c for c in sop.children()
+                    if "wrangle" in c.type().name()]
+        self.assertEqual(
+            1, len(wrangles),
+            "the menu verb vetoed on a selection the double-click "
+            "falls through - same tile, same selection, two answers")
+
+    def test_the_menu_verb_still_fills_a_node_that_CAN_take_it(self):
+        """The accept path. Falling through must not become "always
+        create": a selected node that takes the snippet still takes
+        it, and no carrier is made beside it."""
+        sop = self._geo()
+        wrangle = sop.createNode("attribwrangle")
+        hou.clearAllSelected()
+        wrangle.setSelected(True)
+        self._with_view_networks([sop])
+        index = self.panel.code_sorted_model.index(0, 0)
+        source = self.panel.code_sorted_model.mapToSource(index)
+        asset = self.panel.code_model.assets[source.row()]
+        if str(getattr(asset, "renderer", "")).lower() != "vex":
+            self.skipTest("the first snippet is not VEX")
+        before = len(sop.children())
+        self.panel.sections["code"].menu_apply([index], index)
+        self.assertEqual(
+            before, len(sop.children()),
+            "the menu verb created a carrier beside a node that could "
+            "have taken the snippet")
+
     def test_a_locked_asset_is_skipped_and_the_editable_one_takes_it(self):
         """The live case, corrected by the probe: a SOP Create is a
         LOCKED HDA - Houdini refuses creation in it and in its sopnet
