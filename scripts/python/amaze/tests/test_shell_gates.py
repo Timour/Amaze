@@ -385,21 +385,45 @@ class FixtureFidelityTest(GateFixture):
                              _sha(real),
                              "fixture copy of %s has drifted" % relative)
 
+    @staticmethod
+    def _command_lines(script_text):
+        """The script with full-line comments removed. Keyed searches
+        run on THIS: the old key here, `hython -m unittest`, was
+        satisfied for its whole life by a comment explaining why the
+        runner does NOT do that - the drift this test exists to catch
+        had already happened, unnoticed. Grep the line that runs,
+        never prose about it."""
+        return "\n".join(line for line in script_text.splitlines()
+                         if not line.lstrip().startswith("#"))
+
     def test_the_stub_still_matches_the_real_runner(self):
         """The stub fakes start_test.sh's OUTPUT. If the real runner
         stops producing that output the stub is a lie, and every green
         assertion below becomes meaningless."""
         with open(REAL_RUNNER, encoding="utf-8") as handle:
-            runner = handle.read()
-        self.assertIn("hython -m unittest", runner,
-                      "the real runner no longer produces unittest's "
-                      "'Ran N tests' / 'FAILED' lines - restub")
-        self.assertIn("check_log_leak.py", runner,
+            code = self._command_lines(handle.read())
+        self.assertIn("run_suite.py", code,
+                      "the real runner no longer drives run_suite.py, "
+                      "whose unittest-shaped output is what the stub "
+                      "fakes - restub")
+        self.assertIn("check_log_leak.py", code,
                       "the real runner no longer runs the leak check")
         with open(REAL_LEAK_CHECK, encoding="utf-8") as handle:
             self.assertIn("LOG LEAK", handle.read(),
                           "the leak check no longer prints 'LOG LEAK' - "
                           "both gates grep for that literal")
+
+    def test_no_command_line_runs_bare_unittest(self):
+        """The strip's proof and a guard in one: `hython -m unittest`
+        lives in start_test.sh as prose only, so a stripped read must
+        not find it. A real command line running bare unittest would
+        skip the sync, the isolated log dir, the lint and the leak
+        check - every guard, to save two minutes."""
+        with open(REAL_RUNNER, encoding="utf-8") as handle:
+            self.assertNotIn("hython -m unittest",
+                             self._command_lines(handle.read()),
+                             "a command line runs bare hython -m "
+                             "unittest - every gate that run skips")
 
     def test_the_fixture_never_points_at_the_real_install(self):
         env = self._env("green")
