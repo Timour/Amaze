@@ -141,6 +141,121 @@ class TheSmallBatchTest(_Case):
             "grid is not narrowed to nothing between keystrokes")
 
 
+class GradientsBecomeAnOrdinaryDatabaseTest(unittest.TestCase):
+    """ROADMAP D. `gradients.json` was the ONE database not going
+    through DatabaseConnector, so every guard the other three inherit
+    had been given to it by hand - and overview.md records three of
+    them still missing as late as 2026-07-30.
+
+    It could not simply be pointed at the connector: the connector is
+    keyed to rows under `assets` identified by `id`, in seven places,
+    and gradients used `gradients`/`uid`. Rather than teach the
+    connector two shapes - a permanent second shape existing only
+    because one file is different - the FILE adopts the one shape, so
+    all four databases work the same way. The connector is unchanged;
+    the move is a step in its own migration chain, which is what
+    inheriting the machinery means.
+
+    A MIGRATION MUST COMPARE, NEVER ASSUME (practice.md). This is user
+    data: every palette, its name, category, colours and ramp must
+    come out identical, and the identity rename must keep the VALUE,
+    because comments are keyed `gradient:<value>` and tile icons by
+    that same value.
+    """
+
+    def _legacy(self):
+        """A document in the pre-D shape the product actually wrote:
+        rows under `gradients`, identity in `uid`, no version, no
+        format stamp."""
+        return {
+            "categories": ["Wada 5 Colors", "Mine"],
+            "category_colors": {"Mine": "#4af2a1"},
+            "gradients": [
+                {"uid": "aaaa1111bbbb2222cccc3333dddd4444",
+                 "name": "Sunset", "category": "Mine",
+                 "colors": [{"name": "#ff8800", "hex": "#ff8800"}],
+                 "ramp": {"bases": ["Constant"], "keys": [0.0],
+                          "values": [[1.0, 0.53, 0.0]]}},
+                {"uid": "eeee5555ffff6666aaaa7777bbbb8888",
+                 "name": "Deep", "category": "Wada 5 Colors",
+                 "colors": [{"name": "#003366", "hex": "#003366"}],
+                 "ramp": {"bases": ["Linear"], "keys": [0.0, 1.0],
+                          "values": [[0.0, 0.2, 0.4], [0.0, 0.0, 0.0]]}},
+            ],
+        }
+
+    def _migrated(self, document):
+        copy = json.loads(json.dumps(document))
+        database.DatabaseConnector("gradients.json")._migrate(copy)
+        return copy
+
+    def test_every_palette_survives_the_move_intact(self):
+        before = self._legacy()
+        after = self._migrated(before)
+        rows = after.get("assets")
+        self.assertIsNotNone(
+            rows, "the rows did not move to the shape every other "
+                  "database uses - the connector reads `assets`")
+        self.assertEqual(len(before["gradients"]), len(rows),
+                         "the migration lost or duplicated a palette")
+        for old, new in zip(before["gradients"], rows):
+            self.assertEqual(old["name"], new["name"])
+            self.assertEqual(old["category"], new["category"])
+            self.assertEqual(old["colors"], new["colors"],
+                             "a palette's colours changed")
+            self.assertEqual(old["ramp"], new["ramp"],
+                             "a palette's ramp changed - it would "
+                             "re-apply differently on a node")
+
+    def test_the_identity_keeps_its_VALUE(self):
+        """The field renames; the value must not. A new identity would
+        orphan every comment and every tile icon at once."""
+        before = self._legacy()
+        after = self._migrated(before)
+        self.assertEqual(
+            [row["uid"] for row in before["gradients"]],
+            [row["id"] for row in after["assets"]],
+            "the identity value changed, orphaning the comments and "
+            "tile icons keyed on it")
+
+    def test_the_old_container_does_not_linger(self):
+        """Two copies of one list is the drift this move removes."""
+        after = self._migrated(self._legacy())
+        self.assertNotIn(
+            "gradients", after,
+            "the rows are in the document twice - the next writer "
+            "updates one of them and they disagree")
+
+    def test_the_categories_and_their_colours_come_across(self):
+        before = self._legacy()
+        after = self._migrated(before)
+        for name in before["categories"]:
+            self.assertIn(name, after.get("categories", []))
+        self.assertEqual(before["category_colors"],
+                         after.get("category_colors"),
+                         "a category colour was lost")
+
+    def test_the_other_databases_are_untouched_by_the_step(self):
+        """The step runs on EVERY database. An asset document has no
+        `gradients` key, so it passes through unchanged - which is what
+        makes this move cost the other three nothing."""
+        asset_doc = {
+            "categories": ["_All", "Metal"], "tags": ["worn"],
+            "assets": [{"id": "12345", "name": "Bronze"}],
+        }
+        after = self._migrated(asset_doc)
+        self.assertEqual(asset_doc["assets"], after["assets"],
+                         "the gradient step damaged an asset database")
+        self.assertEqual(asset_doc["tags"], after["tags"])
+
+    def test_running_it_twice_changes_nothing(self):
+        """Two panes, two machines: a document migrated again lands in
+        the same place."""
+        once = self._migrated(self._legacy())
+        twice = self._migrated(once)
+        self.assertEqual(once, twice, "the migration is not idempotent")
+
+
 class TheLibraryFormatStampTest(_Case):
     """An older build refuses a newer library before writing a byte.
 
