@@ -101,6 +101,96 @@ ONLINE_BINDINGS = {
 }
 
 
+class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
+    """WHICH MODELS A LIBRARY SWITCH REPOINTS is derived from the
+    sections, the way `tile_delegates()` derives - so a ninth model
+    joins by existing rather than by being remembered.
+
+    It was three hand-written lists in panel.py, each naming seven
+    models where there are eight. `GradientCategories` - the Colors
+    SIDEBAR - was in none of them, so after a library switch it kept
+    library A's category names with library B's counts beside them.
+
+    The guard this replaces counted `switch_model_data()` calls in
+    panel.py source, and could not see the eighth model at all:
+    GradientCategories exposed `refresh()` instead, so the pattern
+    did not match and the model was invisible to it. A source scan
+    keyed on a SPELLING goes quiet rather than red for anything that
+    does not use that spelling.
+
+    Both directions are asserted, because they fail differently: a
+    declaration naming something the panel cannot repoint, and a
+    repointable model no section declares (the eighth model's own
+    shape - the one that catches the next one).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    @staticmethod
+    def _declared():
+        from amaze.panel import sections as sections_mod
+        declared = set()
+        for section_cls in sections_mod.SECTION_CLASSES:
+            declared.update(getattr(section_cls, "library_model_attrs", ()))
+        return declared
+
+    def test_every_declared_attribute_exists_and_can_switch(self):
+        declared = self._declared()
+        self.assertTrue(declared, "no section declares a library model")
+        broken = {}
+        for attr in sorted(declared):
+            model = getattr(self.panel, attr, None)
+            if model is None:
+                broken[attr] = "not built on the panel"
+            elif not callable(getattr(model, "switch_model_data", None)):
+                broken[attr] = "%s has no switch_model_data" % type(
+                    model).__name__
+        self.assertEqual(
+            {}, broken,
+            "a section declares a library-backed model the panel "
+            "cannot repoint, so a library switch would leave it "
+            "serving the old library: %s" % broken)
+
+    def test_every_switchable_model_the_panel_builds_is_declared(self):
+        declared = self._declared()
+        undeclared = set()
+        for attr in dir(self.panel):
+            if attr.startswith("__") or attr in declared:
+                continue
+            try:
+                value = getattr(self.panel, attr)
+            except Exception:                            # noqa: BLE001
+                continue
+            if isinstance(value, type):
+                continue
+            if callable(getattr(value, "switch_model_data", None)):
+                undeclared.add(attr)
+        self.assertEqual(
+            set(), undeclared,
+            "these models can be repointed but no section declares "
+            "them, so a library switch leaves them serving the "
+            "previous library: %s" % sorted(undeclared))
+
+    def test_the_panel_switches_through_the_one_derived_route(self):
+        """And there is ONE walk, not three. Three copies is what let
+        five siblings be added to the same lists while the eighth was
+        added to none - so the copies are what the fix removes."""
+        import inspect
+        import re
+        from amaze.panel import panel as panel_mod
+
+        source = inspect.getsource(panel_mod)
+        stray = re.findall(r"self\.\w*model\w*\.switch_model_data\(\)",
+                           source)
+        self.assertEqual(
+            [], stray,
+            "a hand-named model is switched outside "
+            "switch_all_models(), which is how a list goes short: %s"
+            % sorted(set(stray)))
+
+
 class AreaBindingCase(unittest.TestCase):
     """One panel for the whole class - it is expensive, and every test
     here only reads what activation bound."""
