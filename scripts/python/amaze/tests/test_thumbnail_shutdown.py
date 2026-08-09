@@ -225,20 +225,35 @@ class TestConvertCancellation(unittest.TestCase):
         binary = os.path.join(self.tmp, "hfs", "bin")
         os.makedirs(binary)
         self.hfs = os.path.dirname(binary)
-        script = os.path.join(binary, "iconvert")
-        with open(script, "w", encoding="utf-8") as handle:
+        self.script = os.path.join(binary, "iconvert")
+        with open(self.script, "w", encoding="utf-8") as handle:
             handle.write("#!/bin/bash\nsleep 25\n")
-        os.chmod(script, 0o755)
+        os.chmod(self.script, 0o755)
 
         self.source = os.path.join(self.tmp, "in.exr")
         with open(self.source, "wb") as handle:
             handle.write(b"\x76\x2f\x31\x01" + b"\0" * 400)
 
     def _children(self):
-        result = subprocess.run(
+        """The pids running THIS test's fake iconvert, not any child.
+
+        `pgrep -P` alone asked only whether the process had a child, and
+        macOS tries sips before iconvert - so the wait below could be
+        satisfied by the wrong process, and a child left behind by
+        another module satisfied it too. That is a false GREEN: the test
+        sails past its setup without ever starting what it guards.
+        """
+        found = subprocess.run(
             ["pgrep", "-P", str(os.getpid())],
             capture_output=True, text=True)
-        return result.stdout.split()
+        mine = []
+        for pid in found.stdout.split():
+            described = subprocess.run(
+                ["ps", "-o", "command=", "-p", pid],
+                capture_output=True, text=True)
+            if self.script in described.stdout:
+                mine.append(pid)
+        return mine
 
     @unittest.skipUnless(sys.platform != "win32",
                          "the probe uses a bash stub and pgrep")
@@ -274,6 +289,19 @@ class TestConvertCancellation(unittest.TestCase):
 
     @unittest.skipUnless(sys.platform != "win32",
                          "the probe uses a bash stub and pgrep")
+    def test_an_unrelated_child_does_not_count_as_the_subprocess(self):
+        other = subprocess.Popen(["sleep", "5"])
+        self.addCleanup(other.wait)
+        self.addCleanup(other.terminate)
+        self.assertEqual(
+            [], self._children(),
+            "a child that is not this test's fake iconvert was counted, "
+            "so the wait for the subprocess can be satisfied by any "
+            "process at all - the setup would pass without ever starting "
+            "the thing these tests guard")
+
+    @unittest.skipUnless(sys.platform != "win32",
+                         "the probe uses a bash stub and pgrep")
     def test_a_cancelled_worker_kills_its_own_subprocess(self):
         """terminate() skipped the cleanup, orphaning a real Houdini
         subprocess for every stuck worker."""
@@ -288,7 +316,13 @@ class TestConvertCancellation(unittest.TestCase):
         while time.time() < deadline and not self._children():
             _app.processEvents()
             time.sleep(0.05)
-        self.assertTrue(self._children())
+        self.assertTrue(
+            self._children(),
+            "SETUP, NOT THE GUARDED BUG: no fake iconvert appeared within "
+            "10s, so this never reached the orphan check at all. Either "
+            "the worker was slow to spawn under load, or it answered "
+            "without shelling out. Do not read this as the orphan "
+            "regression - the two failures are not the same event.")
 
         engine.shutdown()
         # The kill is issued by the worker as it unwinds; give it a beat.
