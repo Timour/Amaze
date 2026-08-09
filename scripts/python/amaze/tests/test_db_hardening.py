@@ -315,6 +315,42 @@ class GradientsBecomeAnOrdinaryDatabaseTest(unittest.TestCase):
         twice = self._migrated(once)
         self.assertEqual(once, twice, "the migration is not idempotent")
 
+    def test_a_row_with_no_identity_at_all_gains_a_stable_one(self):
+        """The pre-backfill libraries: rows with neither uid nor id
+        (the real matlib file has 388 of them). The connector keys its
+        whole union on the identity, so id-less rows collapse into one
+        key and overwrite each other - and an id minted AFTER load, the
+        model's old backfill, forks from the connector's copy at the
+        first save. So the MIGRATION mints it, on the connector's own
+        load path, before anything aliases.
+
+        CONTENT-DERIVED, not random. `_migrate_peer` replays these
+        steps on every merge of an old-shape peer, and a random mint
+        would hand the same row a new identity per pass - each merge
+        would then adopt it again as a new addition. The same bytes
+        must produce the same identity, every pass, every machine.
+        """
+        bare = {"categories": [],
+                "gradients": [
+                    {"name": "old", "colors": [{"hex": "#112233",
+                                                "name": "#112233"}]},
+                    {"name": "old2", "colors": [{"hex": "#445566",
+                                                 "name": "#445566"}]},
+                ]}
+        first = self._migrated(bare)
+        ids = [row.get("id") for row in first["assets"]]
+        self.assertTrue(all(ids),
+                        "an id-less row came out of the migration still "
+                        "id-less - the union collapses it with every "
+                        "other such row")
+        self.assertEqual(len(ids), len(set(ids)),
+                         "two different rows were given one identity")
+        second = self._migrated(bare)
+        self.assertEqual(
+            ids, [row.get("id") for row in second["assets"]],
+            "the same bytes minted different identities on a second "
+            "pass - every peer merge would adopt the row again as new")
+
 
 class TheLibraryFormatStampTest(_Case):
     """An older build refuses a newer library before writing a byte.

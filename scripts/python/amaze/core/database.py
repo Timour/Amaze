@@ -68,6 +68,19 @@ def _migration_v2(data: dict) -> None:
             continue
         if "id" not in row and "uid" in row:
             row["id"] = row.pop("uid")
+        if "id" not in row:
+            # Pre-backfill rows carry NO identity, and the union keys
+            # on it - id-less rows collapse into one key and overwrite
+            # each other. Minted HERE, on the load path, before any
+            # save breaks the aliasing between model and document; an
+            # id minted after load forked at the first save. CONTENT-
+            # DERIVED rather than random: _migrate_peer replays this
+            # step per merge of an old-shape peer, and the same bytes
+            # must answer the same identity on every pass and every
+            # machine, or each merge adopts the row again as new.
+            row["id"] = hashlib.sha256(
+                json.dumps(row, sort_keys=True).encode("utf-8")
+            ).hexdigest()[:32]
         moved.append(row)
     existing = data.get("assets")
     data["assets"] = moved if not isinstance(existing, list) or not existing \
