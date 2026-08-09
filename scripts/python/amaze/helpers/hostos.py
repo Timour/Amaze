@@ -513,8 +513,10 @@ def parses_as_json(raw: bytes) -> bool:
     policy.json read plain utf-8 until 2026-08-08), so this helper
     called a file healthy, the backup tier copied it into the
     write-once tier, and only the loader refused it. The claim is
-    narrowed to what it can enforce; the divergent readers were
-    brought across in the same change.
+    narrowed to what it can enforce. The divergent readers came
+    across 2026-08-08 - except settings.json's load(), which had a
+    SECOND reader nobody counted and came across 2026-08-09, with a
+    BOM test beside the ones the databases already have.
     """
     try:
         json.loads(raw.decode("utf-8-sig"))

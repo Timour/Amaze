@@ -610,7 +610,7 @@ class _Persistence:
             return
         try:
             os.makedirs(self.path, exist_ok=True)
-            with open(source, encoding="utf-8") as old_file:
+            with open(source, encoding="utf-8-sig") as old_file:
                 data = json.load(old_file)          # parse = validate
             with open(target, "w", encoding="utf-8") as new_file:
                 json.dump(data, new_file, indent=4)
@@ -711,7 +711,8 @@ class _Persistence:
         """
         self._migrate_from_install()
         try:
-            with open(self.path + "/settings.json", encoding="utf-8") as f:
+            with open(self.path + "/settings.json",
+                      encoding="utf-8-sig") as f:
                 data = json.load(f)
             # VALID JSON IS NOT VALID SETTINGS. Every key below is read
             # with .get() precisely so an old or hand-edited file is not
