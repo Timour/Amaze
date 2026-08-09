@@ -362,7 +362,8 @@ def thumbnail_path(preferences, asset_id: str) -> str:
     `MaterialLibrary.asset_files()` composed the same path with
     os.path.join, and the two agree only while `preferences.dir` and
     `img_dir` carry their trailing separator - enforced in exactly one
-    place, `get_data()` (prefs.py:507). The `dir` SETTER does not
+    place, `refresh_data()` (prefs/persistence.py). The `dir` SETTER
+    does not
     normalise, so any path that assigns it and renders before a save
     produced `<parent>/libimg/<id>.png` from the concatenation while
     asset_files(), Clean Library and tools/library-audit.py all looked

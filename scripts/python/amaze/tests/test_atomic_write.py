@@ -1238,27 +1238,48 @@ class VersionAuthorIsChosenNeverHarvestedTest(unittest.TestCase):
 
     def test_no_identity_source_touches_the_author_path(self):
         """Source-derived ban: machine_name, platform.node, getpass and
-        $USER may never appear in prefs.py - the author is typed by a
-        person or it is empty."""
-        import inspect
+        $USER may never appear in the prefs PACKAGE - the author is
+        typed by a person or it is empty.
+
+        WALKS EVERY MODULE, not the one that used to hold everything.
+        `version_author` is answered in `prefs.py` but both saved and
+        loaded in `persistence.py` since 2026-08-09, and `load()` is
+        exactly where a default would be backfilled from the account
+        name. Scanning a single module would have left that half
+        uncovered - and would have kept PASSING while it did, which is
+        how a guard becomes decoration.
+        """
         import io
+        import os
         import tokenize
-        raw = inspect.getsource(prefs)
-        # CODE only. The module's own comment names the banned sources
-        # while explaining the ban - which is exactly what a comment is
-        # for, and exactly what this scan must not trip on (the same
-        # lesson as the credit-by-position pin catching its own
-        # comment).
-        source = "".join(
-            token.string for token in tokenize.generate_tokens(
-                io.StringIO(raw).readline)
-            if token.type not in (tokenize.COMMENT, tokenize.STRING))
-        for banned in ("machine_name", "platform.node", "getpass",
-                       'environ["USER"]', "environ.get(\'USER\'",
-                       'environ.get("USER"'):
-            self.assertNotIn(banned, source,
-                             "%s appears in prefs.py - an identity can "
-                             "be harvested into version_author" % banned)
+        folder = os.path.dirname(os.path.abspath(prefs.__file__))
+        checked = []
+        for name in sorted(os.listdir(folder)):
+            if not name.endswith(".py"):
+                continue
+            checked.append(name)
+            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+                raw = fh.read()
+            # CODE only. The module's own comment names the banned
+            # sources while explaining the ban - which is exactly what
+            # a comment is for, and exactly what this scan must not
+            # trip on (the same lesson as the credit-by-position pin
+            # catching its own comment).
+            source = "".join(
+                token.string for token in tokenize.generate_tokens(
+                    io.StringIO(raw).readline)
+                if token.type not in (tokenize.COMMENT, tokenize.STRING))
+            for banned in ("machine_name", "platform.node", "getpass",
+                           'environ["USER"]', "environ.get(\'USER\'",
+                           'environ.get("USER"'):
+                self.assertNotIn(
+                    banned, source,
+                    "%s appears in prefs/%s - an identity can be "
+                    "harvested into version_author" % (banned, name))
+        # A walk that finds nothing passes silently: name what it must
+        # have seen, so a rename cannot empty the ban.
+        self.assertIn("prefs.py", checked)
+        self.assertIn("persistence.py", checked)
 
 
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):

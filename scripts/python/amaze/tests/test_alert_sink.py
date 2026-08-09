@@ -115,7 +115,14 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         os.path.join("core", "tile_icons.py"): ("icons-not-saved",),
         os.path.join("core", "notes.py"): ("notes-not-saved",),
         os.path.join("core", "keyed_store.py"): (),
-        os.path.join("prefs", "prefs.py"): ("prefs-unreadable",),
+        # RE-KEYED 2026-08-09, in the same change that moved it.
+        # `_preserve_unreadable` discovers this condition, and it left
+        # `prefs.py` for `persistence.py` with the rest of the
+        # save/load half. The detector follows the code, exactly as the
+        # side tables' keys did above. Left pointing at `prefs.py` it
+        # goes red for a move; dropping the entry instead would have
+        # gone VACUOUS, which is worse.
+        os.path.join("prefs", "persistence.py"): ("prefs-unreadable",),
         os.path.join("core", "matx_sources.py"): (
             "online-unsafe-archive-paths",),
     }
