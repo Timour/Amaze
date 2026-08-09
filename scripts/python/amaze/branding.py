@@ -49,5 +49,10 @@ APP_VERSION = "1.0"
 #: knows latches read-only and says so once, instead of writing into a
 #: format it cannot understand. Bump this only when the on-disk shape
 #: genuinely changes; the app version above moves freely without it.
-LIBRARY_FORMAT = 1
+#: 2 (2026-08-09): the tile-icon dual-write retired. A pick lives in
+#: icons.json alone now, so a build that still reads it off the asset
+#: record would show a stale pick or none - which is exactly what this
+#: stamp exists to prevent, by opening such a library read-only and
+#: saying to update.
+LIBRARY_FORMAT = 2
 

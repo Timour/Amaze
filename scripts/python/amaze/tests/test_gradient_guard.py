@@ -256,7 +256,9 @@ class GradientTileIconTest(unittest.TestCase):
         self.assertEqual({}, self.lib.tile_icon(self.row))
         self.assertEqual(
             self.lib._entry_thumb_key(self.lib.entry(self.row)),
-            gradient_library.GradientLibrary._entry_thumb_key(
+            # A bare entry: no uid, so no stored pick and no field -
+            # the key a gradient with no icon at all produces.
+            self.lib._entry_thumb_key(
                 {"colors": self.lib.entry(self.row)["colors"],
                  "ramp": self.lib.entry(self.row).get("ramp")}))
 

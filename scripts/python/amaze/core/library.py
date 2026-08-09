@@ -501,13 +501,17 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return False
         asset = self._assets[row]
         spec = tile_icons.normalise(spec)
-        # The store is the one home; the record field is written too
-        # for one release, so the other machine's older build keeps
-        # reading the pick (the adoption in _adopt_record_icons is the
-        # other half of that contract).
+        # THE STORE IS THE ONE HOME. The record field used to be
+        # written too, so a build that predates the store still read
+        # the pick - retired 2026-08-09 with LIBRARY_FORMAT 2, which
+        # answers that case generally: such a build opens the library
+        # read-only and is told to update, instead of quietly showing
+        # a second copy of one value that is free to drift. Reading
+        # the field still happens (see tile_icon's fallback and
+        # _adopt_record_icons) - a library written by any older build
+        # still carries picks there.
         stored = tile_icons.set_override(
             self.preferences, str(asset.mat_id), spec)
-        asset.icon = spec
         written = bool(stored)
         if spec:
             written = written and bool(
@@ -1384,12 +1388,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         """One-time move of record-level tile icons into the shared
         store (icons.json, keyed by the asset id beside the File
         section's path keys) - ROADMAP, one icons.json for every
-        section. The record field stays exactly as loaded and
-        keeps being written for one release, so the other machine's
-        older build still reads it; it simply stops being what this
-        build reads first. A spec whose icon name this build does not
-        ship is HELD on the record rather than normalised away - the
-        migration must not lose what an older build can still show."""
+        section. The record field stays EXACTLY as loaded: this build
+        no longer writes it (retired with LIBRARY_FORMAT 2), and
+        reading it is how a library from an older build keeps its
+        picks. Not deleted either - removing the only copy such a
+        build can read would make the move one-way for no gain. A spec
+        whose icon name this build does not ship is HELD on the record
+        rather than normalised away, for the same reason."""
         moved = held = 0
         for asset in self._assets:
             raw = asset.icon

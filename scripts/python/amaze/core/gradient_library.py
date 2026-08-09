@@ -774,12 +774,29 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self._reset_entries()
         return True
 
+    def _icon_of(self, entry: dict) -> dict:
+        """This entry's icon: the SHARED STORE first, the entry field
+        as the fallback - the same precedence `library.tile_icon` uses,
+        so both archetypes answer the question one way.
+
+        It mattered which way round. The entry field used to be the
+        only reader, with the store copied INTO it on load - so a pick
+        made through the store rode back out on the next save and the
+        dual-write survived its own retirement. Asking the store here
+        is what lets `set_tile_icon` stop writing the field at all.
+        """
+        if not entry:
+            return {}
+        uid = str(entry.get("uid", "") or "")
+        stored = tile_icons.override_for(self._preferences, uid) \
+            if uid else {}
+        return stored or tile_icons.normalise(entry.get("icon"))
+
     def tile_icon(self, row: int) -> dict:
         """This gradient's chosen icon, {} when it shows its swatch.
         Same two-method contract every other section answers, so the
         panel's one Customize handler serves Colors too."""
-        entry = self.entry(row)
-        return tile_icons.normalise(entry.get("icon")) if entry else {}
+        return self._icon_of(self.entry(row))
 
     def tile_key(self, row: int) -> str:
         """A palette is keyed by its uid - the same identity its
@@ -801,15 +818,15 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         if entry is None:
             return False
         spec = tile_icons.normalise(spec)
-        # The shared store is the one home (keyed by the entry uid);
-        # the entry field is written too for one release, so the other
-        # machine's older build keeps reading the pick.
+        # THE SHARED STORE IS THE ONE HOME, keyed by the entry uid. The
+        # entry field used to be written too, so a build predating the
+        # store still read the pick - retired 2026-08-09 with
+        # LIBRARY_FORMAT 2, which covers that case generally: such a
+        # build opens the library read-only and is told to update.
+        # The field is still READ (see _icon_of) and never deleted, so
+        # a library from an older build keeps its picks.
         stored = tile_icons.set_override(
             self._preferences, self.note_uid(row), spec)
-        if spec:
-            entry["icon"] = spec
-        else:
-            entry.pop("icon", None)
         if save:
             self._save_user()
         idx = self.index(row, 0)
@@ -1027,9 +1044,11 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             uid = str(entry.get("uid", "") or "")
             if not uid:
                 continue
-            stored = tile_icons.override_for(self._preferences, uid)
-            if stored:
-                entry["icon"] = stored
+            if tile_icons.override_for(self._preferences, uid):
+                # Already in the store, which is where every reader
+                # looks. NOT copied back onto the entry: that overlay
+                # is how a store pick rode out to disk on the next
+                # save and kept the dual-write alive.
                 continue
             spec = tile_icons.normalise(entry.get("icon"))
             if spec and tile_icons.set_override(
@@ -1057,19 +1076,23 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             not bases or all(b == "Constant" for b in bases)
         )
 
-    @classmethod
-    def _entry_thumb_key(cls, entry: dict):
+    def _entry_thumb_key(self, entry: dict):
         """Content-addressed (the hexes, plus ramp bases) - renames can't
         stale it, edits naturally mint a new key and the old image ages
-        out of the shared LRU."""
+        out of the shared LRU.
+
+        An INSTANCE method since 2026-08-09: the icon half now comes
+        from the shared store, which needs the preferences to reach.
+        It stays callable on a bare dict - an entry with no uid simply
+        has no stored pick and falls back to the field."""
         hexes = tuple(c["hex"] for c in entry["colors"])
         bases = tuple((entry.get("ramp") or {}).get("bases") or ())
-        icon = tile_icons.normalise(entry.get("icon"))
+        icon = self._icon_of(entry)
         # The icon is part of the key: a tile that has one paints the
         # icon INSTEAD of the swatch, so the two must not share a slot.
         icon_key = (icon.get("name"), icon.get("bg"), icon.get("ink")) \
             if icon else None
-        return ("grad", cls._is_banded(entry), hexes, bases, icon_key,
+        return ("grad", self._is_banded(entry), hexes, bases, icon_key,
                 THUMB_SIZE)
 
     def _thumb(self, row: int) -> QtGui.QImage:
@@ -1078,7 +1101,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         image = thumbnails.engine.peek(key)
         if image is not None:
             return image
-        icon = tile_icons.normalise(entry.get("icon"))
+        icon = self._icon_of(entry)
         if icon:
             # Composed in memory - no file, see set_tile_icon.
             composed = tile_icons.compose(
