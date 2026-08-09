@@ -665,6 +665,18 @@ class DatabaseConnector:
         for a path that does not exist, so the write that emptied the
         file took NO backup either.
         """
+        # A DIFFERENT LIBRARY THAN THE ONE THIS CONNECTOR SERVES takes
+        # the switch door. This line used to repoint `_path` under the
+        # cached document unconditionally, so a model constructed after
+        # the library moved - a hand edit or a rollback while the panel
+        # was closed - was served the OLD library's rows under the new
+        # path; serves() then agreed, and the first save wrote the old
+        # document into the new file. reload_with_path re-derives
+        # everything from the new disk, latches included.
+        if (self._data and self._path
+                and hostos.canonical_path_key(self._path)
+                != hostos.canonical_path_key(path)):
+            return self.reload_with_path(path)
         self._path = path
         if not self._data:
             full = self._path + self._filename
