@@ -1205,9 +1205,19 @@ class RGLSource(MatxSource):
             except OSError:
                 pass
         if not os.path.exists(target):
+            # A 0..1 FRACTION, which is the contract fetch documents.
+            # This reported a STRING, and the bar clamps with `frac <
+            # 0.0` - a TypeError the moment a callback actually
+            # arrived. It never did: the one caller that could pass a
+            # progress callback into this branch was not passing one,
+            # so the two bugs hid each other and the bar simply sat at
+            # zero through a multi-hundred-KB download.
+            on_bytes = None
             if progress is not None:
-                progress("Downloading measurement")
-            download("%s/%s/%s_rgb.bsdf" % (self.CDN, uid, uid), target)
+                def on_bytes(read, total):
+                    progress(min(1.0, read / total) if total else 0.0)
+            download("%s/%s/%s_rgb.bsdf" % (self.CDN, uid, uid), target,
+                     on_bytes)
             if not self._is_measurement(target):
                 try:
                     os.remove(target)

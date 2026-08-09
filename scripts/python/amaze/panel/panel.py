@@ -4047,8 +4047,16 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         if source is None:
             return (None, None, "Unknown source %s" % record.source)
-        if record.kind == "values":
+        # ASK THE SOURCE, never re-spell its answer. This read
+        # `record.kind == "values"`, which is the BASE class's answer -
+        # and RGL overrides it, because a uid the shipped table has
+        # never seen still costs a measurement download. A values
+        # source needs no resolution either way; what was wrong was
+        # the claim beside it that nothing would be fetched.
+        if not source.needs_download(record):
             return (source, None, "")     # nothing to download
+        if record.kind == "values":
+            return (source, None, "")     # downloads, but picks no package
         resolution = matx_sources.pick_resolution(
             source.resolutions(record), self.prefs.matx_resolution
         )

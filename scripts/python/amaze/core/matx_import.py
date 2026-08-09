@@ -270,7 +270,12 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         # import_record and build_in_scene as a traceback instead of
         # "Download failed".
         try:
-            fetched_values = source.fetch(record, None, None)
+            # PROGRESS REACHES HERE TOO. This branch downloads when the
+            # shipped table does not know the material, and it was the
+            # one fetch call passing no callback - so the bar was shown
+            # by the site that asked the source properly and then never
+            # moved.
+            fetched_values = source.fetch(record, None, None, progress)
         except Exception as exc:                        # noqa: BLE001
             debug.exception("measurement download", exc, uid=record.uid)
             return (None, "", "Could not read the measurement for %s: %s"
