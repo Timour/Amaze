@@ -756,8 +756,27 @@ prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
 core/folders.py           FolderListModel (shared Folder-archetype base)
 core/scene_captures.py       scene capture store + open-scene state
+core/repair.py            REPAIR: what is wrong with this library and
+                          what is safe to do - Clean Library's opposite
+                          number, and the only module that opens a
+                          recovery stamp
+core/gallery_import.py    Houdini .gal gallery entries -> library assets
+core/matx_icon.py         the PhysicallyBased icon, for value-only
+                          online sources that ship no texture to render
+core/bsdf_reader.py       reads the `tensor_file` container the measured
+                          EPFL RGL BSDFs ship in
+render/shaderball_scene.py   the shaderball scene a material preview
+                          renders through
+render/thumbnail_scene.py    the per-renderer thumbnail scene (Redshift,
+                          Octane and the rest build theirs here)
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
+helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
+                          environment behave differently here?" question
 helpers/                  theme, ui widgets, vex syntax, generic helpers
+utils/rc_calls.py         the entry points Houdini itself calls (shelf
+                          tools, OPmenu) - finds the open panel by its
+                          pane-tab label, historical names included
+branding.py               the app's DISPLAY name and tagline, once
 dialogs/                  save / preferences / about / code / gradient dialogs
 
 tests/test_support.py     fixture_panel() - the ONLY way a test builds a

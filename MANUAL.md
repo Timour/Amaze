@@ -44,6 +44,12 @@ archive per asset (`.mat` + `.interface`). These are plain Houdini
 files: **if Amaze ever dies, your assets still open in vanilla
 Houdini.**
 
+There is also an **Amaze shelf** carrying three tools: **Amaze** opens
+the panel, **Capture** takes a preview of the open scene, and
+**Repair** is the recovery tool described under Housekeeping — that one
+is on the shelf rather than in the panel because it has to work when
+the panel does not.
+
 ---
 
 ## The panel at a glance
@@ -547,10 +553,34 @@ summary, and are kept for 30 days before they are removed for good.
 Folders on a drive that simply is not mounted right now are left
 alone.
 
+**Repair** is the shelf tool beside Amaze's own, and it is the one to
+reach for when Clean Up Library refuses, or when the panel will not
+open at all. It reads your library, tells you in plain words what is
+wrong, and offers only what is safe: rebuilding the list from the
+recovery copy stored beside each asset, or putting back one of the
+snapshots. **It never deletes anything** — the strongest thing it can
+do is move files into a dated folder inside your library.
+
+It lives on the shelf rather than in the panel on purpose. A running
+panel writes the list as you work, so a repair made from inside it
+would be overwritten by the panel seconds later, leaving you believing
+you had recovered when you had not. From the shelf the panel is
+closed, nothing holds your library, and nothing is about to save over
+the result.
+
 **Your library is safe by design.** Every write snapshots the index
 first (rolling backups plus an immutable first-run copy), and a
 concurrent write from a second Houdini session is merged rather than
 overwritten.
+
+**Overwrite can be switched off for a whole library.** The setting
+lives in Preferences ▸ Library, and unlike everything else in
+Preferences it travels with the LIBRARY rather than with your machine —
+it is kept in a small `policy.json` beside your assets, so two
+computers pointed at one library agree about it. With it off, saving
+over an existing material is refused and the Save dialog stops offering
+Overwrite at all. Worth setting on a shared library where the paragraph
+below would otherwise apply.
 
 That applies to the **list** of your assets. An individual asset's own
 files are a different thing: choosing **Overwrite** when you save over

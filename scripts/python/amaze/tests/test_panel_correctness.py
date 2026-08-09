@@ -335,6 +335,44 @@ class CaptureIsDecidedInOnePlace(unittest.TestCase):
             "the shared policy grew the retired clause back")
 
 
+class TheMapNamesEveryModule(unittest.TestCase):
+    """overview.md is the system map, and a map that silently stops
+    covering the territory is worse than none - it is consulted and
+    believed. Nine modules had accumulated in it unnamed."""
+
+    #: Documented under a brace or a phrase rather than a filename:
+    #: `core/{gradient,cop,code}_library.py` and `helpers/ ... vex
+    #: syntax`. Named here so the shorthand is a DECISION rather than
+    #: a hole this test cannot see.
+    SHORTHAND = {"gradient_library", "vex_syntax"}
+
+    def test_overview_names_every_module_in_the_package(self):
+        overview = os.path.join(
+            os.path.dirname(os.path.dirname(PACKAGE)),
+            "docs", "architecture", "overview.md")
+        if not os.path.exists(overview):
+            self.fail("the system map is missing: %s" % overview)
+        with open(overview, encoding="utf-8") as handle:
+            body = handle.read()
+        missing = []
+        for root, _dirs, files in os.walk(PACKAGE):
+            if "tests" in root.split(os.sep) or "__pycache__" in root:
+                continue
+            for name in files:
+                if not name.endswith(".py") or name == "__init__.py":
+                    continue
+                stem = name[:-3]
+                if stem in self.SHORTHAND or stem in body:
+                    continue
+                missing.append(os.path.relpath(
+                    os.path.join(root, name), PACKAGE))
+        self.assertEqual(
+            [], sorted(missing),
+            "these modules are in no part of the system map, so anyone "
+            "reading it to find where something lives will not find "
+            "them: %s" % ", ".join(sorted(missing)))
+
+
 class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
     """Qt does not dim a pixmap a widget paints itself, so each of
     these has to apply the rule by hand - and only one of the three
