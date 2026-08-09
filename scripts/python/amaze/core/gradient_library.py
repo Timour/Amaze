@@ -765,10 +765,23 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self._reset_entries()
 
     def remove_user_gradient(self, row: int) -> None:
+        """Delete a palette, and SAY SO to the connector.
+
+        Dropping it from `_user` used to be the whole delete, because
+        the hand-built writer serialised that list wholesale. The
+        connector unions instead - a row the caller does not mention is
+        KEPT, deliberately, so two panes cannot erase each other's
+        additions - so an unspoken delete simply came back on the next
+        save. `forget()` is the connector's word for it, and it is what
+        the other three sections' deletes already use.
+        """
         entry = self.entry(row)
         if entry is None:
             return
+        identity = self._id_of(entry)
         self._user.remove(entry)
+        if identity:
+            self._db().forget(identity)
         self._save_user()
         self._reset_entries()
 

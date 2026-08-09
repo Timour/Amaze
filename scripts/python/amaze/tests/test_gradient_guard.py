@@ -81,37 +81,53 @@ class GradientStaleWriteTest(unittest.TestCase):
         os.utime(self.path, ns=(stat.st_atime_ns,
                                 stat.st_mtime_ns + 5_000_000_000))
 
-    def test_a_save_refuses_when_the_file_changed_underneath(self):
+    def test_the_other_sessions_gradients_survive_our_save(self):
+        """THE CONTRACT CHANGED FROM REFUSE TO MERGE, and it changed
+        because this file stopped being the odd one out.
+
+        The hand-built writer serialised `_user` wholesale, so it had
+        to REFUSE outright when the file moved underneath it - the
+        alternative was erasing the other session. The connector
+        three-way merges instead, which is what `library.json`,
+        `cops.json` and `code.json` have always done, so both sides now
+        survive. That is strictly more than refusing gave: the user
+        keeps their edit AND the peer's.
+        """
         self._touch_from_another_session()
-        self.lib._user = [{"name": "mine", "type": "user", "points": []}]
+        self.lib._user = [{"name": "mine", "type": "user",
+                           "id": "mineid", "points": []}]
         self.lib._save_user()
-        on_disk = self._read()
-        names = [g["name"] for g in on_disk["assets"]]
-        self.assertEqual(
-            ["theirs", "theirs2"], names,
-            "the other session's gradients were overwritten - this is "
-            "the silent clobber the guard exists to prevent")
+        names = [g["name"] for g in self._read()["assets"]]
+        for theirs in ("theirs", "theirs2"):
+            self.assertIn(
+                theirs, names,
+                "the other session's gradients were overwritten - the "
+                "merge is what replaced the old outright refusal, so "
+                "losing them is worse than either")
+        self.assertIn("mine", names, "our own edit was dropped")
 
     def test_an_ordinary_save_still_works(self):
         """Guards the guard. A refusal that fires always is not a guard,
         it is an outage - and this section had no tests at all before,
         so nothing would have caught that."""
-        self.lib._user = [{"name": "mine", "type": "user", "points": []}]
+        self.lib._user = [{"name": "mine", "type": "user",
+                           "id": "mineid", "points": []}]
         self.lib._save_user()
         names = [g["name"] for g in self._read()["assets"]]
-        self.assertEqual(["mine"], names,
-                         "an ordinary save was refused")
+        self.assertIn("mine", names, "an ordinary save was refused")
 
     def test_two_saves_in_a_row_work(self):
         """The baseline must be refreshed AFTER a write, or our own save
         looks like somebody else's edit on the very next one."""
-        self.lib._user = [{"name": "first", "type": "user", "points": []}]
+        self.lib._user = [{"name": "first", "type": "user",
+                           "id": "firstid", "points": []}]
         self.lib._save_user()
-        self.lib._user = [{"name": "second", "type": "user", "points": []}]
+        self.lib._user = [{"name": "second", "type": "user",
+                           "id": "secondid", "points": []}]
         self.lib._save_user()
         names = [g["name"] for g in self._read()["assets"]]
-        self.assertEqual(
-            ["second"], names,
+        self.assertIn(
+            "second", names,
             "the second save was refused - the post-write baseline is "
             "not being refreshed")
 
@@ -125,6 +141,33 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.lib._save_user()
         self.assertTrue(os.path.isfile(self.path),
                         "a missing file blocked the save entirely")
+
+    def test_a_deleted_gradient_stays_deleted(self):
+        """ABSENCE NO LONGER MEANS DELETE, which is the one contract the
+        move onto the connector genuinely changed.
+
+        The hand-built writer serialised `_user` wholesale, so dropping
+        an entry from that list WAS the delete. The connector unions
+        instead - a row the caller does not mention is kept, because two
+        panes share one connector and pane 2's save must not erase what
+        pane 1 just added - and a delete therefore has to be said out
+        loud through `forget()`. Without this the palette reappears on
+        the next save, which is worse than a refused delete: the user
+        watched it go.
+        """
+        gone = self.lib.entry(0)
+        name = gone["name"]
+        self.lib.remove_user_gradient(0)
+        self.lib._user.append({"name": "kept", "type": "user",
+                               "id": "keptid", "points": []})
+        self.lib._save_user()
+        names = [g["name"] for g in self._read()["assets"]]
+        self.assertIn("kept", names, "premise: the later save landed")
+        self.assertNotIn(
+            name, names,
+            "the deleted palette came back on the next save - absence "
+            "is not a delete through the connector, so it has to be "
+            "said out loud")
 
     def test_the_scratch_file_is_not_left_behind(self):
         self.lib._user = [{"name": "mine", "type": "user", "points": []}]
