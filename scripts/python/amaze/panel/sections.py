@@ -1257,8 +1257,11 @@ class CodeSection(AssetSection):
         self.panel.new_code_snippet()
 
     def menu_apply(self, indexes, current, payload=None) -> None:
-        if current is not None and current.isValid():
-            self.panel._apply_code_index(current)
+        # THE CLICK DOOR, not a second reading of the same policy.
+        # This called a body that vetoed on a selected node with no
+        # snippet parm, where the double-click beside it falls through
+        # to the creation walk.
+        self.panel.click_on_row(self, current)
 
     def menu_edit(self, indexes, current, payload=None) -> None:
         if current is None or not current.isValid():
@@ -1494,7 +1497,9 @@ class FolderSection(Section):
         if files is None:
             return
         if self.selected_kinds(indexes) == {file_library.KIND_IMAGE}:
-            self.panel.set_texture_on_selected_node(current)
+            # The click door, same as a double-click on the row: the
+            # old call vetoed on a selected node with no file parm.
+            self.panel.click_on_row(self, current)
             return
         for index in indexes:
             if index.data(files.KindRole) == file_library.KIND_GEO:
@@ -2128,9 +2133,10 @@ class GradientSection(Section):
         )
 
     def menu_apply_ramp(self, indexes, current, payload=None) -> None:
-        entry = self._entry_at(current)
-        if entry is not None:
-            self.panel._apply_gradient_ramp(entry, basis=payload or "")
+        # Apply and Apply as, through the click door. The payload is
+        # the chosen ramp basis; the door hands it to whichever verb
+        # runs, so re-basing works on the node AND on the carrier.
+        self.panel.click_on_row(self, current, payload or None)
 
     def menu_copy_swatch(self, indexes, current, payload=None) -> None:
         if payload is not None:

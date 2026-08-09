@@ -4389,9 +4389,22 @@ class MatLibPanel(QtWidgets.QWidget):
     # these same declarations since the behaviour table shipped; this
     # is the aiming method it was always missing.
 
-    def click_on_row(self, section, index) -> None:
-        """A double-click on `index` in `section` - aimed by the
-        SELECTION, executed from the section's own declaration."""
+    def click_on_row(self, section, index, payload=None) -> None:
+        """A click door on `index` in `section` - aimed by the
+        SELECTION, executed from the section's own declaration.
+
+        BOTH DOORS COME THROUGH HERE: the double-click, and the menu
+        entry labelled with the same verb. They used to be two
+        implementations of one policy and they disagreed - the menu
+        side treated a selection as a VETO, which is the bug the
+        precedence below was written to remove, so the same tile with
+        the same selection created a node on double-click and showed
+        a modal refusal from the menu.
+
+        `payload` is the menu's extra word where an entry carries one
+        (Color's Apply as names a ramp basis); it reaches only the
+        verbs that declare they take it.
+        """
         if index is None or not index.isValid():
             return
         rule = getattr(section, "DROP", None)
@@ -4404,7 +4417,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         try:
             with helpers.preserving_selection_and_current():
-                landed = self._apply_click_rule(rule, index)
+                landed = self._apply_click_rule(rule, index, payload)
         except hou.PermissionError as refusal:
             # HOUDINI REFUSING IS NOT A BUG - the same absorption the
             # drag dispatch carries (dragdrop_widgets, drop refused):
@@ -4423,7 +4436,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not landed:
             self._cannot_load_here()
 
-    def _apply_click_rule(self, rule, index) -> bool:
+    def _apply_click_rule(self, rule, index, payload=None) -> bool:
         """ONE precedence for every section's click door.
 
         THE SELECTION IS A HINT, NOT A VETO. A single visible selected
@@ -4435,18 +4448,22 @@ class MatLibPanel(QtWidgets.QWidget):
         anything happened to be selected, which in Houdini is almost
         always.
         """
+        # The menu's extra word, handed on ONLY when there is one, so
+        # no verb ever sees a keyword it does not declare.
+        extra = {"basis": payload} if payload else {}
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
-            if bool(getattr(self, rule.click_on_node)(index, sel[0])):
+            if bool(getattr(self, rule.click_on_node)(index, sel[0],
+                                                      **extra)):
                 return True
             debug.event("interact", "click hint declined - falling "
                         "through to the network",
                         verb=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
-            return bool(getattr(self, rule.click_resolve)(index))
+            return bool(getattr(self, rule.click_resolve)(index, **extra))
         if rule.on_space:
             for network in self._view_create_networks():
-                if getattr(self, rule.on_space)(index, network):
+                if getattr(self, rule.on_space)(index, network, **extra):
                     return True
         return False
 
@@ -4474,28 +4491,6 @@ class MatLibPanel(QtWidgets.QWidget):
         """An unknown file has no scene behaviour - its one action."""
         self.copy_file_paths([index])
         return True
-
-    def _apply_code_index(self, index: QtCore.QModelIndex) -> None:
-        """The Code section's click doors (double-click and menu
-        Apply): ONE selected node takes the snippet; nothing selected
-        creates the language's carrier in the active network; every
-        other outcome is the one refusal sentence."""
-        sel = self._visible_selected_nodes()
-        if len(sel) == 1:
-            source_index = self.code_sorted_model.mapToSource(index)
-            with hou.undos.group("Amaze Apply Code Snippet"):
-                ok, _reason = self.code_model.apply_to_node(
-                    source_index.row(), sel[0])
-            if not ok:
-                self._cannot_load_here()
-            return
-        if not sel:
-            with helpers.preserving_selection_and_current():
-                for network in self._view_create_networks():
-                    if self.create_code_node_in(index, network):
-                        return
-        self._cannot_load_here()
-
 
     def _edit_code_row(self, row: int) -> None:
         asset = self.code_model.assets[row]
@@ -4812,28 +4807,6 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
         return sel[0]
 
-
-    def _apply_gradient_ramp(self, entry: dict, basis: str = "") -> None:
-        """The Color section's click doors (double-click, Apply and
-        Apply as): ONE selected node's first color ramp takes the
-        gradient; nothing selected creates the MtlX ramp carrier in
-        the active network (re-based when Apply as asked for one);
-        every other outcome is the one refusal sentence."""
-        sel = self._visible_selected_nodes()
-        if len(sel) == 1:
-            parm = helpers.find_color_ramp_parm(sel[0])
-            if parm is None:
-                self._cannot_load_here()
-                return
-            with hou.undos.group("Amaze Apply Gradient"):
-                parm.set(self._entry_ramp(entry, basis))
-            return
-        if not sel:
-            with helpers.preserving_selection_and_current():
-                for network in self._view_create_networks():
-                    if self._create_gradient_carrier(entry, network, basis):
-                        return
-        self._cannot_load_here()
 
     @staticmethod
     def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
@@ -5434,7 +5407,8 @@ class MatLibPanel(QtWidgets.QWidget):
         return None
 
     def apply_gradient_to_node(
-        self, index: QtCore.QModelIndex, node: hou.Node
+        self, index: QtCore.QModelIndex, node: hou.Node,
+        basis: str = "",
     ) -> bool:
         """Drag-drop completion for the Gradients section: apply the
         dragged combination to the node the drag was released over.
@@ -5458,7 +5432,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 )
             return False
         with hou.undos.group("Amaze Apply Gradient"):
-            parm.set(self._entry_ramp(entry))
+            parm.set(self._entry_ramp(entry, basis))
         return True
 
     def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
@@ -6541,8 +6515,8 @@ class MatLibPanel(QtWidgets.QWidget):
             section.double_click(index)
 
     def _apply_texture_to_node(self, node: hou.Node, path: str) -> None:
-        """Shared by set_texture_on_selected_node (double-click and the
-        "Load to Node" right-click action): finds a file parm on node
+        """Puts a path onto a node, reached from the Load to Node
+        right-click action: finds a file parm on node
         generically via helpers.find_file_parm() (any file-reference-type
         string parm), not a hardcoded per-renderer lookup - this covers
         Karma, Redshift, Octane, Copernicus/COP file nodes and anything
@@ -6758,16 +6732,21 @@ class MatLibPanel(QtWidgets.QWidget):
             parm.set(self._scene_path(path))
         return True
 
-    def create_gradient_node_in(self, index, dest, position=None) -> bool:
+    def create_gradient_node_in(self, index, dest, position=None,
+                                basis: str = "") -> bool:
         """The gradient creation rule: a MtlX colour ramp carrying the
-        combination, wherever the network can hold one."""
+        combination, wherever the network can hold one.
+
+        `basis` is Apply as's chosen interpolation, arriving through
+        the click door's payload; empty means the gradient's own
+        recorded ramp, which is every other door."""
         if index is None or not index.isValid():
             return False
         source_index = self.gradient_sorted_model.mapToSource(index)
         entry = self.gradient_model.entry(source_index.row())
         if entry is None:
             return False
-        return self._create_gradient_carrier(entry, dest,
+        return self._create_gradient_carrier(entry, dest, basis,
                                              position=position)
 
     def _create_gradient_carrier(self, entry, dest, basis: str = "",
@@ -6841,28 +6820,6 @@ class MatLibPanel(QtWidgets.QWidget):
         with hou.undos.group("Amaze Set File Path"):
             parm.set(self._scene_path(path))
         return True
-
-    def set_texture_on_selected_node(self, index: QtCore.QModelIndex | None) -> None:
-        """Double-click on an image in the File section: push the path
-        onto the file parm of whichever single VISIBLE node is
-        selected (_visible_selected_nodes says why the global read
-        broke live)."""
-        if index is None or not index.isValid():
-            return
-        path = index.data(self.file_files_model.PathRole)
-        if not path:
-            return
-
-        sel = self._visible_selected_nodes()
-        if len(sel) == 1:
-            self._apply_texture_to_node(sel[0], path)
-            return
-        if not sel:
-            with helpers.preserving_selection_and_current():
-                for network in self._view_create_networks():
-                    if self.create_image_node_in(index, network):
-                        return
-        self._cannot_load_here()
 
     def import_asset_to_mat(self):
         """Explicitly import the selected materials into /mat."""
