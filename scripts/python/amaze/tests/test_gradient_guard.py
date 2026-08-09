@@ -414,7 +414,12 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         if lib._user_file() != self.path:
             self.skipTest("gradient library does not resolve this path")
         from amaze.core import notes
-        for entry in lib._entries:
+        # OURS ONLY: the curated seed runs in this fixture too, and its
+        # entries carry notes of their own.
+        mine = [e for e in lib._entries
+                if e["name"] in {"g%d" % i for i in range(12)}]
+        self.assertEqual(12, len(mine), "the fixture entries are missing")
+        for entry in mine:
             key = notes.note_key("gradient", entry["uid"])
             texts = [item["text"] for item
                      in notes.note_for(self.prefs, key).get("items", [])
