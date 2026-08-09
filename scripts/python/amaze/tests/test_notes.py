@@ -865,12 +865,18 @@ class GradientNotesTest(unittest.TestCase):
         per repaint) and an identity-less entry simply has no note."""
         row = self.model.rowCount() - 1
         entry = self.model.entry(row)
+        # BOTH spellings: `id` since gradients moved onto the connector,
+        # `uid` before it. Popping only the old one left the entry with
+        # an identity, so the test stopped being about an identity-less
+        # row at all.
         entry.pop("uid", None)
+        entry.pop("id", None)
         index = self.model.index(row, 0)
         self.assertFalse(self.model.data(index, self.model.NotesRole))
-        self.assertNotIn("uid", entry,
-                         "a paint-path read stamped an identity - "
-                         "identity work belongs to load and birth")
+        for field in ("id", "uid"):
+            self.assertNotIn(field, entry,
+                             "a paint-path read stamped an identity - "
+                             "identity work belongs to load and birth")
 
 
 class PanelWiringTest(unittest.TestCase):

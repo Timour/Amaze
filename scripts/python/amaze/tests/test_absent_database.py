@@ -884,7 +884,7 @@ class GradientAbsenceTest(unittest.TestCase):
         said = watcher.text
         self.assertIn(gradient_library.GradientLibrary._SEED_MARKER, said,
                       "the note does not say which trace it went on")
-        self.assertIn("saving is disabled", said.lower())
+        self.assertIn("nothing will be saved", said.lower())
         # ONE text, printed and recorded. On Windows note() suppresses
         # the print, so the RECORD has to carry the actionable half too
         # - the two used to differ and the log kept only "saving
@@ -935,7 +935,7 @@ class GradientAbsenceTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(self.path),
                         "a fresh install cannot save gradients at all")
         with open(self.path, encoding="utf-8") as handle:
-            names = [g["name"] for g in json.load(handle)["gradients"]]
+            names = [g["name"] for g in json.load(handle)["assets"]]
         self.assertIn("first", names)
 
     def test_a_fresh_install_still_seeds_the_curated_palettes(self):
@@ -966,7 +966,7 @@ class GradientAbsenceTest(unittest.TestCase):
         lib._save_user()
         with open(self.path, encoding="utf-8") as handle:
             self.assertEqual(
-                ["edited"], [g["name"] for g in json.load(handle)["gradients"]],
+                ["edited"], [g["name"] for g in json.load(handle)["assets"]],
                 "an ordinary save was refused")
 
 

@@ -106,7 +106,13 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
     #: file -> the conditions it must raise
     EXPECTED = {
         os.path.join("core", "gradient_library.py"): (
-            "gradients-unreadable", "gradients-changed-on-disk"),
+            # `gradients-changed-on-disk` RETIRED 2026-08-09 with the
+            # refusal it announced: gradients go through
+            # DatabaseConnector now and a peer's edit is MERGED rather
+            # than refused, so there is no longer a moment to
+            # interrupt the user about. An alert for a condition that
+            # cannot arise is the dead cover this list exists to stop.
+            "gradients-unreadable"),
         # The unreadable alert moved into the Keyed Store Engine on
         # 2026-08-03 - it is now ONE sentence per store, declared with
         # the store and raised by the engine that discovers the
