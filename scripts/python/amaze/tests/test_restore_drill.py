@@ -632,6 +632,34 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
             "a bare string was iterated into single characters, which "
             "reaches the sidebar as bogus folders")
 
+    def test_a_byte_order_mark_does_not_cost_the_session(self):
+        """A BOM is what a Windows editor or a sync client's conflict
+        helper leaves at the front of a text file. The merge reader
+        forty lines from load() and the backup tier both read it fine
+        (utf-8-sig), so a load() that refuses it splits one file into
+        two verdicts: the panel opens with no library and refuses
+        every save, while the snapshot machinery files the same bytes
+        as a known-good state. Every reader of settings.json takes
+        utf-8-sig; policy, the databases and the keyed stores have
+        this test already."""
+        import codecs
+        import json as json_mod
+        from amaze.prefs import prefs as prefs_mod
+        folder = tempfile.mkdtemp(prefix="amaze_prefs_bom_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        with open(os.path.join(folder, "settings.json"), "wb") as handle:
+            handle.write(codecs.BOM_UTF8)
+            handle.write(json_mod.dumps(
+                {"ram_cache_mb": 321}).encode("utf-8"))
+        prefs = prefs_mod.Prefs()
+        prefs.path = folder
+        prefs.load()
+        self.assertEqual(
+            321, prefs.ram_cache_mb,
+            "three invisible bytes made settings.json unreadable - "
+            "no library, every save refused for the session, while "
+            "the backup tier reads the same bytes as healthy")
+
 
 class PrefsRefusesToOverwriteTest(unittest.TestCase):
     """REFUSE OVER OVERWRITE, the clause settings.json was missing."""
