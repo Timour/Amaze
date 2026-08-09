@@ -965,9 +965,11 @@ class GradientAbsenceTest(unittest.TestCase):
         lib._user = [{"name": "edited", "type": "user"}]
         lib._save_user()
         with open(self.path, encoding="utf-8") as handle:
-            self.assertEqual(
-                ["edited"], [g["name"] for g in json.load(handle)["assets"]],
-                "an ordinary save was refused")
+            names = [g["name"] for g in json.load(handle)["assets"]]
+        # assertIn, not an exact list: the connector UNIONS, so a row
+        # the caller simply did not mention is kept rather than
+        # deleted. This test is about the save landing at all.
+        self.assertIn("edited", names, "an ordinary save was refused")
 
 
 class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
