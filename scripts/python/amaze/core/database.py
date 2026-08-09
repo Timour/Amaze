@@ -17,7 +17,7 @@ from amaze.helpers import hostos
 #: with a new _MIGRATIONS step - the load path applies steps in order,
 #: so either machine of a two-machine setup can open a library written
 #: by the other and land on the same schema.
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: version-it-upgrades-FROM -> function(data) -> None (mutates in
 #: place). Step N runs when data["version"] == N, producing N+1.
@@ -36,6 +36,45 @@ def _migration_v1(data: dict) -> None:
 
 
 _MIGRATIONS[1] = _migration_v1
+
+
+def _migration_v2(data: dict) -> None:
+    """v2 -> v3: gradients become an ordinary database.
+
+    `gradients.json` was the one database that did not go through this
+    connector, so every guard the other three inherit had been given
+    to it by hand. It kept its rows under `gradients` and identified
+    them by `uid`, which is the only reason it could not simply be
+    pointed here - this class reads `assets` and `id` in seven places.
+
+    The FILE adopts the one shape rather than the connector learning a
+    second one: a shape that exists only because a single file is
+    different is the thing that drifts. Every other database has no
+    `gradients` key, so this is a no-op for them.
+
+    THE IDENTITY VALUE IS CARRIED, NOT REMINTED. Comments are keyed
+    `gradient:<value>` and tile icons by that same value, so a fresh
+    id here would orphan every note and every icon in one save. A row
+    that somehow has both keeps `id`.
+    """
+    rows = data.pop("gradients", None)
+    if rows is None:
+        return
+    moved = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict):
+            # One malformed row must not cost the rest: the merge
+            # already leaves a non-dict row for whoever wrote it.
+            continue
+        if "id" not in row and "uid" in row:
+            row["id"] = row.pop("uid")
+        moved.append(row)
+    existing = data.get("assets")
+    data["assets"] = moved if not isinstance(existing, list) or not existing \
+        else existing + moved
+
+
+_MIGRATIONS[2] = _migration_v2
 
 
 #: Survives the module reload; the class attribute points at it.
