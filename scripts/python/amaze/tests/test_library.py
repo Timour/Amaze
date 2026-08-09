@@ -1381,11 +1381,12 @@ class GradientSwitchTest(unittest.TestCase):
     def test_a_save_aimed_at_ANOTHER_library_is_refused(self):
         """The belt-and-braces half: even if some path forgets to
         switch this model, it must not write these colours into a
-        library they did not come from. This is gradients.json's
-        stand-in for db.serves()."""
+        library they did not come from. It IS db.serves() now - the
+        model's private stand-in retired with the move onto the
+        connector, which is the point: one guard, inherited."""
         model = self._model()
-        loaded_from = model._loaded_from
-        self.assertTrue(loaded_from, "the model did not record its library")
+        self.assertTrue(model._db().serves(self.prefs.dir),
+                        "premise: the connector serves this library")
 
         # Move the library under the model WITHOUT switching it - the
         # exact state the missing switch left behind.

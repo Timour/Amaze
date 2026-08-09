@@ -684,20 +684,26 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
                         "premise: the truncated file must latch")
         with open(path, "w", encoding="utf-8") as handle:
             json.dump({"categories": ["Warm"],
-                       "gradients": [{"name": "theirs"}]}, handle)
+                       "gradients": [{"name": "theirs",
+                                      "uid": "theirsuid"}]}, handle)
+        # THE RELOAD DOOR, which is how a repair heals now: the latch
+        # is the connector's, and reload_with_path re-derives it from
+        # disk. A plain re-read answers the cached refusal on purpose,
+        # so the heal is the same gesture the other three databases
+        # use - switching or reopening the panel.
         with contextlib.redirect_stdout(io.StringIO()):
-            lib._load_user()                # the same object re-reads
+            lib.switch_model_data()
         self.assertFalse(
             lib._load_failed,
             "the latch survived a clean read - the Colors section can "
             "never be saved again this session")
-        lib._user = [{"name": "mine", "type": "user"}]
+        lib._user = [{"name": "mine", "type": "user", "id": "mineid"}]
         with contextlib.redirect_stdout(io.StringIO()):
             lib._save_user()
         with open(path, encoding="utf-8") as handle:
-            self.assertEqual(
-                ["mine"], [g["name"] for g in json.load(handle)["assets"]],
-                "the save was still refused after the repair")
+            names = [g["name"] for g in json.load(handle)["assets"]]
+        self.assertIn("mine", names,
+                      "the save was still refused after the repair")
 
 
 class MergeRefusesJsonOfTheWrongShapeTest(_Case):
@@ -1398,9 +1404,15 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             handle.write(text)
 
     def _good(self, count=3):
+        # TODAY'S shape - rows under `assets` with an identity - the
+        # same reason the fixture writes LF like the product does: a
+        # fixture laying files down in a shape we no longer ship is
+        # not a fixture.
         self._write(json.dumps(
-            {"categories": ["Warm"],
-             "gradients": [{"name": "g%d" % i} for i in range(count)]}))
+            {"version": database.SCHEMA_VERSION,
+             "categories": ["Warm"],
+             "assets": [{"id": "SNAP%d" % i, "name": "g%d" % i}
+                        for i in range(count)]}))
 
     def _tiers(self):
         return sorted(n for n in os.listdir(self.dir) if ".bak-" in n)

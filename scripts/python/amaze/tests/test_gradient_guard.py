@@ -33,6 +33,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 from amaze.core import database                          # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
+from amaze.core import tile_icons                        # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
 
 
@@ -55,8 +56,16 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
+        # WITH AN IDENTITY, because the product never writes a row
+        # without one - a gradient has an id at birth or from the
+        # backfill - and the connector keys its whole union on it, so
+        # identity-less fixture rows all collapse into one key and
+        # overwrite each other (the second time this line has earned
+        # practice.md ▸ A FIXTURE MUST WRITE FILES THE WAY THE
+        # PRODUCT DOES).
         self._write({"categories": ["Warm"],
-                     "gradients": [{"name": "ours", "points": []}]})
+                     "gradients": [{"name": "ours", "uid": "oursuid",
+                                    "points": []}]})
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
         # Only run against a library that actually found the fixture.
         if self.lib._user_file() != self.path:
@@ -73,8 +82,10 @@ class GradientStaleWriteTest(unittest.TestCase):
     def _touch_from_another_session(self):
         """Another writer replaces the file after we loaded it."""
         self._write({"categories": ["Theirs"],
-                     "gradients": [{"name": "theirs", "points": []},
-                                   {"name": "theirs2", "points": []}]})
+                     "gradients": [{"name": "theirs", "points": [],
+                                    "uid": "theirsuid1"},
+                                   {"name": "theirs2", "points": [],
+                                    "uid": "theirsuid2"}]})
         # mtime granularity: make the change unmistakable to a
         # (mtime_ns, size) key rather than relying on timer resolution.
         stat = os.stat(self.path)
@@ -238,7 +249,10 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         refuses every colour edit for the session - curable only by
         deleting a dotfile the user cannot be expected to know about."""
         lib = self._library()
-        lib._load_failed = True                     # a refusing save
+        # The latch is the CONNECTOR'S now; the model's property only
+        # reads it. Setting it there is the same refusing-save state.
+        lib._db()._write_blocked = True
+        self.addCleanup(setattr, lib._db(), "_write_blocked", False)
         self.assertFalse(lib._save_user(),
                          "_save_user reported success while refusing")
 
@@ -262,6 +276,11 @@ class GradientTileIconTest(unittest.TestCase):
 
     def setUp(self):
         test_support.reset_database_singletons()
+        # The tile-icon store is a singleton per filename too, and the
+        # icon lives THERE now, not on the entry - a store resurrected
+        # from a previous test's directory swallows the write and the
+        # reload reads an empty one.
+        tile_icons.forget_overrides()
         self.dir = tempfile.mkdtemp(prefix="amaze_gicon_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -499,10 +518,11 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
             all(str(e.get("id") or "") for e in lib._entries),
             "an entry came out of first open with no identity")
         self.assertLessEqual(
-            seen.count("gradients.json"), 2,
+            seen.count("gradients.json"), 3,
             "first open wrote gradients.json %d times; the seed and the "
-            "note sweep are one write each and the uid backfill should "
-            "add none" % seen.count("gradients.json"))
+            "note sweep are one write each, the connector's one-time "
+            "legacy normalisation is a third, and the uid backfill "
+            "should add none" % seen.count("gradients.json"))
 
 
 class GradientTileNameTest(unittest.TestCase):
