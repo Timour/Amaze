@@ -224,25 +224,33 @@ class TheSwapTest(unittest.TestCase):
 
 class TheNetworkDoorTest(unittest.TestCase):
 
+    def _source(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(updater.__file__)),
+                            "updater.py")
+        with open(path, encoding="utf-8") as handle:
+            return handle.read()
+
     def test_the_updater_opens_no_url_of_its_own(self):
-        """One `urlopen` in the package, or the suite's network block
-        does not cover this module (practice.md)."""
-        with open(os.path.abspath(updater.__file__.replace(".pyc", ".py")),
-                  encoding="utf-8") as handle:
-            body = handle.read()
+        """Scanned as a CALL, not as the word: a docstring naming the
+        single door made the first version of this match itself and go
+        red on prose (practice.md > grep for STRUCTURE, not prose)."""
         self.assertNotIn(
-            "urlopen", body,
-            "updater.py calls urlopen directly, so fixture_panel's block "
-            "on matx_sources._request does not stop it and a test could "
+            "urlopen(", self._source(),
+            "updater.py opens a URL directly, so the suite's block on "
+            "matx_sources._request does not stop it and a test could "
             "reach GitHub")
 
-    def test_nothing_checks_for_updates_at_import(self):
-        self.assertNotIn(
-            "check()", open(
-                os.path.abspath(updater.__file__.replace(".pyc", ".py")),
-                encoding="utf-8").read().split("def check")[0],
-            "something calls check() before any caller asks - the feed "
-            "is only ever consulted on request")
+    def test_the_feed_is_only_consulted_when_asked(self):
+        """Nothing runs at import: a module-level call would check for
+        updates on every panel open."""
+        source = self._source()
+        module_level = [line for line in source.splitlines()
+                        if line[:1].strip() and "check(" in line
+                        and not line.startswith("def ")]
+        self.assertEqual(
+            [], module_level,
+            "something calls check() at module level, so importing the "
+            "package would reach the network: %s" % module_level)
 
 
 if __name__ == "__main__":
