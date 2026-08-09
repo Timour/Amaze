@@ -34,7 +34,7 @@ import unittest
 SKIP_REPORT_VAR = "AMAZE_SKIP_REPORT"
 
 
-def write_skip_report(result, path: str) -> None:
+def write_skip_report(result, path: str, houdini: str = "") -> None:
     """Record what this run skipped, for the dead-cover check.
 
     WRITTEN FROM THE RESULT, never parsed from stdout. `result.skipped`
@@ -52,9 +52,11 @@ def write_skip_report(result, path: str) -> None:
     (practice.md), so "the run finished" cannot be read off the status.
     """
     report = {
-        # Which install produced this. run-tests.sh --all-versions sets
-        # it per install; empty means whatever was newest.
-        "houdini": os.environ.get("AMAZE_HOUDINI", ""),
+        # PASSED IN, never read from the environment here. A test that
+        # set AMAZE_HOUDINI and popped it in cleanup left this reading
+        # empty for the whole run, because this executes AFTER every
+        # test - so both hosts came back as `(newest install)`.
+        "houdini": houdini,
         "testsRun": result.testsRun,
         "ok": result.wasSuccessful(),
         "skipped": sorted([test.id(), reason]
@@ -77,7 +79,8 @@ def main(argv) -> None:
         # an ABSENT one, which check_dead_cover.py already refuses to
         # compare. Loud plus refuse, never a silent half-answer.
         try:
-            write_skip_report(program.result, report_path)
+            write_skip_report(program.result, report_path,
+                              os.environ.get("AMAZE_HOUDINI", ""))
         except Exception as exc:                             # noqa: BLE001
             print("run_suite: could not write the skip report to %s (%s) - "
                   "the dead-cover check will refuse rather than guess"

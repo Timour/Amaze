@@ -190,11 +190,9 @@ class TheReportWriterTest(_ReportsMixin):
     def test_the_written_report_is_what_the_checker_reads(self):
         dead = ("test_y.B.test_dead", "dead everywhere")
         for name, houdini in (("a.json", H22), ("b.json", H21)):
-            os.environ["AMAZE_HOUDINI"] = houdini
-            self.addCleanup(os.environ.pop, "AMAZE_HOUDINI", None)
             run_suite.write_skip_report(
                 _FakeResult([dead], tests_run=1784),
-                os.path.join(self.dir, name))
+                os.path.join(self.dir, name), houdini)
         code, output = self.run_check(os.path.join(self.dir, "a.json"),
                                       os.path.join(self.dir, "b.json"))
         self.assertEqual(code, 1, "the writer's own output did not reach "
@@ -206,6 +204,18 @@ class TheReportWriterTest(_ReportsMixin):
 
     def test_the_env_var_name_is_the_one_the_shell_sets(self):
         self.assertEqual(run_suite.SKIP_REPORT_VAR, "AMAZE_SKIP_REPORT")
+
+    def test_no_test_here_mutates_the_environment_the_runner_reads(self):
+        with open(os.path.abspath(__file__), encoding="utf-8") as handle:
+            source = handle.read()
+        for forbidden in ('os.environ["AMAZE_HOUDINI"]',
+                          'os.environ.pop, "AMAZE_HOUDINI"'):
+            self.assertNotIn(
+                forbidden, source,
+                "a test here mutates AMAZE_HOUDINI, and run_suite reads it "
+                "AFTER every test has run - so the whole run's reports say "
+                "(newest install) and no host can be named. Pass the value "
+                "to write_skip_report instead")
 
 
 class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
