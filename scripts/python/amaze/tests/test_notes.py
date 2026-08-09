@@ -1209,10 +1209,6 @@ class PanelWiringTest(unittest.TestCase):
                          panel.notes_panel.section_label.text())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class VersionsBadgeHoverTest(unittest.TestCase):
     """The versions badge is the one BUTTON on a tile, so it alone
     answers the pointer: a lighter disc under the cursor and a
@@ -1322,3 +1318,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self.assertTrue(
             ui_helpers.tooltip_text("Click to select version"),
             "the shared tooltip helper returned nothing")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -200,10 +200,6 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.path))
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class GradientTileIconTest(unittest.TestCase):
     """Colors joined Customize 2026-07-31.
 
@@ -547,3 +543,7 @@ class GradientRowShapeTest(unittest.TestCase):
         self.assertFalse(getattr(lib, "_load_failed", True),
                          "one junk row latched the whole library "
                          "read-only for the session")
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

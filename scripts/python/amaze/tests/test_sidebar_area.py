@@ -189,10 +189,6 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
             "one category (or nothing) when it should show everything")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
     """BATCH 7, 2026-08-04. The drag-hover cluster branched on the
     section KEY twice: a `CATEGORY_SECTIONS` tuple of four key strings,
@@ -283,3 +279,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
         nothing."""
         self.assertTrue(
             sections.AssetSection.accepts_category_drop(None, None, "Metal"))
+
+
+if __name__ == "__main__":
+    unittest.main()

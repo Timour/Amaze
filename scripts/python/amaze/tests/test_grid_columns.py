@@ -653,10 +653,6 @@ class GridModeCannotSeeAnyOfIt(unittest.TestCase):
                         "the proxy cannot address a later column")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class ARowRepaintCoversTheWholeROW(unittest.TestCase):
     """`dataChanged(index(row, 0), index(row, 0))` was the whole row
     when a row WAS one column. With ten it invalidates the thumbnail
@@ -1267,3 +1263,7 @@ class TheCallersNameTheColumnToo(unittest.TestCase):
             "a table model cannot index a row without naming a column - "
             "each of these raises TypeError the moment it runs: %s"
             % offenders)
+
+
+if __name__ == "__main__":
+    unittest.main()

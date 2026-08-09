@@ -250,10 +250,6 @@ class TestCategories(unittest.TestCase):
         self.mock_db_instance.save.assert_called_once()
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class NormalizeBracketsItsResetTest(unittest.TestCase):
     """normalize_categories REPLACES the row set, so it must bracket
     the change.
@@ -325,3 +321,7 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
             "normalize_categories rebound the list - the model is "
             "detached from the document the merge repairs, and the "
             "next save erases whatever a peer machine added")
+
+
+if __name__ == "__main__":
+    unittest.main()

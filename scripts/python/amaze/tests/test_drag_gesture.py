@@ -867,10 +867,6 @@ class GuardedSlotsTest(unittest.TestCase):
             handler(None)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TheGestureRunsOnBOTHViews(unittest.TestCase):
     """Step 2 of the QTableView migration. List mode is becoming a real
     table, and the self-managed gesture has to run there too - a second
@@ -951,3 +947,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
         self.addCleanup(debug_mod.configure, was_on)
         view._log_scroll_geometry(          # must not raise
             None, view.verticalScrollBar(), 0, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

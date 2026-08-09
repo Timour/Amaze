@@ -805,10 +805,6 @@ class OnePickerForTheWholeAppTest(unittest.TestCase):
                          "ui_helpers.pick_color: %s" % offenders)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
     """The Windows font report, 2026-08-04: the fields having
     different sizes of the fonts... they look very, very, very
@@ -865,3 +861,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
         self.assertEqual(
             [], [m for m in magic if "pointSizeF()" not in m],
             "a hard-coded point size is back in fonts_for: %s" % magic)
+
+
+if __name__ == "__main__":
+    unittest.main()

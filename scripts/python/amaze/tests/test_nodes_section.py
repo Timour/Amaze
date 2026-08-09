@@ -550,12 +550,6 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(QtGui.QImage(image).isNull())
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
-
-
 class TheRenderDecisionHasOneHome(unittest.TestCase):
     """The Cop-or-Sop thumbnail decision was typed twice - once at
     save (render/nodes.py) and once at Update Preview
@@ -802,3 +796,7 @@ class PlaceNodesTest(unittest.TestCase):
         helpers.place_nodes([node], None)
         self.assertAlmostEqual(3.0, node.position().x())
         self.assertAlmostEqual(-1.0, node.position().y())
+
+
+if __name__ == "__main__":
+    unittest.main()

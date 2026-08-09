@@ -586,10 +586,6 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
                         "retirement did not take the oldest state first")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class PrefsLoadNeverRaisesTest(unittest.TestCase):
     """load()'s own docstring: an exception here "would kill the panel
     during construction, with no interface and no message" - and
@@ -672,3 +668,7 @@ class PrefsRefusesToOverwriteTest(unittest.TestCase):
         self.assertTrue(
             os.path.exists(os.path.join(folder, "settings.json")),
             "the refusal latched on a perfectly good load")
+
+
+if __name__ == "__main__":
+    unittest.main()

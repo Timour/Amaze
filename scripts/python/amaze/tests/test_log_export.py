@@ -182,10 +182,6 @@ class TestOsFacts(unittest.TestCase):
                         "available - the export name would collide")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
     """research.md: "On Windows, ANY Python print() pops the Houdini
     Console window open. The debug engine's jsonl log is the only safe
@@ -301,3 +297,7 @@ class CapturedLogHelperTest(unittest.TestCase):
             test_support.TEST_LOG, debug._path,
             "captured_log left the log pointed at its own throwaway "
             "file, which is deleted - so nothing after it is recorded")
+
+
+if __name__ == "__main__":
+    unittest.main()

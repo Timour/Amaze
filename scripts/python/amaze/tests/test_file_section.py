@@ -2363,10 +2363,6 @@ class ReviewFixesTest(unittest.TestCase):
                          "cache")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LocationColorTest(unittest.TestCase):
     """Locations carry colours like categories do (2026-07-31). The
     sidebar answers the SAME role the asset sidebars answer, so one
@@ -2461,3 +2457,7 @@ class ShowAllFilesTest(unittest.TestCase):
         self.assertEqual(
             2, folders._folder_count(self.tmp),
             "a location showing all files must count all files")
+
+
+if __name__ == "__main__":
+    unittest.main()

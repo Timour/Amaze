@@ -435,10 +435,6 @@ class TheRealPanelInListMode(unittest.TestCase):
             "the row is shorter than its own thumbnail")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class FilteringNeverUnsortsTheList(unittest.TestCase):
     """Pick a category, go back to All, and the list was no longer
     alphabetical - "things starting with A do not end up first".
@@ -1046,3 +1042,7 @@ class TheCategoryColumnPaintsITSOwnColour(unittest.TestCase):
             self._hueish(self._ink(self.CATEGORY_INK)),
             "an unselected category lost its own colour")
 
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -1937,10 +1937,6 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
                              "capture with an older one")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class SectionListIsSingleSourcedTest(unittest.TestCase):
     """Every list of sections must come from ONE place.
 
@@ -2059,3 +2055,7 @@ class CleanupConfirmsBeforeDeletingTest(unittest.TestCase):
             "nothing to clean.\"", body,
             "an empty result still pops a dialog - the grid already "
             "shows that nothing changed")
+
+
+if __name__ == "__main__":
+    unittest.main()

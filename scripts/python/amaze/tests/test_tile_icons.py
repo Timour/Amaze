@@ -912,9 +912,6 @@ class TheAboutLogoCarriesItsDensityTest(unittest.TestCase):
                          "the logo's pixel height is not density-scaled")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 class TileNameTest(unittest.TestCase):
     """The Customize dialog's Name field (2026-08-01) - the one rename
     path every section shares, replacing the retired per-section Info
@@ -966,3 +963,7 @@ class TileNameTest(unittest.TestCase):
         self.assertIsNone(fileish.tile_name_edit,
                           "no model rename = no field at all")
         fileish.deleteLater()
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -215,10 +215,6 @@ class NoStoredProxyIndexIsReadInThePanelTest(unittest.TestCase):
             + "\n  ".join(offenders))
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class WorksOnAPlainPythonModelTest(unittest.TestCase):
     """THE SHIPPED BUG, 2026-07-30. The helper called `rowCount()` and
     `columnCount()` with no argument. That works on a C++ proxy, whose
@@ -268,3 +264,7 @@ class WorksOnAPlainPythonModelTest(unittest.TestCase):
     def test_no_selection_on_a_plain_python_model_is_refused(self):
         self.assertIsNone(
             ui_helpers.live_current_index(self._view(["All"])))
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
