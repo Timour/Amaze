@@ -174,7 +174,12 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     # nodegraph wrapper is dropped - its outputs are resolved to the
     # internal node feeding them, so the shader wires straight to the
     # image, exactly like a hand-built flat material.
-    graph_output_to_node = {}      # (graph_name, output_name) -> node_name
+    #
+    # KEYED BY NAME PATH, NOT BY NAME. A MaterialX name is unique inside
+    # its nodegraph, so two graphs may each hold an `image1` and the
+    # bare name keeps only the last (research.md > a MaterialX node name
+    # is scoped to its nodegraph). `getNamePath()` is the library's own
+    # identity for a node.
     all_mtlx_nodes = []            # (mtlx_node, active_file_prefix)
 
     for node in doc.getNodes():
@@ -183,14 +188,11 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
         all_mtlx_nodes.append((node, node.getActiveFilePrefix()))
 
     for graph in doc.getNodeGraphs():
-        for out in graph.getOutputs():
-            graph_output_to_node[(graph.getName(), out.getName())] = \
-                out.getNodeName()
         for node in graph.getNodes():
             all_mtlx_nodes.append((node, node.getActiveFilePrefix()))
 
     # Pass 1: create a VOP node for each, set constant values + signature.
-    vop_by_name = {}
+    vop_by_path = {}               # mtlx name path -> VOP node
     skipped = []                   # "name (category)" with no VOP type here
     for mnode, prefix in all_mtlx_nodes:
         vtype = _vop_type_for(mnode.getCategory(), builder)
@@ -206,7 +208,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             vnode.setName(mnode.getName(), unique_name=True)
         except hou.OperationFailed:
             pass
-        vop_by_name[mnode.getName()] = vnode
+        vop_by_path[mnode.getNamePath()] = vnode
 
         # Signature from the node's declared type (images especially).
         sig = _TYPE_TO_SIGNATURE.get(mnode.getType())
@@ -274,30 +276,46 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
         _DROPPED.clear()
 
     # Pass 2: wire connections (now that every node exists).
+    def _source_node(mnode, inp):
+        """The mtlx node feeding this input, RESOLVED IN ITS OWN SCOPE.
+
+        A `nodename` names a sibling inside the same parent, and a
+        `nodegraph`/`output` pair names a node inside that graph. Both
+        are resolved through MaterialX's own lookups rather than by
+        joining strings, so the scoping rule stays the library's."""
+        direct = inp.getNodeName()
+        if direct:
+            parent = mnode.getParent()
+            return parent.getNode(direct) if parent is not None else None
+        graph = inp.getNodeGraphString()
+        out = inp.getOutputString()
+        if not (graph and out):
+            return None
+        gobj = doc.getNodeGraph(graph)
+        if gobj is None:
+            return None
+        oobj = gobj.getOutput(out)
+        if oobj is None:
+            return None
+        return gobj.getNode(oobj.getNodeName())
+
     def _wire_from(mnode):
-        vnode = vop_by_name.get(mnode.getName())
+        vnode = vop_by_path.get(mnode.getNamePath())
         if vnode is None:
             return
         for inp in mnode.getInputs():
-            src_name = None
-            direct = inp.getNodeName()
-            graph = inp.getNodeGraphString()
-            out = inp.getOutputString()
-            if direct:
-                src_name = direct
-            elif graph and out:
-                src_name = graph_output_to_node.get((graph, out))
-            if not src_name:
+            src_node = _source_node(mnode, inp)
+            if src_node is None:
                 continue
-            src = vop_by_name.get(src_name)
+            src = vop_by_path.get(src_node.getNamePath())
             if src is None:
                 continue
             try:
                 vnode.setNamedInput(inp.getName(), src, 0)
             except hou.OperationFailed:
                 debug.event("import", "translate: could not wire input",
-                            node=mnode.getName(), input=inp.getName(),
-                            source=src_name)
+                            node=mnode.getNamePath(), input=inp.getName(),
+                            source=src_node.getNamePath())
 
     for mnode, _prefix in all_mtlx_nodes:
         _wire_from(mnode)
@@ -306,7 +324,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     shader = displacement = None
     for mnode, _prefix in all_mtlx_nodes:
         cat = mnode.getCategory()
-        vnode = vop_by_name.get(mnode.getName())
+        vnode = vop_by_path.get(mnode.getNamePath())
         if vnode is None:
             continue
         if cat in ("standard_surface", "open_pbr_surface") and shader is None:
@@ -317,7 +335,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     builder.layoutChildren()
     debug.event(
         "import", "translated mtlx",
-        material=name, nodes=len(vop_by_name),
+        material=name, nodes=len(vop_by_path),
         shader=shader.name() if shader else None,
         displacement=displacement.name() if displacement else None,
     )
