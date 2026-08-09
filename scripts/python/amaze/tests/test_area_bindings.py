@@ -694,31 +694,83 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "routes through _apply_context like every section: %s"
             % bodies)
 
+    #: Menu verbs whose import chain leaves panel.py, so the scan
+    #: below cannot follow it. NAMED, because a scan that silently
+    #: covered less than it looks like is worse than one that says
+    #: where it stops. Everything the scan CAN follow is found
+    #: without appearing here - that half needs no maintenance.
+    _CHAINS_THE_SCAN_CANNOT_FOLLOW = ("menu_load", "menu_copy_to")
+
+    #: Houdini's own scene-mutating calls. The seed is the HOST's API
+    #: rather than our verb names, so adding an import verb of our own
+    #: is followed automatically and only a new Houdini API would need
+    #: a line here.
+    _SCENE_API = ("createNode(", "createOutputNode(", "loadItemsFromFile(",
+                  "moveNodesTo(", "copyNodesTo(", "setDisplayFlag(",
+                  "setCurrent(", "setSelected(")
+
     def test_every_scene_importing_menu_verb_preserves_the_view(self):
-        """The drag and click dispatchers wrap the artist's selection,
-        current node and therefore the view; the menu dispatcher does
-        not, so each scene-importing verb must carry the wrapper
-        itself - the File section's import verb already does. The
-        three that reach the scene are pinned here so a fourth cannot
-        ship bare."""
+        """A menu verb that reaches into the scene must put back what
+        it disturbed - either by routing through the click door (which
+        wraps) or by carrying the wrapper itself.
+
+        The File section's geometry import carried neither, so Import
+        on a .bgeo row moved the artist's current node and display
+        flag with no way back, while Load, Copy To and Import to Scene
+        beside it all preserved. The guard could not see it: it named
+        THREE verbs by hand and there are five, with its own docstring
+        claiming it was pinned so a fourth could not ship bare.
+
+        Derived now, from a reachability scan over panel.py seeded on
+        Houdini's own scene API - so a new verb of ours is followed
+        rather than remembered.
+        """
         import ast
+        import re
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        source = open(os.path.join(root, "panel", "sections.py"),
-                      encoding="utf-8").read()
-        tree = ast.parse(source)
+        panel_source = open(os.path.join(root, "panel", "panel.py"),
+                            encoding="utf-8").read()
+        section_source = open(os.path.join(root, "panel", "sections.py"),
+                              encoding="utf-8").read()
+
+        bodies = {node.name: (ast.get_source_segment(panel_source, node) or "")
+                  for node in ast.walk(ast.parse(panel_source))
+                  if isinstance(node, ast.FunctionDef)}
+        reaching = {name for name, body in bodies.items()
+                    if any(call in body for call in self._SCENE_API)}
+        growing = True
+        while growing:                       # transitive, to a fixed point
+            growing = False
+            for name, body in bodies.items():
+                if name in reaching:
+                    continue
+                if set(re.findall(r"self\.(\w+)\(", body)) & reaching:
+                    reaching.add(name)
+                    growing = True
+        self.assertTrue(
+            reaching, "the scan found no scene-reaching panel method at "
+                      "all - it is keyed on names that no longer exist")
+
         bare = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name in (
-                    "menu_load", "menu_copy_to", "menu_import_to_scene"):
-                body = ast.get_source_segment(source, node) or ""
-                if "preserving_selection_and_current" not in body:
-                    bare.append("%s:%d" % (node.name, node.lineno))
+        for node in ast.walk(ast.parse(section_source)):
+            if not (isinstance(node, ast.FunctionDef)
+                    and node.name.startswith("menu_")):
+                continue
+            body = ast.get_source_segment(section_source, node) or ""
+            touches = (set(re.findall(r"panel\.(\w+)\(", body)) & reaching
+                       or node.name in self._CHAINS_THE_SCAN_CANNOT_FOLLOW)
+            if not touches:
+                continue
+            if ("preserving_selection_and_current" in body
+                    or "click_on_row" in body):
+                continue
+            bare.append("%s:%d" % (node.name, node.lineno))
         self.assertEqual(
             [], bare,
-            "these menu verbs import into the scene without the "
-            "preserve wrapper, so a menu import can jump the view: %s"
-            % bare)
+            "these menu verbs reach into the scene without preserving "
+            "what they disturb, so the artist's current node and "
+            "display flag move with no way back: %s" % bare)
 
     def test_no_section_dispatches_back_into_the_panel_to_activate(self):
         """BATCH 4 moved four of the five. What is left is the ONLINE

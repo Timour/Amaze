@@ -4674,7 +4674,14 @@ class MatLibPanel(QtWidgets.QWidget):
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
-        self._import_geo_in_context(path, self._active_network_pwd())
+        # WRAPPED HERE, not at each caller. Every other scene-importing
+        # verb preserves what it disturbed and this one did not, so a
+        # menu Import moved the artist's current node and display flag
+        # with no way back. Putting it on the verb rather than on the
+        # menu entry means the door, the drag and any later caller
+        # inherit it instead of having to remember.
+        with helpers.preserving_selection_and_current():
+            self._import_geo_in_context(path, self._active_network_pwd())
 
     def _import_geo_in_context(
         self, path: str, dest: hou.Node | None
