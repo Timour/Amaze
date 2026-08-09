@@ -243,7 +243,8 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._user = []
             self._user_categories = []
             self._category_colors = {}
-            self._load_user()
+            # THROUGH reload_with_path, the door the other three take.
+            self._load_user(reload=True)
             self._seed_curated_once()
             self._entries = self._all_entries()
             self._backfill_uids_once()
@@ -376,9 +377,21 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             return ""
         return os.path.join(self._preferences.dir, "gradients.json")
 
-    def _load_user(self) -> None:
+    def _load_user(self, reload: bool = False) -> None:
         """Read the palettes through the connector, like every other
         library-backed model.
+
+        `reload` picks the DOOR, and which one is not cosmetic.
+        `load()` returns the connector's cached document when it
+        already holds one - correct at construction, wrong on a
+        library switch, where it would hand back the previous
+        library's rows AND keep its latches. `reload_with_path` is the
+        route `library.switch_model_data` takes for exactly that
+        reason: its own docstring records that a latch belonging to
+        library A, carried into healthy library B, silently drops
+        every save for the session. Re-derived from disk, never
+        remembered - so a repaired file heals on the next switch
+        instead of staying refused until restart.
 
         WHAT WENT WHEN THIS ARRIVED: a hand-built copy of the
         connector's whole load policy - the absent-but-known refusal
@@ -397,8 +410,10 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         """
         if self._preferences is None:
             return
+        path = str(self._preferences.dir) + os.sep
         try:
-            data = self._db().load(str(self._preferences.dir) + os.sep)
+            db = self._db()
+            data = db.reload_with_path(path) if reload else db.load(path)
         except (OSError, ValueError) as exc:
             # A CORRUPT FILE MUST NOT TAKE THE PANEL DOWN. The
             # connector raises here and its other callers are built
