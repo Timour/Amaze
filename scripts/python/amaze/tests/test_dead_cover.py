@@ -206,16 +206,19 @@ class TheReportWriterTest(_ReportsMixin):
         self.assertEqual(run_suite.SKIP_REPORT_VAR, "AMAZE_SKIP_REPORT")
 
     def test_no_test_here_mutates_the_environment_the_runner_reads(self):
+        #: BUILT, never written whole - a source scan holding its own
+        #: pattern matches itself and can never pass (measured: it went
+        #: red on both majors on its first real run).
+        var = "AMAZE_" + "HOUDINI"
         with open(os.path.abspath(__file__), encoding="utf-8") as handle:
             source = handle.read()
-        for forbidden in ('os.environ["AMAZE_HOUDINI"]',
-                          'os.environ.pop, "AMAZE_HOUDINI"'):
-            self.assertNotIn(
-                forbidden, source,
-                "a test here mutates AMAZE_HOUDINI, and run_suite reads it "
-                "AFTER every test has run - so the whole run's reports say "
-                "(newest install) and no host can be named. Pass the value "
-                "to write_skip_report instead")
+        offenders = [shape for shape in ('os.environ["%s"]' % var,
+                                         'os.environ.pop, "%s"' % var)
+                     if shape in source]
+        self.assertEqual(
+            offenders, [],
+            "a test here mutates the variable run_suite reads AFTER every "
+            "test has run, so every report loses its host name")
 
 
 class WhatUnittestItselfGuaranteesTest(unittest.TestCase):
