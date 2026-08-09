@@ -35,6 +35,45 @@ if [ -z "$install" ] || [ ! -d "$install" ]; then
     exit 1
 fi
 
+# A SABOTAGE GETS ITS OWN INSTALL (2026-08-09).
+#
+# A sabotage is a dirty tree by definition, so it collided head-on with
+# the committed-code rule below and every sabotage died on it. The fix
+# is not an exception to that rule - it is a different DESTINATION. The
+# rule protects the tree a live Houdini reads; a sabotage does not need
+# that tree, it needs A tree. So knowingly-broken code can now never
+# reach the real install, not even for the seconds a sabotage runs,
+# which is stronger than what a bypass would have left.
+scratch=""
+if [ -n "${AMAZE_SCRATCH_INSTALL:-}" ]; then
+    scratch="$AMAZE_SCRATCH_INSTALL"
+    if [ ! -d "$scratch" ]; then
+        echo "sync-install: AMAZE_SCRATCH_INSTALL is not a directory:" >&2
+        echo "    $scratch" >&2
+        exit 1
+    fi
+    # REFUSE ANYTHING THAT COULD BE A REAL INSTALL. A typo here would
+    # otherwise aim a sabotage at the one tree this is protecting, and
+    # the marker means a populated directory is never overwritten.
+    if [ "$scratch" = "$install" ]; then
+        echo "sync-install: AMAZE_SCRATCH_INSTALL is the REAL install." >&2
+        echo "  Refusing - a scratch install must be somewhere else." >&2
+        exit 1
+    fi
+    if [ ! -e "$scratch/.amaze-scratch-install" ] \
+       && [ -n "$(ls -A "$scratch" 2>/dev/null)" ]; then
+        echo "sync-install: AMAZE_SCRATCH_INSTALL is not empty and carries" >&2
+        echo "  no .amaze-scratch-install marker, so it is somebody's" >&2
+        echo "  directory rather than a scratch one. Refusing:" >&2
+        echo "    $scratch" >&2
+        exit 1
+    fi
+    : > "$scratch/.amaze-scratch-install"
+    install="$scratch"
+    echo "sync-install: SCRATCH install at $install"
+    echo "sync-install: the real install is NOT touched by this run"
+fi
+
 # The push gate is per-CLONE config, so a fresh clone silently has no
 # gate until someone runs one command. Anything that syncs or tests
 # passes through here, so wire it here rather than trusting a doc.
@@ -61,7 +100,12 @@ fi
 # uncommitted. Untracked files are asked for separately and do count:
 # the mirror copies scripts/ wholesale, and --exclude-standard keeps
 # __pycache__ out.
-if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+#
+# A SCRATCH DESTINATION IS EXEMPT, and only a scratch one: the rule is
+# about what a live Houdini reads, and a scratch install is read by
+# nothing. The real path keeps the check with no bypass at all.
+if [ -z "$scratch" ] \
+   && git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     dirty="$(
         git -C "$repo" diff --name-only HEAD 2>/dev/null
         git -C "$repo" ls-files --others --exclude-standard 2>/dev/null
@@ -159,6 +203,12 @@ fi
 # syncs first, then runs the same suite itself).
 # ---------------------------------------------------------------------
 if [ -n "${AMAZE_SYNC_NO_VERIFY:-}" ]; then
+    exit 0
+fi
+# A scratch install is never verified by running the suite: the code in
+# it is usually sabotaged ON PURPOSE, so a red result is the point
+# rather than a reason to refuse.
+if [ -n "$scratch" ]; then
     exit 0
 fi
 

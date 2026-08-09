@@ -295,7 +295,8 @@ class GateFixture(unittest.TestCase):
     def _env(self, mode, **extra):
         env = dict(os.environ)
         # Never inherit a real one of these from the calling suite.
-        for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS"):
+        for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
+                     "AMAZE_SCRATCH_INSTALL"):
             env.pop(name, None)
         env.update(self.git_env)
         env.update({
@@ -449,6 +450,70 @@ class SyncInstallGateTest(GateFixture):
             "the mirror, not after it")
         self.assertEqual([], self.suite_calls(),
                          "the suite ran despite the refusal")
+
+    def _scratch(self):
+        path = tempfile.mkdtemp(prefix="amaze_scratch_install")
+        self.addCleanup(shutil.rmtree, path, ignore_errors=True)
+        return path
+
+    def test_a_scratch_destination_takes_a_dirty_tree(self):
+        """A sabotage IS a dirty tree, so it collided with the rule
+        above and every sabotage died on it. The answer is a different
+        DESTINATION, not an exception: the rule protects the tree a live
+        Houdini reads, and a scratch install is read by nothing."""
+        _write(os.path.join(self.repo, "scripts", "python", "amaze",
+                            "stray.py"), "# sabotaged, never committed\n")
+        scratch = self._scratch()
+
+        result = self.sync("green", AMAZE_SCRATCH_INSTALL=scratch)
+
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertTrue(
+            os.path.exists(os.path.join(scratch, "scripts", "python",
+                                        "amaze", "stray.py")),
+            "the dirty tree did not reach the scratch install, so a "
+            "sabotage would be judged on code that does not hold it")
+        self.assertFalse(
+            os.path.exists(os.path.join(self.install, "OPmenu.xml")),
+            "the REAL install was written during a scratch sync - "
+            "knowingly-broken code just reached the tree a live Houdini "
+            "reads")
+
+    def test_the_real_destination_still_refuses_a_dirty_tree(self):
+        """The exemption must be the scratch path ALONE. If it leaked
+        to the ordinary path it would retire the rule rather than
+        satisfy it."""
+        _write(os.path.join(self.repo, "scripts", "python", "amaze",
+                            "stray.py"), "# this was never committed\n")
+
+        result = self.sync("green")
+
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("uncommitted changes", self.both(result))
+
+    def test_a_scratch_pointing_at_the_real_install_is_refused(self):
+        """A typo must not aim a sabotage at the tree this protects."""
+        _write(os.path.join(self.repo, "scripts", "python", "amaze",
+                            "stray.py"), "# sabotaged\n")
+
+        result = self.sync("green", AMAZE_SCRATCH_INSTALL=self.install)
+
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("REAL install", self.both(result))
+
+    def test_a_populated_directory_is_not_treated_as_scratch(self):
+        """Without the marker, a scratch destination that already holds
+        somebody's files would be mirrored over."""
+        scratch = self._scratch()
+        _write(os.path.join(scratch, "someones_work.txt"), "do not lose me\n")
+
+        result = self.sync("green", AMAZE_SCRATCH_INSTALL=scratch)
+
+        self.assertEqual(result.returncode, 1, self.both(result))
+        self.assertIn("not empty", self.both(result))
+        self.assertTrue(
+            os.path.exists(os.path.join(scratch, "someones_work.txt")),
+            "it refused and overwrote the directory anyway")
 
     def test_a_committed_change_ships_without_being_pushed(self):
         """The other half of the same rule, and why it says COMMITTED
