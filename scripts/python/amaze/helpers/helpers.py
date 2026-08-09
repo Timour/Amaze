@@ -42,6 +42,25 @@ def tooltip_html(text: str, width: int = 250) -> str:
     return ui_helpers.tooltip_text(text)
 
 
+def node_errors(node) -> dict:
+    """Houdini's own cook errors/warnings for a node - the message that
+    actually explains a failed render, which never reaches a print().
+
+    Here rather than beside one caller: the thumbnail runner and the
+    preview engine both need it, and the preview engine may not import
+    the runner.
+    """
+    if node is None:
+        return {}
+    out = {}
+    for label, call in (("errors", "errors"), ("warnings", "warnings")):
+        try:
+            out[label] = list(getattr(node, call)())
+        except Exception:
+            pass
+    return out
+
+
 def find_file_parm(node: hou.Node) -> hou.Parm | None:
     """Returns the first file-reference parm on the node, or None if it
     has none.

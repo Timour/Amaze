@@ -680,7 +680,7 @@ class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
         raised IndexError for developers and testers, who are exactly
         the people running with Debug on, while the same material
         rendered fine for everyone else."""
-        tree = ast.parse(source_of("render/thumbs.py"))
+        tree = ast.parse(source_of("preview/karma_scene.py"))
         checked = False
         for function in ast.walk(tree):
             if not (isinstance(function, ast.FunctionDef)

@@ -29,6 +29,7 @@ sys.path.insert(
 import hou  # noqa: E402,F401
 
 from amaze.render import thumbs  # noqa: E402
+from amaze import preview  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
@@ -60,12 +61,12 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):
         built = []
         rendered = []
 
-        def fake_build(self):
+        def fake_build(preferences):
             built.append(1)
             return {"net": mock.Mock()}
 
-        with mock.patch.object(thumbs.ThumbNailRenderer,
-                               "build_karma_scaffold", fake_build), \
+        with mock.patch.object(preview, "build_karma_scaffold",
+                               fake_build), \
              mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
                                lambda self, scaffold=None:
                                rendered.append(scaffold)):
@@ -84,9 +85,9 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):
         no second way to render one material."""
         model = self._model(1)
         built = []
-        with mock.patch.object(thumbs.ThumbNailRenderer,
-                               "build_karma_scaffold",
-                               lambda self: built.append(1) or {"net": mock.Mock()}), \
+        with mock.patch.object(
+                preview, "build_karma_scaffold",
+                lambda preferences: built.append(1) or {"net": mock.Mock()}), \
              mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
                                lambda self, scaffold=None: None):
             model.render_thumbnail(_Index(0))
@@ -96,9 +97,8 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):
         """Both ends, and off the undo stack - a bare destroy is the
         half that resurrects the whole scaffold on one Ctrl+Z."""
         net = mock.Mock()
-        with mock.patch.object(thumbs.ThumbNailRenderer,
-                               "build_karma_scaffold",
-                               lambda self: {"net": net}):
+        with mock.patch.object(preview, "build_karma_scaffold",
+                               lambda preferences: {"net": net}):
             with thumbs.ThumbNailRenderer.karma_batch(
                     test_support.fixture_prefs(self)) as scaffold:
                 self.assertIsNotNone(scaffold)
@@ -109,8 +109,8 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):
         """build_karma_scaffold answers None with no Scene Viewer to
         take OCIO display/view from; the batch must still render, each
         material building its own as before."""
-        with mock.patch.object(thumbs.ThumbNailRenderer,
-                               "build_karma_scaffold", lambda self: None):
+        with mock.patch.object(preview, "build_karma_scaffold",
+                               lambda preferences: None):
             with thumbs.ThumbNailRenderer.karma_batch(
                     test_support.fixture_prefs(self)) as scaffold:
                 self.assertIsNone(scaffold)

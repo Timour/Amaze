@@ -36,7 +36,7 @@ def safe_set(node: hou.Node, parm_name: str, value, **kwargs) -> None:
 def ocio_from_viewer():
     """The Scene Viewer's OCIO display, view and working space, or None.
 
-    ONE lookup for both callers. `thumbs.build_karma_scaffold` had a
+    ONE lookup for both callers. `karma_scene.build_karma_scaffold` had a
     second copy that differed only in the fallback spelling of the
     working space, and a lookup written twice is one that drifts
     (practice.md > A LOOKUP WRITTEN FOUR TIMES).

@@ -78,12 +78,16 @@ import importlib
 
 from amaze.preview import shaderball_scene
 from amaze.preview import thumbnail_scene
+from amaze.preview import karma_scene
 
 ThumbNailScene = thumbnail_scene.ThumbNailScene
 ocio_from_viewer = thumbnail_scene.ocio_from_viewer
 safe_set = thumbnail_scene.safe_set
+build_karma_scaffold = karma_scene.build_karma_scaffold
+render_karma_into = karma_scene.render_karma_into
 
-__all__ = ["ThumbNailScene", "ocio_from_viewer", "safe_set", "reload_engine"]
+__all__ = ["ThumbNailScene", "ocio_from_viewer", "safe_set",
+           "build_karma_scaffold", "render_karma_into", "reload_engine"]
 
 
 def reload_engine():
@@ -103,8 +107,12 @@ def reload_engine():
     panel reopen, so editing it needed a full Houdini restart).
     """
     global ThumbNailScene, ocio_from_viewer, safe_set
+    global build_karma_scaffold, render_karma_into
     importlib.reload(shaderball_scene)
     importlib.reload(thumbnail_scene)
+    importlib.reload(karma_scene)
     ThumbNailScene = thumbnail_scene.ThumbNailScene
     ocio_from_viewer = thumbnail_scene.ocio_from_viewer
     safe_set = thumbnail_scene.safe_set
+    build_karma_scaffold = karma_scene.build_karma_scaffold
+    render_karma_into = karma_scene.render_karma_into

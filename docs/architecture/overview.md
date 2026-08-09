@@ -534,7 +534,14 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 
 - **Package:** `preview/` · **Door:** `amaze.preview`
 - **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
-  `ocio_from_viewer()` · `safe_set(node, parm, value)`
+  `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
+  `build_karma_scaffold(prefs)` · `render_karma_into(scaffold, node,
+  id, png_path)`
+- **Karma is the odd shape and the caller still names the file.** Its
+  scene is a USD stage, too expensive to build per material, so it is
+  built once and rendered into many times — but like the other three it
+  writes where the caller says, which is why `png_path` is an argument
+  rather than something the engine works out from the library.
 - **The part that is not Python:** the scene's node carries seven spare
   parameters the caller drives it through — `mat`, `path`,
   `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
@@ -863,7 +870,9 @@ preview/                  THE PREVIEW ENGINE (below) - the scene a
                           use `amaze.preview`, never its insides
 preview/shaderball_scene.py  the ball, the plane and their materials
 preview/thumbnail_scene.py   the room around them: lights, camera,
-                          output, per renderer
+                          output - Mantra, Redshift, Octane
+preview/karma_scene.py    Karma's, which is a USD stage: built once,
+                          many materials rendered into it
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
