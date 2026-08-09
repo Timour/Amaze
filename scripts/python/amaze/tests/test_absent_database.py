@@ -1299,5 +1299,177 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
         self.assertFalse(self._check(os.path.join(mounted[0], "gone.exr")))
 
 
+class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
+    """The sweep meant to tidy AROUND Repair was removing what Repair
+    reads.
+
+    Pass 3 calls a file unaccounted for when its id is in no database.
+    An asset whose index write was REFUSED is exactly that shape - files
+    on disk, no row anywhere - and it is the one case Repair exists for:
+    `repair.rebuild_from_stamps` reconstructs the row from the
+    `<id>.stamp.json` sidecar sitting beside the asset. So a refused
+    save was safe only while the panel that remembered it stayed open,
+    and the first Clean Library after a restart carried its recovery
+    stamp off to quarantine.
+
+    A file with a READABLE recovery stamp is not a leftover, it is an
+    asset awaiting Repair. A damaged stamp is not protection - it cannot
+    be rebuilt from, and `rebuild_from_stamps` already counts it
+    `damaged` - so the two tools agree by asking one reader."""
+
+    STAMPED = "STAMPEDASSET1"
+    LEFTOVER = "LEFTOVER1"
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
+        self.img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
+        os.makedirs(self.img_dir, exist_ok=True)
+        # A refused save leaves exactly this: the asset's files and its
+        # recovery stamp, and no row in any database.
+        self.files = {}
+        for suffix in (".mat", ".interface", library_mod.STAMP_SUFFIX):
+            path = os.path.join(self.mat_dir, self.STAMPED + suffix)
+            self.files[suffix] = path
+        self._write_stamp({"id": self.STAMPED, "name": "Refused Save",
+                           "categories": ["Uncategorized"], "tags": []})
+        for suffix in (".mat", ".interface"):
+            with open(self.files[suffix], "w", encoding="utf-8") as handle:
+                handle.write("asset content\n")
+        self.icon = os.path.join(self.img_dir, self.STAMPED + ".png")
+        with open(self.icon, "wb") as handle:
+            handle.write(b"\x89PNG\r\n")
+        # The control: a file with no stamp beside it, which must still
+        # be swept or the sweep has simply stopped working.
+        self.leftover = os.path.join(self.mat_dir, self.LEFTOVER + ".mat")
+        with open(self.leftover, "w", encoding="utf-8") as handle:
+            handle.write("nothing owns this\n")
+        self.assertEqual(
+            [], [a for a in self.model._assets
+                 if str(a.mat_id) == self.STAMPED],
+            "premise: no row anywhere claims the stamped asset")
+
+    def _write_stamp(self, record):
+        path = os.path.join(self.mat_dir,
+                            self.STAMPED + library_mod.STAMP_SUFFIX)
+        with open(path, "w", encoding="utf-8") as handle:
+            if isinstance(record, str):
+                handle.write(record)
+            else:
+                json.dump(record, handle)
+
+    def _cleanup(self):
+        with patch.object(hou, "ui", MagicMock(), create=True):
+            self.model.cleanup_db(show_dialog=False)
+
+    def test_a_stamped_unindexed_asset_survives_the_sweep(self):
+        self._cleanup()
+        for suffix, path in sorted(self.files.items()):
+            self.assertTrue(
+                os.path.exists(path),
+                "Clean Library quarantined %s of an asset carrying a "
+                "readable recovery stamp - the one shape Repair exists "
+                "to rebuild, swept by the pass meant to tidy around it"
+                % suffix)
+
+    def test_the_icon_survives_with_it(self):
+        """Repair puts the ROW back; if the sweep took the icon in the
+        same run, the restored asset comes back blank and the thumbnail
+        has to be re-rendered."""
+        self._cleanup()
+        self.assertTrue(
+            os.path.exists(self.icon),
+            "the stamped asset survived in mat/ but its icon was "
+            "quarantined out of img/, so Repair restores a row whose "
+            "thumbnail is gone")
+
+    def test_an_unstamped_leftover_is_still_swept(self):
+        """The accept path, tested as hard as the refusal: a guard that
+        always fires is an outage. Without this, sparing everything
+        would pass every other test in this class."""
+        self._cleanup()
+        self.assertFalse(
+            os.path.exists(self.leftover),
+            "a file with no recovery stamp beside it survived the "
+            "sweep - Clean Library has stopped cleaning")
+
+    def test_a_damaged_stamp_is_not_protection(self):
+        """`rebuild_from_stamps` counts an unparseable stamp `damaged`
+        and rebuilds nothing from it, so treating it as protection would
+        keep files no tool can ever restore - and would make the two
+        readers disagree, which is the defect this shares its reader to
+        avoid."""
+        self._write_stamp("{ this will not parse")
+        self._cleanup()
+        self.assertFalse(
+            os.path.exists(self.files[".mat"]),
+            "a stamp that cannot be parsed protected its asset - "
+            "Repair cannot rebuild from it, so the file is kept for a "
+            "recovery that can never run")
+
+    def test_a_stamp_with_no_payload_beside_it_is_spared_too(self):
+        """A snippet owns no .mat - Code keeps its text inline - so a
+        lone stamp is the NORMAL shape for a whole section, not a
+        leftover. Measured on the test library: 24 stamps, 7 .mat files,
+        and code.json claims all 17 of the difference. Requiring a
+        payload here would strip protection from every snippet at the
+        moment its own list is what went missing."""
+        for suffix in (".mat", ".interface"):
+            os.remove(self.files[suffix])
+        stamp = self.files[library_mod.STAMP_SUFFIX]
+        self.assertTrue(os.path.exists(stamp), "premise: the stamp is there")
+        self._cleanup()
+        self.assertTrue(
+            os.path.exists(stamp),
+            "a lone stamp was swept - that is every Code snippet in the "
+            "shared folder, and sweeping it removes the only thing "
+            "Repair could rebuild the section from")
+
+    def test_the_summary_says_what_it_kept_and_points_at_repair(self):
+        """Silence here reads as a clean library while assets sit
+        unlisted in the folder. The user cannot act on what the sweep
+        does not say."""
+        self._cleanup()
+        # THE SENTENCE, not the joined summary: asserting on the whole
+        # text would pass on the unrelated quarantine line, which also
+        # says `your library`, and on _the_repair_route, which names
+        # `Repair` for every other cause too.
+        kept = [line for line in self.model.last_cleanup_summary
+                if "put back" in line]
+        self.assertTrue(
+            kept,
+            "the sweep spared files that can still be recovered and said "
+            "nothing, so a user with a refused save reads a clean report "
+            "and never learns Repair would put the materials back")
+        self.assertIn(
+            "Refused Save", kept[0],
+            "the sentence does not name what it kept in the words the "
+            "user has seen - the stamp carries the asset's name, so "
+            "there is no reason to show them an id")
+        # NO SECTION NOUN. The shared folder holds materials, nodes and
+        # snippets; a file no list claims has no nameable section, so
+        # calling it a material is a guess in the sentence that most has
+        # to be trustworthy.
+        for guess in ("material", "node", "snippet"):
+            self.assertNotIn(
+                guess, kept[0].lower(),
+                "the sentence guesses a section for something no list "
+                "claims - a lone stamp is just as likely to be a Code "
+                "snippet as a material")
+        self.assertNotIn(
+            self.STAMPED, kept[0],
+            "the sentence shows the raw id, which the user has never "
+            "seen anywhere in the panel")
+        route = [line for line in self.model.last_cleanup_summary
+                 if "Repair tool on the Amaze shelf" in line]
+        self.assertEqual(
+            1, len(route),
+            "the way out is missing or appears twice - one step for "
+            "however many findings, per _the_repair_route")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

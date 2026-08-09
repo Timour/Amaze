@@ -60,6 +60,13 @@ def _count(count: int, noun: str) -> str:
 #: date and no labelled name or category - so nothing could rebuild the
 #: index, and "can this library survive losing library.json" was NO.
 #: The stamp is the sixteen fields that answer it.
+#:
+#: WRITTEN HERE, READ ONLY BY `repair`. A stamp is a write-only shadow of
+#: a row, and a second reader makes it a second source of truth -
+#: `test_a_stamp_is_never_read_in_normal_operation` holds that line from
+#: source. Clean Library asks whether an asset is recoverable, which is a
+#: question for the recovery module, so pass 3 calls
+#: `repair.stamped_assets` rather than opening a stamp itself.
 STAMP_SUFFIX = ".stamp.json"
 
 
@@ -1871,8 +1878,54 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                              self.preferences.img_dir)):
             lone_count += self._sweep_dead_scratches(folder, quarantined)
 
+        # AWAITING REPAIR IS NOT THE SAME AS LEFT OVER. An asset whose
+        # index write was refused has files on disk and a row nowhere -
+        # byte for byte the shape this sweep calls unaccounted for - and
+        # it is the ONE case Repair exists for, because
+        # repair.rebuild_from_stamps reconstructs the row from the
+        # `<id>.stamp.json` sitting beside the asset. Sweeping it was
+        # therefore the tidying pass carrying off the evidence the
+        # recovery pass reads: safe only while the panel that still
+        # remembered the asset stayed open, and lost on the first Clean
+        # Library after a restart.
+        #
+        # The read is repair.stamped_assets, the SAME reader
+        # rebuild_from_stamps parses with, so whether a given stamp reads
+        # cannot mean one thing to the sweep and another to the rebuild.
+        # Readable is the whole test: a stamp that will not parse
+        # rebuilds nothing, so it protects nothing.
+        #
+        # IMPORTED HERE, not at module scope: repair imports this module,
+        # so a top-level import is a cycle. It also keeps stamps out of
+        # the core's import surface, which is what
+        # test_a_stamp_is_never_read_in_normal_operation guards.
+        from amaze.core import repair
         mats_path = os.path.join(self.preferences.dir, self.preferences.asset_dir)
-        for f in ([] if unreadable_abort else os.listdir(mats_path)):
+        # ONE LISTING OF THE ASSET FOLDER, shared by the stamp scan and
+        # the sweep below. Not a saved syscall: the sweep decides what to
+        # move from one listing, and a second listing taken a moment
+        # later can disagree - a stamp written in between would spare a
+        # file the sweep never saw, one deleted in between would drop
+        # protection from a file it is about to move.
+        mat_names = [] if unreadable_abort else os.listdir(mats_path)
+        awaiting_repair = {} if unreadable_abort else repair.stamped_assets(
+            self.preferences.dir, self.preferences.asset_dir,
+            names=mat_names)
+        # A STAMP WITH NO .mat BESIDE IT IS NORMAL, and requiring one was
+        # a wrong guard that got as far as a green suite. Measured on the
+        # test library: 24 stamps, 7 .mat files, and all 17 of the
+        # remainder are Code snippets - code.json claims every one. Code
+        # keeps its text inline and owns no .mat, so demanding a payload
+        # would deny protection to the whole section precisely when its
+        # list is the thing that was lost.
+        #
+        # It also fixes the wrong case. A refused index write leaves NO
+        # stamp - _StampWriter runs only on a save that landed - so the
+        # shape this pass really meets is an asset that saved fine and
+        # later lost its row, which is Repair's own case.
+        spared = set()
+
+        for f in mat_names:
             # Same classifier the guard above counted with - see
             # database.asset_id_for_file for why that is one function.
             split = database.asset_id_for_file(
@@ -1880,6 +1933,9 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                     STAMP_SUFFIX), "_cop")
             if split is not None:
                 found = str(split) in known_ids
+                if not found and str(split) in awaiting_repair:
+                    spared.add(str(split))
+                    continue
                 if not found:
                     moved = quarantine_file(self.preferences.dir,
                                             os.path.join(mats_path, f))
@@ -1905,6 +1961,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             split = database.asset_id_for_file(f, (".png",), "_icon")
             if split is not None:
                 found = str(split) in known_ids
+                # THE SAME ID, SPARED IN BOTH FOLDERS. Repair puts the
+                # row back; an icon quarantined in the same run would
+                # bring it back blank, needing a re-render of a
+                # thumbnail that was sitting right there.
+                if not found and str(split) in awaiting_repair:
+                    spared.add(str(split))
+                    continue
                 if not found:
                     moved = quarantine_file(self.preferences.dir,
                                             os.path.join(mats_path, f))
@@ -1944,6 +2007,47 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 "removed, so that folder cannot grow without end."
                 % QUARANTINE_DAYS)
             prune_quarantine(self.preferences.dir)
+
+        if spared:
+            # SAY WHAT WAS KEPT, or the sweep reports a clean library
+            # while real materials sit in the folder unlisted, and the
+            # one person who could act on it never learns there is
+            # anything to act on.
+            #
+            # It says what these files ARE before what to do about them:
+            # a material that never finished being added is a thing an
+            # artist can picture, where naming the sidecar would be the
+            # storage layer wearing a coat. No banned word does the work
+            # here (practice.md > Writing for the user).
+            # THE NAME THE USER HAS SEEN, which is why the stamp reader
+            # hands back the record and not just the id. Falling back to
+            # the id only when a stamp carries no name: an unnamed
+            # material still has to be nameable in a sentence.
+            # NAMED, NOT COUNTED BY SECTION. The shared asset folder
+            # holds materials, nodes and snippets, and a file no list
+            # claims is one whose section nobody can name - so a count
+            # noun would be a guess in the one sentence that has to be
+            # trustworthy. Their own names carry it instead, and those
+            # come from the stamp, which is why the reader returns the
+            # record.
+            shown_kept = sorted(
+                str(awaiting_repair.get(mat_id, {}).get("name") or mat_id)
+                for mat_id in spared)
+            summary.append(
+                "%s %s not listed in your library, but %s can still be "
+                "put back. Nothing was moved or deleted."
+                % (_and_list(shown_kept[:8]) + (
+                       " and %d more" % (len(spared) - 8)
+                       if len(spared) > 8 else ""),
+                   "is" if len(spared) == 1 else "are",
+                   "it" if len(spared) == 1 else "they"))
+            if not unreadable_abort:
+                # ONE repair route in the summary, never two. The
+                # refusal branch above already appends it for its own
+                # causes; this is the same step for a different finding,
+                # and its docstring is explicit that there is only one of
+                # it however many findings there are.
+                summary.append(self._the_repair_route())
 
         # --- Pass 4: rescue materials without a valid category and
         # normalize legacy whitespace-mangled category data ---

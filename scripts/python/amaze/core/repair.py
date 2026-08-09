@@ -291,6 +291,84 @@ def _unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
     return found
 
 
+def read_stamp(path: str) -> dict | None:
+    """One recovery stamp, or None when it cannot be read.
+
+    THE ONLY OPENER OF A STAMP IN THE PACKAGE, and it lives in this
+    module because that is the rule a source-derived test holds: stamps
+    are write-only shadows of a row, and a reader elsewhere makes them a
+    second source of truth. Clean Library's pass 3 needs the answer, so
+    it asks HERE rather than opening one itself - whether an asset can
+    still be put back is a question for the recovery tool.
+
+    One reader, so the sweep and `rebuild_from_stamps` cannot disagree.
+    If they did, the sweep would carry off the evidence the rebuild was
+    about to use - the shape of disagreement `database.ids_claimed_by`
+    was extracted to end.
+
+    utf-8-sig, like the rest of the package reads: strictly wider than
+    the plain utf-8 this used, so every stamp that read before still
+    reads and a BOM'd one recovers instead of counting damaged.
+    """
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            record = json.load(handle)
+        if not isinstance(record, dict):
+            raise ValueError("top level is not an object")
+    except (OSError, ValueError) as exc:
+        debug.event("repair", "recovery stamp unreadable",
+                    file=path, error=str(exc))
+        return None
+    return record
+
+
+def stamped_assets(directory: str, asset_dir: str = "mat/",
+                   names: list | None = None) -> dict:
+    """The assets in `asset_dir` whose stamp actually reads, as
+    {id: record} - the ones a rebuild could put back.
+
+    `names` lets a caller that has ALREADY listed the folder hand its
+    listing in. Clean Library's pass 3 does, and not to save a syscall:
+    the sweep decides what to quarantine from one listing, and a second
+    listing taken a moment later can disagree with it - a stamp written
+    in between would spare a file the sweep never saw, and one deleted
+    in between would drop protection from a file it is about to move.
+    One listing, one set of facts.
+
+    READABLE IS THE WHOLE TEST. A stamp that will not parse rebuilds
+    nothing (`rebuild_from_stamps` counts it damaged), so treating it as
+    protection would hold files back for a recovery that can never run.
+    Unreadable stamp, ordinary leftover: same answer.
+
+    THE RECORD COMES BACK, not just the id, and that is what makes the
+    sweep's own sentence possible: the stamp holds the asset's NAME, so
+    a message about files nothing lists can name a material the user has
+    seen on a tile instead of a 32-character id they have seen nowhere.
+    Membership still reads `id in result`.
+
+    A folder that cannot be listed yields nothing rather than raising.
+    The caller is a guard whose own refusal path already covers
+    not-being-able-to-look; a second one here would give the sweep two
+    ways to be held back with different sentences.
+    """
+    folder = os.path.join(directory, asset_dir)
+    if names is None:
+        try:
+            names = os.listdir(folder)
+        except OSError as exc:
+            debug.event("repair", "cannot list the asset folder for stamps",
+                        folder=folder, error=str(exc))
+            return {}
+    found = {}
+    for name in names:
+        if not name.endswith(STAMP_SUFFIX):
+            continue
+        record = read_stamp(os.path.join(folder, name))
+        if record is not None:
+            found[name[: -len(STAMP_SUFFIX)]] = record
+    return found
+
+
 def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
                         index_filename: str = "library.json") -> dict:
     """Reconstruct a library index from the per-asset recovery stamps.
@@ -359,14 +437,13 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         asset_id = name[: -len(STAMP_SUFFIX)]
         if asset_id in owned_elsewhere:
             continue
-        try:
-            with open(os.path.join(folder, name), encoding="utf-8") as handle:
-                record = json.load(handle)
-            if not isinstance(record, dict):
-                raise ValueError("top level is not an object")
-        except (OSError, ValueError) as exc:
-            debug.event("repair", "recovery stamp unreadable",
-                        asset_id=asset_id, error=str(exc))
+        # THE SHARED READER, not a second parse. Clean Library's pass 3
+        # spares the files of any id whose stamp reads; if that judgement
+        # and this one came from two pieces of code, the sweep could
+        # carry off a stamp this rebuild would have accepted, or hold
+        # back files it could never restore. One reader, one answer.
+        record = read_stamp(os.path.join(folder, name))
+        if record is None:
             damaged.append(asset_id)
             continue
         record.setdefault("id", asset_id)
