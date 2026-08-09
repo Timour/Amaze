@@ -38,8 +38,14 @@ class _Case(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def _document(self, count=3):
+        # TODAY'S schema, read from the product rather than typed. A
+        # literal 2 here meant every schema bump turned the
+        # byte-identical round-trip test red for the right reason -
+        # the document legitimately migrates and gains a new stamp -
+        # which reads as a regression in the bump instead of a stale
+        # fixture. The format stamp beside it already worked this way.
         return {
-            "version": 2,
+            "version": database.SCHEMA_VERSION,
             "categories": ["_All", "Wood"],
             "tags": ["rough"],
             "assets": [{"id": "ASSET%d" % i, "name": "mat %d" % i}
