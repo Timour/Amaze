@@ -636,6 +636,23 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addWidget(browser, 1)
 
         form = self._make_form()
+        # ON REQUEST ONLY - nothing consults the release feed at launch,
+        # so this button is the whole trigger from the panel.
+        self._btn_update = QtWidgets.QPushButton("Check for Updates")
+        self._btn_update.setToolTip(ui_helpers.tooltip_text(
+            "Ask whether a newer Amaze has been released. Nothing is "
+            "downloaded or changed by asking."
+        ))
+        self._btn_update.clicked.connect(self.check_for_updates)
+        form.addRow("", self._btn_update)
+        # THE ANSWER GOES HERE, not in a popup. Preferences is
+        # deliberately non-modal because a native dialog lands UNDER a
+        # Qt modal loop (research.md), and a one-line result is not
+        # worth a window either way.
+        self._lbl_update = QtWidgets.QLabel("")
+        self._lbl_update.setWordWrap(True)
+        self._lbl_update.setVisible(False)
+        form.addRow("", self._lbl_update)
         self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
@@ -974,6 +991,32 @@ class PrefsDialog(QtWidgets.QDialog):
         """Read fresh on every dispatch, so it applies to the next batch
         without a restart - same as the texture conversion count."""
         self._prefs.matx_parallel_downloads = value
+
+    @debug.guarded("prefs.check_for_updates")
+    def check_for_updates(self) -> None:
+        """Ask the release feed, and say the answer in the tab.
+
+        BLOCKS while it asks, which is why the wait is short and the
+        button says so: this is a one-line JSON GET the user pressed a
+        button for, and a worker thread for it would be more machinery
+        than the wait it saves.
+        """
+        from amaze.core import updater
+
+        self._btn_update.setEnabled(False)
+        self._btn_update.setText("Checking...")
+        self._lbl_update.setVisible(False)
+        # Repaint BEFORE the blocking call, or the button never shows
+        # the state it was just given.
+        QtWidgets.QApplication.processEvents(
+            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        try:
+            result = updater.check()
+        finally:
+            self._btn_update.setEnabled(True)
+            self._btn_update.setText("Check for Updates")
+        self._lbl_update.setText(result.sentence)
+        self._lbl_update.setVisible(True)
 
     def set_debug_mode(self, checked: bool) -> None:
         """Takes effect immediately - the engine is reconfigured here as

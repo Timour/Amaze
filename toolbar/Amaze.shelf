@@ -172,9 +172,37 @@ else:
     repair.run()]]></script>
   </tool>
 
+  <tool name="amaze_check_updates" label="Updates"
+        icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
+    <helpText><![CDATA[Ask whether a newer Amaze has been released.
+
+Asking changes nothing: it reads the release list and tells you what it
+found. Until a release is published this reports that there is none,
+which is not an error.
+
+Nothing is ever checked on its own - no launch-time check, no
+background call. This tool and the button in Preferences are the only
+things that ask.]]></helpText>
+    <script scriptType="python"><![CDATA[import hou
+
+# The verdict and its sentence live in the module, so the shelf tool
+# and the Preferences button cannot say different things about the
+# same answer.
+try:
+    from amaze.core import updater
+except ImportError as exc:
+    hou.ui.displayMessage(
+        "Amaze is not importable from this session (%s).\n\n"
+        "Check that $AMAZE points at the install and that Houdini was "
+        "restarted after it changed." % exc)
+else:
+    hou.ui.displayMessage(updater.check().sentence)]]></script>
+  </tool>
+
   <toolshelf name="amaze" label="Amaze">
     <memberTool name="amaze_open_panel"/>
     <memberTool name="amaze_capture_hip"/>
     <memberTool name="amaze_repair_library"/>
+    <memberTool name="amaze_check_updates"/>
   </toolshelf>
 </shelfDocument>
