@@ -570,11 +570,17 @@ class NotesPanel(ui_helpers.HeldPane):
         app = QtWidgets.QApplication.instance()
         dpr = app.devicePixelRatio() if app else 1.0
         side = theme.ui_px(39)
+        # AS DRAWN, no tint map. The map here was a no-op wearing a
+        # fix's clothes: one key (#fffc66) is not in the art at all,
+        # and the other mapped the art's own blue to COMMENT_INK,
+        # which IS that blue - so it recoloured nothing and would
+        # have died silently the day the art changed. The art
+        # carries its own colour; the toolbar chip is the one site
+        # that genuinely recolours this glyph.
         pixmap = ui_helpers.render_svg_pixmap(
             os.path.join(os.path.dirname(amaze.__file__),
                          "ui", "icon_comments.svg"),
-            max(1, int(round(side * dpr))),
-            {"#fffc66": COMMENT_INK, "#5cc9f5": COMMENT_INK})
+            max(1, int(round(side * dpr))))
         pixmap.setDevicePixelRatio(dpr)
         self._icon_label.setPixmap(pixmap)
         plus_side = theme.ui_px(18)
