@@ -259,7 +259,9 @@ Combinations*, Paul Klee, Josef Albers, Johannes Itten — plus gradients
 you save yourself.
 
 - **Apply as Stepped Ramp** / **Apply Ramp** — pushes the palette onto a
-  selected node's ramp parameter.
+  selected node's ramp parameter. A selected node that has no ramp
+  parameter does not block it: Amaze creates the ramp node instead,
+  the same as double-clicking the tile.
 - **Apply as Linear Ramp** — curated gradients only.
 - **Copy Color ▸** — a submenu of the individual swatches, each labelled
   with its hex code; picking one copies the hex to the clipboard. (A
@@ -328,8 +330,9 @@ them. Each file behaves as its kind:
   Preferences ▸ Render.
 - **Geometry** (`.bgeo`, `.obj`, `.fbx`, `.abc`, `.usd`, …) gets
   viewport-rendered thumbnails, wire over shaded. **Double-click** or
-  drag into a network to import in context. A recursive scan of a big
-  library can queue many first-time renders — the pass is
+  drag into a network to import in context; the import puts your
+  current node and display flag back where they were. A recursive scan
+  of a big library can queue many first-time renders — the pass is
   interruptible with Esc and resumes later.
 - **Scenes** (`.hip`, `.hiplc`, `.hipnc`) **open on double-click**,
   with Houdini's own save prompt in charge of unsaved changes. Drag one
