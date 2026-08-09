@@ -312,7 +312,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                         # identity. Without it the backfill below found
                         # every seeded entry unstamped and saved the
                         # whole file a second time on first open.
-                        "uid": uuid.uuid4().hex,
+                        "id": uuid.uuid4().hex,
                     })
                     seeded += 1
             # Only mark "done" once we actually seeded something: if the
@@ -606,7 +606,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         """
         if not entry:
             return {}
-        uid = str(entry.get("uid", "") or "")
+        uid = self._id_of(entry)
         stored = tile_icons.override_for(self._preferences, uid) \
             if uid else {}
         return stored or tile_icons.normalise(entry.get("icon"))
@@ -758,7 +758,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 # Identity at birth, like every section's assets -
                 # and the same mint: full uuid4 hex, exactly what
                 # Material stamps for mat_id.
-                "uid": uuid.uuid4().hex,
+                "id": uuid.uuid4().hex,
             },
         )
         self._save_user()
@@ -781,6 +781,21 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             return self._entries[row]
         return None
 
+    @staticmethod
+    def _id_of(entry: dict) -> str:
+        """This entry's identity, whatever it is spelled.
+
+        `id` since the move onto the connector - which reads that field
+        in seven places, so a row without one collapses with every
+        other id-less row into a single key in its union and they
+        overwrite each other. `uid` is the pre-move spelling, read here
+        so an entry still carrying it in memory keeps working; the
+        VALUE is the same either way, which is what matters, because
+        comments are keyed `gradient:<value>` and tile icons by the
+        same value.
+        """
+        return str(entry.get("id") or entry.get("uid") or "")
+
     def _backfill_uids_once(self) -> None:
         """Every gradient carries a uid, like every asset carries its
         id - identity from birth, not stamped when a feature happens
@@ -792,12 +807,12 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         save a second time on first open."""
         stamped = 0
         for entry in self._entries:
-            if not str(entry.get("uid", "") or ""):
+            if not self._id_of(entry):
                 # Full uuid4 hex - ONE mint across the app (the asset
                 # family's, core/material.py). Early libraries carry
                 # 12-char uids from the first cut; they stay valid
                 # keys and are left alone.
-                entry["uid"] = uuid.uuid4().hex
+                entry["id"] = uuid.uuid4().hex
                 stamped += 1
         if stamped:
             self._save_user()
@@ -830,7 +845,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 cleared += 1
                 continue
             key = notes.note_key(
-                "gradient", str(entry.get("uid", "") or ""))
+                "gradient", self._id_of(entry))
             page = notes.note_for(self._preferences, key)
             items = list(pages.get(key, page.get("items", [])))
             items.append({"t": "text", "text": text})
@@ -860,7 +875,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         entry field sees the merged truth."""
         adopted = 0
         for entry in self._entries:
-            uid = str(entry.get("uid", "") or "")
+            uid = self._id_of(entry)
             if not uid:
                 continue
             if tile_icons.override_for(self._preferences, uid):
@@ -883,7 +898,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         entry = self.entry(row)
         if entry is None:
             return ""
-        return str(entry.get("uid", "") or "")
+        return self._id_of(entry)
 
     @staticmethod
     def _is_banded(entry: dict) -> bool:
@@ -992,7 +1007,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             # Read-only here (data() is a paint path): a gradient with
             # no uid HAS no note yet - stamping happens in
             # ensure_note_uid when a note is actually opened.
-            uid = str(entry.get("uid", "") or "")
+            uid = self._id_of(entry)
             if not uid:
                 return False
             from amaze.core import notes
