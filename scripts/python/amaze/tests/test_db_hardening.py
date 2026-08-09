@@ -146,6 +146,61 @@ class TheSmallBatchTest(_Case):
             "grid is not narrowed to nothing between keystrokes")
 
 
+class LoadDoesNotMarryCachedDataToANewPathTest(unittest.TestCase):
+    """`load()` set `self._path` UNCONDITIONALLY and then returned the
+    cached document - so a connector serving library A, asked to load
+    library B, answered with A's rows under B's path. `serves(B)` then
+    said yes, and the next save wrote A's whole document into B's file.
+
+    Reachable without any test contortion: switch the library while
+    the panel is closed (a hand edit, a rollback), reopen it - every
+    model constructs through `load()`, the singleton survives, and the
+    first save clobbers the new library with the old one's content.
+    `reload_with_path` was built for switches; `load()` has to take
+    that door itself when the path moves, because callers at
+    construction time cannot know the singleton's history.
+    """
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.a = tempfile.mkdtemp(prefix="amaze_marry_a_")
+        self.b = tempfile.mkdtemp(prefix="amaze_marry_b_")
+        for folder in (self.a, self.b):
+            self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        for folder, row in ((self.a, "ROW_A"), (self.b, "ROW_B")):
+            with open(os.path.join(folder, "library.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump({"version": database.SCHEMA_VERSION,
+                           "categories": ["_All"], "tags": [],
+                           "assets": [{"id": row, "name": row}]},
+                          handle)
+
+    def test_a_switched_path_answers_the_new_disk(self):
+        db = database.DatabaseConnector("library.json")
+        first = db.load(self.a + os.sep)
+        self.assertEqual(["ROW_A"],
+                         [r["id"] for r in first["assets"]],
+                         "premise: library A loads")
+        second = db.load(self.b + os.sep)
+        self.assertEqual(
+            ["ROW_B"], [r["id"] for r in second["assets"]],
+            "load() answered the previous library's cached rows under "
+            "the new path")
+
+    def test_a_switched_path_cannot_write_the_old_rows_into_the_new_file(self):
+        db = database.DatabaseConnector("library.json")
+        db.load(self.a + os.sep)
+        db.load(self.b + os.sep)
+        db.save()
+        with open(os.path.join(self.b, "library.json"),
+                  encoding="utf-8") as handle:
+            ids = [r["id"] for r in json.load(handle)["assets"]]
+        self.assertNotIn(
+            "ROW_A", ids,
+            "library A's rows were written into library B's file - the "
+            "clobber serves() exists to refuse, reached through load()")
+
+
 class GradientsBecomeAnOrdinaryDatabaseTest(unittest.TestCase):
     """ROADMAP D. `gradients.json` was the ONE database not going
     through DatabaseConnector, so every guard the other three inherit
