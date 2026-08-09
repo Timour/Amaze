@@ -5,6 +5,7 @@ guarantee behind them, and the wiring.
 (practice.md > A TEST SKIPPED ON EVERY MAJOR IS DEAD COVER)
 """
 
+import ast
 import io
 import json
 import os
@@ -272,6 +273,64 @@ class TheWiringTest(unittest.TestCase):
                       "the subset guard is gone, so a subset --all-versions "
                       "would report a confident all-clear about every "
                       "module neither run loaded")
+
+
+class EverythingLoadsOnADirectRunTest(unittest.TestCase):
+    """unittest.main() collects what is defined ABOVE it, then exits.
+
+    Fifteen modules defined classes below the call - 126 methods a
+    direct run never collected, printing a confident green over half a
+    file. The gate was safe (run_suite imports by name, so __main__
+    never fires there); the hole was the developer loop. Dead cover's
+    other face: a run that LOOKS like coverage. The call belongs at
+    the bottom, and this pins it there.
+    """
+
+    @staticmethod
+    def _defined_below_main(source):
+        """Module-level definitions below the unittest.main() call, or
+        [] when there is no call. AST, never grep: a comment or a
+        docstring mentioning the call must not count as one."""
+        tree = ast.parse(source)
+        main_lines = [node.lineno for node in ast.walk(tree)
+                      if isinstance(node, ast.Call)
+                      and isinstance(node.func, ast.Attribute)
+                      and node.func.attr == "main"
+                      and isinstance(node.func.value, ast.Name)
+                      and node.func.value.id == "unittest"]
+        if not main_lines:
+            return []
+        first = min(main_lines)
+        return [node.name for node in tree.body
+                if isinstance(node, (ast.ClassDef, ast.FunctionDef))
+                and node.lineno > first]
+
+    def test_nothing_is_defined_below_unittest_main(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        offenders = {}
+        for name in sorted(os.listdir(here)):
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            with open(os.path.join(here, name), encoding="utf-8") as f:
+                below = self._defined_below_main(f.read())
+            if below:
+                offenders[name] = below
+        self.assertEqual(
+            {}, offenders,
+            "these modules define tests below unittest.main(), so a "
+            "direct run collects only part of the file and prints a "
+            "green over the rest: %s" % offenders)
+
+    def test_the_scan_can_see_a_class_below_the_call(self):
+        """Anti-vacuity: prove the needle still finds the haystack."""
+        planted = ("import unittest\n"
+                   "if __name__ == '__main__':\n"
+                   "    unittest.main()\n"
+                   "class TailTest(unittest.TestCase):\n"
+                   "    def test_x(self):\n"
+                   "        pass\n")
+        self.assertEqual(["TailTest"],
+                         self._defined_below_main(planted))
 
 
 if __name__ == "__main__":
