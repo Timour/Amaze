@@ -343,15 +343,36 @@ class DesignedDialog(QtWidgets.QDialog):
         on this machine it is 1.0 because Qt is already doing the
 
         """
+        ratio = DesignedDialog._device_ratio()
+        # AND THE HOST'S OWN SCALE. Dividing by the dpr alone was only
+        # half the rule and only ever right on this Mac. research.md,
+        # measured on the third machine: macOS carries the Retina
+        # factor in the dpr and reports Houdini's scale as 1.0, but
+        # WINDOWS is the opposite shape - dpr 1.0 with a genuine 1.5 -
+        # so a dpr-only conversion returned the raw number there and
+        # the dialog opened a third smaller than the chrome beside it,
+        # every pixel of which had gone through `theme.ui_px`.
+        #
+        # `theme.UI_SCALE` already decides WHICH shape is in play (it
+        # answers 1.0 when the factor is merely restating the dpr), so
+        # this reuses that verdict instead of writing the rule twice
+        # and letting the two drift.
+        factor = theme.UI_SCALE / max(ratio, 1.0)
+        if factor == 1.0:
+            return value
+        scaled = value * factor
+        return scaled if isinstance(value, float) else int(round(scaled))
+
+    @staticmethod
+    def _device_ratio():
+        """The display's device pixel ratio, or 1.0 if it cannot be
+        read. Its own method so a test can state a platform instead of
+        needing that platform's screen."""
         try:
             screen = QtGui.QGuiApplication.primaryScreen()
-            ratio = float(screen.devicePixelRatio()) if screen else 1.0
+            return float(screen.devicePixelRatio()) if screen else 1.0
         except Exception:                                 # noqa: BLE001
-            ratio = 1.0
-        if ratio <= 1.0:
-            return value
-        scaled = value / ratio
-        return scaled if isinstance(value, float) else int(round(scaled))
+            return 1.0
 
     def __init__(self, parent=None, title="", subtitle="", kind="",
                  icon="") -> None:

@@ -229,3 +229,51 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         self.assertTrue(title.bold(), "the title is not bold")
         self.assertFalse(kind.bold(), "the kind line should not be bold")
         self.assertGreater(title.pixelSize(), kind.pixelSize())
+
+
+class HisPixelsConvertOnEveryPlatformTest(unittest.TestCase):
+    """`d()` turns one DESIGN pixel into the logical pixels Qt sizes
+    with. It read the device pixel ratio and NOTHING ELSE, which is
+    only half the rule.
+
+    research.md has the other half, measured on the third machine: on
+    macOS the Retina factor rides in the dpr and Houdini's own scale
+    reads 1.0, but WINDOWS is the opposite shape - scale 1.5 with dpr
+    1.0, and that 1.5 is real. Dividing by dpr alone returns the raw
+    number there, so the dialog opens a third smaller than the chrome
+    around it, whose every pixel went through `theme.ui_px`.
+
+    `theme.UI_SCALE` already resolves which shape is in play, so this
+    is a reuse rather than a second copy of the rule.
+    """
+
+    DESIGN = ui_helpers.DesignedDialog.FRAME[0]          # 512
+
+    def _d(self, value, ratio, scale):
+        real_ratio = ui_helpers.DesignedDialog._device_ratio
+        real_scale = theme.UI_SCALE
+        ui_helpers.DesignedDialog._device_ratio = staticmethod(lambda: ratio)
+        theme.UI_SCALE = scale
+        try:
+            return ui_helpers.DesignedDialog.d(value)
+        finally:
+            ui_helpers.DesignedDialog._device_ratio = real_ratio
+            theme.UI_SCALE = real_scale
+
+    def test_retina_mac_halves_it(self):
+        """The Retina case, which already worked: the scale factor
+        merely restates the dpr, so theme resolves it to 1.0."""
+        self.assertEqual(256, self._d(self.DESIGN, ratio=2.0, scale=1.0))
+
+    def test_windows_applies_the_real_scale(self):
+        """THE ONE THAT WAS BROKEN. dpr 1.0 with a genuine 1.5 scale -
+        512 must become 768 to sit correctly beside chrome that
+        `ui_px` has already multiplied by 1.5."""
+        self.assertEqual(768, self._d(self.DESIGN, ratio=1.0, scale=1.5))
+
+    def test_a_plain_display_leaves_it_alone(self):
+        self.assertEqual(512, self._d(self.DESIGN, ratio=1.0, scale=1.0))
+
+    def test_ints_stay_ints_and_floats_stay_floats(self):
+        self.assertIsInstance(self._d(60, ratio=2.0, scale=1.0), int)
+        self.assertIsInstance(self._d(60.0, ratio=2.0, scale=1.0), float)
