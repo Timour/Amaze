@@ -55,10 +55,9 @@ from amaze.render import (
     generator,
     material_converter,
     nodes,
-    shaderball_scene,
-    thumbnail_scene,
     thumbs,
 )
+from amaze import preview
 
 # THE RELOAD CHAIN, and why it is off by default (2026-08-02).
 #
@@ -103,8 +102,14 @@ _reload(material)
 # hot-reload in production import paths, with nodes and thumbs
 # even reloading each other mid-import. ONE chain owns reloads
 # now; the modules just import each other normally.
-_reload(shaderball_scene)
-_reload(thumbnail_scene)
+#
+# THE PREVIEW ENGINE RELOADS ITSELF, and has to. Reloading a PACKAGE
+# re-runs only its __init__.py, which then finds both submodules
+# already in sys.modules and hands back the cached ones - the chain
+# would look complete and refresh nothing. reload_engine() re-executes
+# them leaf-first and re-binds the names the package exports.
+if _DEV_RELOAD:
+    preview.reload_engine()
 _reload(material_converter)
 _reload(nodes)
 _reload(thumbs)

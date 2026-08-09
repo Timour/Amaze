@@ -2,10 +2,9 @@
 Generates a Thumbnail Scene and allows for Rendering Material Preview
 """
 
-import importlib
 import hou
 from amaze.core import debug
-from amaze.render import shaderball_scene
+from amaze.preview import shaderball_scene
 
 # (module reloads consolidated into panel.py's single chain)
 

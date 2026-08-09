@@ -6,7 +6,8 @@ import hou
 from amaze.core import debug
 from amaze.core import material
 from amaze.core import tile_icons
-from amaze.render import nodes, thumbnail_scene
+from amaze.render import nodes
+from amaze import preview
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, hostver
 
@@ -146,7 +147,7 @@ class ThumbNailRenderer:
         batch instead of paying the USD stage load per material; a
         single render (create_thumb_mtlx) builds and destroys its own.
         """
-        ocio = thumbnail_scene.ocio_from_viewer()
+        ocio = preview.ocio_from_viewer()
         if not ocio:
             return None
 
@@ -513,7 +514,7 @@ class ThumbNailRenderer:
         back on one undo; the same pair inside a disabler does not.
         """
         with hou.undos.disabler():
-            sc = thumbnail_scene.ThumbNailScene(renderer)
+            sc = preview.ThumbNailScene(renderer)
             thumb = sc.get_node()
             try:
                 yield sc, thumb
@@ -526,17 +527,17 @@ class ThumbNailRenderer:
         """The material/path/exclusion/light/resolution block the three
         renderer paths each carried their own copy of.
 
-        Through safe_set, like the ROP parms in thumbnail_scene.py: a
+        Through safe_set, like the ROP parms in the preview engine: a
         renamed parm on a new renderer build is what safe_set exists to
         absorb, and setting these raw made it an AttributeError that
         aborts the render.
         """
-        thumbnail_scene.safe_set(thumb, "mat", node.path())
-        thumbnail_scene.safe_set(thumb, "path", out_path)
-        thumbnail_scene.safe_set(thumb, "obj_exclude", "* ^" + thumb.name())
-        thumbnail_scene.safe_set(thumb, "lights", thumb.name() + "/*")
-        thumbnail_scene.safe_set(thumb, "resx", self._preferences.rendersize)
-        thumbnail_scene.safe_set(thumb, "resy", self._preferences.rendersize)
+        preview.safe_set(thumb, "mat", node.path())
+        preview.safe_set(thumb, "path", out_path)
+        preview.safe_set(thumb, "obj_exclude", "* ^" + thumb.name())
+        preview.safe_set(thumb, "lights", thumb.name() + "/*")
+        preview.safe_set(thumb, "resx", self._preferences.rendersize)
+        preview.safe_set(thumb, "resy", self._preferences.rendersize)
 
     def _rendered(self, png_path: str, renderer: str, asset_id: str,
                   rop=None) -> bool:
@@ -567,7 +568,7 @@ class ThumbNailRenderer:
         with self._thumb_scene("Mantra") as (sc, thumb):
             try:
                 self._setup_thumb_rop(thumb, node, exr_path)
-                thumbnail_scene.safe_set(thumb, "cop_out_img", png_path)
+                preview.safe_set(thumb, "cop_out_img", png_path)
                 thumb.parm("render").pressButton()
             finally:
                 # INSIDE the finally, same reason as render_karma_into.
@@ -1203,7 +1204,7 @@ class ThumbNailRenderer:
             # still decides how much of the budget each pixel needs.
             # AFTER the shared call, because it is a real difference
             # between the three and not a copy.
-            thumbnail_scene.safe_set(
+            preview.safe_set(
                 sc.rop, "UnifiedMaxSamples", self._preferences.rendersamples
             )
             thumb.parm("render").pressButton()

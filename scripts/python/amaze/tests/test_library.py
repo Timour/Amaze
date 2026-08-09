@@ -771,6 +771,14 @@ class ReloadChainTest(unittest.TestCase):
 
         reloaded = set(re.findall(
             r"(?:importlib\.reload|_reload)\((\w+)\)", source))
+        # A PACKAGE CANNOT BE RELOADED BY RELOADING IT. importlib.reload
+        # on a package re-runs only its __init__.py, which then finds
+        # its submodules already in sys.modules and hands back the
+        # cached ones - so `_reload(preview)` would satisfy this test
+        # while refreshing nothing inside the package. A package that
+        # owns submodules answers with its own entry point instead, and
+        # that counts here.
+        reloaded |= set(re.findall(r"(\w+)\.reload_engine\(\)", source))
         imported = set()
         # PARENTHESISED imports span lines, and the old pattern stopped
         # at the first newline - so `from amaze.core import (\n  a, b,

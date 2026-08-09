@@ -54,7 +54,8 @@ from amaze.core import scene_captures, thumbnails, tile_icons  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.render import thumbnail_scene, thumbs  # noqa: E402
+from amaze.render import thumbs  # noqa: E402
+from amaze import preview  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -120,15 +121,21 @@ class _RendererCase(unittest.TestCase):
         self.scenes = []
 
     def stub_scene(self, missing=()):
-        real = thumbnail_scene.ThumbNailScene
-        self.addCleanup(setattr, thumbnail_scene, "ThumbNailScene", real)
+        # PATCHED ON THE PACKAGE, because that is the name thumbs.py
+        # resolves at call time. Patching the submodule instead leaves
+        # the stub on a name nobody reads, and only ONE of the tests
+        # using this would notice: the two that assert on whether a PNG
+        # exists would go on passing while really building Mantra,
+        # Redshift and Octane scenes in /obj during the suite.
+        real = preview.ThumbNailScene
+        self.addCleanup(setattr, preview, "ThumbNailScene", real)
 
         def factory(renderer="Mantra"):
             scene = _Scene(renderer, missing)
             self.scenes.append(scene)
             return scene
 
-        thumbnail_scene.ThumbNailScene = factory
+        preview.ThumbNailScene = factory
 
     def paths(self):
         return (("Mantra", self.renderer.create_thumb_mantra),
@@ -360,18 +367,25 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
         # (no `hou.ui`) and skipped under H22 (no Redshift) - it had
         # never run anywhere. The display and view are the only things
         # the viewer supplies; nothing else here needs one.
-        real = thumbnail_scene.ocio_from_viewer
-        thumbnail_scene.ocio_from_viewer = lambda: {
+        # PATCHED ON THE SUBMODULE, not the package, and the difference
+        # is the opposite way round from stub_scene above: this test
+        # builds a scene DIRECTLY, and the constructor calls
+        # ocio_from_viewer as a module-level name. Patching the package
+        # attribute would leave the real one running and the test back
+        # to needing a live viewer.
+        module = preview.thumbnail_scene
+        real = module.ocio_from_viewer
+        module.ocio_from_viewer = lambda: {
             "display": "sRGB - Display",
             "view": "ACES 1.0 - SDR Video",
             "space": "ACEScg",
         }
-        self.addCleanup(setattr, thumbnail_scene, "ocio_from_viewer", real)
+        self.addCleanup(setattr, module, "ocio_from_viewer", real)
         with hou.undos.disabler():
             keeper = hou.node("/obj").createNode("null")
         self.addCleanup(lambda: keeper.destroy())
         keeper.setSelected(True, True)
-        scene = thumbnail_scene.ThumbNailScene("Redshift")
+        scene = preview.ThumbNailScene("Redshift")
         try:
             self.assertIn(
                 keeper, hou.selectedNodes(),
@@ -391,7 +405,7 @@ class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
         light parm on a new Redshift/Octane build was an AttributeError
         inside __init__, aborting the thumbnail, where safe_set records
         a skipped parm and carries on."""
-        source = source_of("render/thumbnail_scene.py")
+        source = source_of("preview/thumbnail_scene.py")
         start = source.index('def build_lights', 0)
         end = source.index('def build_rops', 0)
         raw = [line.strip() for line in source[start:end].splitlines()
@@ -409,7 +423,7 @@ class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
             def path(self):
                 return "/obj/x"
 
-        thumbnail_scene.safe_set(Bare(), "RSL_intensityMultiplier", 2)
+        preview.safe_set(Bare(), "RSL_intensityMultiplier", 2)
 
 
 class ParallelConversionsIsALiveCap(unittest.TestCase):

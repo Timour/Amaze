@@ -525,6 +525,30 @@ test `sys.platform` or hardcode an OS path convention.
   built it inline on both the remember and the compare side — six
   sites, 2026-08-05.
 
+### 4h. The **Preview Engine**
+
+The scene a material thumbnail is rendered IN — ball, floor, lights,
+camera, output — built per renderer, used once, destroyed. WHEN a
+thumbnail is made and where the file goes belong to the **Thumbnail
+Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
+
+- **Package:** `preview/` · **Door:** `amaze.preview`
+- **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
+  `ocio_from_viewer()` · `safe_set(node, parm, value)`
+- **The part that is not Python:** the scene's node carries seven spare
+  parameters the caller drives it through — `mat`, `path`,
+  `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
+  `safe_set` swallows a missing one, so a replacement spelling one
+  differently produces a thumbnail-shaped no-op rather than an error.
+- **The scene's lifetime is the CALLER'S:** `thumbs.py` builds inside
+  `hou.undos.disabler()` and destroys in a `finally`.
+
+> This is the most [egMatLib](https://github.com/eglaubauf/egMatLib)
+> -derived part of Amaze still doing a job of its own, its art
+> included; boxing it changes engineering and framing, not the licence
+> of the shipped whole, which stays GPLv3 while any derived line ships.
+> `tests/test_preview_boundary.py` keeps the door a door.
+
 ---
 
 ## 5. Models & storage
@@ -834,10 +858,12 @@ core/matx_icon.py         the PhysicallyBased icon, for value-only
                           online sources that ship no texture to render
 core/bsdf_reader.py       reads the `tensor_file` container the measured
                           EPFL RGL BSDFs ship in
-render/shaderball_scene.py   the shaderball scene a material preview
-                          renders through
-render/thumbnail_scene.py    the per-renderer thumbnail scene (Redshift,
-                          Octane and the rest build theirs here)
+preview/                  THE PREVIEW ENGINE (below) - the scene a
+                          material thumbnail is rendered in. Callers
+                          use `amaze.preview`, never its insides
+preview/shaderball_scene.py  the ball, the plane and their materials
+preview/thumbnail_scene.py   the room around them: lights, camera,
+                          output, per renderer
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question
