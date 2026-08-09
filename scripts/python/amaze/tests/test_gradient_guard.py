@@ -429,16 +429,23 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
                 "%s lost its note to the batch" % entry["name"])
             self.assertNotIn("note", entry, "the field must be consumed")
 
-    def test_a_seeded_entry_is_born_with_its_uid(self):
-        """Identity at birth, so the backfill finds nothing and does
-        not save the whole file a second time on first open."""
-        import inspect
-        source = inspect.getsource(
-            gradient_library.GradientLibrary._seed_curated_once)
-        self.assertIn(
-            '"uid"', source,
-            "the seeder no longer stamps a uid, so the backfill will "
-            "rewrite every seeded entry on the next open")
+    def test_the_uid_backfill_adds_no_write_of_its_own(self):
+        """Identity at birth. A seeded entry arrives stamped, so the
+        backfill finds nothing and does not save the whole file a
+        second time - measured as a WRITE COUNT, because a uid present
+        afterwards cannot tell born-stamped from backfilled."""
+        seen = self._counted_writes()
+        lib = gradient_library.GradientLibrary(self.prefs)
+        if lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+        self.assertTrue(
+            all(str(e.get("uid") or "") for e in lib._entries),
+            "an entry came out of first open with no identity")
+        self.assertLessEqual(
+            seen.count("gradients.json"), 2,
+            "first open wrote gradients.json %d times; the seed and the "
+            "note sweep are one write each and the uid backfill should "
+            "add none" % seen.count("gradients.json"))
 
 
 class GradientTileNameTest(unittest.TestCase):
