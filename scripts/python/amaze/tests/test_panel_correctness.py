@@ -26,6 +26,7 @@ short, and that is precisely how three of them shipped.
 
 import ast
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -340,13 +341,44 @@ class TheMapNamesEveryModule(unittest.TestCase):
     covering the territory is worse than none - it is consulted and
     believed. Nine modules had accumulated in it unnamed."""
 
-    #: Documented under a brace or a phrase rather than a filename:
-    #: `core/{gradient,cop,code}_library.py` and `helpers/ ... vex
-    #: syntax`. Named here so the shorthand is a DECISION rather than
-    #: a hole this test cannot see.
-    SHORTHAND = {"gradient_library", "vex_syntax"}
+    #: Documented as a PHRASE rather than a path - the map's
+    #: `helpers/  theme, ui widgets, vex syntax, generic helpers` line.
+    #: Named here so the shorthand is a DECISION rather than a hole
+    #: this test cannot see. Brace forms are NOT here: they are
+    #: expanded below, because they name their directory and are
+    #: therefore checkable.
+    SHORTHAND = {"helpers/theme.py", "helpers/helpers.py",
+                 "helpers/vex_syntax.py"}
 
-    def test_overview_names_every_module_in_the_package(self):
+    @staticmethod
+    def _brace_paths(body):
+        """Expand `core/{texture,geo}_library.py` into real paths.
+
+        The map compresses siblings this way deliberately. A checker
+        that cannot read the compression would force the map to spell
+        every one out, which is a worse map."""
+        paths = set()
+        for match in re.finditer(r"([\w/]+)/\{([^}]*)\}([\w.]*)", body):
+            head, alternatives, tail = match.groups()
+            for alternative in alternatives.split(","):
+                paths.add("%s/%s%s" % (head, alternative.strip(), tail))
+        return paths
+
+    def test_the_map_places_every_module_in_its_directory(self):
+        """The map must name the module WITH its directory.
+
+        It used to look for the bare stem anywhere in the document, and
+        that is two different holes. A module could move between
+        directories and the map went on naming the old path with
+        nothing red - which is exactly what a package move does. And
+        the check was satisfied by prose: `core/quarantine.py` passed
+        on the word "quarantine" in a sentence about a quarantine
+        FOLDER, `helpers/theme.py` on "theme tokens", `helpers/
+        restore.py` on "restore tier". Three real modules were in no
+        part of the map while the guard for that said they were.
+
+        `dir/stem` rather than `dir/stem.py`, so that a reference like
+        `core/grid_columns.COLUMNS` counts: it places the module."""
         # PACKAGE is <repo>/scripts/python/amaze, so the repo is three
         # levels up - not two, which lands in scripts/ and reads as a
         # missing map rather than a wrong path.
@@ -356,23 +388,27 @@ class TheMapNamesEveryModule(unittest.TestCase):
             self.fail("the system map is missing: %s" % overview)
         with open(overview, encoding="utf-8") as handle:
             body = handle.read()
+        braces = self._brace_paths(body)
         missing = []
-        for root, _dirs, files in os.walk(PACKAGE):
-            if "tests" in root.split(os.sep) or "__pycache__" in root:
-                continue
+        for root, dirs, files in os.walk(PACKAGE):
+            dirs[:] = [d for d in dirs
+                       if d != "__pycache__" and d != "tests"]
             for name in files:
                 if not name.endswith(".py") or name == "__init__.py":
                     continue
-                stem = name[:-3]
-                if stem in self.SHORTHAND or stem in body:
+                rel = os.path.relpath(os.path.join(root, name), PACKAGE)
+                if rel in self.SHORTHAND or rel in braces:
                     continue
-                missing.append(os.path.relpath(
-                    os.path.join(root, name), PACKAGE))
+                if rel[:-3] in body:          # dir/stem, extension free
+                    continue
+                missing.append(rel)
         self.assertEqual(
             [], sorted(missing),
-            "these modules are in no part of the system map, so anyone "
-            "reading it to find where something lives will not find "
-            "them: %s" % ", ".join(sorted(missing)))
+            "the system map does not place these modules in the "
+            "directory they are in, so anyone reading it to find where "
+            "something lives is sent to the wrong place or nowhere: %s"
+            % ", ".join(sorted(missing)))
+
 
 
 class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):

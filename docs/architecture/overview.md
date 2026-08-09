@@ -818,6 +818,17 @@ core/repair.py            REPAIR: what is wrong with this library and
 core/updater.py           is a newer Amaze released, and can this one
                           become it - asked only on request, never at
                           launch (shelf tool + the About tab button)
+core/versions.py          the version store - the base files are always
+                          the ACTIVE version's, each version also has an
+                          archived copy, and versions.json is the ledger
+core/quarantine.py        where a library-internal removal puts what it
+                          takes: machine-local, dated, expiring. Pure
+                          stdlib, because the Houdini-free restore tool
+                          calls it too
+helpers/restore.py        the only code that READS the .bak copies and
+                          the only code that puts one back - one
+                          implementation behind Repair and the
+                          Houdini-free tools/restore.py
 core/gallery_import.py    Houdini .gal gallery entries -> library assets
 core/matx_icon.py         the PhysicallyBased icon, for value-only
                           online sources that ship no texture to render
