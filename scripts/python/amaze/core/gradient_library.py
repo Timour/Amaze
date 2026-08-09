@@ -397,7 +397,34 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         """
         if self._preferences is None:
             return
-        data = self._db().load(str(self._preferences.dir) + os.sep)
+        try:
+            data = self._db().load(str(self._preferences.dir) + os.sep)
+        except (OSError, ValueError) as exc:
+            # A CORRUPT FILE MUST NOT TAKE THE PANEL DOWN. The
+            # connector raises here and its other callers are built
+            # for that; this model is constructed during panel setup,
+            # so an escape kills the panel before there is an
+            # interface to report anything in - the failure the old
+            # loader documented preventing, and it is not undone by
+            # moving house. The connector's OWN latch is set, not a
+            # second one beside it, so there is still one answer to
+            # whether this file may be written.
+            db = self._db()
+            db._write_blocked = True
+            hostos.preserve_unreadable(
+                os.path.join(str(self._preferences.dir), self.DB_FILENAME),
+                why="gradient library")
+            debug.event("gradient", "gradients.json unreadable - saving "
+                        "disabled", error=str(exc))
+            debug.alert(
+                "Your saved colours could not be read, so Amaze will not "
+                "save over them.\n\n"
+                "Nothing has been lost - the file is untouched. Colour "
+                "changes you make now will not be kept.\n\n"
+                "Close Houdini and put back a recent copy with the Repair "
+                "tool in the Amaze shelf.",
+                key="gradients-unreadable")
+            return
         rows = data.get("assets")
         rows = rows if isinstance(rows, list) else []
         self._user = [row for row in rows if isinstance(row, dict)]
