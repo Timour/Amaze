@@ -167,6 +167,19 @@ def written(preferences, key: str, items: list):
     return result
 
 
+def set_notes(preferences, pages: dict):
+    """Store MANY pages in one write - `{key: items}`.
+
+    A sweep calling `set_note` per key rewrites `notes.json` once per
+    key and rotates a snapshot each time, so 39 gradients carrying an
+    old note pushed the restore tier's real history out with 39 copies
+    of the same minute. The engine already had the batched shape
+    (`keyed_store.update`); this exposes it.
+    """
+    return _store(preferences).update(
+        {key: {"items": items} for key, items in (pages or {}).items()})
+
+
 def forget_notes() -> None:
     """Drop the cache - a library switch or a test needs a re-read."""
     keyed_store.release()

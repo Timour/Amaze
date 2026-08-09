@@ -361,6 +361,81 @@ class GradientNoteSweepTest(unittest.TestCase):
                          "the consumed field may not come back on disk")
 
 
+class GradientFirstOpenWriteCountTest(unittest.TestCase):
+    """First open wrote once per swept note and once per phase. A
+    constructor is the worst place for that: it runs before anything
+    is on screen, and every write rotates a snapshot, so 39 old notes
+    pushed the restore tier's real history out with 39 copies of the
+    same minute."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_writestorm_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(
+                {"categories": [],
+                 "gradients": [{"name": "g%d" % i, "points": [],
+                                "note": "note %d" % i}
+                               for i in range(12)]}, fh, indent=1)
+        self.prefs = _Prefs(self.dir)
+
+    def _counted_writes(self):
+        """Every write in the keyed-store and database engines lands in
+        hostos.write_json_atomic, so counting there counts real writes
+        rather than calls to a wrapper that might not write."""
+        from amaze.helpers import hostos
+        seen = []
+        real = hostos.write_json_atomic
+
+        def counting(path, *args, **kwargs):
+            seen.append(os.path.basename(path))
+            return real(path, *args, **kwargs)
+
+        hostos.write_json_atomic = counting
+        self.addCleanup(setattr, hostos, "write_json_atomic", real)
+        return seen
+
+    def test_twelve_notes_are_swept_in_one_write(self):
+        seen = self._counted_writes()
+        lib = gradient_library.GradientLibrary(self.prefs)
+        if lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+        self.assertEqual(
+            1, seen.count("notes.json"),
+            "the sweep wrote notes.json %d times for 12 notes; a "
+            "per-note write also rotates a snapshot each time"
+            % seen.count("notes.json"))
+
+    def test_every_swept_note_still_arrives(self):
+        """Batching must not cost a page - the sweep's contract is
+        moved, never dropped."""
+        lib = gradient_library.GradientLibrary(self.prefs)
+        if lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+        from amaze.core import notes
+        for entry in lib._entries:
+            key = notes.note_key("gradient", entry["uid"])
+            texts = [item["text"] for item
+                     in notes.note_for(self.prefs, key).get("items", [])
+                     if item.get("t") == "text"]
+            self.assertIn(
+                "note %s" % entry["name"][1:], texts,
+                "%s lost its note to the batch" % entry["name"])
+            self.assertNotIn("note", entry, "the field must be consumed")
+
+    def test_a_seeded_entry_is_born_with_its_uid(self):
+        """Identity at birth, so the backfill finds nothing and does
+        not save the whole file a second time on first open."""
+        import inspect
+        source = inspect.getsource(
+            gradient_library.GradientLibrary._seed_curated_once)
+        self.assertIn(
+            '"uid"', source,
+            "the seeder no longer stamps a uid, so the backfill will "
+            "rewrite every seeded entry on the next open")
+
+
 class GradientTileNameTest(unittest.TestCase):
     """set_tile_name is the gradient's rename path since the Info
     dialog retired (2026-08-01) - narrow, persisted, no-op on blank."""

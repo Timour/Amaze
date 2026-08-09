@@ -20,6 +20,7 @@ documents its own sources in a "source" field.
 
 import json
 import os
+import uuid
 
 import hou
 from PySide6 import QtCore, QtGui
@@ -290,6 +291,11 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                         "note": combo.get("note", ""),
                         "ramp": _palette_ramp_data(colors),
                         "favorite": False,
+                        # STAMPED AT BIRTH, like every other section's
+                        # identity. Without it the backfill below found
+                        # every seeded entry unstamped and saved the
+                        # whole file a second time on first open.
+                        "uid": uuid.uuid4().hex,
                     })
                     seeded += 1
             # Only mark "done" once we actually seeded something: if the
@@ -922,8 +928,10 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         id - identity from birth, not stamped when a feature happens
         to need it ("this will just backfire trying to do shortcuts").
         Existing libraries are brought up in ONE pass here; after the
-        first save, loads stamp nothing and cost nothing."""
-        import uuid
+        first save, loads stamp nothing and cost nothing. A freshly
+        SEEDED entry arrives stamped, so this finds nothing to do and
+        does not write - the seed used to leave it a whole file to
+        save a second time on first open."""
         stamped = 0
         for entry in self._entries:
             if not str(entry.get("uid", "") or ""):
@@ -949,6 +957,12 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         is retried next load - moved, never dropped."""
         from amaze.core import notes
         moved = cleared = 0
+        # COLLECTED, then written ONCE. Calling set_note per entry
+        # rewrote notes.json per entry and rotated a snapshot each
+        # time, so 39 old notes pushed the restore tier's real history
+        # out with 39 copies of the same minute.
+        pages = {}
+        carriers = {}
         for entry in self._entries:
             if "note" not in entry:
                 continue
@@ -960,11 +974,18 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             key = notes.note_key(
                 "gradient", str(entry.get("uid", "") or ""))
             page = notes.note_for(self._preferences, key)
-            items = list(page.get("items", []))
+            items = list(pages.get(key, page.get("items", [])))
             items.append({"t": "text", "text": text})
-            if notes.set_note(self._preferences, key, items):
-                del entry["note"]
-                moved += 1
+            pages[key] = items
+            carriers.setdefault(key, []).append(entry)
+        if pages and notes.set_notes(self._preferences, pages):
+            # The field is consumed only on a write that LANDED - a
+            # read-only session keeps it and retries next load, which
+            # is the moved-never-dropped contract.
+            for entries in carriers.values():
+                for entry in entries:
+                    entry.pop("note", None)
+                    moved += 1
         if moved or cleared:
             self._save_user()
             debug.event("gradients", "notes swept to the notes store",
