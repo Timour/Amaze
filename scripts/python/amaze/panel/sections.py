@@ -1600,8 +1600,9 @@ class FileSection(FolderSection):
 
     The kind dispatch is the archetype's own: `selected_kinds` reads
     FileFiles.KindRole once and the menu table above asks it which
-    entries exist. Only the double-click still branches on the panel
-    (`file_double_click`).
+    entries exist. The double-click routes the same way as every
+    gesture: `double_click` hands the row to `panel.click_on_row`,
+    which reads DROP_BY_KIND.
     """
 
     key = "file"

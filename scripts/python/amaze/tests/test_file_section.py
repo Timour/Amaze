@@ -1037,7 +1037,7 @@ class CreationRuleTest(unittest.TestCase):
         index = types.SimpleNamespace(
             data=lambda role: roles.get(role, path),
             isValid=lambda: True)
-        self.panel.file_double_click(index)
+        self.panel.click_on_row(self.panel.sections["file"], index)
         self.assertEqual(
             "$HOME/models/amaze_click.obj",
             helpers.find_file_parm(loader).rawValue(),
@@ -1519,8 +1519,9 @@ class OsIconTest(unittest.TestCase):
 
 
 class _RecordingPanel:
-    """A stand-in `self` for the panel's per-kind dispatch methods -
-    the real methods run, the section handlers they route to record."""
+    """A stand-in `self` for the live click door - click_on_row and
+    _apply_click_rule run for real, and the door verbs the drop table
+    names record instead of touching a scene."""
 
     file_files_model = file_library.FileFiles
 
@@ -1533,17 +1534,28 @@ class _RecordingPanel:
         routing, not the selection door."""
         return []
 
-    def set_texture_on_selected_node(self, index):
-        self.calls.append("image")
+    def _view_create_networks(self):
+        """One writable network, so the on-space route can land."""
+        return [object()]
 
-    def import_geo_asset(self, index):
-        self.calls.append("geometry")
+    def _cannot_load_here(self):
+        self.calls.append("refused")
 
-    def open_hip_scene(self, index):
-        self.calls.append("hip")
+    def create_image_node_in(self, index, network):
+        self.calls.append("create_image_node_in")
+        return True
 
-    def copy_file_paths(self, indexes):
-        self.calls.append("copy")
+    def click_import_geo(self, index):
+        self.calls.append("click_import_geo")
+        return True
+
+    def click_open_hip(self, index):
+        self.calls.append("click_open_hip")
+        return True
+
+    def click_copy_path(self, index):
+        self.calls.append("click_copy_path")
+        return True
 
 
 class _FakeIndex:
@@ -1563,18 +1575,28 @@ class _FakeIndex:
 
 
 class DoubleClickDispatchTest(unittest.TestCase):
-    """Each kind keeps the behaviour its own section had; an
-    unrecognised file's one action is Copy Path - the sheet, verbatim."""
+    """Each kind reaches its own verb THROUGH THE LIVE DOOR - the
+    drop table plus click_on_row's precedence, nothing selected, so
+    the no-node route decides. The per-kind panel handler this class
+    asserted before (`file_double_click`) is retired: production
+    routes through the table, and the handler had drifted into
+    refusals the table never makes. Breaks when a DROP_BY_KIND row
+    loses its verb, names a different one, or the door's precedence
+    stops reaching the no-node route."""
 
-    def test_every_kind_reaches_its_own_action(self):
+    def test_every_kind_reaches_its_own_verb(self):
         from amaze.panel import panel as panel_mod
-        for kind, expected in (("image", "image"),
-                               ("geometry", "geometry"),
-                               ("hip", "hip"),
-                               ("other", "copy")):
+        from amaze.panel import sections
+        for kind, expected in (("image", "create_image_node_in"),
+                               ("geometry", "click_import_geo"),
+                               ("hip", "click_open_hip"),
+                               ("other", "click_copy_path"),
+                               ("", "click_copy_path")):
             recorder = _RecordingPanel()
-            panel_mod.MatLibPanel.file_double_click(
-                recorder, _FakeIndex(kind))
+            recorder._apply_click_rule = (
+                panel_mod.MatLibPanel._apply_click_rule.__get__(recorder))
+            panel_mod.MatLibPanel.click_on_row(
+                recorder, sections.FileSection, _FakeIndex(kind))
             self.assertEqual([expected], recorder.calls,
                              "kind %r dispatched %r" % (kind,
                                                         recorder.calls))
