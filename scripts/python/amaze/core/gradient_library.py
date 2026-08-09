@@ -182,25 +182,11 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
     def __init__(self, preferences=None, parent=None) -> None:
         super().__init__(parent)
         self._preferences = preferences
-        # WHICH library these gradients came from, canonical. Set FIRST:
-        # _save_user() checks it, and __init__ reaches _save_user before
-        # it finishes (via _backfill_uids_once and the seeder), so
-        # setting it at the end of __init__ made construction raise
-        # AttributeError - and the panel builds this model, so the panel
-        # did not open at all.
-        self._loaded_from = self._library_key()
         self._user = []
         self._user_categories = []
         # Category colours, name -> hex, beside the names in the same
         # file - the shape every other section already uses.
         self._category_colors: dict = {}
-        # Set BEFORE _load_user, which reads it on the failure path.
-        self._disk_stat = None
-        # Latched by _load_user when the file on disk could not be
-        # trusted - unreadable, or missing when it should not be. Set
-        # here too so _seed_curated_once can consult it plainly rather
-        # than through a getattr default.
-        self._load_failed = False
         self._load_user()
         # The curated palettes are no longer a read-only class of their
         # own - they're SEEDED once into the user gradients (like the Code
@@ -214,11 +200,28 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self._sweep_notes_to_store_once()
         self._adopt_entry_icons_once()
 
-    def _library_key(self) -> str:
-        """The library directory these gradients belong to, canonical."""
+    #: The one database file this model owns. Named like every other
+    #: library model's, because it now IS one.
+    DB_FILENAME = "gradients.json"
+
+    @property
+    def _load_failed(self) -> bool:
+        """Whether the connector is refusing to write this file.
+
+        The model kept its OWN latch, set on a parse failure and on an
+        absent-but-known file. The connector latches for both of those
+        reasons already (`_write_blocked`), so keeping a second one
+        meant two answers to one question - the shape this whole move
+        removes. Read through to the connector's."""
         if self._preferences is None:
-            return ""
-        return hostos.canonical_path_key(str(self._preferences.dir))
+            return False
+        return bool(getattr(
+            database.DatabaseConnector(self.DB_FILENAME),
+            "_write_blocked", False))
+
+    def _db(self):
+        """This model's connector, pointed at the current library."""
+        return database.DatabaseConnector(self.DB_FILENAME)
 
     def switch_model_data(self) -> None:
         """Re-read the colours from the library the panel now points at.
@@ -237,18 +240,9 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         """
         self.beginResetModel()
         try:
-            # BEFORE the loaders, for the same reason __init__ sets it
-            # first: the seeder and the uid backfill both call
-            # _save_user, and _save_user refuses a write aimed at a
-            # library other than this one. Left until the end, it still
-            # named the library we just switched AWAY from, so the
-            # backfill's save into the new library was refused.
-            self._loaded_from = self._library_key()
             self._user = []
             self._user_categories = []
             self._category_colors = {}
-            self._disk_stat = None
-            self._load_failed = False
             self._load_user()
             self._seed_curated_once()
             self._entries = self._all_entries()
@@ -383,199 +377,43 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         return os.path.join(self._preferences.dir, "gradients.json")
 
     def _load_user(self) -> None:
-        path = self._user_file()
-        if not path:
-            return
-        if not os.path.exists(path):
-            # The module had a careful policy for a file that will not
-            # PARSE and none at all for one that is momentarily ABSENT,
-            # although the outcome is identical and worse: _load_failed
-            # stayed False, _user stayed [], the seed marker already
-            # existed so nothing re-seeded, and the next _save_user()
-            # serialised that empty list over the file as soon as it
-            # arrived. Reproduced 2026-07-29: 290,454 bytes / 388
-            # gradients / 12 categories -> 39 bytes / 0 / 0.
-            #
-            # THE SEED MARKER IS THE EVIDENCE THAT MATTERS HERE, not a
-            # backup. gradients.json is written rarely enough that the
-            # real library has NO gradients.json.bak-* files at all -
-            # verified 2026-07-29 - so a guard keyed on backups alone
-            # would fail OPEN on the one file this bug was measured on
-            # while looking fixed. `.amaze_gradient_seed_v1` is written
-            # only after a successful save of the seeded gradients, so
-            # its presence beside a missing gradients.json means the
-            # file was here.
-            # THE SHARED helper, not a private repeat of it. Repair
-            # asks the same question through database.absent_but_known
-            # and was getting a different answer, because gradients.json
-            # was the one database missing from its marker table: with
-            # the marker present and the file gone, Repair reported
-            # "nothing saved here yet" at the exact moment this loader
-            # had latched and refused every colour write.
-            # EVERY trace, so the instruction below works in one pass -
-            # this named the first of however many the library carries.
-            traces = database.absent_traces(
-                os.path.dirname(path), os.path.basename(path))
-            if not traces:
-                return          # genuinely a new library: seed normally
-            evidence = database._and_list(traces)
-            self._load_failed = True
-            # ONE debug.note, not a print AND a note. note() is the sink
-            # the project is moving these lines to: it prints for a user
-            # with Debug Mode off and records the same text for the
-            # diagnosis afterwards, so the two cannot drift. They HAD
-            # drifted - the printed lines named the trace and the way
-            # out, the note said only "saving disabled" - and on Windows
-            # note() returns before printing (any print pops the Houdini
-            # Console in front of the user's scene), so the record is
-            # the WHOLE channel there. A log line missing the actionable
-            # half leaves a Windows user with a Colors section that is
-            # empty, silent and unsaveable.
-            #
-            # This is also what the database half of the same guard
-            # does, and one guard speaking with two voices is how a
-            # message gets fixed in one place and not the other.
-            debug.note(
-                "%s is not on disk, but %s beside "
-                "it says it was here - so it is treated as "
-                "not-yet-arrived, not as an empty library.\n"
-                "  Saving is disabled this session so an empty file is "
-                "not written over it. Let the sync finish, then restart "
-                "Houdini.\n"
-                "  Expected at: %s\n"
-                # The way OUT of the refusal, named. Without it the
-                # guard is permanent for anyone who deleted
-                # gradients.json on purpose: the marker stays behind and
-                # keeps answering "it was here" forever, with nothing on
-                # screen saying what to do.
-                "  If you removed it on purpose, remove %s as well and "
-                "the next launch starts fresh."
-                % (database.section_name("gradients.json"), evidence,
-                   path, evidence),
-                file=path, evidence=evidence)
-            return
-        try:
-            with open(path, "r", encoding="utf-8-sig") as f:
-                data = json.load(f)
-            # VALID JSON IS NOT A VALID DATABASE. Every sibling checks
-            # this; this loader did not, so a file of the wrong shape
-            # raised out of the constructor and took the whole panel
-            # down instead of routing into the _load_failed latch that
-            # exists for exactly this. Raised as ValueError so it lands
-            # in the handler below with the parse failures.
-            malformed = database.wrong_shape(data)
-            if malformed:
-                raise ValueError(malformed)
-            # ROW shape, not just container shape. wrong_shape above
-            # validates the containers deliberately, so `{"gradients":
-            # [42]}` parses and passes it - and then `entry["type"]`
-            # raises TypeError, which is NOT in the handler below, so
-            # it escapes the constructor and takes the whole panel down
-            # (the very thing the latch exists to prevent). Skip the
-            # bad rows and keep the good ones, which is what the
-            # connector's own merge does with a non-dict row.
-            rows = data.get("gradients", [])
-            rows = rows if isinstance(rows, list) else []
-            self._user = [e for e in rows if isinstance(e, dict)]
-            skipped = len(rows) - len(self._user)
-            if skipped:
-                debug.event("gradient", "rows skipped - not objects",
-                            skipped=skipped, file=path)
-            for entry in self._user:
-                entry["type"] = "user"
-            self._user_categories = data.get("categories", [])
-            table = data.get("category_colors")
-            self._category_colors = {
-                str(k): str(v) for k, v in table.items()
-                if isinstance(k, str) and isinstance(v, str) and v
-            } if isinstance(table, dict) else {}
-            self._remember_disk_state(path)
-            # A SUCCESSFUL READ CLEARS THE LATCH, the same way prefs.py
-            # now does. Both modules set it on a parse failure and neither
-            # cleared it anywhere, so a repaired file could never be saved
-            # again for the life of the object. Kept symmetrical
-            # deliberately: one policy speaking with two voices is how a
-            # guard gets fixed in one module and not the other, which has
-            # already happened to this exact pair of files.
-            self._load_failed = False
-        except (OSError, ValueError) as exc:
-            # The file EXISTS and would not parse. That is not an empty
-            # library, and the difference is everything: _user stays []
-            # while the model believes it is complete, the seed marker
-            # already exists so nothing re-seeds, and the first user
-            # action calls _save_user() - which serialises that empty
-            # list over the file.
-            #
-            # Measured: 200 gradients + one truncated-file launch + one
-            # "save gradient" left ONE entry in gradients.json. And
-            # snapshot_before_write had already copied the CORRUPT file
-            # into .bak-1, spending the rolling window on garbage.
-            self._load_failed = True
-            # PRESERVE THE FILE BESIDE ITSELF - clause two of the
-            # refuse-over-overwrite policy, which names this file by
-            # name and which this handler took only clause one of. The
-            # latch lasts one SESSION; the next launch reads whatever
-            # the transport has left there, and if that parses as a
-            # partial document the latch never fires and the model
-            # adopts it. The .unreadable copy is also one of the two
-            # traces hostos.existed_before reads, and gradients.json is
-            # recorded as having no .bak at all - so not writing it
-            # costs the absence guard its only evidence here.
-            hostos.preserve_unreadable(path, why="gradient library")
-            # RARE + IMPORTANT, so it interrupts: the colours are still
-            # on disk, and the user has to know that nothing they do this
-            # session will be kept. A print would say this only on macOS
-            # (note() returns before printing on Windows, and its log
-            # write is gated on Debug Mode), so the one platform the
-            # no-print rule protects would have got silence.
-            debug.event("gradient", "gradients.json unreadable - saving "
-                        "disabled", file=path, error=str(exc))
-            debug.alert(
-                "Your saved colours could not be read, so Amaze will not "
-                "save over them.\n\n"
-                "Nothing has been lost - the file is untouched. Colour "
-                "changes you make now will not be kept.\n\n"
-                "Close Houdini and put back a recent copy with the Repair "
-                "tool in the Amaze shelf.",
-                key="gradients-unreadable")
+        """Read the palettes through the connector, like every other
+        library-backed model.
 
-    @staticmethod
-    def _stat_of(path: str):
-        """(size, sha256), or None when the file is not there.
+        WHAT WENT WHEN THIS ARRIVED: a hand-built copy of the
+        connector's whole load policy - the absent-but-known refusal
+        with its own `absent_traces` call and its own message, the
+        wrong-shape check, the non-dict row skip, the unreadable
+        preservation and latch. The connector does all five, which is
+        the entire reason for the move: `gradients.json` was the ONE
+        database not going through it, so every guard the other three
+        inherit had been given to it by hand and three were still
+        missing as late as 2026-07-30.
 
-        Deliberately the same key DatabaseConnector now uses, so the
-        two guards agree about what "changed" means. Content rather
-        than (mtime, size): the measured errors of the stat key run in
-        both directions - a same-size edit slips through and loses the
-        peer's change, and a byte-identical rewrite trips a conflict
-        that is not there. This file is ~290KB; the read costs ~1ms on
-        saves only.
+        `_All` IS DROPPED HERE. Every secondary database gets it
+        inserted by the connector's `_normalize_all_category`; the
+        Colors sidebar builds its own All row at position 0, so
+        carrying the stored one through would show two.
         """
-        try:
-            with open(path, "rb") as handle:
-                raw = handle.read()
-            import hashlib
-            return (len(raw), hashlib.sha256(raw).hexdigest())
-        except OSError:
-            return None
-
-    def _remember_disk_state(self, path: str) -> None:
-        """What the file looked like when we last read or wrote it."""
-        self._disk_stat = self._stat_of(path)
-
-    def _disk_changed(self, path: str) -> bool:
-        """True when another writer has touched the file since we read it.
-
-        FAILS SAFE IN BOTH DIRECTIONS. No baseline (we never managed to
-        read the file) means do not claim a change - the caller's other
-        guards own that case. A baseline plus a MISSING file also means
-        do not block: the file being gone is not another session's edit,
-        and refusing there would leave the user unable to save at all.
-        """
-        current = self._stat_of(path)
-        if self._disk_stat is None or current is None:
-            return False
-        return current != self._disk_stat
+        if self._preferences is None:
+            return
+        data = self._db().load(str(self._preferences.dir) + os.sep)
+        rows = data.get("assets")
+        rows = rows if isinstance(rows, list) else []
+        self._user = [row for row in rows if isinstance(row, dict)]
+        for entry in self._user:
+            # A MEMORY marker: every row here is a user gradient since
+            # the curated palettes became ordinary seeded entries.
+            entry["type"] = "user"
+        self._user_categories = [
+            name for name in (data.get("categories") or [])
+            if isinstance(name, str) and name != "_All"
+        ]
+        table = data.get("category_colors")
+        self._category_colors = {
+            str(k): str(v) for k, v in table.items()
+            if isinstance(k, str) and isinstance(v, str) and v
+        } if isinstance(table, dict) else {}
 
     def _save_user(self) -> bool:
         """True only when the colours actually reached disk.
@@ -589,91 +427,30 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         path = self._user_file()
         if not path:
             return False
-        # THE LIBRARY MAY HAVE MOVED under this model. Every connector-
-        # backed model asks db.serves() here; gradients.json has no
-        # connector, so it asks the same question of the directory it
-        # actually loaded from. Without this, a switch that never
-        # reached this model wrote library A's whole colour library
-        # into B - and the stale-write guard below cannot catch it,
-        # because B having no gradients.json yet reads as "unchanged".
-        if self._loaded_from and self._library_key() != self._loaded_from:
+        # EVERY GUARD BELOW IS THE CONNECTOR'S NOW. What stood here was
+        # a hand-built copy of each one, written because this file had
+        # no connector: the library-moved refusal (db.serves), the
+        # unreadable latch (_write_blocked), the stale-write compare
+        # (the connector's own content stat and merge), the snapshot,
+        # the atomic write and the loud failure. Two sets of guards
+        # answering one question is what this move removes - so they
+        # are DELETED rather than left beside the inherited ones.
+        db = self._db()
+        if not db.serves(self._preferences.dir):
             debug.event("gradient", "save refused - these colours came "
-                        "from another library",
-                        loaded_from=self._loaded_from,
-                        now=self._library_key())
-            debug.alert(
-                "Amaze did not save your colours, because the library "
-                "was changed while they were open.\n\n"
-                "Nothing is lost. Reopen the panel and your colours "
-                "will save again.",
-                key="gradient-library-moved")
+                        "from another library", file=path)
             return False
-        if getattr(self, "_load_failed", False):
-            # Refuse rather than overwrite what we could not read. The
-            # user was already told once at load; alert() keys on the same
-            # condition so a save attempt per edit does not re-interrupt.
-            debug.event("gradient", "refusing to save gradients over an "
-                        "unreadable file", file=path)
-            debug.alert(
-                "Your saved colours could not be read, so Amaze will not "
-                "save over them.\n\n"
-                "Nothing has been lost - the file is untouched. Colour "
-                "changes you make now will not be kept.\n\n"
-                "Close Houdini and put back a recent copy with the Repair "
-                "tool in the Amaze shelf.",
-                key="gradients-unreadable")
-            return False
-        data = {
+        db.set({
             "categories": self._user_categories,
             "category_colors": self._category_colors,
-            "gradients": [
+            # `type` is a MEMORY marker, never stored - the same line
+            # the hand-built writer carried.
+            "assets": [
                 {k: v for k, v in entry.items() if k != "type"}
                 for entry in self._user
             ],
-        }
-        if self._disk_changed(path):
-            # REFUSE OVER OVERWRITE. This file is the one database that
-            # does NOT go through DatabaseConnector, so it inherited no
-            # stale-write guard at all: two sessions editing gradients
-            # clobbered each other in silence, at 290KB a time. A merge
-            # belongs here eventually; until then, refusing is the
-            # honest behaviour, because the other session's write is
-            # still intact on disk and this one is still in memory.
-            debug.event("gradient", "gradients.json changed on disk since "
-                        "it was read - save refused", file=path)
-            debug.alert(
-                "Someone else changed the saved colours while this Houdini "
-                "was open, so Amaze did not save over their version.\n\n"
-                "Nothing has been lost. Their colours are on disk and "
-                "yours are still here in this session.\n\n"
-                "Reopen the Amaze panel to load their version - your "
-                "unsaved changes will be replaced when you do.",
-                key="gradients-changed-on-disk")
-            return False
-        try:
-            # Unique scratch name, fsync, atomic swap - shared with the
-            # other three databases via hostos so this one cannot drift
-            # behind them again.
-            hostos.snapshot_before_write(path)
-            hostos.write_json_atomic(path, data, indent=1)
-            self._remember_disk_state(path)
-            return True
-        except OSError as exc:
-            # LOUD, like the other three databases. This was a bare
-            # debug.event, which returns immediately with Debug Mode
-            # off - so a colour edit that never reached disk was
-            # neither shown nor recorded, and the user kept working
-            # against a library that was not saving. The sibling
-            # refusals in this same file already reach for alert
-            # (unreadable, changed-on-disk); this one did not.
-            debug.event("library", "gradients save failed",
-                        file=path, error=str(exc))
-            debug.alert(
-                "Your colours could not be saved (%s).\n\n"
-                "What you changed is still on screen but it is NOT "
-                "on disk. The next save will try again." % exc,
-                key="gradients-write-failed")
-            return False
+        })
+        return bool(db.save())
 
     def _all_entries(self) -> list:
         # Everything is a user gradient now (curated palettes are seeded
