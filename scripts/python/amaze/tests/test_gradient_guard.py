@@ -45,6 +45,13 @@ class _Prefs:
 class GradientStaleWriteTest(unittest.TestCase):
 
     def setUp(self):
+        # THE CONNECTOR IS ONE INSTANCE PER FILENAME, process-wide.
+        # These classes predate gradients having a connector at all, so
+        # none of them reset it - and once gradients moved onto it, a
+        # fresh model built against a fresh temp dir got the PREVIOUS
+        # test's cached document and latches back from `load()`. Every
+        # sibling that touches a database already does this.
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -136,6 +143,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
     """
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_shape_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -210,6 +218,7 @@ class GradientTileIconTest(unittest.TestCase):
     reversible."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_gicon_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -269,6 +278,7 @@ class GradientCategoryColorTest(unittest.TestCase):
     shape every other section uses."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_gcol_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -327,6 +337,7 @@ class GradientNoteSweepTest(unittest.TestCase):
     lost on the way out."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_notesweep_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -367,6 +378,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
     same minute."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_writestorm_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -455,6 +467,7 @@ class GradientTileNameTest(unittest.TestCase):
     dialog retired (2026-08-01) - narrow, persisted, no-op on blank."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_gradname_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -500,6 +513,7 @@ class GradientRowShapeTest(unittest.TestCase):
     """
 
     def setUp(self):
+        test_support.reset_database_singletons()
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_rows_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
