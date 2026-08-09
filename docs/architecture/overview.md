@@ -127,11 +127,21 @@ Plus one *view mode*, not a section:
   > staleness that had ui-text.md gating three Colors menu entries on a
   > curated-vs-user distinction the code no longer makes.
   >
-  > What actually separates this archetype from the other two: its store
-  > is `gradients.json`, the one database that does NOT go through
-  > `DatabaseConnector`, so every guard the others inherit had to be
-  > given to it by hand — and three of them were missing as late as
-  > 2026-07-30.
+  > **It used to be the odd one out and no longer is (2026-08-09).**
+  > `gradients.json` was the one database not going through
+  > `DatabaseConnector`, so every guard the others inherit had been
+  > given to it by hand — and three were still missing as late as
+  > 2026-07-30. It goes through the connector now: same schema chain,
+  > same restore tier, same unreadable latch, same adopt-on-write,
+  > same merge. The FILE adopted the one shape rather than the
+  > connector learning a second — rows under `assets`, identity in
+  > `id` — so all four databases work the same way.
+  >
+  > Two consequences worth knowing, both the connector's and both
+  > shared with the other three: a concurrent edit MERGES rather than
+  > being refused, and **absence is not a delete** — a row the caller
+  > does not mention is kept, so a delete is said out loud through
+  > `forget()`.
 
 ### The Section API (what every Section implements)
 
@@ -662,7 +672,7 @@ non-zero, so it can gate).
 
 | entry | what it is |
 |---|---|
-| `library.json` `cops.json` `code.json` `gradients.json` | the four databases |
+| `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id` |
 | `notes.json` `icons.json` `locations.json` `favourites.json` | the four keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations and its starred files). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
