@@ -1396,6 +1396,141 @@ class GradientSwitchTest(unittest.TestCase):
             "library B - nothing refused the write")
 
 
+class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
+    """The EIGHTH model. Three hand-written lists repointed seven, and
+    `GradientCategories` - the Colors SIDEBAR - was in none of them.
+
+    Half-right is what made it survive: the Colors GRID model was on
+    every list, so the tab looked switched while the sidebar still
+    named library A's categories with library B's counts beside them
+    (every row zero, because the counts come from the new library and
+    the names do not exist in it). Clicking one filters B by a
+    category it does not have; renaming one aims the command at B
+    carrying A's label.
+    """
+
+    def _library_with_category(self, name):
+        """A library directory whose gradients.json holds one user
+        palette in category `name` - written the way the product
+        writes it, so this cannot pass against a shape we never ship."""
+        import json
+        folder = _empty_library_dir(self)
+        with open(os.path.join(folder, "gradients.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"gradients": [{
+                "uid": "11111111-1111-4111-8111-11111111111%d"
+                       % len(name),
+                "name": "P " + name,
+                "category": name,
+                "colors": ["#112233", "#445566"],
+            }]}, handle)
+        return folder
+
+    def test_the_sidebar_holds_the_NEW_librarys_categories(self):
+        from amaze.core import gradient_library
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        prefs.dir = self._library_with_category("Alpha")
+        prefs.save()
+
+        model = gradient_library.GradientLibrary(preferences=prefs)
+        sidebar = gradient_library.GradientCategories(model)
+        self.assertIn("Alpha", [sidebar.data(sidebar.index(row, 0))
+                                for row in range(sidebar.rowCount())],
+                      "premise: the sidebar shows library A's category")
+
+        prefs.dir = self._library_with_category("Beta")
+        prefs.save()
+        model.switch_model_data()
+        sidebar.switch_model_data()
+
+        labels = [sidebar.data(sidebar.index(row, 0))
+                  for row in range(sidebar.rowCount())]
+        self.assertIn(
+            "Beta", labels,
+            "the Colors sidebar does not show the new library's "
+            "categories after a switch")
+        self.assertNotIn(
+            "Alpha", labels,
+            "the Colors sidebar kept the PREVIOUS library's category "
+            "names - their counts come from the new library, so every "
+            "row reads zero and clicking one filters by a category "
+            "that does not exist there: %s" % labels)
+
+
+class EveryLibraryBackedModelIsDeclaredBySection(unittest.TestCase):
+    """The set is DERIVED from the sections now, not written out in
+    panel.py three times - the way `tile_delegates()` derives - so a
+    ninth model joins by existing rather than by being remembered.
+
+    This replaces a guard that counted `switch_model_data()` calls in
+    panel.py source. It could not see the eighth model, because
+    `GradientCategories` exposed `refresh()` instead and the pattern
+    simply did not match - a source scan keyed on a spelling goes
+    QUIET rather than red when something does not use that spelling.
+    Both halves are asserted here: every declared attribute exists on
+    a built panel and can be repointed, and every model class that
+    CAN be repointed is declared by some section.
+    """
+
+    def _panel(self):
+        from amaze.tests import test_support
+        return test_support.fixture_panel(self)
+
+    def test_every_declared_attribute_exists_and_can_switch(self):
+        panel = self._panel()
+        from amaze.panel import sections as sections_mod
+
+        declared = set()
+        for section_cls in sections_mod.SECTION_CLASSES:
+            declared.update(getattr(section_cls, "library_model_attrs", ()))
+        self.assertTrue(declared, "no section declares a library model")
+
+        broken = {}
+        for attr in sorted(declared):
+            model = getattr(panel, attr, None)
+            if model is None:
+                broken[attr] = "not built on the panel"
+            elif not callable(getattr(model, "switch_model_data", None)):
+                broken[attr] = "%s has no switch_model_data" % type(
+                    model).__name__
+        self.assertEqual(
+            {}, broken,
+            "a section declares a library-backed model the panel "
+            "cannot repoint, so a library switch would leave it on "
+            "the old library: %s" % broken)
+
+    def test_every_switchable_model_the_panel_builds_is_declared(self):
+        """The direction that actually catches the next one. A model
+        built by the panel, carrying switch_model_data, and named by
+        NO section is exactly the eighth model's shape."""
+        panel = self._panel()
+        from amaze.panel import sections as sections_mod
+
+        declared = set()
+        for section_cls in sections_mod.SECTION_CLASSES:
+            declared.update(getattr(section_cls, "library_model_attrs", ()))
+
+        undeclared = set()
+        for attr in dir(panel):
+            if attr.startswith("__") or attr in declared:
+                continue
+            try:
+                value = getattr(panel, attr)
+            except Exception:                            # noqa: BLE001
+                continue
+            if callable(getattr(value, "switch_model_data", None)) \
+                    and not isinstance(value, type):
+                undeclared.add(attr)
+        self.assertEqual(
+            set(), undeclared,
+            "these models can be repointed but no section declares "
+            "them, so a library switch leaves them serving the "
+            "previous library: %s" % sorted(undeclared))
+
+
 class TheSwitchListsNameEveryLibraryBackedModel(unittest.TestCase):
     """A library-backed model missing from panel.py's switch lists
     keeps the previous library's data and writes it into the new one.
