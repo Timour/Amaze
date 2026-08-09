@@ -752,20 +752,28 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             reaching, "the scan found no scene-reaching panel method at "
                       "all - it is keyed on names that no longer exist")
 
+        # PER CALL, never per function. Checking the menu verb's whole
+        # body for the wrapper is the same disease as a test satisfied
+        # by a comment: `menu_import` calls the door for images AND
+        # `import_geo_asset` for geometry, so one `click_on_row`
+        # anywhere in it would vouch for a bare sibling call three
+        # lines below. Each scene-reaching call answers for itself.
         bare = []
         for node in ast.walk(ast.parse(section_source)):
             if not (isinstance(node, ast.FunctionDef)
                     and node.name.startswith("menu_")):
                 continue
             body = ast.get_source_segment(section_source, node) or ""
-            touches = (set(re.findall(r"panel\.(\w+)\(", body)) & reaching
-                       or node.name in self._CHAINS_THE_SCAN_CANNOT_FOLLOW)
-            if not touches:
-                continue
-            if ("preserving_selection_and_current" in body
-                    or "click_on_row" in body):
-                continue
-            bare.append("%s:%d" % (node.name, node.lineno))
+            menu_wraps = "preserving_selection_and_current" in body
+            called = set(re.findall(r"panel\.(\w+)\(", body))
+            for verb in sorted(called & reaching):
+                if menu_wraps or "preserving_selection_and_current" in \
+                        bodies.get(verb, ""):
+                    continue
+                bare.append("%s -> %s" % (node.name, verb))
+            if (node.name in self._CHAINS_THE_SCAN_CANNOT_FOLLOW
+                    and not menu_wraps):
+                bare.append("%s (chain outside panel.py)" % node.name)
         self.assertEqual(
             [], bare,
             "these menu verbs reach into the scene without preserving "
