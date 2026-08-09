@@ -145,11 +145,27 @@ def apply_node_color(node, color) -> None:
         pass
 
 
+#: Redshift's terminal node types, measured 2026-08-09 on 21.0.729 with
+#: the plugin loaded: a `redshift_vopnet` ships a `redshift_material`
+#: and an `rs_usd_material_builder` a `redshift_usd_material`. Neither
+#: names its inputs - they are `Input 1`..`Input 8` - so there is no
+#: `surface` connector to look for, and the whole node IS the terminal.
+REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
+
+
 def surface_terminal_wired(builder) -> bool:
-    """Does the builder have a NAMED surface terminal with something
-    wired into it? The single invariant every Karma material must hold -
-    a material without it renders pitch black, and the whole network can
-    otherwise look perfect (see karma-material-builder.md)."""
+    """Does the builder have a surface terminal with something wired
+    into it? The single invariant a material must hold - one without it
+    renders pitch black, and the whole network can otherwise look
+    perfect (see karma-material-builder.md).
+
+    Three shapes, each measured rather than assumed. Karma names a
+    `surface` subnetconnector or ends in a `suboutput`. Redshift ends in
+    a terminal NODE (REDSHIFT_TERMINALS), which this did not know: the
+    220 `rs_usd_material_builder` assets in the real library already
+    passed through the `suboutput` branch, and the 180 legacy
+    `redshift_vopnet` answered False by construction - a wrong answer on
+    healthy materials, not a missing one."""
     for child in builder.children():
         tname = child.type().name()
         if tname == "subnetconnector":
@@ -161,6 +177,8 @@ def surface_terminal_wired(builder) -> bool:
         elif tname == "suboutput":
             inputs = child.inputs()
             return bool(inputs) and inputs[0] is not None
+        elif tname in REDSHIFT_TERMINALS:
+            return any(child.inputs())
     return False
 
 
