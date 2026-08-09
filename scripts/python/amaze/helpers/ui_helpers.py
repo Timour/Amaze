@@ -312,9 +312,18 @@ class DesignedDialog(QtWidgets.QDialog):
     FRAME = (512, 435)
     HEADER_H = 132
     INSET = 35
-    HEADER_BG = "#22232b"
-    BODY_BG = "#2b2c35"
-    FIELD_BG = "#3e3f4a"
+    #: THE SURFACES FOLLOW HOUDINI'S THEME (2026-08-09), reversing the
+    #: literal-colour decision below for these two values only. The
+    #: redesign returned `theme.py`'s own tokens to the digit, and a
+    #: value kept equal to another value by hand is a value that
+    #: drifts - so this reads the token and follows a theme change
+    #: instead of matching today's numbers.
+    #:
+    #: The INK stays literal: `LABEL_INK` and `TITLE_INK` are not theme
+    #: colours but the design's own answer, which is what the note
+    #: below protects. (devlog, the 2026-08-09 design round-trip.)
+    HEADER_BG = theme.color_hex("surface_low")
+    BODY_BG = theme.color_hex("surface")
     LABEL_INK = "#93b9e7"
     TITLE_INK = "#dddcdd"
     FIELD_H = 60
