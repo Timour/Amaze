@@ -261,6 +261,35 @@ _installed = globals().get("_installed", False)
 #: records (rare, flood-guarded) keep writing.
 _rotation_blocked = False
 
+#: Spend per NAMED PASS, survives the module reload like the rest.
+_pass_spent: dict = globals().get("_pass_spent", {})
+
+
+def begin_pass(name: str) -> None:
+    """Start a pass, giving its per-item records a fresh allowance."""
+    _pass_spent[name] = 0
+
+
+def pass_budget(name: str, cap: int) -> bool:
+    """True while this pass may still record a per-item diagnostic.
+
+    `event()`'s flood guard keys on (category, message) and nothing
+    else, so per-item records written in a loop share ONE key and go
+    dark after `FLOOD_VERBATIM` for the rest of the SESSION - the
+    geometry thumbnail pass recorded 5 of 273, and the survivors were
+    always the first five files rather than a sample. Keying the guard
+    on the data instead would defeat it, since every one of those
+    records is unique.
+
+    A per-pass budget keeps both properties: bounded volume, and a
+    fresh allowance each time the pass runs. `dragengine` has its own
+    richer version of this with a separate reserve for picks that hit.
+    """
+    if _pass_spent.get(name, 0) >= cap:
+        return False
+    _pass_spent[name] = _pass_spent.get(name, 0) + 1
+    return True
+
 
 def guarded(where: str):
     """Decorator for Qt slot entry points (mouse handlers, drop

@@ -77,6 +77,14 @@ def kind_for(name: str) -> str:
 PATH_STYLES = ("absolute", "hip", "job", "home")
 _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
 
+#: Per-item records the geometry pass may write per RUN. event()'s
+#: flood guard keys on (category, message) alone, so these shared one
+#: key and went dark after 5 of 273 - and the five survivors were
+#: always the first five files rather than a sample worth having.
+GEO_PASS_LOG = "geo thumbnails"
+GEO_PASS_FAIL_LOG = "geo thumbnails failed"
+GEO_PASS_LOG_BUDGET = 20
+
 
 def houdini_path(path: str, style: str = "home") -> str:
     """A path written the way Houdini writes them - for Copy Path and
@@ -737,6 +745,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
         tmp_path = os.path.join(cache.cache_dir, "_render_tmp.png")
         total = len(misses)
         done = 0
+        failed = []
+        # Fresh allowance for this pass's per-item records; the closing
+        # record below carries what the budget could not.
+        debug.begin_pass(GEO_PASS_LOG)
+        debug.begin_pass(GEO_PASS_FAIL_LOG)
         self.progress_changed.emit(0, total)
         try:
             with hou.InterruptableOperation(
@@ -746,8 +759,9 @@ class FileFiles(grid_columns.GridColumnsMixin,
             ) as operation:
                 for row, full in misses:
                     operation.updateProgress(done / total)
-                    debug.event("file", "geo thumbnail",
-                                i=done + 1, total=total, file=full)
+                    if debug.pass_budget(GEO_PASS_LOG, GEO_PASS_LOG_BUDGET):
+                        debug.event("file", "geo thumbnail",
+                                    i=done + 1, total=total, file=full)
                     ok = False
                     try:
                         ok = thumber.create_thumb_geo_file(
@@ -755,8 +769,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     except hou.OperationInterrupted:
                         raise
                     except Exception as exc:             # noqa: BLE001
-                        debug.event("file", "geo thumbnail failed",
-                                    file=full, error=str(exc))
+                        failed.append(full)
+                        if debug.pass_budget(GEO_PASS_FAIL_LOG,
+                                             GEO_PASS_LOG_BUDGET):
+                            debug.event("file", "geo thumbnail failed",
+                                        file=full, error=str(exc))
                     if ok:
                         image = QtGui.QImage(tmp_path)
                         if not image.isNull():
@@ -776,6 +793,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
             debug.event("file", "geo pass interrupted",
                         done=done, total=total)
         finally:
+            # ONE record for the whole pass, ALWAYS, and it names every
+            # failure rather than the first few. The per-item records
+            # above are a bounded sample; this is the part that has to
+            # be complete, because a pass that logged 5 of 273 was
+            # unreadable exactly when it mattered.
+            debug.event("file", "geo pass done", done=done, total=total,
+                        failed=len(failed), files=failed)
             # ONE OWNER PER FOLDER OPEN. This pass emits into the same
             # signal the image-conversion batch uses, and its
             # processEvents above pumps that batch's own progress - so

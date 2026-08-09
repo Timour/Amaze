@@ -1698,6 +1698,11 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         rows_to_remove = []
         missing_thumbs = 0
         quarantined = []
+        #: [source, destination] per moved file, for the ONE closing
+        #: record. A per-file event shared one flood key and named 6 of
+        #: 23 before going dark - a removal record has to be complete
+        #: or it cannot be followed back.
+        quarantined_paths = []
         for row, asset in enumerate(self._assets):
             owned = self.asset_files(asset.mat_id)
             interface_path = owned["interface"]
@@ -1942,9 +1947,8 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                     if moved:
                         lone_count += 1
                         quarantined.append(f)
-                        debug.event("cleanup", "file quarantined",
-                                    file=os.path.join(mats_path, f),
-                                    moved_to=moved)
+                        quarantined_paths.append(
+                            [os.path.join(mats_path, f), moved])
 
         mats_path = os.path.join(self.preferences.dir, self.preferences.img_dir)
         # isdir, ASYMMETRIC with the mat/ scan until now: a library whose
@@ -1974,9 +1978,15 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                     if moved:
                         lone_count += 1
                         quarantined.append(f)
-                        debug.event("cleanup", "file quarantined",
-                                    file=os.path.join(mats_path, f),
-                                    moved_to=moved)
+                        quarantined_paths.append(
+                            [os.path.join(mats_path, f), moved])
+        if quarantined_paths:
+            # ONE record, carrying every move. Complete on purpose: this
+            # is the only trace of where a file went, so a sample is
+            # useless the moment somebody needs to put one back.
+            debug.event("cleanup", "files quarantined",
+                        moved=len(quarantined_paths),
+                        files=quarantined_paths)
         if lone_count:
             # NAMES, not a bare count, and it says WHERE they went. This
             # used to read "Removed N files that no section listed" - a

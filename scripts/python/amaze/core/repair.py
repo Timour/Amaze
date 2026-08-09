@@ -856,13 +856,15 @@ def quarantine(findings: dict) -> dict:
             if library_mod.quarantine_file(findings["directory"], source):
                 moved.append(name)
             else:
-                # SAY WHY on every failure - "3 moved" with two silently
-                # left behind is a report that lies by omission.
-                debug.event("repair", "file could not be moved aside",
-                            file=source)
                 failed.append(name)
+    # ONE record, carrying BOTH whole lists. A per-failure event shared
+    # one flood key with every other failure in the session and went
+    # dark after five, so "3 moved" with two silently left behind was
+    # exactly the report-that-lies-by-omission this was meant to
+    # prevent. Complete, or it cannot be followed back.
     debug.event("repair", "unclaimed files moved aside", folder=root,
-                moved=len(moved), failed=len(failed))
+                moved=len(moved), failed=len(failed),
+                moved_files=moved, failed_files=failed)
     return {"folder": root, "moved": moved, "failed": failed}
 
 

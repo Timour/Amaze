@@ -122,6 +122,87 @@ class TestFloodGuard(unittest.TestCase):
         self.assertTrue(written, "slot crashes stopped being recorded")
 
 
+class TestPerPassBudget(TestFloodGuard):
+    """A pass writes per-item records; the flood guard keys on
+    (category, message) alone, so they share one key and go dark for
+    the SESSION. (practice.md > Per-pass log budgets)"""
+
+    def test_identical_per_item_records_go_dark_without_a_budget(self):
+        for i in range(273):
+            debug.event("file", "geo thumbnail", i=i)
+        written = [r for r in self._records() if r.get("msg") == "geo thumbnail"]
+        self.assertLess(
+            len(written), 20,
+            "the guard did not fire, so this test is not measuring the "
+            "problem the budget exists to solve")
+
+    def test_a_budget_gives_every_pass_a_fresh_allowance(self):
+        seen = []
+        for _ in range(2):
+            debug.begin_pass("geo")
+            spent = 0
+            for _ in range(273):
+                if debug.pass_budget("geo", 20):
+                    spent += 1
+            seen.append(spent)
+        self.assertEqual(
+            [20, 20], seen,
+            "a second pass did not get its own allowance - that is the "
+            "whole difference from the session-wide flood guard, which "
+            "stays dark once spent")
+
+    def test_a_budget_is_bounded_within_one_pass(self):
+        debug.begin_pass("geo")
+        spent = sum(1 for _ in range(273) if debug.pass_budget("geo", 20))
+        self.assertEqual(20, spent, "the budget did not bound the pass")
+
+    def test_two_passes_do_not_share_an_allowance(self):
+        debug.begin_pass("a")
+        debug.begin_pass("b")
+        for _ in range(20):
+            debug.pass_budget("a", 20)
+        self.assertTrue(
+            debug.pass_budget("b", 20),
+            "spending one pass's budget silenced another's, so a busy "
+            "pass would blind an unrelated one")
+
+
+class TestOneRecordCarriesTheWholeList(TestFloodGuard):
+    """The cleanup and quarantine records name every file they moved.
+    A sample is useless the moment somebody needs to put one back."""
+
+    def test_one_record_survives_where_per_item_records_would_not(self):
+        moved = [["mat/%d.mat" % i, "quarantine/%d.mat" % i]
+                 for i in range(23)]
+        debug.event("cleanup", "files quarantined",
+                    moved=len(moved), files=moved)
+        records = [r for r in self._records()
+                   if r.get("msg") == "files quarantined"]
+        self.assertEqual(1, len(records))
+        self.assertEqual(
+            23, len(records[0]["data"]["files"]),
+            "the record dropped moves - every one has to be here, "
+            "because this is the only trace of where a file went")
+
+    def test_the_moving_loops_write_no_per_item_record(self):
+        """Source-derived: the loops must not regrow one, or the flood
+        guard eats it again and the list is short without saying so."""
+        import re
+        here = os.path.dirname(os.path.abspath(__file__))
+        package = os.path.dirname(here)
+        for name, banned in (
+                (os.path.join("core", "library.py"), "file quarantined"),
+                (os.path.join("core", "repair.py"),
+                 "file could not be moved aside")):
+            with open(os.path.join(package, name), encoding="utf-8") as fh:
+                body = fh.read()
+            self.assertEqual(
+                [], re.findall(re.escape('"%s"' % banned), body),
+                "%s writes a per-item record inside the move loop again; "
+                "it shares one flood key with every other move and goes "
+                "dark after %d" % (name, debug.FLOOD_VERBATIM))
+
+
 class TestLogIsolation(unittest.TestCase):
     """The suite must not write the user's real log.
 
