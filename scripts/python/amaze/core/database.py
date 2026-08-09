@@ -1242,6 +1242,27 @@ class DatabaseConnector:
         self._adopted = []
         return rows
 
+    @staticmethod
+    def _migrate_peer(disk: dict) -> None:
+        """Bring a PEER document up to our shape, in place.
+
+        Shape only, deliberately: no stamping, no latching, no
+        reporting. `_migrate` also records `_loaded_version`,
+        `_migration_incomplete` and the format latch, which belong to
+        the file THIS connector loaded - running it over a peer would
+        overwrite our own verdicts with the peer's.
+        """
+        try:
+            version = int(disk.get("version", 1))
+        except (TypeError, ValueError):
+            version = 1
+        while version < SCHEMA_VERSION:
+            step = _MIGRATIONS.get(version)
+            if step is None:
+                return              # a gap: leave the rest untouched
+            step(disk)
+            version += 1
+
     def _merge_from_disk(self, full: str) -> bool:
         """Three-way merge against a database another session changed
         underneath us. Membership baseline = the ids present at OUR
@@ -1273,6 +1294,25 @@ class DatabaseConnector:
         if malformed:
             debug.event("database", "merge refused - not a database",
                         file=self._filename, reason=malformed)
+            return False
+        # MIGRATE THE PEER'S DOCUMENT BEFORE READING ITS ROWS, exactly
+        # as load() does. This read the raw file, so a peer still at an
+        # OLDER shape had its rows in a container this method does not
+        # look in - `disk.get("assets")` came back empty and the merge
+        # concluded the peer had deleted everything. Found while moving
+        # gradients onto this connector, where the older shape keeps its
+        # rows under `gradients`: a peer file written by a build from
+        # before that move would have been merged as if it were empty.
+        # The steps are idempotent, so a peer already at our version
+        # costs one dict walk.
+        try:
+            self._migrate_peer(disk)
+        except Exception as exc:                         # noqa: BLE001
+            # A migration step raising here must not take the save with
+            # it: refusing routes into the same preserve/latch path a
+            # malformed peer already gets.
+            debug.event("database", "peer migration failed - merge refused",
+                        file=self._filename, error=str(exc))
             return False
         # CARRY THE DISK'S VERSION THROUGH. The unknown-key loop at the
         # end of this method cannot do it - "version" is always already in
