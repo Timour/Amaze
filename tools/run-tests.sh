@@ -18,22 +18,51 @@ if [ "${1:-}" = "--all-versions" ]; then
     shift
     overall=0
     found=0
-    # `while read`, not `for res in $(...)`: an install path contains a
-    # SPACE on Windows (`Side Effects Software/Houdini 22.0.399`), and
-    # the unquoted command substitution split it into two nonexistent
-    # paths - so --all-versions found nothing there and said "no Houdini
-    # installs" on a machine with two.
+    # THE DEAD-COVER CHECK RIDES ALONG (2026-08-09). Each run records
+    # which tests it SKIPPED; afterwards they are intersected, because a
+    # test skipped on EVERY host protects nothing and still reads as
+    # coverage. Only this branch can ask it - one run cannot tell a
+    # correct skip from a dead one.
+    reports_dir="$(mktemp -d "${TMPDIR:-/tmp}/amaze_skips.XXXXXX")"
+    trap 'rm -rf "$reports_dir"' EXIT
+    reports=""
+    # A SUBSET RUN MUST NOT ANSWER THIS. Intersecting two partial runs
+    # says "nothing dead" about the modules that were never loaded,
+    # which is the false green this whole check exists to remove.
+    full_run=1
+    [ $# -eq 0 ] || full_run=0
     while IFS= read -r res; do
         [ -n "$res" ] || continue
         found=$((found + 1))
         echo "==========================================================="
         echo "  $res"
         echo "==========================================================="
-        AMAZE_HOUDINI="$res" bash "$repo/scripts/python/amaze/tests/start_test.sh" "$@" || overall=$?
+        report="$reports_dir/run-$found.json"
+        AMAZE_HOUDINI="$res" AMAZE_SKIP_REPORT="$report" \
+            bash "$repo/scripts/python/amaze/tests/start_test.sh" "$@" || overall=$?
+        reports="$reports $report"
     done < <(amaze_houdini_roots)
     if [ "$found" -eq 0 ]; then
         echo "no Houdini installs found" >&2
         exit 1
+    fi
+    echo "==========================================================="
+    if [ "$full_run" -eq 0 ]; then
+        echo "  dead-cover check SKIPPED - subset run cannot answer it"
+    elif [ "$found" -lt 2 ]; then
+        echo "  dead-cover check SKIPPED - only one Houdini installed"
+    else
+        # Through amaze_python, never the shebang: Windows has no
+        # executable bit to honour, and start_test.sh already resolves
+        # its own helpers this way.
+        checker_python="$(amaze_python || echo python3)"
+        # Unquoted on purpose: $reports is a space-separated list this
+        # script built from paths it made itself, under a mktemp dir
+        # with no spaces in it.
+        # shellcheck disable=SC2086
+        "$checker_python" \
+            "$repo/scripts/python/amaze/tests/check_dead_cover.py" $reports \
+            || overall=$?
     fi
     exit "$overall"
 fi

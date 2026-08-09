@@ -24,15 +24,64 @@ tearDownModule) all run BEFORE this point, and the log-leak check is
 a separate process that runs after. Streams are flushed by hand
 because os._exit will not do it.
 """
+import json
 import os
 import sys
 import unittest
+
+#: Where to record what this run SKIPPED. Unset for an ordinary run,
+#: so a single-version suite behaves exactly as it always has.
+SKIP_REPORT_VAR = "AMAZE_SKIP_REPORT"
+
+
+def write_skip_report(result, path: str) -> None:
+    """Record what this run skipped, for the dead-cover check.
+
+    WRITTEN FROM THE RESULT, never parsed from stdout. `result.skipped`
+    is the only place the skipped test IDS exist - the printed summary
+    carries `skipped=3` and no names at all. Reading them back off the
+    console would make the check a guess about formatting.
+
+    WRITTEN BEFORE `os._exit`, deliberately. This module leaves without
+    atexit or a flush (see the module docstring), so anything not
+    closed by then is lost.
+
+    AND ITS ABSENCE IS THE POINT. A suite that crashes never reaches
+    here, so no file appears - and `check_dead_cover.py` refuses rather
+    than comparing a partial list. Houdini's crash handler exits 0
+    (practice.md), so "the run finished" cannot be read off the status.
+    """
+    report = {
+        # Which install produced this. run-tests.sh --all-versions sets
+        # it per install; empty means whatever was newest.
+        "houdini": os.environ.get("AMAZE_HOUDINI", ""),
+        "testsRun": result.testsRun,
+        "ok": result.wasSuccessful(),
+        "skipped": sorted([test.id(), reason]
+                          for test, reason in result.skipped),
+    }
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(report, handle, indent=1)
 
 
 def main(argv) -> None:
     program = unittest.main(module=None, argv=["unittest"] + list(argv),
                             exit=False)
     ok = program.result.wasSuccessful()
+    report_path = os.environ.get(SKIP_REPORT_VAR)
+    if report_path:
+        # LOUD, then carry on to os._exit. A raise here would take the
+        # normal interpreter shutdown this module exists to avoid - the
+        # PySide teardown that parked three suites for eleven, twenty
+        # and twenty-six minutes. And a report that was not written is
+        # an ABSENT one, which check_dead_cover.py already refuses to
+        # compare. Loud plus refuse, never a silent half-answer.
+        try:
+            write_skip_report(program.result, report_path)
+        except Exception as exc:                             # noqa: BLE001
+            print("run_suite: could not write the skip report to %s (%s) - "
+                  "the dead-cover check will refuse rather than guess"
+                  % (report_path, exc), file=sys.stderr)
     # By hand: os._exit skips the flush that a normal exit performs,
     # and a truncated last line would make a green run unreadable.
     sys.stdout.flush()
