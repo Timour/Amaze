@@ -161,7 +161,7 @@ Plus one *view mode*, not a section:
 | `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in [`ui-text.md`](ui-text.md) |
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by — a category name in three sections, a registered folder PATH in File |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour, in whichever store this context keeps it |
-| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) |
+| `double_click(index)` | a **Tile** is double-clicked (the *primary action*) — routes through the **Click Door** below |
 | `rc_menu()` | right-click on the **Grid** — renders `GRID_MENU` (below) |
 | `catlist_menu()` | right-click on the **Sidebar** — renders `SIDEBAR_MENU` |
 | `edit_dialog()` | open the section's edit **Dialog** (see §6), if any |
@@ -213,6 +213,36 @@ against the same dispatch bug: a dismissed menu returns None and so
 does an entry that was never built, so `action == action_convert_karma`
 matched `None == None`. Dispatch is a dict keyed by QAction now, and
 that whole family is unwritable.
+
+**The Click Door** is where a double-click AND the menu entry
+labelled with the same verb both land — `panel.click_on_row`, one
+precedence, read from the section's own `DROP` / `DROP_BY_KIND`
+declaration (2026-08-09).
+
+> **THE SELECTION IS A HINT, NOT A VETO.** A single visible selected
+> node is offered the payload first; a node that cannot take it FALLS
+> THROUGH to the creation walk — the host's own rule, from Houdini's
+> tab menu, where a selection never blocks a creation. Anything other
+> than exactly one visible selected node skips straight to the
+> creation walk.
+>
+> It was TWO implementations of one policy until 2026-08-09: the
+> double-click fell through, and Apply (Code), Apply / Apply as
+> (Color) and Import-image (File) called the refusal directly — so the
+> same tile with the same selection created a node one way and showed
+> a modal refusal the other. The menu's extra word (Color's ramp
+> basis) rides as a `payload` and reaches only the verbs that declare
+> they take one.
+
+**WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
+Each section declares `library_model_attrs` — the panel attributes
+holding data read from `prefs.dir` — and `panel.library_models()`
+walks them for `switch_all_models()`, the ONE route. It was three
+hand-written lists carrying seven models where there are eight, and
+the missing one was the Colors sidebar, so a library switch left it
+showing the previous library's categories with the new library's
+counts (every row zero). A ninth model joins by declaring itself;
+`test_area_bindings` fails a repointable model no section names.
 
 **The Sidebar Menu** is the same table, same builder (2026-08-04):
 `Section.SIDEBAR_MENU`, rendered by the same `panel/grid.py` code that
@@ -504,8 +534,8 @@ test `sys.platform` or hardcode an OS path convention.
 | **Library** | The on-disk folder holding an asset section's data: `library.json` (index) + `mat/` (node archives) + `img/` (thumbnails) + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
 | **Library Model** | The Qt model over a **Library**'s JSON. Materials/Cop/Code each have one (Cop/Code subclass it over their own JSON). | `core/library.py` → `MaterialLibrary`; `cop_library.py`; `code_library.py` |
 | **Material** | One asset record (id, name, category, tags, favourite, renderer, tile icon, …). **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
-| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render. Stored on the asset (`icon`) for Asset sections, in `icons.json` keyed by path for Folder sections. Composed to `<id>_icon.png` BESIDE the render, never over it. | `core/tile_icons.py` |
-| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Renamed from Notes 2026-08-01 - the WORDS changed, every identifier did not: `NotesRole`, `notes.json`, `notes_panel.py` and the `show_notes` / `notes_panel_width` keys are contracts with data on disk and with other machines. Stored in `notes.json` beside the index, keyed `<section>:<id>` / `file:<path>`, wearing icons.json's guard set (unreadable latch, adopt-on-write, snapshot tier). Tiles with a note carry the lower-right badge via `NotesRole` (UserRole + 10, both model families). WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - gradients carry a full-uuid4 uid from load (one-pass backfill) or birth, keyed `gradient:<uid>`. | `core/notes.py`, `panel/notes_panel.py` |
+| **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; **`icons.json` is the ONE home**, keyed by asset id in every section, with the record field a read-only fallback for older libraries. Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
+| **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Renamed from Notes 2026-08-01 - the WORDS changed, every identifier did not: `NotesRole`, `notes.json`, `notes_panel.py` and the `show_notes` / `notes_panel_width` keys are contracts with data on disk and with other machines. Stored in `notes.json` beside the index, keyed `<section>:<id>` / `file:<path>`, wearing icons.json's guard set (unreadable latch, adopt-on-write, snapshot tier). Tiles with a note carry the lower-right badge via `NotesRole` (UserRole + 10, both model families). WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, the backfill, or the schema-v3 migration; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
 | **Categories Model** | The Sidebar list for an Asset section. | `core/category.py` → `Categories` |
 | **Sidebar Proxy** | Sorts categories and hides empty ones (renderer-aware). | `category.CategoriesSidebarProxy` |
@@ -518,7 +548,22 @@ test `sys.platform` or hardcode an OS path convention.
 | **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
 | **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes hold (stretch 0), so every redistribution Qt performs lands on the grid. Each side pane OWNS its width: BOTH are `ui_helpers.HeldPane`, which asks for the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already honoured the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was true. Never bookkeeping around Qt's relayout — that shipped once and lost. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
 | **Prefs** | Settings, one shared instance injected into every model. Stored where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
-| **Database** | The JSON read/write layer, one connector per JSON filename. | `core/database.py` |
+| **Database** | The JSON read/write layer, one connector per JSON filename — **all four databases, since 2026-08-09**. | `core/database.py` |
+
+### The two stamps every database carries
+
+- **`version` — the SCHEMA**: what shape the document is in. A load
+  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**3**); step 2→3 moved
+  gradient rows to the shared shape.
+- **`format` — whether this build may WRITE at all**
+  (`branding.LIBRARY_FORMAT`, **2**). A library stamped ahead of this
+  build opens read-only and points at the updater. It is the general
+  answer to an old build meeting a new library, which is why per-field
+  compatibility shims are not written.
+
+A PEER's document is migrated before it is merged (`_migrate_peer` —
+shape only). **Absence is not a delete**: `set()` unions by id, so a
+delete is said out loud through `forget()`.
 
 ---
 
