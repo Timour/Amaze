@@ -1707,8 +1707,8 @@ class ShelfTest(unittest.TestCase):
         # THE WHOLE SET, listed. A count would pass a rename and an
         # accidental duplicate; the names are what the refusals and
         # INSTALL.md quote at the user.
-        self.assertEqual(["amaze_capture_hip", "amaze_open_panel",
-                          "amaze_repair_library"], names)
+        self.assertEqual(["amaze_capture_hip", "amaze_check_updates",
+                          "amaze_open_panel", "amaze_repair_library"], names)
 
     def test_every_tool_is_on_the_shelf_tab(self):
         """A toolshelf is NECESSARY but not SUFFICIENT for the tab to

@@ -760,6 +760,9 @@ core/repair.py            REPAIR: what is wrong with this library and
                           what is safe to do - Clean Library's opposite
                           number, and the only module that opens a
                           recovery stamp
+core/updater.py           is a newer Amaze released, and can this one
+                          become it - asked only on request, never at
+                          launch (shelf tool + the About tab button)
 core/gallery_import.py    Houdini .gal gallery entries -> library assets
 core/matx_icon.py         the PhysicallyBased icon, for value-only
                           online sources that ship no texture to render
