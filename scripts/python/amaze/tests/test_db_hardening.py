@@ -38,14 +38,13 @@ class _Case(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def _document(self, count=3):
-        # TODAY'S schema, read from the product rather than typed. A
-        # literal 2 here meant every schema bump turned the
-        # byte-identical round-trip test red for the right reason -
-        # the document legitimately migrates and gains a new stamp -
-        # which reads as a regression in the bump instead of a stale
-        # fixture. The format stamp beside it already worked this way.
+        # DELIBERATELY an old version, not today's: the schema-gap
+        # class below needs a document BELOW the target to migrate at
+        # all, which is its whole subject. A test that instead needs
+        # today's stamp says so locally - see the byte-identical
+        # round-trip, which already does exactly that for `format`.
         return {
-            "version": database.SCHEMA_VERSION,
+            "version": 2,
             "categories": ["_All", "Wood"],
             "tags": ["rough"],
             "assets": [{"id": "ASSET%d" % i, "name": "mat %d" % i}
@@ -355,12 +354,13 @@ class BomPrefixedDatabaseLoadsTest(_Case):
     def test_a_bom_less_database_round_trips_byte_identical(self):
         """The accept path, and the reason utf-8-sig is free: it must not
         change one byte of an ordinary file. Read, save, compare.
-        The fixture carries today's format stamp - a stampless file's
-        first save legitimately gains one, which is the stamp test's
-        subject, not this one's."""
+        The fixture carries today's format stamp AND today's schema - a
+        stampless or older file's first save legitimately gains one of
+        each, which is those tests' subject, not this one's."""
         from amaze import branding
         document = self._document(3)
         document["format"] = branding.LIBRARY_FORMAT
+        document["version"] = database.SCHEMA_VERSION
         self._write(document)
         with open(self.path, "rb") as handle:
             before = handle.read()
