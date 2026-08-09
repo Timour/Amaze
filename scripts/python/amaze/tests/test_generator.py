@@ -523,7 +523,12 @@ class TestDownloadIntegrity(unittest.TestCase):
             title="Not A Real Material", kind="values", payload={})
         real_download = matx_sources.download
 
-        def fake_download(url, target, **kwargs):
+        # THE REAL SIGNATURE, positional third argument included.
+        # `download(url, dest, on_bytes=None)` is called positionally by
+        # the RGL fetch, and a **kwargs-only stub took the call as an
+        # arity error - a stub that does not match the thing it stands
+        # in for fails on the day the real call grows an argument.
+        def fake_download(url, target, on_bytes=None, **kwargs):
             with open(target, "wb") as handle:
                 handle.write(b"<html>404 Not Found</html>")
 
@@ -551,7 +556,7 @@ class TestDownloadIntegrity(unittest.TestCase):
         real_download = matx_sources.download
         calls = []
 
-        def fake_download(url, path, **kwargs):
+        def fake_download(url, path, on_bytes=None, **kwargs):
             calls.append(url)
             with open(path, "wb") as handle:
                 handle.write(b"<html>still broken</html>")
