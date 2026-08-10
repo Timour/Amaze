@@ -319,6 +319,14 @@ def sidebar_row_height(panel, table) -> int:
     ).height()
 
 
+#: What a column's `roles` entry says when it is not a delegate
+#: attribute. Distinct objects, because absence and "always" and
+#: "never" are three different answers and two of them used to share
+#: `None`.
+ALWAYS_SHOWN = "always-shown"
+NEVER_SHOWN = "never-shown"
+
+
 def visible_view(panel):
     """The grid view the user is actually looking at.
 
@@ -487,16 +495,33 @@ def sync_table_columns(panel) -> None:
         # expensive: DecorationRole is never asked for in list mode
         # now, so nothing queues a thumbnail the user cannot see.
         # Measured before and after: 1668 reads, then 18, now 0.
-        "thumb": None,
+        "thumb": NEVER_SHOWN,
+        # EVERY COLUMN IS NAMED, including the two that are always up.
+        # Absence used to MEAN always-shown while a `None` value meant
+        # hidden - one marker with two readings decided by membership -
+        # so a column nobody configured was indistinguishable from one
+        # deliberately left ungated. `name` and `type` were the two
+        # riding on that, and a new column would have joined them
+        # silently.
+        "name": ALWAYS_SHOWN,
+        "type": ALWAYS_SHOWN,
     }
     header = table.horizontalHeader()
     for column, key in enumerate(grid_columns.KEYS):
-        if key in roles and roles[key] is None:
+        attribute = roles.get(key)
+        if attribute is None:
+            # Not in the table at all: shown, and SAID, because the
+            # alternative is a half-configured column that looks
+            # deliberate.
+            debug.event("grid", "column is in no roles entry - shown "
+                                "unconditionally", column=key)
+            table.setColumnHidden(column, False)
+            continue
+        if attribute is NEVER_SHOWN:
             table.setColumnHidden(column, True)
             continue
-        attribute = roles.get(key)
-        shown = (True if attribute is None
-                 else getattr(delegate, attribute, None) is not None)
+        shown = (attribute is ALWAYS_SHOWN
+                 or getattr(delegate, attribute, None) is not None)
         table.setColumnHidden(column, not shown)
     # NOTHING IS MEASURED. This is the end of a road that started
     # with a 214-line hand-written fit and went through Qt's own:

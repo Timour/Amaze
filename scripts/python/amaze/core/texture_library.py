@@ -153,6 +153,7 @@ class ThumbnailCache:
             return
         adopted = 0
         for key, value in loaded.items():
+            key = self._key(key)
             if key not in self._manifest and isinstance(value, dict):
                 self._manifest[key] = value
                 adopted += 1
@@ -204,6 +205,25 @@ class ThumbnailCache:
     def _cache_filename(full_path: str) -> str:
         return hashlib.sha1(full_path.encode("utf-8")).hexdigest() + ".png"
 
+    @staticmethod
+    def _key(full_path: str) -> str:
+        """How the manifest spells a source file - ONE answer, at every
+        door into it.
+
+        `reconcile_many`'s docstring has always said the keys are
+        canonicalised by `put()`. They were not: the raw argument went
+        in, and the promise held only because every caller happened to
+        canonicalise first - while telling the next author the step was
+        unnecessary. On Windows a raw `C:\\tex\\x.png` key then misses a
+        wanted set spelled with forward slashes, the entry reads stale,
+        its cached PNG is deleted, and the folder re-converts on every
+        visit at ~6s an EXR.
+
+        Applied on the LOAD side too, so a manifest written before this
+        normalises in place rather than orphaning its own entries.
+        """
+        return hostos.canonical_path_key(full_path)
+
     def _cache_path(self, full_path: str) -> str:
         return os.path.join(self.cache_dir, self._cache_filename(full_path))
 
@@ -213,6 +233,7 @@ class ThumbnailCache:
         engine's background file loader does the actual reading, so
         folder opens no longer pay a synchronous decode per cached
         file on the main thread."""
+        full_path = self._key(full_path)
         entry = self._manifest.get(full_path)
         if not entry:
             return None
@@ -261,6 +282,7 @@ class ThumbnailCache:
     def put(self, full_path: str, image: QtGui.QImage) -> None:
         """Persist a freshly generated thumbnail and record it in the
         manifest. Does not flush to disk - call save() when convenient."""
+        full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
         except OSError:
@@ -290,6 +312,15 @@ class ThumbnailCache:
                 "untouched." % os.path.basename(full_path),
                 path=full_path)
             return
+        # CANONICALISED HERE, which is what `reconcile_many`'s docstring
+        # has always claimed happens. It did not: the raw argument went
+        # in, and every caller happened to canonicalise first - so the
+        # promise held by convention while telling the next author the
+        # step was unnecessary. On Windows a raw `C:\tex\x.png` key then
+        # misses a wanted set spelled with forward slashes, the entry
+        # reads stale, its cached PNG is deleted and the folder
+        # re-converts on every visit.
+        full_path = hostos.canonical_path_key(full_path)
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 
@@ -304,6 +335,7 @@ class ThumbnailCache:
         normally; `invalidate` (Rerender Thumbnail) clears it, which
         is the deliberate retry.
         """
+        full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
         except OSError:
@@ -316,7 +348,7 @@ class ThumbnailCache:
     def known_failure(self, full_path: str) -> bool:
         """True when this exact file has already defeated every
         converter - the skip that keeps a folder open fast."""
-        entry = self._manifest.get(full_path)
+        entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
             return False
         try:
@@ -414,6 +446,7 @@ class ThumbnailCache:
         lesson ("One pass, one flush") for the sibling path; invalidate
         never got it.
         """
+        full_path = self._key(full_path)
         if full_path not in self._manifest:
             return
         cache_path = self._cache_path(full_path)

@@ -15,6 +15,7 @@ from PySide6 import QtCore
 import os
 
 from amaze.core import category
+from amaze.helpers import hostos
 
 
 
@@ -271,6 +272,19 @@ class FolderListModel(QtCore.QAbstractListModel):
             return -1
         if not new_path or not os.path.isdir(new_path):
             return -1
+        # CANONICAL FIRST, then the trailing separator. This appended a
+        # POSIX "/" to whatever it was handed, which on Windows minted
+        # the mixed spelling `C:\tex\wood/` and stored it as a folder
+        # pointer and a location key. Every OS path convention belongs
+        # in hostos (overview.md 4g), and its canonical form is
+        # forward-slashed on all three - so this is one convention
+        # rather than a second one that happens to agree on macOS.
+        #
+        # The trailing slash is the FOLDER-POINTER shape and stays: it
+        # is what the prefix tests below and the cache manifest key on,
+        # and texture_library records what it cost when the two forms
+        # drifted.
+        new_path = hostos.canonical_path_key(new_path)
         if not new_path.endswith("/"):
             new_path += "/"
         old_path = self._folders()[row - 1]

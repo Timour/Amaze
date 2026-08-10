@@ -48,7 +48,12 @@ NOTE_YELLOW = "#fffc66"
 #: The prefix a File row's key carries. Named here rather than spelled
 #: at the two call sites, because the engine needs it to tell a path
 #: key from an asset id inside one mixed file.
-FILE_SECTION = "file"
+#: RETIRED 2026-08-10. This named the `file:` key prefix so it would
+#: not be spelled at the call sites - and nothing ever read it, while
+#: the value that does the work is the literal `path_prefix="file:"` in
+#: the keyed-store registry, which is also spelled differently. A
+#: constant nobody reads cannot keep anything in step; it can only
+#: disagree. The registry entry is the one home.
 
 
 def note_key(section: str, ident) -> str:

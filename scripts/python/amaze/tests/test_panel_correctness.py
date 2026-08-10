@@ -587,6 +587,67 @@ class TheOnlineGridIsFittedLikeTheOthers(unittest.TestCase):
             table.columnWidth(column),
             "the Name column is not at its documented default")
 
+
+class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
+    """`grid_columns.COLUMNS` is the one column list, and per-column
+    tables hang off it with nothing checking they cover it: the default
+    widths, and the delegate roles that decide whether a column is
+    SHOWN.
+
+    Neither miss raises. A column absent from the widths silently takes
+    Qt's default; one absent from the roles is shown unconditionally,
+    whatever the section can answer. So a new column arrives
+    half-configured and looks deliberate - which is the shape
+    practice.md ▸ *ONE list* exists for."""
+
+    def test_every_column_has_a_default_width(self):
+        from amaze.panel import panel as panel_mod
+        from amaze.core import grid_columns
+
+        missing = set(grid_columns.KEYS) - set(
+            panel_mod.MatLibPanel.COLUMN_DEFAULT_WIDTH)
+        self.assertEqual(
+            set(), missing,
+            "these columns have no default width, so they take Qt's: "
+            "%s" % sorted(missing))
+
+    def test_every_column_is_named_in_the_roles_table(self):
+        """Read from the SOURCE: the table is a local inside
+        `sync_table_columns`, and reaching it by running the function
+        would need a built table view per section."""
+        import ast
+        import inspect
+
+        from amaze.core import grid_columns
+        from amaze.panel import grid as grid_mod
+
+        keys = set(grid_columns.KEYS)
+        listed = set()
+        for node in ast.walk(ast.parse(
+                inspect.getsource(grid_mod.sync_table_columns))):
+            if isinstance(node, ast.Dict) and node.keys:
+                names = [k.value for k in node.keys
+                         if isinstance(k, ast.Constant)
+                         and isinstance(k.value, str)]
+                if names and set(names) <= keys:
+                    listed |= set(names)
+        self.assertTrue(
+            listed, "no per-column table was found, so this is vacuous")
+        missing = keys - listed
+        self.assertEqual(
+            set(), missing,
+            "these columns are in no roles entry, so they are shown "
+            "unconditionally: %s" % sorted(missing))
+
+    def test_every_tick_column_exists(self):
+        from amaze.core import grid_columns
+
+        self.assertLessEqual(
+            set(grid_columns.GridColumnsMixin.TICK_COLUMNS),
+            set(grid_columns.KEYS),
+            "a tick column names a column that does not exist")
+
+
 class OneProgressBarOwnerPerThingShown(unittest.TestCase):
 
     def test_the_folder_bar_is_hidden_in_the_online_world(self):

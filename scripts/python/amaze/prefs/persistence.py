@@ -513,10 +513,13 @@ class _Persistence:
         self.data["thumbsize_list"] = self._thumbsize_list
         self.data["rendersamples"] = self._rendersamples
         self.data["render_on_import"] = self._render_on_import
-        self.data["renderer_materialx"] = self._renderer_matx_enabled
-        self.data["renderer_mantra"] = self._renderer_mantra_enabled
-        self.data["renderer_redshift"] = self._renderer_redshift_enabled
-        self.data["renderer_octane"] = self._renderer_octane_enabled
+        # THE SAME TABLE THE LOAD WALKS. These four were written out by
+        # hand here, spelling each stored key a third time - so a fifth
+        # renderer added to RENDERER_KEYS and RENDERER_DEFAULTS would
+        # load correctly and never be written back. No exception, no
+        # red test: the value would simply reset every session.
+        for attribute, stored_key in RENDERER_KEYS.items():
+            self.data[stored_key] = getattr(self, attribute)
         self.data["show_categories"] = self._show_categories
         self.data["section_filters"] = dict(self._section_filters)
         self.data["view_mode"] = self._view_mode

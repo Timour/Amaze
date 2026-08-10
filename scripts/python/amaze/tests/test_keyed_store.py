@@ -559,6 +559,35 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             "the audit tool and the registry disagree about which keyed "
             "files a library contains")
 
+    def test_the_audit_tools_DATABASE_list_agrees_with_the_package(self):
+        """The same guard its neighbour has, for the list beside it.
+
+        `SIDE_TABLES` was pinned; `DATABASES` was not, so a fifth
+        database would leave the audit reading its `library.json`
+        sibling as not-part-of-a-library and `--strict` failing a
+        healthy library. The package names the four in
+        `database._SECTION_LABELS`, which Repair and the connector
+        already share."""
+        import ast
+
+        from amaze.core import database
+
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        source = open(os.path.join(root, "tools", "library-audit.py"),
+                      encoding="utf-8").read()
+        listed = None
+        for node in ast.walk(ast.parse(source)):
+            if (isinstance(node, ast.Assign) and node.targets
+                    and getattr(node.targets[0], "id", "") == "DATABASES"):
+                listed = set(ast.literal_eval(node.value))
+        self.assertIsNotNone(listed, "library-audit.py no longer names "
+                                     "DATABASES, so this check is vacuous")
+        self.assertEqual(
+            set(database._SECTION_LABELS), listed,
+            "the audit tool and the package disagree about which lists "
+            "a library contains")
+
     def test_a_side_table_can_be_counted_by_the_restore_picker(self):
         """It counted a 40-note notes.json as "1 settings", so the
         restore refusal that compares record counts never fired."""
