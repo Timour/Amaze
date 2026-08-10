@@ -759,45 +759,23 @@ class _Persistence:
             # No _preserve_unreadable either: there is no file to
             # preserve, and it printed "could not read your settings"
             # over a first launch where nothing was wrong.
-            # ABSENT IS ONLY "NEW" WHEN NOTHING SAYS OTHERWISE - the
-            # verdict every library list and every side table already
-            # reaches, and the one guarded store that never asked. The
-            # branch above is right that a FIRST LAUNCH must not latch;
-            # it was wrong that every absence is a first launch. A file
-            # that is merely late - a roaming profile, a sync that has
-            # not caught up - was read as a new machine, and the next
-            # ordinary sidebar save put pure defaults where the pointer
-            # to the library and every registered folder had been.
-            trace = hostos.existed_before(self.path + "/settings.json")
-            if trace:
-                debug.event("prefs", "settings absent but known - "
-                            "refusing to write", path=self.path,
-                            evidence=trace)
-                debug.note(
-                    "your Amaze settings are not on disk right now, but "
-                    "%s beside them says they were - so they are treated "
-                    "as not-yet-arrived, NOT as a new machine. Nothing "
-                    "will be saved over them, so your library and your "
-                    "folders cannot be replaced by empty ones. Let the "
-                    "sync finish, then restart Houdini.\n"
-                    # The PATH, because the reader has to go and look;
-                    # and the way OUT, or the guard is permanent for
-                    # anyone who cleared their settings deliberately.
-                    "  Expected at: %s\n"
-                    "  If you cleared them on purpose, remove %s as well "
-                    "and the next launch starts fresh."
-                    % (trace, self.path + "/settings.json", trace),
-                    path=self.path)
-                self._load_failed = True
-                return False
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
-            # And the latch CLEARS, exactly as a healthy read clears
-            # it: the refusal is re-derived from the file on every
-            # read, and an absent file with nothing beside it is the
-            # "start fresh" route out of a broken one - load() runs
-            # again when Preferences closes, so a latch left set here
-            # refused every save for the life of the panel.
+            # NO ABSENT-BUT-KNOWN VERDICT HERE, deliberately, and it is
+            # the one guarded store that must not have one. The
+            # databases latch on absence because a library is SHARED and
+            # a file can be late; settings.json is per-machine and never
+            # travels (INSTALL.md ▸ preferences are machine-local), so
+            # there is no late case to protect against - while deleting
+            # this file IS the prescribed way out of an unreadable one,
+            # and a trace-based latch would refuse the fresh start it
+            # offers. The `.unreadable` copy the refusal leaves behind
+            # would be exactly that trace.
+            #
+            # The latch CLEARS, exactly as a healthy read clears it: the
+            # refusal is re-derived from the file on every read, and
+            # load() runs again when Preferences closes, so a latch left
+            # set here refused every save for the life of the panel.
             self._load_failed = False
             return False
         except (OSError, ValueError) as exc:

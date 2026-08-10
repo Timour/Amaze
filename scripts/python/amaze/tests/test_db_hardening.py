@@ -742,18 +742,20 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
                       "the save was still refused after the repair")
 
 
-class SettingsThatVanishAreNotAFreshInstall(unittest.TestCase):
-    """settings.json was the one guarded store with no absent-but-known
-    verdict. Every library list and every side table separates "never
-    existed" from "existed and is not here right now"; the preferences
-    loader read every missing file as a new machine, cleared the latch,
-    and left save() free to put pure defaults over a file that was only
-    late.
+class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
+    """settings.json is snapshotted on every write and had no floor, so
+    the file spent its whole first life with no restore point at all -
+    the same hole keyed_store closed with seed_restore_floor.
 
-    What is in that file: the pointer to the library, every registered
-    folder and every favourite. And `add_file_folder` and friends save
-    from ordinary sidebar use, so nobody has to open Preferences for
-    the defaults to land."""
+    AND IT DOES NOT GET AN ABSENCE VERDICT, which is the half of this
+    that was proposed and refused. The databases latch on absence
+    because a library is SHARED and a file can be late; settings.json
+    is per-machine and never travels, so there is no late case - while
+    deleting it IS the prescribed way out of an unreadable one, and the
+    `.unreadable` copy that refusal leaves behind would be exactly the
+    trace a latch would read. test_absent_database's
+    test_deleting_the_broken_file_UNLATCHES_the_session pins that route
+    and is what caught the mistake."""
 
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="amaze_absent_prefs_")
@@ -798,21 +800,38 @@ class SettingsThatVanishAreNotAFreshInstall(unittest.TestCase):
             "settings written once leave no trace at all, so nothing "
             "can tell a late file from a new machine")
 
-    def test_a_momentarily_absent_file_does_not_become_defaults(self):
+    def test_the_floor_survives_a_later_write(self):
+        """Write-once, like every other floor: the first-seen copy is
+        what a restore falls back to, so a later save must not roll it
+        forward over the state being recovered from."""
         self._configured()
-        os.remove(self.settings)            # the sync has not caught up
+        floor = self.settings + ".bak-first"
+        first = open(floor, encoding="utf-8").read()
+        prefs = self._prefs()
+        prefs.load()
+        prefs._accent_color = "#00ff00"
+        prefs.save()
+        self.assertEqual(first, open(floor, encoding="utf-8").read(),
+                         "the write-once floor was replaced")
+
+    def test_deleting_the_settings_still_starts_fresh(self):
+        """The route a trace-based absence latch would have closed, kept
+        here beside the floor that would have armed it: removing the
+        file is how a machine starts over, and the next save has to
+        land."""
+        self._configured()
+        os.remove(self.settings)
         prefs = self._prefs()
         import contextlib
         with contextlib.redirect_stdout(io.StringIO()):
             prefs.load()
-            self.assertTrue(
-                getattr(prefs, "_load_failed", False),
-                "a file that is only late was read as a new machine")
-            prefs.save()                    # ordinary sidebar use
         self.assertFalse(
-            os.path.exists(self.settings),
-            "the defaults were written where the real settings belong - "
-            "the library pointer and every registered folder with them")
+            getattr(prefs, "_load_failed", False),
+            "starting fresh was refused because a restore copy sat "
+            "beside the file the user deleted")
+        prefs.save()
+        self.assertTrue(os.path.isfile(self.settings),
+                        "the fresh start never reached disk")
 
 
 class MergeRefusesJsonOfTheWrongShapeTest(_Case):
