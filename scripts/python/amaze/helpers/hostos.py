@@ -24,6 +24,7 @@ became correct.
 """
 
 import contextlib
+import errno
 import glob
 import gzip
 import hashlib
@@ -1123,6 +1124,82 @@ def write_json_atomic(path: str, data, indent: int = 4,
         # identical-skip, which returned "stored" on Windows.
         with open(scratch, "w", encoding="utf-8", newline="\n") as stream:
             json.dump(data, stream, indent=indent, sort_keys=sort_keys)
+
+
+#: What a failed write was, in one word. The CAUSE, separate from the
+#: sentence, so a caller can branch (log, retry, offer Repair) without
+#: matching on prose.
+FAILED_UNREACHABLE = "unreachable"
+FAILED_READ_ONLY = "read-only"
+FAILED_FULL = "full"
+FAILED_HELD = "held"
+FAILED_UNKNOWN = "unknown"
+
+#: errno -> cause. Measured 2026-08-10 on macOS (research.md ▸ WHAT A
+#: FAILED WRITE ACTUALLY RAISES); every entry here was reproduced, and
+#: anything absent deliberately falls through to FAILED_UNKNOWN rather
+#: than being guessed from its name.
+_FAILURE_CAUSES = {
+    errno.ENOENT: FAILED_UNREACHABLE,
+    errno.ENOTDIR: FAILED_UNREACHABLE,
+    errno.EACCES: FAILED_READ_ONLY,
+    errno.EPERM: FAILED_READ_ONLY,
+    errno.EROFS: FAILED_READ_ONLY,
+    errno.ENOSPC: FAILED_FULL,
+    # WINDOWS ONLY, AND UNMEASURED. A sharing violation is a real
+    # failure there and cannot happen on POSIX: renaming over a file
+    # another handle holds open succeeds, measured both ways. It is
+    # listed because leaving it out would classify the one platform
+    # where the held-file sentence is true as `unknown`.
+    errno.EBUSY: FAILED_HELD,
+    errno.ETXTBSY: FAILED_HELD,
+}
+
+
+def why_failed(exc: OSError, path: str = "") -> tuple:
+    """(cause, a complete sentence) for a write that raised.
+
+    ONE OWNER for turning an `OSError` into something a user can act
+    on. `database.save()` used to answer this inline and answered it
+    the same way every time - *the file is held by another program* -
+    which on macOS names a cause that CANNOT occur (measured: an
+    atomic rename over an open file succeeds). Someone whose synced
+    folder had dropped was told to go looking for a program holding
+    their library.
+
+    The sentence names the object the user has to fix, and the
+    measurement decides which object that is: a read-only FILE does not
+    stop an atomic write, because rename asks the DIRECTORY. So there
+    is no "check the file is not read-only" case here, however
+    obvious it reads.
+
+    An errno this has not measured returns FAILED_UNKNOWN and a
+    sentence that claims no cause. Saying nothing specific is the
+    correct answer to a cause we do not know; guessing is what this
+    replaces.
+    """
+    cause = _FAILURE_CAUSES.get(getattr(exc, "errno", None),
+                                FAILED_UNKNOWN)
+    where = os.path.dirname(path) or path
+    if cause == FAILED_UNREACHABLE:
+        sentence = ("the folder it lives in cannot be reached right now"
+                    + (":\n" + where if where else "")
+                    + "\n\nIf it is in a synced or network folder, it "
+                      "will work again once that folder is back.")
+    elif cause == FAILED_READ_ONLY:
+        sentence = ("the folder it lives in is read-only"
+                    + (":\n" + where if where else "")
+                    + "\n\nThe file itself being read-only would not "
+                      "stop this - it is the folder's permissions.")
+    elif cause == FAILED_FULL:
+        sentence = "the disk is full."
+    elif cause == FAILED_HELD:
+        sentence = ("another program is holding the file open"
+                    + (":\n" + path if path else "") + ".")
+    else:
+        sentence = ("the disk reported: %s."
+                    % (getattr(exc, "strerror", None) or exc))
+    return cause, sentence
 
 
 def disk_state(path: str):

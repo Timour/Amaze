@@ -1290,13 +1290,23 @@ class DatabaseConnector:
             # alert() shows the dialog when there is a UI and prints
             # when there is not, and keys so a save per edit does not
             # re-interrupt.
+            # THE CAUSE, READ OFF THE ERRNO. This said "the file is held
+            # by another program" for every OSError, and measured
+            # 2026-08-10 that cause cannot occur on macOS at all - an
+            # atomic rename over a file another handle holds open
+            # succeeds. So the one message Amaze shows when a library
+            # write fails named a Windows-only cause on a Mac, and sent
+            # anyone whose synced folder had dropped looking for a
+            # program that was not there.
+            cause, why = hostos.why_failed(exc, full)
             debug.alert(
-                "Could not save the library database - the file is held"
-                " by another program:\n" + full
-                + "\n\nThe change is kept in memory and will be written"
-                " with the next save.",
-                key="database-file-held")
-            self._save_outcome = "file-held"
+                "Could not save the library - " + why
+                + "\n\nNothing already saved has been lost. This change "
+                  "is still here in Amaze, and saving anything else "
+                  "writes it too - but it is NOT on disk yet, so it "
+                  "will not survive closing Houdini.",
+                key="database-write-failed-%s" % cause)
+            self._save_outcome = "write-failed-%s" % cause
             return False
         else:
             # The bytes just written ARE the serialisation above -

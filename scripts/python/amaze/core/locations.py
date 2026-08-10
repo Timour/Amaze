@@ -386,6 +386,39 @@ def set_field(preferences, path: str, field: str, value) -> keyed_store.Written:
     return set_record(preferences, path, current)
 
 
+def relocate_record(preferences, old: str, new: str) -> keyed_store.Written:
+    """Move ONE location's record to a new path, in one write.
+
+    This was two `set_record` calls - remove the old key, then add the
+    new one - and they are two independent trips to disk. If the first
+    landed and the second was denied, which is one transient outage of
+    a synced library, the location was deregistered and its record went
+    with it: colour, custom name, recursion and Show All Files, gone,
+    with the folder simply missing from the sidebar.
+
+    `rekey` is the engine's answer and its docstring is about exactly
+    this: *a half-rewritten keyspace is worse than the orphaning it
+    fixes, and a rename expressed as delete-then-add can be
+    half-resurrected by the other pane.* One guarded write that either
+    lands whole or does not land.
+    """
+    global _generation
+    _generation += 1
+    old = hostos.storage_path_key(old)
+    new = hostos.storage_path_key(new)
+    if not old or not new or old == new:
+        return keyed_store.Written(True, keyed_store.REASON_UNCHANGED)
+    if not _ready(preferences):
+        # No library to write into: the copy is the only truth, and it
+        # carries the record under its own key.
+        record = _copy_record(preferences, old)
+        _write_copy(preferences, old, {})
+        return _write_copy(preferences, new, record)
+    written = _store(preferences).rekey({old: new})
+    _sync_mirror(preferences)
+    return written
+
+
 def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
     path = hostos.storage_path_key(path)
     if not _ready(preferences):

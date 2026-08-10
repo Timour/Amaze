@@ -148,30 +148,17 @@ def set_note(preferences, key: str, items: list) -> bool:
     removes the key. Returns whether the write actually happened - a
     read-only library must not take notes it will lose at restart.
 
-    The engine answers with a REASON; this returns the bool its callers
-    already branch on. `written()` below is the fuller answer for a
-    caller that needs to say WHY.
+    THE REPORTING IS THE ENGINE'S. A `written()` beside this one used
+    to note the refusal and alert on a denial, and `tile_icons` had the
+    same ten lines with two words changed - while the other two stores
+    had none at all. Both halves are now where the engine's other two
+    failure reports already lived: the words on the store's Spec
+    (`denied_alert`), the policy in `_commit`. That also ended a
+    duplicate report - `_commit` already noted the refusal sentence,
+    and this noted the same string a second time, which `debug.note`
+    prints rather than deduplicates.
     """
-    return bool(written(preferences, key, items))
-
-
-def written(preferences, key: str, items: list):
-    """set_note, with the engine's full answer - `ok`, `reason` and a
-    sentence fit to show the user."""
-    result = _store(preferences).set(key, {"items": items})
-    if not result and result.sentence:
-        from amaze.core import debug
-        debug.note(result.sentence)
-    elif not result and result.reason == keyed_store.REASON_DENIED:
-        from amaze.core import debug
-        debug.alert(
-            "Your note could not be saved.\n\n"
-            "Nothing else has been lost - only this change. The page "
-            "keeps what it had.\n\n"
-            "Check the library folder is reachable and not read-only, "
-            "then edit the note again.",
-            key="notes-not-saved")
-    return result
+    return bool(_store(preferences).set(key, {"items": items}))
 
 
 def set_notes(preferences, pages: dict):

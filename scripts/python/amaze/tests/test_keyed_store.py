@@ -1036,5 +1036,143 @@ class ARecordCarriesFieldsItDoesNotKnow(StoreCase):
         self.assertEqual("future", record.get("badge"))
 
 
+class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
+    """Who gets told when a write is refused by the disk, and who does
+    not - as a declared decision rather than an accident.
+
+    The policy used to live in `notes.written` and `tile_icons.written`
+    as ten lines each with two words different, and the other two
+    stores had no copy at all. It is on the Spec now (`denied_alert`)
+    with the engine performing it, which is where the engine's other
+    two failure reports already lived.
+
+    BLANK IS THE INTERESTING CASE. A comment stays on screen after a
+    refused save, so nothing but an alert tells the user. A location is
+    DERIVED from its store and the cache does not move on failure, so
+    the folder never appears - the gesture visibly does nothing, so an
+    alert would announce an outcome already on screen (practice.md ▸
+    Dialogs are a bill you send the user).
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_denied_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+
+    def _denied(self, filename):
+        """Drive a real write into a real OSError and collect the
+        alerts. Not a stubbed `set` - the point is that the engine's
+        own commit path reports."""
+        prefs = _Prefs(self.dir)
+        store = keyed_store.open_store(
+            keyed_store.store_for(filename), prefs)
+        seen = []
+        with mock.patch.object(hostos, "write_json_atomic",
+                               side_effect=OSError(2, "No such file")), \
+                mock.patch("amaze.core.debug.alert",
+                           side_effect=lambda text, key="": seen.append(
+                               (text, key)) or True):
+            result = store.set(
+                "probe-key",
+                {"items": [{"t": "text", "text": "a comment"}]}
+                if filename == "notes.json" else {"registered": True})
+        return result, seen
+
+    def test_a_comment_that_could_not_be_saved_says_so(self):
+        result, seen = self._denied("notes.json")
+        self.assertFalse(result, "the write reported success")
+        self.assertEqual(1, len(seen),
+                         "a refused comment said nothing, and nothing "
+                         "on screen would say it either")
+        text = seen[0][0]
+        self.assertIn("comment could not be saved", text)
+        # The CAUSE, from the errno - not the one guess the old copy
+        # made for every failure.
+        self.assertIn("cannot be reached", text)
+
+    def test_a_location_that_could_not_be_saved_says_NOTHING(self):
+        result, seen = self._denied("locations.json")
+        self.assertFalse(result, "the write reported success")
+        self.assertEqual([], seen,
+                         "a failed location write raised an alert - the "
+                         "folder simply never appears in the sidebar, "
+                         "so this announces what the user just watched")
+
+    def test_the_reason_still_reaches_the_caller_either_way(self):
+        """Silence is not ignorance: the sentence rides on the result
+        for anything that wants it, and the log gets it regardless."""
+        from amaze.core import keyed_store
+
+        result, _seen = self._denied("locations.json")
+        self.assertEqual(keyed_store.REASON_DENIED, result.reason)
+        self.assertIn("cannot be reached", result.sentence)
+
+
+class ARelocateIsONEWrite(unittest.TestCase):
+    """A location's move must land whole or not at all.
+
+    It was two `set_record` calls - remove the old key, then add the
+    new one - and they are two independent trips to disk. Deny the
+    second, which is one transient outage of a synced library, and the
+    location is deregistered with its record gone: colour, custom name,
+    recursion and Show All Files, with the folder just missing.
+
+    `rekey`'s own docstring is about this shape: *a rename expressed as
+    delete-then-add can be half-resurrected by the other pane.*
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_reloc_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+        self.prefs = _Prefs(self.dir)
+
+    def test_a_denied_move_leaves_the_location_where_it_was(self):
+        old = os.path.join(self.dir, "before")
+        new = os.path.join(self.dir, "after")
+        os.makedirs(old)
+        os.makedirs(new)
+        locations.register(self.prefs, old)
+        locations.set_record(self.prefs, old,
+                             dict(locations.record(self.prefs, old),
+                                  color="#ff0000", name="Wood"))
+        self.assertEqual("#ff0000",
+                         locations.record(self.prefs, old).get("color"),
+                         "premise: the record carries a colour")
+
+        with mock.patch.object(hostos, "write_json_atomic",
+                               side_effect=OSError(2, "No such file")):
+            locations.relocate_record(self.prefs, old, new)
+
+        kept = locations.record(self.prefs, old)
+        self.assertEqual("#ff0000", kept.get("color"),
+                         "a denied move took the record with it - the "
+                         "half that landed deregistered the location")
+        self.assertEqual("Wood", kept.get("name"))
+        self.assertEqual({}, locations.record(self.prefs, new),
+                         "a denied move half-registered the new path")
+
+    def test_a_move_that_lands_carries_the_whole_record(self):
+        old = os.path.join(self.dir, "before")
+        new = os.path.join(self.dir, "after")
+        os.makedirs(old)
+        os.makedirs(new)
+        locations.register(self.prefs, old)
+        locations.set_record(self.prefs, old,
+                             dict(locations.record(self.prefs, old),
+                                  color="#00ff00", name="Metal"))
+
+        locations.relocate_record(self.prefs, old, new)
+
+        moved = locations.record(self.prefs, new)
+        self.assertEqual("#00ff00", moved.get("color"))
+        self.assertEqual("Metal", moved.get("name"))
+        self.assertTrue(moved.get("registered"))
+        self.assertEqual({}, locations.record(self.prefs, old),
+                         "the old path is still registered after a move")
+
+
 if __name__ == "__main__":
     unittest.main()

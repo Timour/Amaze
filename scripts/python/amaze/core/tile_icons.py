@@ -474,30 +474,22 @@ def override_for(preferences, key: str) -> dict:
 
 
 def set_override(preferences, key: str, spec) -> bool:
-    """Store (or with an empty spec, forget) one path's icon."""
-    return bool(written(preferences, key, spec))
+    """Store (or with an empty spec, forget) one path's icon.
 
+    THE REPORTING IS THE ENGINE'S. A `written()` beside this one held
+    the refusal note and the denial alert; `notes.py` held the same ten
+    lines with two words changed, and the other two stores held none.
+    The words are on the Spec now (`denied_alert`) and the policy is in
+    `_commit`, beside the engine's other two failure reports - which
+    also ended a duplicate: `_commit` had already noted the refusal
+    sentence that this noted again.
 
-def written(preferences, key: str, spec):
-    """set_override, with the engine's full answer - `ok`, `reason` and
-    a sentence fit to show the user.
-
-    A bare False could not say WHY, and the panel guessed: a refused
-    write got "check that the library folder is writable" when the
-    folder was fine and the file simply would not parse.
+    A bare False could not say WHY, and the panel used to guess: a
+    refused write got "check that the library folder is writable" when
+    the folder was fine and the file simply would not parse. That is
+    the same defect the errno mapping fixes one level down.
     """
-    result = _store(preferences).set(key, spec)
-    if not result and result.sentence:
-        debug.note(result.sentence)
-    elif not result and result.reason == keyed_store.REASON_DENIED:
-        debug.alert(
-            "Your tile icon could not be saved.\n\n"
-            "Nothing else has been lost - only this icon choice. The tile "
-            "keeps the icon it had.\n\n"
-            "Check the library folder is reachable and not read-only, "
-            "then pick the icon again.",
-            key="icons-not-saved")
-    return result
+    return bool(_store(preferences).set(key, spec))
 
 
 def forget_overrides() -> None:

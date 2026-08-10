@@ -692,8 +692,13 @@ class Prefs(_Persistence):
             return False
         at = (self._file_folders.index(old)
               if old in self._file_folders else len(self._file_folders))
-        locations.set_record(self, old, {})
-        locations.set_record(self, new, record)
+        # ONE WRITE, not remove-then-add. Those were two independent
+        # trips to disk, and a denial between them - one transient
+        # outage of a synced library - deregistered the location and
+        # took its record with it: colour, name, recursion and Show All
+        # Files gone, the folder just missing. `relocate_record` is the
+        # engine's `rekey`, which lands whole or not at all.
+        locations.relocate_record(self, old, new)
         # The copy carries the ORDER, and the store cannot: put the new
         # path back in the row the old one held rather than wherever a
         # sorted key landed.

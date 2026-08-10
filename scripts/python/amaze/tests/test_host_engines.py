@@ -313,5 +313,74 @@ class TestOpinionComposition(unittest.TestCase):
                     "not an opinion" % name)
 
 
+class AFailedWriteSaysWhichFailure(unittest.TestCase):
+    """`hostos.why_failed` - the errno, not a guess.
+
+    `database.save()` answered this inline and answered it the same way
+    every time: *the file is held by another program*. Measured
+    2026-08-10 (research.md ▸ WHAT A FAILED WRITE ACTUALLY RAISES) that
+    cause CANNOT occur on macOS - an atomic rename over a file another
+    handle holds open succeeds - so the one message Amaze showed when a
+    library write failed named a Windows-only cause on a Mac, and sent
+    anyone whose synced folder had dropped looking for a program that
+    was not there.
+
+    The errnos below are the measured ones, from that probe.
+    """
+
+    def _cause(self, number):
+        from amaze.helpers import hostos
+
+        cause, sentence = hostos.why_failed(
+            OSError(number, os.strerror(number)), "/lib/notes.json")
+        self.assertTrue(sentence.strip(), "no sentence for errno %s"
+                        % number)
+        return cause, sentence
+
+    def test_each_measured_errno_gets_its_own_cause(self):
+        import errno
+
+        from amaze.helpers import hostos
+
+        self.assertEqual(hostos.FAILED_UNREACHABLE,
+                         self._cause(errno.ENOENT)[0])
+        self.assertEqual(hostos.FAILED_READ_ONLY,
+                         self._cause(errno.EACCES)[0])
+        self.assertEqual(hostos.FAILED_READ_ONLY,
+                         self._cause(errno.EROFS)[0])
+        self.assertEqual(hostos.FAILED_FULL,
+                         self._cause(errno.ENOSPC)[0])
+
+    def test_an_unreachable_folder_is_not_reported_as_a_held_file(self):
+        """The whole reason this exists."""
+        import errno
+
+        _cause, sentence = self._cause(errno.ENOENT)
+        self.assertIn("cannot be reached", sentence)
+        self.assertNotIn("another program", sentence)
+
+    def test_it_names_the_FOLDER_for_a_permission_failure(self):
+        """Measured: `os.replace` over a `chmod 444` file SUCCEEDS,
+        because POSIX rename asks the directory. So an instruction to
+        check the file's permissions would send the user to the wrong
+        object, however obvious it reads."""
+        import errno
+
+        _cause, sentence = self._cause(errno.EACCES)
+        self.assertIn("folder", sentence)
+
+    def test_an_unmeasured_errno_claims_no_cause(self):
+        """Saying nothing specific is the right answer to a cause we
+        have not measured. Guessing is what this replaced."""
+        from amaze.helpers import hostos
+
+        cause, sentence = self._cause(999)
+        self.assertEqual(hostos.FAILED_UNKNOWN, cause)
+        for invented in ("another program", "read-only", "full",
+                         "cannot be reached"):
+            self.assertNotIn(invented, sentence,
+                             "an unmeasured errno was given a cause")
+
+
 if __name__ == "__main__":
     unittest.main()

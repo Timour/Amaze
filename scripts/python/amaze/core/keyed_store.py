@@ -133,13 +133,14 @@ class Spec:
 
     __slots__ = ("filename", "payload", "keyspace", "label", "noun",
                  "normalise", "path_prefix", "unreadable_alert",
-                 "refused_sentence", "alert_key", "category",
-                 "in_library", "survives_forget")
+                 "refused_sentence", "alert_key", "denied_alert",
+                 "category", "in_library", "survives_forget")
 
     def __init__(self, filename, payload, keyspace, label, noun,
                  normalise, path_prefix="", unreadable_alert="",
-                 refused_sentence="", alert_key="", category="store",
-                 in_library=True, survives_forget=True) -> None:
+                 refused_sentence="", alert_key="", denied_alert="",
+                 category="store", in_library=True,
+                 survives_forget=True) -> None:
         self.filename = filename
         self.payload = payload
         self.keyspace = keyspace
@@ -153,6 +154,20 @@ class Spec:
         self.unreadable_alert = unreadable_alert
         self.refused_sentence = refused_sentence
         self.alert_key = alert_key or (filename + "-unreadable")
+        #: WHAT TO SAY WHEN A WRITE IS DENIED - the store's own half of
+        #: it: what could not be saved and what is therefore unchanged.
+        #: The engine appends WHY, from `hostos.why_failed`.
+        #:
+        #: BLANK MEANS SAY NOTHING, AND THAT IS A DECISION, NOT A
+        #: DEFAULT. Speaking is only worth it when the failure is
+        #: INVISIBLE. A comment stays on screen in the editor after a
+        #: refused save, so nothing tells the user but this. A location
+        #: or a favourite is DERIVED from this store and the cache does
+        #: not move on failure, so the folder simply never appears and
+        #: the star never lights - the gesture visibly does nothing, so
+        #: an alert would announce an outcome already on screen
+        #: (practice.md ▸ Dialogs are a bill you send the user).
+        self.denied_alert = denied_alert
         #: debug-log category
         self.category = category
         #: Is this a FILE in the library directory? Repair, the restore
@@ -208,8 +223,8 @@ _registry: dict = globals().get("_registry", {})
 def register(filename: str, payload: str, keyspace: str, label: str,
              noun: str, normalise=None, path_prefix: str = "",
              unreadable_alert: str = "", refused_sentence: str = "",
-             alert_key: str = "", category: str = "store",
-             in_library: bool = True,
+             alert_key: str = "", denied_alert: str = "",
+             category: str = "store", in_library: bool = True,
              survives_forget: bool = True) -> Spec:
     """Declare a store. Idempotent per filename, so a module reload
     re-registers rather than duplicating."""
@@ -219,9 +234,18 @@ def register(filename: str, payload: str, keyspace: str, label: str,
         raise ValueError(
             "a mixed-keyspace store must say which prefix marks a path "
             "key, or a folder move cannot tell them apart")
-    spec = Spec(filename, payload, keyspace, label, noun, normalise,
-                path_prefix, unreadable_alert, refused_sentence,
-                alert_key, category, in_library, survives_forget)
+    # BY NAME, not by position. Adding `denied_alert` to the middle of
+    # Spec's signature silently handed `category` to it while this call
+    # still read correctly - fourteen positional arguments kept in step
+    # by hand is the shape overview.md's *A VALUE CARRIES ITS OWN NAME*
+    # is about, and nothing raises when they drift.
+    spec = Spec(filename=filename, payload=payload, keyspace=keyspace,
+                label=label, noun=noun, normalise=normalise,
+                path_prefix=path_prefix,
+                unreadable_alert=unreadable_alert,
+                refused_sentence=refused_sentence, alert_key=alert_key,
+                denied_alert=denied_alert, category=category,
+                in_library=in_library, survives_forget=survives_forget)
     _registry[filename] = spec
     return spec
 
@@ -297,6 +321,14 @@ register(
         "the notes file could not be read earlier this run, so what you "
         "wrote was not saved - writing now would replace every note "
         "already in it."),
+    # SPEAKS, because the failure is invisible. A refused save leaves
+    # the text sitting in the editor looking saved; nothing on screen
+    # changes, and the user finds out next session when it is gone.
+    denied_alert=(
+        "Your comment could not be saved.\n\n"
+        "Nothing already saved has been lost - only this change. It is "
+        "still on screen, so you can copy it somewhere safe before "
+        "closing Houdini."),
 
     # icons". Removing a location forgets everything about it. Only the
     # keys UNDER that location go; an asset's comment is untouched,
@@ -353,6 +385,12 @@ register(
         "the registered folders could not be read earlier this run, so "
         "this change was not saved - writing now would replace every "
         "folder already in the list."),
+    # NO denied_alert, DELIBERATELY. The sidebar is DERIVED from this
+    # store (locations.registered_paths) and the cache does not move on
+    # a failed write, so a folder that could not be registered simply
+    # never appears. The gesture visibly does nothing, which IS the
+    # report - saying it as well would announce what the user just
+    # watched happen.
     # The one store a location removal takes with it.
     survives_forget=False,
 )
@@ -376,6 +414,9 @@ register(
         "the favorites file could not be read earlier this run, so your "
         "star was not saved - writing now would replace every favorite "
         "already in it."),
+    # NO denied_alert, for the same reason as the locations above: the
+    # star is painted from this store, so a star that could not be
+    # written does not light.
     survives_forget=False,
 )
 
@@ -408,6 +449,13 @@ register(
         "the tile icon file could not be read earlier this run, so your "
         "icon choice was not saved - writing now would replace every "
         "icon already in it."),
+    # SPEAKS, for the same reason notes do: the tile keeps showing the
+    # icon that was picked, so nothing on screen says the choice did
+    # not survive.
+    denied_alert=(
+        "The icon you picked could not be saved.\n\n"
+        "Nothing already saved has been lost - only this choice. The "
+        "tile goes back to the icon it had next time Amaze opens."),
     survives_forget=False,
 )
 
@@ -728,9 +776,21 @@ class Store:
             # was removed and put it straight back.
             self.state = READ
         except OSError as exc:
+            # THE THIRD REPORT, BESIDE THE OTHER TWO. `_unreadable`
+            # alerts with `spec.unreadable_alert` and the refusal above
+            # notes `spec.refused_sentence`; this case alone was left to
+            # the adapters, so `notes` and `tile_icons` each grew their
+            # own copy of it and the other two stores silently had none.
+            # The words are the store's, the policy is the engine's, and
+            # the CAUSE comes from the one place that reads an errno.
+            cause, why = hostos.why_failed(exc, self.path)
             debug.event(spec.category, "could not save %s" % spec.filename,
-                        path=self.path, error=str(exc))
-            return Written(False, REASON_DENIED, "", keys)
+                        path=self.path, error=str(exc), cause=cause)
+            if spec.denied_alert:
+                debug.alert("%s\n\nThis happened because %s"
+                            % (spec.denied_alert, why),
+                            key="%s-denied-%s" % (spec.filename, cause))
+            return Written(False, REASON_DENIED, why, keys)
         # COMMIT. Only now does the cache move - both halves of it.
         self._table = staged
         self._foreign = foreign
