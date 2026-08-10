@@ -144,9 +144,19 @@ def absent_but_known(directory: str, filename: str) -> str:
 
 def _and_list(names) -> str:
     """a / a and b / a, b and c - for a sentence the user has to act
-    on. Its own copy rather than library.py's: library imports this
-    module, so importing back would be a cycle, and the alternative
-    (a shared helper module for four lines) buys nothing."""
+    on.
+
+    THE ONLY COPY LEFT, and it stays for a reason worth reading before
+    merging it. `library.py` and `repair.py` each had one too; those
+    two are now `helpers.and_list` (2026-08-10). This one cannot join
+    them: `helpers/helpers.py` imports `hou` at module level, and THIS
+    module is deliberately Houdini-free - the terminal restore tool
+    runs on a machine where Houdini will not start, which is the same
+    boundary that moved the quarantine out to `core/quarantine.py`.
+
+    So: two owners, one per side of the hou line, said out loud. Not
+    three copies that nobody meant.
+    """
     names = list(names)
     if len(names) <= 1:
         return names[0] if names else ""

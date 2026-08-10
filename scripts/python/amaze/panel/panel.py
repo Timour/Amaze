@@ -1085,9 +1085,6 @@ class MatLibPanel(QtWidgets.QWidget):
             thumb_size = min(thumb_size, max(vw // 3, theme.ui_px(24)))
         return thumb_size
 
-    def _list_grid_size(self, thumb_size: int) -> tuple:
-        return grid.list_grid_size(self, thumb_size)
-
     def showEvent(self, event):
         """Close the other half of the timing gap, once.
 
@@ -1136,26 +1133,16 @@ class MatLibPanel(QtWidgets.QWidget):
         return super(MatLibPanel, self).event(event)
 
     def eventFilter(self, watched, event):
-        """Keeps a list row at least as wide as the viewport.
+        """Hover tracking for the grid's version marks.
 
-        This used to force the row TO the viewport width on every
-        resize - which is what put the row back to the panel's width
-        each time the notes pane moved, however the columns had been
-        fitted. It now only re-applies the floor; the columns
-        themselves no longer depend on the viewport at all, so a
-        resize does not re-fit them.
+        It also re-applied a list-mode row size on every viewport
+        resize. That went with the painted list: THE TABLE IS LIST
+        MODE now (grid.apply_view_mode), and `thumblist` is hidden the
+        whole time list mode is up - so the branch computed a grid
+        size, compared it, and set it on a widget nobody could see.
+        The table sizes its own rows and columns, in `show_table` and
+        `_sync_table_columns`.
         """
-        if (
-            event.type() == QtCore.QEvent.Type.Resize
-            and getattr(self, "thumblist", None) is not None
-            and watched is self.thumblist.viewport()
-            and self.prefs.view_mode == "list"
-        ):
-            size = QtCore.QSize(
-                *self._list_grid_size(self._active_thumbsize())
-            )
-            if size != self.thumblist.gridSize():
-                self.thumblist.setGridSize(size)
         if (getattr(self, "thumblist", None) is not None
                 and watched is self.thumblist.viewport()
                 and hasattr(self, "thumb_delegate")):
@@ -4835,17 +4822,6 @@ class MatLibPanel(QtWidgets.QWidget):
         return True
 
 
-
-    def _selected_scene_node(self) -> hou.Node | None:
-        """The single selected scene node, or None (with the user told
-        why) - shared guard for the gradient apply actions."""
-        sel = hou.selectedNodes()
-        if len(sel) != 1:
-            hou.ui.displayMessage(  # type: ignore
-                "Select a single node in the network editor first."
-            )
-            return None
-        return sel[0]
 
 
     @staticmethod

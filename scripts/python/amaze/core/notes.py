@@ -41,9 +41,11 @@ from amaze.core import keyed_store
 
 NOTES_FILE = "notes.json"
 
-#: The note-yellow from the design - the Notes icon, the + button and
-#: the tile badge all carry it.
-NOTE_YELLOW = "#fffc66"
+# NOTE_YELLOW ("#fffc66") lived here, described as the colour the
+# Notes icon, the + button and the tile badge all carry. None of them
+# did any more: the note art is blue, and both places that once keyed
+# on the yellow now carry a comment saying it matched nothing. A
+# constant nothing reads still reads as the rule.
 
 #: The prefix a File row's key carries. Named here rather than spelled
 #: at the two call sites, because the engine needs it to tell a path

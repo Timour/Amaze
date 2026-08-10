@@ -1897,5 +1897,44 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
                          "a scratch")
 
 
+class TheSentenceJoinerHasOneOwner(unittest.TestCase):
+    """`helpers.and_list`, and what it must produce.
+
+    It was three functions - `library.py`, `repair.py` and
+    `database.py` - two of which are now this one. Nothing asserted the
+    joining anywhere: sabotaging it to a plain comma join left
+    `test_library` and `test_repair` green, so a shared helper that
+    several user-facing sentences run through was pinned by nothing.
+
+    `database.py` keeps a copy on purpose (it is Houdini-free and this
+    module imports `hou`), so its answers are checked against this
+    one's rather than left to agree by luck.
+    """
+
+    def test_it_punctuates_the_way_a_sentence_does(self):
+        from amaze.helpers import helpers
+
+        self.assertEqual("", helpers.and_list([]))
+        self.assertEqual("a", helpers.and_list(["a"]))
+        self.assertEqual("a and b", helpers.and_list(["a", "b"]))
+        self.assertEqual("a, b and c", helpers.and_list(["a", "b", "c"]))
+        # A generator, not just a list - the call sites pass
+        # comprehensions and a sorted() straight in.
+        self.assertEqual("a, b and c",
+                         helpers.and_list(x for x in ("a", "b", "c")))
+
+    def test_the_houdini_free_copy_answers_identically(self):
+        from amaze.core import database
+        from amaze.helpers import helpers
+
+        for words in ([], ["a"], ["a", "b"], ["a", "b", "c", "d"]):
+            self.assertEqual(
+                helpers.and_list(words), database._and_list(words),
+                "the two owners disagree on %r - database.py keeps its "
+                "own copy because it must not import hou, which is a "
+                "reason to keep it in step, not a reason to forget it"
+                % (words,))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

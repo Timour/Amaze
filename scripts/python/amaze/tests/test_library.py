@@ -427,36 +427,12 @@ class TestMaterialLibrary(unittest.TestCase):
 
         self.assertEqual(self.library._thumbsize, 512)
 
-    def test_get_current_network_node(self):
-        """Test get_current_network_node returns current node"""
-        mock_tab = Mock()
-        mock_tab.type.return_value = hou.paneTabType.NetworkEditor
-        mock_node = Mock()
-        mock_tab.currentNode.return_value = mock_node
-
-        # patch.object(create=True): hou.ui does not exist at all under
-        # hython, so @patch("hou.ui.paneTabs") errors before the body.
-        mock_ui = MagicMock()
-        mock_ui.paneTabs.return_value = [mock_tab]
-        with patch.object(hou, "ui", mock_ui, create=True):
-            result = self.library.get_current_network_node()
-
-        self.assertIs(result, mock_node)
-
-    def test_get_current_network_node_none_found(self):
-        """Test get_current_network_node returns None when no network editor"""
-        mock_tab = Mock()
-        # A REAL enum value that is not NetworkEditor: comparing a bare
-        # Mock() against hou's SWIG enum walked Mock's auto-created
-        # attribute chain forever - the suite hung here, indefinitely.
-        mock_tab.type.return_value = hou.paneTabType.SceneViewer
-
-        mock_ui = MagicMock()
-        mock_ui.paneTabs.return_value = [mock_tab]
-        with patch.object(hou, "ui", mock_ui, create=True):
-            result = self.library.get_current_network_node()
-
-        self.assertIsNone(result)
+    # The two get_current_network_node tests went with the method they
+    # covered - MaterialLibrary's copy, which nothing but these called.
+    # The live one is NodeHandler's, exercised through the import door
+    # by test_roundtrip and test_nodes_section. Both facts they carried
+    # about mocking `hou` are now in research.md, which is where a fact
+    # about the world survives the code that found it.
 
     def test_render_thumbnail(self):
         """Test render_thumbnail creates thumbnail for asset"""

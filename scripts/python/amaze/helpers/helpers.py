@@ -9,6 +9,31 @@ import html
 import hou
 
 
+def and_list(words) -> str:
+    """`a`, `a and b`, `a, b and c` - the user's punctuation.
+
+    ONE OWNER for the hou-side of the codebase. This was written twice,
+    in `core/library.py` and `core/repair.py`, byte-for-byte equivalent
+    (one spelled the empty case `"".join(words)` and the other
+    `words[0] if words else ""`). Both build sentences the user has to
+    act on, where a comma-joined list of four filenames reads as noise
+    and a Python repr reads as a bug - the same requirement, so the
+    same function.
+
+    `repair.py` had ALREADY carried two copies at module level, where
+    the later definition silently won for all five call sites; that
+    round removed the second and left this third one standing in
+    another module.
+
+    `core/database.py` keeps its own and says why: this module imports
+    `hou` and that one is deliberately Houdini-free.
+    """
+    words = list(words)
+    if len(words) <= 1:
+        return "".join(words)
+    return "%s and %s" % (", ".join(words[:-1]), words[-1])
+
+
 def node_pattern_match(pattern: str, name: str) -> bool:
     """Houdini node-pattern match ("*", "mat_*") for matnode-style
     parm values - hou.text.patternMatch, with the pre-hou.text

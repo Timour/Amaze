@@ -354,16 +354,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     #: LIST MODE'S ONE INK. Everything in the table paints in this
     #: except Category, which paints in its own category's colour.
     LIST_INK = QtGui.QColor("#d8d6d4")
-    #: The two "about the asset" columns, as distinct from what it IS
-    #: (Type) and where it lives (Category). They get their own colours
-    #: because they answer different questions - keep both in step with
-    #: ListColumnHeader.
-    TAGS_COLOR = QtGui.QColor("#e28248")
-    LICENSE_COLOR = QtGui.QColor("#5cc9f5")
-    #: The Type column's own colour. It used to be DIM (the same blue
-    #: the sidebar's drag highlight uses), which is now License's - so
-    #: Type has an explicit constant rather than borrowing one.
-    TYPE_COLOR = QtGui.QColor("#4af2a1")
+    # The per-column colours - Tags amber, License blue, Type green -
+    # went with the painted list they belonged to (`ListColumnHeader`
+    # and `ListColumns` retired with the QTableView migration). Nothing
+    # read them afterwards: LIST_INK above is the one ink now, and the
+    # comment they carried still told the reader to keep them in step
+    # with a class that no longer exists.
     # Selected rows/tiles paint ALL text black (the accent/
     # yellow columns were hard to read against the amber selection
     # highlight; the palette's highlightedText wasn't reliably dark).
@@ -724,11 +720,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return max(theme.ui_px(12), min(icon_side // 4, theme.ui_px(22)))
 
     #: The mark columns' ink - the table's one colour, like every
-    #: other list column. Keep in step with ListColumnHeader.
+    #: other list column. (VERSION_COLOR sat here too and was read by
+    #: nothing; the Version column paints in LIST_INK like the rest.)
     FAV_MARK_COLOR = LIST_INK
     OPEN_MARK_COLOR = LIST_INK
     NOTE_MARK_COLOR = LIST_INK
-    VERSION_COLOR = LIST_INK
     #: "none" is the same ink as everything else. It briefly had its
     #: own dimmer grey; one ink for the table means one ink.
 

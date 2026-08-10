@@ -25,16 +25,6 @@ from amaze.render import thumbs, nodes, material_converter
 # (module reloads consolidated into panel.py's single chain)
 
 
-def _and_list(names) -> str:
-    """"a", "a and b", "a, b and c" - for a sentence the user has to act
-    on, where a bare comma-joined list of four filenames reads as noise
-    and a Python repr reads as a bug."""
-    names = list(names)
-    if len(names) <= 1:
-        return names[0] if names else ""
-    return "%s and %s" % (", ".join(names[:-1]), names[-1])
-
-
 def _count(count: int, noun: str) -> str:
     """"1 material" / "3 materials" - the count with a noun that agrees
     with it.
@@ -1243,12 +1233,14 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         if changed:
             self.save()
 
-    def get_current_network_node(self) -> None | hou.Node:
-        """Return thre current Node in the Network Editor"""
-        for pt in hou.ui.paneTabs():  # type: ignore
-            if pt.type() == hou.paneTabType.NetworkEditor:
-                return pt.currentNode()
-        return None
+    # `get_current_network_node` lived here and was called by nothing
+    # but its own two tests. `NodeHandler.get_current_network_node`
+    # (render/nodes.py) is the one every import goes through, and it is
+    # the LATER answer to the same question: it reads the editor's
+    # pwd() rather than currentNode(), which is what stopped it
+    # crashing when no node was current in the picked pane, and it
+    # honours an explicit context override. This copy still asked the
+    # crashing way.
 
     def remove_category(self, cat: str) -> None:
         """Removes the given category from the library (and also in all assets)"""
@@ -1795,7 +1787,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 "and use Delete Entry."
                 % (_count(len(rows_to_remove), "material"),
                    "their" if len(rows_to_remove) > 1 else "its",
-                   _and_list(names[:8]) + (
+                   helpers.and_list(names[:8]) + (
                        " and %d more" % (len(names) - 8)
                        if len(names) > 8 else "")))
         if missing_thumbs:
@@ -1848,7 +1840,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 "Nothing was deleted: Amaze could not check %s, so files "
                 "that belong to it look exactly like files nothing needs "
                 "any more."
-                % _and_list([name for name, _why in unreadable])
+                % helpers.and_list([name for name, _why in unreadable])
             )
             for name, why in unreadable:
                 summary.append("%s: %s." % (name, why))
@@ -1876,10 +1868,10 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                     "the list, and it is what Repair would use to bring "
                     "the section back. If you are not sure, run Repair and "
                     "look at it before you remove anything."
-                    % (_and_list(sorted(
+                    % (helpers.and_list(sorted(
                         "your %s list" % database.section_label(name)
                         for name in absent_traces)),
-                       _and_list(sorted(absent_traces.values())))
+                       helpers.and_list(sorted(absent_traces.values())))
                 )
             # LAST, and for every cause. Whichever way the sweep was held
             # back - a list that has not arrived, one that will not parse,
@@ -2043,7 +2035,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 "Preferences to find the folder, and empty it yourself "
                 "once you are sure."
                 % (_count(lone_count, "leftover file"),
-                   _and_list(shown) + (
+                   helpers.and_list(shown) + (
                        " and %d more" % (lone_count - len(shown))
                        if lone_count > len(shown) else ""),
                    _count(held, "file"),
@@ -2082,7 +2074,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             summary.append(
                 "%s %s not listed in your library, but %s can still be "
                 "put back. Nothing was moved or deleted."
-                % (_and_list(shown_kept[:8]) + (
+                % (helpers.and_list(shown_kept[:8]) + (
                        " and %d more" % (len(spared) - 8)
                        if len(spared) > 8 else ""),
                    "is" if len(spared) == 1 else "are",
@@ -2163,7 +2155,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         """
         if not empty_sections:
             return []
-        sections = _and_list(sorted(database.section_label(filename)
+        sections = helpers.and_list(sorted(database.section_label(filename)
                                     for filename in empty_sections))
         return ["%s: a list that holds nothing looks the same whether "
                 "nothing was ever saved there or it failed to load this "

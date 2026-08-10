@@ -664,41 +664,19 @@ def apply_view_mode(panel) -> None:
     panel._sync_view_mode_controls()
 
 
-def list_grid_size(panel, thumb_size: int) -> tuple:
-    """(width, height) of a list-mode row: as wide as its columns
-    need, and exactly tall enough for its thumbnail and text line.
-
-    THE WIDTH IS THE CONTENT'S, not the panel's. A row used to be
-    defined as "the width of the viewport", which is what made the
-    columns collapse when the notes pane grew: the row shrank, and
-    the fitting code answered by squeezing columns and then
-    dropping them from the right. Nothing about a name or a tag
-    list gets shorter because a pane moved, so the row keeps its
-    width and the view scrolls sideways instead.
-
-    Still at LEAST the viewport width, so a short row fills the
-    view rather than leaving a dead strip beside the selection
-    highlight - it is a floor now, not the definition.
-
-    The height used to be the thumbnail plus a flat 14px, which put
-    a 16px thumbnail in a 30px row - "30px tall for a text line is
-    not small, its a list". The 14 was arbitrary padding; there are
-    only two things a row has to fit.
-
-    Sized from the DELEGATE's own padding, because the delegate
-    derives its icon side back from the row height
-    (rect.height() - 2 * PAD). Any other number here silently
-    shrinks the thumbnail below the size list mode asked for.
-    """
-    vw = panel.thumblist.viewport().width()
-    floor = vw if vw > theme.ui_px(80) else theme.ui_px(400)
-    width = max(getattr(panel, "_list_row_width", 0), floor)
-    side = panel._list_thumb_side(thumb_size)
-    fm = QtGui.QFontMetrics(panel.thumblist.font())
-    height = max(side + 2 * AssetItemDelegate.PAD,
-                 fm.height() + theme.ui_px(2),
-                 theme.ui_px(20))
-    return width, height
+# `list_grid_size` sized a list-mode row here: a width that kept the
+# columns from collapsing when the notes pane grew, and a height that
+# fit the thumbnail and one text line. Both belonged to the PAINTED
+# list. THE TABLE IS LIST MODE now (apply_view_mode above), and the
+# QListView it sized is hidden the whole time - so its one caller, a
+# resize branch in MatLibPanel.eventFilter, was measuring a viewport
+# nobody could see and applying the answer to a widget nobody could
+# see. The table decides both: `show_table` sets the row height from
+# the sidebar's, `_sync_table_columns` the widths.
+#
+# The width also read `panel._list_row_width`, which nothing anywhere
+# ever set - so the remembered width was always the default and the
+# `max()` always chose the floor.
 
 
 def sync_view_mode_controls(panel) -> None:

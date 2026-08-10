@@ -61,7 +61,7 @@ import hou
 from amaze import branding
 from amaze.core import database, debug, material
 from amaze.core.library import STAMP_SUFFIX
-from amaze.helpers import hostos, restore as restore_lib
+from amaze.helpers import helpers, hostos, restore as restore_lib
 from amaze.prefs import prefs as prefs_module
 
 
@@ -612,21 +612,11 @@ def _snapshot_line(entry: dict) -> str:
     return "%s: saved copies - %s." % (entry["label"], "; ".join(parts))
 
 
-def _and_list(words) -> str:
-    """"a, b and c" - the user's punctuation, not a comma-joined list.
-
-    "Materials", "Materials and Nodes", "Materials, Nodes and Code".
-
-    There were TWO of these at module level (this one and a second at
-    the report end), so the later definition silently won for all five
-    call sites, including the two written against this one. They agreed
-    on every input, so nothing was ever wrong - but an edit to the one
-    that lost would have changed nothing, with no error to say so.
-    """
-    words = list(words)
-    if len(words) <= 1:
-        return "".join(words)
-    return "%s and %s" % (", ".join(words[:-1]), words[-1])
+# `_and_list` was defined here TWICE at module level, so the later one
+# silently won for all five call sites; that round removed the second
+# and left this module still holding a copy of what `core/library.py`
+# also had. Both are gone now - `helpers.and_list` is the owner, and
+# the call sites below name it.
 
 
 def report_lines(findings: dict) -> list:
@@ -656,7 +646,7 @@ def report_lines(findings: dict) -> list:
     also = ""
     if extra:
         also = (", and one%s for the %s you add to them"
-                % (" each" if len(extra) > 1 else "", _and_list(extra)))
+                % (" each" if len(extra) > 1 else "", helpers.and_list(extra)))
     lines = ["Amaze looked at the library in %s. It keeps a separate list "
              "for each of its sections - Materials, Nodes, Code and "
              "Colors%s."
@@ -731,7 +721,7 @@ def report_lines(findings: dict) -> list:
             "No section lists %s. Amaze could not check the %s list either, "
             "so some of those files may be its. Nothing will be moved "
             "while that is true."
-            % (_files_by_folder(findings), _and_list(unchecked)))
+            % (_files_by_folder(findings), helpers.and_list(unchecked)))
     else:
         lines.append("Every file in the library's own folders is accounted "
                      "for by a section.")
@@ -759,7 +749,7 @@ def _files_on_a_button(count: int) -> str:
 
 
 def _and_folders(folders: list) -> str:
-    return _and_list(["%s folder" % _folder_name(folder)
+    return helpers.and_list(["%s folder" % _folder_name(folder)
                       for folder in folders])
 
 
@@ -782,7 +772,7 @@ def _files_by_folder(findings: dict) -> str:
         if unaccounted_total(findings) <= 6:
             part += " (%s)" % ", ".join(names)
         parts.append(part)
-    return _and_list(parts)
+    return helpers.and_list(parts)
 
 
 def _what_can_be_added_back(findings: dict) -> list:

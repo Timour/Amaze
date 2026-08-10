@@ -401,19 +401,6 @@ class GridGestureMixin:
 
         QtCore.QTimer.singleShot(self.INDICATOR_MS, _done)
 
-    def _file_drag_kind(self) -> str:
-        """The pressed File-row's kind, or '' outside the File section."""
-        if self._drag_section != "file" or self._drag_index is None:
-            return ""
-        panel = self._drag_panel
-        if panel is None:
-            return ""
-        try:
-            return self._drag_index.data(
-                panel.file_files_model.KindRole) or ""
-        except RuntimeError:
-            return ""
-
     def _promote_to_field_drag(self) -> bool:
         """The parameter-field hand-off: a FILE row's gesture crossing
         into a Parameters pane becomes the one real QDrag, because a
