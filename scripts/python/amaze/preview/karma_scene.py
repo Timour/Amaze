@@ -57,7 +57,7 @@ def build_karma_scaffold(preferences):
         # payload for an option nobody chose.
         ref.parm("filepath1").set(
             hou.getenv("AMAZE")
-            + "/scripts/python/amaze/res/usd/shaderBallScene2_Simple.usd"
+            + "/scripts/python/amaze/res/usd/shaderBallScene_Simple.usd"
         )
 
         ref.parm("primpath1").set("/shaderBallScene")
