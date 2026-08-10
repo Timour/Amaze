@@ -219,6 +219,17 @@ labelled with the same verb both land — `panel.click_on_row`, one
 precedence, read from the section's own `DROP` / `DROP_BY_KIND`
 declaration (2026-08-09).
 
+**One READER for that declaration**, `sections.drop_rule(section,
+panel, index)`, beside the declarations themselves (2026-08-10). A
+section declares one `DROP` unless its rows are different THINGS — the
+File section — and then `DROP_BY_KIND`, with the row's `KindRole`
+picking. That sentence was written twice, once in the drag walker and
+again inline in the click walker, which is how two doors end up
+disagreeing about the same tile: the exact bug the Click Door was built
+to end, reintroduced one level down. The drag walker keeps only its
+key-to-class lookup, because a drag arrives carrying a section key and
+a click arrives carrying the section.
+
 > **THE SELECTION IS A HINT, NOT A VETO.** A single visible selected
 > node is offered the payload first; a node that cannot take it FALLS
 > THROUGH to the creation walk — the host's own rule, from Houdini's
@@ -403,6 +414,36 @@ success.** The cache is a projection of the last successful write,
 never a scratchpad a caller mutates in place — so a refused save can no
 longer light a tile's comment badge for a note that was never written.
 
+**The engine performs all three failure reports; the store supplies the
+WORDS.** `unreadable_alert` when the file will not parse,
+`refused_sentence` when a latched store declines a write, and
+`denied_alert` when the disk refuses one — the last of which the
+adapters used to do themselves, so `notes.py` and `tile_icons.py` held
+the same ten lines with two words different and the other two stores
+held none. The engine appends the CAUSE from
+`hostos.why_failed` (§ 4g), so an instruction names the object that is
+actually wrong.
+
+**A blank `denied_alert` is a DECISION, and only two stores speak.**
+Telling someone about a failure they can already see is worse than
+silence. A comment and a tile icon stay on screen looking saved, so
+nothing but an alert says otherwise — those two speak. A registered
+location and a File favourite are DERIVED from their store and the
+cache does not move on failure, so the folder never appears and the
+star never lights: the gesture visibly does nothing, and that IS the
+report. `test_alert_sink` asserts the whole SET, because an omission
+and a deliberate silence read identically in a registry (2026-08-10).
+
+**A key that MOVES moves in one write.** `rekey(moves)` is one guarded
+commit for the whole rename, because a half-rewritten keyspace is worse
+than the orphaning it fixes. Expressed as delete-then-add it is two
+independent trips to disk, and a denial between them loses what was
+being moved: `relocate_file_folder` did exactly that with a location's
+own record until 2026-08-10, so one transient outage of a synced
+library deregistered the folder and took its colour, custom name,
+recursion and Show All Files with it. The door is
+`locations.relocate_record(prefs, old, new)`.
+
 **The owner announces, the engine fans out.** A folder that moved is
 one call — `relocate(prefs, old, new)` — naming the prefix and no
 store; a location that is gone is `retire_prefix(prefs, path)`. The
@@ -524,6 +565,16 @@ test `sys.platform` or hardcode an OS path convention.
   (`Prefs`, `keyed_store.Store`, `texture_library.ThumbnailCache`) each
   built it inline on both the remember and the compare side — six
   sites, 2026-08-05.
+- **`why_failed(exc, path)` → `(cause, sentence)`** — the ONE place an
+  `OSError` becomes something a user can act on: unreachable /
+  read-only / full / held, from the errno. `database.save()` answered
+  this inline and answered it the same way every time — *the file is
+  held by another program* — which measured on macOS cannot happen at
+  all, so a dropped synced folder was reported as a program holding the
+  library. **An errno it has not measured claims NO cause**; saying
+  nothing specific is the right answer to a cause nobody verified.
+  Which errno means what is a platform fact, which is why it lives
+  here (2026-08-10).
 
 ### 4h. The **Preview Engine**
 

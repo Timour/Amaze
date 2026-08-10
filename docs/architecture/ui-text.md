@@ -807,6 +807,35 @@ give every gesture; the File menu's Import always did.
   the Amaze shelf can tell you more.` No success dialog — the
   recovered grid is the announcement, plus one status-bar line.
 
+- `Could not save the library - <why>` — shown when a library write
+  is refused by the disk (2026-08-10). **`<why>` is read from the
+  errno**, never guessed: the folder cannot be reached / the folder is
+  read-only / the disk is full / another program is holding the file,
+  and for an errno nobody has measured it reports what the disk said
+  and claims no cause. It replaces one sentence that named *held by
+  another program* for every failure — measured, that cause cannot
+  occur on macOS at all, so a dropped synced folder sent the reader
+  hunting a program that was not there. The body no longer promises
+  the change *will be written with the next save*, because nothing
+  retries: it says the change is still in Amaze, that saving anything
+  else writes it too, and that it is NOT on disk yet and will not
+  survive closing Houdini.
+- `Your comment could not be saved.` / `The icon you picked could not
+  be saved.` — each followed by what is unchanged, then
+  `This happened because <why>` from the same errno reading. Only
+  these two speak: a comment and an icon stay on screen looking
+  saved, so nothing else would say otherwise. **A registered folder
+  and a File favourite say NOTHING** when their write is refused —
+  they are drawn from what was stored, so the folder never appears and
+  the star never lights, and an alert would announce what the user just
+  watched (see `denied_alert`, **Keyed Store Engine**).
+- `Your tile icon could not be saved.` — the icon PICTURE, as opposed
+  to the choice above. Also ends on `This happened because …` now: the
+  two copies of this sentence both told the reader to check the folder
+  was *reachable and not read-only*, which guesses two causes at once
+  and points at the file when a read-only file does not stop the write
+  at all.
+
 - `Some materials could not be saved:` followed by one
   `"<name>": the save did not complete` line per material — the
   multi-save dialog. The per-material line is new (2026-08-08):

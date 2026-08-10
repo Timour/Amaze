@@ -280,28 +280,32 @@ def write(path: str, name: str, background: str, size: int = CANVAS,
         # visible as a note.
         debug.event("icons", "no such tile icon", icon=name)
         return False
+    # ONE REPORT FOR TWO FAILURES, and each says only what it knows.
+    # These were two copies of the same four lines, both ending "check
+    # the library folder is reachable and not read-only" - two causes
+    # guessed at once, and the second names the wrong object: measured
+    # 2026-08-10, a read-only FILE does not stop a write here, because
+    # rename asks the DIRECTORY (research.md ▸ WHAT A FAILED WRITE
+    # ACTUALLY RAISES). The OSError path has an errno and can say which
+    # it was; Qt's `save` just answers False, so that one claims no
+    # cause rather than inventing the same pair.
+    why = ""
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not image.save(path, "PNG"):
             debug.event("icons", "could not write the tile icon image",
                         path=path)
-            debug.alert(
-                "Your tile icon could not be saved.\n\n"
-                "Nothing else has been lost - only this icon choice. The "
-                "tile keeps the icon it had.\n\n"
-                "Check the library folder is reachable and not read-only, "
-                "then pick the icon again.",
-                key="icons-not-saved")
-            return False
+            why = "the picture could not be written."
     except OSError as exc:
+        _cause, why = hostos.why_failed(exc, path)
         debug.event("icons", "could not write the tile icon image",
                     path=path, error=str(exc))
+    if why:
         debug.alert(
             "Your tile icon could not be saved.\n\n"
-            "Nothing else has been lost - only this icon choice. The tile "
-            "keeps the icon it had.\n\n"
-            "Check the library folder is reachable and not read-only, "
-            "then pick the icon again.",
+            "Nothing else has been lost - only this icon choice. The "
+            "tile keeps the icon it had.\n\n"
+            "This happened because " + why,
             key="icons-not-saved")
         return False
     return True
