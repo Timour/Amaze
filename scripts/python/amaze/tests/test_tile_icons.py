@@ -162,6 +162,59 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row][0])
 
+    def test_an_icon_from_an_OLDER_library_can_be_cleared(self):
+        """A record-level icon is the fallback for a library an older
+        build wrote, and clearing removes only the STORE key - so
+        `tile_icon` fell straight back to the record, and
+        `_adopt_record_icons` wrote it into the store again at the next
+        panel open. The icon could not be cleared at all, permanently.
+
+        Nothing else clears the record field: `set_tile_icon` stopped
+        writing it on 2026-08-09 and `get_as_dict` re-serialises it on
+        every save."""
+        asset = self.model.assets[self.row]
+        asset.icon = {"name": "box", "bg": "#333333", "ink": "#ffffff"}
+        self.assertTrue(self.model.tile_icon(self.row),
+                        "premise: the record's icon is what shows")
+
+        self.model.set_tile_icon(self.row, {})
+
+        self.assertEqual(
+            {}, self.model.tile_icon(self.row),
+            "the cleared icon came straight back off the record")
+        self.assertEqual(
+            {}, asset.icon,
+            "the record still carries the icon, so the next panel open "
+            "adopts it into the store and undoes the clear")
+
+    def test_clearing_an_icon_the_record_never_had_still_works(self):
+        """The accept path: the ordinary clear must not change."""
+        self.model.set_tile_icon(
+            self.row, {"name": "layers", "bg": "#4af2a1"})
+        self.assertTrue(self.model.tile_icon(self.row), "premise")
+        self.model.set_tile_icon(self.row, {})
+        self.assertEqual({}, self.model.tile_icon(self.row))
+
+    def test_a_library_SWITCH_adopts_record_icons_too(self):
+        """`__init__` runs both adoptions; `switch_model_data` ran only
+        the favourites one - so pointing Preferences at an older library
+        left every record icon unmigrated for that session, living on
+        the fallback alone."""
+        asset = self.model.assets[self.row]
+        asset.icon = {"name": "box", "bg": "#333333", "ink": "#ffffff"}
+        self.model.save()
+        tile_icons.forget_overrides()
+
+        self.model.switch_model_data()
+
+        row = next(i for i, a in enumerate(self.model.assets)
+                   if str(a.mat_id) == str(asset.mat_id))
+        self.assertTrue(
+            tile_icons.override_for(self.prefs,
+                                    str(self.model.assets[row].mat_id)),
+            "the switch left the record icon unmigrated, so it is "
+            "subject to the clear-cannot-stick defect above")
+
     def test_the_choice_lands_in_the_store_and_ONLY_there(self):
         """One icons.json for every section, and it is the ONE home.
 

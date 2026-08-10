@@ -680,13 +680,22 @@ class Store:
             reason = (REASON_ABSENT if self.trace else REASON_LATCHED)
             return Written(False, reason, spec.refused_sentence, keys)
         created = not os.path.exists(self.path)
+        # STAGED, exactly like `_table`. Both mutations below - the
+        # peer's foreign entries folded in, and the caller's keys
+        # dropped - used to land on `self._foreign` BEFORE the write,
+        # and the OSError path returns without putting them back. That
+        # breaks this method's own rule in the one direction that
+        # loses data: a newer build's value for a key whose write was
+        # REFUSED left memory, and the next successful write of any
+        # other key serialised the file without it.
+        foreign = dict(self._foreign)
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            self._adopt_from_disk(staged)
+            self._adopt_from_disk(staged, foreign)
             # A key the user just SET stops being foreign - the chosen
             # value must not be shadowed by the unreadable copy.
             for key in keys:
-                self._foreign.pop(key, None)
+                foreign.pop(key, None)
             # The same restore tier every database gets. Foreign
             # entries ride under the staged ones (staged wins a key
             # both hold), so a rewrite never erases what a newer build
@@ -694,7 +703,7 @@ class Store:
             hostos.snapshot_before_write(self.path)
             hostos.write_json_atomic(
                 self.path,
-                {spec.payload: {**self._foreign, **staged}},
+                {spec.payload: {**foreign, **staged}},
                 indent=1, sort_keys=True)
             if created:
                 # THE FLOOR, FROM THE FIRST WRITE. snapshot_before_write
@@ -722,14 +731,15 @@ class Store:
             debug.event(spec.category, "could not save %s" % spec.filename,
                         path=self.path, error=str(exc))
             return Written(False, REASON_DENIED, "", keys)
-        # COMMIT. Only now does the cache move.
+        # COMMIT. Only now does the cache move - both halves of it.
         self._table = staged
+        self._foreign = foreign
         return Written(True, REASON_NONE, "", keys)
 
     def _remember_disk_state(self) -> None:
         self._disk_state = hostos.disk_state(self.path)
 
-    def _adopt_from_disk(self, staged: dict) -> None:
+    def _adopt_from_disk(self, staged: dict, foreign: dict) -> None:
         """Fold in keys another session added since this one read.
 
         Adoption can only ADD: a key on disk this session does not hold
@@ -762,10 +772,12 @@ class Store:
                     staged[stored] = kept
                     adopted += 1
             elif (value and stored not in staged
-                  and stored not in self._foreign):
+                  and stored not in foreign):
                 # The peer's unreadable entry is as foreign as one from
                 # our own load - kept, or OUR write erases THEIR data.
-                self._foreign[stored] = value
+                # Into the STAGING copy, so a write that then fails
+                # leaves the live table where it was.
+                foreign[stored] = value
                 adopted += 1
         if adopted:
             debug.event(self.spec.category,

@@ -273,6 +273,67 @@ class TheRestoreFloorArrivesOnCreate(StoreCase):
                          "the write-once floor was replaced")
 
 
+class AFailedWriteLeavesTheForeignTableWhereItWas(StoreCase):
+    """The engine's own rule is that the cache moves only on success,
+    and `_table` obeys it. `_foreign` does not: `_commit` adopts the
+    peer's foreign entries and pops the caller's keys BEFORE the write,
+    and the `except OSError` returns without putting them back.
+
+    A foreign entry is a value a NEWER build wrote that this one's
+    normaliser cannot read - held verbatim so a rewrite never erases
+    it. Losing it from memory means the next successful write of any
+    other key serialises the file without it."""
+
+    def _with_a_foreign_entry(self):
+        """A store whose file holds one entry this build cannot read."""
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": {"material:K": {"from": "a newer build"},
+                                 "material:ordinary": self.page("kept")}},
+                      handle)
+        store = self.store()
+        self.assertTrue(store._foreign, "premise: the entry reads as foreign")
+        return store
+
+    def test_a_refused_write_does_not_drop_the_newer_builds_value(self):
+        from unittest.mock import patch
+
+        store = self._with_a_foreign_entry()
+        with patch.object(keyed_store.hostos, "write_json_atomic",
+                          side_effect=OSError("read-only")):
+            self.assertFalse(store.set("material:K", self.page("mine")))
+
+        self.assertIn(
+            "material:K", store._foreign,
+            "the newer build's value left memory on a write that was "
+            "refused, so the next successful write erases it from the "
+            "file")
+
+    def test_the_newer_builds_value_survives_a_later_write(self):
+        """What the memory state costs on disk - the question the user
+        would actually notice."""
+        from unittest.mock import patch
+
+        store = self._with_a_foreign_entry()
+        with patch.object(keyed_store.hostos, "write_json_atomic",
+                          side_effect=OSError("read-only")):
+            store.set("material:K", self.page("mine"))
+        self.assertTrue(store.set("material:other", self.page("later")))
+
+        self.assertIn(
+            "material:K", self.on_disk()["notes"],
+            "a newer build's entry was erased by an unrelated write "
+            "that followed a refused one")
+
+    def test_a_successful_write_still_claims_the_key(self):
+        """The accept path: a key the user SET stops being foreign, or
+        the unreadable copy shadows the value just chosen."""
+        store = self._with_a_foreign_entry()
+        self.assertTrue(store.set("material:K", self.page("mine")))
+        self.assertNotIn("material:K", store._foreign)
+        self.assertEqual(self.page("mine"),
+                         self.on_disk()["notes"]["material:K"])
+
+
 class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
     """`release(preferences)` compared `os.path.dirname(<dir>/notes.json)`,
     which carries no trailing separator, against `preferences.dir`, which

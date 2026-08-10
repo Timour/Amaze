@@ -624,5 +624,147 @@ class GradientRowShapeTest(unittest.TestCase):
                          "read-only for the session")
 
 
+class ColorsHonourARefusedSave(unittest.TestCase):
+    """`MaterialLibrary.remove_asset` handles a refused write in full -
+    the row goes back, `unforget()` clears the pending delete, the row
+    is re-added to the connector's document, and the user is told.
+
+    Colors joined the connector on 2026-08-09 and inherited every one
+    of its refusal paths without any of that handling: `_save_user()`
+    returns True only when the colours reached disk, and eleven of its
+    fourteen callers drop the answer. So a delete left the grid, never
+    reached gradients.json, said nothing, and came back at the next
+    launch."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_refuse_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"categories": ["Warm"],
+                       "gradients": [
+                           {"name": "keep", "uid": "keepuid", "points": []},
+                           {"name": "doomed", "uid": "doomeduid",
+                            "points": []}]}, fh, indent=1)
+        self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+        if self.lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+
+    def _row_named(self, name):
+        for row in range(self.lib.rowCount()):
+            entry = self.lib.entry(row)
+            if entry and entry.get("name") == name:
+                return row
+        return -1
+
+    def _on_disk_names(self):
+        with open(self.path, encoding="utf-8") as fh:
+            document = json.load(fh)
+        rows = document.get("assets") or document.get("gradients") or []
+        return [r.get("name") for r in rows if isinstance(r, dict)]
+
+    def test_a_refused_delete_puts_the_palette_back(self):
+        from unittest.mock import patch
+
+        row = self._row_named("doomed")
+        self.assertGreaterEqual(row, 0, "premise: the fixture loaded")
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.lib.remove_user_gradient(row)
+
+        self.assertIn("doomed", self._on_disk_names(),
+                      "premise: the refusal kept it on disk")
+        self.assertGreaterEqual(
+            self._row_named("doomed"), 0,
+            "the palette left the grid while gradients.json still "
+            "listed it - the delete looked done and was not")
+
+    def test_a_refused_delete_is_not_committed_by_the_next_save(self):
+        """`forget()` is consumed by `set()` before save() answers, so a
+        declined delete sits in the connector's document waiting for ANY
+        later write to commit it - the same shape the material path has
+        a test for."""
+        from unittest.mock import patch
+
+        row = self._row_named("doomed")
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.lib.remove_user_gradient(row)
+        # Anything at all that writes the file afterwards.
+        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})
+        self.assertIn(
+            "doomed", self._on_disk_names(),
+            "the declined delete was committed by an unrelated save")
+
+    def test_a_refused_add_does_not_leave_a_palette_on_screen(self):
+        from unittest.mock import patch
+
+        before = self.lib.rowCount()
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.lib.add_user_gradient(
+                "ghost", "", {"values": [], "keys": []})
+        self.assertEqual(
+            before, self.lib.rowCount(),
+            "a palette that never reached disk stayed in the grid, so "
+            "it is gone at the next launch with nothing said")
+
+    def test_an_ordinary_delete_still_works(self):
+        """The accept path: the refusal must not be the normal one."""
+        row = self._row_named("doomed")
+        self.lib.remove_user_gradient(row)
+        self.assertEqual(-1, self._row_named("doomed"))
+        self.assertNotIn("doomed", self._on_disk_names())
+
+
+class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
+    """`take_adopted()` had ONE caller in the package, in library.py.
+    Its comment records the measured loss it exists for: a row reaches
+    disk, the model never learns of it, and the next save rebuilds the
+    list without it.
+
+    Colors merges through the same connector and never drained it."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_adopt_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"categories": ["Warm"],
+                       "gradients": [{"name": "ours", "uid": "oursuid",
+                                      "points": []}]}, fh, indent=1)
+        self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+        if self.lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+
+    def test_a_palette_the_other_mac_added_reaches_the_grid(self):
+        with open(self.path, encoding="utf-8") as fh:
+            document = json.load(fh)
+        rows = document.get("assets") or document.get("gradients") or []
+        rows.append({"name": "from_theirs", "id": "theirsid",
+                     "points": [], "colors": []})
+        document["assets"] = rows
+        document.pop("gradients", None)
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(document, fh, indent=1)
+        stat = os.stat(self.path)
+        os.utime(self.path, ns=(stat.st_atime_ns,
+                                stat.st_mtime_ns + 5_000_000_000))
+
+        # Any ordinary edit takes the merge path.
+        self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+
+        names = [self.lib.entry(r).get("name")
+                 for r in range(self.lib.rowCount())]
+        self.assertIn(
+            "from_theirs", names,
+            "the merge adopted the row into gradients.json and never "
+            "handed it to the model, so the grid, the sidebar counts "
+            "and the filter never saw it - and the next save rebuilds "
+            "the list without it")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

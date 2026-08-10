@@ -294,6 +294,12 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # A reload is a fresh read of the library, content included.
             self._remember_content_state()
             self._adopt_record_favorites()
+            # BOTH adoptions, like __init__. Only the favourites one ran
+            # here, so pointing Preferences at a library an older build
+            # wrote left every record-level icon unmigrated for the
+            # session - living on `tile_icon`'s fallback alone, which is
+            # the state in which clearing one does not stick.
+            self._adopt_record_icons()
             self._tags = self._data["tags"]
             self._usd_cache = {}
             self._shader_type_cache = {}
@@ -519,6 +525,20 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             )
         else:
             tile_icons.clear_for(self.preferences, asset.mat_id)
+            # AND THE FALLBACK, or the clear cannot stick. Removing the
+            # store key is the whole delete, and `tile_icon` then falls
+            # straight back to the record - which nothing else clears,
+            # `get_as_dict` re-serialises on every save, and
+            # `_adopt_record_icons` copies back into the store at the
+            # next panel open. So on any library an older build wrote,
+            # the icon was unclearable.
+            #
+            # Clearing is the one direction that may still write this
+            # field. Setting stopped on 2026-08-09 because a second
+            # copy of a value is free to drift; an empty one carries no
+            # value to drift, and saying the user's choice in both
+            # homes is what makes it the same choice in both.
+            asset.icon = {}
         self._add_thumb_paths(self.index(row, 0))
         if save:
             self.save()

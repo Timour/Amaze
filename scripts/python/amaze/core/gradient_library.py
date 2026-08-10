@@ -492,7 +492,46 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 for entry in self._user
             ],
         })
-        return bool(db.save())
+        stored = bool(db.save())
+        # WHAT THE MERGE ADOPTED REACHES THE MODEL, exactly as
+        # library.py does after its own save. `take_adopted` had ONE
+        # caller in the package and this was not it, so a palette the
+        # other machine added landed in gradients.json and never in
+        # `_user` - and `_save_user` rebuilds the document FROM `_user`,
+        # so the next save wrote it back out of existence while the
+        # grid, the sidebar counts and the filter never saw it at all.
+        self._adopt_rows(db.take_adopted())
+        return stored
+
+    def _adopt_rows(self, rows) -> None:
+        """Fold in palettes another session added while this one had the
+        library open.
+
+        A row this build cannot read is skipped rather than allowed to
+        break the model - it stays on disk untouched, which is the same
+        answer `_adopt_rows` gives in library.py.
+        """
+        if not isinstance(rows, list):
+            return
+        known = {self._id_of(entry) for entry in self._user}
+        added = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            identity = self._id_of(row)
+            if identity and identity in known:
+                continue
+            entry = dict(row)
+            # `type` is a MEMORY marker, stripped on the way to disk -
+            # so an adopted row arrives without one and needs it back.
+            entry.setdefault("type", "user")
+            self._user.append(entry)
+            known.add(identity)
+            added += 1
+        if added:
+            debug.event("gradient", "adopted palettes another session "
+                                    "wrote", count=added)
+            self._reset_entries()
 
     def _all_entries(self) -> list:
         # Everything is a user gradient now (curated palettes are seeded
@@ -761,7 +800,21 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 "id": uuid.uuid4().hex,
             },
         )
-        self._save_user()
+        if not self._save_user():
+            # NOTHING REACHED DISK, so nothing stays on screen. Built
+            # like `MaterialLibrary.add_asset`'s sibling refusal: a
+            # palette left in the grid by a save that was declined is
+            # gone at the next launch with nothing ever said.
+            self._user.pop(0)
+            self._reset_entries()
+            debug.alert(
+                'Amaze could not save "%s".\n\n'
+                "Nothing else has been lost - your other colors are "
+                "exactly as they were.\n\n"
+                "Close any other Amaze panel, or restart Houdini, then "
+                "try again." % (name or "this palette"),
+                key="colors-not-saved")
+            return
         self._reset_entries()
 
     def remove_user_gradient(self, row: int) -> None:
@@ -774,15 +827,43 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         additions - so an unspoken delete simply came back on the next
         save. `forget()` is the connector's word for it, and it is what
         the other three sections' deletes already use.
+
+        AND THE ANSWER IS HONOURED, like `MaterialLibrary.remove_asset`.
+        `_save_user` returns True only when the colours reached disk,
+        and this dropped that - so on a refusal the palette left the
+        grid while gradients.json still listed it, nothing was said,
+        and it returned at the next launch. Worse, `set()` had already
+        consumed the `forget()` mark into the connector's live document,
+        so ANY later write committed the delete that was just declined.
         """
         entry = self.entry(row)
         if entry is None:
             return
         identity = self._id_of(entry)
+        position = self._user.index(entry)
         self._user.remove(entry)
         if identity:
             self._db().forget(identity)
-        self._save_user()
+        if not self._save_user():
+            # PUT IT BACK - the palette, the mark, and the row in the
+            # connector's document, which is the one `remove_asset`
+            # learned had to be restored too.
+            self._user.insert(position, entry)
+            if identity:
+                db = self._db()
+                db.unforget(identity)
+                db.set({"assets": [{k: v for k, v in entry.items()
+                                    if k != "type"}]})
+            self._reset_entries()
+            debug.alert(
+                '"%s" was not deleted, because Amaze could not update '
+                "your colors.\n\n"
+                "Nothing was removed - the palette is exactly as it "
+                "was.\n\n"
+                "Close any other Amaze panel, or restart Houdini, then "
+                "try again." % (entry.get("name") or "That palette"),
+                key="colors-delete-refused")
+            return
         self._reset_entries()
 
     # ------------------------------------------------------------------
