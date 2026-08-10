@@ -697,16 +697,15 @@ class GridGestureMixin:
 
     @staticmethod
     def _drop_rule(panel, section, idx):
-        """This row's declared behaviour: the section's one DropRule,
-        or - for the File section, whose rows are different THINGS -
-        the rule its kind table declares for the row's KindRole."""
-        cls = sections.SECTION_INDEX.get(section)
-        if cls is None:
-            return None
-        if cls.DROP_BY_KIND:
-            kind = idx.data(panel.file_files_model.KindRole) or ""
-            return cls.DROP_BY_KIND.get(kind)
-        return cls.DROP
+        """This row's declared behaviour, by section KEY.
+
+        The resolution itself is `sections.drop_rule`, which the click
+        walker reads too - this had its own copy of it. What stays
+        here is only the key-to-class lookup, because the drag arrives
+        carrying a key and the click arrives carrying the section.
+        """
+        return sections.drop_rule(
+            sections.SECTION_INDEX.get(section), panel, idx)
 
     @staticmethod
     def _apply_drop_rule(rule, panel, idx, event) -> bool:

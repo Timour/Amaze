@@ -2283,6 +2283,30 @@ SECTION_CLASSES = (
 SECTION_INDEX = {cls.key: cls for cls in SECTION_CLASSES}
 
 
+def drop_rule(section, panel, index):
+    """The rule THIS ROW declares, or None.
+
+    A section declares one `DROP` for every row, unless its rows are
+    different THINGS - the File section - in which case it declares
+    `DROP_BY_KIND` and the row's KindRole picks. That sentence was
+    written twice: once in the drag walker
+    (`dragdrop_widgets._drop_rule`) and once inline in the click
+    walker (`panel.click_on_row`). Two readers of one declaration is
+    how the two doors end up disagreeing about the same tile, which is
+    the exact bug the click walker was built to end.
+
+    Here, beside the declarations it reads, so a section that gains a
+    third way of declaring changes one reader.
+    """
+    if section is None:
+        return None
+    by_kind = getattr(section, "DROP_BY_KIND", None)
+    if by_kind:
+        kind = index.data(panel.file_files_model.KindRole) or ""
+        return by_kind.get(kind)
+    return getattr(section, "DROP", None)
+
+
 def all_sections() -> tuple:
     """((key, label), ...) in tab order - the ONE source.
 

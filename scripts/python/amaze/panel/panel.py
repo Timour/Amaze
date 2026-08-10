@@ -4427,11 +4427,11 @@ class MatLibPanel(QtWidgets.QWidget):
         """
         if index is None or not index.isValid():
             return
-        rule = getattr(section, "DROP", None)
-        by_kind = getattr(section, "DROP_BY_KIND", None)
-        if by_kind:
-            kind = index.data(self.file_files_model.KindRole) or ""
-            rule = by_kind.get(kind)
+        # THE DRAG WALKER'S READER, not a second one. These four lines
+        # were written here and again in `dragdrop_widgets._drop_rule`,
+        # so the two doors read one declaration twice - the shape this
+        # walker exists to end.
+        rule = sections.drop_rule(section, self, index)
         if rule is None:
             self._cannot_load_here()
             return
