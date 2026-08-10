@@ -305,7 +305,7 @@ def write(path: str, name: str, background: str, size: int = CANVAS,
             "Your tile icon could not be saved.\n\n"
             "Nothing else has been lost - only this icon choice. The "
             "tile keeps the icon it had.\n\n"
-            "This happened because " + why,
+            "This happened because %s" % why,
             key="icons-not-saved")
         return False
     return True

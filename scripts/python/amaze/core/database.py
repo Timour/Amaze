@@ -1299,12 +1299,17 @@ class DatabaseConnector:
             # anyone whose synced folder had dropped looking for a
             # program that was not there.
             cause, why = hostos.why_failed(exc, full)
+            # ONE LITERAL WITH A PLACEHOLDER, not a `+` join. The
+            # message survey that builds the dialog document reads
+            # literals out of the AST, so a sentence assembled with `+`
+            # is invisible to it - measured 2026-08-11, when this and
+            # the tile-icon one both vanished from a 90-message pass.
             debug.alert(
-                "Could not save the library - " + why
-                + "\n\nNothing already saved has been lost. This change "
-                  "is still here in Amaze, and saving anything else "
-                  "writes it too - but it is NOT on disk yet, so it "
-                  "will not survive closing Houdini.",
+                "Could not save the library - %s\n\n"
+                "Nothing already saved has been lost. This change is "
+                "still here in Amaze, and saving anything else writes "
+                "it too - but it is NOT on disk yet, so it will not "
+                "survive closing Houdini." % why,
                 key="database-write-failed-%s" % cause)
             self._save_outcome = "write-failed-%s" % cause
             return False
