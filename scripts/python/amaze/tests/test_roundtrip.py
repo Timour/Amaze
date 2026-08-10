@@ -73,8 +73,10 @@ def _build_material(parent: hou.Node, name: str) -> hou.Node:
                 shader.parm(parm).set(value)
         return shader
 
-    builder, shader = nodes.build_karma_material(parent, name, produce)
-    return builder
+    # By NAME: the engine hands back its wired verdict as a third field
+    # (nodes.KarmaMaterial), and every helper that unpacked a bare pair
+    # had to be visited when it stopped being one.
+    return nodes.build_karma_material(parent, name, produce).builder
 
 
 def _shader_of(builder: hou.Node):

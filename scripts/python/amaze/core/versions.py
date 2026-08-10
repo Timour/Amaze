@@ -119,7 +119,17 @@ def _adopt_strays(preferences, mat_id: str, ledger: dict) -> None:
 
     The ledger is one JSON file, so a sync between two machines is
     last-write-wins: the row a losing machine wrote vanishes while its
-    ARCHIVE FILES arrive intact (writer-stemmed names cannot collide).
+    ARCHIVE FILES arrive intact - a stem already on disk is stepped
+    past at write time, so once the other machine's files have landed
+    the two cannot take the same name.
+
+    THE NARROWER CLAIM IS THE HONEST ONE. This used to say
+    writer-stemmed names cannot collide, which is false whenever both
+    machines belong to ONE artist: the writer is the artist's own
+    `version_author`, and the placeholder that makes two machines
+    differ is minted only when that preference is blank. Two machines
+    writing while both are offline still land on one name, because
+    nothing shared can allocate it.
     Reading the directory back into the ledger makes the files the
     truth - the same rule the whole store is built on - so a version
     can be lost to sync only if its files are, and losing the ledger
@@ -401,11 +411,34 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
     sources = source_paths or _base_paths(preferences, mat_id)
-    # The stem carries the WRITER, so two machines minting the same
-    # number offline still write different files - and the row records
-    # the stem it wrote, so readers never re-derive it.
+    # The stem carries the WRITER, and the row records the stem it
+    # wrote so readers never re-derive it.
+    #
+    # THE NUMBER IS ALLOCATED AGAINST THE FOLDER, NOT ONLY THE LEDGER.
+    # The writer is the artist's own `version_author`, so two machines
+    # belonging to ONE artist carry the SAME tag - the placeholder that
+    # makes two machines differ is minted only when the author is blank.
+    # The ledger is last-write-wins across a sync, so a machine whose
+    # row lost still computes the same next number, and with the same
+    # tag that is the same filename: one version's payload silently
+    # replaced by another's, which `_adopt_strays` cannot recover
+    # because the stem reads as already known.
+    #
+    # Stepping past a stem that is ALREADY ON DISK closes every case
+    # where the other machine's files have arrived, which is all of
+    # them once a sync completes. Two machines writing while both
+    # offline still land on one name; that is a property of having no
+    # shared allocator, and it is why the invariant in `_adopt_strays`
+    # is stated as the narrower thing it can honestly claim.
     tag = writer_tag(preferences)
     stem = _stem(tag, number)
+    while any(os.path.exists(path) for path
+              in _archive_paths(preferences, mat_id, stem).values()):
+        debug.event("versions", "version stem already on disk - taking "
+                                "the next number", mat_id=str(mat_id),
+                    stem=stem)
+        number += 1
+        stem = _stem(tag, number)
     if not _copy_set(sources,
                      _archive_paths(preferences, mat_id, stem)):
         return 0

@@ -434,9 +434,19 @@ def build_in_scene(record, source, resolution, destination, preferences,
     with hou.undos.disabler():
         scratch = hou.node("/obj").createNode("matnet")
     try:
-        builder, shader = nodes_mod.build_karma_material(scratch, name, produce)
+        builder, shader, wired = nodes_mod.build_karma_material(
+            scratch, name, produce)
         if shader is None:
             return (None, "Could not build a shading network for " + name)
+        if not wired:
+            # The engine's own verdict, said to the user rather than
+            # only to the log. The material is real and importable -
+            # refusing it would throw away work over something the
+            # artist can wire by hand - so this is a warning attached
+            # to a success, not a failure.
+            debug.note(
+                "\"%s\" imported, but its surface output is not wired, "
+                "so it renders black until it is connected." % name)
         moved = hou.moveNodesTo((builder,), destination)
         if not moved:
             return (None, "Could not move %s into %s"
@@ -505,10 +515,16 @@ def import_record(record, source, resolution, library, preferences,
         if error:
             return (False, error)
 
-        builder, shader = nodes_mod.build_karma_material(scratch, name, produce)
+        builder, shader, wired = nodes_mod.build_karma_material(
+            scratch, name, produce)
 
         if shader is None:
             return (False, "Could not build a shading network for " + name)
+        if not wired:
+            debug.note(
+                "\"%s\" was imported, but its surface output is not "
+                "wired, so it renders black until it is connected."
+                % name)
 
         # BY ID, never by position. add_asset stamps the node with its
         # library id, and its save can ADOPT another session's row -

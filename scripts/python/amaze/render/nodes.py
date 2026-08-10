@@ -5,6 +5,7 @@ Handles all Node Interaction with Houdini
 import json
 import os
 import re
+from typing import NamedTuple
 import hou
 import voptoolutils
 
@@ -642,6 +643,23 @@ def hda_fallbacks_needed(saved_items) -> bool:
     return False
 
 
+class KarmaMaterial(NamedTuple):
+    """What the Material Engine hands back, read by NAME.
+
+    `wired` is the engine's own verdict on its own output - False means
+    the material has a shader and no wired surface terminal, so it
+    renders black. It was computed, logged and dropped, which left
+    every caller holding a non-None shader and no way to tell.
+
+    Unpacks as three; the two-value form it replaced is why the callers
+    below all had to be visited when this became a named value.
+    """
+
+    builder: object
+    shader: object
+    wired: bool
+
+
 def build_karma_material(parent, name, produce):
     """THE Karma material engine - one funnel every input goes through.
 
@@ -676,7 +694,8 @@ def build_karma_material(parent, name, produce):
 
     builder.layoutChildren()
 
-    if shader is not None and not surface_terminal_wired(builder):
+    wired = shader is None or surface_terminal_wired(builder)
+    if not wired:
         # The check that would have caught the pitch-black bug on day one.
         debug.event(
             "karma", "material has no wired surface terminal",
@@ -685,7 +704,14 @@ def build_karma_material(parent, name, produce):
         )
         debug.note("WARNING - '%s' has no wired surface terminal and "
             "will render black (see karma-material-builder.md)" % name)
-    return builder, shader
+    # THE VERDICT TRAVELS WITH THE MATERIAL, and it is why this is a
+    # named value rather than a bare pair (overview.md ▸ A VALUE
+    # CARRIES ITS OWN NAME). The engine computed `wired` and then threw
+    # it away, so every caller had a non-None shader and no way to
+    # learn the material renders black: the Redshift conversion stored
+    # the asset and reported it fully converted, and the online import
+    # said the same.
+    return KarmaMaterial(builder, shader, wired)
 
 
 class NodeHandler:
@@ -2593,15 +2619,25 @@ class NodeHandler:
                 self.rewrite_cop_refs((copied[0],), path_map)
 
 
-            # ONE unit - see save_asset_pair. The interface comes from
-            # the LIVE node, the items from the staging copy.
+            # ONE unit - see save_asset_pair - and EVERY part of it from
+            # the staging copy, like the three sibling save paths.
+            #
+            # The interface and the builder sidecar used to come from
+            # the LIVE node while the items came from the copy, so the
+            # `op:` references on the CONTAINER's own promoted
+            # parameters were archived pointing at the save-time scene:
+            # `rewrite_cop_refs` fixes the copy, and the live node is
+            # deliberately never touched. A texture promoted to the
+            # builder's interface therefore came back on import
+            # pointing at a copnet that does not exist there, while the
+            # child-level ones resolved.
             self.save_asset_pair(
-                parms_file_name, file_name, node.asCode(),
+                parms_file_name, file_name, copied[0].asCode(),
                 lambda path: builder.saveItemsToFile(
                     copied, path,
                     save_hda_fallbacks=hda_fallbacks_needed(copied),
                 ),
-                builder_node=node, asset_id=str(asset_id),
+                builder_node=copied[0], asset_id=str(asset_id),
             )
         finally:
             # Runs even on failure so the temporary save copy never

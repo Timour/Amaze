@@ -2554,12 +2554,23 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 report_holder["report"] = report
                 return (shader, disp)
 
-            builder, mtlx_node = nodes.build_karma_material(
+            builder, mtlx_node, wired = nodes.build_karma_material(
                 scratch, mat.name, produce
             )
             report = report_holder.get("report")
             if mtlx_node is None:
                 return False, report
+            if not wired and report is not None:
+                # THE ENGINE'S VERDICT REACHES THE REPORT, through the
+                # channel the report already has. It is the only thing
+                # the user reads after a convert-all sweep, and it said
+                # fully converted, no skipped inputs over a material
+                # with no wired surface terminal - a black render
+                # reported as a clean conversion, because `is_clean()`
+                # asks about skips and nothing had skipped.
+                report.skip("the surface output is not wired, so this "
+                            "material renders black until it is "
+                            "connected by hand")
             saved = self.add_asset(
                 builder, ",".join(mat.categories), ",".join(mat.tags), False)
             # The scratch network is destroyed in the finally below, so

@@ -582,9 +582,16 @@ def generate_random_material(parent: hou.Node, rng=None):
     rng = rng or random.Random()
     spec, provenance = random_spec_with_provenance(rng)
     name = spec_name(spec, rng)
-    builder, shader = nodes.build_karma_material(
+    builder, shader, wired = nodes.build_karma_material(
         parent, name, spec_adapter(spec)
     )
+    if not wired:
+        # A GENERATED material that renders black is a defect in the
+        # generator, not in the user's input - so it is named against
+        # the spec that produced it, which is the only thing that can
+        # be used to reproduce it.
+        debug.event("generate", "generated material is not wired",
+                    name=name, fact_kind=spec.get("fact_kind", ""))
     if builder is not None:
         try:
             builder.setComment(provenance)
