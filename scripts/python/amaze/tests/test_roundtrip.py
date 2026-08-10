@@ -780,6 +780,85 @@ class TestInterfaceIsNeverExecuted(unittest.TestCase):
                                "the sidecar restored the parm but not its "
                                "value")
 
+    def test_a_promoted_RAMP_round_trips_through_its_components(self):
+        """A ramp promoted to the builder's interface is the ordinary
+        one-dial-for-the-material move, and it survives - by a route
+        worth pinning, because reading the code suggests otherwise.
+
+        `json.dumps` sits OUTSIDE the per-parm guard, and `hou.Ramp` is
+        not serialisable, so capture LOOKS one dialled ramp away from
+        raising `TypeError` past `save_asset_pair`. Measured 2026-08-10:
+        it is not. A ramp's container parm reports `isAtDefault()` True
+        even once dialled, so `capture_builder` never evaluates it; what
+        it walks are the backing components - `<name>1value`,
+        `<name>2pos`, `<name>2value` - which are Floats.
+
+        So this pins the round trip, not a refusal: the shape comes back
+        from the dialog script and the values from the components."""
+        staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(staging.destroy)
+        builder = staging.createNode("subnet")
+
+        group = builder.parmTemplateGroup()
+        group.append(hou.RampParmTemplate("amaze_ramp", "Ramp",
+                                          hou.rampParmType.Float))
+        builder.setParmTemplateGroup(group)
+        builder.parm("amaze_ramp").set(
+            hou.Ramp((hou.rampBasis.Linear, hou.rampBasis.Linear),
+                     (0.0, 1.0), (0.2, 0.9)))
+
+        captured = nodes.capture_builder(builder)          # must not raise
+        document = json.loads(captured)
+        self.assertIn(
+            "amaze_ramp", document["dialog_script"],
+            "the ramp's shape is not in the captured interface")
+        self.assertTrue(
+            [k for k in document["values"] if k.startswith("amaze_ramp")],
+            "no ramp component value was captured, so a dialled ramp "
+            "comes back at its default: %s" % sorted(document["values"]))
+
+        fresh = staging.createNode("subnet")
+        nodes.apply_builder(fresh, document)
+        restored = fresh.parm("amaze_ramp")
+        self.assertIsNotNone(restored,
+                             "the sidecar did not restore the ramp")
+        self.assertAlmostEqual(
+            0.9, restored.evalAsRamp().lookup(1.0), 5,
+            "the ramp came back at its default value")
+
+    def test_a_value_the_sidecar_cannot_serialise_costs_only_that_parm(self):
+        """The guard the measurement above says nothing reaches today.
+
+        `json.dumps` runs over the whole document AFTER the loop, so a
+        value it refuses would raise `TypeError` - which
+        `save_asset_pair` does not catch, three lines below a comment
+        saying a sidecar that cannot be built must not cost the asset.
+        No shipped parm type gets there; this pins the behaviour for
+        the one that eventually does."""
+        staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(staging.destroy)
+        builder = staging.createNode("subnet")
+        group = builder.parmTemplateGroup()
+        group.append(hou.FloatParmTemplate("amaze_keeps", "Keeps", 1,
+                                           default_value=(0.25,)))
+        builder.setParmTemplateGroup(group)
+        builder.parm("amaze_keeps").set(0.75)
+
+        from unittest.mock import patch
+
+        real_eval = hou.Parm.eval
+
+        def poisoned(self):
+            if self.name() == "amaze_keeps":
+                return object()          # nothing json can take
+            return real_eval(self)
+
+        with patch.object(hou.Parm, "eval", poisoned):
+            captured = nodes.capture_builder(builder)      # must not raise
+        self.assertNotIn(
+            "amaze_keeps", json.loads(captured)["values"],
+            "the unserialisable parm was captured anyway")
+
     def test_an_absent_sidecar_is_not_an_error(self):
         """Every asset saved before the format existed has none, and the
         loader degrades rather than refusing."""

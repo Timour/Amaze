@@ -292,8 +292,24 @@ def capture_builder(node) -> str:
             if parm.parmTemplate().type() == hou.parmTemplateType.String:
                 values[parm.name()] = {"str": parm.unexpandedString()}
             else:
-                values[parm.name()] = {"val": parm.eval()}
-        except hou.Error as exc:
+                value = parm.eval()
+                # SERIALISABLE AT CAPTURE, not at the dump below. That
+                # `json.dumps` sits outside this loop, so a value it
+                # refuses raises TypeError past save_asset_pair's
+                # (hou.Error, PathEscape, OSError) - costing the WHOLE
+                # asset, three lines under a comment promising a sidecar
+                # that cannot be built will not.
+                #
+                # Nothing shipped reaches it. Measured 2026-08-10: a
+                # promoted RAMP looks like the case and is not, because
+                # its container parm reports isAtDefault() True even
+                # once dialled and the components walked here are
+                # Floats. This makes the promise true for whatever parm
+                # type eventually does, at the cost of one dump per
+                # non-default parm on one container.
+                json.dumps(value)
+                values[parm.name()] = {"val": value}
+        except (hou.Error, TypeError, ValueError) as exc:
             debug.event("save", "parm could not be captured",
                         parm=parm.name(), error=str(exc))
     return json.dumps({
