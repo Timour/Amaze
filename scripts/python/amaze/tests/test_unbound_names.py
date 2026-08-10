@@ -25,16 +25,31 @@ general undefined-name linter would drown it in false positives.
 
 import ast
 import os
+import sys
 import unittest
 
 _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def _package_module_names() -> set:
-    """Every module name inside the amaze package - `ui_helpers`,
-    `hostos`, `debug`, and so on. Resolved from the tree rather than
-    listed, so a new module joins this gate by existing."""
-    names = set()
+def _watched_module_names() -> set:
+    """Every module name this gate will hold a file to: the amaze
+    package's own, plus the standard library's.
+
+    WIDENED 2026-08-10 to the stdlib. This was the project's own module
+    names alone, on the reasoning that a general undefined-name linter
+    would drown the real class in false positives - which is still
+    true, and `sys.stdlib_module_names` is not that. It is a fixed,
+    finite list of 290 names the interpreter ships, so asking whether a
+    file that says `shutil.rmtree(...)` has imported `shutil` is the
+    SAME question the gate already asks about `hostos`, with the same
+    answer available.
+
+    What earned it: `prefs_dialog.install_update` gained a
+    `shutil.rmtree` with no import. It is a Qt slot nothing exercises,
+    so the suite could not see it either - it would have raised on the
+    first click of a button shipped the same day.
+    """
+    names = set(sys.stdlib_module_names)
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for filename in files:
@@ -108,7 +123,7 @@ def _used_module_names(tree: ast.AST, package: set) -> dict:
 class NoModuleUsesAnUnboundSibling(unittest.TestCase):
 
     def test_every_referenced_module_is_imported(self):
-        package = _package_module_names()
+        package = _watched_module_names()
         # The gate is only meaningful if the tree resolved - an empty
         # set would pass every file without testing anything, which is
         # the vacuous-pin shape practice.md warns about.

@@ -278,6 +278,117 @@ class TheNetworkDoorTest(unittest.TestCase):
             "package would reach the network: %s" % module_level)
 
 
+class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
+    """The handler nothing exercised.
+
+    `install_update` is a Qt slot, so no behaviour test reached it and
+    the source guard could not see a MISSING import either until it
+    learned the stdlib - which is exactly how a `shutil.rmtree` with no
+    `import shutil` sat in a button shipped the same day. It would have
+    raised NameError on the first click.
+
+    Driven at the seam: the updater's two halves are stubbed, because
+    what is under test is the HANDLER - that it runs end to end, says
+    what happened, and puts the button away."""
+
+    def setUp(self):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6 import QtWidgets
+
+        self.app = (QtWidgets.QApplication.instance()
+                    or QtWidgets.QApplication([]))
+        self.dir = tempfile.mkdtemp(prefix="amaze_update_ui_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def _dialog(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def test_a_successful_install_reports_and_hides_the_button(self):
+        import hou
+        from unittest.mock import patch
+
+        from amaze.core import updater
+
+        install = os.path.join(self.dir, "install")
+        os.makedirs(install)
+        backup = os.path.join(self.dir, "install.backup")
+
+        dialog = self._dialog()
+        dialog._last_update = updater.Update(
+            updater.NEWER, version="9.9",
+            url="https://example.invalid/r.zip", sentence="newer")
+        dialog._btn_install.setVisible(True)
+
+        with patch.object(hou, "getenv", return_value=install), \
+                patch.object(updater, "fetch_and_stage",
+                             return_value=os.path.join(self.dir, "staged")), \
+                patch.object(updater, "apply_update", return_value=backup):
+            dialog.install_update()
+
+        text = dialog._lbl_update.text()
+        self.assertIn("9.9", text, "the sentence does not name the version")
+        self.assertIn("Restart", text,
+                      "nothing tells the user the new build is not live "
+                      "until Houdini restarts")
+        # isHidden(), never isVisible() - the same reading grid.py's
+        # visible_view() settled. This button lives on a QTabWidget page,
+        # and a page that is not the current tab is explicitly hidden, so
+        # isVisible() and isVisibleTo() answer False whatever the button
+        # was told. Proven here: the assert passed with setVisible(False)
+        # sabotaged out.
+        self.assertTrue(dialog._btn_install.isHidden(),
+                        "Install is still offered after installing")
+
+    def test_a_refused_install_shows_the_updaters_own_sentence(self):
+        import hou
+        from unittest.mock import patch
+
+        from amaze.core import updater
+
+        install = os.path.join(self.dir, "install")
+        os.makedirs(install, exist_ok=True)
+        dialog = self._dialog()
+        dialog._last_update = updater.Update(
+            updater.NEWER, version="9.9",
+            url="https://example.invalid/r.zip", sentence="newer")
+
+        with patch.object(hou, "getenv", return_value=install), \
+                patch.object(updater, "fetch_and_stage",
+                             side_effect=OSError(
+                                 "the downloaded file is not a zip "
+                                 "archive. Nothing has been changed.")):
+            dialog.install_update()
+
+        self.assertIn("not a zip archive", dialog._lbl_update.text(),
+                      "the updater's finished sentence was replaced or "
+                      "swallowed")
+
+    def test_an_unknown_install_location_changes_nothing(self):
+        import hou
+        from unittest.mock import patch
+
+        from amaze.core import updater
+
+        dialog = self._dialog()
+        dialog._last_update = updater.Update(
+            updater.NEWER, version="9.9",
+            url="https://example.invalid/r.zip", sentence="newer")
+
+        with patch.object(hou, "getenv", return_value=""), \
+                patch.object(updater, "fetch_and_stage") as fetch:
+            dialog.install_update()
+
+        fetch.assert_not_called()
+        self.assertIn("cannot tell where it is installed",
+                      dialog._lbl_update.text())
+
+
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
     """The middle of the update, which shipped missing.
 
