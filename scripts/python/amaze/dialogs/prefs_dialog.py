@@ -14,6 +14,7 @@ re-propagates after close (see MatLibPanel.show_prefs).
 """
 
 import os
+import shutil
 
 import hou
 
@@ -653,6 +654,19 @@ class PrefsDialog(QtWidgets.QDialog):
         self._lbl_update.setWordWrap(True)
         self._lbl_update.setVisible(False)
         form.addRow("", self._lbl_update)
+        # THE SECOND HALF, and it appears only when there is something
+        # to install. The check and the install are two presses on
+        # purpose: the first changes nothing and is safe to press out of
+        # curiosity, and the second replaces the install, so it asks.
+        self._btn_install = QtWidgets.QPushButton("Install Update")
+        self._btn_install.setToolTip(ui_helpers.tooltip_text(
+            "Download the new release and put it in place. Your library "
+            "and your settings are not touched, and Houdini must be "
+            "restarted afterwards."
+        ))
+        self._btn_install.clicked.connect(self.install_update)
+        self._btn_install.setVisible(False)
+        form.addRow("", self._btn_install)
         self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
@@ -1017,6 +1031,74 @@ class PrefsDialog(QtWidgets.QDialog):
             self._btn_update.setText("Check for Updates")
         self._lbl_update.setText(result.sentence)
         self._lbl_update.setVisible(True)
+        # THE INSTALL BUTTON APPEARS ONLY WITH SOMETHING TO INSTALL, and
+        # only when the release actually named a file to fetch - a
+        # release with no archive is offered nowhere rather than offered
+        # and then failing (research.md ▸ GitHub's release feed: assets
+        # is empty on plenty of real releases).
+        self._last_update = result
+        self._btn_install.setVisible(bool(result) and bool(result.url))
+
+    def install_update(self) -> None:
+        """Fetch the release the last check found and put it in place.
+
+        NO CONFIRMATION AND NO POPUP. The user pressed Check, read a
+        sentence, and then pressed a button whose label IS the outcome;
+        a third interruption would let them avoid nothing
+        (practice.md ▸ *Dialogs are a bill you send the user*). The
+        answer goes in the same label the check writes to, which is
+        where they are already looking - the pattern this tab's own
+        comment sets.
+
+        The install is replaced, never the library and never the
+        settings: both live outside it. The previous install is kept
+        beside the new one, so a bad release is undone by moving it
+        back.
+        """
+        from amaze.core import updater
+
+        result = getattr(self, "_last_update", None)
+        if not result or not getattr(result, "url", ""):
+            return
+        install = hou.getenv("AMAZE") or ""
+        if not install or not os.path.isdir(install):
+            self._lbl_update.setText(
+                "Amaze cannot tell where it is installed, so it cannot "
+                "replace itself. Nothing has been changed.")
+            return
+
+        workspace = os.path.join(hostos.cache_root(), "updates")
+        self._btn_install.setEnabled(False)
+        self._btn_install.setText("Installing...")
+        QtWidgets.QApplication.processEvents(
+            QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+        try:
+            staged = updater.fetch_and_stage(result.url, workspace)
+            backup = updater.apply_update(staged, install)
+        except OSError as exc:
+            # The updater raises with a finished sentence, ending in
+            # what did or did not change - shown as-is rather than
+            # wrapped in a second one.
+            self._lbl_update.setText(str(exc))
+            return
+        except Exception as exc:                              # noqa: BLE001
+            debug.exception("update install", exc)
+            self._lbl_update.setText(
+                "The update could not be installed (%s). Nothing has "
+                "been changed." % exc)
+            return
+        finally:
+            self._btn_install.setEnabled(True)
+            self._btn_install.setText("Install Update")
+            shutil.rmtree(workspace, ignore_errors=True)
+
+        self._btn_install.setVisible(False)
+        self._lbl_update.setText(
+            "Amaze %s is installed. Restart Houdini to run it - this "
+            "session keeps the old one in memory. Your library and your "
+            "settings were not touched, and the previous version is "
+            "beside the new one at %s."
+            % (result.version, backup))
 
     def set_debug_mode(self, checked: bool) -> None:
         """Takes effect immediately - the engine is reconfigured here as

@@ -158,6 +158,112 @@ def download(url: str, into: str) -> str:
     return target
 
 
+#: What the INSTALL holds, and therefore what a staged update must
+#: contain. A release zip is the whole repo - docs, tools, LICENSE,
+#: README - and the install is these four entries of it, the same four
+#: `tools/sync-install.sh` places. Renaming the archive's own top-level
+#: folder into place would put the repo where the install goes.
+#:
+#: Stated here in Python and there in shell; `test_updater` reads the
+#: shell script and fails when the two drift.
+INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")
+
+
+def _archive_root(names) -> str:
+    """The single top-level folder a GitHub zipball wraps everything in
+    (`<owner>-<repo>-<sha>/`), or "" when the archive is already flat.
+
+    Read from the member names rather than assumed, because a zip
+    somebody attached to the release by hand may have either shape.
+    """
+    tops = {name.split("/", 1)[0] for name in names if name.strip("/")}
+    return tops.pop() if len(tops) == 1 else ""
+
+
+def stage_release(archive: str, into: str) -> str:
+    """Extract `archive` and build the directory `apply_update` swaps in.
+
+    Returns the staged path. Raises OSError naming what is wrong when
+    the archive is not an Amaze release, so the caller has a sentence
+    to show rather than a traceback.
+
+    MEMBERS ARE CONTAINED. This is a file fetched from a URL a remote
+    catalogue named, so a member called `../../../.bashrc` would
+    otherwise be written wherever it points - the same rule the online
+    import path already follows through `hostos.contained_join`.
+    """
+    import zipfile
+
+    from amaze.helpers import hostos
+
+    if os.path.isdir(into):
+        shutil.rmtree(into, ignore_errors=True)
+    unpacked = into + ".unpacked"
+    shutil.rmtree(unpacked, ignore_errors=True)
+    os.makedirs(unpacked, exist_ok=True)
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            names = bundle.namelist()
+            for name in names:
+                # Refused rather than skipped: a release that cannot be
+                # unpacked whole is not one to install half of.
+                hostos.contained_join(unpacked, name)
+            bundle.extractall(unpacked)
+    except zipfile.BadZipFile as exc:
+        shutil.rmtree(unpacked, ignore_errors=True)
+        raise OSError(
+            "the downloaded file is not a zip archive (%s). Nothing has "
+            "been changed." % exc)
+    except hostos.PathEscape as exc:
+        shutil.rmtree(unpacked, ignore_errors=True)
+        raise OSError(
+            "the release archive holds a file that would be written "
+            "outside the update folder (%s). Nothing has been changed."
+            % exc)
+
+    root = os.path.join(unpacked, _archive_root(names))
+    missing = [entry for entry in INSTALL_ENTRIES
+               if not os.path.exists(os.path.join(root, entry))]
+    if missing:
+        shutil.rmtree(unpacked, ignore_errors=True)
+        raise OSError(
+            "the release is missing %s, so it is not an Amaze install. "
+            "Nothing has been changed." % ", ".join(missing))
+
+    os.makedirs(into, exist_ok=True)
+    for entry in INSTALL_ENTRIES:
+        source = os.path.join(root, entry)
+        target = os.path.join(into, entry)
+        if os.path.isdir(source):
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
+    shutil.rmtree(unpacked, ignore_errors=True)
+    debug.event("updater", "release staged", staged=into,
+                entries=len(INSTALL_ENTRIES))
+    return into
+
+
+def fetch_and_stage(url: str, workspace: str) -> str:
+    """Download a release and stage it, in one call.
+
+    The two halves shipped with nothing between them for months - a zip
+    on one side, a function demanding a directory on the other - which
+    is how a flow with no entry point survived: nothing ever tried to
+    run it end to end.
+    """
+    archive = download(url, workspace)
+    try:
+        return stage_release(archive, os.path.join(workspace, "staged"))
+    finally:
+        # The archive is a means, not a result; keeping it would leave a
+        # zip the size of the repo in the cache after every update.
+        try:
+            os.remove(archive)
+        except OSError:
+            pass
+
+
 def apply_update(staged: str, install: str) -> str:
     """Put `staged` where `install` is, keeping the old one as .backup.
 

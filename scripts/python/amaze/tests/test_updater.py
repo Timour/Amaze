@@ -278,5 +278,140 @@ class TheNetworkDoorTest(unittest.TestCase):
             "package would reach the network: %s" % module_level)
 
 
+class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
+    """The middle of the update, which shipped missing.
+
+    `download` writes a zip and `apply_update` demands a directory, and
+    for months nothing sat between them - so the flow had no entry
+    point and nobody noticed, because nothing ever ran it end to end.
+
+    A release zip is the whole REPO. The install is four entries of it,
+    the same four `sync-install.sh` places, so staging is a real step
+    rather than a rename: putting the archive's own top folder where
+    the install goes would install `docs/`, `tools/` and `LICENSE` over
+    somebody's Houdini package."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_update_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def _release_zip(self, root="owner-repo-abc1234", extras=True,
+                     omit=()):
+        """A zip shaped like GitHub's zipball for a tag, whose single
+        top-level folder is `<owner>-<repo>-<sha>`. The SHAPE is what
+        this fixture is about, so the folder is named generically."""
+        import zipfile
+
+        path = os.path.join(self.dir, "release.zip")
+        # A prefix, not a format slot: with root="" the member names
+        # must stay RELATIVE. `"%s/%s" % ("", entry)` writes
+        # `/scripts/...`, an absolute path, which the containment check
+        # rightly refuses - and would have made the flat-archive case
+        # look like a product bug.
+        prefix = (root + "/") if root else ""
+        with zipfile.ZipFile(path, "w") as bundle:
+            for entry in updater.INSTALL_ENTRIES:
+                if entry in omit:
+                    continue
+                if entry.endswith(".xml"):
+                    bundle.writestr(prefix + entry, "<menu/>")
+                else:
+                    bundle.writestr(prefix + entry + "/marker.txt",
+                                    "from the release")
+            if extras:
+                bundle.writestr(prefix + "LICENSE", "GPLv3")
+                bundle.writestr(prefix + "docs/architecture/overview.md", "#")
+                bundle.writestr(prefix + "tools/sync-install.sh", "#!/bin/bash")
+        return path
+
+    def test_the_staged_tree_is_the_install_not_the_repo(self):
+        staged = updater.stage_release(self._release_zip(),
+                                       os.path.join(self.dir, "staged"))
+        self.assertEqual(sorted(updater.INSTALL_ENTRIES),
+                         sorted(os.listdir(staged)),
+                         "the staged tree is not what the install holds")
+        self.assertTrue(
+            os.path.exists(os.path.join(staged, "scripts", "marker.txt")),
+            "the staged tree did not carry the release's own files")
+
+    def test_a_release_missing_an_install_entry_is_refused(self):
+        with self.assertRaises(OSError) as caught:
+            updater.stage_release(
+                self._release_zip(omit=("toolbar",)),
+                os.path.join(self.dir, "staged"))
+        self.assertIn("toolbar", str(caught.exception))
+        self.assertIn("Nothing has been changed", str(caught.exception))
+
+    def test_a_member_that_escapes_the_staging_folder_is_refused(self):
+        """The archive comes from a URL the release feed named, so a
+        member called `../../x` writes wherever it points."""
+        import zipfile
+
+        path = os.path.join(self.dir, "evil.zip")
+        with zipfile.ZipFile(path, "w") as bundle:
+            bundle.writestr("../../escaped.txt", "outside")
+        with self.assertRaises(OSError) as caught:
+            updater.stage_release(path, os.path.join(self.dir, "staged"))
+        self.assertIn("outside the update folder", str(caught.exception))
+        self.assertFalse(
+            os.path.exists(os.path.join(self.dir, "escaped.txt")),
+            "the escaping member was written before the refusal")
+
+    def test_a_file_that_is_not_a_zip_is_refused_with_a_sentence(self):
+        path = os.path.join(self.dir, "captive-portal.zip")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("<html>sign in to the wifi</html>")
+        with self.assertRaises(OSError) as caught:
+            updater.stage_release(path, os.path.join(self.dir, "staged"))
+        self.assertIn("not a zip archive", str(caught.exception))
+
+    def test_a_flat_archive_works_too(self):
+        """An uploaded release asset need not wrap itself in a folder;
+        only GitHub's generated zipball does."""
+        staged = updater.stage_release(
+            self._release_zip(root="", extras=False),
+            os.path.join(self.dir, "staged"))
+        self.assertEqual(sorted(updater.INSTALL_ENTRIES),
+                         sorted(os.listdir(staged)))
+
+    def test_the_staged_tree_swaps_in_and_the_old_one_is_kept(self):
+        """End to end, which is the thing that had never run."""
+        install = os.path.join(self.dir, "install")
+        os.makedirs(os.path.join(install, "scripts"))
+        with open(os.path.join(install, "scripts", "old.txt"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("the version being replaced")
+
+        staged = updater.stage_release(self._release_zip(),
+                                       os.path.join(self.dir, "staged"))
+        backup = updater.apply_update(staged, install)
+
+        self.assertTrue(
+            os.path.exists(os.path.join(install, "scripts", "marker.txt")),
+            "the release did not land in the install")
+        self.assertTrue(
+            os.path.exists(os.path.join(backup, "scripts", "old.txt")),
+            "the previous install was not kept, so a bad release cannot "
+            "be undone")
+
+    def test_the_install_entries_match_the_ship_script(self):
+        """Two homes for one list, so a source-derived guard rather than
+        a promise: `sync-install.sh` is what actually builds an install,
+        and this list is what an update writes into one."""
+        # Five dirnames to the repo root, the spelling test_keyed_store
+        # already uses to read tools/library-audit.py.
+        root = os.path.dirname(os.path.dirname(os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+        script = os.path.join(root, "tools", "sync-install.sh")
+        with open(script, encoding="utf-8") as handle:
+            text = handle.read()
+        for entry in updater.INSTALL_ENTRIES:
+            self.assertIn(
+                '"$install/%s"' % entry, text,
+                "%s is staged by the updater and not placed by "
+                "sync-install.sh - the two disagree about what an "
+                "install is" % entry)
+
+
 if __name__ == "__main__":
     unittest.main()
