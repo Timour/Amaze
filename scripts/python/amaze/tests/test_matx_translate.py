@@ -173,13 +173,38 @@ class OnlyHttpsIsFetched(unittest.TestCase):
         """The GPUOpen preview endpoint is a documented 302, so
         redirects are the normal path here - and the stock handler
         follows http and ftp whatever the original scheme was."""
+        import email.message
+        import urllib.request
         from amaze.core import matx_sources
+
         handler = matx_sources._HttpsOnlyRedirects()
+        # A REAL request and headers, so that removing the guard lets
+        # the stock handler run and return a Request - which fails this
+        # assertion cleanly. Passing None made the sabotage ERROR inside
+        # urllib instead, which reads as a broken test rather than an
+        # unguarded redirect.
+        req = urllib.request.Request("https://example.invalid/a")
         self.assertIsNone(
             handler.redirect_request(
-                None, None, 302, "Found", {},
+                req, None, 302, "Found", email.message.Message(),
                 "http://example.invalid/package.zip"),
             "a 302 walked the download down to plain http")
+
+    def test_a_redirect_to_https_is_still_followed(self):
+        """The accept path: the GPUOpen preview endpoint IS a 302, so a
+        handler that refused every redirect would break the normal
+        route rather than harden it."""
+        import email.message
+        import urllib.request
+        from amaze.core import matx_sources
+
+        handler = matx_sources._HttpsOnlyRedirects()
+        req = urllib.request.Request("https://example.invalid/a")
+        self.assertIsNotNone(
+            handler.redirect_request(
+                req, None, 302, "Found", email.message.Message(),
+                "https://example.invalid/package.zip"),
+            "an ordinary https redirect was refused")
 
 
 if __name__ == "__main__":
