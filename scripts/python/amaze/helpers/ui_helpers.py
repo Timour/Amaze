@@ -72,6 +72,68 @@ def name_tag_pixmap(name: str) -> QtGui.QPixmap:
     return label.grab()
 
 
+#: Rendered ui/ SVGs, keyed by (name, side). A stored False means
+#: tried and failed, so a missing asset is not re-rendered every batch.
+_svg_image_cache: dict = {}
+
+
+def svg_image(name: str, side: int = 512):
+    """A ui/ SVG rendered once as a square QImage, or None.
+
+    ONE OWNER. This was written twice - `MaterialLibrary`'s tile
+    placeholder and `scene_captures.placeholder_image` - as the same
+    render into the same transparent 512x512 ARGB image behind the same
+    kind of cache. Only the path lookup differed, and that difference
+    was a defect rather than a choice: the library copy hand-built
+    `$AMAZE + "/scripts/python/amaze/ui/"`, the one place in the
+    package that did not go through `ui_asset`, so with $AMAZE unset it
+    formed an absolute path from nothing, found no file, and drew no
+    placeholder without saying why. `ui_asset` has the module-relative
+    fallback for exactly that case.
+    """
+    key = (name, side)
+    cached = _svg_image_cache.get(key)
+    if cached is None:
+        image = None
+        path = ui_asset(name)
+        try:
+            if os.path.exists(path):
+                from PySide6 import QtSvg
+
+                renderer = QtSvg.QSvgRenderer(path)
+                if renderer.isValid():
+                    img = QtGui.QImage(
+                        side, side, QtGui.QImage.Format.Format_ARGB32)
+                    img.fill(QtCore.Qt.GlobalColor.transparent)
+                    painter = QtGui.QPainter(img)
+                    renderer.render(painter)
+                    painter.end()
+                    image = img
+            else:
+                debug.event("ui", "ui asset missing", name=name, path=path)
+        except Exception as exc:                          # noqa: BLE001
+            # event, not note: these are shipped SVGs, whatever wanted
+            # one still draws without it, and there is nothing a user
+            # could do about it.
+            debug.event("ui", "ui asset not rendered",
+                        name=name, error=str(exc))
+        cached = image if image is not None else False
+        _svg_image_cache[key] = cached
+    return cached or None
+
+
+def forget_svg_images() -> None:
+    """Drop the rendered-SVG cache - the test-isolation seam.
+
+    Named, like `notes.forget_notes` and `tile_icons.forget_overrides`,
+    rather than left as a module dict for a test to reach into and
+    `.clear()`. Five tests did exactly that to the two caches this
+    replaced, so moving the cache broke them: a private name that tests
+    poke is a contract without a signature.
+    """
+    _svg_image_cache.clear()
+
+
 def ui_asset(name: str) -> str:
     """The absolute path of a ui/ asset.
 

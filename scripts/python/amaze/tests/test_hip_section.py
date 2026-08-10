@@ -32,7 +32,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.core import file_library, scene_captures, thumbnails  # noqa: E402
-from amaze.helpers import hostos  # noqa: E402
+from amaze.helpers import hostos, ui_helpers  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401
 
@@ -467,8 +467,8 @@ class PlaceholderTest(unittest.TestCase):
         real = scene_captures.thumb_dir
         self.addCleanup(setattr, scene_captures, "thumb_dir", real)
         scene_captures.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
-        scene_captures._placeholder.clear()
-        self.addCleanup(scene_captures._placeholder.clear)
+        ui_helpers.forget_svg_images()
+        self.addCleanup(ui_helpers.forget_svg_images)
 
     def test_an_uncaptured_scene_gets_the_placeholder(self):
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))
@@ -553,8 +553,8 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         real = scene_captures.thumb_dir
         self.addCleanup(setattr, scene_captures, "thumb_dir", real)
         scene_captures.thumb_dir = lambda: os.path.join(self.tmp.dir, "store")
-        scene_captures._placeholder.clear()
-        self.addCleanup(scene_captures._placeholder.clear)
+        ui_helpers.forget_svg_images()
+        self.addCleanup(ui_helpers.forget_svg_images)
 
     def _stats_of_the_capture(self):
         """Stats aimed at THIS scene's PNG slot.

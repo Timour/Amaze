@@ -242,8 +242,8 @@ def _record_manifest(hip_path: str, png: str) -> None:
 
 # --------------------------------------------------------- placeholder
 
-#: One rasterisation, reused for every un-captured row.
-_placeholder = globals().get("_placeholder", {})
+# The one rasterisation this kept lives in `ui_helpers.svg_image` now,
+# with the render it belonged to.
 
 
 def placeholder_image():
@@ -253,30 +253,14 @@ def placeholder_image():
     cannot, so the placeholder is not a "loading" state that will
     resolve on its own - it is the resting state until someone presses
     Capture. It therefore has to look deliberate rather than broken.
+
+    The render and its cache are `ui_helpers.svg_image`, which the
+    material library had a second copy of. This function stays because
+    the CONCEPT is this section's - which SVG stands for a scene with
+    no capture, and why it is a resting state - and that is not
+    something a generic renderer knows.
     """
-    cached = _placeholder.get("image")
-    if cached is None:
-        image = None
-        try:
-            path = ui_helpers.ui_asset("icon_hip.svg")
-            if os.path.exists(path):
-                from PySide6 import QtGui, QtSvg
-                renderer = QtSvg.QSvgRenderer(path)
-                if renderer.isValid():
-                    img = QtGui.QImage(
-                        512, 512, QtGui.QImage.Format.Format_ARGB32)
-                    img.fill(QtCore.Qt.GlobalColor.transparent)
-                    painter = QtGui.QPainter(img)
-                    renderer.render(painter)
-                    painter.end()
-                    image = img
-            else:
-                debug.event("hip", "placeholder missing", path=path)
-        except Exception as exc:                         # noqa: BLE001
-            debug.event("hip", "placeholder failed", error=str(exc))
-        cached = image if image is not None else False
-        _placeholder["image"] = cached
-    return cached or None
+    return ui_helpers.svg_image("icon_hip.svg")
 
 
 # ------------------------------------------------- which scene is open

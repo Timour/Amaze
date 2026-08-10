@@ -383,45 +383,25 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
                 spec["name"], spec["bg"], spec["ink"],
                 tile_icons.stroke_for(self.preferences))
 
-    #: Shared, lazily-rendered tile placeholders (designed SVG assets in
-    #: ui/) keyed by filename - one QImage per design reused by every
-    #: row in every library that wants it, so the delegate's
-    #: scaled-pixmap cache holds exactly one entry each. A stored False
-    #: means tried and failed (don't retry every batch).
-    _placeholder_cache: dict = {}
+    # The placeholder cache moved with the render, into
+    # `ui_helpers.svg_image` - one QImage per design, reused by every
+    # row in every library that wants it, and now by the scene section
+    # too instead of its own second dict.
 
     @classmethod
     def _placeholder_image(cls, svg_name: str):
-        """One of ui/'s SVGs rendered once as a tile-sized image."""
-        cached = MaterialLibrary._placeholder_cache.get(svg_name)
-        if cached is None:
-            image = None
-            try:
-                path = (hou.getenv("AMAZE") or "") + (
-                    "/scripts/python/amaze/ui/" + svg_name
-                )
-                if os.path.exists(path):
-                    from PySide6 import QtSvg
+        """One of ui/'s SVGs rendered once as a tile-sized image.
 
-                    renderer = QtSvg.QSvgRenderer(path)
-                    if renderer.isValid():
-                        img = QtGui.QImage(
-                            512, 512, QtGui.QImage.Format.Format_ARGB32
-                        )
-                        img.fill(QtCore.Qt.GlobalColor.transparent)
-                        painter = QtGui.QPainter(img)
-                        renderer.render(painter)
-                        painter.end()
-                        image = img
-            except Exception as exc:
-                # event, not note: the placeholder is a shipped SVG, the
-                # tile still draws without it, and there is nothing a
-                # user could do - so this is developer detail only.
-                debug.event("library", "tile placeholder not loaded",
-                            svg=svg_name, error=str(exc))
-            cached = image if image is not None else False
-            MaterialLibrary._placeholder_cache[svg_name] = cached
-        return cached or None
+        The rendering and the cache moved to `ui_helpers.svg_image`,
+        which `scene_captures` had written a second copy of. The path
+        went with them, and that is the part that mattered: this built
+        `$AMAZE + "/scripts/python/amaze/ui/"` by hand rather than
+        through `ui_asset`, so with $AMAZE unset it looked for the file
+        at an absolute path formed from nothing and drew no
+        placeholder. The name stays because the subclasses call it.
+        """
+        from amaze.helpers import ui_helpers
+        return ui_helpers.svg_image(svg_name)
 
     def _missing_thumb_image(self, row: int = -1):
         """What a row with no thumbnail file shows. The row is passed
