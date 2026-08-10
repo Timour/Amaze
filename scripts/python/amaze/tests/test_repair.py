@@ -554,6 +554,45 @@ class AddingUnlistedFilesBackTest(_Case):
         choices, actions = repair._choices(findings, may_change=True)
         self.assertNotIn("reattach", actions)
 
+    def test_a_COP_companion_is_not_the_material_half_of_a_pair(self):
+        """`asset_id_for_file` strips the `_cop` tail to get the id, and
+        the halves test then reads the extension off the ORIGINAL name -
+        so `X_cop.mat` counted as X's `.mat`. With the real `X.mat`
+        lost, Add Back mints a row whose material file does not exist:
+        the tile-that-cannot-open its own docstring says must never be
+        invented, and the next Clean Library reports it as a
+        missing-file row forever.
+
+        The identical suffix-vs-kind collision `library.py` records
+        having already fixed once in `_hold_pre_edit_files`."""
+        self._cops([])
+        for name, body in (("PAIRCOP1_cop.mat", "the companion\n"),
+                           ("PAIRCOP1.interface", "the interface\n")):
+            with open(os.path.join(self.mat_dir, name), "w",
+                      encoding="utf-8") as handle:
+                handle.write(body)
+
+        findings = self._survey()
+        self.assertEqual(
+            [], repair._complete_pairs(findings),
+            "a COP companion was counted as the material half, so Add "
+            "Back would write a row with no .mat behind it")
+        choices, actions = repair._choices(findings, may_change=True)
+        self.assertNotIn("reattach", actions)
+
+    def test_a_real_pair_beside_a_companion_is_still_offered(self):
+        """The accept path: a genuine pair that HAPPENS to have a COP
+        companion beside it must still be reattachable, or the fix
+        removes recovery from the assets most worth recovering."""
+        self._cops([])
+        for name in ("PAIRFULL1.mat", "PAIRFULL1.interface",
+                     "PAIRFULL1_cop.mat"):
+            with open(os.path.join(self.mat_dir, name), "w",
+                      encoding="utf-8") as handle:
+                handle.write("owned by PAIRFULL1\n")
+        self.assertEqual(["PAIRFULL1"],
+                         repair._complete_pairs(self._survey()))
+
     def test_it_refuses_while_a_list_cannot_be_read(self):
         self._cops([])
         self._pair()
@@ -1540,6 +1579,43 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertNotIn(
             "Toolbox", rebuilt["categories"],
             "a category that belongs to Code came with it")
+
+    def test_the_rebuilt_index_carries_this_builds_stamps(self):
+        """The stamps a rebuild reads are written by THIS build, so its
+        rows are at the current schema - and the document said version 1
+        and carried no `format` at all.
+
+        The version is benign only while both migration steps happen to
+        be no-ops on already-migrated rows, and Versions is the next
+        SCHEMA_VERSION bump. The missing format is not benign now: it is
+        the stamp that makes an older build open the library read-only
+        and point at the updater, so a rebuilt library invited exactly
+        the write the stamp exists to stop."""
+        import json as json_mod
+        from amaze import branding
+
+        for name in ("library.json", "library.json.bak-1",
+                     "library.json.bak-2", "library.json.bak-3",
+                     "library.json.bak-first"):
+            path = os.path.join(self.prefs.dir, name)
+            if os.path.exists(path):
+                os.remove(path)
+
+        ok, sentence = repair.repair_index(self.prefs.dir,
+                                           self.prefs.asset_dir)
+        self.assertTrue(ok, sentence)
+        with open(os.path.join(self.prefs.dir, "library.json"),
+                  encoding="utf-8") as handle:
+            document = json_mod.load(handle)
+
+        self.assertEqual(
+            database.SCHEMA_VERSION, document.get("version"),
+            "the rebuilt list under-claims its schema, so every build "
+            "runs the whole migration chain over rows already at it")
+        self.assertEqual(
+            branding.LIBRARY_FORMAT, document.get("format"),
+            "the rebuilt list carries no write-protection stamp, so a "
+            "build that does not know this format writes it anyway")
 
     def test_the_index_can_be_rebuilt_after_it_is_deleted(self):
         before = {str(a.mat_id): a.get_as_dict() for a in self.model.assets}

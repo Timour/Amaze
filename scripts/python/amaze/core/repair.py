@@ -58,6 +58,7 @@ import os
 
 import hou
 
+from amaze import branding
 from amaze.core import database, debug, material
 from amaze.core.library import STAMP_SUFFIX
 from amaze.helpers import hostos, restore as restore_lib
@@ -510,8 +511,17 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
                        "were found")
     try:
         hostos.snapshot_before_write(target)
+        # THE STAMPS THIS REBUILDS FROM ARE WRITTEN BY THIS BUILD, so
+        # the rows are at the current schema and the document must say
+        # so. A hardcoded 1 under-claimed it - benign only while both
+        # migration steps happen to be no-ops on already-migrated rows,
+        # and Versions is the next SCHEMA_VERSION bump. And omitting
+        # `format` dropped the write-protection stamp entirely, so a
+        # build with an older LIBRARY_FORMAT opened the rebuilt library
+        # read-WRITE instead of being told to update.
         hostos.write_json_atomic(target, {
-            "version": 1,
+            "version": database.SCHEMA_VERSION,
+            "format": branding.LIBRARY_FORMAT,
             "assets": document["assets"],
             "categories": document["categories"],
             "tags": document["tags"],
@@ -949,6 +959,15 @@ def _complete_pairs(findings: dict) -> list:
         asset_id = database.asset_id_for_file(
             name, (".mat", ".interface"), "_cop")
         if not asset_id:
+            continue
+        # THE COMPANION IS NOT A HALF. `asset_id_for_file` strips the
+        # `_cop` tail to answer WHICH asset owns the file, and the
+        # extension alone cannot tell `X.mat` from `X_cop.mat` - so a
+        # COP companion counted as X's material half, and with the real
+        # `X.mat` lost Add Back minted a row whose material file does
+        # not exist. The same suffix-vs-kind collision library.py
+        # records having fixed once in `_hold_pre_edit_files`.
+        if os.path.splitext(name)[0] != asset_id:
             continue
         halves.setdefault(asset_id, set()).add(
             os.path.splitext(name)[1].lower())
