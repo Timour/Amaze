@@ -122,7 +122,18 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         # condition. tile_icons keeps the one alert that is about the
         # user's own action rather than about the file.
         os.path.join("core", "tile_icons.py"): ("icons-not-saved",),
-        os.path.join("core", "notes.py"): ("notes-not-saved",),
+        # RE-KEYED 2026-08-10, in the same change that moved it.
+        # `notes.py` raised `notes-not-saved` for a DENIED write and
+        # `tile_icons.py` had the same ten lines with two words
+        # changed, while the other two stores had no such report at
+        # all. It is one `denied_alert` per store now, declared with
+        # the store and raised by `_commit`, so no literal remains to
+        # grep for - the key carries the filename and the CAUSE. Left
+        # pointing at `notes.py` this entry goes red for the move;
+        # dropping it without the replacement below would be the dead
+        # cover this list exists to stop, so the condition is asserted
+        # on the Spec instead (test_the_side_tables_declare_theirs).
+        os.path.join("core", "notes.py"): (),
         os.path.join("core", "keyed_store.py"): (),
         # RE-KEYED 2026-08-09, in the same change that moved it.
         # `_preserve_unreadable` discovers this condition, and it left
@@ -173,6 +184,26 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
             "key=spec.alert_key", source,
             "the engine raises the stores' alerts some other way, so "
             "the declared keys are decoration")
+
+        # THE DENIED-WRITE CONDITION, which left `notes.py` and
+        # `tile_icons.py` on 2026-08-10. It is per-store now, and NOT
+        # every store declares one: speaking is worth it only where the
+        # failure is invisible, so the two whose sidebar row simply
+        # never appears stay silent on purpose. The whole SET is
+        # asserted rather than each entry: an omission and a deliberate
+        # silence read identically in a registry.
+        speaks = {spec.filename for spec in keyed_store.stores()
+                  if spec.denied_alert}
+        self.assertEqual(
+            {"notes.json", "icons.json"}, speaks,
+            "the stores that report a denied write changed - a comment "
+            "and a tile icon stay on screen looking saved, so nothing "
+            "but this tells the user; a location and a favourite are "
+            "derived from their store and simply do not appear")
+        self.assertIn(
+            "if spec.denied_alert:", source,
+            "the engine no longer raises the declared denial, so those "
+            "sentences are decoration")
 
     def test_every_condition_is_raised_through_alert(self):
         missing = []
