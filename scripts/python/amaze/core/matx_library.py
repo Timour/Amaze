@@ -450,8 +450,15 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         digest = hashlib.md5(
             ("%s/%s" % (record.source, record.uid)).encode("utf-8")
         ).hexdigest()
+        # THE SOURCE NAME IS SANITISED, like every other record field
+        # that becomes a path (matx_import.package_dirname). Records are
+        # rebuilt from the on-disk catalogue, so `source` is whatever
+        # that file says - and it was the one field reaching a directory
+        # component raw. The DIGEST still carries the unsanitised value,
+        # so two sources that sanitise alike keep separate files.
         return os.path.join(
-            preview_cache(), record.source, digest + ".png")
+            preview_cache(), hostos.safe_filename(str(record.source)),
+            digest + ".png")
 
     def _icon_size(self):
         try:

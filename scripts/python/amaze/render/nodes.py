@@ -1033,6 +1033,43 @@ class NodeHandler:
             return {"mat", "lop"}
         return {"mat"}
 
+    def _payload_or_refusal(self, mat) -> tuple:
+        """`(path, "")` when this asset's payload path may be built, or
+        `("", sentence)` naming why it may not.
+
+        ONE ANSWER FOR EVERY IMPORT DOOR. The Material door asked both
+        questions and the Node door asked neither, so a hand-edited row
+        produced a sentence in one section and an uncaught `PathEscape`
+        out of a double-click in the other. Nothing was ever written
+        outside the library - `payload_path` contains it - but a
+        traceback is not a refusal: `PathEscape` is a `ValueError`, and
+        nothing on that route catches one.
+
+        `is_safe_asset_id` is the door at the record and the
+        containment is the door at the path; this pairs them so a third
+        door cannot open with only one.
+        """
+        if not material.is_safe_asset_id(mat.mat_id):
+            debug.event("import", "refused unsafe asset id",
+                        material=mat.name, mat_id=str(mat.mat_id)[:120])
+            return ("",
+                    '"%s" cannot be imported: its id is not a usable file '
+                    "name, so the files it points at cannot be trusted to "
+                    "be inside your library" % mat.name)
+        try:
+            return (material.payload_path(
+                self._preferences, mat.mat_id, self._preferences.ext), "")
+        except hostos.PathEscape:
+            # Belt and braces. is_safe_asset_id already excludes
+            # separators, so reaching here means the composition escaped
+            # some other way - a symlink planted in mat/, or an
+            # asset_dir out of a tampered settings file.
+            debug.event("import", "refused escaping asset path",
+                        material=mat.name, mat_id=str(mat.mat_id)[:120])
+            return ("",
+                    '"%s" cannot be imported: its files resolve to '
+                    "somewhere outside your library" % mat.name)
+
     def import_asset_to_scene(
         self,
         mat: material.Material,
@@ -1086,28 +1123,10 @@ class NodeHandler:
         # each have to remember. The row itself is left alone - an index
         # row is user data, and this is a refusal to ACT on it, not a
         # reason to drop it.
-        if not material.is_safe_asset_id(mat.mat_id):
+        payload, refusal = self._payload_or_refusal(mat)
+        if refusal:
             self._context_override = None
-            debug.event("import", "refused unsafe asset id",
-                        material=mat.name, mat_id=str(mat.mat_id)[:120])
-            return (False,
-                    '"%s" cannot be imported: its id is not a usable file '
-                    "name, so the files it points at cannot be trusted to "
-                    "be inside your library" % mat.name)
-        try:
-            payload = material.payload_path(
-                self._preferences, mat.mat_id, self._preferences.ext)
-        except hostos.PathEscape:
-            # Belt and braces. is_safe_asset_id already excludes
-            # separators, so reaching here means the composition escaped
-            # some other way - a symlink planted in mat/, or an
-            # asset_dir out of a tampered settings file.
-            self._context_override = None
-            debug.event("import", "refused escaping asset path",
-                        material=mat.name, mat_id=str(mat.mat_id)[:120])
-            return (False,
-                    '"%s" cannot be imported: its files resolve to '
-                    "somewhere outside your library" % mat.name)
+            return (False, refusal)
         try:
             if os.path.getsize(payload) == 0:
                 self._context_override = None
@@ -2273,9 +2292,13 @@ class NodeHandler:
         context_node overrides the active-editor lookup (drag release
         point). Returns (ok, reason) - same contract as
         import_asset_to_scene."""
-        file_name = material.payload_path(
-            self._preferences, mat.mat_id, self._preferences.ext
-        )
+        # THE SAME DOOR THE MATERIAL IMPORT USES. This composed the path
+        # directly, so a row whose id cannot be a filename raised
+        # PathEscape straight out of a double-click instead of saying
+        # what was wrong.
+        file_name, refusal = self._payload_or_refusal(mat)
+        if refusal:
+            return (False, refusal)
         if not os.path.exists(file_name):
             return (False, '"%s": asset file is missing on disk.' % mat.name)
         from amaze.core import cop_library

@@ -1252,6 +1252,17 @@ class DatabaseConnector:
             pass                    # let the real writer report it
 
         hostos.snapshot_before_write(full)
+        # Whether this write CREATES the file, asked before it does -
+        # the floor is minted after a successful write below.
+        # snapshot_before_write copies what is already on disk and
+        # rightly declines a path that is not there yet, so a list
+        # written exactly once had no `.bak` tier at all; library.json
+        # and cops.json carry no seed marker either, so nothing beside
+        # them said they had ever existed. That is the shape that cost
+        # 21 files - cops.json missing for the instant panel.py builds
+        # its model, read as a new library, seeded empty, and the
+        # cleanup that followed swept every file its 8 assets owned.
+        created = not os.path.exists(full)
         try:
             # Unique scratch name, fsync, atomic swap - all of it in
             # hostos so the four databases cannot drift apart. The old
@@ -1284,6 +1295,15 @@ class DatabaseConnector:
             # the stat is handed over rather than re-read: this was the
             # third full read+hash per save. None when the serialisation
             # raised, and then the owner reads the file itself.
+            if created:
+                # THE FLOOR, FROM THE FIRST WRITE - the same line
+                # keyed_store, the policy and the settings carry, and
+                # the last of the six snapshotting writers to get it.
+                # No new KIND of file: `.bak-first` is already the
+                # documented immutable first-seen copy in the library's
+                # contents, it simply arrives one write earlier so that
+                # absence is answerable.
+                hostos.seed_restore_floor(full)
             self._remember_disk_state(serialised_stat)
             self._save_outcome = "stored"
             return True

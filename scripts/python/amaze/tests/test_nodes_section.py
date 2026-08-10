@@ -146,6 +146,31 @@ class NodesSectionTest(unittest.TestCase):
                                msg="the group centroid missed the spot")
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
+    def test_an_unsafe_id_is_refused_with_a_sentence(self):
+        """The Node door skipped both refusals the Material door
+        carries, and its own comment calls that one the single door
+        into the import.
+
+        The containment was never actually open - `payload_path` raises
+        `PathEscape` - but that is a `ValueError`, which no caller here
+        catches, so a row whose id cannot be composed into a filename
+        produced an uncaught traceback out of a double-click where the
+        same row in Materials produces a sentence."""
+        geo = _sop_network("unsafe_src")
+        self.assertEqual("SOP", self.model.add_asset(
+            geo, "", "", False, name="unsafe_sop"))
+        geo.destroy()
+        # The private field, because `mat_id` is read-only by design -
+        # this is standing in for a tampered or hand-edited cops.json,
+        # which is the only way such an id reaches a row.
+        self.model.assets[0]._mat_id = "../../../Documents/x"
+
+        ok, reason, _created = self.model.import_asset_to_scene(
+            self.model.index(0, 0))
+        self.assertFalse(ok, "an id that cannot be a filename imported")
+        self.assertIn("cannot be imported", reason,
+                      "the refusal did not say what was wrong: %r" % reason)
+
     def test_sop_network_returns_intact(self):
         geo = _sop_network("rt_src")
         self.assertEqual("SOP", self.model.add_asset(

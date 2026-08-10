@@ -1091,9 +1091,19 @@ def stock_lop():
     (Amaze does not shadow it; there is nothing to shadow anymore)."""
     global _stock_lop_cache
     if _stock_lop_cache is None:
-        path = os.path.join(
-            hou.getenv("HH") or "", "scripts", "scene", "lop_dragdrop.py"
-        )
+        # NO $HH, NO LOOKUP. `or ""` made the join RELATIVE, and the
+        # result is then loaded and executed - so in an environment
+        # without $HH (a stripped hython, a broken package env) this
+        # would run `scripts/scene/lop_dragdrop.py` from whatever the
+        # working directory happened to be. Always set inside Houdini,
+        # which is what makes the fallback pure downside.
+        hh = hou.getenv("HH")
+        if not hh:
+            from amaze.core import debug
+            debug.event("drag", "no $HH - the host's own LOP helpers "
+                                "were not loaded")
+            return None
+        path = os.path.join(hh, "scripts", "scene", "lop_dragdrop.py")
         try:
             spec = importlib.util.spec_from_file_location(
                 "houdini_stock_lop_dragdrop", path

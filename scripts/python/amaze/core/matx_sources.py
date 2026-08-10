@@ -117,10 +117,55 @@ def _ssl_context():
     return _SSL_CONTEXT
 
 
+#: The only schemes a catalogue may send us to. Every URL below comes
+#: out of a remote JSON document - PolyHaven's `thumbnail_url` and
+#: `include[].url`, GPUOpen's `file_url`, the updater's
+#: `browser_download_url` - and urlopen's DEFAULT opener installs a
+#: FileHandler, so `file:///Users/<you>/.ssh/id_rsa` was a fetch this
+#: code would perform and copy into the preview cache. The redirect
+#: handler is the other half: it follows http, https and ftp whatever
+#: the original scheme was, and the GPUOpen preview endpoint is a
+#: documented 302, so redirects are the normal path here rather than
+#: an edge case.
+ALLOWED_SCHEMES = ("https",)
+
+
+def _checked_url(url: str) -> str:
+    """`url` when it is one we may fetch, else "" - the answer given
+    once, so the first request and every redirect are held to it."""
+    scheme = urllib.parse.urlparse(str(url or "")).scheme.lower()
+    if scheme in ALLOWED_SCHEMES:
+        return str(url)
+    debug.event("online", "refused a URL the catalogue supplied",
+                scheme=scheme or "(none)", url=str(url)[:120])
+    return ""
+
+
+class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """A redirect may not downgrade the scheme. Verification is only
+    worth what the last hop kept."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _checked_url(newurl):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
 def _request(url: str):
+    if not _checked_url(url):
+        raise urllib.error.URLError(
+            "refused a URL that is not https")
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     try:
-        return urllib.request.urlopen(req, timeout=TIMEOUT, context=_ssl_context())
+        # An opener rather than urlopen, for the redirect handler alone
+        # - the verified context is the same one either way. The scheme
+        # check above and inside that handler is what keeps a hop off
+        # `file://` and off plain http, so the default FileHandler is
+        # unreachable rather than removed.
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=_ssl_context()),
+            _HttpsOnlyRedirects())
+        return opener.open(req, timeout=TIMEOUT)
     except urllib.error.URLError as exc:
         # NO UNVERIFIED RETRY. There used to be one here, and it was
         # keyed on ssl.SSLError - which research.md #289 names exactly:

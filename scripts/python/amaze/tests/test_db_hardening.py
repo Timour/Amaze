@@ -3183,6 +3183,49 @@ class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
             "look")
 
 
+class ADatabaseWrittenOnceHasAFloor(_Case):
+    """The four lists were the last snapshotting writers with no
+    write-once floor. `snapshot_before_write` copies what is ALREADY on
+    disk and rightly declines a file that is not there yet, so a list
+    written exactly once had no `.bak` tier at all - and `library.json`
+    and `cops.json` carry no seed marker either, so nothing beside them
+    said they had ever existed.
+
+    That is the shape that cost 21 files: cops.json gone for the instant
+    the panel builds its model, read as a new library, seeded empty, and
+    the cleanup that followed took every file the 8 real assets owned."""
+
+    def test_a_seeded_database_gets_a_floor(self):
+        self._load()                        # absent, untraced -> seeded
+        self.assertTrue(os.path.exists(self.path), "premise: it seeded")
+        self.assertTrue(
+            os.path.exists(self.path + ".bak-first"),
+            "a list written once has no trace, so the next time it is "
+            "missing for an instant it reads as a new library again")
+
+    def test_the_floor_makes_absence_answerable(self):
+        """What the floor is FOR, asked through the guard that reads
+        it rather than through the filename."""
+        self._load()
+        os.remove(self.path)
+        self.assertTrue(
+            database.absent_but_known(self.dir + os.sep, self.FILENAME),
+            "the list is gone and nothing says it was ever here, so the "
+            "next load seeds an empty one over it")
+
+    def test_the_floor_is_not_rolled_forward(self):
+        """Write-once, like every other floor: a restore falls back to
+        the FIRST seen state, so later saves must not overwrite it."""
+        self._load()
+        floor = self.path + ".bak-first"
+        first = open(floor, encoding="utf-8").read()
+        db = self._connector()
+        db.set({"assets": [{"id": "LATER", "name": "added after"}]})
+        self.assertTrue(db.save())
+        self.assertEqual(first, open(floor, encoding="utf-8").read(),
+                         "the write-once floor moved with a later save")
+
+
 class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
     """`_note_suspicious_shrink` promises in its own docstring that the
     note must never cost a load, and guards `(OSError, ValueError,

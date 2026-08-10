@@ -23,6 +23,7 @@ import os
 import hou
 
 from amaze.core import debug
+from amaze.helpers import hostos
 
 
 #: MaterialX node categories whose VOP type isn't simply "mtlx<category>".
@@ -59,18 +60,41 @@ def _vop_type_for(category: str, parent: hou.Node) -> str | None:
 
 def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
     """A .mtlx file value is relative to the document (plus any active
-    fileprefix). Resolve to an absolute path that exists where possible."""
+    fileprefix). Resolve to an absolute path that exists where possible.
+
+    CONTAINED IN THE PACKAGE. `value` comes out of a DOWNLOADED
+    document, and this is the one place in the online path where such a
+    string becomes a filesystem path - the three write paths beside it
+    all go through `hostos.contained_join`. An absolute value used to be
+    returned verbatim and a `..` walk was normalised away, so a document
+    could point a texture parm at any readable file on the machine and
+    the material would then render, and ship, carrying that path.
+
+    Nothing is overwritten either way - this is a READ - so an
+    uncontainable value is answered with "" and logged rather than
+    raised: a texture that does not load is the safe end of a bad
+    reference, and one bad input must not cost the whole material.
+    """
     if not value:
         return value
-    if os.path.isabs(value):
-        return value
-    for base in (
-        os.path.join(mtlx_dir, prefix, value) if prefix else None,
-        os.path.join(mtlx_dir, value),
-    ):
-        if base and os.path.exists(base):
+    candidates = [os.path.join(mtlx_dir, prefix, value) if prefix else None,
+                  os.path.join(mtlx_dir, value)]
+    contained = []
+    for base in candidates:
+        if not base:
+            continue
+        try:
+            contained.append(hostos.contained_join(mtlx_dir, base))
+        except hostos.PathEscape:
+            continue
+    for base in contained:
+        if os.path.exists(base):
             return os.path.normpath(base)
-    return os.path.normpath(os.path.join(mtlx_dir, value))
+    if contained:
+        return os.path.normpath(contained[-1])
+    debug.event("matx", "texture reference refused - outside the "
+                        "downloaded package", value=str(value)[:120])
+    return ""
 
 
 def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):

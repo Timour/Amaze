@@ -236,6 +236,30 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
         with self.assertRaises(hostos.PathEscape):
             tile_icons.thumbnail_path(self.prefs, "../../../Documents/x")
 
+    def test_an_unsafe_id_cannot_escape_the_ICON_path_either(self):
+        """The composed icon sits beside the render and was the one of
+        the pair built by concatenation - so the id that `thumbnail_path`
+        refuses was written, and later deleted, wherever it pointed.
+        `render_for` writes it and `clear_for` runs os.remove on it."""
+        with self.assertRaises(hostos.PathEscape):
+            tile_icons.icon_image_path(self.prefs, "../../../Documents/x")
+
+    def test_the_icon_path_ignores_a_trailing_separator_too(self):
+        """Its sibling above is normalised through os.path.join and this
+        one concatenated, so the two disagreed for any path that assigns
+        `prefs.dir` without a separator - the same drift the thumbnail
+        pair was fixed for."""
+        root = self.prefs.dir.rstrip(os.sep)
+        answers = set()
+        for value in (root, root + os.sep):
+            self.prefs.dir = value
+            answers.add(os.path.normpath(
+                tile_icons.icon_image_path(self.prefs, "abc")))
+        self.assertEqual(
+            1, len(answers),
+            "the composed icon resolves to different places depending "
+            "on a trailing separator: %s" % sorted(answers))
+
 
 class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
     """research.md ▸ Undo names thumbnail rendering explicitly, and

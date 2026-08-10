@@ -110,5 +110,77 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
                          "specular_color must carry graph_b's texture")
 
 
+class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
+    """`file` values come out of a DOWNLOADED document, and this is the
+    one place in the online path where such a string becomes a
+    filesystem path - the three write paths beside it all go through
+    `hostos.contained_join`.
+
+    Nothing is overwritten, so the harm is narrower than a write
+    escape: the resolved path lands in a `mtlximage.file` parm, so the
+    material reads a file the download never fetched, renders it, and
+    after Save to Amaze ships that path to whoever opens the asset."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_mtlx_")
+        import shutil
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_a_relative_reference_inside_the_package_resolves(self):
+        """The accept path first: this runs on every online import, so
+        a containment that refuses the ordinary case is an outage."""
+        inside = os.path.join(self.dir, "wood_diffuse.png")
+        with open(inside, "w", encoding="utf-8") as handle:
+            handle.write("png")
+        self.assertEqual(
+            os.path.normpath(inside),
+            matx_translate._resolve_file("wood_diffuse.png", self.dir, ""))
+
+    def test_an_absolute_reference_is_refused(self):
+        self.assertEqual(
+            "", matx_translate._resolve_file(
+                "/etc/hosts", self.dir, ""),
+            "a downloaded document pointed a texture at a file outside "
+            "the package and the translator followed it")
+
+    def test_a_dot_dot_walk_is_refused(self):
+        self.assertEqual(
+            "", matx_translate._resolve_file(
+                "../../../../etc/hosts", self.dir, ""),
+            "normpath collapsed the walk and the result left the package")
+
+
+class OnlyHttpsIsFetched(unittest.TestCase):
+    """Every URL the online path opens comes out of a remote JSON
+    document, and urlopen's default opener installs a FileHandler."""
+
+    def test_a_file_url_is_refused(self):
+        from amaze.core import matx_sources
+        self.assertEqual("", matx_sources._checked_url(
+            "file:///Users/someone/.ssh/id_rsa"))
+
+    def test_plain_http_is_refused(self):
+        from amaze.core import matx_sources
+        self.assertEqual("", matx_sources._checked_url(
+            "http://example.invalid/package.zip"))
+
+    def test_https_is_allowed(self):
+        from amaze.core import matx_sources
+        url = "https://example.invalid/package.zip"
+        self.assertEqual(url, matx_sources._checked_url(url))
+
+    def test_a_redirect_may_not_downgrade_the_scheme(self):
+        """The GPUOpen preview endpoint is a documented 302, so
+        redirects are the normal path here - and the stock handler
+        follows http and ftp whatever the original scheme was."""
+        from amaze.core import matx_sources
+        handler = matx_sources._HttpsOnlyRedirects()
+        self.assertIsNone(
+            handler.redirect_request(
+                None, None, 302, "Found", {},
+                "http://example.invalid/package.zip"),
+            "a 302 walked the download down to plain http")
+
+
 if __name__ == "__main__":
     unittest.main()

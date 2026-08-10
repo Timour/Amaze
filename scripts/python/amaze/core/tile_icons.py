@@ -383,14 +383,21 @@ def thumbnail_path(preferences, asset_id: str) -> str:
 
 def icon_image_path(preferences, asset_id: str) -> str:
     """Where a tile's composed icon lives: beside its thumbnail, with a
-    suffix, so the render underneath survives."""
-    return (
-        preferences.dir
-        + preferences.img_dir
-        + str(asset_id)
-        + "_icon"
-        + preferences.img_ext
-    )
+    suffix, so the render underneath survives.
+
+    Composed exactly like `thumbnail_path` above, and for both of its
+    reasons. CONTAINED, because the id comes verbatim out of
+    library.json and nothing validates it on load - and this is the
+    path `render_for` WRITES and `clear_for` runs os.remove on, so a
+    concatenated one chose which file outside the library to create and
+    then delete. And through os.path.join, because the two forms
+    disagree whenever `preferences.dir` is assigned without a trailing
+    separator: the sibling resolved into `img/`, this one into
+    `<library>img/`.
+    """
+    return hostos.contained_join(
+        os.path.join(preferences.dir, preferences.img_dir),
+        str(asset_id) + "_icon" + preferences.img_ext)
 
 
 def render_for(preferences, asset_id: str, spec) -> str:
