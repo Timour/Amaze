@@ -188,7 +188,7 @@ class ThumbNailRenderer:
         preview.safe_set(thumb, "resy", self._preferences.rendersize)
 
     def _rendered(self, png_path: str, renderer: str, asset_id: str,
-                  rop=None) -> bool:
+                  errors=None) -> bool:
         """Did the render actually write the image?
 
         The Karma path has always checked; Mantra, Redshift and Octane
@@ -201,11 +201,17 @@ class ThumbNailRenderer:
         """
         if os.path.exists(png_path):
             return True
+        # ALREADY GATHERED, by the caller, while the scene was still
+        # alive. This used to take the ROP and read its errors HERE -
+        # and every caller invokes this AFTER its `with self._thumb_scene`
+        # block, which destroys the scene the ROP is a grandchild of. So
+        # `node_errors` swallowed hou.ObjectWasDeleted into {} and the
+        # one field that explains a failed render was empty by
+        # construction, in the function whose docstring says capturing
+        # it is the point.
         debug.event("thumb", "render produced no image",
                     renderer=renderer, asset_id=str(asset_id),
-                    path=png_path,
-                    errors=(helpers.node_errors(rop)
-                            if rop is not None else ""))
+                    path=png_path, errors=errors or "")
         return False
 
     def create_thumb_mantra(self, node: hou.Node, asset_id: str) -> bool:
@@ -227,8 +233,10 @@ class ThumbNailRenderer:
                     except OSError as exc:
                         debug.event("thumb", "intermediate not removed",
                                     path=exr_path, error=str(exc))
-        return self._rendered(png_path, "Mantra", asset_id,
-                              getattr(sc, "rop", None))
+            # INSIDE the block: the scene is destroyed on its way out
+            # and the ROP goes with it.
+            errors = helpers.node_errors(getattr(sc, "rop", None))
+        return self._rendered(png_path, "Mantra", asset_id, errors)
 
     @staticmethod
     def _pick_cop_thumb_source(temp: hou.Node) -> hou.Node | None:
@@ -703,9 +711,17 @@ class ThumbNailRenderer:
             if target is None:
                 terminals = [c for c in children if not c.outputs()]
                 target = terminals[-1] if terminals else children[-1]
-            tmp_geo = os.path.join(
-                hostos.cache_root(), "sop_thumb_%s.bgeo" % asset_id
-            )
+            # UNIQUE, not a fixed name in a directory every Houdini
+            # process on this machine shares. Two sessions pressing
+            # Update Preview on the same asset wrote one buffer: the
+            # second cooked a half-written .bgeo and reported no
+            # cookable geometry, and the first deleted the file from
+            # under it. The `.mat`/`.interface` pair beside this
+            # already goes through unique_scratch.
+            tmp_geo = hostos.unique_scratch(
+                os.path.join(hostos.cache_root(),
+                             "sop_thumb_%s.bgeo" % asset_id),
+                suffix=".geo", create=False)
             try:
                 target.geometry().saveToFile(tmp_geo)
             except (hou.Error, AttributeError) as exc:
@@ -857,13 +873,13 @@ class ThumbNailRenderer:
                 sc.rop, "UnifiedMaxSamples", self._preferences.rendersamples
             )
             thumb.parm("render").pressButton()
-        return self._rendered(path, "Redshift", asset_id,
-                              getattr(sc, "rop", None))
+            errors = helpers.node_errors(getattr(sc, "rop", None))
+        return self._rendered(path, "Redshift", asset_id, errors)
 
     def create_thumb_octane(self, node: hou.Node, asset_id: str) -> bool:
         path = tile_icons.thumbnail_path(self._preferences, asset_id)
         with self._thumb_scene("Octane") as (sc, thumb):
             self._setup_thumb_rop(thumb, node, path)
             thumb.parm("render").pressButton()
-        return self._rendered(path, "Octane", asset_id,
-                              getattr(sc, "rop", None))
+            errors = helpers.node_errors(getattr(sc, "rop", None))
+        return self._rendered(path, "Octane", asset_id, errors)

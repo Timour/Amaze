@@ -1014,14 +1014,23 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         It stays callable on a bare dict - an entry with no uid simply
         has no stored pick and falls back to the field."""
         hexes = tuple(c["hex"] for c in entry["colors"])
-        bases = tuple((entry.get("ramp") or {}).get("bases") or ())
+        ramp = entry.get("ramp") or {}
+        bases = tuple(ramp.get("bases") or ())
+        # THE STOP POSITIONS TOO. `_paint_ramp` reads `keys` for both of
+        # its branches - the band edges and `setColorAt` - so two
+        # palettes with the same colours in different PLACES painted
+        # differently and shared one cache slot. Drop a two-key ramp,
+        # move a stop, drop it again: the second tile showed the first
+        # one's gradient.
+        stops = tuple(round(float(k), 6) for k in (ramp.get("keys") or ())
+                      if isinstance(k, (int, float)))
         icon = self._icon_of(entry)
         # The icon is part of the key: a tile that has one paints the
         # icon INSTEAD of the swatch, so the two must not share a slot.
         icon_key = (icon.get("name"), icon.get("bg"), icon.get("ink")) \
             if icon else None
-        return ("grad", self._is_banded(entry), hexes, bases, icon_key,
-                THUMB_SIZE)
+        return ("grad", self._is_banded(entry), hexes, bases, stops,
+                icon_key, THUMB_SIZE)
 
     def _thumb(self, row: int) -> QtGui.QImage:
         entry = self._entries[row]

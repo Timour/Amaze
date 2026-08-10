@@ -624,6 +624,46 @@ class GradientRowShapeTest(unittest.TestCase):
                          "read-only for the session")
 
 
+class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
+    """`_entry_thumb_key` is content-addressed on the hexes and the ramp
+    BASES, and `_paint_ramp` reads the ramp's `keys` - the stop
+    POSITIONS - in both of its branches. So two palettes holding the
+    same colours in different places shared one cache slot and the
+    second tile painted the first one's gradient."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_key_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        with open(os.path.join(self.dir, "gradients.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"categories": [], "gradients": []}, fh)
+        self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+
+    def _entry(self, keys):
+        return {"type": "user", "name": "n", "category": "",
+                "colors": [{"name": "#ff0000", "hex": "#ff0000"},
+                           {"name": "#0000ff", "hex": "#0000ff"}],
+                "ramp": {"bases": ["Linear", "Linear"],
+                         "keys": keys,
+                         "values": [[1, 0, 0], [0, 0, 1]]},
+                "id": "rampkey1"}
+
+    def test_moving_a_stop_mints_a_new_key(self):
+        even = self.lib._entry_thumb_key(self._entry([0.0, 1.0]))
+        moved = self.lib._entry_thumb_key(self._entry([0.0, 0.2]))
+        self.assertNotEqual(
+            even, moved,
+            "two ramps with the same colours in different places share "
+            "one cache slot, so the second tile shows the first's")
+
+    def test_the_same_ramp_still_answers_the_same_key(self):
+        """Content-addressed means an unchanged palette keeps its
+        image - the whole reason the key is not the row number."""
+        self.assertEqual(self.lib._entry_thumb_key(self._entry([0.0, 1.0])),
+                         self.lib._entry_thumb_key(self._entry([0.0, 1.0])))
+
+
 class ColorsHonourARefusedSave(unittest.TestCase):
     """`MaterialLibrary.remove_asset` handles a refused write in full -
     the row goes back, `unforget()` clears the pending delete, the row

@@ -261,6 +261,106 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             "on a trailing separator: %s" % sorted(answers))
 
 
+class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
+    """The shared RAM cache is app-wide and keyed by asset identity, and
+    nothing clears it on a library SWITCH - `switch_model_data` only
+    rebuilds the row map. So two libraries holding the same id served
+    one image, and the second library's file was never read.
+
+    Reachable without any hand-editing: Test Mode seeds a second
+    library from the real one, and a restored snapshot is a copy."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+
+    def test_two_libraries_do_not_share_one_row_key(self):
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) not in ("", "-1"))
+        here = model._thumb_key(row)
+
+        self.prefs.dir = os.path.join(
+            self.prefs.dir.rstrip("/\\") + "_copy", "")
+        there = model._thumb_key(row)
+
+        self.assertNotEqual(
+            here, there,
+            "the same asset id in two libraries answers one cache key, "
+            "so a switch paints the previous library's picture and the "
+            "new library's file is never read")
+
+    def test_the_same_library_still_answers_the_same_key(self):
+        """The accept path the docstring promises: a RELOAD must keep
+        the cached image, so the key may not move for one library."""
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) not in ("", "-1"))
+        before = model._thumb_key(row)
+        root = self.prefs.dir.rstrip("/\\")
+        for spelling in (root, root + os.sep):
+            self.prefs.dir = spelling
+            self.assertEqual(
+                before, model._thumb_key(row),
+                "a trailing separator moved the key, so an ordinary "
+                "reload throws the whole library's cache away")
+
+
+class TheRenderScratchIsNeverShared(unittest.TestCase):
+    """Two fixed scratch names, each ONE buffer for every item in a pass
+    and for every Houdini process on the machine.
+
+    The geometry one is the damaging half: `create_thumb_geo_file`
+    decides success by `os.path.exists(out_path)`, and an ESC returns
+    without raising - so the next file found the previous file's
+    picture and cached it against its OWN mtime and size."""
+
+    def test_the_geo_pass_mints_a_scratch_per_item(self):
+        source = source_of("core/file_library.py")
+        self.assertNotIn(
+            '"_render_tmp.png"', source,
+            "the geometry pass still shares one fixed scratch name for "
+            "every item and every process")
+        self.assertIn(
+            "hostos.unique_scratch(", source,
+            "the geometry pass does not mint a unique scratch")
+
+    def test_the_sop_thumbnail_mints_a_unique_scratch(self):
+        source = source_of("render/thumbs.py")
+        self.assertNotIn(
+            'hostos.cache_root(), "sop_thumb_%s.bgeo" % asset_id\n', source,
+            "the SOP thumbnail writes its intermediate geometry to a "
+            "fixed name in a directory every Houdini process shares")
+
+    def test_the_render_verdict_reads_a_LIVE_rop(self):
+        """`_rendered` used to take the ROP and read its errors itself -
+        and every caller invokes it AFTER the `with self._thumb_scene`
+        block, which destroys the scene the ROP hangs under. So the one
+        field that explains a failed render was empty by construction."""
+        tree = ast.parse(source_of("render/thumbs.py"))
+        rendered = next(
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.FunctionDef) and node.name == "_rendered")
+
+        inside = [n for n in ast.walk(rendered)
+                  if isinstance(n, ast.Call)
+                  and isinstance(n.func, ast.Attribute)
+                  and n.func.attr == "node_errors"]
+        self.assertEqual(
+            [], inside,
+            "_rendered reads the ROP's errors itself, and every caller "
+            "invokes it after the scene has been destroyed - so the "
+            "field is empty whatever the renderer said")
+
+        args = [a.arg for a in rendered.args.args]
+        self.assertIn(
+            "errors", args,
+            "_rendered does not take the errors its callers gathered "
+            "while the scene was alive: %s" % args)
+        self.assertNotIn("rop", args)
+
+
 class ThumbnailsLeaveNothingOnTheUndoStack(unittest.TestCase):
     """research.md ▸ Undo names thumbnail rendering explicitly, and
     create_thumb_sop's own comment says what it costs: "on the stack,

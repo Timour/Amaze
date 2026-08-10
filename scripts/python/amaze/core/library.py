@@ -371,14 +371,25 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         """Shared-RAM-cache key: stable across reloads (same
         material keeps its cached image through a library refresh) and
         collision-free across the models sharing the budget."""
+        # THE LIBRARY IS PART OF THE KEY. It carried the database
+        # filename and the asset id, and nothing clears the app-wide RAM
+        # cache on a library SWITCH - `switch_model_data` only rebuilds
+        # the row map. So two libraries holding the same id served one
+        # image: point Preferences at a copy of a library whose picture
+        # has since been re-rendered and the tile paints the first
+        # one's, with the second's file never read. The docstring's
+        # promise is true of a reload and was false of a switch, and
+        # Test Mode seeds a second library from the real one.
+        home = hostos.canonical_path_key(str(self.preferences.dir or ""))
         spec = self.tile_icon(row)
         if not spec:
-            return (self.DB_FILENAME, self._assets[row].mat_id, "", "", "", 0)
+            return (home, self.DB_FILENAME, self._assets[row].mat_id,
+                    "", "", "", 0)
         # EVERY input to the picture belongs in the key, not just the
         # choice: the line weight and the render size change what the
         # image looks like too. Leaving them out made correctness
         # depend on remembering to discard the cache by hand.
-        return (self.DB_FILENAME, self._assets[row].mat_id,
+        return (home, self.DB_FILENAME, self._assets[row].mat_id,
                 spec["name"], spec["bg"], spec["ink"],
                 tile_icons.stroke_for(self.preferences))
 

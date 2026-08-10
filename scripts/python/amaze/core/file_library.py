@@ -629,8 +629,26 @@ class FileFiles(grid_columns.GridColumnsMixin,
         full_path = self._pending_writes.pop(key, None)
         if full_path is not None and self._image_cache is not None:
             image = thumbnails.engine.peek(key)
-            if image is not None:
+            # FILED AT THE SIZE IT WAS MADE AT, or not at all. The key
+            # carries the size the conversion was queued with
+            # (`("tex", path, size)`), and Preferences is non-modal - so
+            # RenderSize can change while a batch of conversions is in
+            # flight, and every delivery still landing afterwards was
+            # written into the NEW size's directory and manifest,
+            # matching the source file's own mtime and size. Small
+            # images then served as large ones, across restarts.
+            #
+            # The row still repaints below: the picture is right for
+            # this moment, it is only the durable copy that would be
+            # mislabelled.
+            queued_size = key[2] if len(key) > 2 else None
+            if image is not None and queued_size == self.preferences.rendersize:
                 self._image_cache.put(full_path, image)
+            elif image is not None:
+                debug.event("file", "converted image not cached - the "
+                                    "size changed while it was in flight",
+                            queued=queued_size,
+                            now=self.preferences.rendersize)
         for row in rows:
             index = self.index(row, 0)
             self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -742,7 +760,22 @@ class FileFiles(grid_columns.GridColumnsMixin,
         size = self.preferences.rendersize
         thumber = thumbs.ThumbNailRenderer(self.preferences)
         cache.ensure_dir()
-        tmp_path = os.path.join(cache.cache_dir, "_render_tmp.png")
+        # ONE SCRATCH PER ITEM, and unique. A fixed name was ONE buffer
+        # for the whole pass, and `create_thumb_geo_file` decides
+        # success by `os.path.exists(out_path)` - so a render that
+        # wrote nothing found the PREVIOUS file's picture sitting there
+        # and reported success. An ESC does exactly that: the flipbook
+        # returns without raising, which that function's own comment
+        # records. The wrong image was then cached against this file's
+        # own mtime and size, so it survived restarts.
+        #
+        # The name is also shared by every Houdini process on the
+        # machine, which is the second half of the same fault.
+        #
+        # `create=False` matters: unique_scratch creates the file empty
+        # by default, and an empty file passes os.path.exists just as
+        # well as a leftover one.
+        scratch_seed = os.path.join(cache.cache_dir, "geo_render.png")
         total = len(misses)
         done = 0
         failed = []
@@ -763,6 +796,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
                         debug.event("file", "geo thumbnail",
                                     i=done + 1, total=total, file=full)
                     ok = False
+                    tmp_path = hostos.unique_scratch(
+                        scratch_seed, suffix=".render", create=False)
                     try:
                         ok = thumber.create_thumb_geo_file(
                             full, tmp_path, size)
@@ -774,12 +809,21 @@ class FileFiles(grid_columns.GridColumnsMixin,
                                              GEO_PASS_LOG_BUDGET):
                             debug.event("file", "geo thumbnail failed",
                                         file=full, error=str(exc))
-                    if ok:
-                        image = QtGui.QImage(tmp_path)
-                        if not image.isNull():
-                            cache.put(full, image)
-                            thumbnails.engine.deposit(
-                                ("geo", full, cache.cache_dir), image)
+                    try:
+                        if ok:
+                            image = QtGui.QImage(tmp_path)
+                            if not image.isNull():
+                                cache.put(full, image)
+                                thumbnails.engine.deposit(
+                                    ("geo", full, cache.cache_dir), image)
+                    finally:
+                        # Gone before the next item, whatever happened -
+                        # nothing may be left for a later render to
+                        # inherit and report as its own.
+                        try:
+                            os.remove(tmp_path)
+                        except OSError:
+                            pass
                     done += 1
                     self.progress_changed.emit(done, total)
                     # The pass blocks the event loop; pump paints only
