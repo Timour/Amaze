@@ -1129,7 +1129,25 @@ class ARelocateIsONEWrite(unittest.TestCase):
         self.addCleanup(keyed_store.release)
         self.prefs = _Prefs(self.dir)
 
-    def test_a_denied_move_leaves_the_location_where_it_was(self):
+    def test_a_move_never_loses_the_record_to_a_half_write(self):
+        """THE SECOND WRITE IS THE ONE THAT FAILS, which is the whole
+        point and is what an earlier version of this test missed.
+
+        Failing EVERY write proves nothing: remove-then-add and one
+        `rekey` both leave the record untouched, because neither commit
+        lands and the cache moves only on success. The damage needs the
+        FIRST write to land and the second not - the old key gone, the
+        new one never written - so the fake lets one through.
+        """
+        real_write = hostos.write_json_atomic
+        calls = []
+
+        def once_then_fail(*args, **kwargs):
+            calls.append(1)
+            if len(calls) > 1:
+                raise OSError(2, "No such file")
+            return real_write(*args, **kwargs)
+
         old = os.path.join(self.dir, "before")
         new = os.path.join(self.dir, "after")
         os.makedirs(old)
@@ -1143,16 +1161,19 @@ class ARelocateIsONEWrite(unittest.TestCase):
                          "premise: the record carries a colour")
 
         with mock.patch.object(hostos, "write_json_atomic",
-                               side_effect=OSError(2, "No such file")):
+                               side_effect=once_then_fail):
             locations.relocate_record(self.prefs, old, new)
 
-        kept = locations.record(self.prefs, old)
-        self.assertEqual("#ff0000", kept.get("color"),
-                         "a denied move took the record with it - the "
-                         "half that landed deregistered the location")
-        self.assertEqual("Wood", kept.get("name"))
-        self.assertEqual({}, locations.record(self.prefs, new),
-                         "a denied move half-registered the new path")
+        # Wherever it ended up, it still EXISTS. One write moves it to
+        # `new`; two writes lost it between them.
+        found = (locations.record(self.prefs, new)
+                 or locations.record(self.prefs, old))
+        self.assertEqual(
+            "#ff0000", found.get("color"),
+            "the move was two writes and the second was denied, so the "
+            "location is registered nowhere and its colour, name, "
+            "recursion and Show All Files went with it")
+        self.assertEqual("Wood", found.get("name"))
 
     def test_a_move_that_lands_carries_the_whole_record(self):
         old = os.path.join(self.dir, "before")
