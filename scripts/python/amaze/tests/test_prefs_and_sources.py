@@ -636,6 +636,44 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
             "the dead fetch occupied the destination - every later "
             "import will reuse the torn package")
 
+    def test_a_download_with_no_mtlx_leaves_no_destination(self):
+        """A fetch that SUCCEEDS and carries no .mtlx - a repackaged
+        archive, or one whose only .mtlx sat at a member path the
+        extractor refused.
+
+        The rename is what makes an occupied destination MEAN a
+        complete package, and it ran BEFORE the .mtlx check - so this
+        took the destination anyway, and the reuse check at the top of
+        the import then refused this record permanently, until the
+        folder was deleted by hand."""
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+
+        class NoMtlxSource:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                os.makedirs(dest_dir, exist_ok=True)
+                with open(os.path.join(dest_dir, "wood_diffuse.png"),
+                          "wb") as handle:
+                    handle.write(b"PNG")
+                return {"mtlx": None}
+
+        record = self._record()
+        produce, _note, error = matx_import._producer_for(
+            record, NoMtlxSource(), "2K", prefs)
+        self.assertIsNone(produce)
+        self.assertIn("No .mtlx", error)
+        dest = os.path.join(matx_import.matx_dir(prefs.dir),
+                            matx_import.package_dirname(record))
+        self.assertFalse(
+            os.path.isdir(dest) and os.listdir(dest),
+            "the incomplete package took the destination, so every "
+            "later import of this material is refused until somebody "
+            "deletes the folder by hand")
+
     def test_the_retry_fetches_fresh_and_lands_complete(self):
         from amaze.core import matx_import
         from amaze.tests import test_support

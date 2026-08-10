@@ -334,6 +334,22 @@ def _producer_for(record, source, resolution, preferences, progress=None):
             debug.exception("download", exc, url=record.payload, dest=dest)
             shutil.rmtree(scratch, ignore_errors=True)
             return (None, "", "Download failed: %s" % exc)
+        # VERIFIED BEFORE IT IS PROMOTED. The rename is what makes an
+        # occupied destination MEAN a complete package - and it ran
+        # BEFORE the .mtlx check below, so an archive that extracted
+        # files without one still took the destination, and the reuse
+        # check at the top of this function then refused that record
+        # permanently: already on disk but holds no .mtlx, until the
+        # folder is deleted by hand. Checked while the files are still
+        # in the scratch, so a failure leaves `dest` untouched and the
+        # next attempt is an ordinary download.
+        scratch_mtlx = (fetched or {}).get("mtlx")
+        if not scratch_mtlx or not os.path.exists(scratch_mtlx):
+            shutil.rmtree(scratch, ignore_errors=True)
+            debug.event("import", "download held no .mtlx - scratch "
+                                  "dropped, destination untouched",
+                        dest=dest)
+            return (None, "", "No .mtlx document in the downloaded package")
         if os.path.isdir(scratch):
             if os.path.isdir(dest):
                 # This branch means dest was absent or EMPTY - an empty
