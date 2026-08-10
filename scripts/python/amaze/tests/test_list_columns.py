@@ -419,11 +419,18 @@ class TheRealPanelInListMode(unittest.TestCase):
         """The complaint that started this: "30px tall for a text line
         is not small, its a list". The row now fits its 16px thumbnail
         and its text, and nothing else - the flat 14px of padding that
-        made it 30 is gone."""
+        made it 30 is gone.
+
+        MEASURED ON THE TABLE, which is what list mode shows. This read
+        `_list_grid_size` - the QListView's row size - and that view is
+        hidden the whole time list mode is up, so the number it checked
+        was one nothing on screen came from. The height the user is
+        complaining about is the vertical header's section size.
+        """
         self._mode("list")
         self.addCleanup(self._mode, "grid")
-        _w, height = self.panel._list_grid_size(self.panel.LIST_THUMB_SIZE)
-        fm = QtGui.QFontMetrics(self.panel.thumblist.font())
+        height = self.panel.thumbtable.verticalHeader().defaultSectionSize()
+        fm = QtGui.QFontMetrics(self.panel.thumbtable.font())
         self.assertLessEqual(
             height, max(fm.height(), self.panel.LIST_THUMB_SIZE)
             + theme.ui_px(8),
@@ -431,8 +438,34 @@ class TheRealPanelInListMode(unittest.TestCase):
             "it got %spx for a %spx thumbnail and a %spx text line"
             % (height, self.panel.LIST_THUMB_SIZE, fm.height()))
         self.assertGreaterEqual(
-            height, self.panel.LIST_THUMB_SIZE,
-            "the row is shorter than its own thumbnail")
+            height, fm.height(),
+            "the row is shorter than the text line it paints")
+
+    def test_list_mode_shows_the_table_and_grid_mode_the_list(self):
+        """The premise every other list-mode test rests on.
+
+        Two views point at the same model and exactly one is up
+        (grid.show_table). Nothing asserted which, so machinery that
+        sized the HIDDEN one stayed green for as long as it existed -
+        which is how a row-width memory nothing set, and the resize
+        handler that applied it, survived the table migration.
+
+        isHidden(), never isVisible(): neither view's window is shown
+        in a headless run, so isVisible() is False for both and the
+        question would answer itself."""
+        self._mode("list")
+        self.addCleanup(self._mode, "grid")
+        self.assertFalse(self.panel.thumbtable.isHidden(),
+                         "list mode does not show the table")
+        self.assertTrue(self.panel.thumblist.isHidden(),
+                        "list mode still shows the QListView - anything "
+                        "sizing it is being measured off screen")
+
+        self._mode("grid")
+        self.assertTrue(self.panel.thumbtable.isHidden(),
+                        "grid mode still shows the table")
+        self.assertFalse(self.panel.thumblist.isHidden(),
+                         "grid mode does not show the QListView")
 
 
 class FilteringNeverUnsortsTheList(unittest.TestCase):

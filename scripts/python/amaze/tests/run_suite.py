@@ -29,6 +29,28 @@ import os
 import sys
 import unittest
 
+# THE CHECKOUT IS WHAT GETS TESTED, and this is the one line that
+# decides it. hython's own path holds the INSTALLED copy, so `import
+# amaze` finds that unless the checkout is put in front of it first.
+#
+# Every test module carried its own copy of these three lines and five
+# did not - and because the FIRST import to reach `amaze` binds the
+# package for the whole process, a subset run led by one of those five
+# tested the last-synced install and silently ignored the working
+# tree. Measured 2026-08-10: sabotaging a function in the checkout and
+# running its module alone stayed green, while the same sabotage under
+# a module that did carry the lines failed as it should. The full
+# suite was never affected - its first module carries them - which is
+# why this survived.
+#
+# Here rather than in each module: this file is the only way in.
+# `start_test.sh` runs `run_suite.py` for every module and every
+# subset, so one insert covers all of them and cannot be forgotten by
+# the next test written. `test_no_live_data` holds it to that.
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__)))))
+
 #: Where to record what this run SKIPPED. Unset for an ordinary run,
 #: so a single-version suite behaves exactly as it always has.
 SKIP_REPORT_VAR = "AMAZE_SKIP_REPORT"

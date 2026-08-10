@@ -149,5 +149,37 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
                 "branch of the File section is never reached" % expected)
 
 
+class TheSUITETestsTheCheckoutAndNotTheInstall(unittest.TestCase):
+    """Which COPY of the package is under test.
+
+    hython's own path holds the installed copy, so `import amaze` finds
+    that unless the checkout goes in front of it first. Sixty test
+    modules each carried their own three-line insert and five did not -
+    and the FIRST import to reach `amaze` binds it for the whole
+    process, so a subset run led by one of the five tested the last
+    sync and ignored the working tree entirely. It reads as a pass.
+
+    practice.md already records this family from the other direction
+    (an insert pointing one directory too high, which let the whole
+    standalone suite test the install for its entire life). The insert
+    now lives once in `run_suite.py`, the only way in; this is what
+    stops it being lost again, in either form.
+    """
+
+    def test_the_amaze_package_is_the_one_beside_these_tests(self):
+        import amaze
+
+        # The checkout this test file belongs to - not a configured
+        # path, so it cannot agree with a wrong answer.
+        expected = os.path.dirname(HERE)
+        loaded = os.path.dirname(os.path.abspath(amaze.__file__))
+        self.assertEqual(
+            expected, loaded,
+            "the suite is testing a DIFFERENT copy of amaze than the "
+            "one it lives in - every result is about\n  %s\nwhile the "
+            "working tree is\n  %s\nA sabotage in the checkout cannot "
+            "turn anything red." % (loaded, expected))
+
+
 if __name__ == "__main__":
     unittest.main()
