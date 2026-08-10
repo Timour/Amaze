@@ -319,6 +319,27 @@ def sidebar_row_height(panel, table) -> int:
     ).height()
 
 
+def visible_view(panel):
+    """The grid view the user is actually looking at.
+
+    ONE answer to a question three readers each answered by naming
+    `thumblist` outright - which is the HIDDEN one in list mode (see
+    show_table). So the per-section scroll memory captured and restored
+    a scrollbar nobody was moving, the Comments badge repainted a
+    viewport nobody was seeing, and an online category change scrolled
+    the wrong widget to the top.
+
+    `isHidden`, never `isVisible`: a panel that was never shown reports
+    every widget invisible, so `isVisible` has no answer headless
+    (practice.md ▸ *Testing - proving a test can fail*) while the
+    hidden FLAG is exactly what show_table sets.
+    """
+    table = getattr(panel, "thumbtable", None)
+    if table is not None and not table.isHidden():
+        return table
+    return panel.thumblist
+
+
 def show_table(panel, showing: bool) -> None:
     """Swap which grid view is visible.
 

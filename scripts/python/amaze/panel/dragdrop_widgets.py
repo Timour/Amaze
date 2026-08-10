@@ -633,18 +633,27 @@ class GridGestureMixin:
                 self._finish_preview(outcome)
 
     @staticmethod
-    def _ghost_type(panel, rule, section, dest) -> str:
+    def _ghost_type(panel, rule, section, dest, index=None) -> str:
         """WHICH carrier the space door would create in `dest` - read
         from the declaration the creator itself builds from, so the
         outline cannot promise a node the drop would not make.
         "" means no carrier (an import, a path hand-over, or a
-        network that cannot hold one) and the ghost is a plain box."""
+        network that cannot hold one) and the ghost is a plain box.
+
+        `index` is the row being dragged, HANDED IN. It read
+        `panel._drag_index`, which is set on the gesture widget and
+        never on the panel - so the lookup raised AttributeError into
+        the except below on every drag and the name silently became "".
+        Code is the only section with a `carrier_type_verb`, so a VEX
+        snippet dragged over empty SOP space drew a plain box instead
+        of the wrangle the release was about to create.
+        """
         cls = sections.SECTION_INDEX.get(section)
         name = rule.carrier_type or getattr(cls, "carrier_type", "")
         verb = getattr(cls, "carrier_type_verb", "")
-        if not name and verb:
+        if not name and verb and index is not None:
             try:
-                name = getattr(panel, verb)(panel._drag_index, dest)
+                name = getattr(panel, verb)(index, dest)
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
@@ -693,7 +702,8 @@ class GridGestureMixin:
                 dragengine.wire_highlight(pane_tab, target)
             dragengine.ghost_show(
                 pane_tab, spot,
-                self._ghost_type(panel, rule, section, net),
+                self._ghost_type(panel, rule, section, net,
+                                 self._drag_index),
                 connection=target[0])
         except (AttributeError, hou.OperationFailed):
             dragengine.ghost_clear()

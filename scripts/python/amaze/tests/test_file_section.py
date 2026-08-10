@@ -859,10 +859,14 @@ class CreationRuleTest(unittest.TestCase):
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
         rule = sections_mod.SECTION_INDEX["code"].DROP
-        self.panel._drag_index = index
-        self.addCleanup(lambda: self.panel.__dict__.pop("_drag_index", None))
+        # THE INDEX IS HANDED IN, as the live drag hands it in. This
+        # used to plant `_drag_index` on the PANEL and pass nothing -
+        # so the test proved the ghost worked against an attribute the
+        # panel only had because the test had just put it there, while
+        # in production the lookup raised AttributeError on every drag
+        # and the carrier name was always "".
         promised = dragdrop_widgets.GridGestureMixin._ghost_type(
-            self.panel, rule, "code", sop)
+            self.panel, rule, "code", sop, index)
         self.assertTrue(self.panel.create_code_node_in(index, sop))
         made = [c for c in sop.children() if "wrangle" in c.type().name()]
         self.assertEqual(promised, made[0].type().name(),

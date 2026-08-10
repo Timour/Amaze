@@ -749,6 +749,28 @@ class AssetSection(Section):
                 st.model.rename_category(name, new_name)
                 st.categories.rename_category(name, new_name)
             st.model.save()
+        # THE GRID'S FILTER STILL NAMED THE OLD CATEGORY. The rename
+        # rewrote every asset and the sidebar row, and left the proxy
+        # narrowed to a name nothing carries any more - so the row read
+        # correctly, stayed highlighted, and the grid went permanently
+        # empty with nothing said, until another row was clicked.
+        # Re-pointed through the ONE route a sidebar click uses, rather
+        # than a second place that knows how a category becomes a
+        # filter.
+        self._refilter_from_sidebar()
+
+    def _refilter_from_sidebar(self) -> None:
+        """Point the grid at whatever the sidebar is standing on now.
+
+        Both category verbs change what the current row MEANS, and the
+        proxy holds the value it was given when the row was clicked.
+        """
+        cat_list = getattr(self.panel, "cat_list", None)
+        if cat_list is None:
+            return
+        current = cat_list.currentIndex()
+        if current.isValid():
+            self.select_category(current)
 
     def menu_remove_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
@@ -778,6 +800,15 @@ class AssetSection(Section):
         # by their own signals.
         for name in names:
             st.categories.remove_category(name)
+        # THE ROW IS GONE AND THE FILTER WAS NOT. The grid stayed
+        # narrowed to a category that no longer exists - zero tiles,
+        # nothing highlighted, no message - and
+        # `_ensure_sidebar_selection`, whose docstring says the sidebar
+        # must never sit with an empty selection, was never called on
+        # this path. It falls back to All and refilters; the re-point
+        # below covers the case where the sidebar lands somewhere else.
+        self.panel._ensure_sidebar_selection(self.key)
+        self._refilter_from_sidebar()
 
     def tile_models(self):
         st = self.stack()
@@ -913,9 +944,17 @@ class AssetSection(Section):
         # repaint for it.
         if text.startswith(":"):
             # ":tag" searches the TagRole instead of the name.
+            st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
             if len(text) > 1:
                 st.proxy.setFilter(st.model.TagRole, text[1:])
-                st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
+            else:
+                # A BARE COLON is a tag search with no tag yet, so it
+                # narrows nothing. This branch used to be taken and
+                # then fall through doing NOTHING - so backspacing a
+                # tag search one character at a time left the grid on
+                # the previous tag while the box showed only a colon,
+                # and the two disagreed until the field was cleared.
+                st.proxy.removeFilter(st.model.TagRole)
         else:
             st.proxy.removeFilter(st.model.TagRole)
             st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, text)

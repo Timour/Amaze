@@ -3089,7 +3089,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
         self._ensure_sidebar_selection(self.current_section)
         self.cat_list.viewport().update()
-        self.thumblist.viewport().update()
+        grid.visible_view(self).viewport().update()
         # Geometry look prefs (shading mode / background) may have
         # changed: the cache key covers them, but nothing re-runs the
         # folder scan while the section is showing - re-run the current
@@ -3486,7 +3486,19 @@ class MatLibPanel(QtWidgets.QWidget):
             keys = [k for k, _ in self.ALL_SECTIONS if k in enabled] or [
                 "material"
             ]
-            self._on_tab_toggled(keys[0], True)
+            # A SECTION KEY IS NOT A SOURCE NAME. `_on_tab_toggled`
+            # forwards whatever it is given to `open_online_source`
+            # while the online world is showing, so hiding a section in
+            # Preferences from inside that world filtered the catalogue
+            # to a source called "gradient": empty grid, `online_source`
+            # left holding it, and no source tab highlighted because no
+            # chip matches. The tab strip already rebuilt above; the
+            # section behind the online world is switched when it is
+            # actually shown again.
+            if self._is_online():
+                self._section_before_online = keys[0]
+            else:
+                self._on_tab_toggled(keys[0], True)
 
     def _on_tab_toggled(self, key: str, checked: bool) -> None:
         """Section-tab click (Materials / Textures / Colors / Cop /
@@ -3580,7 +3592,7 @@ class MatLibPanel(QtWidgets.QWidget):
         current = ui_helpers.live_current_index(self.cat_list)
         if current is not None:
             state["cat_text"] = current.data()
-        state["scroll"] = self.thumblist.verticalScrollBar().value()
+        state["scroll"] = grid.visible_view(self).verticalScrollBar().value()
         self._section_view_state[self.current_section] = state
 
     def _restore_section_state(self, key: str) -> None:
@@ -3623,7 +3635,8 @@ class MatLibPanel(QtWidgets.QWidget):
             # clamped/overridden by that layout pass.
             QtCore.QTimer.singleShot(
                 0,
-                lambda: self.thumblist.verticalScrollBar().setValue(scroll),
+                lambda: grid.visible_view(self)
+                .verticalScrollBar().setValue(scroll),
             )
 
     # ------------------------------------------------------------------
@@ -3774,6 +3787,13 @@ class MatLibPanel(QtWidgets.QWidget):
         """
         if self._is_online():
             return
+        # WHAT YOU WERE LOOKING AT, not what you were looking at the
+        # last time you switched tabs. Leaving routes through
+        # `_apply_context` -> `_restore_section_state`, and nothing on
+        # the way IN ever captured - so coming back put you on the
+        # category stored at the last TAB SWITCH, or on All when there
+        # had been none.
+        self._capture_section_state()
         self._section_before_online = self.current_section
         self.online_mode = True
         first = self._online_segments()[0][0]
@@ -5575,8 +5595,13 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _on_note_saved(self, _key: str) -> None:
         """A page was written - repaint the grid so the tile's note
-        badge appears or clears with it."""
-        self.thumblist.viewport().update()
+        badge appears or clears with it.
+
+        THE VISIBLE view: `NotesRole` is answered live from the store
+        with no `dataChanged`, so this repaint is the whole signal - and
+        naming `thumblist` meant list mode got none of it. The tick
+        column stayed blank until something unrelated repainted."""
+        grid.visible_view(self).viewport().update()
 
     def _notes_subject(self):
         """What the Comments pane points at, or None.
@@ -5878,7 +5903,17 @@ class MatLibPanel(QtWidgets.QWidget):
         name = self.line_name.text()
         tags = self.line_tags.text()
         cats = self.cat_combo.currentText()
-        fav = self.box_fav.isChecked()
+        # THE TRI-STATE, READ AS THREE. `isChecked()` is True for
+        # PartiallyChecked, which is the state update_details_view sets
+        # when the selected rows disagree - so editing only the Tags
+        # field of a mixed selection starred every one of them.
+        # `set_assetdata`
+        # already honours None as leave-alone; this was the one call
+        # site that never passed it, while name, tags and category are
+        # protected by the MULTIPLE_VALUES sentinel.
+        state = self.box_fav.checkState()
+        fav = (None if state == QtCore.Qt.CheckState.PartiallyChecked
+               else state == QtCore.Qt.CheckState.Checked)
         # OUTSIDE the layout wrapper, and hoisted out of the loop with
         # the other four: every value here is read from a widget, so it
         # was the same on each pass anyway. check_add_category
@@ -6051,7 +6086,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     self.matx_sorted_model.setFilter(
                         self.matx_online_model.CategoryRole, cat
                     )
-                self.thumblist.scrollToTop()
+                grid.visible_view(self).scrollToTop()
             return
         indexes = self.cat_list.selectedIndexes()
         if not indexes:
