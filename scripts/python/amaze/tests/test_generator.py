@@ -650,6 +650,17 @@ class TruncatedDownloadTest(unittest.TestCase):
         thread = threading.Thread(target=serve, daemon=True)
         thread.start()
         self.addCleanup(thread.join, 5)
+        # PLAIN HTTP ON LOOPBACK, said out loud. The fetcher is
+        # https-only, because every URL it opens comes out of a remote
+        # catalogue; this server is a real socket on 127.0.0.1 serving
+        # bytes this test wrote, so the scheme rule is widened for its
+        # lifetime rather than the product's rule being loosened to
+        # make a test pass.
+        widened = matx_sources.ALLOWED_SCHEMES + ("http",)
+        original = matx_sources.ALLOWED_SCHEMES
+        matx_sources.ALLOWED_SCHEMES = widened
+        self.addCleanup(
+            setattr, matx_sources, "ALLOWED_SCHEMES", original)
         return "http://127.0.0.1:%d/file.bsdf" % port
 
     def _dest(self) -> str:
@@ -1023,19 +1034,26 @@ class CertificateVerificationTest(unittest.TestCase):
         """A 404 or a timeout must not reach the relaxed retry."""
         import urllib.error
 
-        real = matx_sources.urllib.request.urlopen
+        # THE SEAM MOVED WITH THE REDIRECT HANDLER. `_request` builds an
+        # opener now instead of calling `urlopen`, so a patch on urlopen
+        # intercepts nothing and this counted zero attempts while
+        # passing for the wrong reason. Counting at the opener asks the
+        # same question - how many times did it try?
+        real = matx_sources.urllib.request.build_opener
         calls = []
 
-        def refuse(req, *args, **kwargs):
-            calls.append(kwargs.get("context"))
-            raise urllib.error.URLError(OSError("connection refused"))
+        class _Refusing:
+            def open(self, req, *args, **kwargs):
+                calls.append(req)
+                raise urllib.error.URLError(OSError("connection refused"))
 
-        matx_sources.urllib.request.urlopen = refuse
+        matx_sources.urllib.request.build_opener = \
+            lambda *args, **kwargs: _Refusing()
         try:
             with self.assertRaises(urllib.error.URLError):
                 matx_sources._request("https://example.invalid/thing")
         finally:
-            matx_sources.urllib.request.urlopen = real
+            matx_sources.urllib.request.build_opener = real
         self.assertEqual(
             1, len(calls),
             "a non-SSL failure was retried with verification disabled")
