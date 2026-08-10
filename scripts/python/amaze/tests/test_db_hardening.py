@@ -3091,5 +3091,106 @@ class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
             "look")
 
 
+class TheMembershipBaselineFollowsEverySave(_Case):
+    """`_loaded_ids` is how the merge tells OUR deletion from THEIR
+    addition: an id on disk but not in memory was deleted by us if it
+    was in the baseline, and added by them if it was not.
+
+    `_remember_disk_state` sets it, and it is the only thing that does.
+    The successful-save exit stopped calling it when the content stat
+    was derived from the serialisation instead of re-read, so the
+    baseline froze at load time and every row added afterwards was
+    permanently outside it.
+
+    What that costs is not a stale flag. `remove_asset` writes the LIST
+    FIRST and treats the save's answer as permission to unlink - so a
+    merge that puts the row back still returns True, and the .mat, the
+    .interface, the thumbnail, the builder sidecar, the recovery stamp
+    and the whole version folder are removed behind a row that is still
+    listed and still on screen.
+    """
+
+    def _peer_edits(self):
+        """Any real change by the other machine, so the next save takes
+        the stale-write path. The guard compares CONTENT, so a rename is
+        enough and nothing here depends on timing."""
+        theirs = self._on_disk()
+        theirs["assets"][0]["name"] = "renamed by the other machine"
+        self._write(theirs)
+        return theirs
+
+    def test_a_row_saved_this_session_can_still_be_deleted(self):
+        self._write(self._document(count=1))
+        db, _ = self._load()
+
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           {"id": "MINE", "name": "made this session"}]})
+        self.assertTrue(db.save(), "premise: the first save landed")
+        self.assertIn("MINE", [str(r["id"]) for r in self._on_disk()["assets"]],
+                      "premise: the row reached disk")
+
+        self._peer_edits()
+
+        # Said out loud, exactly as removeRow does - absence alone is
+        # not a delete, which is why forget() exists.
+        db.forget("MINE")
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"}]})
+        self.assertTrue(db.save(), "premise: the second save landed")
+
+        self.assertNotIn(
+            "MINE", [str(r["id"]) for r in self._on_disk()["assets"]],
+            "the merge read our own deletion as the peer's addition and "
+            "put the row back - and remove_asset reads that True as "
+            "permission to unlink every file behind it")
+
+    def test_a_row_the_peer_added_after_our_save_is_still_adopted(self):
+        """The accept path beside the refusal. Widening the baseline is
+        only correct while a genuinely NEW peer row is still adopted -
+        the honest way to fail this defect is to stop adopting anything,
+        which loses the other machine's work instead of ours."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           {"id": "MINE", "name": "made this session"}]})
+        self.assertTrue(db.save(), "premise: the first save landed")
+
+        theirs = self._on_disk()
+        theirs["assets"].append({"id": "THEIRS", "name": "from theirs"})
+        self._write(theirs)
+
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           {"id": "MINE", "name": "made this session"}]})
+        self.assertTrue(db.save(), "premise: the second save landed")
+
+        ids = [str(r["id"]) for r in self._on_disk()["assets"]]
+        self.assertIn("THEIRS", ids,
+                      "the peer's new row was not adopted - the baseline "
+                      "swallowed an addition it should never see")
+        self.assertIn("MINE", ids, "our own row was dropped by the merge")
+        self.assertIn(
+            "THEIRS", [str(r["id"]) for r in db.take_adopted()],
+            "the row reached disk but was never handed to the model, so "
+            "the next save rebuilds assets[] without it")
+
+    def test_an_identical_skip_also_moves_the_baseline(self):
+        """The other exit that derives the stat instead of remembering
+        it. A save whose bytes match disk returns True and is just as
+        much an agreement with the file as one that wrote."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           {"id": "MINE", "name": "made this session"}]})
+        self.assertTrue(db.save(), "premise: the first save landed")
+        self.assertTrue(db.save(), "premise: the second save changed nothing")
+        self.assertEqual("identical-skip", db._save_outcome,
+                         "premise: this is the derived-stat exit")
+
+        self.assertIn("MINE", db._loaded_ids,
+                      "the no-op save left the baseline behind, so the "
+                      "row is still outside it for every later merge")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

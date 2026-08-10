@@ -572,12 +572,27 @@ class DatabaseConnector:
         except OSError:
             return None
 
-    def _remember_disk_state(self) -> None:
+    def _remember_disk_state(self, stat=None) -> None:
         """Baseline for the stale-write guard: what the FILE looked
         like when this session last read or wrote it, plus which asset
         ids existed then (the membership baseline a three-way merge
-        needs to tell OUR deletions from THEIR additions)."""
-        self._disk_stat = self._stat_file()
+        needs to tell OUR deletions from THEIR additions).
+
+        `stat` is that (size, sha256) when the caller already holds it -
+        a save that has just written these exact bytes knows them
+        without a third read of the file.
+
+        THE READ IS WHAT IS OPTIONAL, NEVER THE BASELINE. Both halves
+        move together or neither does, which is the whole reason this
+        is one method. Saving the read by assigning `_disk_stat` at the
+        call site instead left `_loaded_ids` frozen at load time, so
+        every row added after the load sat permanently outside the
+        baseline - and a row this session added, saved and then deleted
+        came back as the peer's addition on the next merge, with
+        remove_asset reading that successful save as permission to
+        unlink every file behind it.
+        """
+        self._disk_stat = self._stat_file() if stat is None else stat
         self._loaded_ids = {
             str(a.get("id")) for a in (self._data or {}).get("assets", [])
         }
@@ -1213,8 +1228,10 @@ class DatabaseConnector:
             # stat from the top of this call is still the disk's.
             if current_stat is not None and current_stat == serialised_stat:
                 # The disk already holds these exact bytes - remember
-                # THAT, no third read.
-                self._disk_stat = serialised_stat
+                # THAT, no third read. Through the baseline's owner, so
+                # the membership half moves with it: a no-op save is
+                # just as much an agreement with the file as a write.
+                self._remember_disk_state(serialised_stat)
                 self._save_outcome = "identical-skip"
                 return True
         except (TypeError, ValueError):
@@ -1247,15 +1264,13 @@ class DatabaseConnector:
             self._save_outcome = "file-held"
             return False
         else:
-            if serialised_stat is not None:
-                # The bytes just written ARE the serialisation above -
-                # write_json_atomic writes them verbatim (the
-                # identical-skip guard depends on exactly that and its
-                # test proves it) - so the baseline is derived, not
-                # re-read: this was the third full read+hash per save.
-                self._disk_stat = serialised_stat
-            else:
-                self._remember_disk_state()
+            # The bytes just written ARE the serialisation above -
+            # write_json_atomic writes them verbatim (the identical-skip
+            # guard depends on exactly that and its test proves it) - so
+            # the stat is handed over rather than re-read: this was the
+            # third full read+hash per save. None when the serialisation
+            # raised, and then the owner reads the file itself.
+            self._remember_disk_state(serialised_stat)
             self._save_outcome = "stored"
             return True
 
