@@ -918,8 +918,16 @@ def release(preferences=None) -> None:
     if preferences is None:
         _open.clear()
         return
-    root = str(preferences.dir)
-    for key in [k for k in _open if os.path.dirname(k[1]) == root]:
+    # BOTH SIDES THROUGH canonical_path_key. `prefs.dir` comes out of
+    # `prefs._normalised_dir`, which guarantees a TRAILING SLASH, and
+    # `os.path.dirname` of a store path never has one - so the raw
+    # compare could not match for any real Prefs and this branch
+    # released nothing at all. `normpath` collapses both spellings, and
+    # it is the same helper `serves()` and the location keys already
+    # compare through.
+    root = hostos.canonical_path_key(str(preferences.dir))
+    for key in [k for k in _open
+                if hostos.canonical_path_key(os.path.dirname(k[1])) == root]:
         _open.pop(key, None)
 
 

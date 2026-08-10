@@ -810,7 +810,21 @@ class DatabaseConnector:
             if newest is None:
                 return
             with open(newest, encoding="utf-8-sig") as handle:
-                backed = len((json.load(handle)).get("assets") or [])
+                snapshot = json.load(handle)
+            # THE SAME CLASSIFIER THE LOAD AND THE MERGE USE. A snapshot
+            # that parses is not therefore a database, and `.get` on a
+            # list or a null raises AttributeError - which is not in the
+            # except below, so the note that promises never to cost a
+            # load took the whole panel down with it: load() runs inside
+            # the model constructor, so there is no grid and no message,
+            # only a traceback naming a file beside the library.
+            #
+            # Asked rather than caught, because "is this shaped like a
+            # database" already has one owner here and two guards
+            # answering it is how they drift.
+            if wrong_shape(snapshot):
+                return
+            backed = len(snapshot.get("assets") or [])
             if backed >= 2 and here < backed / 2:
                 sentence = (
                     "Your %s lists %d %s, but the most recent saved copy "

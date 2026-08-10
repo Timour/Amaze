@@ -65,9 +65,11 @@ from amaze.prefs import prefs as prefs_module
 
 
 #: Every list Repair knows how to read, in the order the panel shows
-#: them. gradients.json is here although it has no DatabaseConnector -
-#: it is the least protected file in the library (no rolling copies at
-#: all on the real one) and therefore the one most worth reporting on.
+#: them. All four go through DatabaseConnector since 2026-08-09, so
+#: all four get the same shape test, the same restore tier and the same
+#: sentences; gradients.json was the last one in and is still the least
+#: protected on the real library (no rolling copies at all when this
+#: was measured), which is what makes reporting on it worth the line.
 DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
 
 #: Every file suffix an asset row owns in the asset folder - the ONE
@@ -233,12 +235,18 @@ def _survey_one(directory: str, filename: str) -> dict:
         if not malformed and spec.payload not in (document or {}):
             malformed = ("it holds no %r, so it is not the %s file"
                          % (spec.payload, spec.label))
-    elif filename == "gradients.json":
-        # The Colors list is not shaped like the others (its own
-        # format, no connector), so the database shape test does not
-        # apply to it.
-        malformed = ""
     else:
+        # ALL FOUR DATABASES, gradients included since 2026-08-09. It
+        # was exempted here on the grounds that it had "its own format,
+        # no connector" - true when the line was written and not since:
+        # it is an ordinary DatabaseConnector document with rows under
+        # `assets`. The exemption outlived its premise, and the count
+        # fallback below does not cover the gap, because `count_in`
+        # walks the list keys, finds `assets` is not a list, finds no
+        # mapping payload and falls through to `len(document),
+        # "settings"`. So a Colors list the connector refuses to load
+        # answered 1 and was reported **ok, 1 settings** - no restore
+        # offered for the one list that needed it.
         malformed = database.wrong_shape(document)
     if malformed or facts["count"] is None:
         # VALID JSON IS NOT A VALID LIST, and the same classifier the

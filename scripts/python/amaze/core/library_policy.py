@@ -164,6 +164,15 @@ def _write(library_dir: str, changes: dict) -> bool:
     path = path_for(library_dir)
     # The only library JSON with zero backup coverage until now.
     hostos.snapshot_before_write(path)
+    # Whether this write CREATES the file, asked before it does.
+    # snapshot_before_write rightly declines a path that is not there
+    # yet, so a policy set once and then left alone - which is what
+    # setting a policy normally looks like - had no `.bak-first`, no
+    # `.unreadable` and no marker. read()'s absent-but-known branch
+    # then had no evidence to find, so the one guard that must survive
+    # a momentarily-missing file could never fire for the file it
+    # guards. Seeded below, from the file this call is about to write.
+    created = not os.path.isfile(path)
     if not library_dir or not os.path.isdir(library_dir):
         debug.event("policy", "not written - no library directory",
                     path=path)
@@ -209,5 +218,12 @@ def _write(library_dir: str, changes: dict) -> bool:
         debug.note("could not write the library policy (%s)" % exc,
                    path=path)
         return False
+    if created:
+        # THE FLOOR, FROM THE FIRST WRITE - the same line keyed_store
+        # carries, and for the same reason its docstring gives: this
+        # writes no new KIND of file, it makes the documented
+        # `.bak-first` arrive one write earlier so absence is
+        # answerable.
+        hostos.seed_restore_floor(path)
     debug.event("policy", "written", path=path, **changes)
     return True

@@ -200,11 +200,54 @@ class BrokenPolicyShapesFailClosedTest(unittest.TestCase):
         self.assertFalse(library_policy.allow_overwrite(self.dir))
 
     def test_a_write_leaves_a_restore_point(self):
+        # TWO writes: the second is what snapshots the first. The
+        # write-ONCE case is its own test below, because that is the
+        # one the product actually produces - a policy is set and then
+        # left alone - and this test passed throughout the years it
+        # was broken.
         self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
         self.assertTrue(library_policy.set_allow_overwrite(self.dir, True))
         self.assertTrue(
             os.path.exists(self.path + ".bak-first"),
             "policy.json still has no backup tier")
+
+    def test_a_policy_written_ONCE_leaves_a_restore_point(self):
+        """The normal case: turn Overwrite off, never touch it again.
+
+        snapshot_before_write copies what is already on disk and rightly
+        declines when there is nothing there, so the first write left no
+        trace of any kind - which is the evidence the absence guard
+        below has to find."""
+        self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
+        self.assertTrue(
+            os.path.exists(self.path + ".bak-first"),
+            "a policy set once has no restore point and nothing saying "
+            "it was ever here")
+
+    def test_a_policy_that_is_momentarily_ABSENT_stays_restrictive(self):
+        """Absence means the library predates the mechanism only when
+        nothing says otherwise. Every other branch of read() fails
+        CLOSED; this one returned the permissive defaults, so the one
+        protection whose whole point is being enforced at the library
+        layer turned itself off the instant the file was late.
+
+        The second machine's sync placeholder is the case: the file is
+        gone for the moment the panel reads it, and comes back."""
+        self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
+        os.remove(self.path)
+        self.assertFalse(
+            library_policy.allow_overwrite(self.dir),
+            "an append-only library became writable because its policy "
+            "file was not there for an instant")
+
+    def test_a_library_that_never_had_a_policy_is_still_permissive(self):
+        """The accept path beside it: absence with NO trace is a
+        library written before this mechanism existed, and it must keep
+        working exactly as it did. A guard that fires when there is
+        nothing to protect is an outage."""
+        self.assertTrue(library_policy.allow_overwrite(self.dir),
+                        "a library that never had a policy was refused "
+                        "an overwrite")
 
 
 if __name__ == "__main__":

@@ -742,6 +742,79 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
                       "the save was still refused after the repair")
 
 
+class SettingsThatVanishAreNotAFreshInstall(unittest.TestCase):
+    """settings.json was the one guarded store with no absent-but-known
+    verdict. Every library list and every side table separates "never
+    existed" from "existed and is not here right now"; the preferences
+    loader read every missing file as a new machine, cleared the latch,
+    and left save() free to put pure defaults over a file that was only
+    late.
+
+    What is in that file: the pointer to the library, every registered
+    folder and every favourite. And `add_file_folder` and friends save
+    from ordinary sidebar use, so nobody has to open Preferences for
+    the defaults to land."""
+
+    def setUp(self):
+        self.home = tempfile.mkdtemp(prefix="amaze_absent_prefs_")
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+        self.settings = os.path.join(self.home, "settings.json")
+
+    def _prefs(self):
+        from amaze.prefs import prefs as prefs_mod
+        p = prefs_mod.Prefs()
+        p.path = self.home
+        # Under hython the legacy path is the LIVE install and load()
+        # migrates from it - blanked as the sibling fixture blanks it.
+        p.legacy_path = ""
+        return p
+
+    def _configured(self):
+        """A settings.json written the way the product writes one."""
+        library = os.path.join(self.home, "library")
+        os.makedirs(library, exist_ok=True)
+        p = self._prefs()
+        p.load()
+        p.dir = library + os.sep
+        p.save()
+        return library + os.sep
+
+    def test_a_first_launch_still_opens_and_saves(self):
+        """The accept path, and the outage this guard must never become.
+        A machine that has never run Amaze has no settings.json and
+        nothing beside it, and has to open and save normally."""
+        prefs = self._prefs()
+        prefs.load()
+        self.assertFalse(getattr(prefs, "_load_failed", False),
+                         "a first launch was refused its first save")
+        prefs.save()
+        self.assertTrue(os.path.exists(self.settings),
+                        "the first save never landed")
+
+    def test_a_first_save_leaves_evidence_it_was_here(self):
+        self._configured()
+        self.assertTrue(
+            os.path.exists(self.settings + ".bak-first"),
+            "settings written once leave no trace at all, so nothing "
+            "can tell a late file from a new machine")
+
+    def test_a_momentarily_absent_file_does_not_become_defaults(self):
+        self._configured()
+        os.remove(self.settings)            # the sync has not caught up
+        prefs = self._prefs()
+        import contextlib
+        with contextlib.redirect_stdout(io.StringIO()):
+            prefs.load()
+            self.assertTrue(
+                getattr(prefs, "_load_failed", False),
+                "a file that is only late was read as a new machine")
+            prefs.save()                    # ordinary sidebar use
+        self.assertFalse(
+            os.path.exists(self.settings),
+            "the defaults were written where the real settings belong - "
+            "the library pointer and every registered folder with them")
+
+
 class MergeRefusesJsonOfTheWrongShapeTest(_Case):
     """Valid JSON is not a valid database.
 
@@ -3089,6 +3162,51 @@ class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
             "a same-field collision was silent - the loser's value is "
             "findable in the peer's snapshots only if someone knows to "
             "look")
+
+
+class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
+    """`_note_suspicious_shrink` promises in its own docstring that the
+    note must never cost a load, and guards `(OSError, ValueError,
+    TypeError)`. It then calls `.get("assets")` on whatever the newest
+    snapshot parses to - and a non-dict raises `AttributeError`, which
+    is exactly the class this module elsewhere catches deliberately and
+    whose absence its docstrings twice name as the bug.
+
+    It escapes `load()`, and `load()` runs inside the model
+    constructor during panel setup: no grid, no message, and nothing on
+    screen naming the file beside the library that did it."""
+
+    def _snapshot(self, document):
+        with open(self.path + ".bak-1", "w", encoding="utf-8",
+                  newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+
+    def test_a_list_shaped_snapshot_is_ignored(self):
+        self._write(self._document(count=3))
+        self._snapshot([])
+        db, data = self._load()
+        self.assertEqual(3, len(data["assets"]),
+                         "the load did not survive a snapshot of the "
+                         "wrong shape")
+
+    def test_a_null_snapshot_is_ignored(self):
+        self._write(self._document(count=3))
+        self._snapshot(None)
+        db, data = self._load()
+        self.assertEqual(3, len(data["assets"]))
+
+    def test_a_real_shrink_is_still_reported(self):
+        """The accept path. Ignoring an unreadable snapshot must not
+        make the shrink note stop firing on a readable one - the note is
+        the only thing that puts the number in front of a human before
+        the next sweep treats the short list as the truth."""
+        self._write(self._document(count=1))
+        self._snapshot(self._document(count=8))
+        self._load()
+        notes = database.DatabaseConnector.take_integrity_notes()
+        self.assertTrue(
+            any("most recent saved copy" in line for line in notes),
+            "a genuine shrink went unreported: %r" % (notes,))
 
 
 class TheMembershipBaselineFollowsEverySave(_Case):

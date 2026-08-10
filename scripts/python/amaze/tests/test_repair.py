@@ -239,11 +239,16 @@ class TheReportSaysWhatIsWrongTest(_Case):
                                r"cannot be read")
 
     def test_a_colors_file_of_the_wrong_shape_is_not_called_empty(self):
-        """The Colors list has its own format and no connector, so the
-        shape test the others get does not apply - but "nothing can be
-        counted in it" must still read as unreadable. Calling it empty
-        says "there is nothing here" about a file that may be full, and
-        that is the sentence that gets a library thrown away."""
+        """A file nothing can be counted in must read as unreadable.
+        Calling it empty tells the reader there is nothing here about a
+        file that may be full, and that is the sentence that gets a
+        library thrown away.
+
+        A LIST document is caught by the count fallback alone, which is
+        why this one passed while the sibling below did not. (This
+        docstring used to open "the Colors list has its own format and
+        no connector" - true until 2026-08-09, and the premise the
+        survey's exemption was resting on.)"""
         with open(os.path.join(self.dir, "gradients.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(["not", "a", "list", "Amaze", "wrote"], handle)
@@ -254,6 +259,47 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertFalse(findings["complete"],
                          "a list nobody can read left the union looking "
                          "complete, so files could be moved on a guess")
+
+    def test_a_broken_colors_file_that_still_COUNTS_is_unreadable(self):
+        """The shape the count fallback cannot catch, and the one the
+        connector actually refuses.
+
+        `count_in` walks the list keys, finds `assets` is not a list,
+        finds no mapping payload, and falls through to `len(document),
+        "settings"` - so a Colors file that no longer loads answered 1
+        and the survey's gradients exemption called it healthy. The
+        report then read **Colors - ok, 1 settings** while the section
+        was dead in the panel, and no restore was offered for the one
+        list that needed it.
+
+        Since 2026-08-09 gradients.json is an ordinary connector
+        document with rows under `assets`, so it takes the same shape
+        test as the other three."""
+        with open(os.path.join(self.dir, "gradients.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"version": 3, "categories": ["_All"],
+                       "tags": [], "assets": "oops"}, handle)
+        findings = self._survey()
+        colors = [e for e in findings["lists"]
+                  if e["filename"] == "gradients.json"][0]
+        self.assertEqual(
+            "unreadable", colors["state"],
+            "Repair called a broken Colors list healthy - the tool whose "
+            "whole job is saying what is wrong said nothing was")
+        self.assertFalse(
+            findings["complete"],
+            "the union looked complete over a list nobody can read, so "
+            "files could be moved aside on a guess")
+
+    def test_a_healthy_colors_file_is_still_ok(self):
+        """The accept path beside it: taking the exemption away must not
+        make every healthy Colors library read as broken."""
+        findings = self._survey()
+        colors = [e for e in findings["lists"]
+                  if e["filename"] == "gradients.json"][0]
+        self.assertIn(colors["state"], ("ok", "empty", "absent"),
+                      "a healthy Colors list was called %s"
+                      % colors["state"])
 
     def test_a_folder_it_could_not_read_is_not_called_accounted_for(self):
         """A FALSE ALL-CLEAR FROM THE TOOL WHOSE JOB IS TO SAY WHAT IS

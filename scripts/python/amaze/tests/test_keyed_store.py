@@ -273,6 +273,56 @@ class TheRestoreFloorArrivesOnCreate(StoreCase):
                          "the write-once floor was replaced")
 
 
+class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
+    """`release(preferences)` compared `os.path.dirname(<dir>/notes.json)`,
+    which carries no trailing separator, against `preferences.dir`, which
+    `prefs._normalised_dir` guarantees ends with one - so the per-library
+    branch could never match and the call released nothing at all.
+
+    Latent when found: all three production callers pass no argument and
+    take the clear-everything path. It reads as the library-switch hook
+    and is the one live requirement the two retired `forget_*` wrappers
+    each half-expressed, so it will be wired up as one."""
+
+    def test_the_named_librarys_tables_are_dropped(self):
+        """THE PRODUCT'S OWN SPELLING, deliberately. `prefs.dir` is
+        passed through `prefs._normalised_dir`, which guarantees a
+        trailing `/` - and `os.path.dirname` of the store path never has
+        one, so the comparison could not match for any real Prefs.
+
+        `StoreCase`'s `_Prefs` hands out a bare `mkdtemp` path, which is
+        why every other test in this file happens to sit on the one
+        spelling that worked (practice.md ▸ *A FIXTURE MUST WRITE FILES
+        THE WAY THE PRODUCT DOES* - the same shape, pointed at an
+        argument rather than a file)."""
+        self.store().set("material:1", self.page())
+        self.assertTrue(keyed_store._open, "premise: a table is cached")
+        keyed_store.release(_Prefs(self.dir + os.sep))
+        self.assertFalse(
+            keyed_store._open,
+            "release named a library and dropped nothing - the previous "
+            "library's tables stay resident with their state, their "
+            "unreadable entries and their disk fingerprint")
+
+    def test_the_separatorless_spelling_matches_too(self):
+        """Both spellings name one library, and the store must not care
+        which one the caller happens to hold."""
+        self.store().set("material:1", self.page())
+        keyed_store.release(_Prefs(self.dir))
+        self.assertFalse(keyed_store._open,
+                         "the bare-path spelling matched nothing")
+
+    def test_another_librarys_tables_are_KEPT(self):
+        """The accept path: release names ONE library. Dropping every
+        table whatever the argument is the same outage as dropping none,
+        wearing the opposite face."""
+        self.store().set("material:1", self.page())
+        keyed_store.release(_Prefs(os.path.join(self.dir, "elsewhere")))
+        self.assertTrue(
+            keyed_store._open,
+            "a release aimed at another library took this one's tables")
+
+
 class AReadHandsOutACopy(StoreCase):
     """`notes()` used to return the live cache. A caller holding that
     could mutate the table without writing anything - so a REFUSED save

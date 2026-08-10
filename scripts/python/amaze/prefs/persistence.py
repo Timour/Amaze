@@ -270,6 +270,12 @@ class _Persistence:
         for retired in self._RETIRED_KEYS:
             self.data.pop(retired, None)
         hostos.snapshot_before_write(final)
+        # Whether this write CREATES the file, asked before it does -
+        # the floor is minted below. snapshot_before_write rightly
+        # declines a path that is not there yet, so the first save left
+        # no `.bak` tier of any kind, and load()'s absence verdict had
+        # nothing to read on the one launch where it matters most.
+        created = not os.path.isfile(final)
         # A UNIQUE scratch name, not the fixed `final + ".tmp"` this used.
         # Two writers of one destination shared that single buffer and
         # interleaved into it - measured for the database case at 794
@@ -280,6 +286,14 @@ class _Persistence:
         try:
             hostos.write_json_atomic(final, self.data, indent=4)
             self._remember_disk_state(final)
+            if created:
+                # THE FLOOR, FROM THE FIRST WRITE - the same line
+                # keyed_store carries and for the reason its own
+                # docstring gives. No new KIND of file: `.bak-first` is
+                # already the documented immutable first-seen copy, it
+                # simply arrives one write earlier so that absence is
+                # answerable.
+                hostos.seed_restore_floor(final)
         except OSError as exc:
             # The only one of the package's atomic writers that recorded
             # NOTHING on failure, and none of its 21 callers wraps it -
@@ -745,14 +759,45 @@ class _Persistence:
             # No _preserve_unreadable either: there is no file to
             # preserve, and it printed "could not read your settings"
             # over a first launch where nothing was wrong.
+            # ABSENT IS ONLY "NEW" WHEN NOTHING SAYS OTHERWISE - the
+            # verdict every library list and every side table already
+            # reaches, and the one guarded store that never asked. The
+            # branch above is right that a FIRST LAUNCH must not latch;
+            # it was wrong that every absence is a first launch. A file
+            # that is merely late - a roaming profile, a sync that has
+            # not caught up - was read as a new machine, and the next
+            # ordinary sidebar save put pure defaults where the pointer
+            # to the library and every registered folder had been.
+            trace = hostos.existed_before(self.path + "/settings.json")
+            if trace:
+                debug.event("prefs", "settings absent but known - "
+                            "refusing to write", path=self.path,
+                            evidence=trace)
+                debug.note(
+                    "your Amaze settings are not on disk right now, but "
+                    "%s beside them says they were - so they are treated "
+                    "as not-yet-arrived, NOT as a new machine. Nothing "
+                    "will be saved over them, so your library and your "
+                    "folders cannot be replaced by empty ones. Let the "
+                    "sync finish, then restart Houdini.\n"
+                    # The PATH, because the reader has to go and look;
+                    # and the way OUT, or the guard is permanent for
+                    # anyone who cleared their settings deliberately.
+                    "  Expected at: %s\n"
+                    "  If you cleared them on purpose, remove %s as well "
+                    "and the next launch starts fresh."
+                    % (trace, self.path + "/settings.json", trace),
+                    path=self.path)
+                self._load_failed = True
+                return False
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
             # And the latch CLEARS, exactly as a healthy read clears
             # it: the refusal is re-derived from the file on every
-            # read, and an absent file is the "start fresh" route out
-            # of a broken one - load() runs again when Preferences
-            # closes, so a latch left set here refused every save for
-            # the life of the panel.
+            # read, and an absent file with nothing beside it is the
+            # "start fresh" route out of a broken one - load() runs
+            # again when Preferences closes, so a latch left set here
+            # refused every save for the life of the panel.
             self._load_failed = False
             return False
         except (OSError, ValueError) as exc:
