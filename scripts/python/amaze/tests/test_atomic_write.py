@@ -1347,5 +1347,76 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
             "again")
 
 
+class OnePathHasOneSpelling(unittest.TestCase):
+    """A registered folder is written into settings.json by one encoder
+    and into locations.json by another, and overview.md 4c says
+    settings.json keeps a COPY of what those stores hold.
+
+    Agreement held for a folder under home and broke for one BESIDE
+    the install - where a Houdini user's textures naturally live.
+    Measured 2026-08-10, this machine:
+
+        settings.json   $AMAZE/../../SomeOther/textures
+        locations.json  ~/Cloud/3D/H-FILES/SomeOther/textures
+
+    The `..` walk breaks the moment the install moves; `~` survives it.
+    Both decoders read both spellings, so one encoder wins and nothing
+    needs migrating."""
+
+    def _cases(self):
+        from amaze.helpers import hostos
+        amaze = os.environ.get("AMAZE", "")
+        home = os.path.expanduser("~")
+        cases = [os.path.join(home, "textures", "wood"),
+                 home,
+                 "/Volumes/Share/textures"]
+        if amaze:
+            # The divergent shape: shares a subtree with the install
+            # without being under it.
+            cases.append(os.path.join(
+                os.path.dirname(amaze), "Sibling", "textures"))
+            cases.append(os.path.join(amaze, "scripts"))
+        return cases, hostos
+
+    def test_both_encoders_spell_a_path_the_same_way(self):
+        from amaze.prefs import persistence
+        cases, hostos = self._cases()
+        disagree = [(p, persistence._encode_path(p),
+                     hostos.storage_path_key(p))
+                    for p in cases
+                    if persistence._encode_path(p)
+                    != hostos.storage_path_key(p)]
+        self.assertEqual(
+            [], disagree,
+            "one folder is spelled two ways in two files: %s" % disagree)
+
+    def test_the_old_walking_spelling_is_still_read(self):
+        """Nothing migrates, so whatever is already in settings.json has
+        to keep resolving - including the `$AMAZE/..` form this stops
+        writing."""
+        from amaze.prefs import persistence
+        cases, hostos = self._cases()
+        amaze = os.environ.get("AMAZE", "")
+        if not amaze:
+            self.skipTest("$AMAZE is not set in this environment")
+        target = os.path.join(os.path.dirname(amaze), "Sibling", "textures")
+        walked = "$AMAZE/../Sibling/textures"
+        self.assertEqual(
+            os.path.normpath(target),
+            os.path.normpath(persistence._decode_path(walked)),
+            "an existing settings.json entry stopped resolving")
+
+    def test_a_trailing_separator_survives_the_round_trip(self):
+        """`directory` is stored WITH one, and the connectors build
+        their paths as `self._path + self._filename`."""
+        from amaze.prefs import persistence
+        for path in (os.path.expanduser("~") + "/Cloud/lib/",
+                     "/Volumes/Share/lib/"):
+            self.assertEqual(
+                path, persistence._decode_path(
+                    persistence._encode_path(path)),
+                "the library pointer lost its trailing separator")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

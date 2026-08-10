@@ -61,16 +61,15 @@ from amaze.helpers import hostos
 # this machine's) when the re-homed path actually exists. In-memory
 # values are always absolute local paths; only the json is portable.
 
+#: Read by `_decode_path` alone now. The ENCODER stopped minting this
+#: form when the two encoders became one - `_MIN_COMMON_DEPTH` and the
+#: second `_home_root` went with it - but every settings.json already
+#: on disk carries it, and nothing migrates.
 _AMAZE_TOKEN = "$AMAZE"
-_MIN_COMMON_DEPTH = 2
 
 
 def _amaze_root() -> str:
     return (hou.getenv("AMAZE") or "").replace("\\", "/").rstrip("/")
-
-
-def _home_root() -> str:
-    return os.path.expanduser("~").replace("\\", "/").rstrip("/")
 
 
 def _split_dir_slash(path: str):
@@ -81,34 +80,28 @@ def _split_dir_slash(path: str):
 
 
 def _encode_path(path):
+    """How settings.json spells a path on disk.
+
+    ONE ENCODER FOR ONE RULE. `hostos.storage_path_key` already answers
+    this for `locations.json` and `favourites.json`, and overview.md 4c
+    says settings.json keeps a COPY of what those stores hold - so two
+    encoders meant one folder could be spelled two ways in two files,
+    and the copy the File section falls back to was the odd one.
+
+    Agreement held for a folder under home and broke for one BESIDE
+    the install, where a Houdini user's textures live. This side walked
+    out of the install with `..` - measured on the real library,
+    `~/Cloud/3D/lib/` was stored as `$AMAZE/../../../lib/` - and that
+    breaks the moment the install moves, while `~` survives it. The
+    walk is what goes.
+
+    Nothing migrates: `_decode_path` reads the old spelling as well as
+    the new one, so entries already on disk keep resolving and are
+    rewritten only when something saves them anyway.
+    """
     if not isinstance(path, str) or not path:
         return path
-    body, slash = _split_dir_slash(path)
-    root = _amaze_root()
-    home = _home_root()
-    common = ""
-    if root:
-        try:
-            common = os.path.commonpath([root, body]).replace("\\", "/")
-        except ValueError:
-            common = ""  # different drives (Windows) - no relative form
-    under_home = bool(home) and (body == home or body.startswith(home + "/"))
-    if common:
-        # A shared subtree STRICTLY INSIDE home (~/AnySyncFolder/...)
-        # or a sufficiently deep one outside it (/mnt/projects/...)
-        # means the path travels WITH the install -> $AMAZE-relative,
-        # the most portable form. A path that shares only home itself
-        # (or less) with the install anchors to "~" instead: a ..-walk
-        # from the install would break on a machine with a different
-        # install location, while "~" survives it.
-        inside_home = bool(home) and common.startswith(home + "/")
-        depth = len([c for c in common.split("/") if c and ":" not in c])
-        if inside_home or (not under_home and depth >= _MIN_COMMON_DEPTH):
-            rel = os.path.relpath(body, root).replace("\\", "/")
-            return _AMAZE_TOKEN + "/" + rel + slash
-    if under_home:
-        return "~" + body[len(home):] + slash
-    return path
+    return hostos.storage_path_key(path)
 
 
 def _decode_path(path):
