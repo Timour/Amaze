@@ -1,19 +1,16 @@
 """THE EMPTY STATE ENGINE - what the grid says when it has nothing.
 
 THE ENGINE DECIDES WHICH BLANK; A SECTION DECLARES ONLY ITS WORDS -
-the same split the Keyed Store Engine uses. Five sections times four
-blanks is twenty states, so the arithmetic of "is this empty, and why"
-lives once or it lives five times and disagrees.
+the same split the Keyed Store Engine uses.
 
 FOUR BLANKS, each derived from what the panel already holds:
 `nothing-yet` (no rows at all), `nothing-matches` (rows exist, a
 search is set), `nothing-here` (rows exist, another filter is on) and
 `unreachable` (File only, a registered folder could not be read).
 
-The design is practice.md ▸ *Empty states are the best teaching moment
-in the app*; the width bands are measured in research.md ▸ *WHAT A
-SQUEEZED PANEL ACTUALLY LEAVES THE GRID*, and overview.md ▸ 4i is the
-map entry.
+Design: practice.md ▸ *Empty states are the best teaching moment in
+the app*. Width bands: research.md ▸ *WHAT A SQUEEZED PANEL ACTUALLY
+LEAVES THE GRID*. Map: overview.md ▸ 4i. Story: devlog 479.
 """
 
 from __future__ import annotations
@@ -79,11 +76,10 @@ def _elide(text: str) -> str:
 def verdict(panel) -> tuple:
     """(blank, detail) for the panel's current section, or (None, "").
 
-    Read off the VIEW the user is looking at, not off a section's
-    internals: `visible_view` already owns which of the two grid views
-    is up, and the proxy behind it answers both counts. `detail` is
-    whatever the sentence needs to quote back - the search string, the
-    category, the folder that could not be read.
+    Read off the VIEW rather than a section's internals: `visible_view`
+    already owns which of the two grid views is up, and the proxy
+    behind it answers both counts. `detail` is what the sentence quotes
+    back - the search, the category, the unreachable folder.
     """
     view = grid.visible_view(panel)
     if view is None:
@@ -118,11 +114,9 @@ def verdict(panel) -> tuple:
 def _unreadable_folder(panel) -> str:
     """The first registered folder the File model could not read, or "".
 
-    THE FACT WAS ALREADY COMPUTED AND THROWN AWAY. `FileFilesModel`
-    fills `_unreadable_folders` on every scan and nothing has ever read
-    it, so a disconnected drive and an empty folder have looked
-    identical - the exact thing that model's own comment says must not
-    happen.
+    `FileFilesModel` fills `_unreadable_folders` on every scan; this is
+    its only reader, and without it a disconnected drive and an empty
+    folder look identical.
     """
     if getattr(panel, "current_section", "") != "file":
         return ""
@@ -184,11 +178,8 @@ class EmptyState(QtWidgets.QWidget):
     def track(self, view) -> None:
         """Follow the view's geometry, without the panel bookkeeping it.
 
-        The surface owns this because the panel already owns "what is
-        shown changed" and one of those is enough for it to know. A
-        resize is not a content change and must not travel through the
-        content path - that is how the deleted list-row sizing ended up
-        recomputing on every viewport resize.
+        A resize is not a content change, so it must not travel through
+        the panel's content path.
         """
         if self._tracked is view:
             return
@@ -253,13 +244,11 @@ class EmptyState(QtWidgets.QWidget):
     def paintEvent(self, event) -> None:
         """Hand-painted, and it stops there.
 
-        The BUTTON is a real QPushButton so it inherits Houdini's
-        stylesheet and looks like every other button in the host -
-        research.md is explicit that the app-wide sheet is ours and
-        every child inherits it, and that the fix for a widget that
-        looks wrong is to stop fighting the sheet rather than out-paint
-        it. The text is painted because two labels in a layout cost a
-        layout pass on a surface that is usually not shown at all.
+        The BUTTON stays a real QPushButton so it inherits Houdini's
+        stylesheet like every other button (research.md ▸ *Qt widgets,
+        views & painting*). Only the text is painted, because two
+        labels in a layout cost a layout pass on a surface that is
+        usually not shown.
         """
         if not self._headline:
             return
@@ -369,9 +358,8 @@ def refresh(panel) -> None:
     surface.set_verb(handler if callable(handler) else None)
     surface.track(view)
     surface.setGeometry(view.geometry())
-    # THE BAND DECIDES WHETHER ANY OF THAT IS SHOWN, and it is the
-    # surface's own question - the same one it re-asks on every resize
-    # without the panel being told.
+    # The band decides whether any of that is shown - the surface's own
+    # question, re-asked on every resize.
     surface._apply_band()
     surface.raise_()
 
@@ -380,9 +368,7 @@ def _surface(panel):
     """The panel's one EmptyState, built on first use.
 
     On the GRID PANE, which does not swap, rather than on a view that
-    does. Built lazily because a panel that never empties never needs
-    it, and because this must not add a widget to the construction path
-    that every panel open pays for.
+    does. Lazy, so a panel that never empties never builds it.
     """
     surface = getattr(panel, "_empty_state", None)
     if surface is not None:
