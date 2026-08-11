@@ -170,6 +170,9 @@ _reload(dragdrop_widgets)
 # test loop exists to avoid.
 _reload(grid)
 _reload(sidebar)
+# AFTER grid, whose `visible_view` it asks, and BEFORE sections, whose
+# EMPTY tables it reads.
+_reload(empty_state)
 _reload(sections)
 _reload(notes_panel)
 _reload(multifilterproxy_model)
