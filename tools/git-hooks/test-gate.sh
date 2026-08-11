@@ -261,6 +261,46 @@ git merge --abort >/dev/null 2>&1 || true
 git branch -qD topic >/dev/null 2>&1 || true
 reset_tree
 
+echo "THE SENTENCE CEILING - it measures STORY, not function"
+
+# The ceiling used to count one-line docstrings, so it scaled with the
+# number of functions rather than with the amount of story.
+{ printf 'x = 1\n'
+  for i in $(seq 1 14); do
+      printf 'def f%d():\n    """A summary sentence for f%d."""\n    return %d\n' "$i" "$i" "$i"
+  done; } > many_docstrings.py
+git add many_docstrings.py
+"$here/pre-commit" >/dev/null 2>&1
+check "one-line docstrings do not fill the sentence ceiling" 0 $?
+reset_tree
+
+# Story under the summary must still be caught.
+{ printf 'def g():\n    """A summary line.\n\n'
+  for i in $(seq 1 14); do printf '    Sentence %d of the story.\n' "$i"; done
+  printf '    """\n    return 1\n'; } > long_story.py
+git add long_story.py
+"$here/pre-commit" >/dev/null 2>&1
+check "story UNDER the summary is still refused" 1 $?
+reset_tree
+
+# ui-text.md holds the app's own words. The count is exempt there; the
+# name and quotation scans are not.
+mkdir -p docs/architecture
+{ printf '# UI text\n\n'
+  for i in $(seq 1 20); do printf -- '- Sentence %d that the app shows a user.\n' "$i"; done
+} > docs/architecture/ui-text.md
+git add docs/architecture/ui-text.md
+"$here/pre-commit" >/dev/null 2>&1
+check "the copy document is exempt from the COUNT" 0 $?
+reset_tree
+
+mkdir -p docs/architecture
+printf '# UI text\n\n- A label %s asked for.\n' "$probe" > docs/architecture/ui-text.md
+git add docs/architecture/ui-text.md
+"$here/pre-commit" >/dev/null 2>&1
+check "the copy document is still scanned for a name" 1 $?
+reset_tree
+
 echo "END TO END - real commits, through git itself"
 printf 'x = 1  # %s wanted this\n' "$probe" > real.py
 git add -A && git commit -qm "A technical message" >/dev/null 2>&1
