@@ -611,7 +611,8 @@ class PrefsDialog(QtWidgets.QDialog):
             # each imported material additionally records its own
             # source and licence.
             "<p><b>Modules and libraries from other projects</b><br>"
-            "egMatLib by Elmar Glaubauf "
+            "Amaze uses the egMatLib preview engine for material "
+            "thumbnails &mdash; egMatLib by Elmar Glaubauf "
             "<a href='https://github.com/eglaubauf/egMatLib'>"
             "github.com/eglaubauf/egMatLib</a>"
             " &nbsp;|&nbsp; "
