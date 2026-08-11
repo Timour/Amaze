@@ -220,6 +220,26 @@ _BODY_T0 = time.perf_counter()
 MULTIPLE_VALUES = material.MULTIPLE_VALUES
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
+#: THE PANEL'S WIDTH FLOOR, with Comments CLOSED. An open Comments pane
+#: adds its OWN minimum on top - `_apply_width_floor` composes the two,
+#: so this number never has to know about that pane.
+#:
+#: Design pixels, scaled through `theme.ui_px` at the point of use like
+#: every other size in the panel.
+MIN_PANEL_WIDTH = 550
+
+#: THE GRID PANE'S FLOOR, inside the splitter. Separate from the panel's
+#: because the panel's cannot enforce it: the grid is the only pane with
+#: stretch 1, so the sidebar and Comments take their widths first and
+#: the grid pays for both. Measured 2026-08-11 on the running panel - a
+#: 537px panel held sidebar 135, grid 64, Comments 326.
+#:
+#: 250 rather than a rounder number because it is the measured floor
+#: plus a margin: the widest thing the empty grid has to say is 207px
+#: ("Nothing matches ..."), and 239 is where that stops fitting on one
+#: line inside the standard 16px inset.
+MIN_GRID_WIDTH = 250
+
 
 
 
@@ -1606,6 +1626,17 @@ class MatLibPanel(QtWidgets.QWidget):
             # painting has to work with, so this keeps the native grip
             # dots/hover intact.
             splitter.setHandleWidth(theme.ui_px(6))
+            # THE GRID PANE'S OWN FLOOR. The grid is the one flexible
+            # pane (stretch 1) so it absorbs every squeeze, and it was
+            # the only one of the three with no minimum: measured
+            # 2026-08-11, sidebar 135 and Comments 326 left it 64. A
+            # floor on the PANEL cannot help - that measurement was
+            # taken inside a 537px panel, comfortably above any panel
+            # floor worth setting. The constraint has to sit where the
+            # pixels are taken.
+            grid_pane = splitter.widget(1)
+            if grid_pane is not None:
+                grid_pane.setMinimumWidth(theme.ui_px(MIN_GRID_WIDTH))
         # catview's own <maximumSize width="220"> in amaze.ui is what
         # kept the category pane narrow in the splitter - that property
         # stays on catview itself after reparenting below, but the
@@ -1731,19 +1762,18 @@ class MatLibPanel(QtWidgets.QWidget):
             self.ui.setStyleSheet(hou.qt.styleSheet())
         except AttributeError:
             pass
-        # The .ui root carries an upstream 420x400 minimumSize (840x800
-        # rendered at 2x) that stopped the pane from shrinking - drop it
-        # (same runtime-neutralize treatment the save dialog's .ui
-        # minimum got; the .ui file itself stays untouched).
-        self.ui.setMinimumSize(0, 0)
-        # Even with the explicit minimum gone, a widget inside a layout
-        # is still floored at its layout-derived minimumSizeHint (the
-        # sum/max of every child's own minimum) - which is what kept a
-        # residual floor after the first fix. Ignored size policy makes
-        # the pane free to shrink to anything; content simply clips,
-        # exactly how Houdini's own panes behave when squeezed.
+        # A WIDTH FLOOR, AND ONLY WIDTH. This used to drop the .ui's
+        # 420x400 minimum entirely so the pane could shrink to nothing
+        # and clip like Houdini's own panes; measured live, that left
+        # the grid viewport 48px wide, narrower than one tile. Height
+        # stays free, because a short grid reads fine (research.md >
+        # WHAT A SQUEEZED PANEL ACTUALLY LEAVES THE GRID).
+        self._apply_width_floor()
+        # Vertical stays Ignored so the pane still shrinks and clips
+        # downward like its neighbours; horizontal must be able to
+        # honour the minimum, and Ignored ignores it.
         self.ui.setSizePolicy(
-            QtWidgets.QSizePolicy.Policy.Ignored,
+            QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Ignored,
         )
 
@@ -5516,6 +5546,33 @@ class MatLibPanel(QtWidgets.QWidget):
         if changed:
             self._thumbsize_save_timer.start()
 
+    def _apply_width_floor(self) -> None:
+        """The panel's minimum width, which is not a constant.
+
+        THREE NUMBERS, EACH OWNED ONCE. `MIN_PANEL_WIDTH` is the panel
+        with Comments CLOSED. `MIN_GRID_WIDTH` is the grid pane's own
+        floor inside the splitter, set where the splitter is built.
+        The Comments pane's minimum is the pane's own - asked for here,
+        never restated - so changing it in `notes_panel.py` moves this
+        floor with it.
+
+        WHY IT IS COMPUTED RATHER THAN WRITTEN DOWN. Measured on the
+        running panel 2026-08-11: a 537px panel held sidebar 135, grid
+        64, Comments 326. Every one of the three was inside its own
+        rights; the grid is the only pane with stretch 1, so it pays
+        for all of them, and it had no minimum at all. A single
+        constant here would have been correct with Comments shut and
+        wrong the moment it opened.
+        """
+        floor = theme.ui_px(MIN_PANEL_WIDTH)
+        pane = getattr(self, "notes_panel", None)
+        if pane is not None and not pane.isHidden():
+            # ALREADY SCALED - `notes_panel` sets its own minimum
+            # through `theme.ui_px`, so scaling the sum would apply the
+            # UI factor to it twice.
+            floor += pane.minimumWidth()
+        self.ui.setMinimumSize(floor, 0)
+
     def toggle_notes_panel(self) -> None:
         """Flip the Notes pane via its toolbar button, so the chip's
         lit state can never disagree with the pane."""
@@ -5533,6 +5590,12 @@ class MatLibPanel(QtWidgets.QWidget):
         panel.setVisible(bool(checked))
         self.prefs.show_notes = bool(checked)
         self.prefs.save()
+        # THE PANEL'S FLOOR MOVES WITH THIS PANE. An open Comments pane
+        # holds its own minimum and the grid absorbs what is left, so
+        # the width the panel needs is not a constant - opening
+        # Comments inside a floor sized for a closed one is exactly how
+        # the grid was measured at 48px.
+        self._apply_width_floor()
         if checked:
             self._refresh_notes_subject()
 

@@ -1167,5 +1167,88 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
         dialog.close()
 
 
+class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
+    """Three floors, and the reason there are three.
+
+    Measured on the running panel 2026-08-11: a 537px panel held
+    sidebar 135, grid 64, Comments 326 — a grid viewport 48px wide,
+    where no tile fits and no label fits. Every pane was within its
+    rights; the grid is the only one with stretch 1, so it pays for
+    the other two, and it was the only one with no minimum at all.
+
+    THE PANEL FLOOR ALONE PROVES NOTHING, which is what these tests
+    are shaped around: that 48px grid was inside a 537px panel, above
+    any panel floor worth setting. A test that only checked the panel
+    would have passed on the broken build.
+    """
+
+    def setUp(self):
+        from amaze.tests import test_support
+
+        self.panel = test_support.fixture_panel(self)
+
+    def _splitter(self):
+        """By search, not by `cat_list.parentWidget()` - the build
+        reparents the category view into a `HeldPane`, so the splitter
+        is its grandparent, not its parent. The live probe that
+        measured the 48px grid found it this way."""
+        from PySide6 import QtWidgets
+
+        found = self.panel.findChildren(QtWidgets.QSplitter)
+        return found[0] if found else None
+
+    def test_the_grid_pane_carries_its_own_minimum(self):
+        """The one that would have caught it."""
+        from amaze.helpers import theme
+        from amaze.panel import panel as panel_mod
+
+        splitter = self._splitter()
+        self.assertIsNotNone(splitter, "premise: the three panes are a "
+                                       "splitter")
+        grid_pane = splitter.widget(1)
+        self.assertEqual(
+            theme.ui_px(panel_mod.MIN_GRID_WIDTH), grid_pane.minimumWidth(),
+            "the grid pane has no floor of its own, so the sidebar and "
+            "Comments can take their widths and leave it at nothing - "
+            "measured at 48px before this")
+
+    def test_the_panel_floor_grows_when_comments_opens(self):
+        """A constant would be right with Comments shut and wrong the
+        moment it opens, which is the state the 48px grid was in."""
+        from amaze.helpers import theme
+        from amaze.panel import panel as panel_mod
+
+        pane = self.panel.notes_panel
+        pane.setVisible(False)
+        self.panel._apply_width_floor()
+        closed = self.panel.ui.minimumWidth()
+        self.assertEqual(theme.ui_px(panel_mod.MIN_PANEL_WIDTH), closed)
+
+        pane.setVisible(True)
+        self.panel._apply_width_floor()
+        opened = self.panel.ui.minimumWidth()
+        self.assertEqual(closed + pane.minimumWidth(), opened,
+                         "opening Comments did not widen the panel's "
+                         "floor, so it opens into space the grid pays "
+                         "for")
+        self.assertGreater(opened, closed)
+
+    def test_the_comments_minimum_is_asked_for_and_never_restated(self):
+        """`notes_panel` owns its own number. A second copy here is a
+        second truth, and the two would drift the first time one moved."""
+        from amaze.panel import panel as panel_mod
+
+        source = open(panel_mod.__file__, encoding="utf-8").read()
+        body = source[source.index("def _apply_width_floor"):]
+        body = body[:body.index("\n    def ", 10)]
+        self.assertIn("pane.minimumWidth()", body,
+                      "the floor stopped asking the Comments pane for "
+                      "its own minimum")
+        self.assertNotRegex(
+            body, r"\b220\b",
+            "the Comments minimum is written here as a literal - it "
+            "belongs to notes_panel, which already sets it")
+
+
 if __name__ == "__main__":
     unittest.main()
