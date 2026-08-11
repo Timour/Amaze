@@ -1167,19 +1167,21 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
         dialog.close()
 
 
-class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
-    """Three floors, and the reason there are three.
+class TheWindowFloorIsOneConstant(unittest.TestCase):
+    """One floor, and the two that were tried and taken out.
 
     Measured on the running panel 2026-08-11: a 537px panel held
-    sidebar 135, grid 64, Comments 326 — a grid viewport 48px wide,
-    where no tile fits and no label fits. Every pane was within its
-    rights; the grid is the only one with stretch 1, so it pays for
-    the other two, and it was the only one with no minimum at all.
+    sidebar 135, grid 64, Comments 326 — a 48px grid viewport, where
+    no tile and no label fit. The first fix floored the grid PANE at
+    250 and grew the window floor while Comments was open, and both
+    were removed the same day: a child minimum propagates into the
+    window's own minimum, so the two together made the window's floor
+    MOVE when Comments opened.
 
-    THE PANEL FLOOR ALONE PROVES NOTHING, which is what these tests
-    are shaped around: that 48px grid was inside a 537px panel, above
-    any panel floor worth setting. A test that only checked the panel
-    would have passed on the broken build.
+    A moving floor is worse than a narrow grid. Text in a squeezed
+    grid gets cut, and that is accepted — the Empty State Engine hides
+    below its own measured band rather than drawing something clipped,
+    which is where narrow is handled now.
     """
 
     def setUp(self):
@@ -1197,57 +1199,38 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
         found = self.panel.findChildren(QtWidgets.QSplitter)
         return found[0] if found else None
 
-    def test_the_grid_pane_carries_its_own_minimum(self):
-        """The one that would have caught it."""
+    def test_the_window_has_a_width_floor(self):
         from amaze.helpers import theme
         from amaze.panel import panel as panel_mod
 
-        splitter = self._splitter()
-        self.assertIsNotNone(splitter, "premise: the three panes are a "
-                                       "splitter")
-        grid_pane = splitter.widget(1)
         self.assertEqual(
-            theme.ui_px(panel_mod.MIN_GRID_WIDTH), grid_pane.minimumWidth(),
-            "the grid pane has no floor of its own, so the sidebar and "
-            "Comments can take their widths and leave it at nothing - "
-            "measured at 48px before this")
+            theme.ui_px(panel_mod.MIN_PANEL_WIDTH),
+            self.panel.ui.minimumWidth(),
+            "the window can be dragged to any width again - measured "
+            "live, that leaves the grid viewport 48px, narrower than "
+            "one tile")
 
-    def test_the_panel_floor_grows_when_comments_opens(self):
-        """A constant would be right with Comments shut and wrong the
-        moment it opens, which is the state the 48px grid was in."""
-        from amaze.helpers import theme
-        from amaze.panel import panel as panel_mod
-
+    def test_it_does_not_move_when_comments_opens(self):
+        """The half that was taken out, pinned so it cannot come back
+        by accident - including through a grid-pane minimum, which
+        grows the window's own floor without ever touching this
+        method."""
         pane = self.panel.notes_panel
         pane.setVisible(False)
-        self.panel._apply_width_floor()
         closed = self.panel.ui.minimumWidth()
-        self.assertEqual(theme.ui_px(panel_mod.MIN_PANEL_WIDTH), closed)
-
         pane.setVisible(True)
-        self.panel._apply_width_floor()
         opened = self.panel.ui.minimumWidth()
-        self.assertEqual(closed + pane.minimumWidth(), opened,
-                         "opening Comments did not widen the panel's "
-                         "floor, so it opens into space the grid pays "
-                         "for")
-        self.assertGreater(opened, closed)
+        self.assertEqual(
+            closed, opened,
+            "the window's floor moved when Comments opened - a floor "
+            "that shifts under the user is worse than a narrow grid, "
+            "and a cut sentence there is accepted")
 
-    def test_the_comments_minimum_is_asked_for_and_never_restated(self):
-        """`notes_panel` owns its own number. A second copy here is a
-        second truth, and the two would drift the first time one moved."""
-        from amaze.panel import panel as panel_mod
-
-        source = open(panel_mod.__file__, encoding="utf-8").read()
-        body = source[source.index("def _apply_width_floor"):]
-        body = body[:body.index("\n    def ", 10)]
-        self.assertIn("pane.minimumWidth()", body,
-                      "the floor stopped asking the Comments pane for "
-                      "its own minimum")
-        self.assertNotRegex(
-            body, r"\b220\b",
-            "the Comments minimum is written here as a literal - it "
-            "belongs to notes_panel, which already sets it")
+    def test_height_is_never_floored(self):
+        """A 244px-tall grid is a layout in use, measured live."""
+        self.assertEqual(0, self.panel.ui.minimumHeight(),
+                         "a height floor would take away a short "
+                         "layout that reads fine")
 
 
 if __name__ == "__main__":

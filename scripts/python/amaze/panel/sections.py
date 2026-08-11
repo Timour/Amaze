@@ -205,6 +205,25 @@ class Section:
     #: not - the role always answers False, so the star would filter
     #: the grid to nothing.
     takes_favourites = True
+    #: WHAT THIS SECTION HOLDS, plural and lower case, as the user would
+    #: say it. The Empty State Engine's shared sentences take it - "no
+    #: saved %s has that in its name" - so a section never writes those
+    #: sentences out, only the noun that makes them its own.
+    empty_noun = "items"
+    #: WHAT AN EMPTY GRID SAYS HERE, per blank:
+    #:     {blank: (headline, sentence, button label, verb)}
+    #: Only what is TRUE OF THIS SECTION belongs here - in practice the
+    #: nothing-yet state, because how you put something in is the one
+    #: thing that differs. The other three are the engine's `SHARED`
+    #: (panel/empty_state.py) and a section overrides one only when it
+    #: genuinely differs. `verb` names a method on the panel, the same
+    #: way GRID_MENU names one, so a table of names reads as a table.
+    #:
+    #: THE HEADLINE MUST SURVIVE ALONE. Below 420px the sentence stays
+    #: and the button goes, and the headline is what a 250px grid has
+    #: room for - measured, research.md ▸ WHAT A SQUEEZED PANEL
+    #: ACTUALLY LEAVES THE GRID.
+    EMPTY: dict = {}
     #: Does the Filter menu have entries that mean anything here? Its
     #: entries describe the LOCAL section underneath - renderers,
     #: palette sizes, file kinds - and an online result answers to
@@ -1051,6 +1070,15 @@ class AssetSection(Section):
 class MaterialSection(AssetSection):
     key = "material"
     label = "Material"
+    empty_noun = "material"
+    EMPTY = {
+        "nothing-yet": (
+            "No materials saved yet",
+            "Right-click a material in the network editor and choose "
+            "Save to Amaze. It is kept here, ready to drag back into "
+            "any scene, in any project.",
+            "Save the selected material", "save_asset"),
+    }
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -1185,6 +1213,15 @@ class CopSection(AssetSection):
 
     key = "cop"
     label = "Node"
+    empty_noun = "node asset"
+    EMPTY = {
+        "nothing-yet": (
+            "No node assets yet",
+            "Select nodes in a network, right-click and choose Save to "
+            "Amaze. The whole network is kept, ready to build back "
+            "into any scene.",
+            "Save the selected nodes", "save_asset"),
+    }
     #: The material menu's essentials without the renderer-specific
     #: entries (Copy To targets, Karma conversion) that mean nothing
     #: for a saved network. LOAD, not Import (2026-08-01): the File
@@ -1270,6 +1307,18 @@ class CodeSection(AssetSection):
 
     key = "code"
     label = "Code"
+    empty_noun = "snippet"
+    EMPTY = {
+        # The ONE section whose empty state has a button that works
+        # with nothing selected and nothing saved - New File is also
+        # the one grid entry that acts on nothing (see GRID_MENU
+        # below), so the two agree by construction.
+        "nothing-yet": (
+            "No snippets yet",
+            "Right-click a wrangle and choose Save to Amaze to keep "
+            "its code — or start one here and paste into it.",
+            "New file", "new_code_snippet"),
+    }
     #: New File is the one entry in any section that acts on NOTHING,
     #: so it is the one that stays live over an empty selection.
     #: Apply and Edit act on one snippet and grey out beside it.
@@ -1674,6 +1723,18 @@ class FileSection(FolderSection):
 
     key = "file"
     label = "File"
+    empty_noun = "file"
+    EMPTY = {
+        # POINTERS, NOT COPIES, said in the teaching sentence itself:
+        # registering a folder scans and copies nothing (core/folders.py),
+        # and a first-run user has no way to know that.
+        "nothing-yet": (
+            "No folders yet",
+            "Add a folder of images, models or scenes and they show up "
+            "here, ready to drag onto any parameter. Nothing is copied "
+            "— Amaze points at where they already live.",
+            "Add a folder", "add_file_folder_user"),
+    }
     filter_tooltip = "Show one kind of file."
 
     #: The three kinds this section KNOWS how to open, in the order
@@ -2010,6 +2071,15 @@ class GradientSection(Section):
 
     key = "gradient"
     label = "Color"
+    empty_noun = "palette"
+    EMPTY = {
+        "nothing-yet": (
+            "No palettes yet",
+            "Right-click a node with a colour ramp and choose Save to "
+            "Amaze. Apply it to any ramp later, in any of seven "
+            "interpolations.",
+            "Save the selected ramp", "save_gradient_from_node"),
+    }
     #: The GRID model and the SIDEBAR model. The sidebar one is the
     #: eighth model - the one none of panel.py's three lists carried,
     #: which is why a library switch left Colors on the old library.

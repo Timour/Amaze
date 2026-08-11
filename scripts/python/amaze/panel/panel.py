@@ -13,8 +13,8 @@ import hou
 
 import amaze
 from amaze.core import grid_columns
-from amaze.panel import (dragdrop_widgets, grid, notes_panel, sections,
-                         sidebar)
+from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
+                         sections, sidebar)
 from amaze.core import debug, library_policy, repair
 from amaze.core import versions
 from amaze.core import notes
@@ -220,25 +220,24 @@ _BODY_T0 = time.perf_counter()
 MULTIPLE_VALUES = material.MULTIPLE_VALUES
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
-#: THE PANEL'S WIDTH FLOOR, with Comments CLOSED. An open Comments pane
-#: adds its OWN minimum on top - `_apply_width_floor` composes the two,
-#: so this number never has to know about that pane.
+#: THE PANEL'S WIDTH FLOOR. ONE CONSTANT, and deliberately not a
+#: computed one: an earlier round grew this floor while Comments was
+#: open, and a floor that moves under the user is worse than a narrow
+#: grid. Text in a squeezed grid gets cut, and that is accepted
+#: (devlog 479).
+#:
+#: THE GRID PANE CARRIES NO MINIMUM OF ITS OWN, for the same reason and
+#: it is not an oversight: a child minimum propagates up through the
+#: layout - this file's own history records a residual floor surviving
+#: the first attempt to remove one - so flooring the grid would grow
+#: the window's minimum whenever Comments opened, which is exactly the
+#: moving floor being avoided. Narrow is handled where it shows, by the
+#: Empty State Engine, which hides below its own measured band rather
+#: than drawing something clipped.
 #:
 #: Design pixels, scaled through `theme.ui_px` at the point of use like
 #: every other size in the panel.
-MIN_PANEL_WIDTH = 550
-
-#: THE GRID PANE'S FLOOR, inside the splitter. Separate from the panel's
-#: because the panel's cannot enforce it: the grid is the only pane with
-#: stretch 1, so the sidebar and Comments take their widths first and
-#: the grid pays for both. Measured 2026-08-11 on the running panel - a
-#: 537px panel held sidebar 135, grid 64, Comments 326.
-#:
-#: 250 rather than a rounder number because it is the measured floor
-#: plus a margin: the widest thing the empty grid has to say is 207px
-#: ("Nothing matches ..."), and 239 is where that stops fitting on one
-#: line inside the standard 16px inset.
-MIN_GRID_WIDTH = 250
+MIN_PANEL_WIDTH = 500
 
 
 
@@ -1080,7 +1079,14 @@ class MatLibPanel(QtWidgets.QWidget):
         return grid.style_table_header(self)
 
     def apply_view_mode(self) -> None:
-        return grid.apply_view_mode(self)
+        result = grid.apply_view_mode(self)
+        # THE VIEW JUST SWAPPED, so the surface is over the wrong one.
+        # This and `update_selected_cat` are the panel's two existing
+        # funnels for a change in what the grid shows; the Empty State
+        # Engine needs no third, and a resize is the surface's own
+        # business rather than a content change.
+        empty_state.refresh(self)
+        return result
 
     def _list_thumb_side(self, thumb_size: int) -> int:
         """The thumbnail size list mode may actually use.
@@ -1626,17 +1632,10 @@ class MatLibPanel(QtWidgets.QWidget):
             # painting has to work with, so this keeps the native grip
             # dots/hover intact.
             splitter.setHandleWidth(theme.ui_px(6))
-            # THE GRID PANE'S OWN FLOOR. The grid is the one flexible
-            # pane (stretch 1) so it absorbs every squeeze, and it was
-            # the only one of the three with no minimum: measured
-            # 2026-08-11, sidebar 135 and Comments 326 left it 64. A
-            # floor on the PANEL cannot help - that measurement was
-            # taken inside a 537px panel, comfortably above any panel
-            # floor worth setting. The constraint has to sit where the
-            # pixels are taken.
-            grid_pane = splitter.widget(1)
-            if grid_pane is not None:
-                grid_pane.setMinimumWidth(theme.ui_px(MIN_GRID_WIDTH))
+            # NO MINIMUM ON THE GRID PANE, deliberately - see
+            # MIN_PANEL_WIDTH. One was tried and removed the same day:
+            # a child minimum grows the window's own minimum, so it
+            # made the floor move whenever Comments opened.
         # catview's own <maximumSize width="220"> in amaze.ui is what
         # kept the category pane narrow in the splitter - that property
         # stays on catview itself after reparenting below, but the
@@ -1768,7 +1767,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # the grid viewport 48px wide, narrower than one tile. Height
         # stays free, because a short grid reads fine (research.md >
         # WHAT A SQUEEZED PANEL ACTUALLY LEAVES THE GRID).
-        self._apply_width_floor()
+        self.ui.setMinimumSize(theme.ui_px(MIN_PANEL_WIDTH), 0)
         # Vertical stays Ignored so the pane still shrinks and clips
         # downward like its neighbours; horizontal must be able to
         # honour the minimum, and Ignored ignores it.
@@ -5546,33 +5545,6 @@ class MatLibPanel(QtWidgets.QWidget):
         if changed:
             self._thumbsize_save_timer.start()
 
-    def _apply_width_floor(self) -> None:
-        """The panel's minimum width, which is not a constant.
-
-        THREE NUMBERS, EACH OWNED ONCE. `MIN_PANEL_WIDTH` is the panel
-        with Comments CLOSED. `MIN_GRID_WIDTH` is the grid pane's own
-        floor inside the splitter, set where the splitter is built.
-        The Comments pane's minimum is the pane's own - asked for here,
-        never restated - so changing it in `notes_panel.py` moves this
-        floor with it.
-
-        WHY IT IS COMPUTED RATHER THAN WRITTEN DOWN. Measured on the
-        running panel 2026-08-11: a 537px panel held sidebar 135, grid
-        64, Comments 326. Every one of the three was inside its own
-        rights; the grid is the only pane with stretch 1, so it pays
-        for all of them, and it had no minimum at all. A single
-        constant here would have been correct with Comments shut and
-        wrong the moment it opened.
-        """
-        floor = theme.ui_px(MIN_PANEL_WIDTH)
-        pane = getattr(self, "notes_panel", None)
-        if pane is not None and not pane.isHidden():
-            # ALREADY SCALED - `notes_panel` sets its own minimum
-            # through `theme.ui_px`, so scaling the sum would apply the
-            # UI factor to it twice.
-            floor += pane.minimumWidth()
-        self.ui.setMinimumSize(floor, 0)
-
     def toggle_notes_panel(self) -> None:
         """Flip the Notes pane via its toolbar button, so the chip's
         lit state can never disagree with the pane."""
@@ -5590,12 +5562,6 @@ class MatLibPanel(QtWidgets.QWidget):
         panel.setVisible(bool(checked))
         self.prefs.show_notes = bool(checked)
         self.prefs.save()
-        # THE PANEL'S FLOOR MOVES WITH THIS PANE. An open Comments pane
-        # holds its own minimum and the grid absorbs what is left, so
-        # the width the panel needs is not a constant - opening
-        # Comments inside a floor sized for a closed one is exactly how
-        # the grid was measured at 48px.
-        self._apply_width_floor()
         if checked:
             self._refresh_notes_subject()
 
@@ -6104,6 +6070,45 @@ class MatLibPanel(QtWidgets.QWidget):
             self.text_about.setPlainText("")
 
     # Update the Views when selection changes
+    def clear_filter_box(self) -> None:
+        """Empty the Filter box - the empty state's Clear search.
+
+        A METHOD RATHER THAN THE ENGINE REACHING FOR THE WIDGET. The
+        Empty State Engine names verbs the way GRID_MENU does, and the
+        panel is what knows that emptying this box refilters through
+        the box's own signal rather than needing a second push.
+        """
+        box = getattr(self, "line_filter", None)
+        if box is not None:
+            box.clear()
+
+    def show_all_categories(self) -> None:
+        """Put the sidebar back on All - the empty state's Show all.
+
+        The same walk `_ensure_sidebar_selection` makes when a filter
+        hides the row the user was standing in: find the All row and
+        select it. `setCurrentIndex` CLEARS the selection and selects
+        what it is given (research.md ▸ Qt widgets), which is exactly
+        what is wanted here and is why it is not the guarded form used
+        for merely MOVING the current row.
+        """
+        view = getattr(self, "cat_list", None)
+        model = view.model() if view is not None else None
+        if model is None:
+            return
+        selection_model = view.selectionModel()
+        for row in range(model.rowCount()):
+            index = model.index(row, 0)
+            if index.data() == "All":
+                view.setCurrentIndex(index)
+                if selection_model is not None:
+                    selection_model.select(
+                        index,
+                        QtCore.QItemSelectionModel.SelectionFlag
+                        .ClearAndSelect)
+                break
+        self.update_selected_cat()
+
     def update_selected_cat(self) -> None:
         """Update thumb view on change of category (Materials) or browse
         the selected folder's images (Textures)."""
@@ -6141,6 +6146,7 @@ class MatLibPanel(QtWidgets.QWidget):
         section = self._section()
         if section is not None:
             section.select_category(indexes[0])
+        empty_state.refresh(self)
 
     # Library Stuffs
     def grid_update_preview(self, indexes) -> None:
