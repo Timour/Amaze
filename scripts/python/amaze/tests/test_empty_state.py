@@ -203,17 +203,35 @@ class TheTextWraps(unittest.TestCase):
         if self.page is None:
             self.skipTest("no grid pane layout in this fixture")
 
-    def test_the_sentence_is_given_the_pane_width_not_its_size_hint(self):
-        self.page.say(self.panel, empty_state.NOTHING_HERE, "Metal")
-        self.page.resize(500, 400)
-        self.page.layout().activate()
+    def test_the_sentence_fills_the_pane_and_is_centred(self):
+        """Both halves, because each has its own way of going wrong: at
+        its sizeHint the text clips, and capped by a maximum it sits
+        against the left margin."""
+        for width in (900, 500, 250):
+            with self.subTest(width=width):
+                # DETACHED, because `resize` on a managed layout child
+                # is undone by the next activate() - which is how this
+                # test first passed while measuring a different width
+                # (research.md > Qt widgets, views & painting).
+                page = empty_state.EmptyPage()
+                self.addCleanup(page.deleteLater)
+                page.say(self.panel, empty_state.NOTHING_HERE, "Metal")
+                page.resize(width, 400)
+                page.layout().activate()
+                label = page._text
+                self.assertTrue(label.text(), "premise: it has a sentence")
 
-        label = self.page._text
-        self.assertTrue(label.text(), "premise: this blank has a sentence")
-        self.assertGreater(
-            label.width(), label.sizeHint().width(),
-            "the sentence is at its size-hint width, which is the "
-            "unwrapped single line - it will clip instead of wrapping")
+                margins = self.page.layout().contentsMargins()
+                room = width - margins.left() - margins.right()
+                self.assertEqual(room, label.width(),
+                                 "the sentence does not fill the pane, so "
+                                 "it is at some other width's mercy")
+                self.assertLessEqual(
+                    abs((label.x() + label.width() // 2) - width // 2), 1,
+                    "the sentence is not centred in the pane")
+                self.assertGreaterEqual(
+                    label.height(), label.heightForWidth(label.width()),
+                    "the sentence is shorter than its wrapped text needs")
 
     def test_the_label_is_told_to_wrap(self):
         self.assertTrue(self.page._text.wordWrap())

@@ -15,7 +15,6 @@ NOTHING_HERE = "nothing-here"
 UNREACHABLE = "unreachable"
 
 MAX_QUOTED = 24                 # the quoted search is unbounded input
-MAX_MEASURE = 420               # the readable measure, centred in the pane
 
 #: (headline, sentence, button label, verb); a blank verb means no
 #: button.
@@ -147,13 +146,13 @@ class EmptyPage(QtWidgets.QWidget):
         self._text = QtWidgets.QLabel("", self)
         for label in (self._head, self._text):
             label.setWordWrap(True)
+            # THE LABEL CENTRES ITS OWN TEXT, and the label fills the
+            # pane. Neither layout route works: the alignment argument
+            # hands a wrapping label its sizeHint width so it clips,
+            # and without it a widget capped by `setMaximumWidth` sits
+            # at the cell's LEFT edge - both measured live.
             label.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
                                | QtCore.Qt.AlignmentFlag.AlignTop)
-            label.setMaximumWidth(theme.ui_px(MAX_MEASURE))
-            # NO ALIGNMENT ARGUMENT: an aligned item is given its size
-            # HINT width, so a wrapping label added that way clips
-            # instead of wrapping, and Qt centres it anyway
-            # (research.md > Qt widgets, views & painting).
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
