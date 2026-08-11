@@ -678,6 +678,54 @@ The **Renderer** shown on each **Tile**:
 
 ---
 
+## Empty states (the grid with nothing in it)
+
+Shape: **what is missing / what this section is FOR and the gesture / a
+button that does it.** Three blanks are shared and written once; only
+`nothing-yet` differs per section, and `%s` marks an interpolated
+value. A button appears ONLY where the panel can act with nothing
+selected — Material, Color and Node are saved from the network editor,
+so their verb would only open `No material selected`.
+
+### Shared — every section
+
+- **Nothing matches "%s"**  *(the user's own search, elided at 24
+  characters so a pasted paragraph cannot run away)*
+  - No saved %s has that in its name, tags or category.  *(%s is the
+    section's plural noun — materials, palettes, node assets, snippets,
+    files)*
+  - Button: **Clear Search**
+- **Nothing in "%s"**  *(the selected category; blank for All)*
+  - Your other categories still have %s in them.
+  - Button: **Show All**
+- **Can't read that folder**  *(File section only)*
+  - %s did not answer. It may be a drive that is not mounted, or a
+    share that is offline. Nothing has been removed from your library.
+  - *(no button — nothing the panel can do about a folder that is not
+    there)*
+
+### Nothing yet — per section
+
+- **Material** · *No materials saved yet*
+  - Right-click a material in the network editor and choose Save to
+    Amaze. It is kept here, ready to drag back into any scene.
+- **Color** · *No palettes saved yet*
+  - Right-click a node with a color ramp and choose Save to Amaze.
+    Apply it to any ramp later, in any scene.
+- **Node** · *No node assets saved yet*
+  - Select nodes in a network, right-click and choose Save to Amaze.
+    The whole network is kept, ready to build back in.
+- **Code** · *No snippets yet*
+  - Right-click a wrangle and choose Save to Amaze to keep its code —
+    or start one here and paste into it.
+  - Button: **New File**
+- **File** · *No folders added yet*
+  - Add a folder of images, models or scenes and they show up here,
+    ready to drag onto any parameter. Nothing is copied or moved.
+  - Button: **Add Folder**
+
+---
+
 ## Houdini shelf (`toolbar/Amaze.shelf`)
 
 Tool labels on the **Amaze** shelf:

@@ -867,6 +867,8 @@ panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
 panel/sidebar.py          The SIDEBAR area - what a row means and what
                           may be dropped on it (the drag-hover cluster)
+panel/empty_state.py      EMPTY STATE ENGINE - which blank an empty
+                          grid is showing, and its words
 panel/dragdrop_widgets.py Drag-and-drop into the network editor
 core/thumbnails.py        THUMBNAIL ENGINE (cache, budget, loaders)
 core/conversion.py        CONVERSION ENGINE (file -> QImage, verified)

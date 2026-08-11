@@ -128,6 +128,8 @@ MIN_UI_POINTS = 12
 FONT_ROLES = {
     # The Comments pane's subject name, over its section and type lines.
     "comments_title": {"scale": 1.4, "bold": True},
+    # The empty grid's headline, over its one explaining sentence.
+    "empty_headline": {"scale": 1.25, "bold": True},
 }
 
 

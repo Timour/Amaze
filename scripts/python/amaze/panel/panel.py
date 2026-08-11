@@ -13,8 +13,8 @@ import hou
 
 import amaze
 from amaze.core import grid_columns
-from amaze.panel import (dragdrop_widgets, grid, notes_panel, sections,
-                         sidebar)
+from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
+                         sections, sidebar)
 from amaze.core import debug, library_policy, repair
 from amaze.core import versions
 from amaze.core import notes
@@ -171,6 +171,9 @@ _reload(dragdrop_widgets)
 _reload(grid)
 _reload(sidebar)
 _reload(sections)
+# After grid AND sections: it imports the first and reads the second's
+# EMPTY declarations.
+_reload(empty_state)
 _reload(notes_panel)
 _reload(multifilterproxy_model)
 # The online stack was never in the chain at all - a panel reopen
@@ -1078,7 +1081,11 @@ class MatLibPanel(QtWidgets.QWidget):
         return grid.style_table_header(self)
 
     def apply_view_mode(self) -> None:
-        return grid.apply_view_mode(self)
+        grid.apply_view_mode(self)
+        # The other view is up now, so the blank re-attaches to ITS
+        # model - the two carry the same proxy today, and this does not
+        # rely on that staying true.
+        empty_state.track(self)
 
     def _list_thumb_side(self, thumb_size: int) -> int:
         """The thumbnail size list mode may actually use.
@@ -3557,6 +3564,10 @@ class MatLibPanel(QtWidgets.QWidget):
         self._sync_filters_to_section(context)
         self._restore_section_state(key)
         self._refresh_notes_subject()
+        # A section switch swaps the MODEL under a view that has not
+        # changed, so the blank has to re-attach here or it keeps
+        # watching the section you left.
+        empty_state.track(self)
 
     def _sync_filters_to_section(self, section) -> None:
         """Push the SHARED filter widgets into the incoming section.
@@ -5871,16 +5882,50 @@ class MatLibPanel(QtWidgets.QWidget):
             # The selected category survived the refilter (proxy
             # selections track items, not row numbers).
             return
+        self._stand_on_all_category()
+
+    def _stand_on_all_category(self) -> None:
+        """Point the sidebar at All and refilter.
+
+        One owner: the fallback above and the empty state's Show All
+        button both need it, and a second copy of the row walk would be
+        the third reader this codebase keeps growing.
+        """
+        view = getattr(self, "cat_list", None)
+        proxy = view.model() if view is not None else None
+        if proxy is None:
+            return
+        selection_model = view.selectionModel()
         for row in range(proxy.rowCount()):
             idx = proxy.index(row, 0)
             if idx.data() == "All":
-                self.cat_list.setCurrentIndex(idx)
-                selection_model.select(
-                    idx,
-                    QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
-                )
+                view.setCurrentIndex(idx)
+                if selection_model is not None:
+                    selection_model.select(
+                        idx,
+                        QtCore.QItemSelectionModel.SelectionFlag
+                        .ClearAndSelect,
+                    )
                 break
         self.update_selected_cat()
+
+    def show_all_categories(self) -> None:
+        """The empty state's Show All button."""
+        self._stand_on_all_category()
+
+    def clear_filter_box(self) -> None:
+        """The empty state's Clear Search button.
+
+        The refilter is called BY HAND and is not redundant: the box is
+        wired on `textEdited`, which Qt does not emit for a
+        programmatic change. Qt's own clear button emits it explicitly
+        for this exact reason.
+        """
+        box = getattr(self, "line_filter", None)
+        if box is None or not box.text():
+            return
+        box.clear()
+        self.filter_thumb_view()
 
     def user_update_asset(self) -> None:
         """User modifies an assete in the detailview"""

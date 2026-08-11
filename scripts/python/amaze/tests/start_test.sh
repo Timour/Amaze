@@ -182,7 +182,8 @@ test_repair test_toolbar_filter test_shaderball_assets \
 test_list_columns test_designed_dialog test_no_live_data \
 test_write_ordering test_thumbnail_paths test_panel_correctness \
 test_prefs_and_sources test_unbound_names test_conversion test_keyed_store test_area_bindings test_grid_order test_sidebar_area test_toolbar_area test_comments_area test_grid_operations test_grid_badges test_sidebar_colour test_grid_menu test_sidebar_menu test_grid_columns test_matx_translate \
-test_redshift_terminal test_dead_cover test_updater test_preview_boundary"
+test_redshift_terminal test_dead_cover test_updater test_preview_boundary \
+test_empty_state"
 
 # Windows: the Vulkan viewport's multithreaded update/draw is switched
 # off for the suite. Nine panel modules crashed hython inside Houdini's

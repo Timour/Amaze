@@ -215,6 +215,19 @@ class Section:
     #: live and nowhere else.
     takes_capture = False
 
+    #: WHAT THIS SECTION IS CALLED IN A SENTENCE, plural. The shared
+    #: empty-state blanks read it, so they can say what is missing
+    #: without a table of their own.
+    empty_noun = "items"
+    #: THE ONE BLANK THAT DIFFERS PER SECTION: `nothing-yet`, as
+    #: (headline, sentence, button label, verb). How you put something
+    #: in is the only thing that changes between sections, so the other
+    #: three blanks live once in `empty_state.SHARED`. A blank verb
+    #: means no button - which is right wherever the gesture belongs to
+    #: the network editor rather than to this panel. The words are in
+    #: `docs/architecture/ui-text.md`.
+    EMPTY: dict = {}
+
     #: THE FOUR AREAS, as data. What this context binds into each one -
     #: named here so a caller never spells a model out, and so a
     #: section that arrives with a delegate of its own joins every
@@ -1051,6 +1064,17 @@ class AssetSection(Section):
 class MaterialSection(AssetSection):
     key = "material"
     label = "Material"
+    empty_noun = "material"
+    #: No button: `save_asset` needs a selected node and says so when
+    #: there is none, which is the normal state on an empty library.
+    EMPTY = {
+        "nothing-yet": (
+            "No materials saved yet",
+            "Right-click a material in the network editor and choose "
+            "Save to Amaze. It is kept here, ready to drag back into "
+            "any scene.",
+            "", ""),
+    }
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -1185,6 +1209,15 @@ class CopSection(AssetSection):
 
     key = "cop"
     label = "Node"
+    empty_noun = "node asset"
+    #: No button, for the same reason as Material.
+    EMPTY = {
+        "nothing-yet": (
+            "No node assets saved yet",
+            "Select nodes in a network, right-click and choose Save to "
+            "Amaze. The whole network is kept, ready to build back in.",
+            "", ""),
+    }
     #: The material menu's essentials without the renderer-specific
     #: entries (Copy To targets, Karma conversion) that mean nothing
     #: for a saved network. LOAD, not Import (2026-08-01): the File
@@ -1270,6 +1303,17 @@ class CodeSection(AssetSection):
 
     key = "code"
     label = "Code"
+    empty_noun = "snippet"
+    #: A button here, because New File acts on nothing and so always
+    #: works - the same reason its menu entry stays live over an empty
+    #: selection.
+    EMPTY = {
+        "nothing-yet": (
+            "No snippets yet",
+            "Right-click a wrangle and choose Save to Amaze to keep its "
+            "code — or start one here and paste into it.",
+            "New File", "new_code_snippet"),
+    }
     #: New File is the one entry in any section that acts on NOTHING,
     #: so it is the one that stays live over an empty selection.
     #: Apply and Edit act on one snippet and grey out beside it.
@@ -1675,6 +1719,17 @@ class FileSection(FolderSection):
     key = "file"
     label = "File"
     filter_tooltip = "Show one kind of file."
+    empty_noun = "file"
+    #: A button, because registering a folder is this panel's own
+    #: gesture and needs nothing selected.
+    EMPTY = {
+        "nothing-yet": (
+            "No folders added yet",
+            "Add a folder of images, models or scenes and they show up "
+            "here, ready to drag onto any parameter. Nothing is copied "
+            "or moved.",
+            "Add Folder", "add_file_folder_user"),
+    }
 
     #: The three kinds this section KNOWS how to open, in the order
     #: file_library.kind_for tests them. A file it has no behaviour for
@@ -2010,6 +2065,15 @@ class GradientSection(Section):
 
     key = "gradient"
     label = "Color"
+    empty_noun = "palette"
+    #: No button, for the same reason as Material.
+    EMPTY = {
+        "nothing-yet": (
+            "No palettes saved yet",
+            "Right-click a node with a color ramp and choose Save to "
+            "Amaze. Apply it to any ramp later, in any scene.",
+            "", ""),
+    }
     #: The GRID model and the SIDEBAR model. The sidebar one is the
     #: eighth model - the one none of panel.py's three lists carried,
     #: which is why a library switch left Colors on the old library.

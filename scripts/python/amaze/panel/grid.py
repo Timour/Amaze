@@ -403,8 +403,43 @@ def show_table(panel, showing: bool) -> None:
         # Houdini's base.qss pads an item cell at all.
         table.viewport().setAutoFillBackground(True)
         panel._sync_table_columns()
-    table.setVisible(showing)
-    panel.thumblist.setVisible(not showing)
+    # THE MODE IS RECORDED, THE VISIBILITY IS WRITTEN IN ONE PLACE.
+    # A blank showing must survive a view-mode change, so this asks
+    # what is up rather than assuming a view is.
+    page = getattr(panel, "empty_page", None)
+    blank_up = page is not None and not page.isHidden()
+    panel._table_mode = bool(showing)
+    apply_grid_face(panel, blank_up)
+
+
+def grid_pane_layout(panel):
+    """The layout holding the grid views - the empty page joins it."""
+    root = getattr(panel, "ui", None)
+    if root is None:
+        return None
+    return root.findChild(QtWidgets.QVBoxLayout, "verticalLayout_7")
+
+
+def apply_grid_face(panel, blank_up: bool) -> None:
+    """THE ONE WRITER of the grid pane's three visibilities.
+
+    Exactly one of table / list / empty page is up. Kept here rather
+    than in `empty_state` so that module can import this one and this
+    one needs nothing back; the verdict arrives as an argument.
+    """
+    table = getattr(panel, "thumbtable", None)
+    page = getattr(panel, "empty_page", None)
+    showing_table = bool(getattr(panel, "_table_mode", False))
+    if page is not None:
+        page.setVisible(bool(blank_up))
+    if blank_up and page is not None:
+        if table is not None:
+            table.setVisible(False)
+        panel.thumblist.setVisible(False)
+        return
+    if table is not None:
+        table.setVisible(showing_table)
+    panel.thumblist.setVisible(not showing_table)
 
 
 def bind_table_cell_delegates(panel, tile_delegate) -> None:

@@ -439,6 +439,17 @@ CODE_COMMENT = re.compile(r'^\s*(?:#|"""|\'\'\'|\*)')
 #: private repo instead of here.
 SELF = "tools/git-hooks/amaze_name_scan.py"
 
+#: Documents whose CONTENT IS user-facing sentences, so the sentence
+#: ceiling would measure the product's own copy rather than my prose
+#: about it. Exempt from the COUNT only: the quotation and attribution
+#: rules still apply, and they are the ones that protect anybody.
+#:
+#: `ui-text.md` is the single source for every word the app shows. The
+#: empty-state table alone added sixteen sentences of which thirteen
+#: were the app speaking, so the cap refused the document for doing its
+#: job (2026-08-11).
+COPY_DOCUMENTS = ("docs/architecture/ui-text.md",)
+
 
 def prose_of(path, line):
     """The prose in an added line, or None when the line is not prose."""
@@ -447,6 +458,51 @@ def prose_of(path, line):
     if path.endswith(PROSE_MARKUP) or CODE_COMMENT.match(line):
         return TRIPLE.sub(" ", line)
     return None
+
+
+def countable_prose(path, lines):
+    """The prose the sentence ceiling should measure.
+
+    A DOCSTRING'S FIRST SENTENCE IS ITS SUMMARY - API documentation,
+    not story - so it does not count. Without this the ceiling scales
+    with the number of FUNCTIONS rather than with how much is being
+    explained: a new module carrying one short docstring each was over
+    it at eleven before a single explanatory sentence existed, which is
+    the rule refusing the house style instead of the story it is aimed
+    at (2026-08-11). Everything after that first sentence counts, and a
+    plain `#` comment counts whole.
+    """
+    if path.endswith(PROSE_MARKUP):
+        return " ".join(t for t in (prose_of(path, b) for b in lines)
+                        if t is not None)
+    out, in_doc, summary = [], False, False
+    for body in lines:
+        marks = len(TRIPLE.findall(body))
+        opening = bool(marks) and not in_doc
+        # A DOCSTRING'S BODY IS PROSE TOO. `prose_of` answers only for a
+        # line that STARTS with a marker, so before this the ceiling saw
+        # a docstring's first line and none of the paragraphs under it -
+        # the exact shape it exists to stop, uncounted. Measured while
+        # adding the summary rule above.
+        inside = in_doc and not opening
+        text = prose_of(path, body)
+        if text is None and inside:
+            text = TRIPLE.sub(" ", body)
+        if opening:
+            in_doc, summary = (marks % 2 == 1), True
+        elif marks and in_doc:
+            in_doc = False
+        if text is None:
+            summary = False
+            continue
+        if summary:
+            end = SENTENCE_END.search(text)
+            if end:
+                text, summary = text[end.end():], False
+            else:
+                text = ""
+        out.append(text)
+    return " ".join(out)
 
 
 def added_blocks():
@@ -519,7 +575,13 @@ def added_text_offences():
             if spoken:
                 hits.append((path, start + offset, "a quotation",
                              spoken[:110]))
-        joined = " ".join(prose)
+        # THE COUNT ONLY. A copy document still gets every line above -
+        # the quotation and attribution scans - because those are what
+        # keep a person's words out of the public repo, and they are
+        # the point of this file.
+        if path in COPY_DOCUMENTS:
+            continue
+        joined = countable_prose(path, lines)
         sentences = len(SENTENCE_END.findall(joined))
         if sentences > MAX_COMMENT_SENTENCES:
             hits.append((path, start,
