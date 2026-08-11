@@ -156,6 +156,100 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
                       "user cannot see their own typo")
 
 
+class TheOverlayComesDownWhenTheRowsComeBack(unittest.TestCase):
+    """Reported live, with a screenshot: five tiles on screen and the
+    empty state painted over them.
+
+    `refresh` was wired into two panel methods, and the search box is
+    not one of them - it calls `filter_thumb_view`. So clearing a
+    search repopulated the grid through a third path and nothing told
+    the surface. The engine listens to the MODEL now, and the test
+    proves it by NEVER CALLING REFRESH after the rows return: if the
+    only thing that hides the overlay is a call this test makes, the
+    test is testing itself.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def test_it_hides_without_anyone_calling_refresh(self):
+        from amaze.panel import grid
+
+        self.panel.current_section = "material"
+        self.panel.apply_view_mode()
+        view = grid.visible_view(self.panel)
+        if view.model() is None or view.model().rowCount() == 0:
+            self.skipTest("the fixture library has no materials to show")
+        # A REAL SIZE, because the band is measured in pixels and an
+        # unshown fixture view has none - the surface would hide for
+        # the right reason and prove nothing about the wrong one.
+        view.resize(theme.ui_px(empty_state.FULL_WIDTH) + 200, 400)
+
+        box = self.panel.line_filter
+        box.setText("zzzz-no-such-material-zzzz")
+        self.panel.filter_thumb_view()
+        self.addCleanup(self.panel.filter_thumb_view)
+        self.addCleanup(box.clear)
+        QtWidgets.QApplication.processEvents()
+        empty_state.refresh(self.panel)
+
+        surface = getattr(self.panel, "_empty_state", None)
+        self.assertIsNotNone(surface, "no surface was built for an "
+                                      "empty grid")
+        self.assertFalse(surface.isHidden(), "premise: the overlay is up")
+
+        # THE ROWS COME BACK, and nothing here calls refresh.
+        box.clear()
+        self.panel.filter_thumb_view()
+        QtWidgets.QApplication.processEvents()
+
+        self.assertGreater(view.model().rowCount(), 0,
+                           "premise: clearing the search refilled the grid")
+        self.assertTrue(
+            surface.isHidden(),
+            "the empty state is still up over a grid with rows in it - "
+            "which is what it looked like on screen: the teaching text "
+            "painted across real tiles")
+
+
+class TheButtonActuallyDoesSomething(unittest.TestCase):
+    """Reported live: the button did nothing.
+
+    It was positioned from `paintEvent`, so it had a geometry only
+    after a paint and a click never landed on it. Real widgets in a
+    layout now - and this drives the signal, which is the half that
+    stayed broken silently either way.
+    """
+
+    def test_clicking_it_calls_the_verb(self):
+        fired = []
+        surface = empty_state.EmptyState()
+        self.addCleanup(surface.deleteLater)
+        surface.set_state("No materials saved yet", "body", "Save it")
+        surface.set_verb(lambda: fired.append(True))
+        surface.resize(theme.ui_px(empty_state.FULL_WIDTH) + 40, 400)
+        surface._apply_band()
+
+        surface.button().click()
+        self.assertEqual([True], fired,
+                         "the button is on screen and connected to "
+                         "nothing")
+
+    def test_rebinding_does_not_stack_handlers(self):
+        """The surface outlives every state it shows, so a second bind
+        must replace the first rather than join it."""
+        first, second = [], []
+        surface = empty_state.EmptyState()
+        self.addCleanup(surface.deleteLater)
+        surface.set_state("h", "b", "Go")
+        surface.set_verb(lambda: first.append(True))
+        surface.set_verb(lambda: second.append(True))
+        surface.button().click()
+        self.assertEqual([], first, "the previous verb still fires")
+        self.assertEqual([True], second)
+
+
 class TheQuotedStringCannotRunAway(unittest.TestCase):
     """A search string is the user's own text and has no length limit.
 

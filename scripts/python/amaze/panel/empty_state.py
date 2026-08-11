@@ -158,39 +158,92 @@ class EmptyState(QtWidgets.QWidget):
         super().__init__(parent)
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents,
                           True)
-        self._headline = ""
-        self._body = ""
-        self._button = ""
         #: Whether this blank has a button at all, kept apart from the
         #: width band so a narrow grid hides it without forgetting.
         self._wanted_button = False
         self._tracked = None
+        self._tracked_model = None
         self._connection = None
+        self._model_signals = []
+
+        # REAL WIDGETS IN A LAYOUT. An earlier version painted the two
+        # lines and positioned the button from `paintEvent`, so the
+        # button had a geometry only after a paint and a click never
+        # landed on it.
+        outer = QtWidgets.QVBoxLayout(self)
+        outer.setContentsMargins(theme.ui_px(16), theme.ui_px(8),
+                                 theme.ui_px(16), theme.ui_px(8))
+        outer.addStretch(1)
+
+        self._head = QtWidgets.QLabel(self)
+        self._head.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._head.setWordWrap(True)
+        head_font = QtGui.QFont(self.font())
+        head_font.setBold(True)
+        head_font.setPixelSize(max(1, theme.ui_px(15)))
+        self._head.setFont(head_font)
+        self._head.setStyleSheet("color: %s; background: transparent;"
+                                 % theme.color_hex("text_bright"))
+        outer.addWidget(self._head)
+
+        self._text = QtWidgets.QLabel(self)
+        self._text.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self._text.setWordWrap(True)
+        self._text.setStyleSheet("color: %s; background: transparent;"
+                                 % theme.color_hex("text"))
+        self._text.setMaximumWidth(theme.ui_px(MAX_TEXT_WIDTH))
+        outer.addSpacing(theme.ui_px(10))
+        outer.addWidget(self._text, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
 
         self._btn = QtWidgets.QPushButton(self)
         self._btn.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        # The button is the one thing here that IS clickable, so it
-        # takes mouse events back from the transparent parent.
+        # The one clickable thing here, so it takes mouse events back
+        # from the transparent parent.
         self._btn.setAttribute(
             QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
+        outer.addSpacing(theme.ui_px(10))
+        outer.addWidget(self._btn, 0, QtCore.Qt.AlignmentFlag.AlignHCenter)
+        outer.addStretch(1)
         self._btn.hide()
 
-    def track(self, view) -> None:
-        """Follow the view's geometry, without the panel bookkeeping it.
+    def track(self, view, on_change) -> None:
+        """Follow the view: its geometry, and its ROW COUNT.
 
-        A resize is not a content change, so it must not travel through
-        the panel's content path.
+        THE ROW COUNT IS THE POINT. A first version refreshed from two
+        panel methods only, so clearing the search refilled the grid
+        through a third path and the overlay stayed up over real tiles.
+        Listening to the MODEL means any path that changes what is
+        shown updates this, including ones nobody thought of.
+
+        Guarded on view AND model: a section switch swaps the model
+        under a view that has not changed.
         """
-        if self._tracked is view:
+        model = view.model() if view is not None else None
+        if self._tracked is view and self._tracked_model is model:
             return
         if self._tracked is not None:
             try:
                 self._tracked.removeEventFilter(self)
             except RuntimeError:
                 pass
+        for signal in self._model_signals:
+            try:
+                signal.disconnect(on_change)
+            except (RuntimeError, TypeError):
+                pass
+        self._model_signals = []
+
         self._tracked = view
-        if view is not None:
-            view.installEventFilter(self)
+        self._tracked_model = model
+        if view is None:
+            return
+        view.installEventFilter(self)
+        if model is None:
+            return
+        for signal in (model.rowsInserted, model.rowsRemoved,
+                       model.modelReset, model.layoutChanged):
+            signal.connect(on_change)
+            self._model_signals.append(signal)
 
     def eventFilter(self, watched, event):
         if (event.type() == QtCore.QEvent.Type.Resize
@@ -205,17 +258,14 @@ class EmptyState(QtWidgets.QWidget):
                 or self.height() < theme.ui_px(MIN_HEIGHT)):
             self.hide()
             return
-        self._btn.setVisible(bool(self._button) and self._wanted_button
-                             and self.width() >= theme.ui_px(FULL_WIDTH))
+        self._btn.setVisible(self._wanted_button and self._can_show_body())
+        self._text.setVisible(bool(self._text.text()))
         self.show()
-        self.update()
 
     def set_state(self, headline: str, body: str, button: str) -> None:
-        self._headline = headline or ""
-        self._body = body or ""
-        self._button = button or ""
-        self._btn.setText(self._button)
-        self.update()
+        self._head.setText(headline or "")
+        self._text.setText(body or "")
+        self._btn.setText(button or "")
 
     def set_verb(self, handler) -> None:
         """What the button does, rebound each time.
@@ -224,7 +274,7 @@ class EmptyState(QtWidgets.QWidget):
         so connecting without clearing would fire one click into every
         handler it had ever been given.
         """
-        self._wanted_button = bool(self._button) and handler is not None
+        self._wanted_button = bool(self._btn.text()) and handler is not None
         # The connection is HELD: a bare `disconnect()` on a signal
         # with nothing attached warns rather than raising, so no except
         # clause catches it.
@@ -241,74 +291,21 @@ class EmptyState(QtWidgets.QWidget):
     def button(self) -> QtWidgets.QPushButton:
         return self._btn
 
-    def paintEvent(self, event) -> None:
-        """Hand-painted, and it stops there.
-
-        The BUTTON stays a real QPushButton so it inherits Houdini's
-        stylesheet like every other button (research.md ▸ *Qt widgets,
-        views & painting*). Only the text is painted, because two
-        labels in a layout cost a layout pass on a surface that is
-        usually not shown.
-        """
-        if not self._headline:
-            return
-        width = self.width()
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.RenderHint.TextAntialiasing, True)
-
-        column = min(theme.ui_px(MAX_TEXT_WIDTH), width - theme.ui_px(32))
-        left = (width - column) // 2
-
-        head_font = QtGui.QFont(self.font())
-        head_font.setBold(True)
-        head_font.setPixelSize(max(1, theme.ui_px(15)))
-        body_font = QtGui.QFont(self.font())
-
-        head_metrics = QtGui.QFontMetrics(head_font)
-        body_metrics = QtGui.QFontMetrics(body_font)
-        flags = int(QtCore.Qt.TextFlag.TextWordWrap
-                    | QtCore.Qt.AlignmentFlag.AlignHCenter)
-
-        head_rect = head_metrics.boundingRect(
-            0, 0, column, 0, flags, self._headline)
-        show_body = bool(self._body) and self._can_show_body()
-        body_rect = QtCore.QRect()
-        if show_body:
-            body_rect = body_metrics.boundingRect(
-                0, 0, column, 0, flags, self._body)
-
-        gap = theme.ui_px(10)
-        total = head_rect.height()
-        if show_body:
-            total += gap + body_rect.height()
-        if self._btn.isVisible():
-            total += gap + self._btn.sizeHint().height()
-
-        y = max(theme.ui_px(8), (self.height() - total) // 2)
-
-        painter.setFont(head_font)
-        painter.setPen(theme.color("text_bright"))
-        painter.drawText(QtCore.QRect(left, y, column, head_rect.height()),
-                         flags, self._headline)
-        y += head_rect.height()
-
-        if show_body:
-            y += gap
-            painter.setFont(body_font)
-            painter.setPen(theme.color("text"))
-            painter.drawText(QtCore.QRect(left, y, column, body_rect.height()),
-                             flags, self._body)
-            y += body_rect.height()
-
-        if self._btn.isVisible():
-            y += gap
-            hint = self._btn.sizeHint()
-            self._btn.setGeometry((width - hint.width()) // 2, y,
-                                  hint.width(), hint.height())
-        painter.end()
-
     def _can_show_body(self) -> bool:
         return self.width() >= theme.ui_px(FULL_WIDTH)
+
+
+#: One callable per panel, so connecting twice does not stack two
+#: handlers - a lambda made fresh each time never compares equal and so
+#: never disconnects.
+_watchers: dict = globals().get("_watchers", {})
+
+
+def _watcher(panel):
+    key = id(panel)
+    if key not in _watchers:
+        _watchers[key] = lambda *_a, **_k: refresh(panel)
+    return _watchers[key]
 
 
 def refresh(panel) -> None:
@@ -356,7 +353,7 @@ def refresh(panel) -> None:
     handler = getattr(panel, verb, None) if verb else None
     surface.set_state(headline, body, button)
     surface.set_verb(handler if callable(handler) else None)
-    surface.track(view)
+    surface.track(view, _watcher(panel))
     surface.setGeometry(view.geometry())
     # The band decides whether any of that is shown - the surface's own
     # question, re-asked on every resize.
