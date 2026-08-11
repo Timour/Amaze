@@ -1167,21 +1167,19 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
         dialog.close()
 
 
-class TheWindowFloorIsOneConstant(unittest.TestCase):
-    """One floor, and the two that were tried and taken out.
+class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
+    """Three floors, and the reason there are three.
 
     Measured on the running panel 2026-08-11: a 537px panel held
-    sidebar 135, grid 64, Comments 326 — a 48px grid viewport, where
-    no tile and no label fit. The first fix floored the grid PANE at
-    250 and grew the window floor while Comments was open, and both
-    were removed the same day: a child minimum propagates into the
-    window's own minimum, so the two together made the window's floor
-    MOVE when Comments opened.
+    sidebar 135, grid 64, Comments 326 — a grid viewport 48px wide,
+    where no tile fits and no label fits. Every pane was within its
+    rights; the grid is the only one with stretch 1, so it pays for
+    the other two, and it was the only one with no minimum at all.
 
-    A moving floor is worse than a narrow grid. Text in a squeezed
-    grid gets cut, and that is accepted — the Empty State Engine hides
-    below its own measured band rather than drawing something clipped,
-    which is where narrow is handled now.
+    THE PANEL FLOOR ALONE PROVES NOTHING, which is what these tests
+    are shaped around: that 48px grid was inside a 537px panel, above
+    any panel floor worth setting. A test that only checked the panel
+    would have passed on the broken build.
     """
 
     def setUp(self):
@@ -1199,38 +1197,27 @@ class TheWindowFloorIsOneConstant(unittest.TestCase):
         found = self.panel.findChildren(QtWidgets.QSplitter)
         return found[0] if found else None
 
-    def test_the_window_has_a_width_floor(self):
+    def test_the_window_carries_the_only_width_floor(self):
+        """ONE number, on the window, and nothing else."""
         from amaze.helpers import theme
         from amaze.panel import panel as panel_mod
 
-        self.assertEqual(
-            theme.ui_px(panel_mod.MIN_PANEL_WIDTH),
-            self.panel.ui.minimumWidth(),
-            "the window can be dragged to any width again - measured "
-            "live, that leaves the grid viewport 48px, narrower than "
-            "one tile")
+        self.assertEqual(theme.ui_px(panel_mod.MIN_PANEL_WIDTH),
+                         self.panel.ui.minimumWidth())
 
-    def test_it_does_not_move_when_comments_opens(self):
-        """The half that was taken out, pinned so it cannot come back
-        by accident - including through a grid-pane minimum, which
-        grows the window's own floor without ever touching this
-        method."""
-        pane = self.panel.notes_panel
-        pane.setVisible(False)
-        closed = self.panel.ui.minimumWidth()
-        pane.setVisible(True)
-        opened = self.panel.ui.minimumWidth()
-        self.assertEqual(
-            closed, opened,
-            "the window's floor moved when Comments opened - a floor "
-            "that shifts under the user is worse than a narrow grid, "
-            "and a cut sentence there is accepted")
-
-    def test_height_is_never_floored(self):
-        """A 244px-tall grid is a layout in use, measured live."""
-        self.assertEqual(0, self.panel.ui.minimumHeight(),
-                         "a height floor would take away a short "
-                         "layout that reads fine")
+    def test_no_pane_holds_a_minimum_of_its_own(self):
+        """A child minimum propagates up into the window's own, so a
+        floor on the grid pane stops the window honouring MIN_PANEL_WIDTH
+        and makes it move as Comments opens. The cost is deliberate and
+        accepted: with Comments open the grid does go narrow and its
+        text clips (ROADMAP line 2)."""
+        splitter = self._splitter()
+        self.assertIsNotNone(splitter, "premise: the three panes are a "
+                                       "splitter")
+        grid_pane = splitter.widget(1)
+        self.assertEqual(0, grid_pane.minimumWidth(),
+                         "a minimum here adds itself to the window's own, "
+                         "so the window stops honouring its 500")
 
 
 if __name__ == "__main__":

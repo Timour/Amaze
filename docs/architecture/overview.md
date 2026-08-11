@@ -607,39 +607,6 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 > of the shipped whole, which stays GPLv3 while any derived line ships.
 > `tests/test_preview_boundary.py` keeps the door a door.
 
-### 4i. The **Empty State Engine**
-
-What the grid says when it has nothing — the first-run panel being the
-only screen with nothing else to look at, and Amaze having had no
-empty-state text at all.
-
-- **File:** `panel/empty_state.py` · **Door:** `refresh(panel)`
-- **FOUR BLANKS, and the engine decides WHICH**: `nothing-yet` (the
-  source model is empty), `nothing-matches` (rows exist, a search is
-  set), `nothing-here` (rows exist, some other filter is on),
-  `unreachable` (File only — a registered folder could not be read).
-  All four are derived from what the panel already holds; the last one
-  finally reads `FileFilesModel._unreadable_folders`, which had been
-  written and read by nothing, so a disconnected drive rendered
-  identically to an empty folder.
-- **A SECTION DECLARES ONLY ITS OWN WORDS** — `Section.EMPTY` maps a
-  blank to `(headline, sentence, button, verb)`, and `empty_noun` names
-  what it holds. In practice a section declares one blank, `nothing-yet`,
-  because how you put something IN is the only part that differs; the
-  other three are the engine's `SHARED`. `verb` names a panel method,
-  the same convention `GRID_MENU` uses.
-- **It degrades by measured width.** At or above 420 the sentence and
-  the button show; below it the BUTTON goes and the sentence stays,
-  because the sentence teaches the gesture and the button only
-  shortcuts what it explains. Below 250 wide or 60 tall nothing is
-  drawn — a clipped half-sentence is worse than an honest blank, and
-  at that size the grid shows no tile either (research.md ▸ *WHAT A
-  SQUEEZED PANEL ACTUALLY LEAVES THE GRID*).
-- **The surface owns its own geometry**, tracking the visible view
-  rather than having the panel push a resize at it; the panel calls
-  `refresh` only when what is SHOWN changes, through the two funnels it
-  already had.
-
 ---
 
 ## 5. Models & storage
@@ -898,8 +865,6 @@ panel/sections.py         The Sections (node-types) + registry + the
                           per-section GRID_MENU tables
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
-panel/empty_state.py      EMPTY STATE ENGINE - what the grid says when
-                          it has nothing, and which blank that is
 panel/sidebar.py          The SIDEBAR area - what a row means and what
                           may be dropped on it (the drag-hover cluster)
 panel/dragdrop_widgets.py Drag-and-drop into the network editor

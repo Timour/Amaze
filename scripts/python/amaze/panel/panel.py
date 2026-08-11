@@ -13,8 +13,8 @@ import hou
 
 import amaze
 from amaze.core import grid_columns
-from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
-                         sections, sidebar)
+from amaze.panel import (dragdrop_widgets, grid, notes_panel, sections,
+                         sidebar)
 from amaze.core import debug, library_policy, repair
 from amaze.core import versions
 from amaze.core import notes
@@ -170,9 +170,6 @@ _reload(dragdrop_widgets)
 # test loop exists to avoid.
 _reload(grid)
 _reload(sidebar)
-# AFTER grid, whose `visible_view` it asks, and BEFORE sections, whose
-# EMPTY tables it reads.
-_reload(empty_state)
 _reload(sections)
 _reload(notes_panel)
 _reload(multifilterproxy_model)
@@ -223,20 +220,19 @@ _BODY_T0 = time.perf_counter()
 MULTIPLE_VALUES = material.MULTIPLE_VALUES
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
-#: THE PANEL'S WIDTH FLOOR. ONE CONSTANT, and deliberately not a
-#: computed one: an earlier round grew this floor while Comments was
-#: open, and a floor that moves under the user is worse than a narrow
-#: grid. Text in a squeezed grid gets cut, and that is accepted
-#: (devlog 479).
+#: THE PANEL'S WIDTH FLOOR. ONE CONSTANT, deliberately not a computed
+#: one: an earlier round grew this while Comments was open, and a floor
+#: that moves under the user is worse than a narrow grid. Text in a
+#: squeezed grid gets cut, and that is accepted.
 #:
-#: THE GRID PANE CARRIES NO MINIMUM OF ITS OWN, for the same reason and
-#: it is not an oversight: a child minimum propagates up through the
-#: layout - this file's own history records a residual floor surviving
-#: the first attempt to remove one - so flooring the grid would grow
-#: the window's minimum whenever Comments opened, which is exactly the
-#: moving floor being avoided. Narrow is handled where it shows, by the
-#: Empty State Engine, which hides below its own measured band rather
-#: than drawing something clipped.
+#: THE GRID PANE CARRIES NO MINIMUM, and that is not an oversight: a
+#: child minimum propagates into the window's own, so flooring the grid
+#: grew the floor whenever Comments opened - the same moving floor by
+#: another route.
+#:
+#: Earned by measurement (research.md ▸ WHAT A SQUEEZED PANEL ACTUALLY
+#: LEAVES THE GRID): the splitter left the grid viewport 48px wide,
+#: narrower than one tile, inside a 537px panel.
 #:
 #: Design pixels, scaled through `theme.ui_px` at the point of use like
 #: every other size in the panel.
@@ -1082,14 +1078,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return grid.style_table_header(self)
 
     def apply_view_mode(self) -> None:
-        result = grid.apply_view_mode(self)
-        # THE VIEW JUST SWAPPED, so the surface is over the wrong one.
-        # This and `update_selected_cat` are the panel's two existing
-        # funnels for a change in what the grid shows; the Empty State
-        # Engine needs no third, and a resize is the surface's own
-        # business rather than a content change.
-        empty_state.refresh(self)
-        return result
+        return grid.apply_view_mode(self)
 
     def _list_thumb_side(self, thumb_size: int) -> int:
         """The thumbnail size list mode may actually use.
@@ -1635,10 +1624,6 @@ class MatLibPanel(QtWidgets.QWidget):
             # painting has to work with, so this keeps the native grip
             # dots/hover intact.
             splitter.setHandleWidth(theme.ui_px(6))
-            # NO MINIMUM ON THE GRID PANE, deliberately - see
-            # MIN_PANEL_WIDTH. One was tried and removed the same day:
-            # a child minimum grows the window's own minimum, so it
-            # made the floor move whenever Comments opened.
         # catview's own <maximumSize width="220"> in amaze.ui is what
         # kept the category pane narrow in the splitter - that property
         # stays on catview itself after reparenting below, but the
@@ -6073,45 +6058,6 @@ class MatLibPanel(QtWidgets.QWidget):
             self.text_about.setPlainText("")
 
     # Update the Views when selection changes
-    def clear_filter_box(self) -> None:
-        """Empty the Filter box - the empty state's Clear search.
-
-        A METHOD RATHER THAN THE ENGINE REACHING FOR THE WIDGET. The
-        Empty State Engine names verbs the way GRID_MENU does, and the
-        panel is what knows that emptying this box refilters through
-        the box's own signal rather than needing a second push.
-        """
-        box = getattr(self, "line_filter", None)
-        if box is not None:
-            box.clear()
-
-    def show_all_categories(self) -> None:
-        """Put the sidebar back on All - the empty state's Show all.
-
-        The same walk `_ensure_sidebar_selection` makes when a filter
-        hides the row the user was standing in: find the All row and
-        select it. `setCurrentIndex` CLEARS the selection and selects
-        what it is given (research.md ▸ Qt widgets), which is exactly
-        what is wanted here and is why it is not the guarded form used
-        for merely MOVING the current row.
-        """
-        view = getattr(self, "cat_list", None)
-        model = view.model() if view is not None else None
-        if model is None:
-            return
-        selection_model = view.selectionModel()
-        for row in range(model.rowCount()):
-            index = model.index(row, 0)
-            if index.data() == "All":
-                view.setCurrentIndex(index)
-                if selection_model is not None:
-                    selection_model.select(
-                        index,
-                        QtCore.QItemSelectionModel.SelectionFlag
-                        .ClearAndSelect)
-                break
-        self.update_selected_cat()
-
     def update_selected_cat(self) -> None:
         """Update thumb view on change of category (Materials) or browse
         the selected folder's images (Textures)."""
@@ -6149,7 +6095,6 @@ class MatLibPanel(QtWidgets.QWidget):
         section = self._section()
         if section is not None:
             section.select_category(indexes[0])
-        empty_state.refresh(self)
 
     # Library Stuffs
     def grid_update_preview(self, indexes) -> None:
