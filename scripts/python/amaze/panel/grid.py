@@ -453,6 +453,27 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     table = getattr(panel, "thumbtable", None)
     if table is None:
         return
+
+    # THE PREVIOUS SET GOES FIRST. `setItemDelegate*` takes no
+    # ownership and these are parented to the table, which outlives
+    # every one of them - so rebinding left the old five alive as
+    # children nothing points at. Measured on a live panel: ELEVEN
+    # after an ordinary afternoon of tab switching, where one
+    # `activate()` builds five (research.md > Qt widgets, views &
+    # painting). Only the ones WE installed are dropped; the view's
+    # own default delegate is not ours to destroy.
+    #
+    # setParent(None) AND deleteLater: the first leaves the child list
+    # at once, the second frees it under the real event loop. A test
+    # must flush `DeferredDelete` itself - `processEvents()` does not.
+    for previous in getattr(table, "_amaze_cell_delegates", ()):
+        try:
+            previous.setParent(None)
+            previous.deleteLater()
+        except RuntimeError:
+            pass          # already gone with a rebuilt table
+    installed = []
+
     keys = grid_columns.KEYS
     # THE SELECTED ROW'S LOOK, in one place. Houdini's app-wide
     # stylesheet draws list-item selection itself, and the table is
@@ -460,7 +481,9 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     # every child inherits it, so the rows wear the host's own
     # selection - see `GridCellDelegate`, which now owns the cell
     # padding and nothing else.
-    table.setItemDelegate(delegates.GridCellDelegate(table))
+    grid_cell = delegates.GridCellDelegate(table)
+    installed.append(grid_cell)
+    table.setItemDelegate(grid_cell)
     # WHICH columns are ticks is the model's list (the cells and
     # their headings have to centre together, so it is filed with
     # the alignment). What each one reads and what colour it draws
@@ -472,15 +495,17 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     }
     ticks = ((key,) + sources[key]
              for key in grid_columns.GridColumnsMixin.TICK_COLUMNS)
-    table.setItemDelegateForColumn(
-        keys.index("category"),
-        delegates.CategoryCellDelegate(tile_delegate, table))
+    category_cell = delegates.CategoryCellDelegate(tile_delegate, table)
+    installed.append(category_cell)
+    table.setItemDelegateForColumn(keys.index("category"), category_cell)
     for key, attribute, colour in ticks:
-        table.setItemDelegateForColumn(
-            keys.index(key),
-            delegates.TickCellDelegate(
-                tile_delegate, getattr(tile_delegate, attribute, None),
-                colour, table))
+        tick = delegates.TickCellDelegate(
+            tile_delegate, getattr(tile_delegate, attribute, None),
+            colour, table)
+        installed.append(tick)
+        table.setItemDelegateForColumn(keys.index(key), tick)
+    # WHAT THIS BIND OWNS, for the next one to drop.
+    table._amaze_cell_delegates = installed
 
 
 def sync_list_columns(panel) -> None:

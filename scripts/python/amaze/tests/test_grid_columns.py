@@ -1265,5 +1265,63 @@ class TheCallersNameTheColumnToo(unittest.TestCase):
             % offenders)
 
 
+class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
+    """Five delegates are built per `activate()` and parented to the
+    table, which outlives every one of them.
+
+    `setItemDelegate*` takes no ownership, so the previous five stayed
+    alive as C++ children with nothing pointing at them. Measured in a
+    live session 2026-08-12: `thumbtable` held ELEVEN after an ordinary
+    afternoon - two full sets plus Qt's default, only the last set
+    reachable. The same Qt fact `grid._open` already pays a
+    `deleteLater()` for."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _live(self):
+        """Delegates still parented to the table, AFTER flushing the
+        deferred deletes.
+
+        `processEvents()` alone does not dispatch `DeferredDelete`, so
+        a `deleteLater()`'d delegate is still a child and this would
+        read a fixed leak as a live one (research.md > Qt widgets,
+        views & painting, measured 2026-08-12)."""
+        app = QtWidgets.QApplication.instance()
+        app.processEvents()
+        app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+        return [child for child in self.panel.thumbtable.children()
+                if isinstance(child, QtWidgets.QAbstractItemDelegate)]
+
+    def test_rebinding_does_not_grow_the_delegate_count(self):
+        delegate = self.panel.thumblist.itemDelegate()
+        self.panel._bind_table_cell_delegates(delegate)
+        first = len(self._live())
+        for _ in range(4):
+            self.panel._bind_table_cell_delegates(delegate)
+        self.assertLessEqual(
+            len(self._live()), first,
+            "four more binds left more delegates alive than one did - "
+            "each tab switch leaks the set it replaced")
+
+    def test_the_table_still_has_its_delegates_afterwards(self):
+        """The accept path: dropping the old set must not drop the live
+        one, or the cells stop painting. The view takes no ownership,
+        so a delegate that is merely unparented is collected."""
+        delegate = self.panel.thumblist.itemDelegate()
+        self.panel._bind_table_cell_delegates(delegate)
+        self._live()
+        keys = grid_columns.KEYS
+        cell = self.panel.thumbtable.itemDelegateForColumn(
+            keys.index("category"))
+        self.assertIsNotNone(
+            cell, "the category cell has no delegate, so it paints as text")
+        self.assertIsNotNone(
+            cell.parent(),
+            "the live delegate is unparented, so nothing keeps it alive "
+            "while the table still points at it")
+
+
 if __name__ == "__main__":
     unittest.main()

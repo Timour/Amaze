@@ -2597,12 +2597,24 @@ class MatLibPanel(QtWidgets.QWidget):
 
         dialog.add_buttons("cancel", "Apply")
 
-        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
-            return
+        # DELETED ON BOTH EXITS, and only after its fields are read.
+        # It is parented to the panel, which outlives it, so dropping
+        # the Python name frees nothing - the cost `edit_tile_icon`
+        # records measuring at ~6.5MB per open. NOT WA_DeleteOnClose:
+        # the values below come out of the dialog's own children after
+        # exec() returns, and that attribute schedules them for
+        # destruction, so the read would depend on when the event loop
+        # happens to dispatch DeferredDelete.
+        try:
+            if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+                return
 
-        chosen = int(picker.currentData())
-        typed = name_field.text().strip()
-        combo_row = picker.currentIndex()  # not a proxy
+            chosen = int(picker.currentData())
+            typed = name_field.text().strip()
+            combo_row = picker.currentIndex()  # not a proxy
+        finally:
+            dialog.deleteLater()
+
         if typed and typed != (listed[combo_row].get("name") or ""):
             model.rename_version(row, chosen, typed)
         if chosen != active:
@@ -5167,6 +5179,12 @@ class MatLibPanel(QtWidgets.QWidget):
             actions[cmenu.addAction(label)] = (kind, payload)
             previous_kind = kind
         chosen = cmenu.exec_(QtGui.QCursor.pos())
+        # A QMenu parented to the panel outlives the gesture, and the
+        # panel outlives the session - the same measured leak
+        # `grid._open` pays a `deleteLater()` for (twenty right-clicks,
+        # forty live menus). Read the choice out FIRST: the dict is
+        # keyed by the menu's own QActions.
+        cmenu.deleteLater()
         if chosen is None:
             # Menu dismissed - nothing happens. No outcome icon either
             # way: the dispatcher reports "menu" for this whole path
