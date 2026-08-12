@@ -48,9 +48,11 @@ LOCATIONS_FILE = keyed_store.LOCATIONS
 FAVOURITES_FILE = keyed_store.FAVOURITES
 
 #: Set once the six settings.json keys have been proved to have landed
-#: in the library. The same marker shape `file_section_migrated`
-#: already uses, and for the same reason: a location the user later
-#: removes must stay removed rather than being re-adopted every launch.
+#: in the library, so a location the user later removes stays removed
+#: rather than being re-adopted every launch. NOT swept with the other
+#: one-time work in 2026-08-12: `_store_was_lost` clears this marker on
+#: purpose, so the migration is also the recovery path for a
+#: `locations.json` that was deleted or restored away.
 MIGRATED_KEY = "file_locations_migrated"
 
 #: The record's fields, and the settings.json surface each came from.

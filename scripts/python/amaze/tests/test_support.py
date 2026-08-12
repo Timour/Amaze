@@ -444,10 +444,11 @@ def fixture_panel(testcase):
     # data, it is grinding through somebody's personal files for a UI
     # assertion. The fixture settings above register none, and this is
     # what proves it stayed that way.
-    for kind in ("file_folders", "texture_folders", "geometry_folders",
-                 "hip_folders"):
-        for folder in getattr(panel.prefs, kind, ()) or ():
-            checked.append((kind, str(folder)))
+    # NAMED, not `getattr(..., ())` - the texture/geometry/hip lists
+    # were swept 2026-08-12 and a defaulting lookup would narrow this
+    # to one kind without saying so.
+    for folder in panel.prefs.file_folders or ():
+        checked.append(("file_folders", str(folder)))
     for label, path in checked:
         if not os.path.realpath(path).startswith(
                 os.path.realpath(tempfile.gettempdir())):

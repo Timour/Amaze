@@ -157,12 +157,6 @@ class Prefs(_Persistence):
         # thumbsize_list = list. Both match ClickSlider.DEFAULT_VALUE.
         self._thumbsize = 128
         self._thumbsize_list = 128
-        # v2: registered folder pointers for the Textures section
-        self._texture_folders: list[str] = []
-        # v2: favorited texture files, stored as full absolute paths since
-        # texture folders are arbitrary external directories with no
-        # MatLib-owned id the way a material asset has
-        self._texture_favorites: list[str] = []
         # v3: MATERIAL favourites, per user - asset IDS, not paths. The
         # material library was the one section whose favourite lived on
         # the SHARED record: in a multi-user library my star toggled
@@ -177,31 +171,12 @@ class Prefs(_Persistence):
         # library that may be shared, without them choosing it. Empty
         # means versions carry no author, which is the honest default.
         self._version_author = ""
-        # v2: Geometry section - registered folder pointers, favorites
-        # (full paths, same reasoning as textures) and the last-selected
-        # folder, mirroring the texture trio exactly.
-        self._geometry_folders: list[str] = []
-        self._geometry_favorites: list[str] = []
-        self._last_geometry_folder = ""
-        # v2: per-section "Include Subfolders" toggles (sidebar
-        # right-click) - default off, matching the original flat-scan
-        # design; recursion is opt-in.
-        self._texture_include_subfolders = False
-        self._geometry_include_subfolders = False
-        # HIP (Beta): the same folder/favorite/last trio as geometry.
-        # Scene thumbnails are CAPTURED, not rendered, so there is no
-        # shading-mode or background preference to go with them.
-        self._hip_folders: list[str] = []
-        self._hip_favorites: list[str] = []
-        self._last_hip_folder = ""
-        self._hip_include_subfolders = False
         # The File section (the 2026-07-31 merge of Images, Geometry
-        # and HIP): one folder/favorite/last/subfolders quartet. The
-        # three per-section quartets above STAY - they are what an
-        # older build ON THIS MACHINE still reads after a rollback,
-        # and load() folds them into these once (file_section_migrated).
-        # NOT the other Mac: settings.json is per-machine and does not
-        # travel (INSTALL.md).
+        # and HIP): one folder/favorite/last/subfolders quartet, and
+        # since 2026-08-12 the only one. The three per-section quartets
+        # and their one-time union were swept - they existed so an older
+        # build on this machine could still read them after a rollback,
+        # which pre-1.0 is not owed.
         self._file_folders: list[str] = []
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
@@ -298,12 +273,6 @@ class Prefs(_Persistence):
         # keys (e.g. "wada:132", "klee:7"). User gradients store their
         # favorite flag inline in gradients.json instead - they have no
         # stable id to key on here.
-        # v2: last-selected folder in the Textures section - a real
-        # folder path, TextureFolders.ALL_LABEL ("All") if that was
-        # selected, or "" if nothing's ever been selected yet. Restored
-        # both across Houdini sessions and when switching between the
-        # Mat/Tex/COP tabs within one session.
-        self._last_texture_folder = ""
         # v2: how many iconvert conversions run at once (1-8, default 4)
         self._texture_parallel_conversions = 4
         # "texture_force_iconvert" lived here until 2026-08-03. The
@@ -551,19 +520,11 @@ class Prefs(_Persistence):
     # `FolderListModel` subclass, so twelve of them lost their last
     # caller and were deleted 2026-08-05.
     #
-    # THE KEYS AND THE READ PROPERTIES STAY. `texture_folders`,
-    # `geometry_folders` and `hip_folders` are still in older machines'
-    # settings.json, `_COLLECTED_ATTRS` still round-trips them, and the
-    # live-data guard still sweeps all four kinds. Nothing may strip
-    # them - the same rule the retired section KEYS carry.
-
-    @property
-    def texture_folders(self) -> list[str]:
-        return self._texture_folders
-
-    @property
-    def texture_favorites(self) -> list[str]:
-        return self._texture_favorites
+    # THE KEYS AND THE READ PROPERTIES ARE GONE (2026-08-12). They were
+    # kept so an older build could still read them, which pre-1.0 is not
+    # owed - and settings.json is per-machine, so there was no second
+    # reader to serve in the first place. `file_folders` and
+    # `file_favorites` are the whole surface now.
 
     @property
     def version_author(self) -> str:
@@ -589,22 +550,6 @@ class Prefs(_Persistence):
         elif not on and mat_id in self._material_favorites:
             self._material_favorites.remove(mat_id)
             self.save()
-
-    @property
-    def geometry_folders(self) -> list[str]:
-        return self._geometry_folders
-
-    @property
-    def geometry_favorites(self) -> list[str]:
-        return self._geometry_favorites
-
-    @property
-    def hip_folders(self) -> list[str]:
-        return self._hip_folders
-
-    @property
-    def hip_favorites(self) -> list[str]:
-        return self._hip_favorites
 
     @property
     def file_folders(self) -> list[str]:
@@ -874,30 +819,6 @@ class Prefs(_Persistence):
             "absolute", "hip", "job", "home") else "home"
 
     @property
-    def last_hip_folder(self) -> str:
-        return self._last_hip_folder
-
-    @last_hip_folder.setter
-    def last_hip_folder(self, val: str) -> None:
-        self._last_hip_folder = str(val or "")
-
-    @property
-    def hip_include_subfolders(self) -> bool:
-        return self._hip_include_subfolders
-
-    @hip_include_subfolders.setter
-    def hip_include_subfolders(self, val: bool) -> None:
-        self._hip_include_subfolders = bool(val)
-
-    @property
-    def texture_include_subfolders(self) -> bool:
-        return self._texture_include_subfolders
-
-    @texture_include_subfolders.setter
-    def texture_include_subfolders(self, val: bool) -> None:
-        self._texture_include_subfolders = bool(val)
-
-    @property
     def geometry_shading_mode(self) -> str:
         return self._geometry_shading_mode
 
@@ -923,22 +844,6 @@ class Prefs(_Persistence):
         val = str(val or "template")
         self._icon_line_weight = val if val in ("template", "feather") \
             else "template"
-
-    @property
-    def geometry_include_subfolders(self) -> bool:
-        return self._geometry_include_subfolders
-
-    @geometry_include_subfolders.setter
-    def geometry_include_subfolders(self, val: bool) -> None:
-        self._geometry_include_subfolders = bool(val)
-
-    @property
-    def last_geometry_folder(self) -> str:
-        return self._last_geometry_folder
-
-    @last_geometry_folder.setter
-    def last_geometry_folder(self, val: str) -> None:
-        self._last_geometry_folder = str(val or "")
 
     @property
     def sidebar_counts(self) -> bool:
@@ -992,14 +897,6 @@ class Prefs(_Persistence):
         # Never leave the panel with no tabs - fall back to Materials.
         val = [str(k) for k in val] if val else []
         self._enabled_sections = val or ["material"]
-
-    @property
-    def last_texture_folder(self) -> str:
-        return self._last_texture_folder
-
-    @last_texture_folder.setter
-    def last_texture_folder(self, val: str) -> None:
-        self._last_texture_folder = val or ""
 
     @property
     def texture_parallel_conversions(self) -> int:

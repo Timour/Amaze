@@ -64,7 +64,7 @@ class FolderListModel(QtCore.QAbstractListModel):
     # models can never drift apart.
     COUNT_ROLE = category.SIDEBAR_COUNT_ROLE
 
-    #: Prefs attribute holding the folder list, e.g. "texture_folders"
+    #: Prefs attribute holding the folder list, e.g. "file_folders"
     folders_attr = ""
     #: Prefs attribute holding full-path favorites for this section
     favorites_attr = ""

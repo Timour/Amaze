@@ -309,11 +309,7 @@ class _Persistence:
     #: write from either drops the other's. These union on save; every
     #: scalar key takes this instance's value, because a scalar is a
     #: single choice and the last editor is the active one.
-    _LIST_KEYS = ("texture_folders", "texture_favorites",
-                  "geometry_folders", "geometry_favorites",
-                  "hip_folders", "hip_favorites",
-                  "file_folders", "file_favorites",
-                  "material_favorites")
+    _LIST_KEYS = ("file_folders", "file_favorites", "material_favorites")
 
     #: Dict-valued collected keys merge KEY-WISE on a two-pane race:
     #: ours wins per key, theirs adopted for keys we lack - the same
@@ -337,12 +333,6 @@ class _Persistence:
     #: instead of re-adopting. Two panes, two saves, and the other
     #: pane's folders and favourites were gone for good.
     _COLLECTED_ATTRS = {
-        "texture_folders": ("_texture_folders", True),
-        "texture_favorites": ("_texture_favorites", True),
-        "geometry_folders": ("_geometry_folders", True),
-        "geometry_favorites": ("_geometry_favorites", True),
-        "hip_folders": ("_hip_folders", True),
-        "hip_favorites": ("_hip_favorites", True),
         "file_folders": ("_file_folders", True),
         "file_favorites": ("_file_favorites", True),
         # Asset ids, not paths - the one collected key that is not.
@@ -529,8 +519,6 @@ class _Persistence:
         self.data["show_categories"] = self._show_categories
         self.data["section_filters"] = dict(self._section_filters)
         self.data["view_mode"] = self._view_mode
-        self.data["texture_folders"] = _encode_paths(self._texture_folders)
-        self.data["texture_favorites"] = _encode_paths(self._texture_favorites)
         self.data["material_favorites"] = list(self._material_favorites)
         self.data["version_author"] = self._version_author
         self.data["sidebar_counts"] = self._sidebar_counts
@@ -540,15 +528,6 @@ class _Persistence:
         self.data["test_dir"] = _encode_path(self._test_dir)
         self.data["hide_empty_categories"] = self._hide_empty_categories
         self.data["enabled_sections"] = self._enabled_sections
-        self.data["geometry_folders"] = _encode_paths(self._geometry_folders)
-        self.data["geometry_favorites"] = _encode_paths(self._geometry_favorites)
-        self.data["last_geometry_folder"] = _encode_path(self._last_geometry_folder)
-        self.data["texture_include_subfolders"] = self._texture_include_subfolders
-        self.data["geometry_include_subfolders"] = self._geometry_include_subfolders
-        self.data["hip_folders"] = _encode_paths(self._hip_folders)
-        self.data["hip_favorites"] = _encode_paths(self._hip_favorites)
-        self.data["last_hip_folder"] = _encode_path(self._last_hip_folder)
-        self.data["hip_include_subfolders"] = self._hip_include_subfolders
         # THE COPY, NOT THE TRUTH - and written from `_file_*`, never
         # from the public accessors, which read the library. Reading
         # them here would re-enter locations.py mid-save, and a save
@@ -584,7 +563,6 @@ class _Persistence:
         self.data["geometry_shading_mode"] = self._geometry_shading_mode
         self.data["geometry_bg"] = self._geometry_bg
         self.data["icon_line_weight"] = self._icon_line_weight
-        self.data["last_texture_folder"] = _encode_path(self._last_texture_folder)
         self.data["texture_parallel_conversions"] = self._texture_parallel_conversions
         self.data["accent_color"] = self._accent_color
         self.data["karma_rendersamples"] = self._karma_rendersamples
@@ -808,12 +786,6 @@ class _Persistence:
         # already names: it restricts the value to grid/list.
         _through_setter(self, "view_mode",
                         data.get("view_mode", "grid"), "grid")
-        self._texture_folders = _decode_paths(
-            data.get("texture_folders", [])
-        )
-        self._texture_favorites = _decode_paths(
-            data.get("texture_favorites", [])
-        )
         self._material_favorites = [
             str(x) for x in data.get("material_favorites", [])]
         self._version_author = str(data.get("version_author", "") or "")
@@ -859,27 +831,6 @@ class _Persistence:
                     "enabled_sections_seen_%s" % introduced not in data:
                 self._enabled_sections.append(introduced)
             self.data["enabled_sections_seen_%s" % introduced] = True
-        self._geometry_folders = _decode_paths(
-            data.get("geometry_folders", [])
-        )
-        self._geometry_favorites = _decode_paths(
-            data.get("geometry_favorites", [])
-        )
-        self._last_geometry_folder = _decode_path(
-            data.get("last_geometry_folder", "")
-        )
-        self._texture_include_subfolders = data.get(
-            "texture_include_subfolders", False
-        )
-        self._geometry_include_subfolders = data.get(
-            "geometry_include_subfolders", False
-        )
-        self._hip_folders = _decode_paths(data.get("hip_folders", []))
-        self._hip_favorites = _decode_paths(data.get("hip_favorites", []))
-        self._last_hip_folder = _decode_path(data.get("last_hip_folder", ""))
-        self._hip_include_subfolders = data.get(
-            "hip_include_subfolders", False
-        )
         self._file_folders = _decode_paths(data.get("file_folders", []))
         self._file_favorites = _decode_paths(
             data.get("file_favorites", []))
@@ -918,34 +869,6 @@ class _Persistence:
             for k, v in show_all.items()
             if isinstance(k, str)
         } if isinstance(show_all, dict) else {}
-        # One-time adoption of the three merged sections' collections.
-        # The old keys are left EXACTLY as they were, so an older build
-        # still reads them after a ROLLBACK and the two panes of one
-        # session keep merging name-for-name (_LIST_KEYS unions).
-        # CORRECTED 2026-08-05: this said "an older build on the other
-        # machine", which settings.json cannot serve - it is per-machine
-        # and does not travel between the two Macs (INSTALL.md). The
-        # reasoning was inherited by section A's roadmap item and by the
-        # code written from it before anyone checked. Idempotent via the
-        # marker, so a favourite the user later removes stays removed.
-        if not data.get("file_section_migrated", False):
-            for source in (self._texture_folders, self._geometry_folders,
-                           self._hip_folders):
-                for path in source:
-                    if path not in self._file_folders:
-                        self._file_folders.append(path)
-            for source in (self._texture_favorites,
-                           self._geometry_favorites, self._hip_favorites):
-                for path in source:
-                    if path not in self._file_favorites:
-                        self._file_favorites.append(path)
-            self._file_include_subfolders = bool(
-                self._file_include_subfolders
-                or self._texture_include_subfolders
-                or self._geometry_include_subfolders
-                or self._hip_include_subfolders
-            )
-            self.data["file_section_migrated"] = True
         stored_recursive = data.get("file_recursive_folders", None)
         if isinstance(stored_recursive, list):
             self._file_recursive_folders = _decode_paths(stored_recursive)
@@ -962,9 +885,6 @@ class _Persistence:
             "geometry_shading_mode", "hiddenlineghost"
         )
         self.geometry_bg = data.get("geometry_bg", "black")
-        self._last_texture_folder = _decode_path(
-            data.get("last_texture_folder", "")
-        )
         # Through the setter: it clamps 1-8.
         _through_setter(
             self, "texture_parallel_conversions",

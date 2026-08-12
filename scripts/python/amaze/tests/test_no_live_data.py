@@ -105,10 +105,11 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
         temp = os.path.realpath(tempfile.gettempdir())
 
         registered = []
-        for kind in ("file_folders", "texture_folders", "geometry_folders",
-                     "hip_folders"):
-            for folder in getattr(panel.prefs, kind, ()) or ():
-                registered.append((kind, str(folder)))
+        # NAMED, not `getattr(..., ())`. The texture/geometry/hip
+        # folder lists were swept 2026-08-12 and a defaulting lookup
+        # would have narrowed this guard to one kind in silence.
+        for folder in panel.prefs.file_folders or ():
+            registered.append(("file_folders", str(folder)))
         registered.append(("library", panel.prefs.dir))
         registered.append(("settings", panel.prefs.path))
 

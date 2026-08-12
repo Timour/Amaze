@@ -56,79 +56,12 @@ def _prefs_with_settings(testcase, settings: dict):
     return p
 
 
-class MigrationTest(unittest.TestCase):
-    """The three merged sections' collections become the File
-    section's, ONCE, and nothing of the old surface is destroyed."""
-
-    #: What a pre-merge settings.json carries. Portable-encoded paths
-    #: are what the codec writes; plain absolutes decode fine too.
-    OLD = {
-        "texture_folders": ["/tex/a/", "/shared/b/"],
-        "geometry_folders": ["/geo/c/", "/shared/b/"],
-        "hip_folders": ["/scenes/d/"],
-        "texture_favorites": ["/tex/a/wood.png"],
-        "geometry_favorites": ["/geo/c/rock.bgeo"],
-        "hip_favorites": ["/scenes/d/shot.hip"],
-        "texture_include_subfolders": False,
-        "geometry_include_subfolders": True,
-        "hip_include_subfolders": False,
-    }
-
-    def test_folders_union_in_order_without_duplicates(self):
-        p = _prefs_with_settings(self, dict(self.OLD))
-        self.assertEqual(
-            ["/tex/a/", "/shared/b/", "/geo/c/", "/scenes/d/"],
-            p.file_folders,
-            "the union is not texture-then-geometry-then-hip with "
-            "duplicates dropped")
-
-    def test_favorites_union(self):
-        p = _prefs_with_settings(self, dict(self.OLD))
-        self.assertEqual(
-            ["/tex/a/wood.png", "/geo/c/rock.bgeo", "/scenes/d/shot.hip"],
-            p.file_favorites)
-
-    def test_subfolders_seed_every_location_when_any_was_on(self):
-        """One old section had recursion on, so every merged location
-        starts recursive - recursion must not quietly turn off, and
-        per-location is the shape it lands in now."""
-        p = _prefs_with_settings(self, dict(self.OLD))
-        self.assertEqual(sorted(p.file_folders),
-                         sorted(p.file_recursive_folders))
-
-    def test_the_old_keys_survive_the_save(self):
-        """An older build on the other machine still reads and writes
-        the old quartets - deleting them would split the fleet's
-        settings forever (_LIST_KEYS unions name-for-name)."""
-        p = _prefs_with_settings(self, dict(self.OLD))
-        p.save()
-        with open(os.path.join(p.path, "settings.json"),
-                  encoding="utf-8") as handle:
-            on_disk = json.load(handle)
-        for key in ("texture_folders", "geometry_folders", "hip_folders",
-                    "texture_favorites", "geometry_favorites",
-                    "hip_favorites"):
-            self.assertIn(key, on_disk, "%s was destroyed" % key)
-        self.assertTrue(on_disk.get("file_section_migrated"),
-                        "the marker did not persist - the union will "
-                        "re-run and resurrect removed favourites")
-
-    def test_the_migration_never_reruns(self):
-        """A favourite removed AFTER the migration stays removed: the
-        marker, not the content, decides."""
-        p = _prefs_with_settings(self, dict(self.OLD))
-        p.remove_file_favorite("/tex/a/wood.png")
-        p.save()
-        q = prefs_module.Prefs()
-        q.path = p.path
-        q.load()
-        self.assertNotIn("/tex/a/wood.png", q.file_favorites,
-                         "the migration re-ran and resurrected a "
-                         "favourite the user removed")
+class TheFileTabIntroducesItselfOnceTest(unittest.TestCase):
+    """A settings file written before the File section existed gains
+    the tab once, and turning it off then sticks."""
 
     def test_the_file_tab_introduces_itself_once(self):
-        old = dict(self.OLD)
-        old["enabled_sections"] = ["material", "code"]
+        old = {"enabled_sections": ["material", "code"]}
         p = _prefs_with_settings(self, old)
         self.assertIn("file", p.enabled_sections,
                       "existing users never see the File tab")

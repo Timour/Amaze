@@ -317,7 +317,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
     def _write_real_settings(self):
         p = self._prefs()
         p.dir = os.path.join(self.home, "library") + os.sep
-        p._texture_folders = ["/Volumes/Tex/wood", "/Volumes/Tex/metal"]
+        p._file_folders = ["/Volumes/Tex/wood", "/Volumes/Tex/metal"]
         p.save()
         with open(self.settings, encoding="utf-8") as handle:
             return handle.read()
@@ -374,7 +374,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
         self._write_real_settings()          # creates the file
         first = self._prefs()
         first.load()
-        first._texture_folders = ["/Volumes/Tex/changed"]
+        first._file_folders = ["/Volumes/Tex/changed"]
         first.save()                          # the first save over a real file
 
         self.assertTrue(
@@ -559,8 +559,8 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
         for key, bad in (
             ("enabled_sections", None), ("enabled_sections", "material"),
             ("enabled_sections", 3), ("enabled_sections", {"material": 1}),
-            ("texture_folders", None), ("texture_folders", 5),
-            ("geometry_folders", True), ("hip_folders", "a/b"),
+            ("file_folders", None), ("file_folders", 5),
+            ("file_favorites", True), ("file_folders", "a/b"),
             ("directory", None), ("directory", {}), ("directory", []),
             # TRUTHY non-strings are the ones that actually reach
             # os.path.exists - the falsy ones short-circuit, so a test
@@ -576,10 +576,10 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
                               % (key, bad, type(exc).__name__, exc))
 
     def test_a_string_does_not_decompose_into_characters(self):
-        prefs = self._prefs_with({"hip_folders": "a/b"})
+        prefs = self._prefs_with({"file_folders": "a/b"})
         prefs.load()
         self.assertEqual(
-            [], list(prefs.hip_folders),
+            [], list(prefs.file_folders),
             "a bare string was iterated into single characters, which "
             "reaches the sidebar as bogus folders")
 
