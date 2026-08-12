@@ -8,7 +8,7 @@ Four facts this rests on are measured, not assumed
 chain so every https request fails without certifi, the verification
 error subclasses the generic one so no downgrade may key on it, a
 truncated body does NOT raise, and contexts are expensive so there is
-exactly one - `matx_sources.ssl_context`.
+exactly one - `matx_sources._ssl_context`.
 """
 
 import json
@@ -23,8 +23,14 @@ from amaze.core import debug
 #: The release feed. The repo is public, so this is unauthenticated and
 #: rate-limited per IP; a check the user asked for costs one call.
 RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"
-TIMEOUT = 20
-USER_AGENT = "%s/%s" % (branding.APP_NAME, branding.APP_VERSION)
+
+#: NO TIMEOUT OR USER-AGENT HERE. Every request goes out through
+#: `matx_sources._request`, which applies its own; the two constants
+#: that used to sit here were read by nothing, so the 20 seconds they
+#: named was never the budget that ran and editing them changed
+#: nothing. If a user-initiated check should have a shorter budget
+#: than a texture download, that is an argument to _request, not a
+#: second pair of constants beside it.
 
 #: Verdicts `check` can answer with.
 UP_TO_DATE = "up-to-date"

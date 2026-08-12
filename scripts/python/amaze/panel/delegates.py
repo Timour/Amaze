@@ -12,14 +12,12 @@ reads are passed in per section, which is why it takes them as
 constructor arguments rather than importing a model.
 """
 
-import collections
 import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze.core import category, debug
 from amaze.helpers import theme, ui_helpers
-from amaze.prefs import prefs
 
 
 # Scaled tiles are cached (see AssetItemDelegate._icon_pixmap) - 64MB

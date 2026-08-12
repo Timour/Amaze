@@ -19,7 +19,7 @@ Layout, verified against a real file:
 An RGB measurement carries: version, description, phi_i, theta_i,
 sigma, ndf, vndf, luminance, rgb, jacobian, valid.
 """
-import struct, sys
+import struct
 
 DTYPES = {1: ('B', 1), 2: ('b', 1), 3: ('H', 2), 4: ('h', 2), 5: ('I', 4),
           6: ('i', 4), 7: ('Q', 8), 8: ('q', 8), 9: ('e', 2), 10: ('f', 4),

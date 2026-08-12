@@ -9,7 +9,7 @@ from amaze.core import tile_icons
 from amaze.render import nodes
 from amaze import preview
 from amaze.prefs import prefs
-from amaze.helpers import helpers, hostos, hostver
+from amaze.helpers import helpers, hostos
 
 # (module reloads consolidated into panel.py's single chain)
 

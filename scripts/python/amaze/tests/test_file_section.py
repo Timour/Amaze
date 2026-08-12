@@ -474,18 +474,12 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
             self.skipTest("no HOME variable in this session")
         return home
 
-    def test_the_texture_funnel_writes_the_spelled_path(self):
-        home = self._home()
-        geo = hou.node("/obj").createNode("geo", "amaze_pathtest_tex")
-        self.addCleanup(geo.destroy)
-        loader = geo.createNode("file")
-        self.panel._apply_texture_to_node(
-            loader, home + "/textures/amaze_spelling.png")
-        self.assertEqual(
-            "$HOME/textures/amaze_spelling.png",
-            loader.parm("file").rawValue(),
-            "double-click and Load to Node write the raw absolute "
-            "path, not the spelling Preferences asks for")
+    # The texture-funnel case that stood here drove
+    # `_apply_texture_to_node`, a dead duplicate of
+    # `drop_file_path_on_node` whose only caller was this test. The
+    # live verb carries the identical assertion in
+    # `DropFilePathOnNodeTest.test_the_first_file_parm_takes_the_spelled_path`,
+    # so the coverage moved rather than went.
 
     def test_the_geometry_loader_writes_the_spelled_path(self):
         home = self._home()

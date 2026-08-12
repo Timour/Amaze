@@ -2,13 +2,12 @@
 Holds useful UI Elements
 """
 
-import collections
 import contextlib
 import os
 
 from PySide6 import QtWidgets, QtCore, QtGui, QtSvg, QtSvgWidgets
 
-from amaze.core import debug, grid_columns
+from amaze.core import debug
 from amaze.helpers import theme
 
 

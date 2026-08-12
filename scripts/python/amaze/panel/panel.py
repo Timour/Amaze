@@ -2,8 +2,6 @@
 
 import os
 import shutil
-import sys
-import subprocess
 import importlib
 import time
 import contextlib
@@ -1086,29 +1084,6 @@ class MatLibPanel(QtWidgets.QWidget):
         # model - the two carry the same proxy today, and this does not
         # rely on that staying true.
         empty_state.track(self)
-
-    def _list_thumb_side(self, thumb_size: int) -> int:
-        """The thumbnail size list mode may actually use.
-
-        THE SINGLE SOURCE for both the row height and the thumbnail
-        COLUMN width, which the old measure-and-fit's comment already
-        asked to be kept in sync - they were two copies of the same
-        formula, and only one of them was ever bounded.
-
-        The slider runs to 512 and neither was clamped to the viewport,
-        while the horizontal scrollbar is deliberately OFF in list mode
-        (see apply_view_mode - a full-width row that can add one starts
-        an endless relayout oscillation). So at slider 512 in a 400px
-        docked panel the Name column began at x=534, off-screen and
-        unreachable: list mode showed nothing but pictures - no names,
-        no type, no tags.
-
-        A third of the viewport leaves two thirds for the text columns,
-        whose own floors sum to well under that."""
-        vw = self.thumblist.viewport().width()
-        if vw > theme.ui_px(120):
-            thumb_size = min(thumb_size, max(vw // 3, theme.ui_px(24)))
-        return thumb_size
 
     def showEvent(self, event):
         """Close the other half of the timing gap, once.
@@ -6606,21 +6581,6 @@ class MatLibPanel(QtWidgets.QWidget):
         section = self._section()
         if section is not None:
             section.double_click(index)
-
-    def _apply_texture_to_node(self, node: hou.Node, path: str) -> None:
-        """Puts a path onto a node, reached from the Load to Node
-        right-click action: finds a file parm on node
-        generically via helpers.find_file_parm() (any file-reference-type
-        string parm), not a hardcoded per-renderer lookup - this covers
-        Karma, Redshift, Octane, Copernicus/COP file nodes and anything
-        else with a file-browse parm without needing to special-case
-        each one - the mechanism carries no renderer-specific knowledge
-        at all."""
-        parm = helpers.find_file_parm(node)
-        if parm is None:
-            self._cannot_load_here()
-            return
-        parm.set(self._scene_path(path))
 
     #: The ONE double-click refusal, everywhere (ROADMAP - the
     #: interaction matrix; exact copy also in ui-text.md). The drag

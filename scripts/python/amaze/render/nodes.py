@@ -9,7 +9,6 @@ from typing import NamedTuple
 import hou
 import voptoolutils
 
-import importlib
 
 from amaze.render import thumbs
 from amaze.core import material
@@ -1588,30 +1587,32 @@ class NodeHandler:
         # The old `else: return` is gone with it. This was the only one
         # of the four renderer paths with no fallback: a missing
         # .interface left _builder_node at its /stage sentinel and the
-        # caller then loaded items into /stage.
-        if True:
-            # Same MaterialX Material Builder every other path uses -
-            # matches the KARMA_REF reference (mtlx render context,
-            # subnetconnector outputs). Was an inline duplicate of
-            # make_karma_builder's setup, drifting from it; now shared,
-            # so the flavour can't diverge between build and load. The
-            # starter shader/displacement are removed inside it; the
-            # subnetconnector outputs are kept and load_items_file_mtlx()
-            # wires the loaded shader into them via wire_builder_output.
-            # Built in the /obj STAGING matnet and moved into the
-            # destination in ONE step afterwards (the classic renderers
-            # always worked this way via move_builder=True). Building
-            # directly inside a materiallibrary made every createNode
-            # re-run Houdini's preview-shader translation for EVERY
-            # material already in the library - O(N) per import, O(N^2)
-            # per session; profiled at 76ms->515ms over nine drops.
-            self._builder_node = make_karma_builder(
-                self._hou_parent, mat.name
-            )
-            apply_builder(
-                self._builder_node,
-                read_builder_sidecar(self._builder_sidecar(mat)),
-            )
+        # caller then loaded items into /stage. The `if True:` that the
+        # removal left behind is gone too - it guarded nothing and read
+        # as a condition somebody had disabled.
+        #
+        # Same MaterialX Material Builder every other path uses -
+        # matches the KARMA_REF reference (mtlx render context,
+        # subnetconnector outputs). Was an inline duplicate of
+        # make_karma_builder's setup, drifting from it; now shared,
+        # so the flavour can't diverge between build and load. The
+        # starter shader/displacement are removed inside it; the
+        # subnetconnector outputs are kept and load_items_file_mtlx()
+        # wires the loaded shader into them via wire_builder_output.
+        # Built in the /obj STAGING matnet and moved into the
+        # destination in ONE step afterwards (the classic renderers
+        # always worked this way via move_builder=True). Building
+        # directly inside a materiallibrary made every createNode
+        # re-run Houdini's preview-shader translation for EVERY
+        # material already in the library - O(N) per import, O(N^2)
+        # per session; profiled at 76ms->515ms over nine drops.
+        self._builder_node = make_karma_builder(
+            self._hou_parent, mat.name
+        )
+        apply_builder(
+            self._builder_node,
+            read_builder_sidecar(self._builder_sidecar(mat)),
+        )
 
     def load_interface_mantra(self, parms_file_name, mat: material.Material) -> None:
         """

@@ -4,7 +4,6 @@ Module with helpful utility functions used in and around houdini
 
 import contextlib
 import re
-import html
 
 import hou
 

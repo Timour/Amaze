@@ -504,8 +504,6 @@ class ThumbNailScene:
             self.rop.parm("vm_picture").set("`chs('../../path')`")
             self.comp.parm("coppath").set("../../exr_to_png/OUT")
             self.comp.parm("copoutput").set(self.geo_node.parm("cop_out_img"))
-            self.comp.parm("convertcolorspace").set(0)
-
             self.comp.parm("convertcolorspace").set(3)
             self.comp.parm("ocio_display").set(self.display)
             self.comp.parm("ocio_view").set(self.view)

@@ -6,9 +6,8 @@ import os
 import json
 import shutil
 import time
-import importlib
 from typing import Any
-from PySide6 import QtCore, QtGui
+from PySide6 import QtCore
 
 import hou
 
