@@ -5544,7 +5544,12 @@ class MatLibPanel(QtWidgets.QWidget):
         self.gradient_model.add_user_gradient(
             dialog.name, dialog.category, ramp_data
         )
-        self.gradient_categories_model.refresh()
+        # The shared verb, which brackets its own insert - not
+        # switch_model_data(), which belongs to a library switch and
+        # only ever runs through switch_all_models().
+        if dialog.category:
+            self.gradient_categories_model.check_add_category(
+                dialog.category)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """Any splitter drag records BOTH side panes' widths; the
