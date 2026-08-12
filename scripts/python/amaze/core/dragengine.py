@@ -1119,16 +1119,27 @@ def stock_lop():
 
 # ---------------------------------------------- LOP container policy
 
-def first_materiallibrary(network, connected_to=None):
-    """The FIRST existing, editable, non-bypassed materiallibrary in
-    the network (creation order) - the drop policy's container: drops
-    add to it instead of scattering fresh libraries per drop. None if
-    the network has none.
+def _first_child_where(network, matches, connected_to=None):
+    """The first child of `network` that `matches`, in creation order,
+    or None.
 
-    connected_to (a node): only consider libraries wired into that
-    node's input chain - viewport drops prefer a library the display
-    chain actually shows, since an assignment into a disconnected one
-    silently does not display."""
+    THE WALK, ONCE. `first_materiallibrary` and `find_assignmaterial`
+    were the same thirteen lines with one predicate swapped - the same
+    `children()` guard, the same `inputAncestors` set, the same
+    per-child `AttributeError` skip. `helpers._first_parm_where` is
+    this refactor already done once in this layer, for parameters.
+
+    `connected_to` (a node): consider only children wired into that
+    node's input chain. A viewport drop prefers what the display chain
+    actually shows - an assignment into a disconnected node is written,
+    accepted, and changes nothing on screen. That filter reaching only
+    one of the two callers is exactly the bug `find_assignmaterial`'s
+    docstring records.
+
+    `hou.Error`, not `hou.OperationFailed`: any refusal here means the
+    ancestry could not be read, and the answer is the same
+    (research.md > hou.PermissionError is a SIBLING).
+    """
     try:
         children = network.children()
     except AttributeError:
@@ -1141,21 +1152,35 @@ def first_materiallibrary(network, connected_to=None):
                 include_ref_inputs=True,
                 only_used_inputs=True,
             )) | {connected_to}
-        except (AttributeError, hou.OperationFailed):
+        except (AttributeError, hou.Error):
             allowed = None
     for child in children:
         if allowed is not None and child not in allowed:
             continue
         try:
-            if (
-                "materiallibrary" in child.type().name()
-                and child.isEditable()
-                and not child.isBypassed()
-            ):
+            if matches(child):
                 return child
         except AttributeError:
             continue
     return None
+
+
+def first_materiallibrary(network, connected_to=None):
+    """The FIRST existing, editable, non-bypassed materiallibrary in
+    the network (creation order) - the drop policy's container: drops
+    add to it instead of scattering fresh libraries per drop. None if
+    the network has none.
+
+    connected_to (a node): only consider libraries wired into that
+    node's input chain - viewport drops prefer a library the display
+    chain actually shows, since an assignment into a disconnected one
+    silently does not display."""
+    def _is_library(child):
+        return ("materiallibrary" in child.type().name()
+                and child.isEditable()
+                and not child.isBypassed())
+
+    return _first_child_where(network, _is_library, connected_to)
 
 
 def find_assignmaterial(network, connected_to=None):
@@ -1171,26 +1196,7 @@ def find_assignmaterial(network, connected_to=None):
     one: the material imported, the binding was written into a node
     nothing displays, the menu was accepted, and the viewport did not
     change. No error, no icon, nothing to see."""
-    try:
-        children = network.children()
-    except AttributeError:
-        return None
-    allowed = None
-    if connected_to is not None:
-        try:
-            allowed = set(connected_to.inputAncestors(
-                follow_subnets=True,
-                include_ref_inputs=True,
-                only_used_inputs=True,
-            )) | {connected_to}
-        except (AttributeError, hou.OperationFailed):
-            allowed = None
-    for child in children:
-        if allowed is not None and child not in allowed:
-            continue
-        try:
-            if child.type().name() == "assignmaterial":
-                return child
-        except AttributeError:
-            continue
-    return None
+    return _first_child_where(
+        network,
+        lambda child: child.type().name() == "assignmaterial",
+        connected_to)
