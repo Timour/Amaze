@@ -647,7 +647,15 @@ class DatabaseConnector:
         """
         self._disk_stat = self._stat_file() if stat is None else stat
         self._loaded_ids = {
+            # A non-record entry has no id to contribute, and the three
+            # other walks of this list already skip one rather than
+            # guess at it. This was the only site that did not, so a
+            # single junk row raised AttributeError out of the load -
+            # through _normalize_all_category's save - and took the
+            # panel down, which is the outcome the row-skipping policy
+            # exists to prevent.
             str(a.get("id")) for a in (self._data or {}).get("assets", [])
+            if isinstance(a, dict)
         }
 
     def _migrate(self, data: dict) -> None:

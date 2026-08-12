@@ -451,7 +451,11 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
             # write of its own, correctly, and that would hide whether
             # the SEED still earns one.
             json.dump(
-                {"version": 4, "categories": [],
+                # WITH "_All", because every real database carries it -
+                # the connector inserts it on load and SAVES when it had
+                # to, which is a write of its own and not one this test
+                # is about.
+                {"version": 4, "categories": ["_All"],
                  "assets": [{"name": "g%d" % i, "points": [],
                              "id": "fixtureuid%02d" % i,
                              "note": "note %d" % i}
