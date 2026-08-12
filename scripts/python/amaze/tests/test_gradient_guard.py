@@ -64,9 +64,9 @@ class GradientStaleWriteTest(unittest.TestCase):
         # overwrite each other (the second time this line has earned
         # practice.md ▸ A FIXTURE MUST WRITE FILES THE WAY THE
         # PRODUCT DOES).
-        self._write({"categories": ["Warm"],
-                     "gradients": [{"name": "ours", "uid": "oursuid",
-                                    "points": []}]})
+        self._write({"version": 4, "categories": ["Warm"],
+                     "assets": [{"name": "ours", "id": "oursuid",
+                                 "points": []}]})
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
         # Only run against a library that actually found the fixture.
         if self.lib._user_file() != self.path:
@@ -82,11 +82,11 @@ class GradientStaleWriteTest(unittest.TestCase):
 
     def _touch_from_another_session(self):
         """Another writer replaces the file after we loaded it."""
-        self._write({"categories": ["Theirs"],
-                     "gradients": [{"name": "theirs", "points": [],
-                                    "uid": "theirsuid1"},
-                                   {"name": "theirs2", "points": [],
-                                    "uid": "theirsuid2"}]})
+        self._write({"version": 4, "categories": ["Theirs"],
+                     "assets": [{"name": "theirs", "points": [],
+                                 "id": "theirsuid1"},
+                                {"name": "theirs2", "points": [],
+                                 "id": "theirsuid2"}]})
         # mtime granularity: make the change unmistakable to a
         # (mtime_ns, size) key rather than relying on timer resolution.
         stat = os.stat(self.path)
@@ -231,7 +231,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         constructor; it must route into the same refusal path a parse
         failure takes."""
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"gradients": "this is not a list"}, fh)
+            json.dump({"version": 4, "assets": "this is not a list"}, fh)
         lib = self._library()                       # must not raise
         self.assertTrue(getattr(lib, "_load_failed", False),
                         "a wrong-shaped file loaded as if it were fine, so "
@@ -286,8 +286,8 @@ class GradientTileIconTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["Warm"], "gradients": [
-                {"name": "ours", "category": "Warm",
+            json.dump({"version": 4, "categories": ["Warm"], "assets": [
+                {"name": "ours", "categories": ["Warm"], "id": "oursicon",
                  "colors": [{"name": "red", "hex": "#ff0000"},
                             {"name": "blue", "hex": "#0000ff"}]}]}, fh)
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
@@ -346,8 +346,8 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["Warm"], "gradients": [
-                {"name": "ours", "category": "Warm",
+            json.dump({"version": 4, "categories": ["Warm"], "assets": [
+                {"name": "ours", "categories": ["Warm"], "id": "ourscolor",
                  "colors": [{"name": "red", "hex": "#ff0000"}]}]}, fh)
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
         if self.lib._user_file() != self.path:
@@ -405,10 +405,11 @@ class GradientNoteSweepTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": [],
-                       "gradients": [{"name": "klee", "points": [],
-                                      "note":
-                                      "Theory: warm against cool."}]},
+            json.dump({"version": 4, "categories": [],
+                       "assets": [{"name": "klee", "points": [],
+                                   "id": "kleeid",
+                                   "note":
+                                   "Theory: warm against cool."}]},
                       fh, indent=1)
         self.prefs = _Prefs(self.dir)
 
@@ -450,11 +451,11 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
             # write of its own, correctly, and that would hide whether
             # the SEED still earns one.
             json.dump(
-                {"categories": [],
-                 "gradients": [{"name": "g%d" % i, "points": [],
-                                "uid": "fixtureuid%02d" % i,
-                                "note": "note %d" % i}
-                               for i in range(12)]}, fh, indent=1)
+                {"version": 4, "categories": [],
+                 "assets": [{"name": "g%d" % i, "points": [],
+                             "id": "fixtureuid%02d" % i,
+                             "note": "note %d" % i}
+                            for i in range(12)]}, fh, indent=1)
         self.prefs = _Prefs(self.dir)
 
     def _counted_writes(self):
@@ -519,10 +520,9 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
             all(str(e.get("id") or "") for e in lib._entries),
             "an entry came out of first open with no identity")
         self.assertLessEqual(
-            seen.count("gradients.json"), 3,
+            seen.count("gradients.json"), 2,
             "first open wrote gradients.json %d times; the seed and the "
-            "note sweep are one write each, the connector's one-time "
-            "legacy normalisation is a third, and the uid backfill "
+            "note sweep are one write each, and the identity backfill "
             "should add none" % seen.count("gradients.json"))
 
 
@@ -536,8 +536,9 @@ class GradientTileNameTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": [],
-                       "gradients": [{"name": "klee", "points": []}]},
+            json.dump({"version": 4, "categories": [],
+                       "assets": [{"name": "klee", "points": [],
+                                   "id": "kleeid"}]},
                       fh, indent=1)
         self.prefs = _Prefs(self.dir)
 
@@ -564,7 +565,7 @@ class GradientTileNameTest(unittest.TestCase):
 class GradientRowShapeTest(unittest.TestCase):
     """A bad ROW, not a bad container (2026-08-02).
 
-    wrong_shape validates containers on purpose, so `{"gradients":
+    wrong_shape validates containers on purpose, so `{"assets":
     [42]}` parses AND passes it - and then the loader's
     `entry["type"] = "user"` raised TypeError, which is not in its
     `except (OSError, ValueError)`. It escaped the constructor and took
@@ -597,7 +598,7 @@ class GradientRowShapeTest(unittest.TestCase):
         return lib
 
     def test_a_non_dict_row_does_not_take_the_panel_down(self):
-        self._write({"gradients": [42], "categories": []})
+        self._write({"version": 4, "assets": [42], "categories": []})
         lib = self._library()                       # must not raise
         self.assertEqual(
             [], [e for e in lib._user if not isinstance(e, dict)],
@@ -607,7 +608,7 @@ class GradientRowShapeTest(unittest.TestCase):
         """Skip the bad row, keep the library - the connector's own
         merge policy, applied here."""
         good = {"name": "Warm", "colors": []}
-        self._write({"gradients": [good, 42, None, "nope"],
+        self._write({"version": 4, "assets": [good, 42, None, "nope"],
                      "categories": []})
         lib = self._library()
         self.assertEqual(
@@ -617,7 +618,8 @@ class GradientRowShapeTest(unittest.TestCase):
     def test_a_survivable_file_is_not_latched_as_failed(self):
         """Skipping rows is not a parse failure: latching here would
         refuse every colour edit for the session over one bad row."""
-        self._write({"gradients": [{"name": "Warm", "colors": []}, 42],
+        self._write({"version": 4,
+                     "assets": [{"name": "Warm", "colors": []}, 42],
                      "categories": []})
         lib = self._library()
         self.assertFalse(getattr(lib, "_load_failed", True),
@@ -638,11 +640,11 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         with open(os.path.join(self.dir, "gradients.json"), "w",
                   encoding="utf-8") as fh:
-            json.dump({"categories": [], "gradients": []}, fh)
+            json.dump({"version": 4, "categories": [], "assets": []}, fh)
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
 
     def _entry(self, keys):
-        return {"type": "user", "name": "n", "category": "",
+        return {"type": "user", "name": "n", "categories": [],
                 "colors": [{"name": "#ff0000", "hex": "#ff0000"},
                            {"name": "#0000ff", "hex": "#0000ff"}],
                 "ramp": {"bases": ["Linear", "Linear"],
@@ -683,10 +685,10 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["Warm"],
-                       "gradients": [
-                           {"name": "keep", "uid": "keepuid", "points": []},
-                           {"name": "doomed", "uid": "doomeduid",
+            json.dump({"version": 4, "categories": ["Warm"],
+                       "assets": [
+                           {"name": "keep", "id": "keepuid", "points": []},
+                           {"name": "doomed", "id": "doomeduid",
                             "points": []}]}, fh, indent=1)
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
         if self.lib._user_file() != self.path:
@@ -702,7 +704,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
     def _on_disk_names(self):
         with open(self.path, encoding="utf-8") as fh:
             document = json.load(fh)
-        rows = document.get("assets") or document.get("gradients") or []
+        rows = document.get("assets") or []
         return [r.get("name") for r in rows if isinstance(r, dict)]
 
     def test_a_refused_delete_puts_the_palette_back(self):
@@ -773,9 +775,9 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"categories": ["Warm"],
-                       "gradients": [{"name": "ours", "uid": "oursuid",
-                                      "points": []}]}, fh, indent=1)
+            json.dump({"version": 4, "categories": ["Warm"],
+                       "assets": [{"name": "ours", "id": "oursuid",
+                                   "points": []}]}, fh, indent=1)
         self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
         if self.lib._user_file() != self.path:
             self.skipTest("gradient library does not resolve this path")
@@ -783,11 +785,10 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
     def test_a_palette_the_other_mac_added_reaches_the_grid(self):
         with open(self.path, encoding="utf-8") as fh:
             document = json.load(fh)
-        rows = document.get("assets") or document.get("gradients") or []
+        rows = document.get("assets") or []
         rows.append({"name": "from_theirs", "id": "theirsid",
                      "points": [], "colors": []})
         document["assets"] = rows
-        document.pop("gradients", None)
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(document, fh, indent=1)
         stat = os.stat(self.path)

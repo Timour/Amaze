@@ -863,7 +863,7 @@ class GradientAbsenceTest(unittest.TestCase):
             self.skipTest("curated defs unreachable ($AMAZE not resolved) "
                           "- seeding cannot be exercised here")
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
-            json.dump({"categories": [], "gradients": []}, handle)
+            json.dump({"version": 4, "categories": [], "assets": []}, handle)
         self.assertFalse(os.path.exists(self.marker),
                          "premise: no marker, or the seed never runs and "
                          "this test proves nothing")
@@ -912,7 +912,7 @@ class GradientAbsenceTest(unittest.TestCase):
         today, but hostos writes one the moment it is saved twice with
         different contents, and that is evidence too."""
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
-            json.dump({"categories": [], "gradients": []}, handle)
+            json.dump({"version": 4, "categories": [], "assets": []}, handle)
         self.assertFalse(os.path.exists(self.marker),
                          "premise: no marker - the .bak is doing the work")
         lib = self._library()
@@ -957,8 +957,8 @@ class GradientAbsenceTest(unittest.TestCase):
         """Marker AND file present - every launch of a real library."""
         self._seeded_before()
         with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["Warm"],
-                       "gradients": [{"name": "ours"}]}, handle)
+            json.dump({"version": 4, "categories": ["Warm"],
+                       "assets": [{"name": "ours", "id": "oursid"}]}, handle)
         lib = self._library()
         self.assertFalse(lib._load_failed)
         self.assertEqual(["ours"], [g["name"] for g in lib._user])

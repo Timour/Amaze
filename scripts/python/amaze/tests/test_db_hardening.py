@@ -37,14 +37,17 @@ class _Case(unittest.TestCase):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
 
-    def _document(self, count=3):
-        # DELIBERATELY an old version, not today's: the schema-gap
-        # class below needs a document BELOW the target to migrate at
-        # all, which is its whole subject. A test that instead needs
-        # today's stamp says so locally - see the byte-identical
-        # round-trip, which already does exactly that for `format`.
+    def _document(self, count=3, version=None):
+        # TODAY'S STAMP by default. With no upgrade steps left, any
+        # document below the current schema loads as an INCOMPLETE
+        # chain and every save afterwards holds the stamp back - so an
+        # old version here would quietly put tests about something else
+        # onto the refusal path. The schema-gap class needs a document
+        # BELOW the target, which is its whole subject, and says so
+        # locally with `version=2`.
         return {
-            "version": 2,
+            "version": (database.SCHEMA_VERSION if version is None
+                        else version),
             "categories": ["_All", "Wood"],
             "tags": ["rough"],
             "assets": [{"id": "ASSET%d" % i, "name": "mat %d" % i}
@@ -556,9 +559,9 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         self.assertTrue(lib._load_failed,
                         "premise: the truncated file must latch")
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump({"categories": ["Warm"],
-                       "gradients": [{"name": "theirs",
-                                      "uid": "theirsuid"}]}, handle)
+            json.dump({"version": 4, "categories": ["Warm"],
+                       "assets": [{"name": "theirs",
+                                   "id": "theirsuid"}]}, handle)
         # THE RELOAD DOOR, which is how a repair heals now: the latch
         # is the connector's, and reload_with_path re-derives it from
         # disk. A plain re-read answers the cached refusal on purpose,
@@ -970,7 +973,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         database._MIGRATIONS.pop(2, None)
 
     def test_a_save_does_not_stamp_a_migration_that_did_not_run(self):
-        self._write(self._document(2))              # version 2 on disk
+        self._write(self._document(2, version=2))   # version 2 on disk
         self._target_with_a_gap()
         db, data = self._load()
         # THE PREMISE IN MEMORY, not on disk: load() does not write, so
@@ -995,7 +998,7 @@ class TheSchemaStampMustNotLieTest(_Case):
     def test_the_records_are_still_written(self):
         """Holding the stamp back must not hold the SAVE back. The user's
         edit still has to reach disk; only the version claim is refused."""
-        self._write(self._document(2))
+        self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, _ = self._load()
         db.set({"assets": [{"id": "EDITED1"}], "categories": ["_All"],
@@ -1015,7 +1018,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         """The accept path. If this fired whenever the target moved, no
         library would ever be marked as upgraded and the migration would
         re-run on every launch for the life of the file."""
-        self._write(self._document(2))
+        self._write(self._document(2, version=2))
         database.SCHEMA_VERSION = 3
         database._MIGRATIONS[2] = lambda data: data.setdefault("moods", [])
         db, data = self._load()
@@ -1080,14 +1083,14 @@ class TheSchemaStampMustNotLieTest(_Case):
         migrated: wasteful, and in its log. Stamping high makes rows that
         were never migrated indistinguishable from rows that were, for
         good."""
-        self._write(self._document(2))
+        self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, data = self._load()
         self.assertTrue(db._migration_incomplete, "premise: our chain has a "
                         "gap, so save() stamps _loaded_version")
         self.assertEqual(2, data["version"], "premise: we stopped at 2")
         # The peer HAS step 2 and has already rewritten the file at 3.
-        peer = self._document(2)
+        peer = self._document(2, version=2)
         peer["version"] = 3
         for row in peer["assets"]:
             row["moods"] = []                # what step 2 would have added
@@ -1132,14 +1135,15 @@ class TheSchemaStampMustNotLieTest(_Case):
         """A latch belongs to the FILE, not the session - the rule this
         module already learned twice. A gap in library A's chain must not
         hold library B's stamp back."""
-        self._write(self._document(2))
+        self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, _ = self._load()
         self.assertTrue(db._migration_incomplete, "premise: A has a gap")
         database._MIGRATIONS[2] = lambda data: None      # B's build is whole
         other = tempfile.mkdtemp(prefix="amaze_dbhard_b_")
         self.addCleanup(shutil.rmtree, other, ignore_errors=True)
-        self._write(self._document(1), path=os.path.join(other, self.FILENAME))
+        self._write(self._document(1, version=2),
+                    path=os.path.join(other, self.FILENAME))
         data = db.reload_with_path(other + os.sep)
         self.assertFalse(db._migration_incomplete,
                          "the gap followed the connector into a library it "
@@ -1453,7 +1457,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         read as garbage here - that would deny a backup to exactly the
         file most likely to need one."""
         with open(self.path, "w", encoding="utf-8-sig") as handle:
-            json.dump({"gradients": [{"name": "g0"}]}, handle)
+            json.dump({"assets": [{"name": "g0"}]}, handle)
         self.hostos.snapshot_before_write(self.path)
         self.assertTrue(
             os.path.exists(self.path + ".bak-first"),
