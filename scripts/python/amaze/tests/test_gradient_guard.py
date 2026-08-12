@@ -1000,6 +1000,99 @@ class AGradientsCategoryBecomesAListLikeEverySection(unittest.TestCase):
         self.assertNotIn("category", document["assets"][0])
 
 
+class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
+    """Colors answers the role numbers `MultiFilterProxyModel` reads.
+
+    257 category (a list, it is iterated), 258 favourite, 259 kind, 260
+    tags, plus +8 and +10 which already match. A filter on any other
+    number does nothing.
+
+    The File section is deliberately NOT held to this - its proxy reads
+    the model's API, not these numbers.
+
+    Why it lands before the base class moves, and what shadows what:
+    practice.md > AN INSTANCE ATTRIBUTE SHADOWS THE CLASS ONE.
+    """
+
+    #: What the shared proxy hard-codes, and why each one is read.
+    #: Kept as literals rather than reaching into MaterialLibrary,
+    #: because MaterialLibrary sets them in __init__ and constructing
+    #: one needs a library on disk - and because these ARE the numbers
+    #: written into multifilterproxy_model.py's branches.
+    SHARED = {
+        "CategoryRole": QtCore.Qt.ItemDataRole.UserRole + 1,
+        "FavoriteRole": QtCore.Qt.ItemDataRole.UserRole + 2,
+        "RendererRole": QtCore.Qt.ItemDataRole.UserRole + 3,
+        "TagRole": QtCore.Qt.ItemDataRole.UserRole + 4,
+        "CategoryColorRole": QtCore.Qt.ItemDataRole.UserRole + 8,
+        "NotesRole": QtCore.Qt.ItemDataRole.UserRole + 10,
+    }
+
+    def test_the_four_roles_the_shared_proxy_reads_carry_its_numbers(self):
+        model = gradient_library.GradientLibrary
+        for name, number in self.SHARED.items():
+            with self.subTest(role=name):
+                self.assertTrue(
+                    hasattr(model, name),
+                    "GradientLibrary has no %s; MultiFilterProxyModel "
+                    "reads %d and would silently filter nothing"
+                    % (name, number))
+                self.assertEqual(
+                    getattr(model, name), number,
+                    "%s is %s, but the shared proxy reads %d for it"
+                    % (name, getattr(model, name), number))
+
+    def test_no_two_roles_share_a_number(self):
+        """The general form, so a NEW role cannot re-open this.
+
+        A collision here does not raise and does not paint wrong
+        immediately - `data()` answers whichever branch it tests first,
+        so the symptom is one field quietly returning another field's
+        value.
+        """
+        seen = {}
+        for name in dir(gradient_library.GradientLibrary):
+            if not name.endswith("Role"):
+                continue
+            number = getattr(gradient_library.GradientLibrary, name)
+            if not isinstance(number, int):
+                continue
+            self.assertNotIn(
+                number, seen,
+                "%s and %s are both %d - data() answers whichever it "
+                "tests first" % (name, seen.get(number), number))
+            seen[number] = name
+
+    def test_the_category_role_answers_a_LIST(self):
+        """257 is matched with `for elem in data`, so a bare string
+        would match per CHARACTER."""
+        directory = tempfile.mkdtemp(prefix="amaze_grad_roles_")
+        self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
+        test_support.reset_database_singletons()
+        marker = os.path.join(
+            directory, gradient_library.GradientLibrary._SEED_MARKER)
+        with open(marker, "w", encoding="utf-8") as handle:
+            handle.write("seeded\n")
+        with open(os.path.join(directory, "gradients.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"version": 4, "assets": [
+                {"id": "aaa", "name": "Test", "categories": ["Warm"],
+                 "colors": [{"name": "red", "hex": "#ff0000"}],
+                 "type": "user"}]}, handle)
+        library = gradient_library.GradientLibrary(_Prefs(directory))
+        if library._user_file() != os.path.join(directory,
+                                                "gradients.json"):
+            self.skipTest("gradient library does not resolve this path")
+        role = getattr(gradient_library.GradientLibrary,
+                       "CategoryRole", None)
+        self.assertIsNotNone(role, "no CategoryRole to answer")
+        value = library.data(library.index(0, 0), role)
+        self.assertIsInstance(
+            value, list,
+            "CategoryRole answered %r; the shared proxy iterates it, so "
+            "a string matches per character" % (value,))
+
+
 class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
     """`_load_user` filters `_All` out of `_user_categories` and
     `_save_user` writes that filtered list back, so every Colors edit
