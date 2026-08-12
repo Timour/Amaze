@@ -17,29 +17,50 @@ from amaze.helpers import hostos
 #: with a new _MIGRATIONS step - the load path applies steps in order,
 #: so either machine of a two-machine setup can open a library written
 #: by the other and land on the same schema.
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 #: version-it-upgrades-FROM -> function(data) -> None (mutates in
 #: place). Step N runs when data["version"] == N, producing N+1.
 _MIGRATIONS = {}
 
-#: EMPTY, AND THAT IS THE FINISHED STATE FOR NOW. 1.0 is the first
-#: version, so there is nothing to upgrade FROM: the three steps that
-#: lived here described the shapes of libraries written before any
-#: release, and every library that existed was converted to the current
-#: schema by `AmazeNotes/tools/schema-convert.py` before they were
-#: deleted.
-#:
-#: THE MECHANISM AROUND IT STAYS - the loop in `_migrate`,
-#: `_migration_incomplete` and the refusal in `save()`. That is how the
-#: NEXT bump happens and how a gap is refused; it is forward machinery,
-#: not backwards compatibility, and `test_db_hardening` exercises it by
-#: installing its own steps.
-#:
-#: A document older than SCHEMA_VERSION now finds no step, keeps its own
-#: version and records an incomplete chain, so it is refused rather than
-#: stamped as current. Pinned by
-#: `NoUpgradeStepsFromBeforeTheFirstReleaseTest`.
+#: The three steps that upgraded shapes written before any release were
+#: deleted 2026-08-12 - every library that existed had already been
+#: converted by `AmazeNotes/tools/schema-convert.py`, so they upgraded
+#: from shapes nobody has. A document below SCHEMA_VERSION with no step
+#: for its version keeps that version, records an incomplete chain, and
+#: is refused rather than stamped as current.
+
+
+def _migration_v4(data: dict) -> None:
+    """v4 -> v5: the record stops carrying a favourite and a tile icon.
+
+    Both moved homes and were left on the row as frozen history so an
+    older build could still read them. Pre-1.0 there is no install base
+    that needs it, so they come off.
+
+    A favourite is PER-USER and lives in `material_favorites` in
+    settings.json - on the shared record, in a multi-user library, my
+    star toggled yours. A tile icon lives in `icons.json`, keyed by
+    asset id, which is the one home for every section.
+
+    NOT LEFT TO THE UNKNOWN-KEY COURTESY. `Material._KNOWN_KEYS` still
+    names both, so `get_as_dict` simply stops emitting them; if they
+    were unknown instead they would be carried verbatim forever and
+    this step would be undone by the next save.
+    """
+    rows = data.get("assets")
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        # A malformed row must not cost the rest - the same rule every
+        # other walk of this list follows.
+        if not isinstance(row, dict):
+            continue
+        row.pop("favorite", None)
+        row.pop("icon", None)
+
+
+_MIGRATIONS[4] = _migration_v4
 
 
 #: Survives the module reload; the class attribute points at it.

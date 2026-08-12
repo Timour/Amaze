@@ -445,6 +445,59 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
                       "an ordinary save after the recovery was refused")
 
 
+class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
+    """v4 -> v5. Both fields moved homes and were left on the row as
+    frozen history for an older build; pre-1.0 there is no install base
+    that needs them.
+
+    A favourite is per-user (`material_favorites` in settings.json) - on
+    the shared record, in a multi-user library, my star toggled yours. A
+    tile icon lives in `icons.json`, keyed by asset id.
+    """
+
+    def _v4_document(self):
+        return {
+            "version": 4, "categories": ["_All"], "tags": [],
+            "assets": [
+                {"id": "A0", "name": "one", "favorite": True,
+                 "icon": {"name": "box", "bg": "#4af2a1"}},
+                {"id": "A1", "name": "two", "favorite": False},
+            ],
+        }
+
+    def test_both_fields_come_off_every_row(self):
+        self._write(self._v4_document())
+        _db, data = self._load()
+        self.assertEqual(database.SCHEMA_VERSION, data["version"],
+                         "premise: the step ran")
+        for row in data["assets"]:
+            self.assertNotIn("favorite", row, "the shared favourite "
+                             "survived - my star still toggles yours")
+            self.assertNotIn("icon", row, "the record icon survived, so "
+                             "there are two answers free to drift")
+
+    def test_everything_else_on_the_row_is_untouched(self):
+        """A migration must COMPARE, never assume: this is user data."""
+        self._write(self._v4_document())
+        _db, data = self._load()
+        self.assertEqual(["A0", "A1"], [r["id"] for r in data["assets"]])
+        self.assertEqual(["one", "two"], [r["name"] for r in data["assets"]])
+
+    # The other half - that a MODEL save does not put the fields back
+    # through `_extra` - is pinned in test_library, because it is
+    # `Material` that decides and this connector never builds one. A
+    # version asserted here stayed green with `_KNOWN_KEYS` sabotaged,
+    # which is what a test of the wrong layer looks like.
+
+    def test_a_junk_row_does_not_stop_the_step(self):
+        document = self._v4_document()
+        document["assets"].append(42)
+        self._write(document)
+        _db, data = self._load()
+        self.assertNotIn("favorite", data["assets"][0],
+                         "one junk row cost the rest of the migration")
+
+
 class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
     """This build ships no migration steps, and a document older than
     the current schema is REFUSED rather than guessed at.

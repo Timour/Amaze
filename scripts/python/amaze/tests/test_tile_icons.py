@@ -162,30 +162,6 @@ class ChoiceTest(unittest.TestCase):
         self.model.set_tile_icon(self.row, {})
         self.assertEqual(render_path, self.model._mat_paths[self.row][0])
 
-    def test_an_icon_from_an_OLDER_library_can_be_cleared(self):
-        """A record-level icon is the fallback for a library an older
-        build wrote, and clearing removes only the STORE key - so
-        `tile_icon` fell straight back to the record and the icon came
-        back. It could not be cleared at all, permanently.
-
-        Nothing else clears the record field: `set_tile_icon` stopped
-        writing it on 2026-08-09 and `get_as_dict` re-serialises it on
-        every save."""
-        asset = self.model.assets[self.row]
-        asset.icon = {"name": "box", "bg": "#333333", "ink": "#ffffff"}
-        self.assertTrue(self.model.tile_icon(self.row),
-                        "premise: the record's icon is what shows")
-
-        self.model.set_tile_icon(self.row, {})
-
-        self.assertEqual(
-            {}, self.model.tile_icon(self.row),
-            "the cleared icon came straight back off the record")
-        self.assertEqual(
-            {}, asset.icon,
-            "the record still carries the icon, so the next panel open "
-            "adopts it into the store and undoes the clear")
-
     def test_clearing_an_icon_the_record_never_had_still_works(self):
         """The accept path: the ordinary clear must not change."""
         self.model.set_tile_icon(
@@ -203,7 +179,8 @@ class ChoiceTest(unittest.TestCase):
         format now latches the whole library read-only and says to
         update, which is the GENERAL answer to an old build meeting a
         new library - so a second copy of one field bought nothing and
-        was free to drift.
+        was free to drift. Schema 5 then stripped the field itself, so
+        there is no longer a record copy to assert about.
         """
         self.model.set_tile_icon(self.row, {"name": "layers",
                                             "bg": "#4af2a1"})
@@ -211,11 +188,11 @@ class ChoiceTest(unittest.TestCase):
             self.prefs, self.model.tile_key(self.row))
         self.assertEqual("layers", stored.get("name"),
                          "the pick never reached the shared store")
-        self.assertEqual(
-            {}, self.model.assets[self.row].icon,
-            "the record field is still being written - two copies of "
-            "one value, and the format latch already covers the case "
-            "the second copy was for")
+        self.assertNotIn(
+            "icon", self.model.assets[self.row].get_as_dict(),
+            "the retired record field is being written again - two "
+            "copies of one value, free to drift, and the schema step "
+            "that strips it is undone on every save")
         self.model.set_tile_icon(self.row, {})
         self.assertEqual({}, tile_icons.override_for(
             self.prefs, self.model.tile_key(self.row)),

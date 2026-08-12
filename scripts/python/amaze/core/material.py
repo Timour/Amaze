@@ -180,18 +180,25 @@ class Material:
         # Network-editor node color ([r, g, b]) captured at save time -
         # [] when the node wore the default grey. Restored on import.
         self._node_color: list = []
-        #: Tile icon override: {"name": <feather icon>, "bg": <colour>}
-        #: or {} for "show the render". Lives on the asset so it
-        #: travels with the library, like every other display choice.
-        self._icon: dict = {}
+
+    #: Keys this build UNDERSTANDS but no longer writes. Named here so
+    #: they are recognised and therefore DROPPED: a key `_KNOWN_KEYS`
+    #: does not name is carried verbatim by `_extra`, so leaving these
+    #: out would put both straight back on the next save and undo the
+    #: schema-5 step that strips them. The same shape `_Persistence`
+    #: uses for a retired settings key, for the same reason.
+    #:
+    #: `favorite` is per-user now (`material_favorites` in
+    #: settings.json); `icon` lives in `icons.json`, keyed by asset id.
+    _RETIRED_KEYS = frozenset({"favorite", "icon"})
 
     #: Every key this build understands. Anything else on a row is
     #: carried through untouched (see _extra) rather than dropped.
     _KNOWN_KEYS = frozenset({
-        "id", "name", "categories", "tags", "favorite", "date",
+        "id", "name", "categories", "tags", "date",
         "renderer", "usd", "builder", "cop_net", "code", "description",
-        "about", "license", "node_color", "icon",
-    })
+        "about", "license", "node_color",
+    }) | _RETIRED_KEYS
 
     @classmethod
     def from_dict(cls, material_dict: dict) -> Material:
@@ -212,7 +219,11 @@ class Material:
         name = material_dict.get("name", "")
         cats = material_dict.get("categories", [])
         tags = material_dict.get("tags", [])
-        fav = material_dict.get("favorite", False)
+        # `favorite` is NOT read back: it is per-user now and lives in
+        # settings.json, and schema 5 strips it from the row. The
+        # in-memory flag stays as the fallback for a preferences object
+        # that has no favourites accessor at all.
+        fav = False
         mat_id = material_dict.get("id", "")
         date = material_dict.get("date", "")
         renderer = material_dict.get("renderer", "")
@@ -226,7 +237,6 @@ class Material:
         mat.about = material_dict.get("about", "")
         mat.license = material_dict.get("license", "")
         mat.node_color = material_dict.get("node_color", [])
-        mat.icon = material_dict.get("icon", {})
         # Everything this build does not recognise, kept verbatim and
         # re-emitted by get_as_dict. Both directions were a FIXED key
         # set, so an older build silently dropped a newer one's fields
@@ -254,7 +264,6 @@ class Material:
             "name": self._name,
             "categories": self._cats,
             "tags": self._tags,
-            "favorite": self._fav,
             "date": self._date,
             "renderer": self._renderer,
             "usd": self._usd,
@@ -265,7 +274,6 @@ class Material:
             "about": self._about,
             "license": self._license,
             "node_color": self._node_color,
-            "icon": self._icon,
         }
         # Unknown keys last, and they may not overwrite a known one.
         for key, value in (getattr(self, "_extra", None) or {}).items():
@@ -413,15 +421,6 @@ class Material:
     @node_color.setter
     def node_color(self, val) -> None:
         self._node_color = list(val) if val else []
-
-    @property
-    def icon(self) -> dict:
-        """The chosen tile icon, {} when the tile shows its render."""
-        return self._icon
-
-    @icon.setter
-    def icon(self, val) -> None:
-        self._icon = dict(val) if isinstance(val, dict) and val else {}
 
     @property
     def renderer(self) -> str:

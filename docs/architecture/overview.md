@@ -635,12 +635,12 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 ### The two stamps every database carries
 
 - **`version` — the SCHEMA**: what shape the document is in. A load
-  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**4**). The registry is
-  **deliberately empty**: 1.0 is the first release, so there is nothing
-  to upgrade from, and a document below 4 now finds no step, keeps its
-  own version and records an incomplete chain — refused rather than
-  stamped as current. The loop and that refusal stay, because they are
-  how the next bump happens.
+  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**5**); step 4→5 strips
+  the retired `favorite` and `icon` fields from every row, which moved
+  to `settings.json` and `icons.json` respectively. The steps that
+  upgraded pre-release shapes were deleted — a document with no step
+  for its version keeps that version, records an incomplete chain, and
+  is refused rather than stamped as current.
 - **`format` — whether this build may WRITE at all**
   (`branding.LIBRARY_FORMAT`, **2**). A library stamped ahead of this
   build opens read-only and points at the updater. It is the general

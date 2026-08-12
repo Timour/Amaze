@@ -1638,13 +1638,16 @@ class TheRebuildDrillTest(unittest.TestCase):
 
     def test_every_per_asset_FIELD_survives_including_the_soft_ones(self):
         """The fields that only the index used to hold. A rebuild that
-        returns ids and names but drops tags and favourites is not a
-        rebuild, it is a file listing."""
+        returns ids and names but drops tags and descriptions is not a
+        rebuild, it is a file listing.
+
+        NOT the favourite: schema 5 took it off the record, and it is
+        per-user in `settings.json` now - a library rebuild has no
+        business restoring it and could not see it if it tried."""
         row = 1
         asset = self.model.assets[row]
         asset.tags = "brushed,worn"
         asset.description = "a description that lives nowhere else"
-        asset.fav = True
         asset.categories = "Metal"
         self.assertTrue(self.model.save())
 
@@ -1655,7 +1658,6 @@ class TheRebuildDrillTest(unittest.TestCase):
                     if str(r.get("id")) == str(asset.mat_id))
         self.assertEqual("a description that lives nowhere else",
                          back.get("description"))
-        self.assertTrue(back.get("favorite"))
         self.assertIn("brushed", back.get("tags") or [])
         self.assertIn("Metal", back.get("categories") or [])
         self.assertIn("Metal", rebuilt["categories"])

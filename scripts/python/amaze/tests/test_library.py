@@ -881,6 +881,61 @@ class SchemaStampTest(unittest.TestCase):
             "a save stamped this build's schema over a newer one")
 
 
+class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
+    """End to end, through the model that actually writes the file.
+
+    THE DOCUMENT IS STAMPED 5 ON PURPOSE, carrying the fields anyway.
+    At 4 the migration strips them before `Material` ever sees a row,
+    so `_KNOWN_KEYS` is never consulted and this passes with the
+    mechanism deleted - measured, that exact test stayed green under
+    the sabotage. A row that reaches `from_dict` still carrying a
+    retired key is the case the mechanism is FOR: a peer's row, or one
+    merged in raw, on a document no step will run over again.
+
+    `_KNOWN_KEYS` names both so they are recognised and DROPPED; a key
+    it does not name is carried verbatim by `_extra` and re-emitted on
+    every save, which would undo the step for good.
+    """
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        from amaze.tests import test_support
+        self.library_mod = library_mod
+        self.test_support = test_support
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.path = os.path.join(self.prefs.dir, "library.json")
+
+    def test_neither_field_survives_an_ordinary_save(self):
+        import json
+        with open(self.path, encoding="utf-8") as handle:
+            document = json.load(handle)
+        from amaze.core import database
+        document["version"] = database.SCHEMA_VERSION
+        for row in document["assets"]:
+            row["favorite"] = True
+            row["icon"] = {"name": "box", "bg": "#4af2a1"}
+        with open(self.path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(
+            model.assets,
+            "premise: the fixture rows reached the model, so `from_dict` "
+            "actually saw the retired keys")
+        self.assertTrue(model.save(), "premise: the save reached disk")
+
+        with open(self.path, encoding="utf-8") as handle:
+            saved = json.load(handle)
+        for row in saved["assets"]:
+            self.assertNotIn(
+                "favorite", row,
+                "the retired favourite came back on the save, so the "
+                "schema step is undone every time the panel writes")
+            self.assertNotIn("icon", row, "the retired icon came back")
+
+
 class MaterialRoundTripTest(unittest.TestCase):
     """The dict round-trip must not lose what it does not understand.
 
@@ -888,8 +943,7 @@ class MaterialRoundTripTest(unittest.TestCase):
     list, so the round-trip was a fixed key set in BOTH directions:
 
     * A key a NEWER build wrote was silently dropped on the first save
-      by an older one. That is what an older build would do to `icon`
-      across all 546 rows on the other Mac.
+      by an older one, across all 546 rows on the other Mac.
     * A MISSING key raised KeyError out of MaterialLibrary.__init__, so
       one damaged row meant the panel could not open at all.
 
@@ -936,7 +990,11 @@ class MaterialRoundTripTest(unittest.TestCase):
 
     def test_the_known_key_set_matches_what_is_emitted(self):
         """_KNOWN_KEYS drives what counts as "unknown". If it drifts
-        from get_as_dict, a real field starts being treated as extra."""
+        from get_as_dict, a real field starts being treated as extra.
+
+        RETIRED keys are the deliberate exception: they are understood
+        precisely so they are dropped rather than carried, so the set
+        is what is emitted PLUS those."""
         Material = self._material()
         row = {
             "id": "x", "name": "n", "categories": [], "tags": [],
@@ -945,8 +1003,13 @@ class MaterialRoundTripTest(unittest.TestCase):
         }
         emitted = set(Material.from_dict(row).get_as_dict())
         self.assertEqual(
-            set(Material._KNOWN_KEYS), emitted,
+            set(Material._KNOWN_KEYS),
+            emitted | set(Material._RETIRED_KEYS),
             "_KNOWN_KEYS and get_as_dict have drifted apart")
+        self.assertFalse(
+            emitted & set(Material._RETIRED_KEYS),
+            "a retired key is still being written, so the schema step "
+            "that strips it is undone by the next save")
 
 
 class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):

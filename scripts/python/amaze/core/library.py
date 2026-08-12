@@ -442,14 +442,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         name as the file sections' version so one panel handler serves
         every tile in the app.
 
-        The shared store answers first (one icons.json for every
-        section, keyed by asset id); the record field is the fallback
-        for icons an older build wrote - or ones whose icon name this
-        build does not ship, which the migration deliberately held."""
+        `icons.json` is the ONE home - one store for every section,
+        keyed by asset id. The record field that used to back this up
+        was stripped by schema 5, so there is no second answer to
+        disagree with."""
         if 0 <= row < len(self._assets):
-            stored = tile_icons.override_for(
+            return tile_icons.override_for(
                 self.preferences, str(self._assets[row].mat_id))
-            return stored or tile_icons.normalise(self._assets[row].icon)
         return {}
 
     def tile_key(self, row: int) -> str:
@@ -478,14 +477,14 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return False
         asset = self._assets[row]
         spec = tile_icons.normalise(spec)
-        # THE STORE IS THE ONE HOME. The record field used to be
-        # written too, so a build that predates the store still read
-        # the pick - retired 2026-08-09 with LIBRARY_FORMAT 2, which
-        # answers that case generally: such a build opens the library
-        # read-only and is told to update, instead of quietly showing
-        # a second copy of one value that is free to drift. Reading
-        # the field still happens (see tile_icon's fallback) - a
-        # library written by any older build still carries picks there.
+        # THE STORE IS THE ONE HOME, and since schema 5 the only one.
+        # The record field used to be written too, so a build that
+        # predates the store still read the pick; writing stopped
+        # 2026-08-09 with LIBRARY_FORMAT 2, which answers that case
+        # generally - such a build opens the library read-only and is
+        # told to update, instead of showing a second copy of one value
+        # that is free to drift. The field itself is gone now, so a
+        # clear here is the whole delete.
         stored = tile_icons.set_override(
             self.preferences, str(asset.mat_id), spec)
         written = bool(stored)
@@ -495,18 +494,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             )
         else:
             tile_icons.clear_for(self.preferences, asset.mat_id)
-            # AND THE FALLBACK, or the clear cannot stick. Removing the
-            # store key is the whole delete, and `tile_icon` then falls
-            # straight back to the record - which nothing else clears
-            # and `get_as_dict` re-serialises on every save. So on any
-            # library an older build wrote, the icon was unclearable.
-            #
-            # Clearing is the one direction that may still write this
-            # field. Setting stopped on 2026-08-09 because a second
-            # copy of a value is free to drift; an empty one carries no
-            # value to drift, and saying the user's choice in both
-            # homes is what makes it the same choice in both.
-            asset.icon = {}
         self._add_thumb_paths(self.index(row, 0))
         if save:
             self.save()
