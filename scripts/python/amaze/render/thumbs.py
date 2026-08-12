@@ -283,7 +283,7 @@ class ThumbNailRenderer:
                 geo = hou.node("/obj").createNode("geo")
             try:
                 loader = geo.createNode(loader_type)
-            except hou.OperationFailed:
+            except hou.Error:
                 debug.note("geometry thumbnail - no '%s' SOP available"
                     " for %s" % (loader_type, base))
                 return False
@@ -555,7 +555,7 @@ class ThumbNailRenderer:
                     with hou.undos.disabler():
                         rop = hou.node("/out").createNode("karma")
                     renderer_used = "karma ROP (CPU)"
-                except hou.OperationFailed:
+                except hou.Error:
                     debug.note("geometry thumbnail - neither flipbook "
                         "nor karma ROP available, skipped")
                     return False

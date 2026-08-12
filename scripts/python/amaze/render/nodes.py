@@ -1981,7 +1981,7 @@ class NodeHandler:
         try:
             try:
                 staging = staging_parent.createNode(net_type)
-            except hou.OperationFailed:
+            except hou.Error:
                 # The recorded type could not be created here (a
                 # context-specific container in the wrong parent).
                 # Fall back to a container that CAN hold these nodes,
@@ -2182,7 +2182,7 @@ class NodeHandler:
             return
         try:
             copnet = root.createNode(info.get("type", "copnet"))
-        except hou.OperationFailed:
+        except hou.Error:
             copnet = root.createNode("copnet")
         try:
             copnet.setName(info["name"])

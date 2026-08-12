@@ -829,6 +829,56 @@ class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
             "test can no longer see its subject")
 
 
+class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
+    """`hou.PermissionError` is a SIBLING of `hou.OperationFailed`, not
+    a subclass - both derive from `hou.Error` (research.md, #296).
+
+    A LOP viewport inside a locked digital asset answers
+    `Cannot create a node inside a locked asset`, which `except
+    hou.OperationFailed` lets straight through: 12 tracebacks in the
+    real debug log across two days, and it survived a code move. The
+    network-drop path 1500 lines away catches `hou.Error` and says so
+    in its own comment; this pins every `createNode` to that."""
+
+    def test_the_hierarchy_is_what_this_rests_on(self):
+        self.assertTrue(issubclass(hou.PermissionError, hou.Error))
+        self.assertFalse(
+            issubclass(hou.PermissionError, hou.OperationFailed),
+            "the premise changed - PermissionError is now caught by an "
+            "OperationFailed handler and this guard is pointless")
+
+    def test_no_createNode_is_guarded_by_OperationFailed_alone(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for folder, _dirs, files in os.walk(root):
+            if "tests" in folder or "__pycache__" in folder:
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, encoding="utf-8") as handle:
+                    lines = handle.read().splitlines()
+                for number, line in enumerate(lines):
+                    if "except hou.OperationFailed" not in line:
+                        continue
+                    # Walk back to the `try:` that owns this handler.
+                    window = []
+                    back = number - 1
+                    while back >= 0 and len(window) < 14:
+                        window.append(lines[back])
+                        if lines[back].strip() == "try:":
+                            break
+                        back -= 1
+                    if any(".createNode(" in w for w in window):
+                        offenders.append("%s:%d" % (name, number + 1))
+        self.assertEqual(
+            [], offenders,
+            "a createNode is guarded by OperationFailed alone, so a "
+            "locked asset's refusal escapes as a traceback: %s"
+            % offenders)
+
+
 class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
     """`amaze.PACKAGE_ROOT` is declared THE way to locate bundled files
     and had two users; ten sites hand-built the install-relative join

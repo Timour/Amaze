@@ -224,7 +224,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             continue
         try:
             vnode = builder.createNode(vtype)
-        except hou.OperationFailed:
+        except hou.Error:
             skipped.append("%s (%s)"
                            % (mnode.getName(), mnode.getCategory()))
             continue

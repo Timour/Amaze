@@ -5221,9 +5221,23 @@ class MatLibPanel(QtWidgets.QWidget):
                     helpers.auto_place(liblop)
                     liblop.setDisplayFlag(True)
                     created = True
-                except hou.OperationFailed:
+                except hou.Error as refusal:
+                    # hou.Error, NOT hou.OperationFailed: a locked
+                    # digital asset answers `Cannot create a node
+                    # inside a locked asset` as hou.PermissionError,
+                    # which is a SIBLING of OperationFailed and went
+                    # straight past this handler - 12 tracebacks in the
+                    # real log, over two days and one code move, with
+                    # this message sitting one line away unreachable.
+                    # The network-drop path already catches it this way
+                    # (research.md > hou.PermissionError is a SIBLING).
+                    debug.event("drag", "the network refused a material "
+                                "library", dest=lopnet.path(),
+                                error=str(refusal))
                     hou.ui.displayMessage(  # type: ignore
-                        "Amaze: could not create a Material Library here."
+                        "Amaze: %s cannot take a Material Library, so "
+                        "the material was not imported.\n\n%s"
+                        % (lopnet.name(), refusal)
                     )
                     return False
             # Prefer one in the display chain, exactly as the library lookup
