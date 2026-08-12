@@ -32,6 +32,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.panel import dragdrop_widgets  # noqa: E402
+from amaze.panel import grid  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
@@ -209,13 +210,18 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
         """setViewMode() re-applies state behind the caller's back (it
         disarmed dragging once - recorded). Both modes must leave the
         no-self-scrolling contract standing."""
-        view = self.panel.thumblist
         kept = self.panel.prefs.view_mode
         self.addCleanup(setattr, self.panel.prefs, "view_mode", kept)
         self.addCleanup(self.panel.apply_view_mode)
         for mode in ("grid", "list"):
             self.panel.prefs.view_mode = mode
             self.panel.apply_view_mode()
+            # THE VIEW THAT IS UP, not `thumblist` outright - which is
+            # the HIDDEN one in list mode, so this loop ran twice and
+            # asked the same widget both times while the table it never
+            # looked at had autoScroll ON. `grid.visible_view` exists
+            # because three other readers made this exact mistake.
+            view = grid.visible_view(self.panel)
             self.assertFalse(
                 view.hasAutoScroll(),
                 "view mode %r turned autoScroll back on - selecting a "

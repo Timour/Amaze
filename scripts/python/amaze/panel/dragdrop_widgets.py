@@ -970,5 +970,11 @@ class DragDropTableView(GridGestureMixin, QtWidgets.QTableView):
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.setHorizontalScrollMode(
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel)
+        # SELECTING A TILE MUST NEVER MOVE THE GRID - the same contract
+        # the icon view is given in panel.py, and this is list mode, so
+        # it is the same grid. `autoScroll` defaults ON and re-scrolls
+        # on every `currentChanged`, so clicking a half-cut row jumped
+        # the view under the cursor. Measured ON in a live session.
+        self.setAutoScroll(False)
         self.setEditTriggers(
             QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)

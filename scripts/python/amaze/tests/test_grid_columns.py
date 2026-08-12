@@ -1265,6 +1265,60 @@ class TheCallersNameTheColumnToo(unittest.TestCase):
             % offenders)
 
 
+class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
+    """Two things decided whether a column exists and they disagreed.
+
+    Visibility came from the tile delegate's roles, content from the
+    model's `COLUMN_ROLES`. The File section passes `category_role`, so
+    the column was shown, sortable and coloured - and `FileFiles` has
+    no `"category"` entry, so every cell answered None. Every other
+    column File cannot fill is correctly hidden, because nobody told
+    the delegate about those."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _activate(self, key):
+        """The table's column state is the ACTIVE section's answer, so
+        it has to be the section under test - reading File's model
+        against another section's table proves nothing."""
+        kept = self.panel.current_section
+        if kept != key:
+            self.addCleanup(self.panel.section_tabs.setChecked, kept)
+        self.panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(key, self.panel.current_section,
+                         "the panel did not switch to %s" % key)
+
+    def test_a_shown_column_is_one_the_model_answers(self):
+        for section, model_attr in (("file", "file_files_model"),
+                                    ("material", "material_model"),
+                                    ("gradient", "gradient_model")):
+            self._activate(section)
+            model = getattr(self.panel, model_attr)
+            for key in ("category", "tags", "license", "version", "open"):
+                column = grid_columns.KEYS.index(key)
+                can_fill = model._column_role(key) is not None
+                shown = not self.panel.thumbtable.isColumnHidden(column)
+                if shown and not can_fill:
+                    self.fail(
+                        "the %s section shows a %r column its model can "
+                        "never fill - it has a heading, it sorts, it "
+                        "takes the width, and every cell is empty"
+                        % (section, key))
+
+    def test_the_model_is_what_decides(self):
+        """Source-derived: one source of truth, or they drift again."""
+        import inspect
+        from amaze.panel import grid as grid_module
+        source = inspect.getsource(grid_module.sync_table_columns)
+        self.assertIn(
+            "_column_role", source,
+            "column visibility is still decided without asking the "
+            "model whether it can fill the column")
+
+
 class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
     """Five delegates are built per `activate()` and parented to the
     table, which outlives every one of them.

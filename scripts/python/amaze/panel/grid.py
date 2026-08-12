@@ -566,6 +566,17 @@ def sync_table_columns(panel) -> None:
         "name": ALWAYS_SHOWN,
         "type": ALWAYS_SHOWN,
     }
+    # AND THE MODEL HAS TO BE ABLE TO FILL IT. The delegate's roles
+    # decided this alone, and the File section is handed a category
+    # role while `FileFiles.COLUMN_ROLES` has no `category` entry - so
+    # the column was shown, sortable, coloured, and empty in every row.
+    # One question, two sources of truth: the delegate says what it can
+    # PAINT, the model says what it can ANSWER, and a column needs both.
+    source = table.model()
+    inner = getattr(source, "sourceModel", None)
+    source = (inner() if inner is not None else None) or source
+    column_role = getattr(source, "_column_role", None)
+
     header = table.horizontalHeader()
     for column, key in enumerate(grid_columns.KEYS):
         attribute = roles.get(key)
@@ -580,8 +591,12 @@ def sync_table_columns(panel) -> None:
         if attribute is NEVER_SHOWN:
             table.setColumnHidden(column, True)
             continue
+        fills = True
+        if attribute is not ALWAYS_SHOWN and column_role is not None:
+            fills = column_role(key) is not None
         shown = (attribute is ALWAYS_SHOWN
-                 or getattr(delegate, attribute, None) is not None)
+                 or (getattr(delegate, attribute, None) is not None
+                     and fills))
         table.setColumnHidden(column, not shown)
     # NOTHING IS MEASURED. This is the end of a road that started
     # with a 214-line hand-written fit and went through Qt's own:
