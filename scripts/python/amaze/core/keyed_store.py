@@ -451,12 +451,13 @@ register(
         "the list of people using this library could not be read "
         "earlier this run, so your change was not saved - writing now "
         "would replace everyone already in it."),
-    denied_alert=(
-        "Your user could not be saved to the library.\n\n"
-        "Amaze is still using it for this session, so nothing you do "
-        "now is lost from view - but the next session will not know "
-        "about it, and anything you star will be filed under nobody."),
-    # A user OUTLIVES a location being removed: the person is not a
+    # NO denied_alert, for the same reason as the locations and the
+    # favourites below: the name shown in Preferences is READ BACK from
+    # this store, so a refused rename visibly snaps back and a refused
+    # mint leaves the box empty. The gesture doing nothing IS the
+    # report.
+    #
+    # A user OUTLIVES a location being removed: a person is not a
     # property of a folder they happened to register.
     survives_forget=True,
 )
