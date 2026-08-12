@@ -260,7 +260,9 @@ class GradientsBecomeAnOrdinaryDatabaseTest(unittest.TestCase):
                          "the migration lost or duplicated a palette")
         for old, new in zip(before["gradients"], rows):
             self.assertEqual(old["name"], new["name"])
-            self.assertEqual(old["category"], new["category"])
+            # v4 files the category as a LIST; the VALUE still has to
+            # survive the whole chain, which is what this case is for.
+            self.assertEqual([old["category"]], new["categories"])
             self.assertEqual(old["colors"], new["colors"],
                              "a palette's colours changed")
             self.assertEqual(old["ramp"], new["ramp"],
