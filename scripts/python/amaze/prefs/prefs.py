@@ -608,7 +608,24 @@ class Prefs(_Persistence):
 
     @property
     def last_known_favourites(self) -> list[str]:
-        return self._file_favorites
+        """THIS user's copy, untagged.
+
+        The list on disk carries everyone's, tagged `<uid>|<path>` the
+        same way the library store tags them - so it stays a flat list
+        of strings and `_merge_settings_from_disk` keeps unioning it
+        between two panes of one session. Without the tag this copy
+        answered for everybody, which is how a machine with no user
+        still lit another user's star.
+        """
+        from amaze.core import keyed_store
+        if not self._library_user:
+            return []
+        out = []
+        for entry in self._file_favorites:
+            tag, sep, rest = str(entry).partition(keyed_store.USER_SEP)
+            if sep and tag == self._library_user:
+                out.append(rest)
+        return out
 
     @property
     def last_known_records(self) -> dict:
@@ -628,7 +645,19 @@ class Prefs(_Persistence):
         if order is not None:
             self._file_folders = list(order)
         if favourites is not None:
-            self._file_favorites = list(favourites)
+            # TAGGED on the way in, and everyone ELSE's entries are kept
+            # verbatim: this machine refreshes its own user's copy and
+            # has no business editing anybody else's. With no user
+            # picked the list is left exactly as it was - the same rule
+            # as a None, for the same reason.
+            from amaze.core import keyed_store
+            uid = self._library_user
+            if uid:
+                mine = uid + keyed_store.USER_SEP
+                self._file_favorites = [
+                    entry for entry in self._file_favorites
+                    if not str(entry).startswith(mine)
+                ] + [mine + str(path) for path in favourites]
         self.save()
 
     def add_file_folder(self, path: str) -> None:
