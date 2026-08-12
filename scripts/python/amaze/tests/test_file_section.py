@@ -1231,7 +1231,7 @@ class HoudiniPathTest(unittest.TestCase):
         p = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
-        shown = dlg.line_library_user.text()
+        shown = dlg.cbb_library_user.currentText()
         self.assertIn(shown, users.PLACEHOLDER_NAMES,
                       "a library with nobody in it must mint its first "
                       "user right here and show the NAME")
@@ -1239,8 +1239,7 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertNotEqual(shown, uid,
                             "the box is showing the UID - a person no "
                             "more reads that than an IP address")
-        dlg.line_library_user.setText("  MyOwnName  ")
-        dlg._save_library_user()
+        dlg.rename_library_user("  MyOwnName  ")
         self.assertEqual("MyOwnName", users.name_for(p, uid),
                          "typed name (trimmed) did not relink the UID")
         self.assertEqual(uid, p.library_user,
