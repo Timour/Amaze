@@ -2330,7 +2330,7 @@ class GradientSection(Section):
             key=notes.note_key(self.key, uid),
             section=self.label.lower(),
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
-            type=source.data(model.SubtitleRole) or "",
+            type=source.data(model.RendererLabelRole) or "",
             category=str(source.data(model.CategoryLabelRole) or ""),
             colour=str(source.data(model.CategoryColorRole) or ""),
         )

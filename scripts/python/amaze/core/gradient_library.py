@@ -149,18 +149,24 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
-        "type": "SubtitleRole",
+        "type": "RendererLabelRole",
         "category": "CategoryLabelRole",
         "favorite": "FavoriteRole",
         "comments": "NotesRole",
     }
 
-    SubtitleRole = QtCore.Qt.ItemDataRole.UserRole + 1
-    ColorsRole = QtCore.Qt.ItemDataRole.UserRole + 2
-    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 3
-    #: list mode's Category column: the user category for saved
-    #: gradients, the curated set's label (Wada/Klee/...) otherwise
-    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    # 257-260 are what `MultiFilterProxyModel` switches on, by NUMBER
+    # (practice.md > AN INSTANCE ATTRIBUTE SHADOWS THE CLASS ONE).
+
+    #: A LIST - the proxy iterates it.
+    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    #: The KIND field, as 259 is in every section.
+    RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    #: Empty, but answered: the proxy iterates whatever 260 returns.
+    TagRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    #: Tile subtitle and Type column; was `SubtitleRole` at +1.
+    RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6
     #: The colour set on this gradient's category. UserRole + 8 to
     #: match MaterialLibrary, so the one tile delegate reads one
     #: number whichever section it is painting.
@@ -168,6 +174,13 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
     #: Whether this gradient carries a note - the badge's question,
     #: shared role number with every other tile model (UserRole + 10).
     NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10
+
+    # Colors' own, past the family's last (+11).
+
+    ColorsRole = QtCore.Qt.ItemDataRole.UserRole + 12
+    #: list mode's Category column: the user category for saved
+    #: gradients, the curated set's label (Wada/Klee/...) otherwise
+    CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13
 
     def __init__(self, preferences=None, parent=None) -> None:
         super().__init__(parent)
@@ -1140,12 +1153,18 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             from amaze.core import notes
             return notes.has_note(self._preferences,
                                   notes.note_key("gradient", uid))
-        if role == self.SubtitleRole:
+        if role in (self.RendererLabelRole, self.RendererRole):
             # Uniformly "Gradient" - the Type column/grid subtitle names
             # the KIND of thing, consistent with Materials' "Redshift"
             # and Textures' "HDR". Which set/palette
             # size an entry belongs to is Category-column information.
+            # Both roles: the family splits raw kind from label, and a
+            # palette has one word for both.
             return "Gradient"
+        if role == self.CategoryRole:
+            return _row_categories(entry)
+        if role == self.TagRole:
+            return ()
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
             return self._thumb(row)
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:

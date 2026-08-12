@@ -571,7 +571,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.gradient_sorted_model
         )
         self.gradient_delegate = AssetItemDelegate(
-            self.gradient_model.SubtitleRole,
+            self.gradient_model.RendererLabelRole,
             self.thumblist,
             category_role=self.gradient_model.CategoryLabelRole,
             category_color_role=self.gradient_model.CategoryColorRole,
