@@ -1743,13 +1743,22 @@ class StarRowsLeftPreferencesTest(unittest.TestCase):
             raw = json.load(handle)
         raw["star_color_mode"] = "custom"
         raw["star_custom_color"] = "#123456"
+        # The three merged sections' quartets, retired 2026-08-12. A
+        # real settings.json carries these on every machine that ran a
+        # build before the sweep.
+        raw["texture_folders"] = ["/tex/a/"]
+        raw["geometry_favorites"] = ["/geo/c/rock.bgeo"]
+        raw["hip_include_subfolders"] = True
+        raw["file_section_migrated"] = True
         raw["key_from_a_newer_build"] = "kept"
         with open(final, "w", encoding="utf-8") as handle:
             json.dump(raw, handle, indent=4)
         p.save()
         with open(final, encoding="utf-8") as handle:
             after = json.load(handle)
-        for gone in ("star_color_mode", "star_custom_color"):
+        for gone in ("star_color_mode", "star_custom_color",
+                     "texture_folders", "geometry_favorites",
+                     "hip_include_subfolders", "file_section_migrated"):
             self.assertNotIn(
                 gone, after,
                 "a retired key rode the unknown-key courtesy back "

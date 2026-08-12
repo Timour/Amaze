@@ -347,12 +347,27 @@ class _Persistence:
     #: star_*: the star-colour rows left Preferences 2026-08-01 (the
     #: unified badge family renders the tile star as drawn).
     #:
+    #: The texture/geometry/hip quartets: the File section absorbed all
+    #: three on 2026-07-31 and the old keys were kept readable for a
+    #: rollback until 2026-08-12. Nothing writes them now, so WITHOUT
+    #: naming them here the courtesy above would setdefault them back
+    #: off disk on every save and they would outlive the code forever.
+    #:
     #: NOT emptied by the compatibility sweep. This is not code that
     #: serves an older BUILD - it is a cleanup that has not finished
     #: running, and settings.json is per-machine and never travels, so
     #: a machine whose file still carries these keys only drops them
     #: the next time this build saves there.
-    _RETIRED_KEYS = ("star_color_mode", "star_custom_color")
+    _RETIRED_KEYS = (
+        "star_color_mode", "star_custom_color",
+        "texture_folders", "texture_favorites", "last_texture_folder",
+        "texture_include_subfolders",
+        "geometry_folders", "geometry_favorites", "last_geometry_folder",
+        "geometry_include_subfolders",
+        "hip_folders", "hip_favorites", "last_hip_folder",
+        "hip_include_subfolders",
+        "file_section_migrated",
+    )
 
     def _remember_disk_state(self, final: str) -> None:
         self._disk_stat = hostos.disk_state(final)
