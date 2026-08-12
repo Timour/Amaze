@@ -313,13 +313,6 @@ def fixture_prefs(testcase):
     p.dir = fresh_library(testcase)
     p.path = tempfile.mkdtemp(prefix="amaze_fixture_prefs_")
     testcase.addCleanup(shutil.rmtree, p.path, True)
-    # A LIBRARY HAS USERS NOW, so a fixture without one is not a
-    # realistic library: every user-tagged store would refuse to key
-    # anything and the section under test would silently show nothing.
-    # Minted here rather than per test, the same way the library itself
-    # is (ROADMAP line 21).
-    from amaze.core import users
-    users.current(p)
     return p
 
 
