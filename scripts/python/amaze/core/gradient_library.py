@@ -104,81 +104,38 @@ def _set_row_category(entry, name: str) -> None:
     entry["categories"] = [name] if name else []
 
 
-class GradientCategories(QtCore.QAbstractListModel):
-    """Sidebar list for the Gradients section: "All", then the user's
-    categories (which after seeding include the palette groups - "Wada 5
-    Colors", "Klee 3 Colors", ...). Rebuilt via refresh() on change."""
+class GradientCategories(category.Categories):
+    """The Colors section's category sidebar - same model, own database.
 
-    def __init__(self, library, parent=None) -> None:
-        super().__init__(parent)
-        self._library = library
-        self._labels = []
-        self._filters = []
-        self._rebuild()
+    Three lines, like `CopCategories` and `CodeCategories`, plus the one
+    thing this section genuinely asks that they do not: the proxy is
+    driven by a (kind, value) pair rather than by a category name.
 
-    def _rebuild(self) -> None:
-        self._labels = ["All"]
-        self._filters = [("all", None)]
-        for cat in self._library.user_categories():
-            self._labels.append(cat)
-            self._filters.append(("category", cat))
+    It was a standalone list model until 2026-08-12, reading its rows
+    through the library instead of the connector's document, and that
+    second implementation is what let a peer's category be erased -
+    the shared model holds a live alias, so what a merge adopts is
+    already in the list the section writes.
+    """
 
-    def refresh(self) -> None:
-        self.beginResetModel()
-        self._rebuild()
-        self.endResetModel()
-
-    def switch_model_data(self) -> None:
-        """Re-point at the library the panel now serves.
-
-        THE SAME VERB EVERY OTHER LIBRARY-BACKED MODEL ANSWERS, and
-        that is the whole point of its existing. The work is
-        `refresh()`'s - rebuild the labels from the library, which by
-        now holds the new library's rows - but this model was the ONE
-        that spelled its repoint differently, so the panel's three
-        hand-written switch lists never carried it and the guard
-        watching those lists could not see it either: it searched for
-        `switch_model_data` and found `refresh`. Two names for one
-        event is how a model goes missing from a list nobody can
-        prove is short.
-
-        Kept as two methods rather than one, because they are two
-        events: `refresh()` is "the categories changed inside this
-        library" (a rename, a delete), and this is "the library
-        underneath changed". They agree today; a divergence belongs
-        in whichever one it applies to.
-        """
-        self.refresh()
-
-    # The ONE definition lives in category.py; imported so the four
-    # sidebar models can never drift apart.
-    COUNT_ROLE = category.SIDEBAR_COUNT_ROLE
+    DB_FILENAME = "gradients.json"
 
     def filter_for_row(self, row: int):
         """(kind, value) for the proxy: ("all", None) or
-        ("category", name)."""
-        if 0 <= row < len(self._filters):
-            return self._filters[row]
+        ("category", name).
+
+        DERIVED from the shared model's own rows rather than kept in a
+        parallel list: row 0 is the `_All` marker and the rest are
+        names, which is the order `Categories` already guarantees.
+        `sections.py` reads this for both `select_category` and
+        `sidebar_key`, so it stays the section's one reader of what a
+        row MEANS.
+        """
+        if 0 <= row < len(self._categories):
+            name = self._categories[row]
+            if isinstance(name, str) and not name.startswith("_"):
+                return ("category", name)
         return ("all", None)
-
-    def rowCount(self, parent=None) -> int:
-        return len(self._labels)
-
-    def data(self, index, role: int = 0):
-        if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return self._labels[index.row()]
-        if role == self.COUNT_ROLE:
-            kind, value = self.filter_for_row(index.row())
-            return self._library.count_for_filter(kind, value)
-        if role == category.SIDEBAR_COLOR_ROLE:
-            # The same role the asset sidebars answer, so the one
-            # sidebar delegate paints this bar too. "All" is a view,
-            # never coloured.
-            kind, value = self.filter_for_row(index.row())
-            if kind == "category":
-                return self._library.category_color_of(value)
-            return ""
-        return None
 
 
 class GradientLibrary(grid_columns.GridColumnsMixin,

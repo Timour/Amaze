@@ -1429,7 +1429,7 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
         self._library_with_category(prefs, "Alpha")
 
         model = gradient_library.GradientLibrary(preferences=prefs)
-        sidebar = gradient_library.GradientCategories(model)
+        sidebar = gradient_library.GradientCategories(preferences=prefs)
         self.assertIn("Alpha", self._labels(sidebar),
                       "premise: the sidebar shows library A's category")
 

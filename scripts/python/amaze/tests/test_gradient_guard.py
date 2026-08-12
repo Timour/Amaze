@@ -27,10 +27,11 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from PySide6 import QtWidgets                            # noqa: E402
+from PySide6 import QtCore, QtWidgets                    # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
+from amaze.core import category                          # noqa: E402
 from amaze.core import database                          # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
@@ -862,6 +863,71 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
             self._on_disk().get("category_colors", {}).get("Bronze"),
             "the peer's category colour was written out of existence - "
             "`_category_colors` is a detached dict rebuilt on save")
+
+
+class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
+    """Cop and Code get their sidebar in three lines - a subclass of
+    `category.Categories` with its own `DB_FILENAME`. Colors carried a
+    standalone list model and twelve category methods of its own, and
+    that second implementation is what erased a peer's category."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_side_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        with open(os.path.join(self.dir, "gradients.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"version": 4,
+                       "categories": ["_All", "Warm", "Cool"],
+                       "assets": [
+                           {"id": "a", "name": "one",
+                            "categories": ["Warm"], "colors": []},
+                           {"id": "b", "name": "two",
+                            "categories": ["Warm"], "colors": []},
+                       ]}, fh)
+
+    def _sidebar(self):
+        # A TRAILING SEPARATOR, because the connector builds
+        # `path + filename` - the shape `Prefs.save()` forces on the
+        # real field and a bare mkdtemp does not have.
+        return gradient_library.GradientCategories(
+            preferences=_Prefs(self.dir + os.sep))
+
+    def test_it_subclasses_the_shared_model(self):
+        self.assertTrue(
+            issubclass(gradient_library.GradientCategories,
+                       category.Categories),
+            "Colors still has its own sidebar model, so its categories "
+            "are a second implementation of the shared one")
+
+    def test_it_reads_the_gradients_database(self):
+        self.assertEqual("gradients.json",
+                         gradient_library.GradientCategories.DB_FILENAME)
+
+    def test_the_All_row_answers_all(self):
+        self.assertEqual(("all", None), self._sidebar().filter_for_row(0))
+
+    def test_a_category_row_answers_its_name(self):
+        sidebar = self._sidebar()
+        found = [sidebar.filter_for_row(row)
+                 for row in range(sidebar.rowCount())]
+        self.assertIn(("category", "Warm"), found,
+                      "the sidebar cannot name its own category, so a "
+                      "click filters the grid to nothing")
+
+    def test_the_counts_come_from_the_shared_walk(self):
+        sidebar = self._sidebar()
+        # `category.SIDEBAR_COUNT_ROLE`, the module-level role every
+        # sidebar answers - the old `COUNT_ROLE` class attribute was
+        # itself a Colors-only extra.
+        rows = {sidebar.data(sidebar.index(row, 0),
+                             QtCore.Qt.ItemDataRole.DisplayRole):
+                sidebar.data(sidebar.index(row, 0),
+                             category.SIDEBAR_COUNT_ROLE)
+                for row in range(sidebar.rowCount())}
+        self.assertEqual(2, rows.get("Warm"),
+                         "two palettes are filed under Warm: %s" % rows)
+        self.assertEqual(0, rows.get("Cool"))
 
 
 class AGradientsCategoryBecomesAListLikeEverySection(unittest.TestCase):

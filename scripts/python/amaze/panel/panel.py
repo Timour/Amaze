@@ -563,7 +563,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # there is to set up.
         self.gradient_model = gradient_library.GradientLibrary(self.prefs)
         self.gradient_categories_model = gradient_library.GradientCategories(
-            self.gradient_model
+            preferences=self.prefs
         )
         self.gradient_sorted_model = gradient_library.GradientFilterProxyModel()
         self.gradient_sorted_model.setSourceModel(self.gradient_model)

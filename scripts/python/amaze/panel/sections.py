@@ -2061,7 +2061,7 @@ class GradientSection(Section):
         for row in sorted({index.row() for index in indexes},
                           reverse=True):
             model.remove_user_gradient(row)
-        self.panel.gradient_categories_model.refresh()
+        self.panel.gradient_categories_model.switch_model_data()
 
     key = "gradient"
     label = "Color"
@@ -2176,7 +2176,7 @@ class GradientSection(Section):
         if not name:
             return
         self.panel.gradient_model.add_user_category(name)
-        self.panel.gradient_categories_model.refresh()
+        self.panel.gradient_categories_model.switch_model_data()
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
         old_name = self.sidebar_key(current)
@@ -2185,7 +2185,7 @@ class GradientSection(Section):
             return
         if self.panel.gradient_model.rename_user_category(old_name,
                                                           new_name):
-            self.panel.gradient_categories_model.refresh()
+            self.panel.gradient_categories_model.switch_model_data()
 
     def menu_remove_category(self, indexes, current, payload=None) -> None:
         name = self.sidebar_key(current)
@@ -2199,7 +2199,7 @@ class GradientSection(Section):
         if not hou.ui.displayConfirmation(message):      # type: ignore
             return
         self.panel.gradient_model.remove_user_category(name)
-        self.panel.gradient_categories_model.refresh()
+        self.panel.gradient_categories_model.switch_model_data()
         # The removed row may have been the selection - fall back to
         # "All" so the sidebar never points nowhere.
         self.panel.gradient_sorted_model.set_sidebar_filter("all", None)
@@ -2296,14 +2296,25 @@ class GradientSection(Section):
         return str(value or "") if kind == "category" else ""
 
     def sidebar_colour(self, name: str) -> str:
-        return self.panel.gradient_model.category_color_of(name)
+        # THE SIDEBAR MODEL, exactly as the asset sections read it.
+        # This asked the LIBRARY, which kept its own colour dict, so
+        # clearing a colour took it off one store and left it on the
+        # other and the row went on wearing it.
+        return self.panel.gradient_categories_model.color_of(name)
 
     def set_sidebar_colour(self, name: str, colour: str) -> None:
-        # set_category_color repaints the GRID itself (every tile in
-        # the category) and answers False when the store refused, in
-        # which case the sidebar must not be told otherwise.
-        if self.panel.gradient_model.set_category_color(name, colour):
-            self.panel.gradient_categories_model.refresh()
+        self.panel.gradient_categories_model.set_color(name, colour)
+        # The grid reads the colour through a role on the ASSET model,
+        # which shares the category model's data dict, so a repaint is
+        # all that is needed - role-scoped for the reason the asset
+        # sections give.
+        model = self.panel.gradient_model
+        if model is not None and model.rowCount():
+            model.dataChanged.emit(
+                model.index(0, 0),
+                model.index(model.rowCount() - 1, 0),
+                [model.CategoryColorRole],
+            )
 
     def comment_subject(self, index):
         """Keyed by the palette's UID, not its name: a palette can be
