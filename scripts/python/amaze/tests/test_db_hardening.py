@@ -537,9 +537,6 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         p = prefs_mod.Prefs()
         p.path = self.home
-        # Under hython the legacy path is the LIVE install and load()
-        # migrates from it - blanked for the reason test_support blanks it.
-        p.legacy_path = ""
         return p
 
     def _good_settings(self):
@@ -675,9 +672,6 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         p = prefs_mod.Prefs()
         p.path = self.home
-        # Under hython the legacy path is the LIVE install and load()
-        # migrates from it - blanked as the sibling fixture blanks it.
-        p.legacy_path = ""
         return p
 
     def _configured(self):
@@ -924,7 +918,6 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         p = prefs_mod.Prefs()
         p.path = self.home
-        p.legacy_path = ""
         return p
 
     def _seed(self, **extra):

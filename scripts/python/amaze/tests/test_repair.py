@@ -1253,7 +1253,6 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         self.prefs = prefs_mod.Prefs()
         self.prefs.dir = self.dir
         self.prefs.path = tempfile.mkdtemp(prefix="amaze_repair_real_prefs_")
-        self.prefs.legacy_path = ""
         self.addCleanup(shutil.rmtree, self.prefs.path, True)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)

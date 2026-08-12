@@ -134,7 +134,6 @@ class RendererDefaultsAgree(unittest.TestCase):
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
         p.path = empty
-        p.legacy_path = ""
         p.load()
         for attr, default in prefs_mod.RENDERER_DEFAULTS.items():
             self.assertEqual(
@@ -152,7 +151,6 @@ class RendererDefaultsAgree(unittest.TestCase):
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
         p.path = empty
-        p.legacy_path = ""
         p.load()
         offered = [label for label, attr in sections.renderer_prefs()
                    if getattr(p, attr, False)]
@@ -184,7 +182,6 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
         p = prefs_mod.Prefs()
         p.path = folder
-        p.legacy_path = ""
         p.load()          # must not raise: panel._build re-raises
 
         # And every value has to be USABLE, because Preferences does
@@ -347,7 +344,6 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
 
         p = prefs_mod.Prefs()
         p.path = folder
-        p.legacy_path = ""
         p.load()
         # CHANGE SOMETHING THIS BUILD OWNS, so the file on disk must
         # actually have been REWRITTEN for the assertions below to

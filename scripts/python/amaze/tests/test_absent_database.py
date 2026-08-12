@@ -991,10 +991,6 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, settings_dir, ignore_errors=True)
         p = prefs_mod.Prefs()
         p.path = settings_dir
-        # Blanked for the reason test_support blanks it: under hython
-        # the legacy path is the LIVE install, and load() migrates from
-        # it - which would both pollute this test and read real data.
-        p.legacy_path = ""
         self.assertFalse(
             os.path.exists(os.path.join(settings_dir, "settings.json")),
             "premise: a first launch has no settings file")
@@ -1037,7 +1033,6 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
             handle.write('{"directory": "/somewhere"')      # truncated
         p = prefs_mod.Prefs()
         p.path = settings_dir
-        p.legacy_path = ""
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertFalse(p.load())
         self.assertTrue(getattr(p, "_load_failed", False),
@@ -1060,7 +1055,6 @@ class AbsentIsNotBrokenElsewhereTest(unittest.TestCase):
             handle.write('{"directory": "/somewhere"')      # truncated
         p = prefs_mod.Prefs()
         p.path = settings_dir
-        p.legacy_path = ""
         with contextlib.redirect_stdout(io.StringIO()):
             self.assertFalse(p.load())
         self.assertTrue(getattr(p, "_load_failed", False), "premise")

@@ -590,63 +590,6 @@ class _Persistence:
         self.data["matx_resolution"] = self._matx_resolution
         return self.data
 
-    def _migrate_from_install(self) -> None:
-        """Move a pre-existing settings.json out of the install, ONCE.
-
-        Copy, never move: the original stays where it was as a backup,
-        so a user who downgrades still has it and nobody's preferences
-        depend on this having worked. Anything unreadable is left
-        alone - a failed migration must open the panel with defaults,
-        not lose the file.
-        """
-        target = os.path.join(self.path, "settings.json")
-        # A MARKER, not "is the target absent". The only guard used to
-        # be os.path.exists(target), which makes this "every time the
-        # target is missing" rather than once: delete settings.json to
-        # reset your preferences, or restore a backup that did not
-        # include it, and the next launch silently copied the
-        # pre-2026-07-27 install copy back - resurrecting a stale
-        # library path and stale favourites.
-        marker = os.path.join(self.path, ".migrated-from-install")
-        if os.path.exists(marker) or not self.legacy_path:
-            return
-        if os.path.exists(target):
-            # Already migrated before this marker existed: record that
-            # and stop, so the check is stable from here on.
-            self._write_migration_marker(marker)
-            return
-        source = os.path.join(self.legacy_path, "settings.json")
-        if not os.path.exists(source):
-            return
-        try:
-            os.makedirs(self.path, exist_ok=True)
-            with open(source, encoding="utf-8-sig") as old_file:
-                data = json.load(old_file)          # parse = validate
-            with open(target, "w", encoding="utf-8") as new_file:
-                json.dump(data, new_file, indent=4)
-            self._write_migration_marker(marker)
-            debug.event("prefs", "settings migrated out of the install",
-                        source=source, target=target, keys=len(data))
-            # The path IS named here, deliberately: this is the guide's
-            # allowed case - the message is pointing the user at a file.
-            # Two facts, two sentences; the backup was in a parenthesis.
-            debug.note(
-                "your Amaze preferences now live in %s. The old copy "
-                "in the install folder is left as a backup." % target)
-        except (OSError, ValueError) as exc:
-            debug.event("prefs", "settings migration failed - using "
-                        "defaults", source=source, error=str(exc))
-
-    @staticmethod
-    def _write_migration_marker(marker: str) -> None:
-        """Best-effort: a marker that cannot be written just means the
-        migration is attempted again, which is what happened before."""
-        try:
-            with open(marker, "w", encoding="utf-8") as handle:
-                handle.write("settings were copied out of the install once\n")
-        except OSError:
-            pass
-
     def _preserve_unreadable(self, exc) -> None:
         """Keep a settings.json we could not parse, before anything
         overwrites it.
@@ -719,7 +662,6 @@ class _Persistence:
         key is read with a default for the same reason: a settings file
         written by an older version, or hand-edited, must not be fatal.
         """
-        self._migrate_from_install()
         try:
             with open(self.path + "/settings.json",
                       encoding="utf-8-sig") as f:

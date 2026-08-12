@@ -118,9 +118,6 @@ class Prefs(_Persistence):
         # tree for anyone who installed by cloning, where a pull could
         # conflict with them and a checkout could blank them.
         self.path: str = hostos.config_root()
-        #: Where settings lived before that. load() migrates from here
-        #: once, and leaves the original alone as a backup.
-        self.legacy_path: str = hou.getenv("AMAZE") or ""
         self._directory = ""
         self.data = {}
         # Storage-format constants and render basics, initialized here

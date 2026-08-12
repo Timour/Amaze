@@ -312,7 +312,6 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
     def _prefs(self):
         p = self.prefs_mod.Prefs()
         p.path = self.home
-        p.legacy_path = ""
         return p
 
     def _write_real_settings(self):
@@ -406,7 +405,6 @@ class PrefsValidationTest(unittest.TestCase):
         path = os.path.join(self.home, "settings.json")
         base = self.prefs_mod.Prefs()
         base.path = self.home
-        base.legacy_path = ""
         base.save()
         with open(path, encoding="utf-8") as handle:
             data = self.json.load(handle)
@@ -415,7 +413,6 @@ class PrefsValidationTest(unittest.TestCase):
             self.json.dump(data, handle)
         loaded = self.prefs_mod.Prefs()
         loaded.path = self.home
-        loaded.legacy_path = ""
         loaded.load()
         return loaded
 
@@ -429,52 +426,6 @@ class PrefsValidationTest(unittest.TestCase):
     def test_a_valid_value_is_preserved(self):
         loaded = self._load_with(icon_line_weight="feather")
         self.assertEqual("feather", loaded.icon_line_weight)
-
-
-class MigrationMarkerTest(unittest.TestCase):
-    """The install migration is once, not "whenever the target is gone".
-
-    The only guard was os.path.exists(target), so deleting
-    settings.json to reset preferences - or restoring a backup that did
-    not include it - made the next launch silently copy the
-    pre-2026-07-27 install copy back, resurrecting a stale library path
-    and stale favourites."""
-
-    def setUp(self):
-        from amaze.prefs import prefs as prefs_mod
-        import json
-
-        self.json = json
-        self.prefs_mod = prefs_mod
-        self.home = tempfile.mkdtemp(prefix="amaze_migrate_")
-        self.legacy = tempfile.mkdtemp(prefix="amaze_legacy_")
-        self.addCleanup(shutil.rmtree, self.home, True)
-        self.addCleanup(shutil.rmtree, self.legacy, True)
-        with open(os.path.join(self.legacy, "settings.json"), "w",
-                  encoding="utf-8") as handle:
-            self.json.dump({"directory": "/from/the/install"}, handle)
-
-    def _open(self):
-        prefs = self.prefs_mod.Prefs()
-        prefs.path = self.home
-        prefs.legacy_path = self.legacy
-        prefs.load()
-        return prefs
-
-    def test_it_migrates_once(self):
-        self._open()
-        target = os.path.join(self.home, "settings.json")
-        self.assertTrue(os.path.exists(target), "nothing was migrated")
-
-    def test_deleting_settings_does_not_resurrect_the_install_copy(self):
-        self._open()
-        target = os.path.join(self.home, "settings.json")
-        os.remove(target)                      # a deliberate reset
-        self._open()
-        self.assertFalse(
-            os.path.exists(target),
-            "the install copy was silently restored, bringing back a "
-            "stale library path and stale favourites")
 
 
 class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):

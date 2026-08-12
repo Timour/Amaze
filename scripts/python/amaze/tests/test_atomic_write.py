@@ -192,7 +192,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         from amaze.prefs import prefs as prefs_mod
         p = prefs_mod.Prefs()
         p.path = self.dir
-        p.legacy_path = ""
         for _ in range(6):
             p.save()
         self._assert_unique("Prefs.save")
@@ -744,7 +743,6 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
     def _prefs(self):
         p = prefs.Prefs()
         p.path = self.dir
-        p.legacy_path = ""
         return p
 
     def _write(self, payload):
@@ -978,7 +976,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
     def _prefs(self):
         p = prefs.Prefs()
         p.path = self.dir
-        p.legacy_path = ""
         p.load()
         return p
 
@@ -996,7 +993,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
 
         check = prefs.Prefs()
         check.path = self.dir
-        check.legacy_path = ""
         check.load()
         self.assertIn("/theirs/textures",
                       [str(f) for f in check.file_folders],
@@ -1031,7 +1027,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
 
         check = prefs.Prefs()
         check.path = self.dir
-        check.legacy_path = ""
         check.load()
         self.assertIn(
             "/theirs/textures", [str(f) for f in check.file_folders],
@@ -1107,7 +1102,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
 
         check = prefs.Prefs()
         check.path = self.dir
-        check.legacy_path = ""
         check.load()
         self.assertEqual(512, check.thumbsize,
                          "the active editor's scalar lost")
@@ -1220,13 +1214,11 @@ class VersionAuthorIsChosenNeverHarvestedTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, home, True)
         p = prefs.Prefs()
         p.path = home
-        p.legacy_path = ""
         p.load()
         p.version_author = "  Chosen Name  "
         p.save()
         q = prefs.Prefs()
         q.path = home
-        q.legacy_path = ""
         q.load()
         self.assertEqual("Chosen Name", q.version_author)
 

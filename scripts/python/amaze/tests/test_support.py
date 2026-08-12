@@ -312,11 +312,6 @@ def fixture_prefs(testcase):
     p = prefs.Prefs()
     p.dir = fresh_library(testcase)
     p.path = tempfile.mkdtemp(prefix="amaze_fixture_prefs_")
-    # A THIRD path: load() migrates settings once from the pre-2026-07
-    # location, which under hython is the live install. Blanking the
-    # legacy path means even an unexpected load() cannot pull the real
-    # library directory into a fixture.
-    p.legacy_path = ""
     testcase.addCleanup(shutil.rmtree, p.path, True)
     return p
 
@@ -525,15 +520,6 @@ def fixture_unconfigured_panel(testcase):
     real_save = prefs.Prefs.save
     prefs.Prefs.save = lambda self, *a, **k: None
     testcase.addCleanup(setattr, prefs.Prefs, "save", real_save)
-
-    real_init = prefs.Prefs.__init__
-
-    def _blank_legacy(prefs_self, *args, **kwargs):
-        real_init(prefs_self, *args, **kwargs)
-        prefs_self.legacy_path = ""
-
-    prefs.Prefs.__init__ = _blank_legacy
-    testcase.addCleanup(setattr, prefs.Prefs, "__init__", real_init)
 
     config = tempfile.mkdtemp(prefix="amaze_fixture_noconf_")
     testcase.addCleanup(shutil.rmtree, config, True)

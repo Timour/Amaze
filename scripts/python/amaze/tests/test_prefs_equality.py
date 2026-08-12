@@ -43,7 +43,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 #: they are about THIS machine or THIS moment, not about the settings.
 _VOLATILE = {
     "dir", "real_dir",          # a fixture points these at a temp folder
-    "path", "legacy_path",      # where the settings file itself lives
+    "path",                     # where the settings file itself lives
     "data",                     # the raw document, compared separately
 }
 
@@ -73,7 +73,6 @@ class PrefsCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, folder, True)
         p = prefs_mod.Prefs()
         p.path = folder
-        p.legacy_path = ""
         p.load()
         return p, folder
 
@@ -86,7 +85,6 @@ class PrefsCase(unittest.TestCase):
         p.save()
         again = prefs_mod.Prefs()
         again.path = folder
-        again.legacy_path = ""
         again.load()
 
         after = _answers(again)
@@ -126,7 +124,6 @@ class PrefsCase(unittest.TestCase):
         def save_load_read():
             live = prefs_mod.Prefs()
             live.path = folder
-            live.legacy_path = ""
             live.load()
             live.save()
             with open(settings, encoding="utf-8-sig") as handle:
