@@ -145,12 +145,9 @@ def apply_node_color(node, color) -> None:
         pass
 
 
-#: Redshift's terminal node types, measured 2026-08-09 on 21.0.729 with
-#: the plugin loaded: a `redshift_vopnet` ships a `redshift_material`
-#: and an `rs_usd_material_builder` a `redshift_usd_material`. Neither
-#: names its inputs - they are `Input 1`..`Input 8` - so there is no
-#: `surface` connector to look for, and the whole node IS the terminal.
-REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
+#: Re-exported from `core/material.py`, which is where it lives now so
+#: the preview engine can reach it without importing `amaze.render`.
+REDSHIFT_TERMINALS = material.REDSHIFT_TERMINALS
 
 
 def surface_terminal_wired(builder) -> bool:
@@ -2044,16 +2041,26 @@ class NodeHandler:
             # part that has to be all-or-nothing.
             scratch = hostos.unique_scratch(file_name)
             self._pending_cop_promote = (scratch, file_name)
-            staging.saveItemsToFile(
-                staging.allItems(), scratch,
-                save_hda_fallbacks=hda_fallbacks_needed(
-                    staging.allItems())
-            )
-            if not os.path.exists(scratch) or \
-                    os.path.getsize(scratch) == 0:
-                raise hou.OperationFailed(
-                    "the companion network file was not written (%s)"
-                    % file_name)
+            # THE SCRATCH IS DISCARDED ON ITS OWN FAILURE. The only
+            # other cleaner is `save_asset_pair`'s finally, and all
+            # four save paths call this BEFORE that - so when the write
+            # below fails, the 0-byte `.writing` file stayed in `mat/`,
+            # where Clean Library scans and an unowned file reads as an
+            # orphan (overview.md > nothing temporary belongs here).
+            try:
+                staging.saveItemsToFile(
+                    staging.allItems(), scratch,
+                    save_hda_fallbacks=hda_fallbacks_needed(
+                        staging.allItems())
+                )
+                if not os.path.exists(scratch) or \
+                        os.path.getsize(scratch) == 0:
+                    raise hou.OperationFailed(
+                        "the companion network file was not written (%s)"
+                        % file_name)
+            except Exception:
+                self._discard_pending_cop_promote()
+                raise
         finally:
             with hou.undos.disabler():
                 staging_parent.destroy()
@@ -2153,12 +2160,17 @@ class NodeHandler:
         info = getattr(mat, "cop_net", {}) or {}
         if not info or not info.get("name"):
             return
-        file_name = (
-            self._preferences.dir
-            + self._preferences.asset_dir
-            + mat.mat_id
-            + "_cop"
-            + self._preferences.ext
+        # THE ONE COMPOSITION, the same call the WRITER uses in
+        # `prepare_cop_companion`. This read was the last hand-built
+        # `dir + asset_dir + id + suffix` in this file, and it agrees
+        # with the writer only while `prefs.dir` carries its trailing
+        # separator - an invariant applied in `Prefs.save()` and
+        # nowhere near here. When it does not, the companion is written
+        # to one path and looked for at another, the material imports
+        # with no COP network, and the `op:` textures resolve to
+        # nothing.
+        file_name = material.payload_path(
+            self._preferences, mat.mat_id, "_cop" + self._preferences.ext
         )
         if not os.path.exists(file_name):
             debug.note("COP companion file missing for " + mat.name + " - skipped")

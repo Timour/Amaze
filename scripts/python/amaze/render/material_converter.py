@@ -83,7 +83,7 @@ def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
     uses (find "whatever material node exists") for networks with no
     output node or an unwired Surface input."""
     for child in vopnet.children():
-        if child.type().name() == "redshift_material":
+        if child.type().name() in material.REDSHIFT_TERMINALS:
             inputs = child.inputs()
             if inputs and inputs[0] is not None:
                 tname = inputs[0].type().name()
@@ -96,7 +96,7 @@ def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
             break
     for child in vopnet.children():
         tname = child.type().name()
-        if tname == "redshift_material":
+        if tname in material.REDSHIFT_TERMINALS:
             continue
         if "Material" in tname or "PBR" in tname:
             return child
@@ -1814,7 +1814,7 @@ def convert_redshift_material(
         # shader would silently not be saved at all).
         out_node = None
         for child in vopnet.children():
-            if child.type().name() == "redshift_material":
+            if child.type().name() in material.REDSHIFT_TERMINALS:
                 out_node = child
                 break
         out_inputs = _named_inputs(out_node) if out_node is not None else {}

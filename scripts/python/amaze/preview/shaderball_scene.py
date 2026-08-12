@@ -5,6 +5,7 @@ Generates a ShaderBall Scene and allows for Rendering Material Preview
 import hou
 
 from amaze.core import debug
+from amaze.core import material
 
 
 class ShaderBallSetup:
@@ -114,7 +115,7 @@ class ShaderBallSetup:
             if rsmat is None:
                 for child in self.mat.children():
                     tname = child.type().name()
-                    if tname == "redshift_material":
+                    if tname in material.REDSHIFT_TERMINALS:
                         continue
                     if "Material" in tname or "PBR" in tname:
                         rsmat = child
@@ -123,7 +124,7 @@ class ShaderBallSetup:
                 rsmat = self.mat.createNode("redshift::StandardMaterial")
                 out = None
                 for child in self.mat.children():
-                    if child.type().name() == "redshift_material":
+                    if child.type().name() in material.REDSHIFT_TERMINALS:
                         out = child
                         break
                 if out is not None:

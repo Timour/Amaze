@@ -829,6 +829,52 @@ class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
             "test can no longer see its subject")
 
 
+class BothRedshiftTerminalsAreLookedFor(unittest.TestCase):
+    """`nodes.REDSHIFT_TERMINALS` names two node types because there
+    are two: a `redshift_vopnet` ships a `redshift_material` and an
+    `rs_usd_material_builder` a `redshift_usd_material`.
+
+    Five sites tested the first literal only, so on the USD flavour the
+    converter found no output node at all and its displacement branch
+    could not run - while the report still said the material converted
+    cleanly. Source-derived because the functional case needs Redshift,
+    which resolves on H21 only and is skipped on the suite's H22
+    (practice.md > A TEST SKIPPED ON EVERY MAJOR IS DEAD COVER)."""
+
+    def _sources(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for folder, _dirs, files in os.walk(root):
+            if "tests" in folder or "__pycache__" in folder:
+                continue
+            for name in files:
+                if name.endswith(".py"):
+                    path = os.path.join(folder, name)
+                    with open(path, encoding="utf-8") as handle:
+                        yield name, handle.read()
+
+    def test_the_constant_names_both(self):
+        from amaze.render import nodes
+        self.assertEqual(("redshift_material", "redshift_usd_material"),
+                         nodes.REDSHIFT_TERMINALS)
+
+    def test_no_source_compares_against_the_bare_literal(self):
+        offenders = []
+        for name, source in self._sources():
+            if name == "nodes.py":
+                continue          # where the constant is defined
+            for number, line in enumerate(source.splitlines(), 1):
+                if line.strip().startswith("#"):
+                    continue
+                if '"redshift_material"' not in line:
+                    continue
+                if "==" in line or "!=" in line:
+                    offenders.append("%s:%d" % (name, number))
+        self.assertEqual(
+            [], offenders,
+            "a terminal is matched against one literal, so the USD "
+            "flavour is invisible there: %s" % offenders)
+
+
 class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
     """`hou.PermissionError` is a SIBLING of `hou.OperationFailed`, not
     a subclass - both derive from `hou.Error` (research.md, #296).

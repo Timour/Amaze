@@ -356,4 +356,18 @@ def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
         debug.event("thumb", "karma thumbnail written",
                     asset_id=str(asset_id), **debug.image_stats(png_path))
 
+    # THE OUTPUT IS CHECKED, not assumed. The EXR is verified above and
+    # then the conversion runs; this function returned True regardless
+    # of whether the PNG appeared, so a copnet that would not cook, an
+    # unwritable `img/` or a rejected OCIO string read as success. A
+    # failed render keeps the OLD thumbnail, so the tile shows the
+    # previous image and nothing anywhere said the new one never
+    # happened - the same reason `thumbs._rendered` exists for the
+    # other three renderers. The measurement above cannot do this job:
+    # it only runs under Debug Mode.
+    if not os.path.exists(png_path) or os.path.getsize(png_path) == 0:
+        debug.event("thumb", "karma produced no PNG",
+                    asset_id=str(asset_id), path=png_path)
+        return False
+
     return True

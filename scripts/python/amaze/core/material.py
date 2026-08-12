@@ -8,6 +8,19 @@ import re
 import uuid
 import datetime
 
+#: Redshift's terminal node types, measured 2026-08-09 on 21.0.729 with
+#: the plugin loaded: a `redshift_vopnet` ships a `redshift_material`
+#: and an `rs_usd_material_builder` a `redshift_usd_material`. Neither
+#: names its inputs - they are `Input 1`..`Input 8` - so there is no
+#: `surface` connector to look for, and the whole node IS the terminal.
+#:
+#: HERE rather than in `render/nodes.py`, where it was: the preview
+#: engine needs it too and imports only `amaze.core` and
+#: `amaze.helpers`, never `amaze.render`. Five sites tested the first
+#: literal alone, so every `rs_usd_material_builder` was invisible to
+#: them - `nodes` re-exports this name so its own callers are unchanged.
+REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
+
 
 #: THE MIXED-SELECTION SENTINEL - what an edit field shows when the
 #: selected assets disagree, and what set_assetdata reads as the
