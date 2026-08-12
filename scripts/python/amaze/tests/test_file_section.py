@@ -1247,6 +1247,46 @@ class HoudiniPathTest(unittest.TestCase):
                          "a RENAME minted a new identity - everything "
                          "already tagged would be orphaned")
 
+    def test_the_user_row_switches_between_the_librarys_users(self):
+        """Preferences > Library carries a dropdown over the LIBRARY's
+        users, so one person moving to their other machine picks
+        themselves instead of becoming a stranger."""
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        p = test_support.fixture_prefs(self)
+        first = users.create(p, "Cobalt")
+        second = users.create(p, "Sienna")
+        p.library_user = first
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        combo = dlg.cbb_library_user
+        listed = {combo.itemText(i) for i in range(combo.count())}
+        self.assertIn("Cobalt", listed)
+        self.assertIn("Sienna", listed)
+        self.assertEqual("Cobalt", combo.currentText(),
+                         "the box opened on somebody else")
+        combo.setCurrentIndex(combo.findData(second))
+        self.assertEqual(second, p.library_user,
+                         "picking a user did not switch this machine")
+
+    def test_the_edit_button_renames_without_minting(self):
+        """A rename relinks the label on the SAME UID - everything
+        already tagged stays tagged."""
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        p = test_support.fixture_prefs(self)
+        uid = users.create(p, "Cobalt")
+        p.library_user = uid
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        dlg.rename_library_user("  Sienna  ")
+        self.assertEqual("Sienna", users.name_for(p, uid))
+        self.assertEqual(uid, p.library_user,
+                         "the rename minted a new identity")
+        self.assertEqual("Sienna", dlg.cbb_library_user.currentText(),
+                         "the dropdown still shows the old name")
+        self.assertEqual(1, len(users.all_users(p)))
+
     def test_the_default_style_pins_home(self):
         """Preferences > Write Paths As defaults to $HOME (the
         decided default): a path under $HIP still says $HOME/...

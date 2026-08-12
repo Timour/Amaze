@@ -6,6 +6,7 @@ content-hugging fixed size, OK/Cancel) lives in dialogs/base_dialog.py.
 """
 
 from amaze import branding
+from amaze.dialogs import base_dialog
 from amaze.dialogs.base_dialog import AssetDialog
 
 
@@ -31,16 +32,10 @@ class GradientDialog(AssetDialog):
 
 
 
-class CategoryDialog(AssetDialog):
-    """Minimal name-input dialog - replaces hou.ui.readInput, whose
-    native dialog carries an unwanted "i" icon and separator lines."""
+class CategoryDialog(base_dialog.NameDialog):
+    """The shared name input, with this section's default title. The
+    body moved to `base_dialog.NameDialog` unchanged so Preferences
+    could ask for a name without importing the Colors dialogs."""
 
     def __init__(self, title: str = "Add Gradient Category") -> None:
         super().__init__(title)
-        self.name = ""
-        self._line_name = self.add_line("Name")
-        self.finish()
-
-    def _on_accept(self) -> None:
-        self.name = self._line_name.text().strip()
-        super()._on_accept()

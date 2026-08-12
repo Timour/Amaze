@@ -23,6 +23,7 @@ from PySide6.QtGui import QCloseEvent
 
 from amaze import branding
 from amaze.core import debug, library_policy, texture_library, users
+from amaze.dialogs import base_dialog
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -166,19 +167,54 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addStretch()
         return page, form
 
-    def _save_library_user(self) -> None:
-        """RENAME the current user. The typed text is a NAME, so this
-        relinks one label on the UID and moves nothing that is tagged
-        with it - not a rekey, not a migration, one field.
+    def _reload_library_users(self) -> None:
+        """Fill the picker and select the current user.
 
-        A blank box is ignored rather than stored: a user nothing can
-        display is indistinguishable from absence in a picker.
+        UNDER `blockSignals`, and that is not defensive: the FIRST
+        `addItem` on an empty combo emits `currentIndexChanged(0)` and
+        `clear()` emits `(-1)`, so a plain repopulate would run the
+        handler twice and store whoever sorts first - building the
+        dialog would silently switch the user (research.md ▸ Qt widgets,
+        measured).
         """
+        combo = self.cbb_library_user
         uid = users.current(self._prefs)
+        combo.blockSignals(True)
+        try:
+            combo.clear()
+            for user_id, name in sorted(users.all_users(self._prefs).items(),
+                                        key=lambda pair: pair[1].lower()):
+                combo.addItem(name, user_id)
+            combo.setCurrentIndex(max(combo.findData(uid), 0) if uid else -1)
+        finally:
+            combo.blockSignals(False)
+        self._btn_edit_user.setEnabled(bool(uid))
+
+    def _pick_library_user(self, index: int) -> None:
+        """Switch this machine to the chosen user - what the second
+        machine does instead of becoming a stranger."""
+        uid = self.cbb_library_user.itemData(index)
         if uid:
-            users.rename(self._prefs, uid, self.line_library_user.text())
-        self.line_library_user.setText(
-            users.name_for(self._prefs, uid) if uid else "")
+            users.adopt(self._prefs, uid)
+            self._btn_edit_user.setEnabled(True)
+
+    def rename_library_user(self, name: str) -> None:
+        """Relink the current user's NAME. The UID is untouched, so
+        everything already tagged stays tagged - one field write, not a
+        migration."""
+        uid = users.current(self._prefs)
+        if uid and users.rename(self._prefs, uid, name):
+            self._reload_library_users()
+
+    def _ask_rename_library_user(self) -> None:
+        uid = users.current(self._prefs)
+        if not uid:
+            return
+        dialog = base_dialog.NameDialog(
+            "Rename User", users.name_for(self._prefs, uid))
+        dialog.exec()
+        if not dialog.canceled:
+            self.rename_library_user(dialog.name)
 
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the library's overwrite policy - to the LIBRARY.
@@ -270,26 +306,28 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
-        # The box shows the NAME, never the UID: the UID is what
-        # everything is tagged with, and a person should no more read it
-        # than they read an IP address. A library with nobody in it
-        # mints its first user right here rather than promising one
-        # later; a library that already HAS users and does not know this
-        # machine answers None, and the box stays empty until the picker
-        # is built (ROADMAP line 21 - dropdown and edit button next).
-        _uid = users.current(self._prefs)
-        self.line_library_user = QtWidgets.QLineEdit(
-            users.name_for(self._prefs, _uid) if _uid else "")
-        self.line_library_user.setToolTip(ui_helpers.tooltip_text(
-            "Who you are in this library. Your favorites and your own "
-            "settings are saved under this name, so the same name on "
-            "another computer gives you the same things back - and two "
-            "people sharing one library keep theirs apart. It also "
-            "signs the versions you save. Never taken from your "
-            "computer's user or machine name."))
-        self.line_library_user.editingFinished.connect(
-            self._save_library_user)
-        form.addRow(self._label("User"), self.line_library_user)
+        # Shows the NAME, never the UID: the UID is what everything is
+        # tagged with, and a person should no more read it than they
+        # read an IP address.
+        self.cbb_library_user = QtWidgets.QComboBox()
+        self.cbb_library_user.setToolTip(ui_helpers.tooltip_text(
+            "Who you are in this library. Your favorites and your "
+            "folders are saved under you, so the same user on another "
+            "computer gives you the same things back - and two people "
+            "sharing one library keep theirs apart. It also signs the "
+            "versions you save. Never taken from your computer's user "
+            "or machine name."))
+        self._btn_edit_user = QtWidgets.QPushButton("Rename")
+        self._btn_edit_user.setToolTip(ui_helpers.tooltip_text(
+            "Change the name shown for this user. Only the name "
+            "changes - your favorites and folders stay yours."))
+        self._btn_edit_user.clicked.connect(self._ask_rename_library_user)
+        self._reload_library_users()
+        self.cbb_library_user.currentIndexChanged.connect(
+            self._pick_library_user)
+        form.addRow(self._label("User"),
+                    self._path_row(self.cbb_library_user,
+                                   self._btn_edit_user))
 
         self._add_divider(form)
         self.line_cache = QtWidgets.QLineEdit(
