@@ -38,19 +38,17 @@ from amaze.prefs.persistence import (
 #: left in an existing test folder is inert.
 TEST_LIB_SUBDIR = "lib"
 
-#: WHO a library that has never had a user starts out belonging to.
+#: `DEFAULT_LIBRARY_USER` LIVED HERE AND IS GONE (2026-08-12). It was a
+#: fixed name every install started at, so two untouched machines would
+#: agree; the identity is a UID now, and a library with no users mints
+#: one from `users.PLACEHOLDER_NAMES` while a library that HAS users
+#: asks which one this machine is. The prompt does the job the fixed
+#: default was doing, and does it better - two real people are told
+#: apart on sight, where two `Artist`s could not be.
 #:
-#: THE SAME STRING ON EVERY INSTALL, and that is the whole point. The
-#: versions placeholder mints a colour name per MACHINE so two machines
-#: can never write one filename; an identity that KEYS a user's things
-#: across their machines needs the opposite, so two untouched installs
-#: must agree until somebody says otherwise. Picking per machine here
-#: would guarantee the split this identity exists to remove.
-#:
-#: Not harvested and not personal - a role, visible in Preferences and
-#: renameable on sight. `hostos.machine_name()`, `platform.node`,
-#: `getpass` and `$USER` are banned from this whole package.
-DEFAULT_LIBRARY_USER = "Artist"
+#: Naming a user is `core/users.py`'s, not this file's. What stays here
+#: is the ban it inherits: `hostos.machine_name()`, `platform.node`,
+#: `getpass` and `$USER` may never reach an identity, in either module.
 
 
 def test_library_dir(folder: str) -> str:
@@ -194,8 +192,9 @@ class Prefs(_Persistence):
         # platform.node, getpass and $USER are all banned from this path:
         # an auto-harvested name puts a real person's identity into a
         # library that may be shared, without them choosing it. Blank
-        # means nobody has chosen yet; `resolve_library_user` answers what
-        # to actually key on, and never answers blank.
+        # means nobody has been picked on this machine yet, which
+        # `users.current(prefs)` answers - by minting when the library
+        # has nobody, and by asking when it already has people.
         self._library_user = ""
         # The File section (the 2026-07-31 merge of Images, Geometry
         # and HIP): one folder/favorite/last/subfolders quartet, and
@@ -554,41 +553,24 @@ class Prefs(_Persistence):
 
     @property
     def library_user(self) -> str:
-        """WHO this is. Chosen, never harvested.
+        """WHICH user this machine is, for the current library: a UID.
 
-        The STORED value, which may be blank - blank means nobody has
-        picked yet. Anything keying on the identity calls
-        `resolve_library_user()` instead, which never answers blank.
+        A POINTER, NOT A NAME. The name lives on the user's record in
+        the library, so a rename relinks one label and moves nothing
+        that is tagged. Blank means nobody has been picked here yet.
+
+        THIS FILE CANNOT RESOLVE IT, and that is the split. Answering
+        "who am I" may require MINTING a user into the library, which is
+        `core/users.py`'s job - `users.current(prefs)`, which also
+        answers None when the caller must ask rather than guess. Prefs
+        holds the pointer and knows nothing about who it points at, the
+        same way it holds `directory` without knowing what is in it.
         """
         return self._library_user
 
     @library_user.setter
     def library_user(self, value: str) -> None:
         self._library_user = str(value or "").strip()
-
-    def resolve_library_user(self) -> str:
-        """The identity to actually key on, never blank, saved back once
-        so the answer stops changing.
-
-        A BLANK PREFERENCE MUST NOT REACH A STORE AS A KEY. It would
-        file every install that has not picked a name under one bucket
-        called `""` - and that bucket is not a shared USER, it is an
-        absent one, which nothing downstream can tell apart from a real
-        person who happens to have no favourites yet.
-
-        The default is the same on every install (`DEFAULT_LIBRARY_USER`)
-        rather than minted per machine: see that constant.
-        """
-        if not self._library_user:
-            self._library_user = DEFAULT_LIBRARY_USER
-            try:
-                self.save()
-            except (AttributeError, OSError):
-                # A prefs that cannot hold it still answers - the caller
-                # gets a real key, and the next call defaults again.
-                # Never a blank, which is the one outcome that corrupts.
-                pass
-        return self._library_user
 
     @property
     def material_favorites(self) -> list[str]:

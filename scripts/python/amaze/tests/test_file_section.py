@@ -1226,21 +1226,26 @@ class HoudiniPathTest(unittest.TestCase):
         resolves to the shipped default RIGHT THERE and shows it; the
         box never promises a name for later. Typing your own persists
         it."""
-        from amaze.prefs import prefs as prefs_mod
+        from amaze.core import users
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         shown = dlg.line_library_user.text()
-        self.assertEqual(prefs_mod.DEFAULT_LIBRARY_USER, shown,
-                         "a fresh prefs must show the shipped default, "
-                         "not a blank and not a per-machine pick")
-        self.assertEqual(shown, p.library_user,
-                         "the shown name must be the persisted one")
+        self.assertIn(shown, users.PLACEHOLDER_NAMES,
+                      "a library with nobody in it must mint its first "
+                      "user right here and show the NAME")
+        uid = p.library_user
+        self.assertNotEqual(shown, uid,
+                            "the box is showing the UID - a person no "
+                            "more reads that than an IP address")
         dlg.line_library_user.setText("  MyOwnName  ")
         dlg._save_library_user()
-        self.assertEqual("MyOwnName", p.library_user,
-                         "typed name (trimmed) did not reach prefs")
+        self.assertEqual("MyOwnName", users.name_for(p, uid),
+                         "typed name (trimmed) did not relink the UID")
+        self.assertEqual(uid, p.library_user,
+                         "a RENAME minted a new identity - everything "
+                         "already tagged would be orphaned")
 
     def test_the_default_style_pins_home(self):
         """Preferences > Write Paths As defaults to $HOME (the

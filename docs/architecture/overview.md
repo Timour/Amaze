@@ -387,7 +387,8 @@ store that keeps per-key choices beside the thing they belong to.
   is the one that fails loudly — `--strict` reports an undeclared file
   as UNKNOWN and exits 1.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
-  the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), and
+  the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
+  **User store** (`core/users.py` → `users.json`), and
   the **Location record** and **File favourites**
   (`core/locations.py` → `locations.json`, `favourites.json`).
   All four are files IN THE LIBRARY. The last two were views onto
@@ -825,6 +826,7 @@ non-zero, so it can gate).
 | entry | what it is |
 |---|---|
 | `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id` |
+| `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key. A library with no users mints its first from a colour-name pool; a library that HAS users asks a new machine which of them it is, rather than silently minting a second identity for one person |
 | `notes.json` `icons.json` `locations.json` `favourites.json` | the four keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations and its starred files). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |

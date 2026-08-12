@@ -22,7 +22,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
 from amaze import branding
-from amaze.core import debug, library_policy, texture_library
+from amaze.core import debug, library_policy, texture_library, users
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -167,12 +167,18 @@ class PrefsDialog(QtWidgets.QDialog):
         return page, form
 
     def _save_library_user(self) -> None:
-        """WHO this is. Saved as typed; cleared to blank means nobody
-        has picked, and `resolve_library_user` answers the shipped
-        default from then on rather than keying anything under a blank.
+        """RENAME the current user. The typed text is a NAME, so this
+        relinks one label on the UID and moves nothing that is tagged
+        with it - not a rekey, not a migration, one field.
+
+        A blank box is ignored rather than stored: a user nothing can
+        display is indistinguishable from absence in a picker.
         """
-        self._prefs.library_user = self.line_library_user.text()
-        self._prefs.save()
+        uid = users.current(self._prefs)
+        if uid:
+            users.rename(self._prefs, uid, self.line_library_user.text())
+        self.line_library_user.setText(
+            users.name_for(self._prefs, uid) if uid else "")
 
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the library's overwrite policy - to the LIBRARY.
@@ -264,13 +270,16 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
-        # The box shows the REAL name, always: a blank pref resolves to
-        # the shipped default right here, not promised for later. The
-        # box is a plain line for now and becomes a dropdown over the
-        # LIBRARY's users, with an edit button, once the store that can
-        # list them exists (ROADMAP line 21).
+        # The box shows the NAME, never the UID: the UID is what
+        # everything is tagged with, and a person should no more read it
+        # than they read an IP address. A library with nobody in it
+        # mints its first user right here rather than promising one
+        # later; a library that already HAS users and does not know this
+        # machine answers None, and the box stays empty until the picker
+        # is built (ROADMAP line 21 - dropdown and edit button next).
+        _uid = users.current(self._prefs)
         self.line_library_user = QtWidgets.QLineEdit(
-            self._prefs.resolve_library_user())
+            users.name_for(self._prefs, _uid) if _uid else "")
         self.line_library_user.setToolTip(ui_helpers.tooltip_text(
             "Who you are in this library. Your favorites and your own "
             "settings are saved under this name, so the same name on "

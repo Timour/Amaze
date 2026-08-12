@@ -299,25 +299,27 @@ class StoreTest(_Case):
         self.assertEqual("Chosen", versions.list_versions(
             self.prefs, self.mat_id)[0]["author"])
 
-    def test_no_user_takes_the_shipped_default_never_harvested(self):
-        """A blank identity resolves to `DEFAULT_LIBRARY_USER`, saved to
-        prefs on sight - never the OS user, never the machine name.
+    def test_no_user_mints_one_on_a_colour_name_never_harvested(self):
+        """A library with nobody in it mints its first user from the
+        colour pool and signs with that name - never the OS user, never
+        the machine name.
 
-        THE COLOUR PLACEHOLDER IS GONE and this test changed with it.
-        It minted per MACHINE so two untouched installs signed different
-        filenames; the same field now keys one user's things ACROSS
-        their machines, which needs the opposite. What did NOT change is
-        the identity ban, which is the half worth keeping - and the
-        resolve-once behaviour, which the second create still pins.
+        THE MINT'S UNIT CHANGED AND THIS TEST WITH IT. It used to be per
+        MACHINE, so two untouched installs signed different filenames;
+        it is now once per LIBRARY for its first user, because an
+        identity that keys one person's things across their machines
+        needs the opposite. The identity ban did not change, and the
+        second create still pins that it resolves ONCE.
         """
         import getpass
         import platform
-        from amaze.prefs import prefs as prefs_mod
+        from amaze.core import users
         versions.create_version(self.prefs, self.mat_id)
         author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
-        self.assertEqual(prefs_mod.DEFAULT_LIBRARY_USER, author)
-        self.assertEqual(author, self.prefs.library_user,
-                         "the resolved name must persist in prefs")
+        self.assertIn(author, users.PLACEHOLDER_NAMES)
+        self.assertEqual(author,
+                         users.name_for(self.prefs, self.prefs.library_user),
+                         "prefs must point at the UID whose name signed")
         for harvested in (getpass.getuser(), platform.node(),
                           os.environ.get("USER", "")):
             if harvested:
@@ -350,6 +352,10 @@ class VersionFilesCarryTheirWriterTest(_Case):
             os.path.exists(os.path.join(folder, "Crimson-1.mat")))
 
     def test_two_writers_same_number_never_collide(self):
+        """TWO DIFFERENT PEOPLE, which under the UID scheme means two
+        real user records - the second writer is not a machine that
+        retyped a name, it is somebody the library knows about."""
+        from amaze.core import users
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         ledger_path = os.path.join(
@@ -358,7 +364,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         with open(ledger_path, encoding="utf-8") as fh:
             frozen = fh.read()
         self._rewrite_base(b"MACHINE B EDIT")
-        self.prefs.library_user ="Cobalt"
+        self.prefs.library_user = users.create(self.prefs, "Cobalt")
         versions.create_version(self.prefs, self.mat_id)
         # The other machine never saw B's ledger write - put A's back,
         # exactly what a sync's last-write-wins does.

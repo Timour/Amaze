@@ -30,15 +30,15 @@ import re
 import shutil
 import time
 
-from amaze.core import debug
+from amaze.core import debug, users
 from amaze.helpers import hostos
 
 #: THE COLOUR-NAME PLACEHOLDER POOL IS GONE (2026-08-12, ROADMAP line
 #: 21). It minted a name per MACHINE so two machines with untouched
 #: settings signed different filenames - correct for filenames, and
 #: exactly wrong for an identity that keys one user's things ACROSS
-#: their machines. `prefs.DEFAULT_LIBRARY_USER` replaces it and is the
-#: same string everywhere.
+#: their machines. It lives in `core/users.py` now and is minted once
+#: per LIBRARY for its first user, never per machine.
 #:
 #: WHAT THAT COSTS, narrowly: the both-machines-offline window widens
 #: for users who never set a name and were being protected by the
@@ -243,19 +243,26 @@ def _base_paths(preferences, mat_id: str) -> dict:
 
 
 def writer_tag(preferences) -> str:
-    """The signature version FILES carry: the ONE identity,
-    `library_user`, which also keys everything stored per user in the
-    library. Never the OS user, never the machine name.
+    """The signature version FILES carry: the current user's NAME.
 
-    ONE FIELD, NOT TWO (ROADMAP line 21). Signing with a per-machine
-    name and keying with a per-user one meant one person's two machines
-    could never agree, and a name that differs per machine is not what
-    makes two writers safe here: stepping past a stem already on disk
-    is (see `create`)."""
+    THE UID IDENTIFIES, THE NAME SIGNS. Everything a user owns is tagged
+    with their UID, but a stem of `a3f9c2e8b1d4-1.mat` is unreadable and
+    would match no `Plum-<n>` already on disk, so this resolves the UID
+    to the name and signs with that. A later rename leaves old versions
+    reading as the old name, which is correct - that IS who wrote them,
+    and the ledger records the stem it wrote rather than re-deriving it.
+
+    Empty when there is no user yet: a second machine that has not
+    picked one signs nothing rather than inventing somebody, and `_stem`
+    emits the bare `<n>` form. Never the OS user, never the machine
+    name."""
     try:
-        author = preferences.resolve_library_user()
-    except AttributeError:
+        uid = users.current(preferences)
+    except (AttributeError, OSError):
         return ""
+    if not uid:
+        return ""
+    author = users.name_for(preferences, uid)
     return "".join(ch for ch in str(author or "") if ch.isalnum())[:24]
 
 
@@ -434,10 +441,17 @@ def create_version(preferences, mat_id: str, name: str = "",
     if not _copy_set(sources,
                      _archive_paths(preferences, mat_id, stem)):
         return 0
+    # THE NAME, NOT THE UID - and it is FROZEN here rather than resolved
+    # at read time. Two reasons: the stem beside it froze the same name,
+    # so resolving would make the dialog and the filename disagree after
+    # a rename; and a row that outlives its user record still says who
+    # wrote it, where a bare UID would leave the version unattributable.
     author = ""
     try:
-        author = preferences.library_user
-    except AttributeError:
+        writer = users.current(preferences)
+        if writer:
+            author = users.name_for(preferences, writer)
+    except (AttributeError, OSError):
         pass
     ledger["versions"].append({
         "n": number,

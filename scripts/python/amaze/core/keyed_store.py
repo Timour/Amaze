@@ -429,6 +429,39 @@ register(
 )
 
 register(
+    filename="users.json",
+    payload="users",
+    # A UID. The NAME is a field on the record, never the key - so a
+    # rename relinks one label and moves nothing that is tagged with
+    # the UID. Same shape as an asset: uuid4 in the key, name beside it.
+    keyspace=KEY_ID,
+    label="Users",
+    noun="user",
+    category="users",
+    alert_key="users-unreadable",
+    unreadable_alert=(
+        "The list of people using this library could not be read, so "
+        "Amaze will not save over it.\n\n"
+        "Nothing has been lost. Amaze is working without a user for "
+        "now, so anything you star or register this session will not "
+        "be kept.\n\n"
+        "Close Houdini and put back a recent copy with the Repair tool "
+        "in the Amaze shelf."),
+    refused_sentence=(
+        "the list of people using this library could not be read "
+        "earlier this run, so your change was not saved - writing now "
+        "would replace everyone already in it."),
+    denied_alert=(
+        "Your user could not be saved to the library.\n\n"
+        "Amaze is still using it for this session, so nothing you do "
+        "now is lost from view - but the next session will not know "
+        "about it, and anything you star will be filed under nobody."),
+    # A user OUTLIVES a location being removed: the person is not a
+    # property of a folder they happened to register.
+    survives_forget=True,
+)
+
+register(
     filename="icons.json",
     payload="icons",
     # Bare absolute paths for File rows and bare asset ids for the

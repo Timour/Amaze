@@ -1241,36 +1241,21 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
         p.save()
         self.assertEqual("Chosen Name", self._prefs_at(home).library_user)
 
-    def test_a_blank_one_never_answers_as_a_key(self):
-        """THE TRAP. A blank preference used as a key files every
-        install under one bucket named `""` - which is not a shared
-        USER, it is an absent one, and nothing downstream can tell those
-        apart. `version_author` proves the trap is real: a blank pref
-        mints a name on sight, so nothing records whether the string was
-        chosen or invented. The resolver answers a real name or the
-        caller keys nothing.
+    def test_prefs_cannot_resolve_the_identity_itself(self):
+        """THE SPLIT. Answering *who am I* can require MINTING a user
+        into the library, and this file holds a pointer without knowing
+        what it points at - the same way it holds `directory` without
+        knowing what is in it. A resolver here would have to reach the
+        library from inside the preferences object.
         """
         p = self._prefs_at(self._home())
-        for blank in ("", "   ", None):
-            p.library_user = blank
-            self.assertTrue(
-                p.resolve_library_user(),
-                "a blank library_user resolved to something falsy - "
-                "every install would key into one bucket")
-
-    def test_a_fresh_install_answers_the_same_name_everywhere(self):
-        """NOT the versions placeholder, which mints per MACHINE - the
-        one thing an identity keyed ACROSS machines must not do. Two
-        untouched installs agree until somebody says otherwise.
-        """
-        one = self._prefs_at(self._home("amaze_user_one_"))
-        two = self._prefs_at(self._home("amaze_user_two_"))
-        self.assertEqual(one.resolve_library_user(),
-                         two.resolve_library_user(),
-                         "two untouched installs minted different "
-                         "identities - the split this line removes")
-        self.assertEqual(prefs.DEFAULT_LIBRARY_USER,
-                         one.resolve_library_user())
+        self.assertFalse(hasattr(p, "resolve_library_user"),
+                         "prefs grew an identity resolver again - "
+                         "minting belongs to core/users.py")
+        self.assertFalse(hasattr(prefs, "DEFAULT_LIBRARY_USER"),
+                         "a fixed default name is back; a library with "
+                         "no users mints a colour name, and one WITH "
+                         "users asks which of them this machine is")
 
     def test_an_existing_version_author_is_adopted(self):
         """The minted name BECOMES the user. Every `Plum-<n>` stem
@@ -1298,14 +1283,10 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                          "the retired key survived a save")
         self.assertEqual("Plum", stored.get("library_user"))
 
-    def test_versions_sign_with_the_same_field(self):
-        """One identity, used for both. The tag version FILES carry
-        comes from the field favourites are keyed by, not a second one.
-        """
-        from amaze.core import versions
-        p = self._prefs_at(self._home())
-        p.library_user = "Ultramarine"
-        self.assertEqual("Ultramarine", versions.writer_tag(p))
+    # Signing is `TheUserIsAUidWithANameTest` now: it needs a real
+    # library, because resolving a UID to its name reads a store. A
+    # copy here would have run with `dir` unset and written a
+    # `users.json` into the working directory.
 
     def test_no_identity_source_touches_the_author_path(self):
         """Source-derived ban: machine_name, platform.node, getpass and
@@ -1320,17 +1301,27 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
         where the `version_author` adoption reads. Scanning a single
         module would have left that half uncovered - and would have kept
         PASSING while it did, which is how a guard becomes decoration.
+
+        **AND IT NOW WALKS `core/users.py` TOO**, which is where naming
+        a user actually happens since the identity became a UID. The
+        minting moved out of this package on 2026-08-12 and the ban did
+        not follow it for one commit - a guard pointed at the module the
+        risk used to live in is the same decoration by another route.
         """
         import io
         import os
         import tokenize
+        from amaze.core import users
         folder = os.path.dirname(os.path.abspath(prefs.__file__))
+        paths = [os.path.join(folder, name)
+                 for name in sorted(os.listdir(folder))
+                 if name.endswith(".py")]
+        paths.append(os.path.abspath(users.__file__))
         checked = []
-        for name in sorted(os.listdir(folder)):
-            if not name.endswith(".py"):
-                continue
+        for path in paths:
+            name = os.path.basename(path)
             checked.append(name)
-            with open(os.path.join(folder, name), encoding="utf-8") as fh:
+            with open(path, encoding="utf-8") as fh:
                 raw = fh.read()
             # CODE only. The module's own comment names the banned
             # sources while explaining the ban - which is exactly what
@@ -1346,12 +1337,127 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                            'environ.get("USER"'):
                 self.assertNotIn(
                     banned, source,
-                    "%s appears in prefs/%s - an identity can be "
-                    "harvested into library_user" % (banned, name))
+                    "%s appears in %s - an identity can be harvested "
+                    "into a user's name" % (banned, name))
         # A walk that finds nothing passes silently: name what it must
         # have seen, so a rename cannot empty the ban.
         self.assertIn("prefs.py", checked)
         self.assertIn("persistence.py", checked)
+        self.assertIn("users.py", checked)
+
+
+class TheUserIsAUidWithANameTest(unittest.TestCase):
+    """A user is a UID and a NAME beside it. Everything a user owns is
+    tagged with the UID, never with the name they typed, so a rename
+    relinks one label and moves no data at all.
+
+    THE ASSET CONVENTION APPLIED TO PEOPLE. `material.py:164` mints a
+    `uuid4` into `id` and keeps `name` separate, which is exactly why
+    one favourites list is safe across libraries. A person is the same
+    shape, and the alternative - keying on the typed name - reintroduces
+    every problem ids were minted to remove.
+    """
+
+    def _prefs(self):
+        from amaze.tests import test_support
+        return test_support.fixture_prefs(self)
+
+    def test_creating_a_user_answers_a_uid_not_the_name(self):
+        from amaze.core import users
+        p = self._prefs()
+        uid = users.create(p, "Plum")
+        self.assertTrue(uid)
+        self.assertNotEqual("Plum", uid,
+                            "the tag is the typed name - a rename would "
+                            "then have to move every tagged row")
+        self.assertEqual("Plum", users.name_for(p, uid))
+
+    def test_renaming_keeps_the_uid(self):
+        """THE WHOLE POINT. Nothing tagged is touched by a rename."""
+        from amaze.core import users
+        p = self._prefs()
+        uid = users.create(p, "Plum")
+        users.rename(p, uid, "  Vermilion  ")
+        self.assertEqual("Vermilion", users.name_for(p, uid),
+                         "the new name is not linked to the same UID")
+        self.assertIn(uid, users.all_users(p),
+                      "the rename minted a second user")
+        self.assertEqual(1, len(users.all_users(p)))
+
+    def test_two_users_may_share_a_name(self):
+        """A name-keyed scheme cannot allow this; a UID-keyed one has
+        nothing to collide."""
+        from amaze.core import users
+        p = self._prefs()
+        first = users.create(p, "Plum")
+        second = users.create(p, "Plum")
+        self.assertNotEqual(first, second)
+        self.assertEqual(2, len(users.all_users(p)))
+
+    def test_the_current_user_is_a_uid_and_persists(self):
+        from amaze.core import users
+        p = self._prefs()
+        uid = users.current(p)
+        self.assertTrue(uid)
+        self.assertEqual(uid, p.library_user,
+                         "the machine-local pointer must hold the UID")
+        self.assertEqual(uid, users.current(p),
+                         "a second call minted a second identity")
+
+    def test_a_name_left_by_the_first_build_is_adopted_onto_a_uid(self):
+        """Step 1 shipped `library_user` holding a NAME. That install
+        keeps its name and gains a UID for it - it does not become a
+        second person, and its version stems still match."""
+        from amaze.core import users
+        p = self._prefs()
+        p.library_user = "Plum"
+        uid = users.current(p)
+        self.assertNotEqual("Plum", uid)
+        self.assertEqual("Plum", users.name_for(p, uid),
+                         "the existing name was dropped instead of "
+                         "carried onto the new UID")
+
+    def test_a_library_with_no_users_mints_one_on_a_colour_name(self):
+        """A brand-new library asks nobody anything. The colour mint is
+        back after step 1 deleted it, with its unit changed: once per
+        LIBRARY for its first user, never per machine."""
+        from amaze.core import users
+        p = self._prefs()
+        self.assertEqual(users.MINT, users.first_run_state(p))
+        uid = users.current(p)
+        self.assertIn(users.name_for(p, uid), users.PLACEHOLDER_NAMES)
+
+    def test_an_existing_library_asks_instead_of_minting(self):
+        """THE SECOND MACHINE. A library that already has users, met by
+        a machine whose pointer names none of them, must ASK - pick an
+        existing user or create one. Minting here silently turns one
+        person into two, which is the whole failure this prevents."""
+        from amaze.core import users
+        p = self._prefs()
+        users.create(p, "Plum")
+        p.library_user = ""
+        self.assertEqual(users.ASK, users.first_run_state(p))
+        self.assertIsNone(users.current(p),
+                          "it minted a second identity instead of "
+                          "asking which user this is")
+
+    def test_a_pointer_that_resolves_is_never_asked_again(self):
+        from amaze.core import users
+        p = self._prefs()
+        uid = users.create(p, "Plum")
+        p.library_user = uid
+        self.assertEqual(users.RESOLVED, users.first_run_state(p))
+        self.assertEqual(uid, users.current(p))
+
+    def test_versions_sign_with_the_readable_name(self):
+        """A stem of `a3f9c2e8-1.mat` is unreadable and would match no
+        `Plum-<n>` already on disk. The UID identifies; the NAME signs.
+        """
+        from amaze.core import users, versions
+        p = self._prefs()
+        uid = users.create(p, "Plum")
+        p.library_user = uid
+        self.assertEqual("Plum", versions.writer_tag(p))
 
 
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
