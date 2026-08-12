@@ -3,9 +3,8 @@ Reading and writing the preferences document.
 
 Everything that carries settings between memory and `settings.json`
 lives here: the save/load round trip, the field-wise merge with what
-another PANE of the same session wrote, the migration from older
-installs, the preservation of a file that will not parse, and the
-path encoding.
+another PANE of the same session wrote, the preservation of a file
+that will not parse, and the path encoding.
 
 `settings.json` is PER-MACHINE and never travels (INSTALL.md ▸
 "settings.json NEVER travels"); it moved to the OS preferences dir on
@@ -354,8 +353,15 @@ class _Persistence:
     #: below keeps a NEWER build's keys alive across a save - which
     #: would also resurrect these from an older file forever, so
     #: retirement must be said out loud, not implied by absence.
+    #:
     #: star_*: the star-colour rows left Preferences 2026-08-01 (the
     #: unified badge family renders the tile star as drawn).
+    #:
+    #: NOT emptied by the compatibility sweep. This is not code that
+    #: serves an older BUILD - it is a cleanup that has not finished
+    #: running, and settings.json is per-machine and never travels, so
+    #: a machine whose file still carries these keys only drops them
+    #: the next time this build saves there.
     _RETIRED_KEYS = ("star_color_mode", "star_custom_color")
 
     def _remember_disk_state(self, final: str) -> None:
@@ -526,8 +532,6 @@ class _Persistence:
         self.data["texture_folders"] = _encode_paths(self._texture_folders)
         self.data["texture_favorites"] = _encode_paths(self._texture_favorites)
         self.data["material_favorites"] = list(self._material_favorites)
-        self.data["material_favorites_adopted"] = (
-            self._material_favorites_adopted)
         self.data["version_author"] = self._version_author
         self.data["sidebar_counts"] = self._sidebar_counts
         self.data["ram_cache_mb"] = self._ram_cache_mb
@@ -812,8 +816,6 @@ class _Persistence:
         )
         self._material_favorites = [
             str(x) for x in data.get("material_favorites", [])]
-        self._material_favorites_adopted = bool(
-            data.get("material_favorites_adopted", False))
         self._version_author = str(data.get("version_author", "") or "")
         # Through the SETTERS, not straight onto the attribute. The
         # setters exist to validate these tokens and load() bypassed

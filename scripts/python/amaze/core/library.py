@@ -190,8 +190,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
 
         self._assets = [material.Material.from_dict(d) for d in self._data["assets"]]
         self._remember_content_state()
-        self._adopt_record_favorites()
-        self._adopt_record_icons()
 
         self._tags = self._data["tags"]
 
@@ -282,13 +280,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             ]
             # A reload is a fresh read of the library, content included.
             self._remember_content_state()
-            self._adopt_record_favorites()
-            # BOTH adoptions, like __init__. Only the favourites one ran
-            # here, so pointing Preferences at a library an older build
-            # wrote left every record-level icon unmigrated for the
-            # session - living on `tile_icon`'s fallback alone, which is
-            # the state in which clearing one does not stick.
-            self._adopt_record_icons()
             self._tags = self._data["tags"]
             self._usd_cache = {}
             self._shader_type_cache = {}
@@ -493,9 +484,8 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         # answers that case generally: such a build opens the library
         # read-only and is told to update, instead of quietly showing
         # a second copy of one value that is free to drift. Reading
-        # the field still happens (see tile_icon's fallback and
-        # _adopt_record_icons) - a library written by any older build
-        # still carries picks there.
+        # the field still happens (see tile_icon's fallback) - a
+        # library written by any older build still carries picks there.
         stored = tile_icons.set_override(
             self.preferences, str(asset.mat_id), spec)
         written = bool(stored)
@@ -507,11 +497,9 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             tile_icons.clear_for(self.preferences, asset.mat_id)
             # AND THE FALLBACK, or the clear cannot stick. Removing the
             # store key is the whole delete, and `tile_icon` then falls
-            # straight back to the record - which nothing else clears,
-            # `get_as_dict` re-serialises on every save, and
-            # `_adopt_record_icons` copies back into the store at the
-            # next panel open. So on any library an older build wrote,
-            # the icon was unclearable.
+            # straight back to the record - which nothing else clears
+            # and `get_as_dict` re-serialises on every save. So on any
+            # library an older build wrote, the icon was unclearable.
             #
             # Clearing is the one direction that may still write this
             # field. Setting stopped on 2026-08-09 because a second
@@ -1369,51 +1357,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         model_index = self.index(row, 0)
         self.row_changed(model_index.row(), [self.ActiveVersionRole])
         return True
-
-    def _adopt_record_favorites(self) -> None:
-        """One-time move of the record-level favourites into THIS user's
-        prefs. The material library was the one section whose favourite
-        lived on the SHARED record - in a multi-user library my star
-        toggled yours; the three folder sections were per-user all
-        along. The shared field stays on the rows exactly as loaded
-        (older builds keep reading it); it simply stops being what this
-        build reads or writes."""
-        try:
-            self.preferences.adopt_material_favorites(
-                [str(asset.mat_id) for asset in self._assets
-                 if asset.fav])
-        except AttributeError:
-            # A fixture prefs without the accessor - nothing to adopt.
-            pass
-
-    def _adopt_record_icons(self) -> None:
-        """One-time move of record-level tile icons into the shared
-        store (icons.json, keyed by the asset id beside the File
-        section's path keys) - ROADMAP, one icons.json for every
-        section. The record field stays EXACTLY as loaded: this build
-        no longer writes it (retired with LIBRARY_FORMAT 2), and
-        reading it is how a library from an older build keeps its
-        picks. Not deleted either - removing the only copy such a
-        build can read would make the move one-way for no gain. A spec
-        whose icon name this build does not ship is HELD on the record
-        rather than normalised away, for the same reason."""
-        moved = held = 0
-        for asset in self._assets:
-            raw = asset.icon
-            if not raw:
-                continue
-            spec = tile_icons.normalise(raw)
-            if not spec:
-                held += 1
-                continue
-            key = str(asset.mat_id)
-            if tile_icons.override_for(self.preferences, key):
-                continue
-            if tile_icons.set_override(self.preferences, key, spec):
-                moved += 1
-        if moved or held:
-            debug.event("icons", "record icons adopted into the store",
-                        db=self.DB_FILENAME, moved=moved, held=held)
 
     _SCRATCH_TAILS = (".writing", ".capturing", ".tmp", ".part", ".new")
     _SCRATCH_MIN_AGE = 60 * 60

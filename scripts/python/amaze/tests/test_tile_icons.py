@@ -165,9 +165,8 @@ class ChoiceTest(unittest.TestCase):
     def test_an_icon_from_an_OLDER_library_can_be_cleared(self):
         """A record-level icon is the fallback for a library an older
         build wrote, and clearing removes only the STORE key - so
-        `tile_icon` fell straight back to the record, and
-        `_adopt_record_icons` wrote it into the store again at the next
-        panel open. The icon could not be cleared at all, permanently.
+        `tile_icon` fell straight back to the record and the icon came
+        back. It could not be cleared at all, permanently.
 
         Nothing else clears the record field: `set_tile_icon` stopped
         writing it on 2026-08-09 and `get_as_dict` re-serialises it on
@@ -194,26 +193,6 @@ class ChoiceTest(unittest.TestCase):
         self.assertTrue(self.model.tile_icon(self.row), "premise")
         self.model.set_tile_icon(self.row, {})
         self.assertEqual({}, self.model.tile_icon(self.row))
-
-    def test_a_library_SWITCH_adopts_record_icons_too(self):
-        """`__init__` runs both adoptions; `switch_model_data` ran only
-        the favourites one - so pointing Preferences at an older library
-        left every record icon unmigrated for that session, living on
-        the fallback alone."""
-        asset = self.model.assets[self.row]
-        asset.icon = {"name": "box", "bg": "#333333", "ink": "#ffffff"}
-        self.model.save()
-        tile_icons.forget_overrides()
-
-        self.model.switch_model_data()
-
-        row = next(i for i, a in enumerate(self.model.assets)
-                   if str(a.mat_id) == str(asset.mat_id))
-        self.assertTrue(
-            tile_icons.override_for(self.prefs,
-                                    str(self.model.assets[row].mat_id)),
-            "the switch left the record icon unmigrated, so it is "
-            "subject to the clear-cannot-stick defect above")
 
     def test_the_choice_lands_in_the_store_and_ONLY_there(self):
         """One icons.json for every section, and it is the ONE home.
@@ -250,35 +229,6 @@ class ChoiceTest(unittest.TestCase):
                                 {"name": "box", "bg": "#5cc9f5"})
         self.assertEqual("box",
                          self.model.tile_icon(self.row).get("name"))
-
-    def test_a_record_icon_migrates_into_the_store_at_load(self):
-        """Icons picked before the store move live on the records. The
-        model adopts them on load - counted, and the record field is
-        left EXACTLY as loaded.
-
-        Adoption outliving the dual-write is deliberate and is not the
-        same thing: a library written by any older build still carries
-        picks on its records, and reading them is how those picks
-        survive. What retired is WRITING the field back; reading it
-        once, to move it, has to stay for as long as such a library can
-        be opened. The field is not deleted either - a migration that
-        removes the only copy an older build can read would make the
-        move one-way for no gain.
-        """
-        asset = self.model.assets[self.row]
-        asset.icon = {"name": "layers", "bg": "#4af2a1"}
-        self.model.save()
-        test_support.reset_database_singletons()
-        tile_icons.forget_overrides()
-        reloaded = cop_library.CopLibrary(preferences=self.prefs)
-        key = str(reloaded.assets[self.row].mat_id)
-        self.assertEqual(
-            "layers",
-            tile_icons.override_for(self.prefs, key).get("name"),
-            "the record icon was not adopted into the store")
-        self.assertEqual(
-            "layers", reloaded.assets[self.row].icon.get("name"),
-            "the migration deleted the record field")
 
     def test_the_cache_key_changes_with_the_icon(self):
         """Same asset, different picture. Without this the shared image

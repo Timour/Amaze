@@ -53,9 +53,12 @@ PLACEHOLDER_NAMES = (
     "Umber", "Vermilion", "Violet", "Viridian", "Wisteria",
 )
 
-#: A stem is `<writer>-<n>`, or bare `<n>` from libraries written
-#: before writers signed their files. The trailing number IS the
-#: version number either way.
+#: A stem is `<writer>-<n>`, or bare `<n>` when the file was written
+#: unsigned. NOT a legacy form: `_stem` still emits it whenever
+#: `writer_tag` answers empty - a prefs with no `version_author`
+#: attribute, one that cannot save the placeholder it minted, or an
+#: author name with no alphanumeric characters left after stripping.
+#: The trailing number IS the version number either way.
 _STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")
 
 #: The file kinds a version archives - the asset's whole payload.
@@ -274,7 +277,7 @@ def _stem(tag: str, number: int) -> str:
 
 def _row_stem(row: dict) -> str:
     """The stem a ledger row's files use - recorded at write time, or
-    the bare number for rows from before writers signed files."""
+    the bare number for rows whose writer signed nothing."""
     return str(row.get("file") or int(row.get("n", 0)))
 
 
@@ -287,7 +290,7 @@ def _row_for(ledger: dict, number: int) -> dict | None:
 
 def _archive_paths(preferences, mat_id: str, stem) -> dict:
     """The archive file set for one stem (`<writer>-<n>` or a bare
-    legacy `<n>` - accepted forever)."""
+    `<n>`, which an unsigned write still produces)."""
     folder = versions_dir(preferences, mat_id)
     return {kind: os.path.join(folder, "%s%s" % (stem, kind))
             for kind, _required in _KINDS}

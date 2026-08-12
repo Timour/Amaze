@@ -1525,34 +1525,6 @@ class FavouritesArePerUserTest(unittest.TestCase):
     def _model(self):
         return self.library_mod.MaterialLibrary(preferences=self.prefs)
 
-    def test_record_favourites_are_adopted_once(self):
-        import json
-        index_path = os.path.join(self.prefs.dir, "library.json")
-        with open(index_path, encoding="utf-8") as fh:
-            data = json.load(fh)
-        data["assets"][1]["favorite"] = True
-        with open(index_path, "w", encoding="utf-8") as fh:
-            json.dump(data, fh)
-        starred = str(data["assets"][1]["id"])
-
-        model = self._model()
-        self.assertTrue(self.prefs.is_material_favorite(starred),
-                        "the record-level favourite was not adopted - "
-                        "the user's stars vanish on upgrade")
-        row = model.find_asset_row_by_id(starred)
-        self.assertTrue(model.data(model.index(row, 0), model.FavoriteRole))
-
-    def test_adoption_does_not_resurrect_a_removed_star(self):
-        self.test_record_favourites_are_adopted_once()
-        starred = self.prefs.material_favorites[0]
-        self.prefs.set_material_favorite(starred, False)
-        self.test_support.reset_database_singletons()
-        self._model()                                  # a fresh load
-        self.assertFalse(self.prefs.is_material_favorite(starred),
-                         "a re-load re-adopted the record favourite the "
-                         "user had removed - the star cannot be turned "
-                         "off")
-
     def test_a_toggle_never_writes_the_shared_index(self):
         import json
         model = self._model()

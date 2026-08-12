@@ -170,7 +170,6 @@ class Prefs(_Persistence):
         self._material_favorites: list[str] = []
         #: One-time adoption of the record-level favourites into prefs
         #: has happened for this user (see MaterialLibrary).
-        self._material_favorites_adopted = False
         # v3: who this user's versions say they are by. NEVER backfilled
         # from the machine - hostos.machine_name(), platform.node,
         # getpass and $USER are all banned from this path: an
@@ -590,19 +589,6 @@ class Prefs(_Persistence):
         elif not on and mat_id in self._material_favorites:
             self._material_favorites.remove(mat_id)
             self.save()
-
-    def adopt_material_favorites(self, mat_ids: list) -> None:
-        """One-time migration: the record-level favourites become this
-        user's. Marked done even when empty - "nothing was starred" is
-        an answer, and re-running would resurrect stars the user has
-        since removed."""
-        if self._material_favorites_adopted:
-            return
-        for mat_id in mat_ids:
-            if str(mat_id) not in self._material_favorites:
-                self._material_favorites.append(str(mat_id))
-        self._material_favorites_adopted = True
-        self.save()
 
     @property
     def geometry_folders(self) -> list[str]:
