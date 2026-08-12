@@ -38,6 +38,15 @@ import sys
 #: not-library-data, among them the notes store and the policy file's
 #: only restore points, under a heading that says anything unknown "is
 #: either a failed write or not library data".
+#:
+#: THIS LIST DUPLICATES `keyed_store`'s REGISTRY, DELIBERATELY AND
+#: PERMANENTLY. That module declares every store as data and `stores()`
+#: is the one enumeration Repair and the restore picker read - but this
+#: file may not import it, because it must run where Houdini will not
+#: start. So a new store is added in BOTH places, and this is the end
+#: that fails loudly: an undeclared file is UNKNOWN and `--strict`
+#: exits 1. Stated at both ends now; the other end used to read as
+#: though it had absorbed this one.
 DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
 SIDE_TABLES = ("notes.json", "icons.json", "locations.json",
                "favourites.json")

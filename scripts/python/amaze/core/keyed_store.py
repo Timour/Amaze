@@ -271,13 +271,21 @@ def bind(filename: str, normalise) -> Spec:
 
 
 def stores() -> tuple:
-    """Every declared store. THE enumeration.
+    """Every declared store. THE enumeration for anything that may
+    import this package - `repair.py` and `helpers/restore.py`.
 
-    `repair.py`, `helpers/restore.py` and `tools/library-audit.py` each
-    kept their own copy of this list. They had already drifted: the
-    audit grew the two side tables on 2026-08-02 and Repair's copy
-    stayed narrow, silently, while the alert the user reads sends them
-    to Repair by name for exactly those files.
+    Those two each kept their own copy of this list and had already
+    drifted: the audit grew the two side tables on 2026-08-02 and
+    Repair's copy stayed narrow, silently, while the alert the user
+    reads sends them to Repair by name for exactly those files.
+
+    `tools/library-audit.py` IS NOT A CONSUMER AND CANNOT BE. It is
+    pure stdlib on purpose, so it runs where Houdini will not start,
+    which means it cannot see this registry at any price. It keeps its
+    own list, and a new store must be added there too - the audit is
+    the loud one, since `--strict` calls an undeclared file UNKNOWN and
+    exits 1. Said here because this docstring used to name all three,
+    which reads as a consolidation that covered a file it never did.
     """
     return tuple(_registry.values())
 

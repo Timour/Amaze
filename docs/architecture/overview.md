@@ -377,8 +377,15 @@ store that keeps per-key choices beside the thing they belong to.
 - **Adapter API:** a store is DATA — `register(filename, payload,
   keyspace, label, noun, …)` declares it; the adapter attaches its
   normaliser with `bind()`. **Registration is how a store comes into
-  existence**, so `stores()` is the ONE enumeration Repair, the restore
-  picker and `tools/library-audit.py` read.
+  existence**, so `stores()` is the ONE enumeration for every consumer
+  that may import the package — **Repair and the restore picker.**
+  **`tools/library-audit.py` is NOT one of them and never can be**: it
+  is deliberately pure stdlib, with no Houdini and no import from the
+  package, so it runs on a machine where Houdini will not start or
+  against a library copied onto a stick. It keeps its own hardcoded
+  list, so **a new store has to be added in two places**, and the audit
+  is the one that fails loudly — `--strict` reports an undeclared file
+  as UNKNOWN and exits 1.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), and
   the **Location record** and **File favourites**
