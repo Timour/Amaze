@@ -23,114 +23,23 @@ SCHEMA_VERSION = 4
 #: place). Step N runs when data["version"] == N, producing N+1.
 _MIGRATIONS = {}
 
-
-def _migration_v1(data: dict) -> None:
-    """v1 -> v2: the explicit-schema baseline. Guarantees the three
-    top-level keys exist; carries everything else through untouched
-    (existing asset ids deliberately KEEP their legacy values - scene
-    nodes stamp them as userData, and renaming would orphan every
-    stamp in existing hip files)."""
-    data.setdefault("categories", ["_All"])
-    data.setdefault("tags", [])
-    data.setdefault("assets", [])
-
-
-_MIGRATIONS[1] = _migration_v1
-
-
-def _migration_v2(data: dict) -> None:
-    """v2 -> v3: gradients become an ordinary database.
-
-    `gradients.json` was the one database that did not go through this
-    connector, so every guard the other three inherit had been given
-    to it by hand. It kept its rows under `gradients` and identified
-    them by `uid`, which is the only reason it could not simply be
-    pointed here - this class reads `assets` and `id` in seven places.
-
-    The FILE adopts the one shape rather than the connector learning a
-    second one: a shape that exists only because a single file is
-    different is the thing that drifts. Every other database has no
-    `gradients` key, so this is a no-op for them.
-
-    THE IDENTITY VALUE IS CARRIED, NOT REMINTED. Comments are keyed
-    `gradient:<value>` and tile icons by that same value, so a fresh
-    id here would orphan every note and every icon in one save. A row
-    that somehow has both keeps `id`.
-    """
-    rows = data.pop("gradients", None)
-    if rows is None:
-        return
-    moved = []
-    for row in rows if isinstance(rows, list) else []:
-        if not isinstance(row, dict):
-            # One malformed row must not cost the rest: the merge
-            # already leaves a non-dict row for whoever wrote it.
-            continue
-        if "id" not in row and "uid" in row:
-            row["id"] = row.pop("uid")
-        if "id" not in row:
-            # Pre-backfill rows carry NO identity, and the union keys
-            # on it - id-less rows collapse into one key and overwrite
-            # each other. Minted HERE, on the load path, before any
-            # save breaks the aliasing between model and document; an
-            # id minted after load forked at the first save. CONTENT-
-            # DERIVED rather than random: _migrate_peer replays this
-            # step per merge of an old-shape peer, and the same bytes
-            # must answer the same identity on every pass and every
-            # machine, or each merge adopts the row again as new.
-            row["id"] = hashlib.sha256(
-                json.dumps(row, sort_keys=True).encode("utf-8")
-            ).hexdigest()[:32]
-        moved.append(row)
-    existing = data.get("assets")
-    data["assets"] = moved if not isinstance(existing, list) or not existing \
-        else existing + moved
-
-
-_MIGRATIONS[2] = _migration_v2
-
-
-def _migration_v3(data: dict) -> None:
-    """v3 -> v4: a palette files its category as a LIST.
-
-    Batch D unified the CONTAINER - rows under `assets`, identity in
-    `id` - and left the row alone, so a palette carried `category`,
-    one string, where every other row carries `categories`, a list.
-    `category.Categories` counts by walking `asset.get("categories",
-    [])`, so it read nothing on a gradient row and answered zero for
-    every sidebar count. That one field is why the Colors section
-    still ran on a second implementation of the category machinery
-    (practice.md > A PARTIAL MIGRATION IS NOT A MIGRATION).
-
-    The FILE adopts the one shape rather than the shared model
-    learning a second, as in v2. A single-category palette becomes a
-    one-element list, so nothing is lost. Every other database has no
-    `category` key, so this is a no-op for them.
-
-    Idempotent, because `_migrate_peer` replays the chain per merge; a
-    row carrying BOTH keeps the list and drops the string, the same
-    tie-break v2 uses for `id`/`uid`.
-    """
-    rows = data.get("assets")
-    if not isinstance(rows, list):
-        return
-    for row in rows:
-        # A malformed row must not cost the rest, exactly as in v2.
-        if not isinstance(row, dict) or "category" not in row:
-            continue
-        singular = row.pop("category")
-        if isinstance(row.get("categories"), list):
-            continue
-        if isinstance(singular, str) and singular.strip():
-            row["categories"] = [singular.strip()]
-        else:
-            # No category is an EMPTY LIST, never a list holding "" -
-            # the sidebar counts membership, and a blank name would
-            # count as a category nobody can select or delete.
-            row["categories"] = []
-
-
-_MIGRATIONS[3] = _migration_v3
+#: EMPTY, AND THAT IS THE FINISHED STATE FOR NOW. 1.0 is the first
+#: version, so there is nothing to upgrade FROM: the three steps that
+#: lived here described the shapes of libraries written before any
+#: release, and every library that existed was converted to the current
+#: schema by `AmazeNotes/tools/schema-convert.py` before they were
+#: deleted.
+#:
+#: THE MECHANISM AROUND IT STAYS - the loop in `_migrate`,
+#: `_migration_incomplete` and the refusal in `save()`. That is how the
+#: NEXT bump happens and how a gap is refused; it is forward machinery,
+#: not backwards compatibility, and `test_db_hardening` exercises it by
+#: installing its own steps.
+#:
+#: A document older than SCHEMA_VERSION now finds no step, keeps its own
+#: version and records an incomplete chain, so it is refused rather than
+#: stamped as current. Pinned by
+#: `NoUpgradeStepsFromBeforeTheFirstReleaseTest`.
 
 
 #: Survives the module reload; the class attribute points at it.
