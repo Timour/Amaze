@@ -61,6 +61,12 @@ from amaze.core import library as library_mod             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
+#: A fixture's stamp, read from the module rather than typed - a
+#: literal goes stale at the next bump and turns the fixture into a
+#: silent test of the migration (practice.md ▸ A TEST OF A DROP-ON-READ
+#: RULE MUST BEAT THE MIGRATION TO THE ROW).
+SCHEMA = database.SCHEMA_VERSION
+
 
 class _Prefs:
     """The two attributes gradient_library reads. Deliberately NOT a
@@ -863,7 +869,8 @@ class GradientAbsenceTest(unittest.TestCase):
             self.skipTest("curated defs unreachable ($AMAZE not resolved) "
                           "- seeding cannot be exercised here")
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
-            json.dump({"version": 4, "categories": [], "assets": []}, handle)
+            json.dump({"version": SCHEMA, "categories": [],
+                       "assets": []}, handle)
         self.assertFalse(os.path.exists(self.marker),
                          "premise: no marker, or the seed never runs and "
                          "this test proves nothing")
@@ -912,7 +919,8 @@ class GradientAbsenceTest(unittest.TestCase):
         today, but hostos writes one the moment it is saved twice with
         different contents, and that is evidence too."""
         with open(self.path + ".bak-1", "w", encoding="utf-8") as handle:
-            json.dump({"version": 4, "categories": [], "assets": []}, handle)
+            json.dump({"version": SCHEMA, "categories": [],
+                       "assets": []}, handle)
         self.assertFalse(os.path.exists(self.marker),
                          "premise: no marker - the .bak is doing the work")
         lib = self._library()
@@ -957,7 +965,7 @@ class GradientAbsenceTest(unittest.TestCase):
         """Marker AND file present - every launch of a real library."""
         self._seeded_before()
         with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump({"version": 4, "categories": ["Warm"],
+            json.dump({"version": SCHEMA, "categories": ["Warm"],
                        "assets": [{"name": "ours", "id": "oursid"}]}, handle)
         lib = self._library()
         self.assertFalse(lib._load_failed)

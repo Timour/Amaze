@@ -24,6 +24,11 @@ from amaze.core import database
 from amaze.helpers import hostos                             # noqa: E402
 from amaze.tests import test_support                        # noqa: E402
 
+#: A fixture's stamp, read from the module rather than typed. The one
+#: place a LITERAL is correct is a test whose subject IS a particular
+#: version - `_v4_document` below says 4 on purpose.
+SCHEMA = database.SCHEMA_VERSION
+
 
 class _Case(unittest.TestCase):
     """A private library directory and a clean connector registry."""
@@ -111,7 +116,7 @@ class TheSmallBatchTest(_Case):
         self.addCleanup(shutil.rmtree, second, ignore_errors=True)
         db.reload_with_path(second + os.sep)
         self.assertEqual(
-            database.SCHEMA_VERSION, db._loaded_version,
+            SCHEMA, db._loaded_version,
             "the new library inherited the old one's schema number")
 
     def test_a_refusal_names_every_trace_not_the_first(self):
@@ -173,7 +178,7 @@ class LoadDoesNotMarryCachedDataToANewPathTest(unittest.TestCase):
         for folder, row in ((self.a, "ROW_A"), (self.b, "ROW_B")):
             with open(os.path.join(folder, "library.json"), "w",
                       encoding="utf-8") as handle:
-                json.dump({"version": database.SCHEMA_VERSION,
+                json.dump({"version": SCHEMA,
                            "categories": ["_All"], "tags": [],
                            "assets": [{"id": row, "name": row}]},
                           handle)
@@ -468,7 +473,7 @@ class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
     def test_both_fields_come_off_every_row(self):
         self._write(self._v4_document())
         _db, data = self._load()
-        self.assertEqual(database.SCHEMA_VERSION, data["version"],
+        self.assertEqual(SCHEMA, data["version"],
                          "premise: the step ran")
         for row in data["assets"]:
             self.assertNotIn("favorite", row, "the shared favourite "
@@ -561,7 +566,7 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
         every stamp, and the refusal above would prove nothing."""
         self._write(self._document(1))
         db, data = self._load()
-        self.assertEqual(database.SCHEMA_VERSION, data["version"])
+        self.assertEqual(SCHEMA, data["version"])
         self.assertFalse(
             db._migration_incomplete,
             "a document already at the current schema was reported as "
@@ -678,7 +683,7 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         self.assertTrue(lib._load_failed,
                         "premise: the truncated file must latch")
         with open(path, "w", encoding="utf-8") as handle:
-            json.dump({"version": 4, "categories": ["Warm"],
+            json.dump({"version": SCHEMA, "categories": ["Warm"],
                        "assets": [{"name": "theirs",
                                    "id": "theirsuid"}]}, handle)
         # THE RELOAD DOOR, which is how a repair heals now: the latch
@@ -1493,7 +1498,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         # fixture laying files down in a shape we no longer ship is
         # not a fixture.
         self._write(json.dumps(
-            {"version": database.SCHEMA_VERSION,
+            {"version": SCHEMA,
              "categories": ["Warm"],
              "assets": [{"id": "SNAP%d" % i, "name": "g%d" % i}
                         for i in range(count)]}))
