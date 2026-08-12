@@ -41,13 +41,14 @@ from amaze.dialogs import (
     gradient_dialog,
     code_dialog,
     icon_dialog,
+    user_dialog,
 )
 from amaze import branding
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
     database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate,
-    tile_icons,
+    tile_icons, users,
 )
 from amaze.render import (
     generator,
@@ -1121,6 +1122,10 @@ class MatLibPanel(QtWidgets.QWidget):
         if self._first_show_logged:
             return
         self._first_show_logged = True
+        # After the first paint, never during construction: a modal
+        # dialog raised from a half-built panel blocks the paint it is
+        # sitting on top of.
+        QtCore.QTimer.singleShot(0, self.ensure_library_user)
         t0 = getattr(self, "_construct_t0", None)
         if t0 is None:
             return
@@ -1132,6 +1137,41 @@ class MatLibPanel(QtWidgets.QWidget):
                     (time.perf_counter() - t0) * 1000, 1))
 
         QtCore.QTimer.singleShot(0, _record)
+
+    def ensure_library_user(self, chooser=None) -> str:
+        """Ask WHICH user this machine is, if the library already has
+        some and this one is not among them.
+
+        Only that case asks (`users.ASK`): a library with nobody in it
+        mints silently, and a machine whose pointer already resolves is
+        never questioned. Cancelling is allowed and leaves no user, so
+        nothing is keyed under a blank this session and the question
+        comes back next time.
+
+        `chooser` takes `{uid: name}` and answers `(uid, new_name)`,
+        both empty for a cancel; it is an argument so the decision can
+        be driven without a dialog on screen.
+        """
+        preferences = self.prefs
+        if users.first_run_state(preferences) != users.ASK:
+            return users.current(preferences) or ""
+        known = users.all_users(preferences)
+        if chooser is None:
+            def chooser(entries):
+                dialog = user_dialog.UserPickerDialog(entries)
+                dialog.exec()
+                if dialog.canceled:
+                    return ("", "")
+                return (dialog.uid, dialog.new_name)
+        uid, new_name = chooser(known)
+        if not uid and new_name:
+            uid = users.create(preferences, new_name)
+        if not uid:
+            debug.event("users", "no user picked for this library",
+                        known=len(known))
+            return ""
+        users.adopt(preferences, uid)
+        return uid
 
     def event(self, event):
         """Flush the Comments pane when this panel is being DESTROYED.

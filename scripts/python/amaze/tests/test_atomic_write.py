@@ -1460,6 +1460,73 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual("Plum", versions.writer_tag(p))
 
 
+class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
+    """A library with people in it, met by a machine that is none of
+    them, ASKS instead of minting - the one case where the question is
+    worth its cost, because minting there turns one person into two.
+    """
+
+    def _panel(self):
+        from amaze.tests import test_support
+        return test_support.fixture_panel(self)
+
+    def test_it_adopts_an_existing_user_that_was_picked(self):
+        from amaze.core import users
+        panel = self._panel()
+        uid = users.create(panel.prefs, "Cobalt")
+        panel.prefs.library_user = ""
+        picked = panel.ensure_library_user(lambda known: (uid, ""))
+        self.assertEqual(uid, picked)
+        self.assertEqual(uid, panel.prefs.library_user)
+        self.assertEqual(1, len(users.all_users(panel.prefs)),
+                         "picking an existing user minted another")
+
+    def test_it_creates_when_a_new_name_was_given(self):
+        from amaze.core import users
+        panel = self._panel()
+        users.create(panel.prefs, "Cobalt")
+        panel.prefs.library_user = ""
+        made = panel.ensure_library_user(lambda known: ("", "Sienna"))
+        self.assertTrue(made)
+        self.assertEqual("Sienna", users.name_for(panel.prefs, made))
+        self.assertEqual(2, len(users.all_users(panel.prefs)))
+
+    def test_a_cancel_leaves_no_user_and_asks_again(self):
+        """Cancelling must not fall back to minting or to a blank key:
+        nothing is keyed this session and the question returns."""
+        from amaze.core import users
+        panel = self._panel()
+        users.create(panel.prefs, "Cobalt")
+        panel.prefs.library_user = ""
+        self.assertEqual("", panel.ensure_library_user(lambda k: ("", "")))
+        self.assertEqual("", panel.prefs.library_user)
+        self.assertEqual(users.ASK, users.first_run_state(panel.prefs))
+
+    def test_a_resolved_machine_is_never_asked(self):
+        from amaze.core import users
+        panel = self._panel()
+        uid = users.create(panel.prefs, "Cobalt")
+        panel.prefs.library_user = uid
+
+        def _refuse(known):
+            raise AssertionError("asked a machine that already resolves")
+
+        self.assertEqual(uid, panel.ensure_library_user(_refuse))
+
+    def test_the_picker_offers_the_users_and_a_create_row(self):
+        from amaze.dialogs import user_dialog
+        dialog = user_dialog.UserPickerDialog(
+            {"uid-a": "Cobalt", "uid-b": "Sienna"})
+        self.addCleanup(dialog.deleteLater)
+        combo = dialog._combo
+        self.assertEqual(3, combo.count(), "users plus the create row")
+        self.assertEqual(
+            user_dialog.UserPickerDialog.CREATE,
+            combo.itemData(combo.count() - 1),
+            "the create row is not marked with the sentinel, so a "
+            "library user named like it could be mistaken for it")
+
+
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
     """The gate for 2026-08-05, when a probe wrote two files into the
     real synced library.
