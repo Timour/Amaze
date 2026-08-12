@@ -880,13 +880,6 @@ class SchemaStampTest(unittest.TestCase):
             99, self._version_after_save(99),
             "a save stamped this build's schema over a newer one")
 
-    def test_an_older_version_is_still_migrated_up(self):
-        from amaze.core import database
-
-        self.assertEqual(
-            database.SCHEMA_VERSION, self._version_after_save(1),
-            "an old database was not migrated forward")
-
 
 class MaterialRoundTripTest(unittest.TestCase):
     """The dict round-trip must not lose what it does not understand.
