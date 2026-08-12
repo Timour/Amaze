@@ -78,6 +78,11 @@ KEY_PATH = "path"
 #: and the fan-out touches only those.
 KEY_MIXED = "mixed"
 
+#: What separates a user tag from the key it tags: `<uid>|<key>`.
+#: Split on the FIRST one only - a uuid4 hex cannot contain it, a path
+#: can (ROADMAP line 21).
+USER_SEP = "|"
+
 
 # -- what opening a store answered ------------------------------------
 
@@ -97,6 +102,7 @@ REASON_UNCHANGED = "unchanged"      # nothing to do; `ok` is True
 REASON_LATCHED = "latched"          # the file is there and will not parse
 REASON_ABSENT = "absent-but-known"  # it is gone and something says it was here
 REASON_DENIED = "denied"            # OSError - read-only, full, unreachable
+REASON_NO_USER = "no-user"          # tagged store, nobody picked on this machine
 
 
 class Written:
@@ -134,13 +140,14 @@ class Spec:
     __slots__ = ("filename", "payload", "keyspace", "label", "noun",
                  "normalise", "path_prefix", "unreadable_alert",
                  "refused_sentence", "alert_key", "denied_alert",
-                 "category", "in_library", "survives_forget")
+                 "category", "in_library", "survives_forget",
+                 "user_tagged")
 
     def __init__(self, filename, payload, keyspace, label, noun,
                  normalise, path_prefix="", unreadable_alert="",
                  refused_sentence="", alert_key="", denied_alert="",
                  category="store", in_library=True,
-                 survives_forget=True) -> None:
+                 survives_forget=True, user_tagged=False) -> None:
         self.filename = filename
         self.payload = payload
         self.keyspace = keyspace
@@ -179,6 +186,10 @@ class Spec:
         #: answering in one place, and a future store that is not one
         #: would otherwise be discovered by Repair reporting it missing.
         self.in_library = in_library
+        #: Are this store's keys TAGGED with the user who owns them?
+        #: One flag, so any future store opts in the same way. The tag
+        #: is a UID, so a rename relinks a label and moves no key.
+        self.user_tagged = user_tagged
         #: DOES THIS SURVIVE A LOCATION BEING REMOVED? A PRODUCT
         #: decision, stated out loud in one readable place - not
         #: inferred from which lines a removal method happens to
@@ -225,7 +236,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
              unreadable_alert: str = "", refused_sentence: str = "",
              alert_key: str = "", denied_alert: str = "",
              category: str = "store", in_library: bool = True,
-             survives_forget: bool = True) -> Spec:
+             survives_forget: bool = True,
+             user_tagged: bool = False) -> Spec:
     """Declare a store. Idempotent per filename, so a module reload
     re-registers rather than duplicating."""
     if keyspace not in (KEY_ID, KEY_PATH, KEY_MIXED):
@@ -245,7 +257,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
                 unreadable_alert=unreadable_alert,
                 refused_sentence=refused_sentence, alert_key=alert_key,
                 denied_alert=denied_alert, category=category,
-                in_library=in_library, survives_forget=survives_forget)
+                in_library=in_library, survives_forget=survives_forget,
+                user_tagged=user_tagged)
     _registry[filename] = spec
     return spec
 
@@ -426,6 +439,10 @@ register(
     # star is painted from this store, so a star that could not be
     # written does not light.
     survives_forget=False,
+    # MINE ARE NOT YOURS. Keys carry the owner's UID, so one library
+    # holds everyone's stars without anyone seeing anyone else's, and a
+    # rename moves none of them (ROADMAP line 21).
+    user_tagged=True,
 )
 
 register(
@@ -520,17 +537,27 @@ def open_store(spec: Spec, preferences) -> "Store":
     path = os.path.join(str(preferences.dir), spec.filename)
     handle = _open.get((spec.filename, path))
     if handle is None:
-        handle = Store(spec, path)
+        handle = Store(spec, path, preferences)
         _open[(spec.filename, path)] = handle
+    else:
+        # The cache is keyed by FILE, and the user can change under it
+        # (the Preferences picker). Re-point rather than re-read: the
+        # bytes are the same, only whose rows they are has moved.
+        handle.preferences = preferences
     return handle
 
 
 class Store:
     """One library's copy of one registered store."""
 
-    def __init__(self, spec: Spec, path: str) -> None:
+    def __init__(self, spec: Spec, path: str, preferences=None) -> None:
         self.spec = spec
         self.path = path
+        #: Held ONLY to resolve the user tag. Read straight off
+        #: `library_user` and never through `users.current()`, which
+        #: mints - minting from inside a favourites read would write a
+        #: user into the library as a side effect of painting a star.
+        self.preferences = preferences
         self._table: dict = {}
         #: Entries the normaliser REJECTED, kept verbatim - usually a
         #: NEWER build's data (an icon name this build lacks, a shape
@@ -578,7 +605,7 @@ class Store:
                     # real favourites held one file three ways. On a
                     # collision the FIRST entry wins whole - no clever
                     # merge - and the drop is logged by both spellings.
-                    stored = storage_key(spec, str(key))
+                    stored = restored_key(spec, str(key))
                     kept = spec.normalise(value)
                     if not kept:
                         # A truthy value the normaliser cannot read is
@@ -647,13 +674,41 @@ class Store:
 
     # -- reading ------------------------------------------------------
 
+    def user_tag(self) -> str:
+        """The UID this store's keys are tagged with, "" when untagged
+        or when nobody has been picked on this machine.
+
+        Straight off the preference. A blank one is not a shared
+        bucket - `_key` refuses to build a key at all, so a machine
+        with no user reads and writes nothing rather than filing
+        everyone's entries together.
+        """
+        if not self.spec.user_tagged:
+            return ""
+        try:
+            return str(self.preferences.library_user or "")
+        except AttributeError:
+            return ""
+
+    def _key(self, key) -> str:
+        """The stored spelling, tag included. Answers "" when this store
+        is tagged and there is no user - no key, so no read and no
+        write."""
+        if self.spec.user_tagged:
+            tag = self.user_tag()
+            if not tag:
+                return ""
+            return storage_key(self.spec, key, tag)
+        return storage_key(self.spec, key)
+
     def has(self, key) -> bool:
         """Does this key carry anything? THE PAINT PATH.
 
         Called per tile per repaint from three models' data(). A
         membership test and nothing else - no copy, no stat, no I/O.
         """
-        return storage_key(self.spec, key) in self._table
+        stored = self._key(key)
+        return bool(stored) and stored in self._table
 
     def get(self, key) -> dict:
         """One value, as a COPY. {} when there is none.
@@ -662,12 +717,34 @@ class Store:
         cache without writing, which is how a comment badge lit for a
         note that was refused.
         """
-        value = self._table.get(storage_key(self.spec, key))
+        stored = self._key(key)
+        value = self._table.get(stored) if stored else None
         return copy.deepcopy(value) if value else {}
 
     def all(self) -> dict:
-        """The whole table, as a COPY. Enumeration and migration only -
-        `has` is the paint path's question."""
+        """THIS USER's entries, as a COPY, keyed without the tag.
+
+        Scoped, because every caller of this means *the things that are
+        mine* - the favourites list a section paints, the keys a sweep
+        walks. An untagged store is unaffected. `everyones()` is the
+        unscoped read, for repair and migration, which are the only two
+        jobs that legitimately see across people.
+        """
+        if not self.spec.user_tagged:
+            return copy.deepcopy(self._table)
+        tag = self.user_tag()
+        if not tag:
+            return {}
+        out = {}
+        for stored, value in self._table.items():
+            owner, bare = untagged_key(self.spec, stored)
+            if owner == tag:
+                out[bare] = copy.deepcopy(value)
+        return out
+
+    def everyones(self) -> dict:
+        """The whole table as stored, tags included - repair, migration
+        and the audit, never the paint path."""
         return copy.deepcopy(self._table)
 
     def count(self) -> int:
@@ -682,7 +759,14 @@ class Store:
     def set(self, key, value) -> Written:
         """Store one key; a falsy value REMOVES it - the contract both
         stores already have (an empty note deletes the note)."""
-        key = storage_key(self.spec, key)
+        key = self._key(key)
+        if not key:
+            # Tagged store, nobody picked. Refusing beats filing the
+            # entry under a blank tag, which is an ABSENT user rather
+            # than a shared one.
+            debug.event(self.spec.category, "write skipped - no user",
+                        store=self.spec.filename)
+            return Written(False, REASON_NO_USER)
         value = self.spec.normalise(value) if value else {}
         if value:
             if self._table.get(key) == value:
@@ -708,8 +792,10 @@ class Store:
         """
         staged = dict(self._table)
         touched = []
+        if self.spec.user_tagged and not self.user_tag():
+            return Written(False, REASON_NO_USER)
         for key, value in (values or {}).items():
-            key = storage_key(self.spec, str(key))
+            key = self._key(str(key))
             value = self.spec.normalise(value) if value else {}
             if value:
                 if self._table.get(key) == value:
@@ -731,8 +817,12 @@ class Store:
         and the adopt-only merge means a rename expressed as
         delete-then-add can be half-resurrected by the other pane.
         """
-        moves = {storage_key(self.spec, str(k)):
-                 storage_key(self.spec, str(v))
+        if self.spec.user_tagged and not self.user_tag():
+            return Written(False, REASON_NO_USER)
+        # Tagged on BOTH sides: a folder that moved moves it for the
+        # user doing the moving, and leaves everyone else's rows where
+        # they are - they will relocate their own when they next look.
+        moves = {self._key(str(k)): self._key(str(v))
                  for k, v in (moves or {}).items()}
         moves = {k: v for k, v in moves.items() if k != v}
         touched = [k for k in moves if k in self._table]
@@ -748,8 +838,10 @@ class Store:
 
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
-        doomed = [storage_key(self.spec, str(k)) for k in keys
-                  if storage_key(self.spec, str(k)) in self._table]
+        if self.spec.user_tagged and not self.user_tag():
+            return Written(False, REASON_NO_USER)
+        doomed = [self._key(str(k)) for k in keys
+                  if self._key(str(k)) in self._table]
         if not doomed:
             return Written(True, REASON_UNCHANGED)
         staged = dict(self._table)
@@ -867,7 +959,7 @@ class Store:
             return
         adopted = 0
         for key, value in peer.items():
-            stored = storage_key(self.spec, str(key))
+            stored = restored_key(self.spec, str(key))
             kept = self.spec.normalise(value)
             if kept:
                 if stored not in staged:
@@ -923,21 +1015,52 @@ def _bare_path(spec: Spec, key: str) -> str:
     return key
 
 
-def storage_key(spec: Spec, key) -> str:
+def storage_key(spec: Spec, key, user: str = "") -> str:
     """The spelling a path-shaped key is STORED under - variable-
     relative via `hostos.storage_path_key`, so the file's bytes resolve
     on every machine sharing the library. Id keys pass through; a mixed
     store converts only inside its declared prefix. Callers keep
     speaking whatever spelling they hold: the boundary converts, the
-    same one-implementation rule as `_bare_path` above."""
+    same one-implementation rule as `_bare_path` above.
+
+    A `user_tagged` store prefixes `<uid>|` here, which is why the tag
+    reaches every read and write without any of them knowing: this is
+    already the one door they all pass through."""
     key = str(key)
     if spec.keyspace == KEY_PATH:
-        return hostos.storage_path_key(key)
-    if (spec.keyspace == KEY_MIXED and spec.path_prefix
+        key = hostos.storage_path_key(key)
+    elif (spec.keyspace == KEY_MIXED and spec.path_prefix
             and key.startswith(spec.path_prefix)):
-        return spec.path_prefix + hostos.storage_path_key(
+        key = spec.path_prefix + hostos.storage_path_key(
             key[len(spec.path_prefix):])
+    if spec.user_tagged and user:
+        key = user + USER_SEP + key
     return key
+
+
+def restored_key(spec: Spec, key: str) -> str:
+    """A key read FROM DISK, normalised WITHOUT disturbing its tag.
+
+    The legacy-spelling absorption on load and the peer adoption both
+    re-normalise every key they read. On a tagged store that key is
+    `<uid>|<path>`, and handing the whole string to the path
+    normaliser mangles it into a portable spelling of something that is
+    not a path. Split, normalise the path half, put the tag back.
+    """
+    owner, bare = untagged_key(spec, key)
+    if owner:
+        return owner + USER_SEP + storage_key(spec, bare)
+    return storage_key(spec, key)
+
+
+def untagged_key(spec: Spec, key: str) -> tuple:
+    """`(uid, key)` for a stored key - `("", key)` when it carries no
+    tag. Split on the FIRST separator only: a uuid4 hex cannot contain
+    one and a path can."""
+    if not spec.user_tagged:
+        return ("", key)
+    tag, sep, rest = str(key).partition(USER_SEP)
+    return (tag, rest) if sep else ("", key)
 
 
 def _under(spec: Spec, key: str, prefix: str) -> bool:
