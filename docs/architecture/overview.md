@@ -748,8 +748,22 @@ anything it does not recognise is skipped and logged, never swept.
 Without a decided name, the first Clean Library run after Versions
 ships would have read every version file as an orphan.
 
-`<writer>` is the artist's own `version_author` preference, never a
-harvested machine or account name.
+`<writer>` is the artist's own **Library User** — the `library_user`
+preference — never a harvested machine or account name.
+
+> **ONE IDENTITY, and it replaced two (2026-08-12).** `library_user` is
+> both the name versions are signed with and the key everything stored
+> per user is filed under. It was `version_author`, which minted a
+> colour-name placeholder PER MACHINE so two machines could never write
+> one filename — correct for a filename, and the exact opposite of what
+> an identity spanning a user's machines needs. One preference could not
+> do both. The old key is retired, its value ADOPTED on load so every
+> `<name>-<n>` stem already on disk still matches its writer, and a
+> library that has never had a user starts at `prefs.DEFAULT_LIBRARY_USER`
+> — the same string on every install, deliberately.
+>
+> What keeps two writers off one filename is not the name: it is
+> stepping past a stem already on disk before writing.
 
 ### `policy.json` — a per-library write policy, on disk only
 

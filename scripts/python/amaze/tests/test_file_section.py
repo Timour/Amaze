@@ -1220,25 +1220,26 @@ class HoudiniPathTest(unittest.TestCase):
         self.assertEqual(hostos_mod.cache_root(), dlg.line_cache.text(),
                          "the field still shows the old path")
 
-    def test_the_version_author_field_shows_a_real_name(self):
-        """Preferences > Library shows the name this machine signs
-        versions with. A fresh prefs gets its colour name minted
-        RIGHT THERE and shown - the box never promises a mystery
-        pick. Typing a name of your own persists it."""
-        from amaze.core import versions
+    def test_the_user_field_shows_a_real_name(self):
+        """Preferences > Library shows WHO this is - the one identity,
+        which keys the per-user things and signs versions. A fresh prefs
+        resolves to the shipped default RIGHT THERE and shows it; the
+        box never promises a name for later. Typing your own persists
+        it."""
+        from amaze.prefs import prefs as prefs_mod
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
-        shown = dlg.line_version_author.text()
-        self.assertIn(shown, versions.PLACEHOLDER_NAMES,
-                      "a fresh prefs must show the minted colour "
-                      "name, not a blank")
-        self.assertEqual(shown, p.version_author,
+        shown = dlg.line_library_user.text()
+        self.assertEqual(prefs_mod.DEFAULT_LIBRARY_USER, shown,
+                         "a fresh prefs must show the shipped default, "
+                         "not a blank and not a per-machine pick")
+        self.assertEqual(shown, p.library_user,
                          "the shown name must be the persisted one")
-        dlg.line_version_author.setText("  MyOwnName  ")
-        dlg._save_version_author()
-        self.assertEqual("MyOwnName", p.version_author,
+        dlg.line_library_user.setText("  MyOwnName  ")
+        dlg._save_library_user()
+        self.assertEqual("MyOwnName", p.library_user,
                          "typed name (trimmed) did not reach prefs")
 
     def test_the_default_style_pins_home(self):

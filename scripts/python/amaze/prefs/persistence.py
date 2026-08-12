@@ -367,6 +367,11 @@ class _Persistence:
         "hip_folders", "hip_favorites", "last_hip_folder",
         "hip_include_subfolders",
         "file_section_migrated",
+        # Retired into `library_user`, which is the ONE identity now -
+        # it keys the per-user things AND signs versions. load() adopts
+        # the value first, so naming it here drops the key without
+        # dropping the name (ROADMAP line 21).
+        "version_author",
     )
 
     def _remember_disk_state(self, final: str) -> None:
@@ -535,7 +540,7 @@ class _Persistence:
         self.data["section_filters"] = dict(self._section_filters)
         self.data["view_mode"] = self._view_mode
         self.data["material_favorites"] = list(self._material_favorites)
-        self.data["version_author"] = self._version_author
+        self.data["library_user"] = self._library_user
         self.data["sidebar_counts"] = self._sidebar_counts
         self.data["ram_cache_mb"] = self._ram_cache_mb
         self.data["cache_dir"] = _encode_path(self._cache_dir)
@@ -803,7 +808,20 @@ class _Persistence:
                         data.get("view_mode", "grid"), "grid")
         self._material_favorites = [
             str(x) for x in data.get("material_favorites", [])]
-        self._version_author = str(data.get("version_author", "") or "")
+        self._library_user = str(data.get("library_user", "") or "").strip()
+        if not self._library_user:
+            # ADOPTED, not defaulted. An install that has been signing
+            # versions as `Plum` keeps BEING Plum, so every `Plum-<n>`
+            # stem already on disk still matches its writer and nothing
+            # is renamed. The other machine's own name becomes a second
+            # row in the user dropdown - an unused name is a row to
+            # pick from, not lost data (ROADMAP line 21).
+            #
+            # Reading a RETIRED key is not compatibility work: this is
+            # the one pass that carries the value forward, and after the
+            # next save the old key is gone (`_RETIRED_KEYS`).
+            self._library_user = str(
+                data.get("version_author", "") or "").strip()
         # Through the SETTERS, not straight onto the attribute. The
         # setters exist to validate these tokens and load() bypassed
         # every one of them, so a settings.json holding

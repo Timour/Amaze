@@ -1205,41 +1205,121 @@ class SnapshotsAreThrottledNotOncePerProcessTest(unittest.TestCase):
                          "an identical state consumed a rotation slot")
 
 
-class VersionAuthorIsChosenNeverHarvestedTest(unittest.TestCase):
-    """An auto-harvested name puts a real person's identity into a
-    library that may be shared, without them choosing it (step 35)."""
+class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
+    """`library_user` is WHO this is. It keys everything stored per user
+    in the library AND it signs versions - one field, because two fields
+    is what forced the conflict that retired `version_author`: versions
+    need the name to DIFFER per machine, favourites need it to MATCH
+    across a user's machines, and one preference cannot do both
+    (ROADMAP line 21).
 
-    def test_it_persists(self):
-        home = tempfile.mkdtemp(prefix="amaze_author_")
+    An auto-harvested name puts a real person's identity into a library
+    that may be shared, without them choosing it (step 35) - that ban is
+    unchanged and is the last test here.
+    """
+
+    def _home(self, prefix="amaze_user_"):
+        home = tempfile.mkdtemp(prefix=prefix)
         self.addCleanup(shutil.rmtree, home, True)
+        return home
+
+    def _prefs_at(self, home):
         p = prefs.Prefs()
         p.path = home
         p.load()
-        p.version_author = "  Chosen Name  "
-        p.save()
-        q = prefs.Prefs()
-        q.path = home
-        q.load()
-        self.assertEqual("Chosen Name", q.version_author)
+        return p
 
-    def test_the_default_is_empty(self):
-        p = prefs.Prefs()
-        self.assertEqual("", p.version_author,
-                         "the default is not empty - something backfilled "
-                         "an identity nobody chose")
+    def _write_settings(self, home, document):
+        with open(os.path.join(home, "settings.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(document, handle)
+
+    def test_it_persists(self):
+        home = self._home()
+        p = self._prefs_at(home)
+        p.library_user = "  Chosen Name  "
+        p.save()
+        self.assertEqual("Chosen Name", self._prefs_at(home).library_user)
+
+    def test_a_blank_one_never_answers_as_a_key(self):
+        """THE TRAP. A blank preference used as a key files every
+        install under one bucket named `""` - which is not a shared
+        USER, it is an absent one, and nothing downstream can tell those
+        apart. `version_author` proves the trap is real: a blank pref
+        mints a name on sight, so nothing records whether the string was
+        chosen or invented. The resolver answers a real name or the
+        caller keys nothing.
+        """
+        p = self._prefs_at(self._home())
+        for blank in ("", "   ", None):
+            p.library_user = blank
+            self.assertTrue(
+                p.resolve_library_user(),
+                "a blank library_user resolved to something falsy - "
+                "every install would key into one bucket")
+
+    def test_a_fresh_install_answers_the_same_name_everywhere(self):
+        """NOT the versions placeholder, which mints per MACHINE - the
+        one thing an identity keyed ACROSS machines must not do. Two
+        untouched installs agree until somebody says otherwise.
+        """
+        one = self._prefs_at(self._home("amaze_user_one_"))
+        two = self._prefs_at(self._home("amaze_user_two_"))
+        self.assertEqual(one.resolve_library_user(),
+                         two.resolve_library_user(),
+                         "two untouched installs minted different "
+                         "identities - the split this line removes")
+        self.assertEqual(prefs.DEFAULT_LIBRARY_USER,
+                         one.resolve_library_user())
+
+    def test_an_existing_version_author_is_adopted(self):
+        """The minted name BECOMES the user. Every `Plum-<n>` stem
+        already on disk keeps matching its writer, and nothing is
+        renamed - the other machine's name simply appears in the
+        dropdown until its owner picks the one they want.
+        """
+        home = self._home()
+        self._write_settings(home, {"version_author": "Plum"})
+        self.assertEqual("Plum", self._prefs_at(home).library_user)
+
+    def test_the_retired_author_key_is_dropped_on_save(self):
+        """A key `_RETIRED_KEYS` does not name is carried back verbatim
+        by the unknown-key courtesy on every save, so the field would
+        outlive the code that read it - on every machine.
+        """
+        home = self._home()
+        self._write_settings(home, {"version_author": "Plum"})
+        p = self._prefs_at(home)
+        p.save()
+        with open(os.path.join(home, "settings.json"),
+                  encoding="utf-8") as handle:
+            stored = json.load(handle)
+        self.assertNotIn("version_author", stored,
+                         "the retired key survived a save")
+        self.assertEqual("Plum", stored.get("library_user"))
+
+    def test_versions_sign_with_the_same_field(self):
+        """One identity, used for both. The tag version FILES carry
+        comes from the field favourites are keyed by, not a second one.
+        """
+        from amaze.core import versions
+        p = self._prefs_at(self._home())
+        p.library_user = "Ultramarine"
+        self.assertEqual("Ultramarine", versions.writer_tag(p))
 
     def test_no_identity_source_touches_the_author_path(self):
         """Source-derived ban: machine_name, platform.node, getpass and
-        $USER may never appear in the prefs PACKAGE - the author is
-        typed by a person or it is empty.
+        $USER may never appear in the prefs PACKAGE - the identity is
+        typed by a person, or it is the shipped default that is the same
+        everywhere. Never the computer's account or machine name.
 
         WALKS EVERY MODULE, not the one that used to hold everything.
-        `version_author` is answered in `prefs.py` but both saved and
-        loaded in `persistence.py` since 2026-08-09, and `load()` is
-        exactly where a default would be backfilled from the account
-        name. Scanning a single module would have left that half
-        uncovered - and would have kept PASSING while it did, which is
-        how a guard becomes decoration.
+        `library_user` is answered in `prefs.py` but both saved and
+        loaded in `persistence.py`, and `load()` is exactly where a
+        default would be backfilled from the account name - it is also
+        where the `version_author` adoption reads. Scanning a single
+        module would have left that half uncovered - and would have kept
+        PASSING while it did, which is how a guard becomes decoration.
         """
         import io
         import os
@@ -1267,7 +1347,7 @@ class VersionAuthorIsChosenNeverHarvestedTest(unittest.TestCase):
                 self.assertNotIn(
                     banned, source,
                     "%s appears in prefs/%s - an identity can be "
-                    "harvested into version_author" % (banned, name))
+                    "harvested into library_user" % (banned, name))
         # A walk that finds nothing passes silently: name what it must
         # have seen, so a rename cannot empty the ban.
         self.assertIn("prefs.py", checked)

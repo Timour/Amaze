@@ -38,6 +38,20 @@ from amaze.prefs.persistence import (
 #: left in an existing test folder is inert.
 TEST_LIB_SUBDIR = "lib"
 
+#: WHO a library that has never had a user starts out belonging to.
+#:
+#: THE SAME STRING ON EVERY INSTALL, and that is the whole point. The
+#: versions placeholder mints a colour name per MACHINE so two machines
+#: can never write one filename; an identity that KEYS a user's things
+#: across their machines needs the opposite, so two untouched installs
+#: must agree until somebody says otherwise. Picking per machine here
+#: would guarantee the split this identity exists to remove.
+#:
+#: Not harvested and not personal - a role, visible in Preferences and
+#: renameable on sight. `hostos.machine_name()`, `platform.node`,
+#: `getpass` and `$USER` are banned from this whole package.
+DEFAULT_LIBRARY_USER = "Artist"
+
 
 def test_library_dir(folder: str) -> str:
     """The library inside a test folder, with the trailing separator
@@ -164,13 +178,25 @@ class Prefs(_Persistence):
         self._material_favorites: list[str] = []
         #: One-time adoption of the record-level favourites into prefs
         #: has happened for this user (see MaterialLibrary).
-        # v3: who this user's versions say they are by. NEVER backfilled
-        # from the machine - hostos.machine_name(), platform.node,
-        # getpass and $USER are all banned from this path: an
-        # auto-harvested name puts a real person's identity into a
-        # library that may be shared, without them choosing it. Empty
-        # means versions carry no author, which is the honest default.
-        self._version_author = ""
+        # WHO this is - the ONE identity. It keys everything stored per
+        # user in the library AND it signs versions.
+        #
+        # IT USED TO BE TWO FIELDS AND COULD NOT STAY TWO. `version_author`
+        # needed the name to DIFFER per machine (so two machines never
+        # mint one version filename); keying a user's things across their
+        # machines needs it to MATCH. One preference cannot do both, and
+        # the shipped default actively produced the wrong answer for the
+        # second use (ROADMAP line 21). `version_author` is retired and
+        # its value ADOPTED, so every `<name>-<n>` stem already on disk
+        # still matches its writer.
+        #
+        # NEVER backfilled from the machine - hostos.machine_name(),
+        # platform.node, getpass and $USER are all banned from this path:
+        # an auto-harvested name puts a real person's identity into a
+        # library that may be shared, without them choosing it. Blank
+        # means nobody has chosen yet; `resolve_library_user` answers what
+        # to actually key on, and never answers blank.
+        self._library_user = ""
         # The File section (the 2026-07-31 merge of Images, Geometry
         # and HIP): one folder/favorite/last/subfolders quartet, and
         # since 2026-08-12 the only one. The three per-section quartets
@@ -527,13 +553,42 @@ class Prefs(_Persistence):
     # `file_favorites` are the whole surface now.
 
     @property
-    def version_author(self) -> str:
-        """The name this user's versions carry. Chosen, never harvested."""
-        return self._version_author
+    def library_user(self) -> str:
+        """WHO this is. Chosen, never harvested.
 
-    @version_author.setter
-    def version_author(self, value: str) -> None:
-        self._version_author = str(value or "").strip()
+        The STORED value, which may be blank - blank means nobody has
+        picked yet. Anything keying on the identity calls
+        `resolve_library_user()` instead, which never answers blank.
+        """
+        return self._library_user
+
+    @library_user.setter
+    def library_user(self, value: str) -> None:
+        self._library_user = str(value or "").strip()
+
+    def resolve_library_user(self) -> str:
+        """The identity to actually key on, never blank, saved back once
+        so the answer stops changing.
+
+        A BLANK PREFERENCE MUST NOT REACH A STORE AS A KEY. It would
+        file every install that has not picked a name under one bucket
+        called `""` - and that bucket is not a shared USER, it is an
+        absent one, which nothing downstream can tell apart from a real
+        person who happens to have no favourites yet.
+
+        The default is the same on every install (`DEFAULT_LIBRARY_USER`)
+        rather than minted per machine: see that constant.
+        """
+        if not self._library_user:
+            self._library_user = DEFAULT_LIBRARY_USER
+            try:
+                self.save()
+            except (AttributeError, OSError):
+                # A prefs that cannot hold it still answers - the caller
+                # gets a real key, and the next call defaults again.
+                # Never a blank, which is the one outcome that corrupts.
+                pass
+        return self._library_user
 
     @property
     def material_favorites(self) -> list[str]:

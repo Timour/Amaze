@@ -22,7 +22,7 @@ from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
 from amaze import branding
-from amaze.core import debug, library_policy, texture_library, versions
+from amaze.core import debug, library_policy, texture_library
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -166,12 +166,12 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addStretch()
         return page, form
 
-    def _save_version_author(self) -> None:
-        """The name version files are signed with. Saved as typed;
-        blank stays blank here - the store mints a colour placeholder
-        only when a version is actually written, so an untouched
-        field costs nothing."""
-        self._prefs.version_author = self.line_version_author.text()
+    def _save_library_user(self) -> None:
+        """WHO this is. Saved as typed; cleared to blank means nobody
+        has picked, and `resolve_library_user` answers the shipped
+        default from then on rather than keying anything under a blank.
+        """
+        self._prefs.library_user = self.line_library_user.text()
         self._prefs.save()
 
     def set_allow_overwrite(self, checked: bool) -> None:
@@ -264,22 +264,23 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
-        # The box shows the REAL name, always: a blank pref gets its
-        # colour name minted right here, not promised for later.
-        if not self._prefs.version_author:
-            versions.writer_tag(self._prefs)
-        self.line_version_author = QtWidgets.QLineEdit(
-            self._prefs.version_author)
-        self.line_version_author.setToolTip(ui_helpers.tooltip_text(
-            "The name this machine signs its versions with - picked "
-            "for you, yours to change. It goes into the version "
-            "filenames so two machines can never write the same "
-            "file. Never taken from your computer's user or machine "
-            "name."))
-        self.line_version_author.editingFinished.connect(
-            self._save_version_author)
-        form.addRow(self._label("Version Author"),
-                    self.line_version_author)
+        # The box shows the REAL name, always: a blank pref resolves to
+        # the shipped default right here, not promised for later. The
+        # box is a plain line for now and becomes a dropdown over the
+        # LIBRARY's users, with an edit button, once the store that can
+        # list them exists (ROADMAP line 21).
+        self.line_library_user = QtWidgets.QLineEdit(
+            self._prefs.resolve_library_user())
+        self.line_library_user.setToolTip(ui_helpers.tooltip_text(
+            "Who you are in this library. Your favorites and your own "
+            "settings are saved under this name, so the same name on "
+            "another computer gives you the same things back - and two "
+            "people sharing one library keep theirs apart. It also "
+            "signs the versions you save. Never taken from your "
+            "computer's user or machine name."))
+        self.line_library_user.editingFinished.connect(
+            self._save_library_user)
+        form.addRow(self._label("User"), self.line_library_user)
 
         self._add_divider(form)
         self.line_cache = QtWidgets.QLineEdit(

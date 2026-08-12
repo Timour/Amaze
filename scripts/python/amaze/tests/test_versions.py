@@ -294,23 +294,30 @@ class StoreTest(_Case):
         self.assertFalse(versions.switch_active(self.prefs, self.mat_id, 1))
 
     def test_the_author_rides_from_prefs_when_chosen(self):
-        self.prefs.version_author = "Chosen"
+        self.prefs.library_user ="Chosen"
         versions.create_version(self.prefs, self.mat_id)
         self.assertEqual("Chosen", versions.list_versions(
             self.prefs, self.mat_id)[0]["author"])
 
-    def test_no_author_mints_a_colour_name_never_harvested(self):
-        """A blank author gets a placeholder from the COLOUR list,
-        minted once and saved to prefs - never the OS user, never the
-        machine name. The identity ban stays; the placeholder is what
-        makes two blank machines mint different filenames."""
+    def test_no_user_takes_the_shipped_default_never_harvested(self):
+        """A blank identity resolves to `DEFAULT_LIBRARY_USER`, saved to
+        prefs on sight - never the OS user, never the machine name.
+
+        THE COLOUR PLACEHOLDER IS GONE and this test changed with it.
+        It minted per MACHINE so two untouched installs signed different
+        filenames; the same field now keys one user's things ACROSS
+        their machines, which needs the opposite. What did NOT change is
+        the identity ban, which is the half worth keeping - and the
+        resolve-once behaviour, which the second create still pins.
+        """
         import getpass
         import platform
+        from amaze.prefs import prefs as prefs_mod
         versions.create_version(self.prefs, self.mat_id)
         author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
-        self.assertIn(author, versions.PLACEHOLDER_NAMES)
-        self.assertEqual(author, self.prefs.version_author,
-                         "the minted name must persist in prefs")
+        self.assertEqual(prefs_mod.DEFAULT_LIBRARY_USER, author)
+        self.assertEqual(author, self.prefs.library_user,
+                         "the resolved name must persist in prefs")
         for harvested in (getpass.getuser(), platform.node(),
                           os.environ.get("USER", "")):
             if harvested:
@@ -319,16 +326,22 @@ class StoreTest(_Case):
         versions.create_version(self.prefs, self.mat_id)
         second = versions.list_versions(self.prefs, self.mat_id)[1]["author"]
         self.assertEqual(author, second,
-                         "the placeholder is minted ONCE, not per save")
+                         "the identity is resolved ONCE, not per save")
 
 
 class VersionFilesCarryTheirWriterTest(_Case):
-    """Two machines can never mint the same file: the archive stem is
-    <writer>-<n>, the writer is the author pref (or its minted colour
-    placeholder), and the ledger row records the stem it wrote."""
+    """The archive stem is <writer>-<n>, the writer is `library_user`,
+    and the ledger row records the stem it wrote.
+
+    NOT "two machines can never mint the same file", which this said
+    until 2026-08-12 and which was never true for one artist on two
+    machines - they share the identity by design now. What actually
+    keeps two writers apart is stepping past a stem already on disk,
+    which `test_two_writers_same_number_never_collide` is the pin for.
+    """
 
     def test_the_stem_carries_the_writer(self):
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
         self.assertEqual("Crimson-1", row.get("file"))
@@ -337,7 +350,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
             os.path.exists(os.path.join(folder, "Crimson-1.mat")))
 
     def test_two_writers_same_number_never_collide(self):
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         ledger_path = os.path.join(
             versions.versions_dir(self.prefs, self.mat_id),
@@ -345,7 +358,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         with open(ledger_path, encoding="utf-8") as fh:
             frozen = fh.read()
         self._rewrite_base(b"MACHINE B EDIT")
-        self.prefs.version_author = "Cobalt"
+        self.prefs.library_user ="Cobalt"
         versions.create_version(self.prefs, self.mat_id)
         # The other machine never saw B's ledger write - put A's back,
         # exactly what a sync's last-write-wins does.
@@ -362,7 +375,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         """The sync-survival half: a version file the ledger does not
         know (the row lost to last-write-wins) comes back as a row on
         the next read, writer parsed from its stem."""
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
         with open(os.path.join(folder, "Cobalt-2.mat"), "wb") as fh:
@@ -382,7 +395,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
     def test_legacy_bare_numbers_still_switch(self):
         """The shape every pre-signing library holds today: 1.mat,
         2.mat, rows with no stem. Readers accept it forever."""
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
         row = versions.list_versions(self.prefs, self.mat_id)[0]
@@ -415,7 +428,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         from unittest import mock
         from amaze.core import library as library_mod
 
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asked = []
@@ -440,7 +453,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
 
     def test_the_ledger_has_a_snapshot_tier(self):
         """versions.json was the one store without one."""
-        self.prefs.version_author = "Crimson"
+        self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         self._rewrite_base(b"EDITED")
         versions.create_version(self.prefs, self.mat_id)

@@ -26,7 +26,6 @@ from __future__ import annotations
 import filecmp
 import json
 import os
-import random
 import re
 import shutil
 import time
@@ -34,30 +33,25 @@ import time
 from amaze.core import debug
 from amaze.helpers import hostos
 
-#: The placeholder pool for a blank author: colour names, minted once
-#: per machine and saved to prefs, so two machines with untouched
-#: settings still sign different filenames. Deliberately NEVER the OS
-#: user or the machine name (practice.md - legal/identity terms), and
-#: colour words because this app already speaks colour.
-PLACEHOLDER_NAMES = (
-    "Amber", "Aqua", "Auburn", "Azure", "Beige", "Blush", "Bronze",
-    "Burgundy", "Carmine", "Celadon", "Cerise", "Cerulean", "Charcoal",
-    "Chartreuse", "Cinnabar", "Cobalt", "Copper", "Coral", "Cream",
-    "Crimson", "Cyan", "Ebony", "Emerald", "Fawn", "Fuchsia", "Gold",
-    "Heliotrope", "Indigo", "Ivory", "Jade", "Lavender", "Lilac",
-    "Magenta", "Mahogany", "Maroon", "Mauve", "Mint", "Moss", "Ochre",
-    "Olive", "Onyx", "Orchid", "Pearl", "Periwinkle", "Pewter", "Plum",
-    "Rose", "Ruby", "Russet", "Rust", "Saffron", "Sage", "Salmon",
-    "Sapphire", "Scarlet", "Sepia", "Sienna", "Silver", "Slate",
-    "Tangerine", "Taupe", "Teal", "Terracotta", "Turquoise", "Ultramarine",
-    "Umber", "Vermilion", "Violet", "Viridian", "Wisteria",
-)
+#: THE COLOUR-NAME PLACEHOLDER POOL IS GONE (2026-08-12, ROADMAP line
+#: 21). It minted a name per MACHINE so two machines with untouched
+#: settings signed different filenames - correct for filenames, and
+#: exactly wrong for an identity that keys one user's things ACROSS
+#: their machines. `prefs.DEFAULT_LIBRARY_USER` replaces it and is the
+#: same string everywhere.
+#:
+#: WHAT THAT COSTS, narrowly: the both-machines-offline window widens
+#: for users who never set a name and were being protected by the
+#: minted colour. It was already open for everyone who DID set one -
+#: the shared tag is the expected case, not an edge - and the collision
+#: protection was never the name anyway: it is stepping past a stem
+#: already on disk, below.
 
 #: A stem is `<writer>-<n>`, or bare `<n>` when the file was written
 #: unsigned. NOT a legacy form: `_stem` still emits it whenever
-#: `writer_tag` answers empty - a prefs with no `version_author`
-#: attribute, one that cannot save the placeholder it minted, or an
-#: author name with no alphanumeric characters left after stripping.
+#: `writer_tag` answers empty - a prefs with no `library_user`
+#: attribute, one that cannot be read at all, or a name with no
+#: alphanumeric characters left after stripping.
 #: The trailing number IS the version number either way.
 _STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")
 
@@ -129,10 +123,11 @@ def _adopt_strays(preferences, mat_id: str, ledger: dict) -> None:
     THE NARROWER CLAIM IS THE HONEST ONE. This used to say
     writer-stemmed names cannot collide, which is false whenever both
     machines belong to ONE artist: the writer is the artist's own
-    `version_author`, and the placeholder that makes two machines
-    differ is minted only when that preference is blank. Two machines
-    writing while both are offline still land on one name, because
-    nothing shared can allocate it.
+    `library_user`, which is now the SAME on both by design - that is
+    what the identity is for. Two machines writing while both are
+    offline still land on one name, because nothing shared can allocate
+    it. (Until 2026-08-12 a blank author minted a per-machine colour
+    name, which narrowed that window for untouched installs only.)
     Reading the directory back into the ledger makes the files the
     truth - the same rule the whole store is built on - so a version
     can be lost to sync only if its files are, and losing the ledger
@@ -248,27 +243,20 @@ def _base_paths(preferences, mat_id: str) -> dict:
 
 
 def writer_tag(preferences) -> str:
-    """The signature version FILES carry: the author preference, or a
-    colour-name placeholder minted ONCE and saved back to prefs when
-    the author is blank. Two machines can then never mint the same
-    filename even with untouched settings. Never the OS user, never
-    the machine name."""
+    """The signature version FILES carry: the ONE identity,
+    `library_user`, which also keys everything stored per user in the
+    library. Never the OS user, never the machine name.
+
+    ONE FIELD, NOT TWO (ROADMAP line 21). Signing with a per-machine
+    name and keying with a per-user one meant one person's two machines
+    could never agree, and a name that differs per machine is not what
+    makes two writers safe here: stepping past a stem already on disk
+    is (see `create`)."""
     try:
-        author = str(preferences.version_author or "").strip()
+        author = preferences.resolve_library_user()
     except AttributeError:
         return ""
-    if not author:
-        author = random.choice(PLACEHOLDER_NAMES)
-        try:
-            preferences.version_author = author
-            preferences.save()
-        except (AttributeError, OSError):
-            # A prefs that cannot hold it signs nothing this call;
-            # the next call mints again.
-            return ""
-        debug.event("versions", "placeholder author minted",
-                    author=author)
-    return "".join(ch for ch in author if ch.isalnum())[:24]
+    return "".join(ch for ch in str(author or "") if ch.isalnum())[:24]
 
 
 def _stem(tag: str, number: int) -> str:
@@ -418,9 +406,10 @@ def create_version(preferences, mat_id: str, name: str = "",
     # wrote so readers never re-derive it.
     #
     # THE NUMBER IS ALLOCATED AGAINST THE FOLDER, NOT ONLY THE LEDGER.
-    # The writer is the artist's own `version_author`, so two machines
-    # belonging to ONE artist carry the SAME tag - the placeholder that
-    # makes two machines differ is minted only when the author is blank.
+    # The writer is the artist's own `library_user`, so two machines
+    # belonging to ONE artist carry the SAME tag - by design since
+    # 2026-08-12, and the expected case before that for anyone who had
+    # typed a name.
     # The ledger is last-write-wins across a sync, so a machine whose
     # row lost still computes the same next number, and with the same
     # tag that is the same filename: one version's payload silently
@@ -447,7 +436,7 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     author = ""
     try:
-        author = preferences.version_author
+        author = preferences.library_user
     except AttributeError:
         pass
     ledger["versions"].append({
