@@ -1093,6 +1093,64 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
             "a string matches per character" % (value,))
 
 
+class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
+    """Derived, not listed: walk the panel layer for calls on
+    `gradient_categories_model` and check each one exists.
+
+    `fcf3977` moved the Colors sidebar onto the shared model and took
+    its `refresh()` with it, leaving one caller behind - in the
+    save-a-palette-from-a-node flow, after the write, so the palette
+    landed and the user got a traceback.
+
+    A list of one method would not have caught the second.
+    """
+
+    def _package_root(self):
+        return os.path.dirname(os.path.dirname(
+            os.path.abspath(gradient_library.__file__)))
+
+    def _calls_on(self, attribute):
+        """{method name: [file:line]} for `*.<attribute>.<method>(...)`."""
+        import ast
+        found = {}
+        panel_dir = os.path.join(self._package_root(), "panel")
+        for name in sorted(os.listdir(panel_dir)):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(panel_dir, name)
+            with open(path, "r", encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                outer = node.func
+                if not isinstance(outer, ast.Attribute):
+                    continue
+                inner = outer.value
+                if not isinstance(inner, ast.Attribute):
+                    continue
+                if inner.attr != attribute:
+                    continue
+                found.setdefault(outer.attr, []).append(
+                    "panel/%s:%d" % (name, node.lineno))
+        return found
+
+    def test_the_panel_calls_nothing_the_sidebar_model_lacks(self):
+        calls = self._calls_on("gradient_categories_model")
+        self.assertTrue(
+            calls,
+            "found no calls at all - the walker stopped matching, which "
+            "would make this guard silently vacuous")
+        missing = {
+            method: sites for method, sites in calls.items()
+            if not hasattr(gradient_library.GradientCategories, method)
+        }
+        self.assertEqual(
+            {}, missing,
+            "the panel calls these on the Colors sidebar model and the "
+            "model does not have them: %s" % missing)
+
+
 class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
     """`_load_user` filters `_All` out of `_user_categories` and
     `_save_user` writes that filtered list back, so every Colors edit
