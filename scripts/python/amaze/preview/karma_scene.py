@@ -20,6 +20,7 @@ import time
 
 import hou
 
+import amaze
 from amaze.core import debug
 from amaze.helpers import helpers, hostver
 from amaze.preview import thumbnail_scene
@@ -56,9 +57,7 @@ def build_karma_scaffold(preferences):
         # bug had two reproductions, and the V1 assets were 75MB of
         # payload for an option nobody chose.
         ref.parm("filepath1").set(
-            hou.getenv("AMAZE")
-            + "/scripts/python/amaze/res/usd/shaderBallScene_Simple.usd"
-        )
+            amaze.package_file("res", "usd", "shaderBallScene_Simple.usd"))
 
         ref.parm("primpath1").set("/shaderBallScene")
         lib1 = net.createNode("materiallibrary")

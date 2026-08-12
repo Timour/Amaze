@@ -830,17 +830,37 @@ class MatLibPanel(QtWidgets.QWidget):
                     "Repair Library from the Amaze shelf to rebuild it.",
                     key="starter-refused")
                 return
-            oldpath = (
-                hou.getenv("AMAZE") + "/scripts/python/amaze/res/def/library.json"
-            )
+            oldpath = amaze.package_file("res", "def", "library.json")
             shutil.copy(oldpath, self.prefs.dir + "/library.json")
             new_folder = True
-        if not os.path.exists(self.prefs.dir + self.prefs.img_dir):
-            os.mkdir(self.prefs.dir + self.prefs.img_dir)
-            os.mkdir(self.prefs.dir + self.prefs.asset_dir)
+        if self.ensure_library_dirs(self.prefs):
             new_folder = True
         if new_folder:
             debug.event("session", "library created", dir=self.prefs.dir)
+
+    @staticmethod
+    def ensure_library_dirs(preferences) -> bool:
+        """Make sure `img/` and `mat/` both exist. True if either was
+        created.
+
+        ASKED PER FOLDER, because they are created as a pair and were
+        guarded as one: `img/` missing beside a present `mat/` raised
+        `FileExistsError` out of the second `os.mkdir`, which `_build`
+        reads as a broken library and re-raises, so the panel refused
+        to open on a library that was fine. `mat/` missing beside a
+        present `img/` was never created at all.
+
+        `exist_ok=True` is what every other folder-creating site in
+        this package already uses; these two were the only bare
+        `os.mkdir` calls in it.
+        """
+        made = False
+        for tail in (preferences.img_dir, preferences.asset_dir):
+            folder = os.path.join(preferences.dir, tail)
+            if not os.path.isdir(folder):
+                made = True
+            os.makedirs(folder, exist_ok=True)
+        return made
 
     def set_library(self) -> None:
         """

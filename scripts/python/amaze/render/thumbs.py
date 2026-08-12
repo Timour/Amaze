@@ -5,6 +5,7 @@ import hou
 
 from amaze.core import debug
 from amaze.core import material
+import amaze
 from amaze.core import tile_icons
 from amaze.render import nodes
 from amaze import preview
@@ -517,12 +518,8 @@ class ThumbNailRenderer:
                         self._preferences, "geometry_bg", "black"
                     )
                     if bg_mode in ("black", "white"):
-                        bg_file = (
-                            hou.getenv("AMAZE")
-                            + "/scripts/python/amaze/res/img/geo_bg_"
-                            + bg_mode
-                            + ".png"
-                        )
+                        bg_file = amaze.package_file(
+                            "res", "img", "geo_bg_%s.png" % bg_mode)
                         if os.path.exists(bg_file):
                             _set(rop, "bgimage", bg_file)
                             _set(rop, "skyusesky", 0)

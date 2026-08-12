@@ -829,5 +829,58 @@ class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
             "test can no longer see its subject")
 
 
+class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
+    """`amaze.PACKAGE_ROOT` is declared THE way to locate bundled files
+    and had two users; ten sites hand-built the install-relative join
+    instead, and three of them glued `hou.getenv("AMAZE")` onto a
+    string with `+`. With the variable unset that is a TypeError out of
+    a paint or a save, not a message naming a missing file."""
+
+    def test_package_file_returns_a_real_bundled_path(self):
+        import amaze
+        found = amaze.package_file("res", "def", "library.json")
+        self.assertTrue(os.path.isabs(found), "not an absolute path")
+        self.assertTrue(found.startswith(amaze.PACKAGE_ROOT),
+                        "resolved outside the package")
+        self.assertTrue(os.path.exists(found),
+                        "the starter library is not where this says")
+
+    def test_no_source_file_concatenates_the_install_variable(self):
+        """Source-derived: the join has to be unwritable in the unsafe
+        form, or it comes back the next time somebody needs a file."""
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for folder, _dirs, files in os.walk(root):
+            if "tests" in folder or "__pycache__" in folder:
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, encoding="utf-8") as handle:
+                    lines = handle.read().splitlines()
+                for number, line in enumerate(lines, 1):
+                    if line.strip().startswith("#"):
+                        continue
+                    if 'getenv("AMAZE")' not in line:
+                        continue
+                    # An UNGUARDED read is the defect: `or ""` makes the
+                    # unset case an empty string and a missing-file
+                    # message, where a bare None reaches `+` and raises.
+                    # The concatenation is often on the NEXT line, which
+                    # is why this looks at the pair.
+                    following = lines[number] if number < len(lines) else ""
+                    joined = line + " " + following.strip()
+                    if " or " in line.split('getenv("AMAZE")')[-1][:12]:
+                        continue
+                    if "+" in joined.split('getenv("AMAZE")')[-1]:
+                        offenders.append("%s:%d" % (name, number))
+        self.assertEqual(
+            [], offenders,
+            "an install path is glued together with +, so an unset "
+            "variable raises TypeError instead of naming a file: %s"
+            % offenders)
+
+
 if __name__ == "__main__":
     unittest.main()

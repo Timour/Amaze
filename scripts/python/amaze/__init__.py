@@ -51,3 +51,17 @@ import os as _os
 #: files (ui/, res/). Four dialogs used to re-derive it from their own
 #: __file__ each.
 PACKAGE_ROOT = _os.path.dirname(_os.path.abspath(__file__))
+
+
+def package_file(*parts) -> str:
+    """The absolute path of a file shipped inside this package.
+
+    THE ONE JOIN, so a bundled file cannot be located two ways. Ten
+    sites rebuilt `$AMAZE/scripts/python/amaze/...` by hand and three
+    glued the variable on with `+`, which raises TypeError on an unset
+    install instead of naming a missing file. `PACKAGE_ROOT` needs no
+    environment at all: it is derived from this module's own location,
+    so it is right in a test, in hython and in a Houdini that never set
+    the variable.
+    """
+    return _os.path.join(PACKAGE_ROOT, *parts)

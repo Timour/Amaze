@@ -1195,6 +1195,66 @@ class ExistedBeforeTest(unittest.TestCase):
         self.assertEqual("cops.json.bak-1", hostos.existed_before(path))
 
 
+class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
+    """`img/` and `mat/` were created together under a guard that only
+    asked about `img/`.
+
+    With `mat/` present and `img/` gone - a sync mid-arrival, or
+    thumbnails deleted on the reasoning that they regenerate - the
+    second `os.mkdir` raised `FileExistsError`, which `_build` catches
+    as `OSError`, finds `library.json` healthy, and re-raises: the
+    panel refuses to open on a library that is fine. The other way
+    round, `mat/` was never created at all and every material save
+    failed. These were the package's only two bare `os.mkdir`."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_libdirs_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    class _Prefs:
+        img_dir = "img/"
+        asset_dir = "mat/"
+
+        def __init__(self, directory):
+            self.dir = directory
+
+    def _ensure(self):
+        from amaze.panel.panel import MatLibPanel
+        MatLibPanel.ensure_library_dirs(self._Prefs(self.dir))
+
+    def _exists(self, name):
+        return os.path.isdir(os.path.join(self.dir, name))
+
+    def test_a_missing_img_beside_a_present_mat_does_not_raise(self):
+        os.mkdir(os.path.join(self.dir, "mat"))
+        self._ensure()
+        self.assertTrue(self._exists("img"), "img/ was not created")
+        self.assertTrue(self._exists("mat"), "mat/ was destroyed")
+
+    def test_a_missing_mat_beside_a_present_img_is_created(self):
+        os.mkdir(os.path.join(self.dir, "img"))
+        self._ensure()
+        self.assertTrue(
+            self._exists("mat"),
+            "mat/ was never created, so every material save would fail")
+
+    def test_running_twice_changes_nothing(self):
+        self._ensure()
+        self._ensure()
+        self.assertTrue(self._exists("img") and self._exists("mat"))
+
+    def test_load_actually_calls_it(self):
+        """Source-derived: extracting it is worthless if load() keeps
+        its own pair of bare mkdirs."""
+        import inspect
+        from amaze.panel.panel import MatLibPanel
+        source = inspect.getsource(MatLibPanel.load)
+        self.assertIn("ensure_library_dirs", source,
+                      "panel.load() no longer calls the folder guard")
+        self.assertNotIn("os.mkdir", source,
+                         "load() still creates a folder by hand")
+
+
 class StarterMustNotSeedOverALibraryTest(unittest.TestCase):
     """panel.load() guarded only on library.json's absence. Any of the
     causes _refuse_absent exists for - a sync mid-arrival, a selective
