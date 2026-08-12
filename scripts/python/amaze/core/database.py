@@ -17,7 +17,7 @@ from amaze.helpers import hostos
 #: with a new _MIGRATIONS step - the load path applies steps in order,
 #: so either machine of a two-machine setup can open a library written
 #: by the other and land on the same schema.
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: version-it-upgrades-FROM -> function(data) -> None (mutates in
 #: place). Step N runs when data["version"] == N, producing N+1.
@@ -88,6 +88,49 @@ def _migration_v2(data: dict) -> None:
 
 
 _MIGRATIONS[2] = _migration_v2
+
+
+def _migration_v3(data: dict) -> None:
+    """v3 -> v4: a palette files its category as a LIST.
+
+    Batch D unified the CONTAINER - rows under `assets`, identity in
+    `id` - and left the row alone, so a palette carried `category`,
+    one string, where every other row carries `categories`, a list.
+    `category.Categories` counts by walking `asset.get("categories",
+    [])`, so it read nothing on a gradient row and answered zero for
+    every sidebar count. That one field is why the Colors section
+    still ran on a second implementation of the category machinery
+    (practice.md > A PARTIAL MIGRATION IS NOT A MIGRATION).
+
+    The FILE adopts the one shape rather than the shared model
+    learning a second, as in v2. A single-category palette becomes a
+    one-element list, so nothing is lost. Every other database has no
+    `category` key, so this is a no-op for them.
+
+    Idempotent, because `_migrate_peer` replays the chain per merge; a
+    row carrying BOTH keeps the list and drops the string, the same
+    tie-break v2 uses for `id`/`uid`.
+    """
+    rows = data.get("assets")
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        # A malformed row must not cost the rest, exactly as in v2.
+        if not isinstance(row, dict) or "category" not in row:
+            continue
+        singular = row.pop("category")
+        if isinstance(row.get("categories"), list):
+            continue
+        if isinstance(singular, str) and singular.strip():
+            row["categories"] = [singular.strip()]
+        else:
+            # No category is an EMPTY LIST, never a list holding "" -
+            # the sidebar counts membership, and a blank name would
+            # count as a category nobody can select or delete.
+            row["categories"] = []
+
+
+_MIGRATIONS[3] = _migration_v3
 
 
 #: Survives the module reload; the class attribute points at it.

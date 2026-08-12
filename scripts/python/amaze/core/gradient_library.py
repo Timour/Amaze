@@ -71,6 +71,39 @@ def _palette_ramp_data(colors: list) -> dict:
     return {"keys": keys, "values": values, "bases": ["Constant"] * n}
 
 
+def _row_categories(entry) -> list:
+    """The categories one palette is filed under, as a list.
+
+    THE ONE READER. Nine sites here spelled `entry.get("category")`
+    against the singular string this file used to carry; schema v4
+    made it a LIST, like every other database's rows, so that the
+    Colors section can run on `category.Categories` instead of a second
+    implementation of it. One reader rather than nine conversions is
+    what stops them drifting while the section is mid-move.
+
+    Tolerates the comma-string form for exactly the reason
+    `Categories._category_count` does - a hand-edited file, and an
+    older build's row arriving through the peer merge.
+    """
+    cats = (entry or {}).get("categories", [])
+    if isinstance(cats, str):
+        cats = cats.split(",")
+    if not isinstance(cats, list):
+        return []
+    return [c.strip() for c in cats if isinstance(c, str) and c.strip()]
+
+
+def _set_row_category(entry, name: str) -> None:
+    """File a palette under one category, or none for "".
+
+    Colors is single-category in the UI today; the field is a list so
+    the shared model can read it, and so multi-category costs nothing
+    when the UI is ready for it.
+    """
+    name = str(name or "").strip()
+    entry["categories"] = [name] if name else []
+
+
 class GradientCategories(QtCore.QAbstractListModel):
     """Sidebar list for the Gradients section: "All", then the user's
     categories (which after seeding include the palette groups - "Wada 5
@@ -303,7 +336,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                     self._user.append({
                         "type": "user",
                         "name": name,
-                        "category": cat_name,
+                        "categories": [cat_name] if cat_name else [],
                         "colors": colors,
                         "note": combo.get("note", ""),
                         "ramp": _palette_ramp_data(colors),
@@ -447,15 +480,33 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             # A MEMORY marker: every row here is a user gradient since
             # the curated palettes became ordinary seeded entries.
             entry["type"] = "user"
-        self._user_categories = [
-            name for name in (data.get("categories") or [])
-            if isinstance(name, str) and name != "_All"
-        ]
+        # LIVE ALIASES INTO THE CONNECTOR'S DOCUMENT, never copies -
+        # the same contract `category.Categories.__init__` holds with
+        # `self._data["categories"]` and `colors()` holds with the
+        # colour table, and the contract `DatabaseConnector.set` says
+        # it keeps by never rebinding these containers.
+        #
+        # They were comprehensions until 2026-08-12, and that was the
+        # last of the erasures: `_save_user` rebuilds the document from
+        # what it holds, so a category the peer merge adopted was
+        # written out of existence by the NEXT Colors edit - the merge
+        # landed correctly, and the save after it undid the merge.
+        # The assets half of exactly this was found and fixed on
+        # 2026-08-10 and these two keys were not, which is what the
+        # `take_adopted` comment in `_save_user` is about.
+        #
+        # `_All` STAYS IN THE LIST. It is the shared model's marker for
+        # the everything-row and the sidebar strips the leading
+        # underscore for display; filtering it out here and writing the
+        # filtered list back is what stripped it from disk on every
+        # save, so the next launch re-added it with a full rewrite and
+        # spent the snapshot slot before the user had touched anything.
+        self._user_categories = data.setdefault("categories", [])
         table = data.get("category_colors")
-        self._category_colors = {
-            str(k): str(v) for k, v in table.items()
-            if isinstance(k, str) and isinstance(v, str) and v
-        } if isinstance(table, dict) else {}
+        if not isinstance(table, dict):
+            table = {}
+            data["category_colors"] = table
+        self._category_colors = table
 
     def _save_user(self) -> bool:
         """True only when the colours actually reached disk.
@@ -482,9 +533,13 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             debug.event("gradient", "save refused - these colours came "
                         "from another library", file=path)
             return False
+        # ONLY `assets` IS HANDED OVER. `categories` and
+        # `category_colors` are the connector's own containers, which
+        # this model mutates in place (see `_load_user`), so they are
+        # already current - handing them back would replace the live
+        # list with itself at best, and with a pre-merge copy of itself
+        # at worst. That second case is the erasure this batch removes.
         db.set({
-            "categories": self._user_categories,
-            "category_colors": self._category_colors,
             # `type` is a MEMORY marker, never stored - the same line
             # the hand-built writer carried.
             "assets": [
@@ -544,7 +599,14 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self.endResetModel()
 
     def user_categories(self) -> list:
-        return list(self._user_categories)
+        """The categories the sidebar lists, without the `_All` marker.
+
+        THE FILTER LIVES HERE, at the view edge, not in what is stored.
+        It used to be applied on LOAD and the filtered list written
+        back, which quietly deleted the marker from disk on every save.
+        """
+        return [name for name in self._user_categories
+                if isinstance(name, str) and name != "_All"]
 
     def add_user_category(self, name: str) -> None:
         name = (name or "").strip()
@@ -553,7 +615,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             self._save_user()
 
     def count_in_category(self, name: str) -> int:
-        return sum(1 for e in self._user if e.get("category") == name)
+        return sum(1 for e in self._user if name in _row_categories(e))
 
     def count_for_filter(self, kind: str, value) -> int:
         """Entry count for a sidebar filter - same semantics as
@@ -578,7 +640,10 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         entry = self.entry(row)
         if entry is None:
             return ""
-        return self.category_color_of(entry.get("category") or "")
+        # FIRST category wins the tile's colour bar, the same answer
+        # MaterialLibrary gives for a multi-category material.
+        names = _row_categories(entry)
+        return self.category_color_of(names[0] if names else "")
 
     def set_category_color(self, name: str, color: str) -> bool:
         """Colour one category, or clear it with an empty colour.
@@ -725,8 +790,8 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         moved = 0
         for row in rows:
             entry = self.entry(row)
-            if entry is not None and entry.get("category") != category:
-                entry["category"] = category
+            if entry is not None and _row_categories(entry) != [category]:
+                _set_row_category(entry, category)
                 moved += 1
         if moved:
             self._save_user()
@@ -746,8 +811,9 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         elif new not in self._user_categories:
             self._user_categories.append(new)
         for entry in self._user:
-            if entry.get("category") == old:
-                entry["category"] = new
+            names = _row_categories(entry)
+            if old in names:
+                entry["categories"] = [new if n == old else n for n in names]
         self.rename_category_color(old, new)
         if not self._save_user():
             return False
@@ -764,8 +830,9 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self.drop_category_color(name)
         changed = False
         for entry in self._user:
-            if entry.get("category") == name:
-                entry["category"] = ""
+            names = _row_categories(entry)
+            if name in names:
+                entry["categories"] = [n for n in names if n != name]
                 changed = True
         self._save_user()
         if changed:
@@ -791,7 +858,7 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
             {
                 "type": "user",
                 "name": (name or "Gradient").strip() or "Gradient",
-                "category": category,
+                "categories": [category] if category else [],
                 "colors": colors,
                 "ramp": ramp_data,
                 # Identity at birth, like every section's assets -
@@ -1134,7 +1201,8 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         if role == self.FavoriteRole:
             return self.is_favorite(row)
         if role == self.CategoryLabelRole:
-            return entry.get("category") or "Uncategorized"
+            names = _row_categories(entry)
+            return names[0] if names else "Uncategorized"
         if role == self.CategoryColorRole:
             return self.category_color(row)
         return None
@@ -1209,7 +1277,7 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
             return False
         if self._favorites_only and not model.is_favorite(source_row):
             return False
-        if self._kind == "category" and entry.get("category") != self._value:
+        if self._kind == "category" and self._value not in _row_categories(entry):
             return False
         if self._size_filter is not None:
             fewest, most = self._size_filter

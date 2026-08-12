@@ -806,5 +806,169 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
             "the list without it")
 
 
+class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
+    """A peer's category and its colour must survive the save AFTER
+    the merge (practice.md > A PARTIAL MIGRATION IS NOT A MIGRATION)."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_cat_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"categories": ["_All", "Warm"],
+                       "category_colors": {"Warm": "#c08040"},
+                       "assets": [{"name": "ours", "id": "oursid",
+                                   "points": [], "colors": []}]}, fh, indent=1)
+        self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+        if self.lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+
+    def _peer_adds_a_category(self):
+        with open(self.path, encoding="utf-8") as fh:
+            document = json.load(fh)
+        document.setdefault("categories", []).append("Bronze")
+        document.setdefault("category_colors", {})["Bronze"] = "#7b5230"
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump(document, fh, indent=1)
+        stat = os.stat(self.path)
+        os.utime(self.path, ns=(stat.st_atime_ns,
+                                stat.st_mtime_ns + 5_000_000_000))
+
+    def _on_disk(self):
+        with open(self.path, encoding="utf-8") as fh:
+            return json.load(fh)
+
+    def test_a_peers_category_survives_the_SECOND_edit_too(self):
+        self._peer_adds_a_category()
+        # Edit one merges; edit two is the one that used to erase it.
+        self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+        self.assertIn("Bronze", self._on_disk().get("categories", []),
+                      "the merge itself is broken - this test is aimed "
+                      "at the save AFTER the merge")
+        self.lib.add_user_gradient("mine2", "", {"values": [], "keys": []})
+        self.assertIn(
+            "Bronze", self._on_disk().get("categories", []),
+            "the second Colors edit wrote the other Mac's category out "
+            "of existence - _save_user rebuilds `categories` from a "
+            "copy taken before the merge ran")
+
+    def test_a_peers_category_COLOUR_survives_the_second_edit_too(self):
+        self._peer_adds_a_category()
+        self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+        self.lib.add_user_gradient("mine2", "", {"values": [], "keys": []})
+        self.assertEqual(
+            "#7b5230",
+            self._on_disk().get("category_colors", {}).get("Bronze"),
+            "the peer's category colour was written out of existence - "
+            "`_category_colors` is a detached dict rebuilt on save")
+
+
+class AGradientsCategoryBecomesAListLikeEverySection(unittest.TestCase):
+    """v3 -> v4: the last row-shape difference between `gradients.json`
+    and the other three databases.
+
+    Batch D unified the CONTAINER and left the row alone, so a palette
+    filed its category as one string where every other row carries a
+    LIST. `category.Categories` counts by walking
+    `asset.get("categories", [])`, so it read nothing on a gradient row
+    and every sidebar count answered zero. That single field kept
+    Colors on its own second implementation of the category machinery.
+
+    The FILE adopts the one shape rather than the shared model learning
+    a second, as in `_migration_v2`. Every other database has no
+    `category` key, so this is a no-op for them."""
+
+    def _migrated(self, document):
+        db = database.DatabaseConnector("gradients.json")
+        db._migrate(document)
+        return document
+
+    def test_a_single_category_becomes_a_one_element_list(self):
+        document = self._migrated({
+            "version": 3,
+            "assets": [{"id": "a", "name": "warm one", "category": "Warm"}],
+        })
+        self.assertEqual(["Warm"], document["assets"][0].get("categories"),
+                         "the palette's category did not become a list")
+        self.assertNotIn("category", document["assets"][0],
+                         "the singular key survived the migration, so two "
+                         "spellings of one fact are now on disk")
+
+    def test_an_uncategorised_palette_becomes_an_empty_list(self):
+        document = self._migrated({
+            "version": 3,
+            "assets": [{"id": "a", "name": "loose", "category": ""}],
+        })
+        self.assertEqual([], document["assets"][0].get("categories"))
+
+    def test_it_is_idempotent_because_the_peer_merge_replays_it(self):
+        """`_migrate_peer` runs the chain again per merge of an
+        old-shape peer, so a second pass must change nothing."""
+        once = self._migrated({
+            "version": 3,
+            "assets": [{"id": "a", "name": "warm one", "category": "Warm"}],
+        })
+        twice = self._migrated(json.loads(json.dumps(once)))
+        self.assertEqual(once, twice, "a second pass changed the document")
+
+    def test_it_is_a_no_op_for_the_other_three_databases(self):
+        document = self._migrated({
+            "version": 3,
+            "assets": [{"id": "m", "name": "a material",
+                        "categories": ["Metal", "Rough"]}],
+        })
+        self.assertEqual(["Metal", "Rough"],
+                         document["assets"][0]["categories"],
+                         "a material row was rewritten by a migration "
+                         "that has no business touching it")
+
+    def test_a_row_carrying_both_keeps_the_list(self):
+        """The same tie-break `_migration_v2` uses for `id`/`uid`."""
+        document = self._migrated({
+            "version": 3,
+            "assets": [{"id": "a", "categories": ["Kept"],
+                        "category": "Dropped"}],
+        })
+        self.assertEqual(["Kept"], document["assets"][0]["categories"])
+        self.assertNotIn("category", document["assets"][0])
+
+
+class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
+    """`_load_user` filters `_All` out of `_user_categories` and
+    `_save_user` writes that filtered list back, so every Colors edit
+    strips the marker from disk - and `DatabaseConnector.
+    _normalize_all_category` re-adds it with a FULL save inside
+    `GradientLibrary.__init__` on the next launch.
+
+    The cost is not the marker, it is the write: that rewrite spends
+    `gradients.json`'s once-per-30-minutes snapshot slot before the
+    user has touched anything, so the first half hour of colour edits
+    has no restore point behind it."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_all_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"categories": ["_All", "Warm"],
+                       "assets": [{"name": "ours", "id": "oursid",
+                                   "points": [], "colors": []}]}, fh, indent=1)
+        self.lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+        if self.lib._user_file() != self.path:
+            self.skipTest("gradient library does not resolve this path")
+
+    def test_an_ordinary_edit_leaves_the_All_marker_on_disk(self):
+        self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+        with open(self.path, encoding="utf-8") as fh:
+            categories = json.load(fh).get("categories", [])
+        self.assertIn(
+            "_All", categories,
+            "a Colors edit stripped `_All` from gradients.json, so the "
+            "next launch re-adds it with a full rewrite and spends the "
+            "snapshot slot before the user has done anything")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
