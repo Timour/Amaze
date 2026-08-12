@@ -445,6 +445,75 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
                       "an ordinary save after the recovery was refused")
 
 
+class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
+    """This build ships no migration steps, and a document older than
+    the current schema is REFUSED rather than guessed at.
+
+    1.0 is the first version, so there is nothing to upgrade from: the
+    three steps that lived here described shapes written before any
+    release, and every library that existed was converted before they
+    were deleted. What stays is the forward machinery - the registry,
+    the loop, the incomplete-chain flag and the refusal in `save()` -
+    which is how the next bump happens.
+
+    ASSERTED THROUGH A CONNECTOR, never on `_MIGRATIONS` itself. The
+    registry is module-global and sibling classes install their own
+    steps into it and restore them afterwards, so a test reading its
+    contents is order-dependent: the first version of this one asserted
+    an empty dict and failed `1 != 2`, having been handed a step
+    another class had installed.
+    """
+
+    def _pre_release_document(self):
+        """Version 1 is the implicit legacy schema - the shape the very
+        first libraries were written in, before any release."""
+        return {"version": 1, "categories": ["_All"], "tags": [],
+                "assets": [{"id": "ASSET0", "name": "mat 0"}]}
+
+    def test_a_pre_release_document_keeps_its_own_version(self):
+        self._write(self._pre_release_document())
+        db, data = self._load()
+        self.assertEqual(
+            1, data["version"],
+            "a document was carried forward by a step this build no "
+            "longer ships, so something is still upgrading from a "
+            "shape that predates the first release")
+        self.assertTrue(
+            db._migration_incomplete,
+            "the chain stopped short and did not record it, so save() "
+            "has nothing to consult and will stamp the document as "
+            "current")
+
+    def test_it_is_not_stamped_as_current_by_an_ordinary_save(self):
+        """The consequence that matters. A wrong stamp is permanent and
+        silent: every reader decides from the version, so a document
+        marked current is never migrated again by ANY build."""
+        self._write(self._pre_release_document())
+        db, data = self._load()
+        db.set({"assets": data["assets"], "categories": data["categories"],
+                "tags": data["tags"]})
+        db.save()
+        on_disk = self._on_disk()
+        self.assertEqual(
+            1, on_disk["version"],
+            "an ordinary save stamped the current schema over a document "
+            "that no step ever touched")
+        self.assertIn(
+            "ASSET0", [a["id"] for a in on_disk["assets"]],
+            "holding the stamp back also held the records back - only "
+            "the version claim is refused, never the user's edit")
+
+    def test_a_current_document_is_not_flagged(self):
+        """The accept path. A flag that fires on every load would refuse
+        every stamp, and the refusal above would prove nothing."""
+        self._write(self._document(1))
+        db, data = self._load()
+        self.assertEqual(database.SCHEMA_VERSION, data["version"])
+        self.assertFalse(
+            db._migration_incomplete,
+            "a document already at the current schema was reported as "
+            "an incomplete chain")
+
 
 class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
     """The "unreadable" latch must not outlive the problem.
