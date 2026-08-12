@@ -95,6 +95,10 @@ _reload(database)
 _reload(library_policy)
 _reload(versions)
 _reload(notes)
+# Before versions and the dialogs that show a user: both resolve a UID
+# to a name through it, so a stale one answers from the previous
+# library's people.
+_reload(users)
 _reload(material)
 # The render stack, leaf-first. These reloads used to live at the
 # TOP of library.py/thumbs.py/nodes.py/thumbnail_scene.py - dev
@@ -161,6 +165,7 @@ _reload(usd_dialog)
 _reload(icon_dialog)
 _reload(gradient_dialog)
 _reload(code_dialog)
+_reload(user_dialog)
 _reload(dragdrop_widgets)
 # BEFORE sections, which imports it: the Grid area's builder and its
 # ListColumns are read by every section's menu table, so a stale grid

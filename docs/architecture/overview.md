@@ -686,6 +686,7 @@ copied per dialog.
 | **Gradient / Category Dialog** | Colors | `dialogs/gradient_dialog.py` ✓ AssetDialog |
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` (AssetDialog: pending) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` |
+| **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
 *Adoption is incremental* — GradientDialog/CategoryDialog use AssetDialog;
@@ -913,6 +914,10 @@ core/matx_import.py       Online import orchestration + Values Adapter
 core/matx_library.py      Online Browser model
 core/{gradient,cop,code}_library.py   the other sections' models
 core/file_library.py      File Section models (kinds, sweep, OS icons)
+core/users.py             WHO uses this library - a uuid4 UID per
+                          person with a name beside it. Everything a
+                          user owns is tagged with the UID, so a rename
+                          relinks the label and moves nothing
 core/notes.py             the notes store (notes.json, per-asset pages)
 panel/notes_panel.py      the Comments pane (right splitter dock)
 core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
@@ -962,6 +967,9 @@ utils/rc_calls.py         the entry points Houdini itself calls (shelf
                           pane-tab label, historical names included
 branding.py               the app's DISPLAY name and tagline, once
 dialogs/                  save / preferences / about / code / gradient dialogs
+dialogs/user_dialog.py    WHICH user this machine is, asked once and
+                          only when the library has people in it and
+                          this machine is none of them
 
 tests/test_support.py     fixture_panel() - the ONLY way a test builds a
                           panel: own settings, library, caches, network
