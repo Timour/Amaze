@@ -76,6 +76,42 @@ def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
     return p
 
 
+def _location_prefs(testcase, settings, tag_favourites=True):
+    """A Prefs over a fresh temp library, with `settings` loaded.
+
+    The library is assigned into the settings BEFORE load(), never
+    after: the first locations read runs the migration, so a library
+    assigned afterwards is assigned too late and the real one has
+    already been written to.
+    """
+    library = tempfile.mkdtemp(prefix="amaze_loc_library_")
+    testcase.addCleanup(shutil.rmtree, library, ignore_errors=True)
+    data = dict(settings)
+    data["directory"] = library
+    locations_mod.forget()
+    testcase.addCleanup(locations_mod.forget)
+    prefs = _prefs_with_settings(testcase, data,
+                                 tag_favourites=tag_favourites)
+    # load() normalises the library path to end in a separator, so
+    # this compares the resolved form. It is an assertion and not a
+    # comment because everything below writes real files: if the
+    # redirect ever stops taking, these tests must stop rather than
+    # run against whatever library the settings actually name.
+    library = prefs.dir
+    # normcase+normpath BOTH sides. `prefs.dir` comes back in the
+    # HOUDINI spelling - forward slashes, trailing separator - while
+    # tempfile.gettempdir() uses the platform's own, so on Windows
+    # this compared one separator style against the other and was
+    # False for the separator alone, taking every test in the class
+    # down while each reported a fixture that was pointed exactly
+    # where it should be.
+    testcase.assertTrue(
+        os.path.normcase(os.path.normpath(library)).startswith(
+            os.path.normcase(os.path.normpath(tempfile.gettempdir()))),
+        "the fixture is pointed at %r" % (library,))
+    return prefs, library
+
+
 class TheFileTabIntroducesItselfOnceTest(unittest.TestCase):
     """A settings file written before the File section existed gains
     the tab once, and turning it off then sticks."""
@@ -126,36 +162,8 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
     }
 
     def _prefs(self, settings=None, tag_favourites=True):
-        library = tempfile.mkdtemp(prefix="amaze_loc_library_")
-        self.addCleanup(shutil.rmtree, library, ignore_errors=True)
-        data = dict(settings or self.REAL_SHAPE)
-        # BEFORE load(), never after: load() ends by running the
-        # migration, so a library assigned afterwards is assigned too
-        # late and the real one has already been written to.
-        data["directory"] = library
-        locations_mod.forget()
-        self.addCleanup(locations_mod.forget)
-        prefs = _prefs_with_settings(self, data,
-                                     tag_favourites=tag_favourites)
-        # load() normalises the library path to end in a separator, so
-        # this compares the resolved form. It is an assertion and not a
-        # comment because everything below writes real files: if the
-        # redirect ever stops taking, these tests must stop rather than
-        # run against whatever library the settings actually name.
-        library = prefs.dir
-        # normcase+normpath BOTH sides. `prefs.dir` comes back in the
-        # HOUDINI spelling - forward slashes, trailing separator - while
-        # tempfile.gettempdir() uses the platform's own, so on Windows
-        # this compared 'C:/Users/.../Temp/...' against
-        # 'C:\\Users\\...\\Temp' and was False for the separator alone.
-        # It took all ten tests in this class down with it, each
-        # reporting a fixture that was in fact pointed exactly where it
-        # should be.
-        self.assertTrue(
-            os.path.normcase(os.path.normpath(library)).startswith(
-                os.path.normcase(os.path.normpath(tempfile.gettempdir()))),
-            "the fixture is pointed at %r" % (library,))
-        return prefs, library
+        return _location_prefs(self, settings or self.REAL_SHAPE,
+                               tag_favourites=tag_favourites)
 
     def test_every_location_arrives_field_for_field(self):
         prefs, _lib = self._prefs()
@@ -218,13 +226,12 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                          "whoever opened the library")
 
     def test_the_locations_land_even_when_the_favourites_have_no_owner(self):
-        """The migration moves two stores with DIFFERENT OWNERS - the
-        locations are the library's, the favourites are a person's - so
-        one cannot refuse on behalf of the other.
+        """One half of the migration cannot refuse on behalf of the
+        other: with a user present, a favourites half that finds nobody
+        defers alone and the locations still land, sidebar whole.
 
-        Forced here rather than waited for: no shipped store is
-        user-tagged yet, so the refusal is patched in at the engine to
-        test the coupling that a tagged favourites store would expose.
+        The refusal is patched in at the engine, because with the
+        fixture user present the favourites would land normally.
         """
         from unittest import mock
         from amaze.core import keyed_store
@@ -450,6 +457,169 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         self.assertFalse(
             os.path.exists("locations.json"),
             "a store was written next to the current directory")
+
+
+class LocationsArePerUserTest(unittest.TestCase):
+    """The locations are user-tagged (ROADMAP line 22 stage C): each
+    user of a shared library registers their own folders, rows from
+    before the tag adopt into whoever opens the library, and a machine
+    with nobody picked serves its settings copy instead of an empty
+    sidebar while the ASK dialog waits."""
+
+    OTHER = "0f0e0d0c0b0a09080706050403020100"
+
+    #: A current-shape locations.json from before the tag: registered
+    #: rows with every decoration kind, exactly what an upgrading
+    #: machine's library holds on first open.
+    PRE_TAG_ROWS = {
+        "/tex/img/": {"registered": True, "recursive": True},
+        "/tex/bokeh/": {"registered": True, "name": "Bokeh files"},
+        "/models/obj/": {"registered": True, "show_all": False},
+    }
+
+    SETTINGS = {
+        "directory": "",
+        locations_mod.MIGRATED_KEY: True,
+        "file_folders": ["/tex/img/", "/tex/bokeh/", "/models/obj/"],
+        "file_location_records": dict(PRE_TAG_ROWS),
+        "file_favorites": [],
+    }
+
+    def _upgrading(self, library_user=test_support.FIXTURE_USER):
+        """A machine that migrated before the tag: marker set, library
+        holding an untagged store, the copy in step with it."""
+        settings = dict(self.SETTINGS, library_user=library_user)
+        prefs, library = _location_prefs(self, settings)
+        with open(os.path.join(library, "locations.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"locations": dict(self.PRE_TAG_ROWS)}, handle)
+        locations_mod.forget()
+        return prefs, library
+
+    def _stored_keys(self, library):
+        with open(os.path.join(library, "locations.json"),
+                  encoding="utf-8") as handle:
+            return json.load(handle)["locations"]
+
+    def test_the_locations_spec_declares_the_tag(self):
+        self.assertTrue(
+            locations_mod.SPEC.user_tagged,
+            "the locations spec lost its user tag - every test in this "
+            "class is about behaviour that flag switches on")
+
+    def test_pre_tag_rows_adopt_into_the_opener_field_for_field(self):
+        prefs, library = self._upgrading()
+        self.assertEqual(self.SETTINGS["file_folders"],
+                         list(prefs.file_folders),
+                         "the pre-tag rows did not adopt, or the order "
+                         "moved off the copy's")
+        stored = self._stored_keys(library)
+        from amaze.core import keyed_store
+        mine = test_support.FIXTURE_USER + keyed_store.USER_SEP
+        self.assertEqual(
+            sorted(mine + path for path in self.PRE_TAG_ROWS),
+            sorted(stored),
+            "the file still holds untagged spellings, or rows landed "
+            "under someone else")
+        self.assertEqual(
+            {"registered": True, "name": "Bokeh files"},
+            locations_mod.record(prefs, "/tex/bokeh/"))
+        self.assertEqual(
+            {"registered": True, "show_all": False},
+            locations_mod.record(prefs, "/models/obj/"),
+            "a Show All Files override set to FALSE was lost in the "
+            "adoption")
+
+    def test_one_users_folders_are_not_anothers(self):
+        prefs, _library = self._upgrading()
+        self.assertEqual(3, len(prefs.file_folders))
+        prefs.library_user = self.OTHER
+        locations_mod.forget()
+        self.assertEqual(
+            [], list(prefs.file_folders),
+            "a second user sees the first user's registered folders")
+
+    def test_nobody_picked_serves_the_copy_and_refuses_writes(self):
+        prefs, library = self._upgrading(library_user="")
+        before = self._stored_keys(library)
+        self.assertTrue(
+            locations_mod.showing_last_known(prefs),
+            "a per-user store with nobody picked claims it can answer")
+        self.assertEqual(self.SETTINGS["file_folders"],
+                         list(prefs.file_folders),
+                         "the sidebar went empty during the ASK window "
+                         "although the copy holds every folder")
+        self.assertEqual(
+            {"registered": True, "name": "Bokeh files"},
+            locations_mod.record(prefs, "/tex/bokeh/"),
+            "the copy lost the per-location facts")
+
+        from amaze.core import keyed_store
+        written = locations_mod.set_record(
+            prefs, "/nobody/", {"registered": True})
+        self.assertFalse(written)
+        self.assertEqual(keyed_store.REASON_NO_USER, written.reason)
+        self.assertNotIn("/nobody/", list(prefs.file_folders),
+                         "a write with nobody picked landed somewhere "
+                         "a picked user will never see")
+        self.assertEqual(
+            before, self._stored_keys(library),
+            "a refused write still moved the store, so the pre-tag "
+            "rows are gone before anyone could adopt them")
+        self.assertEqual(
+            dict(self.PRE_TAG_ROWS),
+            dict(prefs.last_known_records),
+            "the no-user window blanked the settings copy - the exact "
+            "wipe the mirror guard exists to stop")
+
+    def test_picking_a_user_mid_session_finishes_the_job(self):
+        prefs, library = self._upgrading(library_user="")
+        self.assertTrue(locations_mod.showing_last_known(prefs))
+        prefs.library_user = test_support.FIXTURE_USER
+        self.assertFalse(
+            locations_mod.showing_last_known(prefs),
+            "picking a user did not bring the store back - the no-user "
+            "state was parked for the session")
+        self.assertEqual(self.SETTINGS["file_folders"],
+                         list(prefs.file_folders))
+        from amaze.core import keyed_store
+        mine = test_support.FIXTURE_USER + keyed_store.USER_SEP
+        self.assertTrue(
+            all(key.startswith(mine) for key in self._stored_keys(library)),
+            "the adoption did not run when the user arrived")
+
+    def test_a_removal_takes_every_users_registration_with_it(self):
+        prefs, library = self._upgrading()
+        self.assertIn("/tex/bokeh/", prefs.file_folders)
+        prefs.library_user = self.OTHER
+        locations_mod.forget()
+        locations_mod.register(prefs, "/tex/bokeh/")
+        self.assertIn("/tex/bokeh/", prefs.file_folders)
+
+        from amaze.core import keyed_store
+        keyed_store.retire_prefix(prefs, "/tex/bokeh/")
+        self.assertNotIn("/tex/bokeh/", prefs.file_folders)
+        prefs.library_user = test_support.FIXTURE_USER
+        locations_mod.forget()
+        self.assertNotIn(
+            "/tex/bokeh/", prefs.file_folders,
+            "a removal cleared only the removing user's registration - "
+            "the folder survives for everyone else and comes back")
+
+    def test_the_seed_migration_defers_whole_with_nobody_picked(self):
+        settings = {"directory": "", "library_user": "",
+                    "file_folders": ["/a/"], "file_favorites": []}
+        prefs, library = _location_prefs(self, settings)
+        result = locations_mod.migrate(prefs)
+        self.assertEqual("deferred", result.get("state"),
+                         "a migration with nobody to own the rows "
+                         "reported a refusal, which nothing retries")
+        self.assertFalse(prefs.data.get(locations_mod.MIGRATED_KEY),
+                         "the marker is set, so the old keys will "
+                         "never be read again")
+        self.assertFalse(
+            os.path.exists(os.path.join(library, "locations.json")),
+            "half a migration landed with nobody picked")
 
 
 class KindRouterTest(unittest.TestCase):

@@ -442,9 +442,20 @@ moving a key.
 - No user picked means NO key rather than a shared one — the write is
   refused with `REASON_NO_USER`. An empty write still answers
   UNCHANGED, because doing nothing cannot fail.
-- A key carrying no tag is DROPPED on read, never adopted, and never
-  held with the foreign values (those are written back).
-- Tagged today: `favourites.json` only.
+- A key carrying no tag is DROPPED from every read surface and never
+  held with the foreign values (those are written back). It waits in
+  an orphan bucket until the first commit retires it from the file, so
+  a store that decides its pre-tag rows are ADOPTED can file them
+  under the current user first — `adopt_orphans()`, one write for the
+  whole move. Favourites decided against and drop theirs for good;
+  locations adopt theirs into whoever opens the library.
+- Tagged today: `favourites.json` and `locations.json` — every star
+  and every registered folder is one user's. A location removal still
+  sweeps EVERY user's keys under the folder (`retire_stored`): a
+  removal is a shared act, and the clean slate holds across the tag.
+  With a library present and nobody picked yet, the File sidebar
+  serves the settings copy instead of opening empty while the ASK
+  dialog waits, and location writes refuse like a favourite's.
 
 **Absence is a VERDICT the engine resolves, never a value a caller
 receives.** Opening answers **READ** (parsed from a file that is
@@ -870,7 +881,7 @@ non-zero, so it can gate).
 |---|---|
 | `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id` |
 | `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key. A library with no users mints its first from a colour-name pool; a library that HAS users asks a new machine which of them it is, rather than silently minting a second identity for one person |
-| `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
+| `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations — per-user since ROADMAP line 22 stage C, `<uid>|<path>`, each user's own sidebar; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
 | `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Repair's own undo sentence points at |

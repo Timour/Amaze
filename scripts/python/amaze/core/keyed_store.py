@@ -416,6 +416,13 @@ register(
     # watched happen.
     # The one store a location removal takes with it.
     survives_forget=False,
+    # YOUR SIDEBAR IS NOT MINE (ROADMAP line 22 stage C): each user of
+    # a shared library registers their own folders, keyed `<uid>|<path>`
+    # like the favourites below. Rows from before the tag adopt into
+    # whoever opens the library - `locations._adopt_untagged`, through
+    # `adopt_orphans` - and a removal still sweeps every user's keys
+    # under the folder, because a removal is a shared act.
+    user_tagged=True,
 )
 
 register(

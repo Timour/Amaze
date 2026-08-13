@@ -34,6 +34,14 @@ location order is registration order, which no user authored and no
 gesture can change. Keeping the local list's order means adding a
 location on one Mac does not reshuffle the sidebar on the other; order
 is a local presentation detail, membership is the shared fact.
+
+**The records are PER-USER since ROADMAP line 22 stage C**: the store
+declares `user_tagged`, so each user of a shared library registers
+their own folders and rows from before the tag adopt into whoever
+opens the library (`_adopt_untagged`). With a library present and
+nobody picked, reads serve the copy - the sidebar keeps its last-known
+list through the ASK dialog - and writes refuse; a removal still
+sweeps EVERY user's keys under the folder, the shared-act rule.
 """
 
 from __future__ import annotations
@@ -784,6 +792,14 @@ def migrate(preferences) -> dict:
     adopted = len(wanted) - len(existing)
 
     written = store.update(wanted)
+    if not written and written.reason == keyed_store.REASON_NO_USER:
+        # BOTH HALVES BELONG TO A PERSON since the locations went
+        # per-user (stage C of ROADMAP line 22), so with nobody picked
+        # the whole migration waits: marker unset, old keys still the
+        # truth, and the next read with a user finishes the job.
+        debug.event("file", "locations waiting for a user",
+                    locations=len(wanted))
+        return {"state": "deferred", "why": "no user yet"}
     written_favs = favourites.update({p: True for p in wanted_favs})
     if not written:
         debug.event("file", "location migration refused",
@@ -791,13 +807,9 @@ def migrate(preferences) -> dict:
         return {"state": "refused", "why": written.reason}
     if not written_favs:
         if written_favs.reason == keyed_store.REASON_NO_USER:
-            # THE TWO HALVES HAVE DIFFERENT OWNERS, so one cannot refuse
-            # for the other. The locations belong to the LIBRARY and
-            # have landed, so the sidebar is whole; the favourites
-            # belong to a PERSON and there is nobody yet. The marker
-            # stays unset, which keeps the old keys authoritative and
-            # makes the next launch finish the job - the same contract
-            # as a library that was not there.
+            # The locations landed but the favourites found nobody - a
+            # belt for a user cleared between the two writes. Marker
+            # unset, so a later session finishes the favourites.
             debug.event("file", "locations moved, favourites waiting "
                         "for a user", locations=len(wanted),
                         favourites=len(wanted_favs))
