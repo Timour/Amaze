@@ -22,6 +22,7 @@ from amaze.core import debug
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     RENDERER_DEFAULTS,
+    _INTRODUCED_SECTIONS,
     _Persistence,
     _decode_path,
     _default_sections,
@@ -287,6 +288,12 @@ class Prefs(_Persistence):
         # v2: which section tabs are shown (order fixed elsewhere) - so
         # a user who only wants Materials + Code can hide the rest.
         self._enabled_sections = _default_sections()
+        # A fresh Prefs has every section, introduced ones included,
+        # so their seen flags start recorded - load() recomputes this
+        # from the active user's block.
+        self._sections_seen = {
+            "enabled_sections_seen_%s" % key: True
+            for key in _INTRODUCED_SECTIONS}
         # v2: favorited CURATED gradient combinations, as "<set>:<id>"
         # keys (e.g. "wada:132", "klee:7"). User gradients store their
         # favorite flag inline in gradients.json instead - they have no
@@ -574,7 +581,15 @@ class Prefs(_Persistence):
 
     @library_user.setter
     def library_user(self, value: str) -> None:
-        self._library_user = str(value or "").strip()
+        value = str(value or "").strip()
+        previous = getattr(self, "_library_user", "")
+        self._library_user = value
+        # A real change of WHO swaps whose view state the attributes
+        # describe - snapshot the old user's, apply the new user's.
+        # load() writes the field directly and reads the block itself,
+        # so this fires only for the picker, the mint and the tests.
+        if value != previous:
+            self._switch_user_state(previous, value)
 
     # Material/Node/Code favourites left this class on 2026-08-13: every
     # section's star goes through `locations.is_favourite` /

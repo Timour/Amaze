@@ -251,6 +251,48 @@ SHARED_KEYS = {
 SHARED_KEYS.update({
     stored: (attr[1:], attr) for attr, stored in RENDERER_KEYS.items()})
 
+#: Sections introduced after settings existed: absent from a saved
+#: list without its seen flag means the list predates the section
+#: rather than a deliberate OFF - introduced once, flag set.
+_INTRODUCED_SECTIONS = ("file",)
+
+#: THE PER-USER SCALARS (ROADMAP line 22): one user's view state on
+#: THIS machine, under `users.<uid>` in settings.json. stored key ->
+#: (property, attribute, default). The default is the reset a user
+#: switch applies for keys the incoming block does not carry; a test
+#: derives its agreement with __init__. Four more per-user keys are
+#: handled beside every walk of this table because each has a nuance a
+#: uniform walk cannot carry: `thumbsize` (the 64-512 load clamp),
+#: `thumbsize_list` (defaults to the grid size), `last_file_folder`
+#: (path-encoded on disk), `section_filters` (a dict with a legacy
+#: fallback) and `enabled_sections` (a list plus the introduction).
+USER_KEYS = {
+    "view_mode": ("view_mode", "_view_mode", "grid"),
+    "sidebar_width": ("sidebar_width", "_sidebar_width", 0),
+    "notes_panel_width":
+        ("notes_panel_width", "_notes_panel_width", 0),
+    "show_notes": ("show_notes", "_show_notes", False),
+    "show_categories": ("show_categories", "_show_categories", True),
+    "sidebar_counts": ("sidebar_counts", "_sidebar_counts", True),
+    "hide_empty_categories":
+        ("hide_empty_categories", "_hide_empty_categories", True),
+    "scroll_speed": ("scroll_speed", "_scroll_speed", 0.75),
+    "accent_color": ("accent_color", "_accent_color", "#5d7abd"),
+    "icon_line_weight":
+        ("icon_line_weight", "_icon_line_weight", "template"),
+    "file_show_unknown":
+        ("file_show_unknown", "_file_show_unknown", True),
+    "debug_mode": ("debug_mode", "_debug_mode", False),
+}
+
+#: Every per-user spelling that leaves the flat document once a user
+#: exists to carry it - the conditional half of retirement, because
+#: the flat shape IS the store while nobody is picked.
+USER_RETIRED = tuple(USER_KEYS) + (
+    "thumbsize", "thumbsize_list", "last_file_folder",
+    "section_filters", "enabled_sections") + tuple(
+    "enabled_sections_seen_%s" % s for s in _INTRODUCED_SECTIONS)
+
 
 class _Persistence:
     """The save/load half of `Prefs`, mixed in.
@@ -301,6 +343,13 @@ class _Persistence:
         # included.
         for retired in self._RETIRED_KEYS:
             self.data.pop(retired, None)
+        # The per-user spellings retire only once a user EXISTS to
+        # carry them - flat while nobody, block once somebody - so a
+        # userless session keeps full persistence in the old shape and
+        # the migration source survives until the migration can run.
+        if self._library_user:
+            for retired in USER_RETIRED:
+                self.data.pop(retired, None)
         hostos.snapshot_before_write(final)
         # Whether this write CREATES the file, asked before it does -
         # the floor is minted below. snapshot_before_write rightly
@@ -477,6 +526,102 @@ class _Persistence:
             stored: getattr(self, attr)
             for stored, (_prop, attr) in SHARED_KEYS.items()})
 
+    # -- the per-user eighteen (ROADMAP line 22, stage D) ---------------
+
+    def _user_state_document(self) -> dict:
+        """The current per-user state as its stored keys - ONE
+        composer for the block branch, the flat branch and the switch
+        snapshot, so the three cannot drift apart."""
+        out = {stored: getattr(self, attr)
+               for stored, (_prop, attr, _default) in USER_KEYS.items()}
+        out["thumbsize"] = self._thumbsize
+        out["thumbsize_list"] = self._thumbsize_list
+        out["last_file_folder"] = _encode_path(self._last_file_folder)
+        out["section_filters"] = dict(self._section_filters)
+        out["enabled_sections"] = list(self._enabled_sections)
+        out.update(self._sections_seen)
+        return out
+
+    def _apply_user_block(self, block: dict, data: dict) -> None:
+        """The per-user reads, one body for load() and the user
+        switch: block first, flat as the migration-source fallback,
+        the default last - through the validating setters, because a
+        block is as hand-editable as the file around it."""
+        def stored_value(key, default):
+            return block.get(key, data.get(key, default))
+
+        for stored, (prop, _attr, default) in USER_KEYS.items():
+            _through_setter(self, prop, stored_value(stored, default),
+                            default)
+        # The 64-512 clamp holds on every APPLY: an older build on the
+        # other machine may write a size under the risen grid floor.
+        try:
+            self._thumbsize = max(64, min(512, int(
+                stored_value("thumbsize", 128) or 128)))
+        except (TypeError, ValueError):
+            self._thumbsize = 128
+        # The list size defaults to the grid size until adjusted.
+        _through_setter(self, "thumbsize_list",
+                        stored_value("thumbsize_list", self._thumbsize),
+                        self._thumbsize)
+        self._last_file_folder = _decode_path(
+            str(stored_value("last_file_folder", "") or ""))
+        stored = stored_value("section_filters", None)
+        if isinstance(stored, dict):
+            self._section_filters = {
+                str(key): str(label) for key, label in stored.items()
+            }
+        else:
+            # Settings written before the filter menu served every
+            # section: the one remembered renderer becomes Materials'
+            # remembered filter, so an upgrade opens on the tab the
+            # user left it on rather than silently back at All. Read,
+            # never written - the old key retires with the flat shape.
+            self._section_filters = {}
+            previous = data.get("last_renderer", "")
+            if previous:
+                self._section_filters["material"] = str(previous)
+        stored = stored_value("enabled_sections", None)
+        # A list, or the default. `None`/`"material"`/`3`/`{...}` each
+        # raised out of load() - a str via .append, the rest via the
+        # `in` test - and killed the panel outright.
+        self._enabled_sections = (
+            [s for s in stored if isinstance(s, str)]
+            if isinstance(stored, (list, tuple)) else _default_sections())
+        # A section that did not exist when this user's state was
+        # written cannot have been DELIBERATELY disabled, so introduce
+        # it once. Turning it off afterwards sticks, because from then
+        # on the seen flag rides with the state.
+        self._sections_seen = {}
+        for introduced in _INTRODUCED_SECTIONS:
+            seen_key = "enabled_sections_seen_%s" % introduced
+            if introduced not in self._enabled_sections and \
+                    not stored_value(seen_key, False):
+                self._enabled_sections.append(introduced)
+            self._sections_seen[seen_key] = True
+
+    def _switch_user_state(self, old: str, new: str) -> None:
+        """Change WHOSE view state the attributes describe.
+
+        The invariant every walk of USER_KEYS leans on: the flat
+        attributes always describe the CURRENT user. So a switch
+        snapshots them into the old user's block first, then applies
+        the new user's block over the defaults - and a new user with
+        no block on this machine inherits what is on screen instead,
+        which is what makes the first mint and a second machine's
+        first pick keep the arrangement being looked at.
+        """
+        if old:
+            block = dict(self._users_blocks.get(old, {}))
+            block.update(self._user_state_document())
+            self._users_blocks[old] = block
+        if not new:
+            return
+        block = self._users_blocks.get(new)
+        if block is None:
+            return
+        self._apply_user_block(dict(block), {})
+
     def _merge_settings_from_disk(self, final: str) -> None:
         """Fold in what another writer saved since this one read.
 
@@ -648,18 +793,23 @@ class _Persistence:
         self.data["shared_settings"] = {
             stored: getattr(self, attr)
             for stored, (_prop, attr) in SHARED_KEYS.items()}
-        self.data["thumbsize"] = self._thumbsize
-        self.data["thumbsize_list"] = self._thumbsize_list
-        self.data["show_categories"] = self._show_categories
-        self.data["section_filters"] = dict(self._section_filters)
-        self.data["view_mode"] = self._view_mode
         self.data["library_user"] = self._library_user
-        self.data["sidebar_counts"] = self._sidebar_counts
         self.data["cache_dir"] = _encode_path(self._cache_dir)
         self.data["test_mode"] = self._test_mode
         self.data["test_dir"] = _encode_path(self._test_dir)
-        self.data["hide_empty_categories"] = self._hide_empty_categories
-        self.data["enabled_sections"] = self._enabled_sections
+        # THE PER-USER EIGHTEEN: flat while nobody, block once
+        # somebody. With no user picked this writes the old flat shape
+        # whole - a session that cancelled the ASK dialog keeps full
+        # persistence and nothing is filed under nobody. With a user,
+        # the same composition lands in their block (over what the
+        # block already carried, so a newer build's block keys
+        # survive) and save() retires the flat spellings.
+        if self._library_user:
+            block = dict(self._users_blocks.get(self._library_user, {}))
+            block.update(self._user_state_document())
+            self._users_blocks[self._library_user] = block
+        else:
+            self.data.update(self._user_state_document())
         # THE COPY, NOT THE TRUTH - and written from `_file_*`, never
         # from the public accessors, which read the library. Reading
         # them here would re-enter locations.py mid-save, and a save
@@ -669,13 +819,11 @@ class _Persistence:
         records = self._file_location_records
         self.data["file_folders"] = _encode_paths(self._file_folders)
         self.data["file_favorites"] = _encode_paths(self._file_favorites)
-        self.data["last_file_folder"] = _encode_path(self._last_file_folder)
         recursive = [p for p in self._file_folders
                      if records.get(p, {}).get("recursive")]
         # The retired global, written as the OR of the per-location
         # list so the one build that read it keeps a sane value.
         self.data["file_include_subfolders"] = bool(recursive)
-        self.data["file_show_unknown"] = self._file_show_unknown
         self.data["file_recursive_folders"] = _encode_paths(recursive)
         self.data["file_folder_names"] = {
             _encode_path(k): v["name"] for k, v in records.items()
@@ -691,13 +839,6 @@ class _Persistence:
         self.data["users"] = {
             uid: dict(block)
             for uid, block in self._users_blocks.items()}
-        self.data["show_notes"] = self._show_notes
-        self.data["notes_panel_width"] = self._notes_panel_width
-        self.data["sidebar_width"] = self._sidebar_width
-        self.data["icon_line_weight"] = self._icon_line_weight
-        self.data["accent_color"] = self._accent_color
-        self.data["scroll_speed"] = self._scroll_speed
-        self.data["debug_mode"] = self._debug_mode
         return self.data
 
     def _preserve_unreadable(self, exc) -> None:
@@ -874,65 +1015,8 @@ class _Persistence:
         shared = data.get("shared_settings")
         if not isinstance(shared, dict):
             shared = {}
-        self._directory = _decode_path(data.get("directory", ""))
-        self._ext = shared.get("extension", data.get("extension", ".mat"))
-        self._img_ext = shared.get(
-            "img_extension", data.get("img_extension", ".png"))
-        self._img_dir = shared.get("img_dir", data.get("img_dir", "img/"))
-        self._asset_dir = shared.get(
-            "asset_dir", data.get("asset_dir", "mat/"))
-        self._rendersize = shared.get(
-            "rendersize", data.get("rendersize", 256))
-        # .get() with a default matching ClickSlider.DEFAULT_VALUE, in
-        # case settings.json predates this key (thumbsize used to be
-        # required here)
-        # The grid floor rose to 64 (2026-08-01), so a size saved
-        # under it no longer exists. Clamp on LOAD rather than migrate
-        # once: the same settings file is opened by an older build on
-        # the other machine, which may write a small size back.
-        self._thumbsize = max(64, min(512, int(
-            data.get("thumbsize", 128) or 128)))
-        # Grid and list view each remember their own icon size
-        # (e.g. grid at 128 and list at 32 should coexist).
-        # thumbsize stays the grid size for backward compatibility;
-        # the list size defaults to the grid size the first time so
-        # nothing changes visually until it's adjusted in list mode.
-        self._thumbsize_list = data.get("thumbsize_list", self._thumbsize)
-        self._render_on_import = shared.get(
-            "render_on_import", data.get("render_on_import", 1))
-        for _attr, _key in RENDERER_KEYS.items():
-            setattr(self, _attr,
-                    shared.get(_key,
-                               data.get(_key, RENDERER_DEFAULTS[_attr])))
-        self._rendersamples = shared.get(
-            "rendersamples", data.get("rendersamples", 256))
-        # .get() so existing settings.json without these keys still loads
-        self._show_categories = data.get("show_categories", True)
-        stored = data.get("section_filters")
-        if isinstance(stored, dict):
-            self._section_filters = {
-                str(key): str(label) for key, label in stored.items()
-            }
-        else:
-            # Settings written before the filter menu served every
-            # section: the one remembered renderer becomes Materials'
-            # remembered filter, so an upgrade opens on the tab the
-            # user left it on rather than silently back at All. Read,
-            # never written - the old key retires with the settings
-            # file it is in.
-            self._section_filters = {}
-            previous = data.get("last_renderer", "")
-            if previous:
-                self._section_filters["material"] = str(previous)
-        # Through the SETTER, like the five keys the comment above
-        # already names: it restricts the value to grid/list.
-        _through_setter(self, "view_mode",
-                        data.get("view_mode", "grid"), "grid")
-        # `material_favorites` is deliberately NOT loaded onto the
-        # object: `locations.migrate_asset_favourites` reads it out of
-        # `data` and pops it once every id is proven in the library's
-        # favourites store. An attribute here would write the key back
-        # on the next save and undo the pop.
+        # WHO, before any per-user read: the identity picks which
+        # users.<uid> block the eighteen load from.
         self._library_user = str(data.get("library_user", "") or "").strip()
         if not self._library_user:
             # ADOPTED, not defaulted. An install that has been signing
@@ -947,20 +1031,51 @@ class _Persistence:
             # next save the old key is gone (`_RETIRED_KEYS`).
             self._library_user = str(
                 data.get("version_author", "") or "").strip()
-        # Through the SETTERS, not straight onto the attribute. The
-        # setters exist to validate these tokens and load() bypassed
-        # every one of them, so a settings.json holding
-        # icon_line_weight="bold" (or a hand-edited/older-build value)
-        # stayed invalid in memory - and the Preferences combos, which
-        # fall back to index 0 on an unknown token, then DISPLAYED
-        # something different from what was stored.
-        # star_color_mode / star_custom_color once lived here; the
+        # THE PER-USER DIMENSION (ROADMAP line 22): per-UID blocks of
+        # this machine's per-user keys. Junk shapes are dropped the way
+        # _decode_paths drops them - load() may not raise, and
+        # refresh_data() rewrites the key from this attribute, so junk
+        # in the file dies on the next save instead of riding the
+        # unknown-key courtesy forever.
+        stored = data.get("users")
+        self._users_blocks = {
+            uid: dict(block) for uid, block in stored.items()
+            if isinstance(uid, str) and isinstance(block, dict)
+        } if isinstance(stored, dict) else {}
+        # The eighteen per-user reads, one body shared with the user
+        # switch: the active block first, flat as the migration
+        # fallback, defaults last.
+        self._apply_user_block(
+            self._users_blocks.get(self._library_user, {}), data)
+        self._directory = _decode_path(data.get("directory", ""))
+        self._ext = shared.get("extension", data.get("extension", ".mat"))
+        self._img_ext = shared.get(
+            "img_extension", data.get("img_extension", ".png"))
+        self._img_dir = shared.get("img_dir", data.get("img_dir", "img/"))
+        self._asset_dir = shared.get(
+            "asset_dir", data.get("asset_dir", "mat/"))
+        self._rendersize = shared.get(
+            "rendersize", data.get("rendersize", 256))
+        self._render_on_import = shared.get(
+            "render_on_import", data.get("render_on_import", 1))
+        for _attr, _key in RENDERER_KEYS.items():
+            setattr(self, _attr,
+                    shared.get(_key,
+                               data.get(_key, RENDERER_DEFAULTS[_attr])))
+        self._rendersamples = shared.get(
+            "rendersamples", data.get("rendersamples", 256))
+        # `material_favorites` is deliberately NOT loaded onto the
+        # object: `locations.migrate_asset_favourites` reads it out of
+        # `data` and pops it once every id is proven in the library's
+        # favourites store. An attribute here would write the key back
+        # on the next save and undo the pop.
+        #
+        # star_color_mode / star_custom_color once loaded here; the
         # rows left Preferences with the unified badge family
         # (2026-08-01, the tile star renders as drawn). Stale keys in
         # an existing prefs file are never read, and save() drops them
         # through _RETIRED_KEYS - the unknown-key courtesy would
         # otherwise re-adopt them from disk on every write.
-        self._sidebar_counts = data.get("sidebar_counts", True)
         # Through the setter: it clamps 64-4096 and casts int, and a
         # string here reaches QSpinBox.setValue and raises inside
         # the Preferences constructor.
@@ -970,45 +1085,12 @@ class _Persistence:
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._test_mode = bool(data.get("test_mode", False))
         self._test_dir = _decode_path(data.get("test_dir", ""))
-        self._hide_empty_categories = data.get(
-            "hide_empty_categories", True
-        )
-        stored = data.get("enabled_sections", None)
-        # A list, or the default. `None`/`"material"`/`3`/`{...}` each
-        # raised out of load() below - a str via .append, the rest via
-        # the `in` test - and killed the panel outright.
-        self._enabled_sections = (
-            [s for s in stored if isinstance(s, str)]
-            if isinstance(stored, (list, tuple)) else _default_sections())
-        # A section that did not exist when these settings were written
-        # cannot have been DELIBERATELY disabled, so introduce it once
-        # rather than leaving it invisible to everyone with saved
-        # preferences. Turning it off afterwards sticks, because from
-        # then on the key is present in the saved list.
-        for introduced in ("file",):
-            if introduced not in self._enabled_sections and \
-                    "enabled_sections_seen_%s" % introduced not in data:
-                self._enabled_sections.append(introduced)
-            self.data["enabled_sections_seen_%s" % introduced] = True
         self._file_folders = _decode_paths(data.get("file_folders", []))
         self._file_favorites = _decode_paths(
             data.get("file_favorites", []))
-        self._last_file_folder = _decode_path(
-            data.get("last_file_folder", ""))
         self._file_include_subfolders = data.get(
             "file_include_subfolders", False
         )
-        self._file_show_unknown = bool(data.get("file_show_unknown", True))
-        self._show_notes = bool(data.get("show_notes", False))
-        try:
-            self._notes_panel_width = int(
-                data.get("notes_panel_width", 0) or 0)
-        except (TypeError, ValueError):
-            self._notes_panel_width = 0
-        try:
-            self._sidebar_width = int(data.get("sidebar_width", 0) or 0)
-        except (TypeError, ValueError):
-            self._sidebar_width = 0
         self.path_style = shared.get(
             "path_style", data.get("path_style", "home"))
         names = data.get("file_folder_names", {})
@@ -1039,19 +1121,7 @@ class _Persistence:
             self._file_recursive_folders = list(self._file_folders)
         else:
             self._file_recursive_folders = []
-        # THE PER-USER DIMENSION (ROADMAP line 22): per-UID blocks of
-        # this machine's per-user keys. Junk shapes are dropped the way
-        # _decode_paths drops them - load() may not raise, and
-        # refresh_data() rewrites the key from this attribute, so junk
-        # in the file dies on the next save instead of riding the
-        # unknown-key courtesy forever.
-        stored = data.get("users")
-        self._users_blocks = {
-            uid: dict(block) for uid, block in stored.items()
-            if isinstance(uid, str) and isinstance(block, dict)
-        } if isinstance(stored, dict) else {}
         self._load_location_copy(data)
-        self.icon_line_weight = data.get("icon_line_weight", "template")
         self.geometry_shading_mode = shared.get(
             "geometry_shading_mode",
             data.get("geometry_shading_mode", "hiddenlineghost"))
@@ -1062,21 +1132,10 @@ class _Persistence:
             self, "texture_parallel_conversions",
             shared.get("texture_parallel_conversions",
                        data.get("texture_parallel_conversions", 4)), 4)
-        # Through the setter: it guards the empty string.
-        _through_setter(self, "accent_color",
-                        data.get("accent_color", "#5d7abd"), "#5d7abd")
         # Through the setter: max(1, int).
         _through_setter(self, "karma_rendersamples",
                         shared.get("karma_rendersamples",
                                    data.get("karma_rendersamples", 9)), 9)
-        # Through the setter: it clamps 0.1-3.0 and casts float. A
-        # settings.json holding `"scroll_speed": null` loaded as None,
-        # and opening Preferences then ran round(None * 100) inside a
-        # slot, where PySide swallows it - so the gear button simply
-        # stopped opening Preferences, with no message anywhere.
-        _through_setter(self, "scroll_speed",
-                        data.get("scroll_speed", 0.75), 0.75)
-        self._debug_mode = bool(data.get("debug_mode", False))
         # The ONE cast in this method, and it used to be unguarded -
         # which made it the one key that could kill the panel. load()
         # promises never to raise (every other value is read with a
