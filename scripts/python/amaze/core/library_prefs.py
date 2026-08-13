@@ -25,8 +25,6 @@ def normalise(value) -> dict:
         return {}
     if not isinstance(value["value"], _SCALARS):
         return {}
-    if not value["value"]:
-        return {}
     return dict(value)
 
 
