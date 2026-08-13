@@ -1678,6 +1678,9 @@ class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
                 "list had already moved")
 
     def test_the_edit_info_star_never_touches_the_shared_record(self):
+        from amaze.core import keyed_store, locations
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         model = self.library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) not in ("", "-1"))
@@ -1692,8 +1695,8 @@ class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
             "wins the field merge and seeds favourite adoption on "
             "machines that have not migrated")
         self.assertTrue(
-            self.prefs.is_material_favorite(asset.mat_id),
-            "the star never reached the per-user store")
+            locations.is_favourite(self.prefs, asset.mat_id),
+            "the star never reached the library's favourites store")
 
 
 class ANoOpSaveCostsOneRead(unittest.TestCase):
