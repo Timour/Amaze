@@ -43,22 +43,35 @@ from amaze.prefs import prefs as prefs_module  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
-def _prefs_with_settings(testcase, settings: dict):
+def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
     """A Prefs whose settings.json holds exactly `settings`, loaded."""
     home = tempfile.mkdtemp(prefix="amaze_file_prefs_")
     testcase.addCleanup(shutil.rmtree, home, ignore_errors=True)
+    # WHO this is, IN THE FILE and not assigned afterwards: `load()`
+    # ends by running the location migration, so a user set on the
+    # object after it is set too late - the migration has already
+    # deferred the favourites half for want of an owner. `load()` would
+    # overwrite it anyway, since it reads the key back off disk.
+    settings = dict(settings)
+    settings.setdefault("library_user", test_support.FIXTURE_USER)
+    # AND THE COPY IS TAGGED, because the store it mirrors is. Done at
+    # this one door rather than in each caller, so a test that writes
+    # favourites describes a machine that has been through the
+    # transition. `tag_favourites=False` writes the PRE-TAG shape on
+    # purpose - what an upgrading machine's settings.json actually
+    # holds - and only the test about that case asks for it.
+    if tag_favourites and settings.get("library_user"):
+        from amaze.core import keyed_store as _ks
+        mine = settings["library_user"] + _ks.USER_SEP
+        settings["file_favorites"] = [
+            path if _ks.USER_SEP in path else mine + path
+            for path in settings.get("file_favorites", ())]
     with open(os.path.join(home, "settings.json"), "w",
               encoding="utf-8") as handle:
         json.dump(settings, handle)
     p = prefs_module.Prefs()
     p.path = home
     p.load()
-    # WHO this is, unless the caller's settings already said. A
-    # user-tagged store keys nothing without a user, so a prefs without
-    # one describes a library nobody has opened yet rather than the one
-    # these tests mean.
-    if not p.library_user:
-        p.library_user = test_support.FIXTURE_USER
     return p
 
 
@@ -111,7 +124,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                                    "/models/obj/"],
     }
 
-    def _prefs(self, settings=None):
+    def _prefs(self, settings=None, tag_favourites=True):
         library = tempfile.mkdtemp(prefix="amaze_loc_library_")
         self.addCleanup(shutil.rmtree, library, ignore_errors=True)
         data = dict(settings or self.REAL_SHAPE)
@@ -121,7 +134,8 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         data["directory"] = library
         locations_mod.forget()
         self.addCleanup(locations_mod.forget)
-        prefs = _prefs_with_settings(self, data)
+        prefs = _prefs_with_settings(self, data,
+                                     tag_favourites=tag_favourites)
         # load() normalises the library path to end in a separator, so
         # this compares the resolved form. It is an assertion and not a
         # comment because everything below writes real files: if the
@@ -182,6 +196,22 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         self.assertTrue(os.path.exists(
             os.path.join(library, "favourites.json")))
         self.assertTrue(prefs.data.get(locations_mod.MIGRATED_KEY))
+
+    def test_a_copy_written_before_the_tag_loses_its_stars(self):
+        """An UNTAGGED entry in the settings copy is dropped, not
+        adopted - the same answer the library store gives a row with no
+        owner (ROADMAP line 21 step 2d).
+
+        The copy is machine-local, so this one COULD in principle be
+        attributed to whoever uses the machine. It deliberately is not:
+        one rule for a favourite that carries no owner, in both places.
+        """
+        prefs, _lib = self._prefs(
+            dict(self.REAL_SHAPE, file_favorites=["/tex/hdr/017.hdr"]),
+            tag_favourites=False)
+        self.assertEqual([], list(prefs.file_favorites),
+                         "a star from before the tag was adopted by "
+                         "whoever opened the library")
 
     def test_the_locations_land_even_when_the_favourites_have_no_owner(self):
         """The migration moves two stores with DIFFERENT OWNERS - the

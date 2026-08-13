@@ -439,6 +439,11 @@ register(
     # star is painted from this store, so a star that could not be
     # written does not light.
     survives_forget=False,
+    # MINE ARE NOT YOURS. Keys carry the owner's UID, so one library
+    # holds everyone's stars without anyone seeing anyone else's, and a
+    # rename relabels a person without moving a single key
+    # (ROADMAP line 21).
+    user_tagged=True,
 )
 
 register(

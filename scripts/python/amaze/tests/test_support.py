@@ -426,6 +426,11 @@ def fixture_panel(testcase):
               encoding="utf-8") as handle:
         json.dump({"directory": library,
                    "enabled_sections": list(ALL_SECTION_KEYS),
+                   # IN THE SETTINGS FILE, because the panel builds its
+                   # OWN Prefs and calls load() - so a user assigned to
+                   # some other Prefs object never reaches it, and every
+                   # user-tagged store in the panel keys nothing.
+                   "library_user": FIXTURE_USER,
                    # The File section gets its OWN location. Registering
                    # none left the tab empty, which is safe but untested;
                    # registering the machine's own is what reached the
