@@ -532,7 +532,6 @@ class _Persistence:
         """The current per-user state as its stored keys - ONE
         composer for the block branch, the flat branch and the switch
         snapshot, so the three cannot drift apart."""
-        return {}       # SABOTAGE: the composer answers empty
         out = {stored: getattr(self, attr)
                for stored, (_prop, attr, _default) in USER_KEYS.items()}
         out["thumbsize"] = self._thumbsize
