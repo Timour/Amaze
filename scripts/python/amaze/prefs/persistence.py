@@ -464,7 +464,6 @@ class _Persistence:
         nothing - the `shared_settings` copy keeps the session's
         values and the next reachable save retries them.
         """
-        return          # SABOTAGE: the push is severed
         directory = self.dir
         if not directory or not os.path.isdir(directory):
             return
