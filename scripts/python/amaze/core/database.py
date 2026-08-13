@@ -17,7 +17,7 @@ from amaze.helpers import hostos
 #: with a new _MIGRATIONS step - the load path applies steps in order,
 #: so either machine of a two-machine setup can open a library written
 #: by the other and land on the same schema.
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 #: version-it-upgrades-FROM -> function(data) -> None (mutates in
 #: place). Step N runs when data["version"] == N, producing N+1.
@@ -61,6 +61,34 @@ def _migration_v4(data: dict) -> None:
 
 
 _MIGRATIONS[4] = _migration_v4
+
+
+def _migration_v5(data: dict) -> None:
+    """v5 -> v6: the record's `favorite` dies for good.
+
+    Schema 5 stripped it, but Colors kept WRITING it - the one section
+    whose rows never pass through `Material`, so nothing dropped it on
+    read, and every colour star toggled after the v4 step landed back
+    on the shared document. Stars live in favourites.json now, keyed by
+    the row's id and tagged with their owner (ROADMAP line 21); a field
+    on the shared record is everyone's, which was the defect.
+
+    Stripped, not adopted, matching the File store's rule: a star with
+    no owner is nobody's. Measured on both real libraries before the
+    move - 0 of 388 palettes starred - so the strip costs nothing.
+    """
+    rows = data.get("assets")
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        # A malformed row must not cost the rest - the same rule every
+        # other walk of this list follows.
+        if not isinstance(row, dict):
+            continue
+        row.pop("favorite", None)
+
+
+_MIGRATIONS[5] = _migration_v5
 
 
 #: Survives the module reload; the class attribute points at it.

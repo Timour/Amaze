@@ -758,6 +758,28 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
             again.is_favorite(self._row_named(again, "warm")),
             "the star did not survive a reload through the store")
 
+    def test_the_step_takes_a_star_off_a_version_5_document(self):
+        """Schema 5 stripped the field, but Colors kept WRITING it until
+        2026-08-13 - its rows never pass through `Material`, so nothing
+        dropped it on read, and every star toggled in between landed
+        back on the shared document at version 5. The v5->v6 step is
+        what takes those off; without it they sit on the record forever,
+        readable by nothing and shared by everyone."""
+        self._write({"version": 5, "categories": ["Warm"],
+                     "assets": [{"name": "warm", "id": "warmid",
+                                 "categories": ["Warm"], "colors": [],
+                                 "favorite": True}]})
+        lib = self._library(self._prefs())
+        row = self._row_named(lib, "warm")
+        self.assertNotIn(
+            "favorite", lib.entry(row),
+            "a version-5 record star survived the load - the step that "
+            "retires the field did not run")
+        self.assertFalse(
+            lib.is_favorite(row),
+            "a stripped record star still reads as a favourite - the "
+            "read is answering the record, not the store")
+
     def test_no_user_picked_means_no_star_and_no_write(self):
         self._one_warm_palette()
         lib = self._library(self._prefs(user=""))
