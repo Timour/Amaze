@@ -618,6 +618,13 @@ class Store:
         #: from next year). Invisible to readers, written back by every
         #: commit: an older build must not erase what a newer one wrote.
         self._foreign: dict = {}
+        #: A tagged store's rows from BEFORE it had owners, keyed bare.
+        #: Dropped from every read surface and never written back - the
+        #: first commit retires them from the file - but kept aside so
+        #: a store whose product decision is ADOPTION can file them
+        #: under the current user first (`adopt_orphans`). Favourites
+        #: drop theirs for good: nothing calls the door there.
+        self._orphans: dict = {}
         self._disk_state = None
         self.state = FRESH
         self.trace = ""
@@ -663,12 +670,22 @@ class Store:
                     stored = restored_key(spec, str(key))
                     if spec.user_tagged and not untagged_key(spec, stored)[0]:
                         # A ROW FROM BEFORE THIS STORE HAD OWNERS.
-                        # Dropped, not adopted: nothing on it says whose
-                        # it was, and giving it to whoever opens the
-                        # library first hands one person everybody's
-                        # entries. Deliberately NOT held in `_foreign` -
-                        # that is for a newer build's values, which are
-                        # written back, and this one must not come back.
+                        # Dropped from every read surface: nothing on it
+                        # says whose it was, and giving it to whoever
+                        # opens the library first hands one person
+                        # everybody's entries. Deliberately NOT held in
+                        # `_foreign` - that is for a newer build's
+                        # values, which are written back, and this one
+                        # must not ride back into the file. It waits in
+                        # `_orphans` instead, so a store that decides
+                        # its pre-tag rows are ADOPTED can file them
+                        # under the current user before the first
+                        # commit retires them from disk (ROADMAP line
+                        # 22 stage C - the locations; favourites drop
+                        # theirs for good and never call the door).
+                        kept = spec.normalise(value)
+                        if kept and stored not in self._orphans:
+                            self._orphans[stored] = kept
                         orphans += 1
                         continue
                     kept = spec.normalise(value)
@@ -726,6 +743,7 @@ class Store:
             # save would write that emptiness over everything.
             self.state = BLIND
             self._table = {}
+            self._orphans = {}
             # Clause two of refuse-over-overwrite: keep the file beside
             # itself, once. The latch lasts one session; the copy is
             # one of the traces existed_before reads.
@@ -816,6 +834,17 @@ class Store:
         """The whole table as stored, tags included - repair, migration
         and the audit, never the paint path."""
         return copy.deepcopy(self._table)
+
+    def orphaned(self) -> dict:
+        """The rows from before this store had owners, keyed bare, as a
+        COPY - what an adopting store's migration reads. Empty on an
+        untagged store, and empty again after any commit: the write
+        that did not adopt them is the write that retired them."""
+        return copy.deepcopy(self._orphans)
+
+    def orphan_count(self) -> int:
+        """The cheap half of `orphaned`, for the per-paint guard."""
+        return len(self._orphans)
 
     def count(self) -> int:
         return len(self._table)
@@ -914,6 +943,35 @@ class Store:
             # for the new path, and a rename must not overwrite it.
             staged.setdefault(moves[old], value)
         return self._commit(staged, touched)
+
+    def adopt_orphans(self) -> Written:
+        """File every ownerless row under the current user, in ONE
+        write - the commit that writes the tagged spellings is the same
+        one that stops writing the untagged ones, so the move lands
+        whole or not at all.
+
+        Adoption can only ADD: a key its owner already holds keeps the
+        owner's value, and the orphan is retired unadopted. A store
+        with orphans but nothing new to add still commits once, because
+        the untagged spellings sit on disk being re-read and re-dropped
+        by every session until a write retires them. Which stores call
+        this is a product decision per store, not the engine's:
+        locations adopt (ROADMAP line 22 stage C), favourites decided
+        against it and drop their pre-tag rows for good.
+        """
+        if not self.spec.user_tagged or not self._orphans:
+            return Written(True, REASON_UNCHANGED)
+        if not self.user_tag():
+            return Written(False, REASON_NO_USER)
+        staged = dict(self._table)
+        adopted = []
+        for bare, value in self._orphans.items():
+            key = self._key(bare)
+            if key in staged:
+                continue
+            staged[key] = value
+            adopted.append(key)
+        return self._commit(staged, adopted)
 
     def retire_stored(self, keys) -> Written:
         """Drop keys AS STORED - tags included, every owner's.
@@ -1029,6 +1087,11 @@ class Store:
         # COMMIT. Only now does the cache move - both halves of it.
         self._table = staged
         self._foreign = foreign
+        # The file this commit wrote no longer holds the ownerless
+        # rows, so the bucket empties with it - a bucket that outlived
+        # the file would let a later adoption resurrect rows the user
+        # had meanwhile removed.
+        self._orphans = {}
         return Written(True, REASON_NONE, "", keys)
 
     def _remember_disk_state(self) -> None:
