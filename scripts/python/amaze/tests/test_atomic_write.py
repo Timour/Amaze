@@ -44,6 +44,12 @@ from amaze.helpers import hostos                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
 
+#: Whether the PROCESS arrived armed - captured at import, before any
+#: test has run, because discovery imports every module first. The
+#: sentinel class at the bottom holds the sandbox tests to putting this
+#: state back.
+_SANDBOX_ARMED_AT_IMPORT = hostos.sandboxed()
+
 
 class AtomicWriteTest(unittest.TestCase):
 
@@ -1723,7 +1729,18 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_sandbox_")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        self.addCleanup(os.environ.pop, hostos.SANDBOX_VAR, None)
+        # RESTORE WHAT WAS FOUND, never pop. Under the runner the
+        # variable arrives armed for the WHOLE process, so a cleanup
+        # that popped it disarmed every test that ran after this
+        # module - and on 2026-08-13 a live settings load in that
+        # unarmed tail wrote real favourites from inside a green
+        # suite. The sentinel class at the bottom holds this.
+        original = os.environ.get(hostos.SANDBOX_VAR)
+        if original is None:
+            self.addCleanup(os.environ.pop, hostos.SANDBOX_VAR, None)
+        else:
+            self.addCleanup(
+                os.environ.__setitem__, hostos.SANDBOX_VAR, original)
 
     def arm(self):
         os.environ[hostos.SANDBOX_VAR] = "1"
@@ -1842,6 +1859,27 @@ class OnePathHasOneSpelling(unittest.TestCase):
                 path, persistence._decode_path(
                     persistence._encode_path(path)),
                 "the library pointer lost its trailing separator")
+
+
+class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
+    """The runner arms `AMAZE_SANDBOX` for the WHOLE process, and the
+    sandbox tests above toggle it - so cleanup must put back the state
+    setUp met, never pop the variable. A pop-as-cleanup left every
+    test after this module running unarmed, and on 2026-08-13 a live
+    settings load in that unarmed tail migrated real favourites into
+    the real library from inside a green suite. Named after the guard
+    class so it runs behind it in the loader's alphabetical order;
+    standalone unarmed runs have nothing to hold and skip.
+    """
+
+    def test_the_armed_state_survived_the_sandbox_tests(self):
+        if not _SANDBOX_ARMED_AT_IMPORT:
+            self.skipTest("this process was never armed - run through "
+                          "start_test.sh to hold the restoration")
+        self.assertTrue(
+            hostos.sandboxed(),
+            "a sandbox test disarmed the process and never re-armed it "
+            "- every test after this module can now write live data")
 
 
 if __name__ == "__main__":
