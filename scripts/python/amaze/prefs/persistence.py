@@ -434,7 +434,6 @@ class _Persistence:
         store types the RECORD, not the value's meaning, so a
         hand-edited store can hold a string where a size belongs.
         """
-        return          # SABOTAGE: the adopt is severed
         directory = self.dir
         if not directory or not os.path.isdir(directory):
             return
