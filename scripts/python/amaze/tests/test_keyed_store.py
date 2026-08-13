@@ -1002,6 +1002,134 @@ class ForeignEntriesSurviveTheRewrite(StoreCase):
             "the foreign copy shadowed the value the user just chose")
 
 
+class UntaggedRowsAwaitAdoption(StoreCase):
+    """A tagged store's row from before the store had owners is DROPPED
+    from every read surface - nothing on it says whose it was - but the
+    engine keeps it aside so a store that CHOOSES adoption can file it
+    under the current user before the first commit erases it from disk.
+
+    Two stores, two product calls, one mechanism: favourites drop their
+    pre-tag rows for good (decided 2026-08-13 - nothing calls the
+    door), locations adopt theirs into the user doing the opening
+    (ROADMAP line 22 stage C). The dirt is planted BY HAND on a file at
+    the current shape, because a fixture the migration has already
+    cleaned tests the migration and not the drop - practice.md ▸ A TEST
+    OF A DROP-ON-READ RULE MUST BEAT THE MIGRATION TO THE ROW.
+    """
+
+    OTHER = "0f0e0d0c0b0a09080706050403020100"
+
+    def _seed(self, entries):
+        with open(self.path(locations.FAVOURITES_FILE),
+                  "w", encoding="utf-8") as handle:
+            json.dump({"favourites": entries}, handle)
+
+    def _tagged_store(self):
+        return keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
+
+    def _mine(self, key):
+        return (test_support.FIXTURE_USER + keyed_store.USER_SEP + key)
+
+    def test_untagged_rows_wait_in_the_bucket_and_answer_no_reader(self):
+        self._seed({
+            "/old/a.exr": {"favourite": True},
+            "/old/b.exr": {"favourite": True},
+            self._mine("/mine/c.exr"): {"favourite": True},
+        })
+        store = self._tagged_store()
+        self.assertEqual(["/mine/c.exr"], sorted(store.all()),
+                         "an ownerless row reached a scoped read")
+        self.assertFalse(store.has("/old/a.exr"),
+                         "the paint path saw a row nobody owns")
+        self.assertEqual(
+            {"/old/a.exr": {"favourite": True},
+             "/old/b.exr": {"favourite": True}},
+            store.orphaned(),
+            "the rows from before the store had owners are not waiting "
+            "for adoption - a store that chooses to adopt has nothing "
+            "to adopt from")
+        self.assertEqual(2, store.orphan_count())
+
+    def test_a_commit_drops_orphans_from_disk_and_the_bucket(self):
+        self._seed({"/old/a.exr": {"favourite": True}})
+        store = self._tagged_store()
+        self.assertTrue(store.set("/new/b.exr", True))
+        written = self.on_disk(locations.FAVOURITES_FILE)["favourites"]
+        self.assertNotIn(
+            "/old/a.exr", written,
+            "an ownerless row survived a commit - the drop call says "
+            "it must not come back")
+        self.assertEqual(0, store.orphan_count(),
+                         "the bucket outlived the file's own copy, so a "
+                         "later adoption would resurrect a removed row")
+
+    def test_adopt_orphans_files_them_under_the_user_in_one_write(self):
+        self._seed({
+            "/old/a.exr": {"favourite": True},
+            "/old/b.exr": {"favourite": True},
+        })
+        store = self._tagged_store()
+        writes = []
+        real = hostos.write_json_atomic
+
+        def spy(path, data, **kw):
+            writes.append(path)
+            return real(path, data, **kw)
+
+        with mock.patch.object(hostos, "write_json_atomic", spy):
+            written = store.adopt_orphans()
+        self.assertTrue(written)
+        self.assertEqual(1, len(writes),
+                         "the adoption is not ONE write, so a denial "
+                         "mid-way can land the move half done")
+        on_disk = self.on_disk(locations.FAVOURITES_FILE)["favourites"]
+        self.assertIn(self._mine("/old/a.exr"), on_disk)
+        self.assertNotIn("/old/a.exr", on_disk,
+                         "the untagged spelling survived the write that "
+                         "adopted it - the move must land whole")
+        self.assertTrue(store.has("/old/b.exr"))
+        self.assertEqual(0, store.orphan_count())
+
+    def test_adoption_only_adds_and_still_clears_the_file(self):
+        chosen = {"favourite": True}
+        self._seed({
+            "/old/a.exr": {"favourite": True},
+            self._mine("/old/a.exr"): chosen,
+        })
+        store = self._tagged_store()
+        self.assertTrue(store.adopt_orphans())
+        on_disk = self.on_disk(locations.FAVOURITES_FILE)["favourites"]
+        self.assertEqual(chosen, on_disk[self._mine("/old/a.exr")],
+                         "an orphan overwrote a row its owner already "
+                         "holds - adoption can only ADD")
+        self.assertNotIn(
+            "/old/a.exr", on_disk,
+            "nothing new to add, and the untagged spelling stayed on "
+            "disk - every session after this one re-reads it forever")
+
+    def test_adoption_refuses_with_nobody_picked_and_loses_nothing(self):
+        self._seed({"/old/a.exr": {"favourite": True}})
+        self.prefs.library_user = ""
+        store = self._tagged_store()
+        written = store.adopt_orphans()
+        self.assertFalse(written)
+        self.assertEqual(keyed_store.REASON_NO_USER, written.reason)
+        self.assertIn(
+            "/old/a.exr",
+            self.on_disk(locations.FAVOURITES_FILE)["favourites"],
+            "a refused adoption still rewrote the file - the rows it "
+            "could not attribute are gone")
+        self.assertEqual(1, store.orphan_count())
+
+    def test_an_untagged_store_has_no_orphans_and_adopts_nothing(self):
+        store = self.store()
+        store.set("material:x", self.page())
+        self.assertEqual(0, store.orphan_count())
+        written = store.adopt_orphans()
+        self.assertTrue(written)
+        self.assertEqual(keyed_store.REASON_UNCHANGED, written.reason)
+
+
 class EveryDoorSpeaksThePortableSpelling(StoreCase):
     """set/get/has convert keys at the boundary (storage_key); update,
     rekey and retire took raw strings - so a caller speaking absolutes
