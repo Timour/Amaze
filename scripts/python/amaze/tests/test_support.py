@@ -436,6 +436,11 @@ def fixture_panel(testcase):
                    # registering the machine's own is what reached the
                    # user's photograph archive. A private copy is both.
                    "file_folders": [files],
+                   # The record beside the list: registration is a
+                   # record field since the decoration-table spellings
+                   # retired, and the migration carries records only.
+                   "file_location_records": {
+                       files: {"registered": True}},
                    "last_file_folder": files}, handle)
 
     real_config_root = hostos_mod.config_root

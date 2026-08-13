@@ -324,7 +324,12 @@ def _store_was_lost(preferences) -> bool:
     store = _store(preferences)
     if store.count() or os.path.exists(store.path):
         return False
-    known = getattr(preferences, "last_known_folders", ()) or ()
+    # The RECORDS, not the folder list: the migration's own input
+    # (`_from_settings`) is derived from records, so asking a different
+    # surface here let a folders-only copy re-clear the marker after a
+    # migration that rightly carried nothing - a livelock between two
+    # derivations of one fact.
+    known = getattr(preferences, "last_known_records", None) or {}
     return bool(known)
 
 
