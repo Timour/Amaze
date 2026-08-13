@@ -457,6 +457,25 @@ class _Persistence:
                 if field not in ours_record:
                     ours_record[field] = field_value
                     adopted += 1
+        # THE PER-USER BLOCKS: the location records' two-level shape -
+        # a UID this pane lacks arrives whole, and inside a shared UID
+        # ours wins per key with theirs adopted for keys we lack. Into
+        # the ATTRIBUTE, never self.data - the re-serialise below
+        # rebuilds the key from it (the 2026-08-02 lesson above).
+        their_users = theirs.get("users")
+        if isinstance(their_users, dict):
+            for uid, block in their_users.items():
+                if not (isinstance(uid, str) and isinstance(block, dict)):
+                    continue
+                mine = self._users_blocks.get(uid)
+                if mine is None:
+                    self._users_blocks[uid] = dict(block)
+                    adopted += 1
+                    continue
+                for field, field_value in block.items():
+                    if field not in mine:
+                        mine[field] = field_value
+                        adopted += 1
         # RE-SERIALISE. save() ran refresh_data() before calling this,
         # and refresh_data() is what turns these attributes into
         # self.data - so the adoption only reaches disk if that runs
@@ -573,6 +592,9 @@ class _Persistence:
             if v.get("show_all") is not None}
         self.data["file_location_records"] = {
             _encode_path(k): dict(v) for k, v in records.items()}
+        self.data["users"] = {
+            uid: dict(block)
+            for uid, block in self._users_blocks.items()}
         self.data["path_style"] = self._path_style
         self.data["show_notes"] = self._show_notes
         self.data["notes_panel_width"] = self._notes_panel_width
@@ -912,6 +934,17 @@ class _Persistence:
             self._file_recursive_folders = list(self._file_folders)
         else:
             self._file_recursive_folders = []
+        # THE PER-USER DIMENSION (ROADMAP line 22): per-UID blocks of
+        # this machine's per-user keys. Junk shapes are dropped the way
+        # _decode_paths drops them - load() may not raise, and
+        # refresh_data() rewrites the key from this attribute, so junk
+        # in the file dies on the next save instead of riding the
+        # unknown-key courtesy forever.
+        stored = data.get("users")
+        self._users_blocks = {
+            uid: dict(block) for uid, block in stored.items()
+            if isinstance(uid, str) and isinstance(block, dict)
+        } if isinstance(stored, dict) else {}
         self._load_location_copy(data)
         self.icon_line_weight = data.get("icon_line_weight", "template")
         self.geometry_shading_mode = data.get(

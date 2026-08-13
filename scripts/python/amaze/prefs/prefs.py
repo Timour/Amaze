@@ -317,6 +317,10 @@ class Prefs(_Persistence):
         self._matx_parallel_downloads = 8
         # Online MaterialX browser: preferred download resolution.
         self._matx_resolution = "2k"
+        # THE PER-USER DIMENSION (ROADMAP line 22): uid -> the block of
+        # keys that are one user's on THIS machine. Carried whole and
+        # empty until that line's flip commits move keys into it.
+        self._users_blocks: dict = {}
 
     def get_dir_from_user(self) -> bool:
         """Get Directory from User and write into prefs"""

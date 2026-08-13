@@ -212,6 +212,92 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
             "load() assigns these keys raw again")
 
 
+class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
+    """The users dimension of settings.json (ROADMAP line 22): per-UID
+    blocks, carried empty until the flip commits move keys into them.
+    Pinned now because the merge shape must exist BEFORE the first key
+    moves - two panes of one session both write this file."""
+
+    def _prefs_at(self, folder):
+        p = prefs_mod.Prefs()
+        p.path = folder
+        return p
+
+    def _folder(self):
+        folder = tempfile.mkdtemp(prefix="amaze_users_dim_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        return folder
+
+    def _write(self, folder, document):
+        import json
+        with open(os.path.join(folder, "settings.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(document, handle)
+
+    def _read(self, folder):
+        import json
+        with open(os.path.join(folder, "settings.json"),
+                  encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_blocks_survive_a_load_save_round_trip(self):
+        folder = self._folder()
+        self._write(folder, {"users": {
+            "aa11": {"thumbsize": 64},
+            "bb22": {"thumbsize": 256, "view_mode": "list"}}})
+        p = self._prefs_at(folder)
+        p.load()
+        p.save()
+        raw = self._read(folder)["users"]
+        self.assertEqual({"thumbsize": 64}, raw["aa11"])
+        self.assertEqual({"thumbsize": 256, "view_mode": "list"},
+                         raw["bb22"])
+
+    def test_junk_shapes_load_without_raising_and_die_on_save(self):
+        """load() may not raise, and refresh_data() rewrites the key
+        from the attribute - so junk cannot ride the unknown-key
+        courtesy back to disk forever."""
+        for junk in (5, "x", [1], {"a-uid": "not-a-dict"},
+                     {"a-uid": None}):
+            with self.subTest(users=junk):
+                folder = self._folder()
+                self._write(folder, {"users": junk})
+                p = self._prefs_at(folder)
+                p.load()
+                p.save()
+                self.assertEqual({}, self._read(folder)["users"])
+
+    def test_a_uid_this_pane_lacks_arrives_whole(self):
+        folder = self._folder()
+        self._write(folder, {})
+        p = self._prefs_at(folder)
+        p.load()
+        p._users_blocks["aa11"] = {"thumbsize": 64}
+        # Another pane saved since this one read - its user, its block.
+        self._write(folder, {"users": {"bb22": {"view_mode": "list"}}})
+        p.save()
+        raw = self._read(folder)["users"]
+        self.assertEqual({"thumbsize": 64}, raw["aa11"],
+                         "this pane's block was lost to the merge")
+        self.assertEqual({"view_mode": "list"}, raw["bb22"],
+                         "the other pane's user was dropped")
+
+    def test_inside_a_shared_uid_ours_wins_per_key(self):
+        folder = self._folder()
+        self._write(folder, {})
+        p = self._prefs_at(folder)
+        p.load()
+        p._users_blocks["aa11"] = {"thumbsize": 64}
+        self._write(folder, {"users": {
+            "aa11": {"thumbsize": 512, "view_mode": "list"}}})
+        p.save()
+        raw = self._read(folder)["users"]["aa11"]
+        self.assertEqual(64, raw["thumbsize"],
+                         "the active editor's value lost to the peer")
+        self.assertEqual("list", raw["view_mode"],
+                         "a key only the peer held was dropped")
+
+
 class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
     """One switch, one folder: on, and the library reads
     `<folder>/lib/` and the cache `<folder>/cache/`.
