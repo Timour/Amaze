@@ -604,11 +604,26 @@ def migrate(preferences) -> dict:
 
     written = store.update(wanted)
     written_favs = favourites.update({p: True for p in wanted_favs})
-    if not written or not written_favs:
+    if not written:
         debug.event("file", "location migration refused",
-                    reason=written.reason or written_favs.reason)
-        return {"state": "refused",
-                "why": written.reason or written_favs.reason}
+                    reason=written.reason)
+        return {"state": "refused", "why": written.reason}
+    if not written_favs:
+        if written_favs.reason == keyed_store.REASON_NO_USER:
+            # THE TWO HALVES HAVE DIFFERENT OWNERS, so one cannot refuse
+            # for the other. The locations belong to the LIBRARY and
+            # have landed, so the sidebar is whole; the favourites
+            # belong to a PERSON and there is nobody yet. The marker
+            # stays unset, which keeps the old keys authoritative and
+            # makes the next launch finish the job - the same contract
+            # as a library that was not there.
+            debug.event("file", "locations moved, favourites waiting "
+                        "for a user", locations=len(wanted),
+                        favourites=len(wanted_favs))
+            return {"state": "deferred", "why": "no user yet"}
+        debug.event("file", "location migration refused",
+                    reason=written_favs.reason)
+        return {"state": "refused", "why": written_favs.reason}
 
     landed = store.all()
     landed_favs = set(favourites.all())

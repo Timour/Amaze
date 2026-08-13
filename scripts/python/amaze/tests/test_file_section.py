@@ -177,6 +177,51 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             os.path.join(library, "favourites.json")))
         self.assertTrue(prefs.data.get(locations_mod.MIGRATED_KEY))
 
+    def test_the_locations_land_even_when_the_favourites_have_no_owner(self):
+        """The migration moves two stores with DIFFERENT OWNERS - the
+        locations are the library's, the favourites are a person's - so
+        one cannot refuse on behalf of the other.
+
+        Forced here rather than waited for: no shipped store is
+        user-tagged yet, so the refusal is patched in at the engine to
+        test the coupling that a tagged favourites store would expose.
+        """
+        from unittest import mock
+        from amaze.core import keyed_store
+        real_update = keyed_store.Store.update
+
+        def refuse_favourites(store, values):
+            if store.spec.filename == keyed_store.FAVOURITES:
+                return keyed_store.Written(False, keyed_store.REASON_NO_USER)
+            return real_update(store, values)
+
+        # PATCHED FROM THE START, because `load()` runs the migration.
+        # Deleting the two files afterwards to force a re-run does not
+        # work: the `.bak` tier survives, so the store reads as
+        # absent-but-proven, goes BLIND and refuses before reaching the
+        # branch under test - which is a fixture reporting the wrong
+        # mechanism, not a product failure.
+        with mock.patch.object(keyed_store.Store, "update",
+                               refuse_favourites):
+            prefs, library = self._prefs()
+            # The marker is unset, so this re-runs rather than
+            # short-circuiting, and answers with the state.
+            result = locations_mod.migrate(prefs)
+
+        self.assertEqual("deferred", result.get("state"),
+                         "a favourites half with no owner refused the "
+                         "whole migration")
+        with open(os.path.join(library, "locations.json"),
+                  encoding="utf-8") as handle:
+            written = json.load(handle)
+        self.assertEqual(6, len(written["locations"]),
+                         "the locations half did not land, so the "
+                         "sidebar stays empty until somebody is picked")
+        self.assertFalse(
+            prefs.data.get(locations_mod.MIGRATED_KEY),
+            "marked done with the favourites still unmigrated - the old "
+            "keys stop being read and the stars are gone for good")
+
     def test_the_six_old_keys_are_still_written(self):
         """An older build on the other machine reads them, and they are
         the fallback copy. A3 and A4 are one mechanism."""
