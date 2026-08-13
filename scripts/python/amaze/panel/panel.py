@@ -498,7 +498,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
         # NODE AND CODE GET THEIR OWN, WITHOUT THE VERSION ROLES.
         # They used to borrow thumb_delegate outright, and
-        # `_sync_table_columns` decides a column EXISTS from the active
+        # `grid.sync_table_columns` decides a column EXISTS from the active
         # delegate's roles - so both painted a "Version" column reading
         # "none" on every row, floored at the width of "Version 99",
         # pushing Tags and License right. Worse and latent: editorEvent
@@ -670,7 +670,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # HAS. matx_library exposes seven roles and none of them is
         # licence, versions, notes or category colour - so borrowing a
         # local delegate gave the online grid columns that can never
-        # carry a value on any row, and `_sync_table_columns` decides a
+        # carry a value on any row, and `grid.sync_table_columns` decides a
         # column EXISTS from the active delegate's roles. Same defect
         # shape as Node and Code borrowing the Materials delegate, one
         # world over.
@@ -751,7 +751,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # ...and the Filter menu belongs to the section that just
         # opened, so it is filled here for the same reason.
         self.build_filter_menu()
-        self.click_slider.setValue(self._active_thumbsize())
+        self.click_slider.setValue(grid.active_thumbsize(self))
         self.slide()
         self.apply_view_state()
 
@@ -928,7 +928,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with ui_helpers.relayout(*models):
             for m in models:
                 m.switch_model_data()
-            self.click_slider.setValue(self._active_thumbsize())
+            self.click_slider.setValue(grid.active_thumbsize(self))
 
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""
@@ -1002,9 +1002,6 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cat_wrapper.setVisible(self.prefs.show_categories)
         self.apply_view_mode()
 
-    def _restore_drag_mode(self) -> None:
-        return grid.restore_drag_mode(self)
-
     def bind_grid_views(self, proxy, selection, delegate) -> None:
         """Point BOTH grid views at one context's model, proxy,
         selection model and delegate.
@@ -1028,13 +1025,7 @@ class MatLibPanel(QtWidgets.QWidget):
             # them - the first render put ten tile-height cells side by
             # side. Qt paints every text cell itself; only the picture
             # and the tick columns get one, and they are per COLUMN.
-            self._bind_table_cell_delegates(delegate)
-
-    def _sidebar_row_height(self, table) -> int:
-        return grid.sidebar_row_height(self, table)
-
-    def _show_table(self, showing: bool) -> None:
-        return grid.show_table(self, showing)
+            grid.bind_table_cell_delegates(self, delegate)
 
     #: AIR EITHER SIDE OF A CELL'S TEXT - asked for 2026-08-04, on the
     #: first table build. Without it a name starts hard against the
@@ -1058,15 +1049,16 @@ class MatLibPanel(QtWidgets.QWidget):
     HEADER_DIVIDER = QtGui.QColor("#454545")
     HEADER_HEIGHT = theme.ui_px(20)
 
-    def _bind_table_cell_delegates(self, tile_delegate) -> None:
-        return grid.bind_table_cell_delegates(self, tile_delegate)
-        # NOT the row height here: `activate()` can run in GRID mode,
-        # where `_active_thumbsize()` answers with the grid slider's
-        # 128 and the rows came out 133px tall. The height is set where
-        # the mode is actually known - `_show_table`.
-
     def sync_list_columns(self) -> None:
-        return grid.sync_list_columns(self)
+        """Re-fit list mode's columns for the context now showing.
+
+        THE SECTIONS' entry point, called from every `activate()`.
+        Named for what it does rather than for how: it used to be
+        `_update_list_columns`, a 259-line measure-and-fit over a
+        painted strip, and it is a column-visibility sync plus Qt's
+        own starting widths now (grid.sync_table_columns).
+        """
+        return grid.sync_table_columns(self)
 
     #: A COLUMN'S STARTING WIDTH. Nothing is measured at runtime any
     #: more - a fit costs 0.4ms sampled and 13.5ms over every row, and
@@ -1097,12 +1089,6 @@ class MatLibPanel(QtWidgets.QWidget):
     #: minimum of its own. Small enough that a tick column is not
     #: forced wide by it.
     COLUMN_MIN_WIDTH = 24
-
-    def _sync_table_columns(self) -> None:
-        return grid.sync_table_columns(self)
-
-    def _style_table_header(self) -> None:
-        return grid.style_table_header(self)
 
     def apply_view_mode(self) -> None:
         grid.apply_view_mode(self)
@@ -1205,8 +1191,8 @@ class MatLibPanel(QtWidgets.QWidget):
         MODE now (grid.apply_view_mode), and `thumblist` is hidden the
         whole time list mode is up - so the branch computed a grid
         size, compared it, and set it on a widget nobody could see.
-        The table sizes its own rows and columns, in `show_table` and
-        `_sync_table_columns`.
+        The table sizes its own rows and columns, in `grid.show_table`
+        and `grid.sync_table_columns`.
         """
         if (getattr(self, "thumblist", None) is not None
                 and watched is self.thumblist.viewport()
@@ -1252,18 +1238,12 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
 
-    def _sync_view_mode_controls(self) -> None:
-        return grid.sync_view_mode_controls(self)
-
     #: List mode's ONE size (2026-08-01). A list row is a text line,
     #: not a picture, so it does not scale and its slider is greyed:
     #: 16px of thumbnail under a ~30px row. `thumbsize_list` is still
     #: written for older builds on the other machine, and no longer
     #: read here.
     LIST_THUMB_SIZE = 16
-
-    def _active_thumbsize(self) -> int:
-        return grid.active_thumbsize(self)
 
     def _sync_slider_for_mode(self) -> None:
         """The slider drives GRID only. In list it is greyed - there
@@ -1290,7 +1270,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # sizing/icons; the explicit apply_view_mode() below covers the
         # equal-values case (setValue emits nothing then, but the view
         # still has to restructure for the new mode).
-        self.click_slider.setValue(self._active_thumbsize())
+        self.click_slider.setValue(grid.active_thumbsize(self))
         self.apply_view_mode()
 
     def on_viewmode_button(self, checked: bool) -> None:
@@ -1578,7 +1558,7 @@ class MatLibPanel(QtWidgets.QWidget):
             # preference - the same duplication Show Categories and the
             # online sources were just taken out of.
             #
-            # view_actions stays and stays EMPTY: _sync_view_mode_controls
+            # view_actions stays and stays EMPTY: grid.sync_view_mode_controls
             # pushes the current mode into whatever is in it, so an empty
             # dict is "nothing else to keep in step" without a branch.
 
@@ -2046,7 +2026,7 @@ class MatLibPanel(QtWidgets.QWidget):
         # binding stays single. Only one is ever visible.
         self.thumbtable = dragdrop_widgets.DragDropTableView()
         self.thumbtable.setObjectName("thumbtable")
-        # The header goes in BEFORE it is styled: `_style_table_header`
+        # The header goes in BEFORE it is styled: `grid.style_table_header`
         # sets the sort indicator, and this is the header that decides
         # what the indicator costs the columns that do not have it.
         self.thumbtable.setHorizontalHeader(
@@ -2055,7 +2035,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.thumbtable.setVisible(False)
         if thumb_layout is not None:
             thumb_layout.addWidget(self.thumbtable)
-        self._style_table_header()
+        grid.style_table_header(self)
         # The table IS the grid while list mode shows: same menu, same
         # primary action. thumblist takes its CustomContextMenu policy
         # from the .ui; this view is built in code, so it takes both

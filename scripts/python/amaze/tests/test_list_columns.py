@@ -292,7 +292,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self._mode("list")
         self.addCleanup(self._mode, "grid")
         self.assertEqual(
-            self.panel.LIST_THUMB_SIZE, self.panel._active_thumbsize(),
+            self.panel.LIST_THUMB_SIZE, grid.active_thumbsize(self.panel),
             "list mode followed the grid slider instead of staying at "
             "its own smallest size")
 

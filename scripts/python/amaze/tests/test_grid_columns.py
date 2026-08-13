@@ -45,7 +45,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import grid_columns  # noqa: E402
-from amaze.panel import delegates  # noqa: E402
+from amaze.panel import delegates, grid  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -1350,10 +1350,10 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
 
     def test_rebinding_does_not_grow_the_delegate_count(self):
         delegate = self.panel.thumblist.itemDelegate()
-        self.panel._bind_table_cell_delegates(delegate)
+        grid.bind_table_cell_delegates(self.panel, delegate)
         first = len(self._live())
         for _ in range(4):
-            self.panel._bind_table_cell_delegates(delegate)
+            grid.bind_table_cell_delegates(self.panel, delegate)
         self.assertLessEqual(
             len(self._live()), first,
             "four more binds left more delegates alive than one did - "
@@ -1364,7 +1364,7 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
         one, or the cells stop painting. The view takes no ownership,
         so a delegate that is merely unparented is collected."""
         delegate = self.panel.thumblist.itemDelegate()
-        self.panel._bind_table_cell_delegates(delegate)
+        grid.bind_table_cell_delegates(self.panel, delegate)
         self._live()
         keys = grid_columns.KEYS
         cell = self.panel.thumbtable.itemDelegateForColumn(

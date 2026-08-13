@@ -375,7 +375,7 @@ def show_table(panel, showing: bool) -> None:
             QtWidgets.QHeaderView.ResizeMode.Fixed)
         model = table.model()
         if model is not None and model.rowCount():
-            hint = panel._sidebar_row_height(table)
+            hint = sidebar_row_height(panel, table)
             # THE MINIMUM FIRST, or the default is silently
             # clamped: `minimumSectionSize` is 19 on this style and
             # `setDefaultSectionSize(15)` answered 19 back
@@ -402,7 +402,7 @@ def show_table(panel, showing: bool) -> None:
         # bus-errored the process, and neither Qt's own examples nor
         # Houdini's base.qss pads an item cell at all.
         table.viewport().setAutoFillBackground(True)
-        panel._sync_table_columns()
+        sync_table_columns(panel)
     # THE MODE IS RECORDED, THE VISIBILITY IS WRITTEN IN ONE PLACE.
     # A blank showing must survive a view-mode change, so this asks
     # what is up rather than assuming a view is.
@@ -443,12 +443,16 @@ def apply_grid_face(panel, blank_up: bool) -> None:
 
 
 def bind_table_cell_delegates(panel, tile_delegate) -> None:
-    """Per-COLUMN delegates for the cells Qt cannot paint as text,
-    and a row height that is one text line.
+    """Per-COLUMN delegates for the cells Qt cannot paint as text.
 
     Which columns those are comes from the active delegate's own
     roles - the same roles the tile painter reads - so a section
     without a Favorite role simply has no tick to draw.
+
+    NOT the row height here: `activate()` can run in GRID mode,
+    where `active_thumbsize` answers with the grid slider's 128 and
+    the rows came out 133px tall. The height is set where the mode
+    is actually known - `show_table`.
     """
     table = getattr(panel, "thumbtable", None)
     if table is None:
@@ -506,18 +510,6 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
         table.setItemDelegateForColumn(keys.index(key), tick)
     # WHAT THIS BIND OWNS, for the next one to drop.
     table._amaze_cell_delegates = installed
-
-
-def sync_list_columns(panel) -> None:
-    """Re-fit list mode's columns for the context now showing.
-
-    THE SECTIONS' entry point, called from every `activate()`.
-    Named for what it does rather than for how: it used to be
-    `_update_list_columns`, a 259-line measure-and-fit over a
-    painted strip, and it is a column-visibility sync plus Qt's own
-    `ResizeToContents` now.
-    """
-    panel._sync_table_columns()
 
 
 def sync_table_columns(panel) -> None:
@@ -691,7 +683,7 @@ def apply_view_mode(panel) -> None:
     if not panel.material_model:
         return
     panel._sync_slider_for_mode()
-    ts = panel._active_thumbsize()
+    ts = active_thumbsize(panel)
     try:
         if panel.prefs.view_mode == "list":
             # THE TABLE IS LIST MODE. Nothing dresses the QListView
@@ -705,12 +697,12 @@ def apply_view_mode(panel) -> None:
             #
             # It stays in IconMode throughout, so the grid it
             # paints is the only thing it ever paints.
-            panel._restore_drag_mode()
-            panel._show_table(True)
-            panel._sync_table_columns()
+            restore_drag_mode(panel)
+            show_table(panel, True)
+            sync_table_columns(panel)
         else:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
-            panel._restore_drag_mode()
+            restore_drag_mode(panel)
             panel.thumblist.setHorizontalScrollBarPolicy(
                 QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
             )
@@ -722,21 +714,21 @@ def apply_view_mode(panel) -> None:
             panel.thumblist.setGridSize(
                 AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )
-            panel._show_table(False)
+            show_table(panel, False)
         panel.thumblist.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
     except Exception as e:
         debug.event("grid", "view mode switch failed - falling back "
                     "to grid", error=str(e))
         try:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
-            panel._restore_drag_mode()
+            restore_drag_mode(panel)
             panel.thumblist.setGridSize(
                 AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )
-            panel._show_table(False)
+            show_table(panel, False)
         except Exception:
             pass
-    panel._sync_view_mode_controls()
+    sync_view_mode_controls(panel)
 
 
 # `list_grid_size` sized a list-mode row here: a width that kept the
@@ -747,7 +739,7 @@ def apply_view_mode(panel) -> None:
 # resize branch in MatLibPanel.eventFilter, was measuring a viewport
 # nobody could see and applying the answer to a widget nobody could
 # see. The table decides both: `show_table` sets the row height from
-# the sidebar's, `_sync_table_columns` the widths.
+# the sidebar's, `sync_table_columns` the widths.
 #
 # The width also read `panel._list_row_width`, which nothing anywhere
 # ever set - so the remembered width was always the default and the
