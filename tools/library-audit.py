@@ -49,7 +49,7 @@ import sys
 #: though it had absorbed this one.
 DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
 SIDE_TABLES = ("notes.json", "icons.json", "locations.json",
-               "favourites.json", "users.json")
+               "favourites.json", "users.json", "prefs.json")
 LOOSE_FILES = DATABASES + SIDE_TABLES + ("policy.json",)
 
 #: The product's own restore tier. NOT clutter: snapshot_before_write

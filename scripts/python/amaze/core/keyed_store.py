@@ -521,6 +521,57 @@ register(
     survives_forget=False,
 )
 
+#: The library's SHARED settings - one record per preference key, no
+#: user tag: what the library looks like and how it renders is ONE
+#: answer for everyone who opens it (ROADMAP line 22). The per-USER
+#: half of that line rides the tagged stores above; the per-machine
+#: half stays in settings.json, which keeps the bootstrap keys - the
+#: pointer to the library cannot live inside it.
+#:
+#: NOTHING READS THIS YET (practice.md ▸ LAND IT WITH THE SWITCH
+#: OFF): the flip commits move the keys onto it one group per commit,
+#: and until a group flips its keys keep living in settings.json.
+PREFS = "prefs.json"
+
+register(
+    filename=PREFS,
+    payload="prefs",
+    # A preference NAME, never a path: nothing here is rewritten by a
+    # folder move.
+    keyspace=KEY_ID,
+    label="Shared settings",
+    noun="setting",
+    category="prefs",
+    # NOT "prefs-unreadable": persistence.py already raises that key
+    # for an unreadable settings.json, and alert keys are once per
+    # session - sharing one would let whichever file breaks first
+    # swallow the other's report.
+    alert_key="shared-settings-unreadable",
+    unreadable_alert=(
+        "The library's shared settings could not be read, so Amaze "
+        "will not save over them.\n\n"
+        "Nothing has been lost. Amaze is using the settings your last "
+        "session left behind for now, and any setting you change will "
+        "not be kept.\n\n"
+        "Close Houdini and put back a recent copy with the Repair tool "
+        "in the Amaze shelf."),
+    refused_sentence=(
+        "the library's shared settings could not be read earlier this "
+        "run, so your change was not saved - writing now would replace "
+        "every setting already in it."),
+    # SPEAKS, for the same reason notes do: a changed setting keeps
+    # applying for the session (the panel works off memory), so nothing
+    # on screen says the change did not reach disk - the user finds out
+    # next launch, when it is gone.
+    denied_alert=(
+        "Your setting could not be saved.\n\n"
+        "Nothing already saved has been lost - only this change. It "
+        "still applies for now, and goes back to what it was next time "
+        "Amaze opens."),
+    # A setting is not a property of a folder someone registered.
+    survives_forget=True,
+)
+
 
 # -- the guarded table ------------------------------------------------
 

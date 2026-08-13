@@ -195,11 +195,12 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         speaks = {spec.filename for spec in keyed_store.stores()
                   if spec.denied_alert}
         self.assertEqual(
-            {"notes.json", "icons.json"}, speaks,
-            "the stores that report a denied write changed - a comment "
-            "and a tile icon stay on screen looking saved, so nothing "
-            "but this tells the user; a location and a favourite are "
-            "derived from their store and simply do not appear")
+            {"notes.json", "icons.json", "prefs.json"}, speaks,
+            "the stores that report a denied write changed - a comment, "
+            "a tile icon and a shared setting stay on screen looking "
+            "saved, so nothing but this tells the user; a location and "
+            "a favourite are derived from their store and simply do "
+            "not appear")
         self.assertIn(
             "if spec.denied_alert:", source,
             "the engine no longer raises the declared denial, so those "

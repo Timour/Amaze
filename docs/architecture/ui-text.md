@@ -869,14 +869,16 @@ give every gesture; the File menu's Import always did.
   else writes it too, and that it is NOT on disk yet and will not
   survive closing Houdini.
 - `Your comment could not be saved.` / `The icon you picked could not
-  be saved.` — each followed by what is unchanged, then
-  `This happened because <why>` from the same errno reading. Only
-  these two speak: a comment and an icon stay on screen looking
-  saved, so nothing else would say otherwise. **A registered folder
-  and a File favourite say NOTHING** when their write is refused —
-  they are drawn from what was stored, so the folder never appears and
-  the star never lights, and an alert would announce what the user just
-  watched (see `denied_alert`, **Keyed Store Engine**).
+  be saved.` / `Your setting could not be saved.` — each followed by
+  what is unchanged, then `This happened because <why>` from the same
+  errno reading. Only these three speak: a comment, an icon and a
+  changed setting stay on screen looking saved (the panel works off
+  memory for the session), so nothing else would say otherwise. **A
+  registered folder and a File favourite say NOTHING** when their
+  write is refused — they are drawn from what was stored, so the
+  folder never appears and the star never lights, and an alert would
+  announce what the user just watched (see `denied_alert`, **Keyed
+  Store Engine**).
 - `Your tile icon could not be saved.` — the icon PICTURE, as opposed
   to the choice above. Also ends on `This happened because …` now: the
   two copies of this sentence both told the reader to check the folder

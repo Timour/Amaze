@@ -400,7 +400,10 @@ store that keeps per-key choices beside the thing they belong to.
   as UNKNOWN and exits 1.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
-  **User store** (`core/users.py` → `users.json`), and
+  **User store** (`core/users.py` → `users.json`), the **Shared
+  Settings store** (`core/library_prefs.py` → `prefs.json` — the
+  library-wide half of ROADMAP line 22; declared and guarded, nothing
+  reads it until that line's flip commits), and
   the **Location record** and **Favourites**
   (`core/locations.py` → `locations.json`, `favourites.json`).
   Favourites serve EVERY section since 2026-08-13, through one door —
@@ -409,7 +412,7 @@ store that keeps per-key choices beside the thing they belong to.
   icons.json scheme; an id rides through the path conversion
   unchanged, and no path prefix can ever match one, so the location
   fan-outs never touch it.
-  All five are files IN THE LIBRARY. The last two were views onto
+  All six are files IN THE LIBRARY. The last two were views onto
   `settings.json` until 2026-08-05, which is why an icon or a comment on
   a file could disappear when you switched library while the file stayed
   registered: a File row's facts answered to two different scopes.
@@ -867,7 +870,7 @@ non-zero, so it can gate).
 |---|---|
 | `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id` |
 | `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key. A library with no users mints its first from a colour-name pool; a library that HAS users asks a new machine which of them it is, rather than silently minting a second identity for one person |
-| `notes.json` `icons.json` `locations.json` `favourites.json` | the four keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations; every section's starred rows, `<uid>|<path-or-asset-id>`). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
+| `notes.json` `icons.json` `locations.json` `favourites.json` `prefs.json` | the keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations; every section's starred rows, `<uid>|<path-or-asset-id>`; the library's shared settings — one record per preference key, everyone's answer, ROADMAP line 22). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
 | `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Repair's own undo sentence points at |
@@ -961,6 +964,9 @@ core/users.py             WHO uses this library - a uuid4 UID per
                           user owns is tagged with the UID, so a rename
                           relinks the label and moves nothing
 core/notes.py             the notes store (notes.json, per-asset pages)
+core/library_prefs.py     the SHARED settings store (prefs.json) - the
+                          library-wide half of ROADMAP line 22; nothing
+                          reads it until that line's flip commits
 panel/notes_panel.py      the Comments pane (right splitter dock)
 core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)
