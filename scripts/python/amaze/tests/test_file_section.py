@@ -319,7 +319,11 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "directory": library,
             "file_folders": ["/laptop/only/", "/tex/img/"],
             "file_favorites": ["/laptop/only/shot.exr"],
-            "file_folder_names": {"/laptop/only/": "Laptop scratch"},
+            "file_location_records": {
+                "/laptop/only/": {"registered": True,
+                                  "name": "Laptop scratch"},
+                "/tex/img/": {"registered": True},
+            },
         })
         # No explicit migrate(): the FIRST LOCATIONS READ runs it, which
         # is the path that actually happens on that machine (load() no
@@ -413,8 +417,10 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         tries again - the alternative is a library half-populated and a
         settings file that says the move is finished.
         """
-        prefs, _lib = self._prefs({"file_folders": ["/a/"],
-                                   "file_favorites": []})
+        prefs, _lib = self._prefs({
+            "file_folders": ["/a/"],
+            "file_favorites": [],
+            "file_location_records": {"/a/": {"registered": True}}})
         prefs.data[locations_mod.MIGRATED_KEY] = False
         locations_mod.forget()
         real_normalise = locations_mod.SPEC.normalise
@@ -633,7 +639,9 @@ class LocationsArePerUserTest(unittest.TestCase):
 
     def test_the_seed_migration_defers_whole_with_nobody_picked(self):
         settings = {"directory": "", "library_user": "",
-                    "file_folders": ["/a/"], "file_favorites": []}
+                    "file_folders": ["/a/"], "file_favorites": [],
+                    "file_location_records": {
+                        "/a/": {"registered": True}}}
         prefs, library = _location_prefs(self, settings)
         result = locations_mod.migrate(prefs)
         self.assertEqual("deferred", result.get("state"),
@@ -2278,6 +2286,10 @@ class LocationManagementTest(unittest.TestCase):
         prefs = _prefs_with_settings(self, {
             "file_folders": [first, old],
             "file_favorites": [old_key + "keep.exr", "/elsewhere/other.exr"],
+            "file_location_records": {
+                first: {"registered": True},
+                old: {"registered": True},
+            },
         })
         prefs.dir = self._tmpdir(prefix="amaze_loc_lib_")
         model = file_library.FileFolders(prefs)
