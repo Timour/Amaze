@@ -1660,17 +1660,16 @@ class _RecordingPanel:
         self.calls.append("create_image_node_in")
         return True
 
-    def click_import_geo(self, index):
-        self.calls.append("click_import_geo")
-        return True
+    # The click verbs live on FileSection now (ROADMAP line 24); what
+    # the recorder sees is the panel PLUMBING each section verb calls.
+    def import_geo_asset(self, index):
+        self.calls.append("import_geo_asset")
 
-    def click_open_hip(self, index):
-        self.calls.append("click_open_hip")
-        return True
+    def open_hip_scene(self, index):
+        self.calls.append("open_hip_scene")
 
-    def click_copy_path(self, index):
-        self.calls.append("click_copy_path")
-        return True
+    def copy_file_paths(self, indexes):
+        self.calls.append("copy_file_paths")
 
 
 class _FakeIndex:
@@ -1691,27 +1690,28 @@ class _FakeIndex:
 
 class DoubleClickDispatchTest(unittest.TestCase):
     """Each kind reaches its own verb THROUGH THE LIVE DOOR - the
-    drop table plus click_on_row's precedence, nothing selected, so
-    the no-node route decides. The per-kind panel handler this class
-    asserted before (`file_double_click`) is retired: production
-    routes through the table, and the handler had drifted into
-    refusals the table never makes. Breaks when a DROP_BY_KIND row
-    loses its verb, names a different one, or the door's precedence
-    stops reaching the no-node route."""
+    drop table plus click_on_row's precedence over a REAL FileSection,
+    nothing selected, so the no-node route decides. The verbs live on
+    the section (ROADMAP line 24); what lands in `calls` is the panel
+    plumbing each one reaches for - except image, whose on-space verb
+    still resolves on the panel until line 24's B2. Breaks when a
+    DROP_BY_KIND row loses its verb, names a different one, or the
+    door's precedence stops reaching the no-node route."""
 
     def test_every_kind_reaches_its_own_verb(self):
         from amaze.panel import panel as panel_mod
         from amaze.panel import sections
         for kind, expected in (("image", "create_image_node_in"),
-                               ("geometry", "click_import_geo"),
-                               ("hip", "click_open_hip"),
-                               ("other", "click_copy_path"),
-                               ("", "click_copy_path")):
+                               ("geometry", "import_geo_asset"),
+                               ("hip", "open_hip_scene"),
+                               ("other", "copy_file_paths"),
+                               ("", "copy_file_paths")):
             recorder = _RecordingPanel()
             recorder._apply_click_rule = (
                 panel_mod.MatLibPanel._apply_click_rule.__get__(recorder))
+            section = sections.FileSection(recorder)
             panel_mod.MatLibPanel.click_on_row(
-                recorder, sections.FileSection, _FakeIndex(kind))
+                recorder, section, _FakeIndex(kind))
             self.assertEqual([expected], recorder.calls,
                              "kind %r dispatched %r" % (kind,
                                                         recorder.calls))

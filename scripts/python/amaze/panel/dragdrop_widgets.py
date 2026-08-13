@@ -578,8 +578,10 @@ class GridGestureMixin:
                         rule = self._drop_rule(panel, section, idx)
                         if rule is not None:
                             helpers.forget_placed()
+                            live = getattr(panel, "sections",
+                                           {}).get(section)
                             outcome = self._apply_drop_rule(
-                                rule, panel, idx, event)
+                                rule, panel, live, idx, event)
                             if outcome:
                                 self._splice_if_on_a_wire(panel, event)
             except hou.PermissionError as refusal:
@@ -640,7 +642,8 @@ class GridGestureMixin:
         verb = getattr(cls, "carrier_type_verb", "")
         if not name and verb and index is not None:
             try:
-                name = getattr(panel, verb)(index, dest)
+                live = getattr(panel, "sections", {}).get(section)
+                name = sections.drop_verb(live, panel, verb)(index, dest)
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
@@ -708,7 +711,7 @@ class GridGestureMixin:
             sections.SECTION_INDEX.get(section), panel, idx)
 
     @staticmethod
-    def _apply_drop_rule(rule, panel, idx, event) -> bool:
+    def _apply_drop_rule(rule, panel, section, idx, event) -> bool:
         """ONE precedence for every section, fixed here and nowhere
         else. A declared door that does not apply falls through to the
         next; no door left is the uniform miss (False - the tag flies
@@ -721,19 +724,26 @@ class GridGestureMixin:
         resolve   the verb aims itself (material, cop, geometry)
         on_space  the creation rule on empty network space - off any
                   editor there is no network and nothing is consulted
+
+        `section` is the LIVE section instance (None when the panel
+        has none for this key); the verbs a rule names resolve on it
+        first - sections.drop_verb, the same resolution the click
+        door uses, so the two doors cannot drift.
         """
         if rule.on_node is not None:
             node = panel._node_under_cursor()
             if node is not None:
-                return bool(getattr(panel, rule.on_node)(idx, node))
+                take = sections.drop_verb(section, panel, rule.on_node)
+                return bool(take(idx, node))
         if rule.outside is not None:
             global_pos = event.globalPosition().toPoint()
             local = panel.mapFromGlobal(global_pos)
             if not panel.rect().contains(local):
-                getattr(panel, rule.outside)(idx)
+                sections.drop_verb(section, panel, rule.outside)(idx)
                 return True
         if rule.resolve is not None:
-            return bool(getattr(panel, rule.resolve)(idx))
+            aim = sections.drop_verb(section, panel, rule.resolve)
+            return bool(aim(idx))
         if rule.on_space is not None:
             net = panel._network_under_release()
             if net is None:
@@ -742,8 +752,8 @@ class GridGestureMixin:
             # destination only when the release editor is showing
             # that network itself (the seam's rule; panel.
             # _release_position_in says why).
-            return bool(getattr(panel, rule.on_space)(
-                idx, net, panel._release_position_in(net)))
+            create = sections.drop_verb(section, panel, rule.on_space)
+            return bool(create(idx, net, panel._release_position_in(net)))
         return False
 
     @staticmethod

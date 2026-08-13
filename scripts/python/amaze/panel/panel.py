@@ -4497,7 +4497,8 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         try:
             with helpers.preserving_selection_and_current():
-                landed = self._apply_click_rule(rule, index, payload)
+                landed = self._apply_click_rule(section, rule, index,
+                                                payload)
         except hou.PermissionError as refusal:
             # HOUDINI REFUSING IS NOT A BUG - the same absorption the
             # drag dispatch carries (dragdrop_widgets, drop refused):
@@ -4516,7 +4517,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not landed:
             self._cannot_load_here()
 
-    def _apply_click_rule(self, rule, index, payload=None) -> bool:
+    def _apply_click_rule(self, section, rule, index, payload=None) -> bool:
         """ONE precedence for every section's click door.
 
         THE SELECTION IS A HINT, NOT A VETO. A single visible selected
@@ -4527,50 +4528,31 @@ class MatLibPanel(QtWidgets.QWidget):
         gesture). The veto is what made a double-click refuse whenever
         anything happened to be selected, which in Houdini is almost
         always.
+
+        The verbs a rule names resolve on the SECTION first
+        (sections.drop_verb) - the panel is the temporary fallback
+        while ROADMAP line 24 moves the rest over.
         """
         # The menu's extra word, handed on ONLY when there is one, so
         # no verb ever sees a keyword it does not declare.
         extra = {"basis": payload} if payload else {}
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
-            if bool(getattr(self, rule.click_on_node)(index, sel[0],
-                                                      **extra)):
+            hint = sections.drop_verb(section, self, rule.click_on_node)
+            if bool(hint(index, sel[0], **extra)):
                 return True
             debug.event("interact", "click hint declined - falling "
                         "through to the network",
                         verb=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
-            return bool(getattr(self, rule.click_resolve)(index, **extra))
+            verb = sections.drop_verb(section, self, rule.click_resolve)
+            return bool(verb(index, **extra))
         if rule.on_space:
+            create = sections.drop_verb(section, self, rule.on_space)
             for network in self._view_create_networks():
-                if getattr(self, rule.on_space)(index, network, **extra):
+                if create(index, network, **extra):
                     return True
         return False
-
-    # ---- the click-door verbs the declarations name ---------------
-
-    def click_import_material(self, _index) -> bool:
-        """Materials aim themselves - the context-aware import reads
-        the selection and the network under the cursor."""
-        self.import_asset("auto")
-        return True
-
-    def click_import_cop(self, _index) -> bool:
-        self.import_cop_assets()
-        return True
-
-    def click_import_geo(self, index) -> bool:
-        self.import_geo_asset(index)
-        return True
-
-    def click_open_hip(self, index) -> bool:
-        self.open_hip_scene(index)
-        return True
-
-    def click_copy_path(self, index) -> bool:
-        """An unknown file has no scene behaviour - its one action."""
-        self.copy_file_paths([index])
-        return True
 
     def _edit_code_row(self, row: int) -> None:
         asset = self.code_model.assets[row]

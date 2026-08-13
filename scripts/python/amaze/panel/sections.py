@@ -1105,6 +1105,11 @@ class MaterialSection(AssetSection):
     DROP = DropRule(resolve="drop_material_at_release",
                     click_resolve="click_import_material")
 
+    def click_import_material(self, _index) -> bool:
+        """Materials aim themselves - the context-aware import reads
+        the selection and the network under the cursor."""
+        self.panel.import_asset("auto")
+        return True
 
     def selection_has_redshift(self, indexes, current) -> bool:
         return self.panel._selection_has_redshift()
@@ -1234,6 +1239,9 @@ class CopSection(AssetSection):
     DROP = DropRule(resolve="drop_cop_at_release",
                     click_resolve="click_import_cop")
 
+    def click_import_cop(self, _index) -> bool:
+        self.panel.import_cop_assets()
+        return True
 
     def menu_load(self, indexes, current, payload=None) -> None:
         # Same wrapper as menu_copy_to: a menu import must not move
@@ -1789,6 +1797,19 @@ class FileSection(FolderSection):
         file_library.KIND_OTHER: _PATH_ONLY,
         "": _PATH_ONLY,
     }
+
+    def click_import_geo(self, index) -> bool:
+        self.panel.import_geo_asset(index)
+        return True
+
+    def click_open_hip(self, index) -> bool:
+        self.panel.open_hip_scene(index)
+        return True
+
+    def click_copy_path(self, index) -> bool:
+        """An unknown file has no scene behaviour - its one action."""
+        self.panel.copy_file_paths([index])
+        return True
 
     #: The same spine with a location's own vocabulary: Rename is a
     #: LABEL submenu (a location is not a category - Add sets a custom
@@ -2380,6 +2401,31 @@ def drop_rule(section, panel, index):
         kind = index.data(panel.file_files_model.KindRole) or ""
         return by_kind.get(kind)
     return getattr(section, "DROP", None)
+
+
+def drop_verb(section, panel, name):
+    """The bound verb a declaration names - the section's, or the
+    panel's.
+
+    The section wins: the panel owns the widgets and the shared
+    plumbing, the section owns the meaning. The panel is the
+    TEMPORARY fallback while ROADMAP line 24 moves the remaining
+    verbs over, and it says so in the log - so the migration's
+    remainder is a grep, not a memory.
+
+    A CLASS has no bound verbs (the gesture tests drive the tables
+    without building sections), so it takes the panel path. A name
+    that resolves nowhere raises: a broken declaration must fail
+    loudly, never miss quietly.
+    """
+    if section is not None and not isinstance(section, type):
+        verb = getattr(section, name, None)
+        if verb is not None:
+            return verb
+    verb = getattr(panel, name)
+    debug.event("interact", "verb still resolves on the panel - "
+                "line 24's remainder", verb=name)
+    return verb
 
 
 def all_sections() -> tuple:
