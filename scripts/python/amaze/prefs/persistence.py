@@ -959,20 +959,18 @@ class _Persistence:
         # `{}` or `[]` reached os.path.exists and raised TypeError.
         if not isinstance(self._directory, str):
             self._directory = ""
-        # LAST, because it needs the library path this method has only
-        # just resolved. Guarded because load() must never raise - its
-        # own docstring: an exception here "would kill the panel during
-        # construction, with no interface and no message". A migration
-        # that cannot run is a deferral, not a failure: the six old keys
-        # are still written and still read, so the File section works
-        # off them and the next launch tries again.
-        try:
-            from amaze.core import locations
-            locations.migrate(self)
-            locations.migrate_asset_favourites(self)
-        except Exception as exc:                              # noqa: BLE001
-            debug.event("file", "location migration could not run",
-                        error=str(exc))
+        # NO MIGRATION RUNS HERE, deliberately (2026-08-13). load()
+        # used to end by calling `locations.migrate`, and briefly
+        # `migrate_asset_favourites` too - and both WRITE THE LIBRARY,
+        # which made every caller of load() a library writer. The
+        # recovery-rehearsal tests load the LIVE settings by design,
+        # read-only by contract, and one suite run migrated a real
+        # machine's favourites from inside a test (correctly, but a
+        # test must never write live data - test_file_section pins the
+        # boundary). Both migrations run from the product surfaces
+        # instead: `_ready`'s per-session retry for the locations, the
+        # favourite doors for the stars - the sites that already
+        # existed because `dir` can be set long after settings load.
         if self._directory and os.path.exists(self._directory):
             return True
         return False

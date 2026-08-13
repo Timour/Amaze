@@ -48,10 +48,11 @@ def _prefs_with_settings(testcase, settings: dict, tag_favourites=True):
     home = tempfile.mkdtemp(prefix="amaze_file_prefs_")
     testcase.addCleanup(shutil.rmtree, home, ignore_errors=True)
     # WHO this is, IN THE FILE and not assigned afterwards: `load()`
-    # ends by running the location migration, so a user set on the
-    # object after it is set too late - the migration has already
-    # deferred the favourites half for want of an owner. `load()` would
-    # overwrite it anyway, since it reads the key back off disk.
+    # reads the key back off disk and would overwrite a value assigned
+    # first. (load() no longer runs the migrations itself - 2026-08-13,
+    # they moved to the product surfaces so a bare load can never write
+    # the library - but the doors still resolve the user through the
+    # loaded prefs, so the FILE is still the one honest place.)
     settings = dict(settings)
     settings.setdefault("library_user", test_support.FIXTURE_USER)
     # AND THE COPY IS TAGGED, because the store it mirrors is. Done at
@@ -186,6 +187,9 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
 
     def test_it_writes_the_two_files_and_marks_itself_done(self):
         prefs, library = self._prefs()
+        # The first locations READ is the trigger - load() no longer
+        # migrates, so a bare load can never write the library.
+        locations_mod.registered_paths(prefs)
         with open(os.path.join(library, "locations.json"),
                   encoding="utf-8") as handle:
             written = json.load(handle)
@@ -297,15 +301,15 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "file_favorites": ["/laptop/only/shot.exr"],
             "file_folder_names": {"/laptop/only/": "Laptop scratch"},
         })
-        # No explicit migrate(): load() runs it, which is the path that
-        # actually happens on that machine. Asserting the END STATE, not
-        # a second call's return value - the second call answers "done",
-        # because by then it is.
-        self.assertTrue(second.data.get(locations_mod.MIGRATED_KEY))
+        # No explicit migrate(): the FIRST LOCATIONS READ runs it, which
+        # is the path that actually happens on that machine (load() no
+        # longer migrates - a bare load must never write the library).
+        # Asserting the END STATE, not a call's return value.
         self.assertIn("/laptop/only/", second.file_folders,
                       "the second machine's own registered folder was "
                       "discarded when it met a library that already had "
                       "locations in it")
+        self.assertTrue(second.data.get(locations_mod.MIGRATED_KEY))
         self.assertEqual(
             "Laptop scratch",
             locations_mod.record(second, "/laptop/only/").get("name"),
@@ -2601,6 +2605,44 @@ class ShowAllFilesTest(unittest.TestCase):
             "a location showing all files must count all files")
 
 
+class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
+    """The recovery-rehearsal helper loads the LIVE settings by design
+    (test_support - read-only by contract), so `load()` may never write
+    the library. A load-time migration hook broke that on 2026-08-13:
+    one suite run migrated a real machine's material stars into the
+    real library's favourites store and saved the real settings. The
+    DATA landed exactly per the migration's contract - proven, nothing
+    lost - but a test wrote live data, which is the boundary this pin
+    keeps. Migrations that write the LIBRARY run from the product
+    surfaces (the favourite doors, `_ready`'s retry), never `load()`.
+    """
+
+    def test_load_leaves_the_library_untouched(self):
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+        lib = tempfile.mkdtemp(prefix="amaze_bareload_lib_")
+        self.addCleanup(shutil.rmtree, lib, ignore_errors=True)
+        home = tempfile.mkdtemp(prefix="amaze_bareload_home_")
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        with open(os.path.join(home, "settings.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"directory": lib,
+                       "library_user": test_support.FIXTURE_USER,
+                       "material_favorites": ["mat-a"],
+                       "file_folders": ["/somewhere/"]}, fh)
+        p = prefs_module.Prefs()
+        p.path = home
+        p.load()
+        self.assertEqual(
+            [], os.listdir(lib),
+            "a bare load() wrote the library - the exact write that "
+            "moved live data out from under a suite run")
+        self.assertIn(
+            "material_favorites", p.data,
+            "load() consumed the migration source itself - the doors "
+            "own that, after a product surface asked for a favourite")
+
+
 class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
     """`material_favorites` - the Materials/Nodes/Code stars that lived
     in settings.json and never travelled - moves into the favourites
@@ -2624,10 +2666,17 @@ class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
     def _store(self, p):
         return self.keyed_store.open_store(locations_mod.FAVOURITES_SPEC, p)
 
-    def test_the_list_moves_at_load_and_the_key_retires(self):
+    def test_the_first_favourite_ask_moves_the_list_and_retires_the_key(self):
         p = _prefs_with_settings(self, {
             "directory": self.lib,
             "material_favorites": ["mat-a", "mat-b"]})
+        self.assertIn(
+            "material_favorites", p.data,
+            "premise: load() left the list alone - migrating there "
+            "made every load() caller a library writer")
+        # The first favourite question a product surface asks is the
+        # trigger - the paint path, here as the panel would ask it.
+        self.assertTrue(locations_mod.is_favourite(p, "mat-a"))
         self.assertTrue(self._store(p).has("mat-a"))
         self.assertTrue(self._store(p).has("mat-b"))
         self.assertNotIn(
