@@ -379,11 +379,13 @@ register(
 #: adopt-on-write, atomic write, snapshot tier.
 LOCATIONS = "locations.json"
 
-#: The File section's favourites, keyed by FILE path. Decided
-#: 2026-08-05: they follow the library, like the icons and the comments
-#: on the same row, which is what makes two machines agree about them. The known cost is the one the material `favorite` field was
-#: moved OUT of the library to avoid: in a shared library, favourites
-#: are not private.
+#: EVERY section's favourites since 2026-08-13, keyed by FILE path for
+#: File rows and by bare asset id for the asset and gradient sections -
+#: the icons.json scheme. They follow the library, like the icons and
+#: the comments on the same row, which is what makes two machines agree
+#: about them - and the user tag below is what made that PRIVATE again:
+#: the 2026-08-05 cost ("in a shared library, favourites are not
+#: private") was retired by keying every star to its owner.
 FAVOURITES = "favourites.json"
 
 register(

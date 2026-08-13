@@ -389,8 +389,14 @@ store that keeps per-key choices beside the thing they belong to.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
   **User store** (`core/users.py` → `users.json`), and
-  the **Location record** and **File favourites**
+  the **Location record** and **Favourites**
   (`core/locations.py` → `locations.json`, `favourites.json`).
+  Favourites serve EVERY section since 2026-08-13, through one door —
+  `locations.is_favourite` / `set_favourite` — keyed by file PATH for
+  File rows and by bare asset id for Material/Node/Code/Color, the
+  icons.json scheme; an id rides through the path conversion
+  unchanged, and no path prefix can ever match one, so the location
+  fan-outs never touch it.
   All five are files IN THE LIBRARY. The last two were views onto
   `settings.json` until 2026-08-05, which is why an icon or a comment on
   a file could disappear when you switched library while the file stayed
@@ -639,7 +645,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 |---|---|---|
 | **Library** | The on-disk folder holding an asset section's data: `library.json` (index) + `mat/` (node archives) + `img/` (thumbnails) + `matX/` (downloaded MaterialX). Path in `settings.json`. | — |
 | **Library Model** | The Qt model over a **Library**'s JSON. Materials/Cop/Code each have one (Cop/Code subclass it over their own JSON). | `core/library.py` → `MaterialLibrary`; `cop_library.py`; `code_library.py` |
-| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon** — both were retired from the record by schema 5 and live in `settings.json` and `icons.json` respectively; `Material._RETIRED_KEYS` still names them so they are recognised and dropped rather than carried as unknown keys. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
+| **Material** | One asset record (id, name, categories, tags, renderer, date, …). **NOT a favourite and NOT a tile icon** — both were retired from the record by schema 5 and live in `favourites.json` (per-user, since 2026-08-13) and `icons.json` respectively; `Material._RETIRED_KEYS` still names them so they are recognised and dropped rather than carried as unknown keys. **One category per asset** — multi-category was removed 2026-07-27; tags are the many-to-many axis. | `core/material.py` |
 | **Tile Icon** | A chosen Feather symbol on a colour, for assets with nothing to render; **`icons.json` is the ONE home**, keyed by asset id in every section, and since schema 5 the ONLY home — the record field that used to back it up is stripped from every row, so there is no second answer to drift. Composed to `<id>_icon.png` BESIDE the render, never over it — except Color, which composes in memory. | `core/tile_icons.py` |
 | **Comment** | A page of text + to-dos per asset (the Comments pane, toggled from the toolbar). Renamed from Notes 2026-08-01 - the WORDS changed, every identifier did not: `NotesRole`, `notes.json`, `notes_panel.py` and the `show_notes` / `notes_panel_width` keys are contracts with data on disk and with other machines. Stored in `notes.json` beside the index, keyed `<section>:<id>` / `file:<path>`, wearing icons.json's guard set (unreadable latch, adopt-on-write, snapshot tier). Tiles with a note carry the lower-right badge via `NotesRole` (UserRole + 10, both model families). WHICH asset the pane points at is the context's own answer — `Section.comment_subject(index)`, one of the four area hooks — because only the context can map an index through its proxy and read its roles; the panel finds the live current index and delegates. `takes_comments` is the separate, selection-free half that the toolbar chip reads. EVERY section takes notes, Color included - a gradient carries a full-uuid4 identity in `id` (from birth, the backfill, or the schema-v3 migration; the field was `uid` before 2026-08-09 and the VALUE never changed, so existing keys still resolve), keyed `gradient:<value>`. | `core/notes.py`, `panel/notes_panel.py` |
 | **Category Colour** | A colour on a category, painted under every tile in it and down its sidebar row. Stored beside the category names in the same JSON, so the grid reads it from the connector's shared data dict. | `core/category.py` → `Categories.set_color` |
@@ -819,10 +825,14 @@ contracts other code and the docs lean on:
   (`config_root()/history/<library>/quarantine/<date>/`), named in the
   summary, expiring permanently after 30 days - the window IS the
   guardrail. Dead scratches sweep the same way, age-gated an hour.
-- **Favourites are per-user** (`material_favorites` in settings.json,
-  asset ids). The record's `favorite` field is frozen history for older
-  builds; this build neither reads nor writes it, and a toggle does not
-  touch the library.
+- **Favourites are per-user IN THE LIBRARY** (`favourites.json`,
+  `<uid>|<key>` — 2026-08-13): every section's star goes through the
+  one favourites door, so the same user sees the same stars on every
+  machine and two users of one library each see their own. The record's
+  `favorite` field is DEAD — schema 6 strips it — and
+  `material_favorites` in settings.json is a migration source only,
+  read and retired by `locations.migrate_asset_favourites`. A star
+  toggle writes the store, never a database.
 - **Snapshots**: one per file per half hour of active saving, plus a
   daily gzipped history entry outside the synced tree; identical
   content never spends a slot; a healthy file may replace a garbage
@@ -844,7 +854,7 @@ non-zero, so it can gate).
 |---|---|
 | `library.json` `cops.json` `code.json` `gradients.json` | the four databases, all four through `DatabaseConnector` since 2026-08-09 — same shape, rows under `assets` keyed by `id` |
 | `users.json` | **who uses this library** — a `uuid4` UID per person with a `name` beside it. Everything a user owns is tagged with the UID, so a rename relinks one label and moves nothing. The name is an alias for the UID, never the key. A library with no users mints its first from a colour-name pool; a library that HAS users asks a new machine which of them it is, rather than silently minting a second identity for one person |
-| `notes.json` `icons.json` `locations.json` `favourites.json` | the four keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations and its starred files). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
+| `notes.json` `icons.json` `locations.json` `favourites.json` | the four keyed side tables (per-asset comment pages; chosen tile icons; the File section's registered locations; every section's starred rows, `<uid>|<path-or-asset-id>`). Not DatabaseConnector documents, but written here and snapshotted here like the rest. A location record is `{registered, name, color, show_all, recursive}` keyed by path — `registered` is a FIELD, so the sidebar list is derived rather than kept beside it, and a location carrying no decoration is still visible. Path-shaped keys are stored PORTABLE (2026-08-06): `$AMAZE/...` under the install tree, `~/...` under home, absolute only past both — `hostos.storage_path_key` converts at the store boundary, every legacy spelling is absorbed on load (first in wins, logged), and the locations API answers canonical absolutes so scans and sidebars never see the variable form |
 | `policy.json` | per-library write policy |
 | `<file>.json.bak-1/-2/-3/-first` | **the restore tier** — written by `snapshot_before_write`, read by Repair Library, recovered by `restore.put_back`. Every file above that is snapshotted has one, not only the four databases |
 | `<file>.json.bak-before-restore-<stamp>` | the undo copy each restore mints, bounded at `restore.KEEP_UNDO_COPIES`; the copy Repair's own undo sentence points at |
