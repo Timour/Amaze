@@ -96,17 +96,33 @@ class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):
     CASES = (False, 0, "", 0.0)
 
     def test_each_falsy_scalar_reads_back_exactly(self):
+        """One key per case - reusing one key would meet the engine's
+        equal-value skip (0 == False), which the test below pins as
+        its own fact."""
         for probe in self.CASES:
             with self.subTest(value=probe):
+                key = "probe-%s" % type(probe).__name__
                 self.assertTrue(
-                    library_prefs.set_value(
-                        self.prefs, "probe", probe),
+                    library_prefs.set_value(self.prefs, key, probe),
                     "the write itself was refused")
                 got = library_prefs.value_of(
-                    self.prefs, "probe", default="MISSING")
+                    self.prefs, key, default="MISSING")
                 self.assertEqual((type(probe), probe), (type(got), got),
                                  "a falsy setting did not survive - "
                                  "the delete contract ate it")
+
+    def test_an_equal_value_rewrite_keeps_the_first_type(self):
+        """Engine behaviour, pinned so a change to it is loud: set()
+        answers UNCHANGED for a value that compares equal, and 0 ==
+        False in Python, so the first-written type wins. Harmless for
+        settings - every consumer casts through the prefs setters -
+        and worth a red test the day that stops being true."""
+        library_prefs.set_value(self.prefs, "flip", False)
+        library_prefs.set_value(self.prefs, "flip", 0)
+        got = library_prefs.value_of(self.prefs, "flip", "MISSING")
+        self.assertEqual((bool, False), (type(got), got),
+                         "the equal-value skip changed - update the "
+                         "practice wiki entry beside the record wrap")
 
     def test_false_is_not_collapsed_to_absent_on_disk(self):
         library_prefs.set_value(self.prefs, "render_on_import", False)
