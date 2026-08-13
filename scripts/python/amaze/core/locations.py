@@ -290,11 +290,71 @@ def registered_paths(preferences) -> list:
     return [hostos.expand_storage_path(p) for p in ordered]
 
 
+def _copy_tag(preferences) -> str:
+    """The tag this machine's COPY entries carry, "" when the store is
+    not user-tagged.
+
+    THE COPY IS KEYED THE WAY THE STORE IS, or the two disagree the
+    moment the flag moves. Both ends of the copy are in this module -
+    it is written by `_sync_mirror` and read by the fallbacks below - so
+    the tag lives here rather than in `prefs`, which only holds the
+    list.
+    """
+    if not FAVOURITES_SPEC.user_tagged:
+        return ""
+    try:
+        return str(preferences.library_user or "")
+    except AttributeError:
+        return ""
+
+
+def _copy_favourites(preferences) -> list:
+    """THIS user's favourites out of the settings.json copy, UNTAGGED -
+    the spelling every caller here already speaks.
+
+    Without the scoping the copy answered for everybody, which is how a
+    machine with nobody picked still lit another user's star while the
+    store itself correctly wrote nothing.
+    """
+    raw = [p for p in (getattr(preferences, "last_known_favourites", ())
+                       or ()) if isinstance(p, str) and p]
+    if not FAVOURITES_SPEC.user_tagged:
+        return raw
+    tag = _copy_tag(preferences)
+    if not tag:
+        return []
+    out = []
+    for entry in raw:
+        owner, sep, rest = entry.partition(keyed_store.USER_SEP)
+        if sep and owner == tag:
+            out.append(rest)
+    return out
+
+
+def _tag_for_copy(preferences, favourites):
+    """What to hand `keep_last_known`: tagged when the store is, and
+    everyone ELSE's entries kept verbatim.
+
+    Answers None when there is nobody to attribute them to, which the
+    caller already treats as leave-it-alone - this machine has no
+    business editing anybody else's rows.
+    """
+    if not FAVOURITES_SPEC.user_tagged:
+        return list(favourites)
+    tag = _copy_tag(preferences)
+    if not tag:
+        return None
+    mine = tag + keyed_store.USER_SEP
+    others = [str(e) for e in
+              (getattr(preferences, "last_known_favourites", ()) or ())
+              if not str(e).startswith(mine)]
+    return others + [mine + str(p) for p in favourites]
+
+
 def favourite_paths(preferences) -> list:
     if not _ready(preferences):
         return [hostos.expand_storage_path(hostos.storage_path_key(p))
-                for p in (getattr(preferences, "last_known_favourites", ())
-                          or ())]
+                for p in _copy_favourites(preferences)]
     return [hostos.expand_storage_path(p)
             for p in sorted(_favourites_store(preferences).all())]
 
@@ -305,10 +365,8 @@ def is_favourite(preferences, path: str) -> bool:
     depend on which spelling registered the file."""
     if not _ready(preferences):
         wanted = hostos.storage_path_key(path)
-        return wanted in {
-            hostos.storage_path_key(p)
-            for p in (getattr(preferences, "last_known_favourites", ())
-                      or ())}
+        return wanted in {hostos.storage_path_key(p)
+                          for p in _copy_favourites(preferences)}
     return _favourites_store(preferences).has(path)
 
 
@@ -475,7 +533,7 @@ def _write_copy_favourite(preferences, path: str,
     if not callable(keep):
         return keyed_store.Written(False, keyed_store.REASON_DENIED, "",
                                    (path,))
-    favourites = list(getattr(preferences, "last_known_favourites", ()) or ())
+    favourites = _copy_favourites(preferences)
     if on and path not in favourites:
         favourites.append(path)
     elif not on and path in favourites:
@@ -483,7 +541,13 @@ def _write_copy_favourite(preferences, path: str,
     else:
         return keyed_store.Written(True, keyed_store.REASON_UNCHANGED,
                                    keys=(path,))
-    keep(None, None, favourites)
+    tagged = _tag_for_copy(preferences, favourites)
+    if tagged is None:
+        # Nobody picked, so there is nobody to attribute this to. The
+        # store refuses the same write for the same reason.
+        return keyed_store.Written(False, keyed_store.REASON_NO_USER, "",
+                                   (path,))
+    keep(None, None, tagged)
     return keyed_store.Written(True, keyed_store.REASON_NONE, "", (path,))
 
 
@@ -509,9 +573,11 @@ def _sync_mirror(preferences) -> None:
     keep = getattr(preferences, "keep_last_known", None)
     if not callable(keep):
         return
+    mine = (_tag_for_copy(preferences, sorted(favourites.all()))
+            if favourites.writable else None)
     keep(store.all() if store.writable else None,
          registered_paths(preferences) if store.writable else None,
-         sorted(favourites.all()) if favourites.writable else None)
+         mine)
 
 
 # -- the migration -----------------------------------------------------
@@ -532,10 +598,7 @@ def _from_settings(preferences) -> tuple:
         value = normalise(value)
         if value:
             records[path] = value
-    favourites = [
-        path for path in
-        (getattr(preferences, "last_known_favourites", ()) or [])
-        if isinstance(path, str) and path]
+    favourites = _copy_favourites(preferences)
     return records, favourites
 
 
