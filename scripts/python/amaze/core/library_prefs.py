@@ -1,9 +1,11 @@
 """The library's SHARED settings: one record per preference key.
 
 One answer for everyone who opens the library (ROADMAP line 22).
-Nothing reads this store until that line's flip commits. A value is
-a record, never a bare scalar - the practice wiki carries why, under
-A BARE SCALAR IN A KEYED STORE READS AS A DELETE.
+`prefs/persistence.py` is the one consumer: it adopts these values
+into `Prefs` when a session meets a library (load and the dir
+setter) and pushes them back in one batch write from save. A value
+is a record, never a bare scalar - the practice wiki carries why,
+under A BARE SCALAR IN A KEYED STORE READS AS A DELETE.
 """
 
 from __future__ import annotations
@@ -51,6 +53,31 @@ def set_value(preferences, key: str, value) -> bool:
         raise TypeError(
             "a shared setting is a scalar, not %s" % type(value).__name__)
     return bool(_store(preferences).set(str(key), {"value": value}))
+
+
+def set_values(preferences, mapping: dict) -> bool:
+    """Write many shared settings in ONE commit.
+
+    The save-path push and the flat-file migration both need the set
+    to land together - per-key writes would rotate the restore tier
+    once per key and could stop halfway. A non-scalar raises, like
+    `set_value`, because the normaliser would junk it and the write
+    would report success for a value that reads back absent."""
+    records = {}
+    for key, value in (mapping or {}).items():
+        if not isinstance(value, _SCALARS):
+            raise TypeError(
+                "a shared setting is a scalar, not %s"
+                % type(value).__name__)
+        records[str(key)] = {"value": value}
+    return bool(_store(preferences).update(records))
+
+
+def takes_writes(preferences) -> bool:
+    """May a write land right now? False while the store is latched
+    on damage or refused on an absence trace - the caller keeps its
+    local copy and retries another session."""
+    return _store(preferences).writable
 
 
 def all_values(preferences) -> dict:

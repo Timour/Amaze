@@ -215,6 +215,39 @@ RENDERER_KEYS = {
     "_renderer_octane_enabled": "renderer_octane",
 }
 
+#: THE SHARED NINETEEN (ROADMAP line 22): the keys whose truth is the
+#: LIBRARY's `prefs.json`, one answer for everyone who opens it.
+#: stored key -> (property, attribute); a None property is a
+#: read-only layout value with no setter, adopted straight onto the
+#: attribute. ONE table, walked by load(), refresh_data(), the adopt
+#: and the push - the RENDERER_KEYS lesson one block up: a key added
+#: to one walker and not the others loads correctly and silently
+#: never travels.
+SHARED_KEYS = {
+    "extension": (None, "_ext"),
+    "img_extension": (None, "_img_ext"),
+    "img_dir": (None, "_img_dir"),
+    "asset_dir": (None, "_asset_dir"),
+    "rendersize": ("rendersize", "_rendersize"),
+    "rendersamples": ("rendersamples", "_rendersamples"),
+    "karma_rendersamples":
+        ("karma_rendersamples", "_karma_rendersamples"),
+    "render_on_import": ("render_on_import", "_render_on_import"),
+    "matx_resolution": ("matx_resolution", "_matx_resolution"),
+    "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb"),
+    "matx_parallel_downloads":
+        ("matx_parallel_downloads", "_matx_parallel_downloads"),
+    "texture_parallel_conversions":
+        ("texture_parallel_conversions",
+         "_texture_parallel_conversions"),
+    "geometry_shading_mode":
+        ("geometry_shading_mode", "_geometry_shading_mode"),
+    "geometry_bg": ("geometry_bg", "_geometry_bg"),
+    "path_style": ("path_style", "_path_style"),
+}
+SHARED_KEYS.update({
+    stored: (attr[1:], attr) for attr, stored in RENDERER_KEYS.items()})
+
 
 class _Persistence:
     """The save/load half of `Prefs`, mixed in.
@@ -244,6 +277,10 @@ class _Persistence:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
             return
+        # The shared nineteen go to the LIBRARY first - one batch
+        # write that collapses to nothing when no shared key moved -
+        # so the document composed below only ever carries the copy.
+        self._push_shared()
         self.refresh_data()
         final = self.path + "/settings.json"
         # The preferences directory may not exist yet (first run on a
@@ -372,8 +409,70 @@ class _Persistence:
         "version_author",
     )
 
+    #: The shared nineteen's flat spellings retire WITH their values
+    #: safe: the same save that pops these writes them into the
+    #: `shared_settings` copy and pushes them to the library. Derived
+    #: from the one table so a twentieth shared key cannot be retired
+    #: in one place and forgotten in the other.
+    _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS)
+
     def _remember_disk_state(self, final: str) -> None:
         self._disk_stat = hostos.disk_state(final)
+
+    # -- the shared nineteen (ROADMAP line 22, stage D) -----------------
+
+    def _adopt_shared(self) -> None:
+        """Fold the library's shared settings over the attributes.
+
+        Runs at the two moments a Prefs meets a library - load() and
+        the `dir` setter - and both come BEFORE any user edit in every
+        real flow, so an adopted value can never eat an edit. Reads
+        stay plain attribute reads; this is what keeps them true to
+        the library without a store round-trip per read.
+
+        Values route through the same validation load() uses: the
+        store types the RECORD, not the value's meaning, so a
+        hand-edited store can hold a string where a size belongs.
+        """
+        directory = self.dir
+        if not directory or not os.path.isdir(directory):
+            return
+        from amaze.core import library_prefs
+        values = library_prefs.all_values(self)
+        if not values:
+            return          # fresh, latched or empty - the copy holds
+        for stored, (prop, attr) in SHARED_KEYS.items():
+            if stored not in values:
+                continue
+            value = values[stored]
+            if prop is None:
+                # The layout quartet has no setters - read-only
+                # properties over strings the connector composes paths
+                # from, so only a string may land.
+                if isinstance(value, str):
+                    setattr(self, attr, value)
+            else:
+                _through_setter(self, prop, value,
+                                getattr(self, attr, None))
+
+    def _push_shared(self) -> None:
+        """Carry the attributes into the library's store - ONE write.
+
+        Gated the way locations gates: with no library directory the
+        engine would write a relative path into the CWD, and a latched
+        store must keep its evidence. A refused or skipped push loses
+        nothing - the `shared_settings` copy keeps the session's
+        values and the next reachable save retries them.
+        """
+        directory = self.dir
+        if not directory or not os.path.isdir(directory):
+            return
+        from amaze.core import library_prefs
+        if not library_prefs.takes_writes(self):
+            return
+        library_prefs.set_values(self, {
+            stored: getattr(self, attr)
+            for stored, (_prop, attr) in SHARED_KEYS.items()})
 
     def _merge_settings_from_disk(self, final: str) -> None:
         """Fold in what another writer saved since this one read.
@@ -537,28 +636,22 @@ class _Persistence:
             self._directory = self._directory + "/"
 
         self.data["directory"] = _encode_path(self._directory)
-        self.data["extension"] = self._ext
-        self.data["img_extension"] = self._img_ext
-        self.data["img_dir"] = self._img_dir
-        self.data["asset_dir"] = self._asset_dir
-        self.data["rendersize"] = self._rendersize
+        # THE SHARED NINETEEN ARE THE LIBRARY'S (ROADMAP line 22).
+        # What is written HERE is the last-known COPY, one dict under
+        # one key, serving the next session when the library is
+        # unreachable. The truth goes through _push_shared(); the flat
+        # spellings are in _RETIRED_KEYS so an old file's keys cannot
+        # ride the unknown-key courtesy back in.
+        self.data["shared_settings"] = {
+            stored: getattr(self, attr)
+            for stored, (_prop, attr) in SHARED_KEYS.items()}
         self.data["thumbsize"] = self._thumbsize
         self.data["thumbsize_list"] = self._thumbsize_list
-        self.data["rendersamples"] = self._rendersamples
-        self.data["render_on_import"] = self._render_on_import
-        # THE SAME TABLE THE LOAD WALKS. These four were written out by
-        # hand here, spelling each stored key a third time - so a fifth
-        # renderer added to RENDERER_KEYS and RENDERER_DEFAULTS would
-        # load correctly and never be written back. No exception, no
-        # red test: the value would simply reset every session.
-        for attribute, stored_key in RENDERER_KEYS.items():
-            self.data[stored_key] = getattr(self, attribute)
         self.data["show_categories"] = self._show_categories
         self.data["section_filters"] = dict(self._section_filters)
         self.data["view_mode"] = self._view_mode
         self.data["library_user"] = self._library_user
         self.data["sidebar_counts"] = self._sidebar_counts
-        self.data["ram_cache_mb"] = self._ram_cache_mb
         self.data["cache_dir"] = _encode_path(self._cache_dir)
         self.data["test_mode"] = self._test_mode
         self.data["test_dir"] = _encode_path(self._test_dir)
@@ -595,20 +688,13 @@ class _Persistence:
         self.data["users"] = {
             uid: dict(block)
             for uid, block in self._users_blocks.items()}
-        self.data["path_style"] = self._path_style
         self.data["show_notes"] = self._show_notes
         self.data["notes_panel_width"] = self._notes_panel_width
         self.data["sidebar_width"] = self._sidebar_width
-        self.data["geometry_shading_mode"] = self._geometry_shading_mode
-        self.data["geometry_bg"] = self._geometry_bg
         self.data["icon_line_weight"] = self._icon_line_weight
-        self.data["texture_parallel_conversions"] = self._texture_parallel_conversions
         self.data["accent_color"] = self._accent_color
-        self.data["karma_rendersamples"] = self._karma_rendersamples
         self.data["scroll_speed"] = self._scroll_speed
         self.data["debug_mode"] = self._debug_mode
-        self.data["matx_parallel_downloads"] = self._matx_parallel_downloads
-        self.data["matx_resolution"] = self._matx_resolution
         return self.data
 
     def _preserve_unreadable(self, exc) -> None:
@@ -777,12 +863,23 @@ class _Persistence:
         # dict(data), not data: the parse result must not stay aliased
         # into a caller's document, and refresh_data() mutates this.
         self.data = dict(data)
+        # The shared nineteen load from the last-known COPY, falling
+        # back to the flat spelling an older file carries - the
+        # migration source, popped by the same save that writes the
+        # copy. The library's own answer lands over all of these at
+        # the adopt below.
+        shared = data.get("shared_settings")
+        if not isinstance(shared, dict):
+            shared = {}
         self._directory = _decode_path(data.get("directory", ""))
-        self._ext = data.get("extension", ".mat")
-        self._img_ext = data.get("img_extension", ".png")
-        self._img_dir = data.get("img_dir", "img/")
-        self._asset_dir = data.get("asset_dir", "mat/")
-        self._rendersize = data.get("rendersize", 256)
+        self._ext = shared.get("extension", data.get("extension", ".mat"))
+        self._img_ext = shared.get(
+            "img_extension", data.get("img_extension", ".png"))
+        self._img_dir = shared.get("img_dir", data.get("img_dir", "img/"))
+        self._asset_dir = shared.get(
+            "asset_dir", data.get("asset_dir", "mat/"))
+        self._rendersize = shared.get(
+            "rendersize", data.get("rendersize", 256))
         # .get() with a default matching ClickSlider.DEFAULT_VALUE, in
         # case settings.json predates this key (thumbsize used to be
         # required here)
@@ -798,11 +895,14 @@ class _Persistence:
         # the list size defaults to the grid size the first time so
         # nothing changes visually until it's adjusted in list mode.
         self._thumbsize_list = data.get("thumbsize_list", self._thumbsize)
-        self._render_on_import = data.get("render_on_import", 1)
+        self._render_on_import = shared.get(
+            "render_on_import", data.get("render_on_import", 1))
         for _attr, _key in RENDERER_KEYS.items():
             setattr(self, _attr,
-                    data.get(_key, RENDERER_DEFAULTS[_attr]))
-        self._rendersamples = data.get("rendersamples", 256)
+                    shared.get(_key,
+                               data.get(_key, RENDERER_DEFAULTS[_attr])))
+        self._rendersamples = shared.get(
+            "rendersamples", data.get("rendersamples", 256))
         # .get() so existing settings.json without these keys still loads
         self._show_categories = data.get("show_categories", True)
         stored = data.get("section_filters")
@@ -862,7 +962,8 @@ class _Persistence:
         # string here reaches QSpinBox.setValue and raises inside
         # the Preferences constructor.
         _through_setter(self, "ram_cache_mb",
-                        data.get("ram_cache_mb", 256), 256)
+                        shared.get("ram_cache_mb",
+                                   data.get("ram_cache_mb", 256)), 256)
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._test_mode = bool(data.get("test_mode", False))
         self._test_dir = _decode_path(data.get("test_dir", ""))
@@ -905,7 +1006,8 @@ class _Persistence:
             self._sidebar_width = int(data.get("sidebar_width", 0) or 0)
         except (TypeError, ValueError):
             self._sidebar_width = 0
-        self.path_style = data.get("path_style", "home")
+        self.path_style = shared.get(
+            "path_style", data.get("path_style", "home"))
         names = data.get("file_folder_names", {})
         self._file_folder_names = {
             _decode_path(k): str(v)
@@ -947,20 +1049,23 @@ class _Persistence:
         } if isinstance(stored, dict) else {}
         self._load_location_copy(data)
         self.icon_line_weight = data.get("icon_line_weight", "template")
-        self.geometry_shading_mode = data.get(
-            "geometry_shading_mode", "hiddenlineghost"
-        )
-        self.geometry_bg = data.get("geometry_bg", "black")
+        self.geometry_shading_mode = shared.get(
+            "geometry_shading_mode",
+            data.get("geometry_shading_mode", "hiddenlineghost"))
+        self.geometry_bg = shared.get(
+            "geometry_bg", data.get("geometry_bg", "black"))
         # Through the setter: it clamps 1-8.
         _through_setter(
             self, "texture_parallel_conversions",
-            data.get("texture_parallel_conversions", 4), 4)
+            shared.get("texture_parallel_conversions",
+                       data.get("texture_parallel_conversions", 4)), 4)
         # Through the setter: it guards the empty string.
         _through_setter(self, "accent_color",
                         data.get("accent_color", "#5d7abd"), "#5d7abd")
         # Through the setter: max(1, int).
         _through_setter(self, "karma_rendersamples",
-                        data.get("karma_rendersamples", 9), 9)
+                        shared.get("karma_rendersamples",
+                                   data.get("karma_rendersamples", 9)), 9)
         # Through the setter: it clamps 0.1-3.0 and casts float. A
         # settings.json holding `"scroll_speed": null` loaded as None,
         # and opening Preferences then ran round(None * 100) inside a
@@ -979,19 +1084,26 @@ class _Persistence:
         # from any future build that changes this key's type.
         try:
             self._matx_parallel_downloads = int(
-                data.get("matx_parallel_downloads", 8)
+                shared.get("matx_parallel_downloads",
+                           data.get("matx_parallel_downloads", 8))
             )
         except (TypeError, ValueError):
             debug.event("prefs", "unreadable matx_parallel_downloads - "
                         "using the default",
                         value=repr(data.get("matx_parallel_downloads")))
             self._matx_parallel_downloads = 8
-        self.matx_resolution = data.get("matx_resolution", "2k")
+        self.matx_resolution = shared.get(
+            "matx_resolution", data.get("matx_resolution", "2k"))
 
         # _decode_path passes a non-str straight through, so `null`,
         # `{}` or `[]` reached os.path.exists and raised TypeError.
         if not isinstance(self._directory, str):
             self._directory = ""
+        # The library's shared settings land OVER the copy just read -
+        # load() is one of the two moments a Prefs meets a library
+        # (the dir setter is the other), and both precede any user
+        # edit. A pure read: nothing here writes the library.
+        self._adopt_shared()
         # NO MIGRATION RUNS HERE, deliberately (2026-08-13). load()
         # used to end by calling `locations.migrate`, and briefly
         # `migrate_asset_favourites` too - and both WRITE THE LIBRARY,

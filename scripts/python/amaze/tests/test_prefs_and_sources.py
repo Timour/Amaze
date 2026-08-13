@@ -426,7 +426,7 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
         with open(settings, "w", encoding="utf-8") as handle:
             json.dump({"texture_force_iconvert": True,
                        "some_future_builds_key": [1, 2, 3],
-                       "ram_cache_mb": 128}, handle)
+                       "sidebar_counts": True}, handle)
 
         p = prefs_mod.Prefs()
         p.path = folder
@@ -437,14 +437,15 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
         # unchanged, and could not tell "the retired key survived a
         # rewrite" from "no rewrite ever happened" - proved 2026-08-03
         # by putting `return` at the top of save() and watching it stay
-        # green.
-        p.ram_cache_mb = 256
+        # green. The lever was `ram_cache_mb` until that key moved to
+        # the library's shared store and stopped being written flat.
+        p.sidebar_counts = False
         p.save()
 
         with open(settings, encoding="utf-8") as handle:
             written = json.load(handle)
         self.assertEqual(
-            256, written.get("ram_cache_mb"),
+            False, written.get("sidebar_counts"),
             "settings.json was not rewritten at all, so nothing below "
             "is evidence about what a rewrite preserves")
         self.assertEqual(
@@ -454,9 +455,6 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
         self.assertEqual(
             [1, 2, 3], written.get("some_future_builds_key"),
             "a key this build does not know was dropped")
-        self.assertEqual(
-            256, written.get("ram_cache_mb"),
-            "the keys this build DOES own stopped saving")
 
 
 class TheHomeLayoutsLiveInHostos(unittest.TestCase):

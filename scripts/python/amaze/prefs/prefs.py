@@ -334,7 +334,9 @@ class Prefs(_Persistence):
                 path = hou.ui.selectFile(file_type=hou.fileType.Directory)
                 if path == "":  # Canceled
                     return False
-                self._directory = hou.expandString(path)
+                # Through the setter, so meeting the picked library
+                # adopts its shared settings before the save below.
+                self.dir = hou.expandString(path)
             else:
                 debug.event("session", "library set", dir=self._directory)
                 self.save()
@@ -372,6 +374,11 @@ class Prefs(_Persistence):
         # Preferences rows that set it are disabled while the switch is
         # on and this stays the real field.
         self._directory = val
+        # Meeting a library adopts its shared settings - `dir` can be
+        # set long after load() (a fresh install picking the folder in
+        # a dialog), and without this the first save would push this
+        # machine's defaults over the library's answers.
+        self._adopt_shared()
 
     @property
     def real_dir(self) -> str:
