@@ -804,6 +804,13 @@ class Store:
         """
         staged = dict(self._table)
         touched = []
+        # DOING NOTHING CANNOT FAIL, so a refusal is only asked for once
+        # there is something to write. Otherwise a store that cannot key
+        # anything answers "refused" to a caller that asked for nothing,
+        # and a caller checking that answer reads a failure into an
+        # empty list.
+        if not (values or {}):
+            return Written(True, REASON_UNCHANGED)
         if self.spec.user_tagged and not self.user_tag():
             return Written(False, REASON_NO_USER)
         for key, value in (values or {}).items():
@@ -829,6 +836,8 @@ class Store:
         and the adopt-only merge means a rename expressed as
         delete-then-add can be half-resurrected by the other pane.
         """
+        if not (moves or {}):
+            return Written(True, REASON_UNCHANGED)
         if self.spec.user_tagged and not self.user_tag():
             return Written(False, REASON_NO_USER)
         # Tagged on BOTH sides: a folder that moved moves it for the
@@ -850,6 +859,9 @@ class Store:
 
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
+        keys = list(keys or ())
+        if not keys:
+            return Written(True, REASON_UNCHANGED)
         if self.spec.user_tagged and not self.user_tag():
             return Written(False, REASON_NO_USER)
         doomed = [self._key(str(k)) for k in keys

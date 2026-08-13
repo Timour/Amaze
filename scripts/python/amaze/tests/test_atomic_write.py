@@ -1661,6 +1661,22 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                          "the untagged row was written back after being "
                          "dropped")
 
+    def test_asking_for_nothing_is_not_a_refusal(self):
+        """DOING NOTHING CANNOT FAIL. A store that can key nothing must
+        still answer an empty write with UNCHANGED, or a caller that
+        checks the answer reads a failure into an empty list - which is
+        how `locations.migrate` came to refuse the LOCATIONS half, a
+        store with no owner at all, on a machine with nobody picked.
+        """
+        from amaze.core import keyed_store
+        store = self._store("")
+        for written, what in ((store.update({}), "update"),
+                              (store.rekey({}), "rekey"),
+                              (store.retire([]), "retire")):
+            self.assertTrue(written, "an empty %s was refused" % what)
+            self.assertEqual(keyed_store.REASON_UNCHANGED, written.reason,
+                             "an empty %s did not answer unchanged" % what)
+
     def test_an_untagged_store_is_completely_unaffected(self):
         """THE CONTROL, and the reason this can land before anything
         turns the flag on: with `user_tagged` false the engine must
