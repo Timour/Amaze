@@ -27,6 +27,15 @@ import tempfile
 import threading
 import unittest
 
+# A subset run led by this module aborts with SIGABRT ("QWidget: Must
+# construct a QApplication before a QWidget") before unittest can print
+# its FAIL lines - the full suite never sees it because another module
+# builds the app first. Same preamble as test_keyed_store.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
