@@ -606,6 +606,18 @@ class LocationsArePerUserTest(unittest.TestCase):
             "a removal cleared only the removing user's registration - "
             "the folder survives for everyone else and comes back")
 
+    def test_the_mirror_never_blanks_the_copy_with_nobody_picked(self):
+        """A scoped read with nobody picked answers {}, which is "no
+        answer" and not "no locations". Driven directly because every
+        write door refuses before reaching the mirror - this is the
+        belt for the caller that forgets to."""
+        prefs, _library = self._upgrading(library_user="")
+        locations_mod._sync_mirror(prefs)
+        self.assertEqual(
+            dict(self.PRE_TAG_ROWS), dict(prefs.last_known_records),
+            "the mirror blanked the copy from a scoped read that "
+            "answers nothing - the fallback died while it was serving")
+
     def test_the_seed_migration_defers_whole_with_nobody_picked(self):
         settings = {"directory": "", "library_user": "",
                     "file_folders": ["/a/"], "file_favorites": []}
