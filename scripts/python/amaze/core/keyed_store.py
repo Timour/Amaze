@@ -683,9 +683,6 @@ class Store:
                         # commit retires them from disk (ROADMAP line
                         # 22 stage C - the locations; favourites drop
                         # theirs for good and never call the door).
-                        kept = spec.normalise(value)
-                        if kept and stored not in self._orphans:
-                            self._orphans[stored] = kept
                         orphans += 1
                         continue
                     kept = spec.normalise(value)
