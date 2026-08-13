@@ -612,7 +612,7 @@ class _Persistence:
         # serves when the library is unreachable. Only the dict shape
         # counts; the five derived spellings it used to be composed
         # from are retired outright.
-        stored = None   # SABOTAGE: the records copy is never read
+        stored = stored_value("file_location_records", None)
         self._file_location_records = {
             _decode_path(key): dict(value)
             for key, value in stored.items()
