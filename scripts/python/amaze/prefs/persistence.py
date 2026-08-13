@@ -309,7 +309,7 @@ class _Persistence:
     #: write from either drops the other's. These union on save; every
     #: scalar key takes this instance's value, because a scalar is a
     #: single choice and the last editor is the active one.
-    _LIST_KEYS = ("file_folders", "file_favorites", "material_favorites")
+    _LIST_KEYS = ("file_folders", "file_favorites")
 
     #: Dict-valued collected keys merge KEY-WISE on a two-pane race:
     #: ours wins per key, theirs adopted for keys we lack - the same
@@ -335,8 +335,6 @@ class _Persistence:
     _COLLECTED_ATTRS = {
         "file_folders": ("_file_folders", True),
         "file_favorites": ("_file_favorites", True),
-        # Asset ids, not paths - the one collected key that is not.
-        "material_favorites": ("_material_favorites", False),
     }
 
     #: Keys this build DELIBERATELY removed. The unknown-key courtesy
@@ -539,7 +537,6 @@ class _Persistence:
         self.data["show_categories"] = self._show_categories
         self.data["section_filters"] = dict(self._section_filters)
         self.data["view_mode"] = self._view_mode
-        self.data["material_favorites"] = list(self._material_favorites)
         self.data["library_user"] = self._library_user
         self.data["sidebar_counts"] = self._sidebar_counts
         self.data["ram_cache_mb"] = self._ram_cache_mb
@@ -806,8 +803,11 @@ class _Persistence:
         # already names: it restricts the value to grid/list.
         _through_setter(self, "view_mode",
                         data.get("view_mode", "grid"), "grid")
-        self._material_favorites = [
-            str(x) for x in data.get("material_favorites", [])]
+        # `material_favorites` is deliberately NOT loaded onto the
+        # object: `locations.migrate_asset_favourites` reads it out of
+        # `data` and pops it once every id is proven in the library's
+        # favourites store. An attribute here would write the key back
+        # on the next save and undo the pop.
         self._library_user = str(data.get("library_user", "") or "").strip()
         if not self._library_user:
             # ADOPTED, not defaulted. An install that has been signing
@@ -969,6 +969,7 @@ class _Persistence:
         try:
             from amaze.core import locations
             locations.migrate(self)
+            locations.migrate_asset_favourites(self)
         except Exception as exc:                              # noqa: BLE001
             debug.event("file", "location migration could not run",
                         error=str(exc))

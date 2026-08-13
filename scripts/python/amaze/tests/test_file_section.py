@@ -2601,5 +2601,106 @@ class ShowAllFilesTest(unittest.TestCase):
             "a location showing all files must count all files")
 
 
+class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
+    """`material_favorites` - the Materials/Nodes/Code stars that lived
+    in settings.json and never travelled - moves into the favourites
+    store under the active user, and the key is popped only after every
+    id reads back out of the store (ROADMAP line 21).
+
+    SELF-MARKING, so there is no marker to lose: the key's presence is
+    the to-do, a deferral (no library, no user, Test Mode) leaves it
+    authoritative, and a later session finishes the job. The union is
+    adopt-only, like the location migration.
+    """
+
+    def setUp(self):
+        from amaze.core import keyed_store
+        self.keyed_store = keyed_store
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+        self.lib = tempfile.mkdtemp(prefix="amaze_favmig_lib_")
+        self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
+
+    def _store(self, p):
+        return self.keyed_store.open_store(locations_mod.FAVOURITES_SPEC, p)
+
+    def test_the_list_moves_at_load_and_the_key_retires(self):
+        p = _prefs_with_settings(self, {
+            "directory": self.lib,
+            "material_favorites": ["mat-a", "mat-b"]})
+        self.assertTrue(self._store(p).has("mat-a"))
+        self.assertTrue(self._store(p).has("mat-b"))
+        self.assertNotIn(
+            "material_favorites", p.data,
+            "the key survived a proven migration - the courtesy will "
+            "carry it forever and re-run the union every launch")
+        with open(os.path.join(p.path, "settings.json"),
+                  encoding="utf-8") as handle:
+            self.assertNotIn("material_favorites", json.load(handle),
+                             "the retirement never reached disk")
+
+    def test_without_a_user_the_list_waits_then_lands(self):
+        p = _prefs_with_settings(self, {
+            "directory": self.lib, "library_user": "",
+            "material_favorites": ["mat-a"]})
+        self.assertIn(
+            "material_favorites", p.data,
+            "the list was consumed with nobody to own it - the stars "
+            "went into a blank tag or nowhere")
+        p.library_user = "picked-uid"
+        result = locations_mod.migrate_asset_favourites(p)
+        self.assertEqual("migrated", result.get("state"))
+        self.assertTrue(self._store(p).has("mat-a"))
+        self.assertNotIn("material_favorites", p.data)
+
+    def test_the_union_keeps_what_the_store_already_holds(self):
+        p = _prefs_with_settings(self, {
+            "material_favorites": ["mat-a", "mat-b"]})
+        p.dir = self.lib
+        self._store(p).set("mat-b", True)
+        result = locations_mod.migrate_asset_favourites(p)
+        self.assertEqual("migrated", result.get("state"))
+        mine = self._store(p).all()
+        self.assertEqual(
+            {"mat-a", "mat-b"}, set(mine),
+            "the union lost or duplicated a star between the settings "
+            "list and what the store already held")
+
+    def test_an_unstar_cannot_be_resurrected_by_the_pending_list(self):
+        p = _prefs_with_settings(self, {
+            "material_favorites": ["mat-a"]})
+        p.dir = self.lib
+        locations_mod.set_favourite(p, "mat-a", False)
+        self.assertFalse(
+            locations_mod.is_favourite(p, "mat-a"),
+            "the unstar was resurrected - the write ran before the "
+            "pending settings list was unioned in")
+        self.assertNotIn("material_favorites", p.data)
+
+    def test_the_paint_path_finishes_a_deferred_migration(self):
+        p = _prefs_with_settings(self, {
+            "material_favorites": ["mat-a"]})
+        p.dir = self.lib
+        self.assertTrue(
+            locations_mod.is_favourite(p, "mat-a"),
+            "a star still waiting in settings did not light once the "
+            "library appeared - the paint path never retried")
+
+    def test_test_mode_defers_and_keeps_the_list(self):
+        test_lib = tempfile.mkdtemp(prefix="amaze_favmig_test_")
+        self.addCleanup(shutil.rmtree, test_lib, ignore_errors=True)
+        p = _prefs_with_settings(self, {
+            "directory": self.lib, "test_mode": True,
+            "test_dir": test_lib,
+            "material_favorites": ["mat-a"]})
+        self.assertIn(
+            "material_favorites", p.data,
+            "Test Mode consumed the real library's stars - they landed "
+            "in the test library and the key is gone for the real one")
+        self.assertFalse(
+            self._store(p).has("mat-a"),
+            "the star reached the TEST library's store")
+
+
 if __name__ == "__main__":
     unittest.main()

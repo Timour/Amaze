@@ -169,13 +169,6 @@ class Prefs(_Persistence):
         # thumbsize_list = list. Both match ClickSlider.DEFAULT_VALUE.
         self._thumbsize = 128
         self._thumbsize_list = 128
-        # v3: MATERIAL favourites, per user - asset IDS, not paths. The
-        # material library was the one section whose favourite lived on
-        # the SHARED record: in a multi-user library my star toggled
-        # yours. The three folder sections already work this way.
-        self._material_favorites: list[str] = []
-        #: One-time adoption of the record-level favourites into prefs
-        #: has happened for this user (see MaterialLibrary).
         # WHO this is - the ONE identity. It keys everything stored per
         # user in the library AND it signs versions.
         #
@@ -572,21 +565,12 @@ class Prefs(_Persistence):
     def library_user(self, value: str) -> None:
         self._library_user = str(value or "").strip()
 
-    @property
-    def material_favorites(self) -> list[str]:
-        return self._material_favorites
-
-    def is_material_favorite(self, mat_id: str) -> bool:
-        return str(mat_id) in self._material_favorites
-
-    def set_material_favorite(self, mat_id: str, on: bool) -> None:
-        mat_id = str(mat_id)
-        if on and mat_id not in self._material_favorites:
-            self._material_favorites.append(mat_id)
-            self.save()
-        elif not on and mat_id in self._material_favorites:
-            self._material_favorites.remove(mat_id)
-            self.save()
+    # Material/Node/Code favourites left this class on 2026-08-13: every
+    # section's star goes through `locations.is_favourite` /
+    # `set_favourite` into the library's favourites store, keyed by
+    # asset id and tagged with the owner. `material_favorites` in
+    # settings.json is a migration source only, read and retired by
+    # `locations.migrate_asset_favourites`.
 
     @property
     def file_folders(self) -> list[str]:

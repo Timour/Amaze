@@ -362,7 +362,14 @@ def favourite_paths(preferences) -> list:
 def is_favourite(preferences, path: str) -> bool:
     """The star's question, asked per row per repaint - a membership
     test, no copy. Compared in STORAGE spelling, so the star does not
-    depend on which spelling registered the file."""
+    depend on which spelling registered the file. The key is a file
+    PATH for File rows and a bare asset id for every other section -
+    the icons.json scheme - and an id rides through the path
+    conversion unchanged.
+
+    The migration hook is the same cheap early-out `_ready` keeps for
+    the locations: one dict lookup when there is nothing to move."""
+    migrate_asset_favourites(preferences)
     if not _ready(preferences):
         wanted = hostos.storage_path_key(path)
         return wanted in {hostos.storage_path_key(p)
@@ -480,6 +487,9 @@ def relocate_record(preferences, old: str, new: str) -> keyed_store.Written:
 
 
 def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
+    # The migration runs BEFORE the write, so an unstar cannot be
+    # resurrected by a later union of the not-yet-moved settings list.
+    migrate_asset_favourites(preferences)
     path = hostos.storage_path_key(path)
     if not _ready(preferences):
         return _write_copy_favourite(preferences, path, bool(on))
@@ -721,10 +731,90 @@ def migrate(preferences) -> dict:
             "joined": adopted, "already_there": len(existing)}
 
 
+#: (dir, uid) pairs whose asset-favourites migration could not land
+#: this session - the same per-tile retry guard `_ready` keeps for the
+#: location migration, keyed on the USER too, so picking one in the
+#: ASK dialog or Preferences retries immediately.
+_asset_deferred: set = set()
+
+
+def migrate_asset_favourites(preferences) -> dict:
+    """Move `material_favorites` - the Materials/Nodes/Code stars that
+    lived in settings.json and never travelled - into the favourites
+    store under the active user, and PROVE it landed before the key is
+    dropped (practice.md ▸ *A migration must COMPARE*).
+
+    SELF-MARKING: the settings key IS the to-do list. It is popped only
+    after every id reads back out of the store, so a deferral (no
+    library yet, no user yet, Test Mode) or a refusal leaves the old
+    key authoritative and a later session finishes the job. Adopt-only
+    union like the location migration above: an id already in the
+    store is kept, so two machines migrating one user's lists converge
+    on the union and nothing is ever discarded silently.
+
+    Runs from `load()` beside `migrate`, and again from the favourite
+    doors below - `dir` and the user can both be set long after
+    settings were read, and the second machine's stars should appear
+    the moment its owner picks themselves rather than next launch.
+    """
+    data = getattr(preferences, "data", None)
+    if not isinstance(data, dict):
+        return {"state": "deferred", "why": "no settings"}
+    raw = [str(x) for x in (data.get("material_favorites") or ())
+           if str(x).strip()]
+    if not raw:
+        # An empty list is finished business - drop the key so the
+        # unknown-key courtesy stops carrying it forever.
+        data.pop("material_favorites", None)
+        return {"state": "done"}
+    if isolated(preferences):
+        # NO MIGRATION UNDER TEST MODE. These are the real library's
+        # stars; landing them in a test library would also pop the key
+        # and lose them for the real one.
+        return {"state": "deferred", "why": "test mode"}
+    key = (str(getattr(preferences, "dir", "")),
+           str(getattr(preferences, "library_user", "") or ""))
+    if key in _asset_deferred:
+        return {"state": "deferred", "why": "already tried"}
+    if not library_present(preferences):
+        _asset_deferred.add(key)
+        return {"state": "deferred", "why": "no library"}
+    store = _favourites_store(preferences)
+    if not store.writable:
+        _asset_deferred.add(key)
+        return {"state": "refused", "why": "the store cannot be written"}
+    written = store.update({sid: True for sid in raw})
+    if not written:
+        _asset_deferred.add(key)
+        if written.reason == keyed_store.REASON_NO_USER:
+            debug.event("file", "asset favourites waiting for a user",
+                        favourites=len(raw))
+            return {"state": "deferred", "why": "no user yet"}
+        debug.event("file", "asset favourite migration refused",
+                    reason=written.reason)
+        return {"state": "refused", "why": written.reason}
+    missing = [sid for sid in raw if not store.has(sid)]
+    if missing:
+        # NOT POPPED. The old key is still the truth and the next
+        # session tries again - comparing, not counting the write.
+        _asset_deferred.add(key)
+        debug.event("file", "asset favourite migration did not "
+                            "reproduce", missing=len(missing))
+        return {"state": "refused", "why": "the store does not match"}
+    data.pop("material_favorites", None)
+    save = getattr(preferences, "save", None)
+    if callable(save):
+        save()
+    debug.event("file", "asset favourites moved into the library",
+                favourites=len(raw))
+    return {"state": "migrated", "favourites": len(raw)}
+
+
 def forget() -> None:
     """Drop the cached tables - a library switch or a test needs a
-    re-read. The deferred set goes with them: a library that could not
+    re-read. The deferred sets go with them: a library that could not
     be migrated because it was unreachable deserves another try once
     something has changed enough to call this."""
     _deferred.clear()
+    _asset_deferred.clear()
     keyed_store.release()
