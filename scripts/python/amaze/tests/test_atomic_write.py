@@ -1527,6 +1527,157 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
             "library user named like it could be mistaken for it")
 
 
+class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
+    """A store may declare that its keys are TAGGED with the user, and
+    the ENGINE does the tagging (ROADMAP line 21 step 2d).
+
+    Asserted against a store this test builds itself, never against a
+    shipped one. Two reasons, and both are the point of this commit:
+    the mechanism is what is under test, so borrowing a section's store
+    would measure that section too; and no shipped store sets the flag
+    yet, so turning one on to test it is the change, not the test.
+
+    Built with `Spec(...)` rather than `register(...)` DELIBERATELY -
+    registering would put a fictional file in `stores()` and
+    `filenames()`, which Repair surveys and the restore picker offers,
+    for every test that runs after this one.
+    """
+
+    SEP = "|"
+
+    def setUp(self):
+        from amaze.core import keyed_store
+        self.dir = tempfile.mkdtemp(prefix="amaze_tagged_")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+
+    def _spec(self, tagged=True):
+        from amaze.core import keyed_store
+        return keyed_store.Spec(
+            filename="tagtest.json", payload="entries",
+            keyspace=keyed_store.KEY_PATH, label="Tag test", noun="entry",
+            normalise=lambda value: {"on": True} if value else {},
+            user_tagged=tagged)
+
+    def _prefs(self, user=""):
+        class _P:
+            pass
+        p = _P()
+        p.dir = self.dir
+        p.library_user = user
+        return p
+
+    def _store(self, user="", tagged=True):
+        from amaze.core import keyed_store
+        return keyed_store.open_store(self._spec(tagged), self._prefs(user))
+
+    def _on_disk(self):
+        with open(os.path.join(self.dir, "tagtest.json"),
+                  encoding="utf-8") as handle:
+            return json.load(handle)["entries"]
+
+    def _plant(self, *keys):
+        """A file written the way a build BEFORE the tag wrote one."""
+        with open(os.path.join(self.dir, "tagtest.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"entries": {key: {"on": True} for key in keys}},
+                      handle)
+
+    def test_two_users_do_not_see_each_others_entries(self):
+        from amaze.core import keyed_store
+        self.assertTrue(self._store("uid-one").set("~/a.exr", True))
+        self.assertTrue(self._store("uid-one").has("~/a.exr"))
+        keyed_store.release()
+        self.assertFalse(
+            self._store("uid-two").has("~/a.exr"),
+            "the other user's entry is showing - the tag is not keeping "
+            "them apart")
+        keyed_store.release()
+        self.assertTrue(self._store("uid-one").has("~/a.exr"),
+                        "switching back lost the first user's entry")
+
+    def test_the_stored_key_carries_the_uid(self):
+        """On disk, so a store written by one build is readable by the
+        next: `<uid>|<key>`, split on the FIRST separator only - a uuid4
+        hex cannot contain one, a path can."""
+        self._store("uid-one").set("~/a|b.exr", True)
+        keys = list(self._on_disk())
+        self.assertEqual(1, len(keys))
+        tag, _sep, rest = keys[0].partition(self.SEP)
+        self.assertEqual("uid-one", tag, "key %r is not tagged" % keys[0])
+        self.assertEqual("~/a|b.exr", rest,
+                         "a separator inside the KEY was eaten")
+
+    def test_no_user_stores_nothing_rather_than_a_blank_bucket(self):
+        """A machine that has not picked a user must not file entries
+        under an empty tag: that bucket is not a shared user, it is an
+        absent one."""
+        from amaze.core import keyed_store
+        written = self._store("").set("~/a.exr", True)
+        self.assertFalse(written, "an entry was filed with no user")
+        self.assertEqual(keyed_store.REASON_NO_USER, written.reason)
+        self.assertFalse(self._store("").has("~/a.exr"))
+
+    def test_all_is_scoped_and_everyones_is_not(self):
+        """`all()` means the things that are MINE - it is what a section
+        paints and what a sweep walks. `everyones()` is the unscoped
+        read, for repair and migration, the only two jobs that
+        legitimately see across people."""
+        from amaze.core import keyed_store
+        self._store("uid-one").set("~/mine.exr", True)
+        keyed_store.release()
+        self._store("uid-two").set("~/theirs.exr", True)
+        keyed_store.release()
+        store = self._store("uid-one")
+        self.assertEqual(["~/mine.exr"], sorted(store.all()),
+                         "all() is not scoped to this user")
+        self.assertEqual(2, len(store.everyones()),
+                         "everyones() cannot see across people")
+
+    def test_a_row_from_before_the_store_had_owners_is_dropped(self):
+        """A row written before the store had owners is REMOVED, not
+        adopted - nothing on it says whose it was, so handing it to
+        whoever opens the library first would give one person
+        everybody's entries (ROADMAP line 21 step 2d).
+        """
+        self._plant("~/old.exr")
+        store = self._store("uid-one")
+        self.assertFalse(store.has("~/old.exr"),
+                         "an entry from before the store had owners is "
+                         "still showing")
+        self.assertEqual({}, store.all())
+        self.assertEqual({}, store.everyones(),
+                         "the row was kept aside rather than dropped")
+
+    def test_a_dropped_row_does_not_come_back_on_the_next_write(self):
+        """The half `_foreign` would break: a value held aside as
+        unreadable is written back on every save, so a pre-tag row must
+        NOT be held there or the drop undoes itself."""
+        self._plant("~/old.exr")
+        self._store("uid-one").set("~/mine.exr", True)
+        self.assertEqual(["uid-one" + self.SEP + "~/mine.exr"],
+                         sorted(self._on_disk()),
+                         "the untagged row was written back after being "
+                         "dropped")
+
+    def test_an_untagged_store_is_completely_unaffected(self):
+        """THE CONTROL, and the reason this can land before anything
+        turns the flag on: with `user_tagged` false the engine must
+        behave exactly as it did, including for a prefs carrying no
+        user at all."""
+        from amaze.core import keyed_store
+        store = self._store("", tagged=False)
+        self.assertTrue(store.set("~/a.exr", True))
+        self.assertTrue(store.has("~/a.exr"))
+        self.assertEqual(["~/a.exr"], sorted(store.all()))
+        self.assertEqual(store.all(), store.everyones())
+        keyed_store.release()
+        self._plant("~/old.exr")
+        self.assertTrue(self._store("", tagged=False).has("~/old.exr"),
+                        "an untagged store dropped a row it should keep")
+
+
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
     """The gate for 2026-08-05, when a probe wrote two files into the
     real synced library.
