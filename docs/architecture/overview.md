@@ -391,7 +391,7 @@ store that keeps per-key choices beside the thing they belong to.
   **User store** (`core/users.py` → `users.json`), and
   the **Location record** and **File favourites**
   (`core/locations.py` → `locations.json`, `favourites.json`).
-  All four are files IN THE LIBRARY. The last two were views onto
+  All five are files IN THE LIBRARY. The last two were views onto
   `settings.json` until 2026-08-05, which is why an icon or a comment on
   a file could disappear when you switched library while the file stayed
   registered: a File row's facts answered to two different scopes.
@@ -407,7 +407,23 @@ store that keeps per-key choices beside the thing they belong to.
   thing that cannot live inside what it points at.
 - **The engine owns:** the absence verdict, the damage latch, the
   restore tier, the field-wise merge, the atomic write, the key
-  lifecycle, and the one answer that carries a REASON.
+  lifecycle, the user tag, and the one answer that carries a REASON.
+
+**A store may declare its keys PER-USER**, and the engine tags them:
+`Spec.user_tagged` prefixes the owner's UID as `<uid>|<key>` inside
+`storage_key()`, the one door every read and write already passes
+through. So one library holds everyone's per-user choices with each
+person seeing only their own, and a rename relabels somebody without
+moving a key.
+
+- `all()` is SCOPED to the current user. `everyones()` is the unscoped
+  read, for repair and migration only.
+- No user picked means NO key rather than a shared one — the write is
+  refused with `REASON_NO_USER`. An empty write still answers
+  UNCHANGED, because doing nothing cannot fail.
+- A key carrying no tag is DROPPED on read, never adopted, and never
+  held with the foreign values (those are written back).
+- Tagged today: `favourites.json` only.
 
 **Absence is a VERDICT the engine resolves, never a value a caller
 receives.** Opening answers **READ** (parsed from a file that is
