@@ -74,13 +74,23 @@ def _location_prefs(case, names, colors, show_all, recursive):
     prefs.data = {}
     prefs._file_folders = []
     prefs._file_favorites = []
-    prefs._file_folder_names = dict(names)
-    prefs._file_folder_colors = dict(colors)
-    prefs._file_folder_show_all = dict(show_all)
-    prefs._file_recursive_folders = list(recursive)
+    # The record is the one home now (the four decoration tables and
+    # their composers retired with ROADMAP line 22 stage D), so the
+    # seed copy is composed here the way load() reads it: one record
+    # per path.
+    prefs._file_location_records = {}
     for path in set(names) | set(colors) | set(show_all) | set(recursive):
         prefs._file_folders.append(path)
-    prefs._load_location_copy({})
+        record = prefs._file_location_records.setdefault(
+            path, {"registered": True})
+        if path in names:
+            record["name"] = names[path]
+        if path in colors:
+            record["color"] = colors[path]
+        if path in show_all:
+            record["show_all"] = show_all[path]
+        if path in recursive:
+            record["recursive"] = True
     # AND TAKE IT INTO THE LIBRARY, which is what load() does on a real
     # Prefs. Without it the store is empty, so `retire_prefix` and
     # `relocate` sweep nothing and pass while doing nothing at all.

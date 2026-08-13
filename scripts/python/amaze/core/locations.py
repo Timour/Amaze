@@ -715,8 +715,8 @@ def _from_settings(preferences) -> tuple:
     `preferences.file_folder_names` and its three siblings are derived
     from this module now, so reading them here would ask the migration's
     own output what the migration should write - and re-enter `_ready`
-    on the way. `_load_location_copy` has already composed the copy out
-    of the six old keys, which is exactly the input wanted.
+    on the way. `last_known_records` is the copy load() carried in,
+    which is exactly the input wanted.
     """
     records = {}
     for path, value in (getattr(preferences, "last_known_records", None)

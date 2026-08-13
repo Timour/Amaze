@@ -70,8 +70,6 @@ class FolderListModel(QtCore.QAbstractListModel):
     favorites_attr = ""
     #: Prefs attribute remembering the last-selected folder
     last_folder_attr = ""
-    #: Prefs attribute for the Include Subfolders toggle
-    subfolders_attr = ""
     #: Prefs method names that add/remove a folder (and persist)
     add_folder_method = ""
     remove_folder_method = ""
@@ -117,9 +115,11 @@ class FolderListModel(QtCore.QAbstractListModel):
 
     def includes_subfolders(self, path: str) -> bool:
         """Whether THIS registered folder scans recursively. The base
-        reads the section-wide flag; a subclass with per-location
-        recursion overrides this (FileFolders)."""
-        return bool(getattr(self.preferences, self.subfolders_attr, False))
+        answers no; per-location recursion is the location record's,
+        and FileFolders - the one subclass - overrides this to read
+        it. The section-wide flag this used to read retired with the
+        location decorations (persistence._RETIRED_KEYS)."""
+        return False
 
     def display_name(self, path: str) -> str:
         """The sidebar label for a registered folder. Base: the

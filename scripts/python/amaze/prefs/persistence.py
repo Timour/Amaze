@@ -287,10 +287,12 @@ USER_KEYS = {
 
 #: Every per-user spelling that leaves the flat document once a user
 #: exists to carry it - the conditional half of retirement, because
-#: the flat shape IS the store while nobody is picked.
+#: the flat shape IS the store while nobody is picked. The three
+#: last-known File copies ride here too: what they mirror is per-user.
 USER_RETIRED = tuple(USER_KEYS) + (
     "thumbsize", "thumbsize_list", "last_file_folder",
-    "section_filters", "enabled_sections") + tuple(
+    "section_filters", "enabled_sections",
+    "file_folders", "file_favorites", "file_location_records") + tuple(
     "enabled_sections_seen_%s" % s for s in _INTRODUCED_SECTIONS)
 
 
@@ -466,7 +468,17 @@ class _Persistence:
     #: `shared_settings` copy and pushes them to the library. Derived
     #: from the one table so a twentieth shared key cannot be retired
     #: in one place and forgotten in the other.
-    _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS)
+    #:
+    #: The five location-decoration spellings retire UNCONDITIONALLY:
+    #: they were the location record in an older shape, derived
+    #: outputs rather than migration sources, and the record in
+    #: `file_location_records` (and the library's own store) is the
+    #: one home. Kept for a same-machine rollback until 2026-08-14,
+    #: which pre-1.0 is not owed.
+    _RETIRED_KEYS = _RETIRED_KEYS + tuple(SHARED_KEYS) + (
+        "file_folder_names", "file_folder_colors",
+        "file_folder_show_all", "file_recursive_folders",
+        "file_include_subfolders")
 
     def _remember_disk_state(self, final: str) -> None:
         self._disk_stat = hostos.disk_state(final)
@@ -540,6 +552,17 @@ class _Persistence:
         out["section_filters"] = dict(self._section_filters)
         out["enabled_sections"] = list(self._enabled_sections)
         out.update(self._sections_seen)
+        # THE LAST-KNOWN COPIES, NOT THE TRUTH - written from the
+        # private fields, never the public accessors, which read the
+        # library; reading them here would re-enter locations.py
+        # mid-save, and a save triggered by a store write would
+        # recurse. What they mirror is per-user, so they ride with the
+        # user's other state.
+        out["file_folders"] = _encode_paths(self._file_folders)
+        out["file_favorites"] = _encode_paths(self._file_favorites)
+        out["file_location_records"] = {
+            _encode_path(k): dict(v)
+            for k, v in self._file_location_records.items()}
         return out
 
     def _apply_user_block(self, block: dict, data: dict) -> None:
@@ -581,6 +604,20 @@ class _Persistence:
             previous = data.get("last_renderer", "")
             if previous:
                 self._section_filters["material"] = str(previous)
+        self._file_folders = _decode_paths(
+            stored_value("file_folders", []))
+        self._file_favorites = _decode_paths(
+            stored_value("file_favorites", []))
+        # The last-known location records: the copy the File section
+        # serves when the library is unreachable. Only the dict shape
+        # counts; the five derived spellings it used to be composed
+        # from are retired outright.
+        stored = stored_value("file_location_records", None)
+        self._file_location_records = {
+            _decode_path(key): dict(value)
+            for key, value in stored.items()
+            if isinstance(key, str) and isinstance(value, dict)
+        } if isinstance(stored, dict) else {}
         stored = stored_value("enabled_sections", None)
         # A list, or the default. `None`/`"material"`/`3`/`{...}` each
         # raised out of load() - a str via .append, the rest via the
@@ -647,8 +684,20 @@ class _Persistence:
         if not isinstance(theirs, dict):
             return
         adopted = 0
+
+        def their_value(key):
+            # The peer's per-user keys live in THEIR copy of the same
+            # user's block now; the flat spelling is the shape a
+            # userless pane still writes.
+            users = theirs.get("users")
+            if isinstance(users, dict):
+                block = users.get(self._library_user)
+                if isinstance(block, dict) and key in block:
+                    return block[key]
+            return theirs.get(key)
+
         for key in self._LIST_KEYS:
-            their_list = theirs.get(key)
+            their_list = their_value(key)
             if not isinstance(their_list, list):
                 continue
             attr, is_path = self._COLLECTED_ATTRS[key]
@@ -663,7 +712,7 @@ class _Persistence:
                     ours.append(mine)
                     adopted += 1
         for key in self._DICT_KEYS:
-            their_map = theirs.get(key)
+            their_map = their_value(key)
             if not isinstance(their_map, dict):
                 continue
             attr, is_path = self._COLLECTED_ATTRS[key]
@@ -687,10 +736,9 @@ class _Persistence:
         # refresh_data no longer reads - dead writes, the second life
         # of the 2026-08-02 bug the _COLLECTED_ATTRS docstring records
         # (found 2026-08-06).
-        their_records = theirs.get("file_location_records")
+        their_records = their_value("file_location_records")
         if not isinstance(their_records, dict):
-            # An older build's file carries the six old keys instead.
-            their_records = self._compose_location_records(theirs)
+            their_records = {}
         for key, value in their_records.items():
             if not (isinstance(key, str) and isinstance(value, dict)):
                 continue
@@ -737,38 +785,6 @@ class _Persistence:
             debug.event("prefs", "adopted settings another writer saved",
                         adopted=adopted)
 
-    @staticmethod
-    def _compose_location_records(data: dict) -> dict:
-        """`file_location_records` composed from the six old keys - the
-        shape of a settings file written before 2026-08-05. Serves the
-        load fallback, and the merge when the OTHER pane's file was
-        written by an older build on this same machine (a rollback;
-        settings.json never travels between machines, INSTALL.md)."""
-        composed: dict = {}
-        folders = data.get("file_folders")
-        if isinstance(folders, list):
-            for path in folders:
-                if isinstance(path, str):
-                    composed.setdefault(
-                        _decode_path(path), {})["registered"] = True
-        for key, field in (("file_folder_names", "name"),
-                           ("file_folder_colors", "color"),
-                           ("file_folder_show_all", "show_all")):
-            table = data.get(key)
-            if not isinstance(table, dict):
-                continue
-            for path, value in table.items():
-                if isinstance(path, str):
-                    composed.setdefault(
-                        _decode_path(path), {})[field] = value
-        recursive = data.get("file_recursive_folders")
-        if isinstance(recursive, list):
-            for path in recursive:
-                if isinstance(path, str):
-                    composed.setdefault(
-                        _decode_path(path), {})["recursive"] = True
-        return composed
-
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and
         return it. One producer for the settings state: the debug
@@ -810,32 +826,6 @@ class _Persistence:
             self._users_blocks[self._library_user] = block
         else:
             self.data.update(self._user_state_document())
-        # THE COPY, NOT THE TRUTH - and written from `_file_*`, never
-        # from the public accessors, which read the library. Reading
-        # them here would re-enter locations.py mid-save, and a save
-        # triggered by a store write would recurse. The six old keys are
-        # DERIVED from the same copy, which is what keeps an older build
-        # reading a settings.json it understands after a rollback.
-        records = self._file_location_records
-        self.data["file_folders"] = _encode_paths(self._file_folders)
-        self.data["file_favorites"] = _encode_paths(self._file_favorites)
-        recursive = [p for p in self._file_folders
-                     if records.get(p, {}).get("recursive")]
-        # The retired global, written as the OR of the per-location
-        # list so the one build that read it keeps a sane value.
-        self.data["file_include_subfolders"] = bool(recursive)
-        self.data["file_recursive_folders"] = _encode_paths(recursive)
-        self.data["file_folder_names"] = {
-            _encode_path(k): v["name"] for k, v in records.items()
-            if v.get("name")}
-        self.data["file_folder_colors"] = {
-            _encode_path(k): v["color"] for k, v in records.items()
-            if v.get("color")}
-        self.data["file_folder_show_all"] = {
-            _encode_path(k): bool(v["show_all"]) for k, v in records.items()
-            if v.get("show_all") is not None}
-        self.data["file_location_records"] = {
-            _encode_path(k): dict(v) for k, v in records.items()}
         self.data["users"] = {
             uid: dict(block)
             for uid, block in self._users_blocks.items()}
@@ -1085,43 +1075,8 @@ class _Persistence:
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._test_mode = bool(data.get("test_mode", False))
         self._test_dir = _decode_path(data.get("test_dir", ""))
-        self._file_folders = _decode_paths(data.get("file_folders", []))
-        self._file_favorites = _decode_paths(
-            data.get("file_favorites", []))
-        self._file_include_subfolders = data.get(
-            "file_include_subfolders", False
-        )
         self.path_style = shared.get(
             "path_style", data.get("path_style", "home"))
-        names = data.get("file_folder_names", {})
-        self._file_folder_names = {
-            _decode_path(k): str(v)
-            for k, v in names.items()
-            if isinstance(k, str) and isinstance(v, str) and v
-        } if isinstance(names, dict) else {}
-        colors = data.get("file_folder_colors", {})
-        self._file_folder_colors = {
-            _decode_path(k): str(v)
-            for k, v in colors.items()
-            if isinstance(k, str) and isinstance(v, str) and v
-        } if isinstance(colors, dict) else {}
-        show_all = data.get("file_folder_show_all", {})
-        self._file_folder_show_all = {
-            _decode_path(k): bool(v)
-            for k, v in show_all.items()
-            if isinstance(k, str)
-        } if isinstance(show_all, dict) else {}
-        stored_recursive = data.get("file_recursive_folders", None)
-        if isinstance(stored_recursive, list):
-            self._file_recursive_folders = _decode_paths(stored_recursive)
-        elif self._file_include_subfolders:
-            # Seed from the retired global: recursion was on, so every
-            # registered location starts recursive - nothing visibly
-            # changes until the user differentiates.
-            self._file_recursive_folders = list(self._file_folders)
-        else:
-            self._file_recursive_folders = []
-        self._load_location_copy(data)
         self.geometry_shading_mode = shared.get(
             "geometry_shading_mode",
             data.get("geometry_shading_mode", "hiddenlineghost"))

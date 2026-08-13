@@ -199,36 +199,19 @@ class Prefs(_Persistence):
         self._file_folders: list[str] = []
         self._file_favorites: list[str] = []
         self._last_file_folder = ""
-        self._file_include_subfolders = False
         # Show files Amaze cannot thumbnail (the OS-icon rows) in the
         # File section. ON is the merge's behaviour - a folder shows
         # what is in it; OFF restores the pre-merge view where only
         # recognised kinds (image/geometry/hip) appear.
         self._file_show_unknown = True
-        # Per-LOCATION recursion: the paths whose Include Subfolders is
-        # on. Replaces the short-lived global file_include_subfolders
-        # (still written as the OR of this list for one build of
-        # cross-machine grace).
-        self._file_recursive_folders: list[str] = []
-        # Custom display names per location, path -> name. Empty = the
-        # default, which is the path itself (Houdini-collapsed).
-        self._file_folder_names: dict = {}
-        # Location colours, path -> hex. The File section's answer to
-        # category colours: same sidebar bar, same tile band, stored
-        # here rather than in a database because a location is a
-        # pointer this machine holds, not library content.
-        self._file_folder_colors: dict = {}
-        # Per-location Show All Files override (2026-08-01): absent =
-        # follow the global file_show_unknown preference.
-        self._file_folder_show_all: dict = {}
         # THE LAST-KNOWN COPY of the library's location records, path ->
         # record. Written from `locations.json` after every store write,
         # never read back into it. It is what the File section shows
         # when the library is unmounted, not yet synced, or unreadable -
         # the moment a browser is most wanted and least able to reach
-        # its own truth. The six keys above are the same copy in the
-        # shape an older build reads after a rollback HERE. Not the
-        # other Mac - settings.json does not travel (INSTALL.md).
+        # its own truth. Persisted under the active user's block; the
+        # decoration-table spellings it was once split into are retired
+        # (persistence._RETIRED_KEYS names the five).
         self._file_location_records: dict = {}
         # The Notes panel's visibility, persisted so the notebook a
         # user works in stays open across sessions.
@@ -705,14 +688,6 @@ class Prefs(_Persistence):
         self._last_file_folder = str(val or "")
 
     @property
-    def file_include_subfolders(self) -> bool:
-        return self._file_include_subfolders
-
-    @file_include_subfolders.setter
-    def file_include_subfolders(self, val: bool) -> None:
-        self._file_include_subfolders = bool(val)
-
-    @property
     def file_show_unknown(self) -> bool:
         return self._file_show_unknown
 
@@ -761,47 +736,6 @@ class Prefs(_Persistence):
     # storage did not become a rewrite of every caller: `file_folders`
     # and friends appear 104 times across six files, and almost none of
     # them changed.
-
-    def _load_location_copy(self, data: dict) -> None:
-        """Rebuild the last-known records from settings.json.
-
-        Prefers `file_location_records`, the copy this build writes.
-        Falls back to composing one out of the six old keys, which is
-        what a settings file written before 2026-08-05 holds - this
-        machine's own, since settings.json does not travel between the
-        two Macs (INSTALL.md). That fallback is not a migration: it is
-        how the File section keeps working before a library has ever
-        been reached.
-        """
-        stored = data.get("file_location_records", None)
-        if isinstance(stored, dict):
-            records = {}
-            for key, value in stored.items():
-                if isinstance(key, str) and isinstance(value, dict):
-                    records[_decode_path(key)] = dict(value)
-            if records:
-                self._file_location_records = records
-                return
-        # From the ATTRIBUTES, not from `data`: by the time this runs,
-        # load() has already merged the three pre-merge sections'
-        # folder keys (texture/geometry/hip) into `_file_folders`, and
-        # a pre-merge file has no `file_folders` key at all - composing
-        # from the raw document came back empty and emptied the sidebar
-        # (caught by MigrationTest the day this was tried). The MERGE
-        # path composes from the raw document instead, because a peer
-        # FILE is complete by definition - see
-        # _compose_location_records.
-        composed: dict = {}
-        for path in self._file_folders:
-            composed.setdefault(path, {})["registered"] = True
-        for table, field in ((self._file_folder_names, "name"),
-                             (self._file_folder_colors, "color"),
-                             (self._file_folder_show_all, "show_all")):
-            for path, value in table.items():
-                composed.setdefault(path, {})[field] = value
-        for path in self._file_recursive_folders:
-            composed.setdefault(path, {})["recursive"] = True
-        self._file_location_records = composed
 
     def _field_table(self, field: str) -> dict:
         from amaze.core import locations

@@ -213,7 +213,6 @@ class FileFolders(folders.FolderListModel):
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
     last_folder_attr = "last_file_folder"
-    subfolders_attr = "file_include_subfolders"
     add_folder_method = "add_file_folder"
     remove_folder_method = "remove_file_folder"
     relocate_folder_method = "relocate_file_folder"

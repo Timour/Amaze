@@ -150,15 +150,23 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
         "file_folders": ["/tex/img/", "/tex/bokeh/", "/photo/2023/",
                          "/models/obj/", "/houdini/exercise/", "/tex/hdr/"],
         "file_favorites": ["/tex/hdr/017.hdr", "/houdini/exercise/a.hiplc"],
-        "file_folder_names": {"/tex/bokeh/": "Bokeh files"},
-        "file_folder_colors": {"/photo/2023/": "#134d4d"},
-        # FALSE, not absent: an override that turns Show All Files OFF
-        # for one location. A normaliser that drops falsy fields would
+        # The RECORD is the one home since the five decoration-table
+        # spellings retired (ROADMAP line 22 stage D). show_all FALSE,
+        # not absent: an override that turns Show All Files OFF for one
+        # location - a normaliser that drops falsy fields would
         # silently turn it back on, and the real settings hold exactly
         # one of these.
-        "file_folder_show_all": {"/models/obj/": False},
-        "file_recursive_folders": ["/tex/img/", "/tex/bokeh/", "/photo/2023/",
-                                   "/models/obj/"],
+        "file_location_records": {
+            "/tex/img/": {"registered": True, "recursive": True},
+            "/tex/bokeh/": {"registered": True, "recursive": True,
+                            "name": "Bokeh files"},
+            "/photo/2023/": {"registered": True, "recursive": True,
+                             "color": "#134d4d"},
+            "/models/obj/": {"registered": True, "recursive": True,
+                             "show_all": False},
+            "/houdini/exercise/": {"registered": True},
+            "/tex/hdr/": {"registered": True},
+        },
     }
 
     def _prefs(self, settings=None, tag_favourites=True):
@@ -269,22 +277,27 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             "marked done with the favourites still unmigrated - the old "
             "keys stop being read and the stars are gone for good")
 
-    def test_the_six_old_keys_are_still_written(self):
-        """An older build on the other machine reads them, and they are
-        the fallback copy. A3 and A4 are one mechanism."""
+    def test_the_copies_ride_the_block_and_the_five_are_gone(self):
+        """The record is the one home: the copies persist under the
+        active user's block, and the decoration-table spellings the
+        record used to be split into are never written again."""
         prefs, _lib = self._prefs()
         prefs.save()
         with open(os.path.join(prefs.path, "settings.json"),
                   encoding="utf-8") as handle:
             on_disk = json.load(handle)
-        self.assertEqual(6, len(on_disk["file_folders"]))
-        self.assertEqual({"/tex/bokeh/": "Bokeh files"},
-                         on_disk["file_folder_names"])
-        self.assertEqual({"/models/obj/": False},
-                         on_disk["file_folder_show_all"])
-        self.assertEqual(sorted(self.REAL_SHAPE["file_recursive_folders"]),
-                         sorted(on_disk["file_recursive_folders"]))
-        self.assertEqual(6, len(on_disk["file_location_records"]))
+        block = on_disk["users"][test_support.FIXTURE_USER]
+        self.assertEqual(6, len(block["file_folders"]))
+        self.assertEqual(6, len(block["file_location_records"]))
+        self.assertEqual(
+            "Bokeh files",
+            block["file_location_records"]["/tex/bokeh/"].get("name"))
+        for retired in ("file_folder_names", "file_folder_colors",
+                        "file_folder_show_all", "file_recursive_folders",
+                        "file_include_subfolders", "file_folders",
+                        "file_favorites", "file_location_records"):
+            self.assertNotIn(retired, on_disk,
+                             "%s is still written flat" % retired)
 
     def test_the_second_mac_keeps_its_own_folders_and_gains_the_others(self):
         """THE SECOND MACHINE. Its settings.json is its OWN - preferences
