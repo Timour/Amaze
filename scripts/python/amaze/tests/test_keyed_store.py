@@ -40,13 +40,22 @@ sys.path.insert(
 
 from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 
 class _Prefs:
-    """Only what a store reads: where the library is."""
+    """Only what a store reads: where the library is, and WHO this is.
 
-    def __init__(self, directory):
+    The user joined the list when a store could declare its keys tagged
+    with an owner. A stub carrying only the directory makes every
+    tagged entry vanish silently rather than fail, which is the shape
+    practice.md ▸ FIND THE LANDING SEQUENCE warns about: a stub with
+    the READ surface and not the WRITE one verifies itself.
+    """
+
+    def __init__(self, directory, library_user=test_support.FIXTURE_USER):
         self.dir = directory
+        self.library_user = library_user
 
 
 class StoreCase(unittest.TestCase):

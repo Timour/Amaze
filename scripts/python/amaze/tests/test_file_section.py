@@ -53,6 +53,12 @@ def _prefs_with_settings(testcase, settings: dict):
     p = prefs_module.Prefs()
     p.path = home
     p.load()
+    # WHO this is, unless the caller's settings already said. A
+    # user-tagged store keys nothing without a user, so a prefs without
+    # one describes a library nobody has opened yet rather than the one
+    # these tests mean.
+    if not p.library_user:
+        p.library_user = test_support.FIXTURE_USER
     return p
 
 
@@ -1274,6 +1280,9 @@ class HoudiniPathTest(unittest.TestCase):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog
         p = test_support.fixture_prefs(self)
+        # NOBODY, said out loud - this asserts the dialog MINTS the
+        # first user, which only happens on an empty pointer.
+        p.library_user = ""
         dlg = prefs_dialog.PrefsDialog(p, panel=None)
         self.addCleanup(dlg.deleteLater)
         shown = dlg.cbb_library_user.currentText()

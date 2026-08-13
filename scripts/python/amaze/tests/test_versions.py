@@ -314,6 +314,10 @@ class StoreTest(_Case):
         import getpass
         import platform
         from amaze.core import users
+        # NOBODY, said out loud - the mint only runs on an empty
+        # pointer, and the shared fixture carries one so that tagged
+        # stores can key at all.
+        self.prefs.library_user = ""
         versions.create_version(self.prefs, self.mat_id)
         author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
         self.assertIn(author, users.PLACEHOLDER_NAMES)

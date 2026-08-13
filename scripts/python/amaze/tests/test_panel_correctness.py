@@ -61,6 +61,11 @@ def _location_prefs(case, names, colors, show_all, recursive):
     prefs = prefs_mod.Prefs.__new__(prefs_mod.Prefs)
     prefs.save = lambda: None
     prefs._directory = tempfile.mkdtemp(prefix="amaze_locations_")
+    # WHO this is. `__new__` skips the constructor, so every attribute a
+    # store reads has to be laid down here - and a user-tagged store
+    # keys nothing without this one, which would leave the migration
+    # below with an empty store and these tests sweeping nothing.
+    prefs._library_user = test_support.FIXTURE_USER
     # THE COPY IS THE SEED, and `data` says the library has not taken
     # over yet - which is what makes the four settings surfaces below
     # the answer until the first read migrates them into the store. The

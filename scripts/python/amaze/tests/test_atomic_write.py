@@ -1423,6 +1423,11 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         LIBRARY for its first user, never per machine."""
         from amaze.core import users
         p = self._prefs()
+        # NOBODY, said out loud. The shared fixture POINTS at a user so
+        # tagged stores can key; the mint only runs on an empty
+        # pointer, and a carried one is ADOPTED AS A NAME - so leaving
+        # it would name the first user after a UID.
+        p.library_user = ""
         self.assertEqual(users.MINT, users.first_run_state(p))
         uid = users.current(p)
         self.assertIn(users.name_for(p, uid), users.PLACEHOLDER_NAMES)

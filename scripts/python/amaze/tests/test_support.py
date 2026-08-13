@@ -34,6 +34,16 @@ from amaze.prefs import prefs
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "library")
 
+#: WHO a fixture library belongs to. A user-tagged store keys nothing
+#: without one, so a fixture with no user is a library whose per-user
+#: entries silently do not exist (ROADMAP line 21 step 2d).
+#:
+#: A CONSTANT, not a fresh `uuid4`: a stored key that changes every run
+#: cannot be compared across two runs and is unreadable in a failure
+#: message. Shaped like a real minted UID, because the tag is split on
+#: the first separator precisely BECAUSE a uuid4 hex cannot contain one.
+FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"
+
 
 def isolate_debug_log() -> str:
     """Send this process's debug log to a throwaway file.
@@ -313,6 +323,20 @@ def fixture_prefs(testcase):
     p.dir = fresh_library(testcase)
     p.path = tempfile.mkdtemp(prefix="amaze_fixture_prefs_")
     testcase.addCleanup(shutil.rmtree, p.path, True)
+    # A LIBRARY HAS USERS NOW, so a fixture without one is not a
+    # realistic library: a user-tagged store would key nothing and the
+    # section under test would silently show an empty list.
+    #
+    # POINTED, NOT MINTED, and the difference is the blast radius
+    # (practice.md ▸ A STORE MANY THINGS READ IS NOT TURNED ON
+    # INCREMENTALLY). `users.current(p)` mints, and a mint writes
+    # `users.json` INTO the library - so every fixture library would
+    # gain a file it did not have, and every test asserting on a
+    # library's CONTENTS would answer about the fixture rather than
+    # about the product. `Store.user_tag` reads `library_user` and
+    # nothing else, so a UID in the preference is the whole
+    # requirement and the fixture stays byte-identical.
+    p.library_user = FIXTURE_USER
     return p
 
 
