@@ -687,11 +687,6 @@ def _sync_mirror(preferences) -> None:
         # seed a future repair of the REAL library reads, so letting a
         # test library write it would arm that repair with test data.
         return
-    if _awaiting_user(preferences):
-        # A scoped read with nobody picked answers {} - which is not
-        # "no locations", it is "no answer". Blanking the copy with it
-        # would lose the fallback at the exact moment it is serving.
-        return
     store = _store(preferences)
     favourites = _favourites_store(preferences)
     if not store.writable and not favourites.writable:
