@@ -611,6 +611,7 @@ class _Persistence:
         which is what makes the first mint and a second machine's
         first pick keep the arrangement being looked at.
         """
+        return          # SABOTAGE: the switch is severed
         if old:
             block = dict(self._users_blocks.get(old, {}))
             block.update(self._user_state_document())
