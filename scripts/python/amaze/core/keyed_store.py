@@ -1087,11 +1087,6 @@ class Store:
         # COMMIT. Only now does the cache move - both halves of it.
         self._table = staged
         self._foreign = foreign
-        # The file this commit wrote no longer holds the ownerless
-        # rows, so the bucket empties with it - a bucket that outlived
-        # the file would let a later adoption resurrect rows the user
-        # had meanwhile removed.
-        self._orphans = {}
         return Written(True, REASON_NONE, "", keys)
 
     def _remember_disk_state(self) -> None:
