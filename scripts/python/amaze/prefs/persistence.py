@@ -469,8 +469,6 @@ class _Persistence:
                     continue
                 mine = self._users_blocks.get(uid)
                 if mine is None:
-                    self._users_blocks[uid] = dict(block)
-                    adopted += 1
                     continue
                 for field, field_value in block.items():
                     if field not in mine:
