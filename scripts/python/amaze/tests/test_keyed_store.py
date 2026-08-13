@@ -701,8 +701,12 @@ class TheStoreSpeaksPortableSpelling(StoreCase):
         locations.register(self.prefs, absolute)
         locations.set_favourite(self.prefs, absolute + "/a.exr", True)
         stored = self.on_disk(keyed_store.LOCATIONS)["locations"]
-        self.assertEqual(["~/plates"], list(stored),
-                         "locations.json carries the machine's spelling")
+        self.assertEqual(
+            [(test_support.FIXTURE_USER, "~/plates")],
+            [keyed_store.untagged_key(locations.SPEC, key)
+             for key in stored],
+            "locations.json carries the machine's spelling, or the "
+            "row landed under nobody")
         self.assertEqual([absolute],
                          locations.registered_paths(self.prefs),
                          "the reader hands back a spelling the scanner "
@@ -1141,13 +1145,18 @@ class EveryDoorSpeaksThePortableSpelling(StoreCase):
         document = self.on_disk(name)
         return next(iter(document.values()))
 
+    def _bare(self, key):
+        # The locations are user-tagged; the spelling under test is
+        # the PATH half of the stored key.
+        return keyed_store.untagged_key(locations.SPEC, key)[1]
+
     def test_update_rekey_and_retire_match_the_stored_spelling(self):
         target = os.path.join(os.path.expanduser("~"), "amaze-seam-loc")
         moved = os.path.join(os.path.expanduser("~"), "amaze-seam-two")
         store = keyed_store.open_store(locations.SPEC, self.prefs)
         store.set(target, {"registered": True})
         self.assertTrue(
-            all(key.startswith("~") for key in self._table()),
+            all(self._bare(key).startswith("~") for key in self._table()),
             "premise: a home path is stored in the portable spelling")
 
         store.update({target: {"registered": True, "name": "Seam"}})
@@ -1158,7 +1167,7 @@ class EveryDoorSpeaksThePortableSpelling(StoreCase):
         store.rekey({target: moved})
         table = self._table()
         self.assertEqual(1, len(table), "rekey grew a second spelling")
-        self.assertTrue(next(iter(table)).startswith("~"),
+        self.assertTrue(self._bare(next(iter(table))).startswith("~"),
                         "rekey stored the raw absolute destination")
 
         store.retire([moved])

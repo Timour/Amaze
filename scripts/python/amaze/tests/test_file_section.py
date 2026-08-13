@@ -1583,6 +1583,12 @@ class _Prefs:
 
     def __init__(self, folders=()):
         self.dir = tempfile.mkdtemp(prefix="amaze_file_lib_")
+        # WHO this is: the locations are user-tagged, so a stub with
+        # no user describes the ASK window, not a working machine -
+        # every register would refuse and every read would serve the
+        # empty copy (the exact stub trap practice.md ▸ FIND THE
+        # LANDING SEQUENCE names).
+        self.library_user = test_support.FIXTURE_USER
         self.file_show_unknown = True
         self.path_style = "home"
         self.last_file_folder = ""
