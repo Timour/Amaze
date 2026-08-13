@@ -84,29 +84,18 @@ class _StubPanel(QtWidgets.QWidget):
         return os.path.join(os.path.dirname(amaze.__file__), "ui", filename)
 
     # -- the release actions, stubbed ---------------------------------
-    def drop_material_at_release(self, idx):
-        self.calls.append("material")
-        return True
-
-    def drop_cop_at_release(self, idx):
-        self.calls.append("cop")
-        return True
-
-    def drop_geo_at_release(self, idx):
-        self.calls.append("geo")
-        return True
-
+    #
+    # ONLY the verbs that still resolve on the panel live here. The
+    # five ROADMAP line 24 B2 moved (drop_material/cop/geo_at_release,
+    # drop_code_at_release, apply_gradient_to_node) are stubbed on the
+    # harness's SECTION instance instead - the seam the tests patch
+    # moves with the box, and a door that resolved on the panel again
+    # would find no verb here and fail loudly.
     def open_hip_scene(self, idx):
         self.calls.append("open_hip")
 
     def assign_category_active(self, category):
         self.calls.append("category:%s" % category)
-
-    def apply_gradient_to_node(self, idx, node):
-        self.calls.append("gradient")
-
-    def drop_code_at_release(self, idx, node):
-        self.calls.append("code")
 
     def drop_file_path_on_node(self, idx, node):
         self.calls.append("file_path")
@@ -172,6 +161,39 @@ class _Harness:
         self.view.resize(400, 300)
         self.panel = _StubPanel(section)
         testcase.addCleanup(self.panel.deleteLater)
+        # The moved release verbs live on the SECTION (ROADMAP line 24
+        # B2), so the harness builds the real section class over the
+        # stub panel and stubs those verbs on the INSTANCE - shadowing
+        # the real bodies, which would otherwise run against a panel
+        # that has none of their machinery. sections.drop_verb resolves
+        # the instance attribute first, exactly as the live panel does.
+        from amaze.panel import sections
+        self.section = sections.SECTION_INDEX[section](self.panel)
+        self.panel.sections = {section: self.section}
+        calls = self.panel.calls
+        if section == "material":
+            def _material(idx):
+                calls.append("material")
+                return True
+            self.section.drop_material_at_release = _material
+        elif section == "cop":
+            def _cop(idx):
+                calls.append("cop")
+                return True
+            self.section.drop_cop_at_release = _cop
+        elif section == "file":
+            def _geo(idx):
+                calls.append("geo")
+                return True
+            self.section.drop_geo_at_release = _geo
+        elif section == "gradient":
+            def _gradient(idx, node):
+                calls.append("gradient")
+            self.section.apply_gradient_to_node = _gradient
+        elif section == "code":
+            def _code(idx, node):
+                calls.append("code")
+            self.section.drop_code_at_release = _code
         # _find_panel walks the parent chain; parenting the view to the
         # stub is how the real panel provides itself.
         self.view.setParent(self.panel)
@@ -289,7 +311,7 @@ class TestGestureRelease(unittest.TestCase):
         def _boom(idx):
             raise hou.OperationFailed("Invalid node type name")
 
-        h.panel.drop_material_at_release = _boom
+        h.section.drop_material_at_release = _boom
         with self.assertRaises(hou.OperationFailed):
             h.release()                  # guarded() re-raises by design
         self.assertFalse(h.view._dragging,
@@ -317,7 +339,7 @@ class TestGestureRelease(unittest.TestCase):
             raise hou.PermissionError(
                 "Cannot create a node inside a locked asset")
 
-        h.panel.drop_material_at_release = _locked
+        h.section.drop_material_at_release = _locked
         # hou.ui is absent headless, so it is STOOD UP here rather than
         # patched - which also proves the handler reaches it when it
         # exists. The guard for when it does not is the test below.
@@ -346,7 +368,7 @@ class TestGestureRelease(unittest.TestCase):
             raise hou.PermissionError(
                 "Cannot create a node inside a locked asset")
 
-        h.panel.drop_material_at_release = _locked
+        h.section.drop_material_at_release = _locked
         self.assertFalse(hasattr(hou, "ui"),
                          "this test needs a headless hou to mean anything")
         h.release()                      # must NOT raise
@@ -362,7 +384,7 @@ class TestGestureRelease(unittest.TestCase):
         def _bug(idx):
             raise hou.OperationFailed("Invalid node type name")
 
-        h.panel.drop_material_at_release = _bug
+        h.section.drop_material_at_release = _bug
         with self.assertRaises(hou.OperationFailed):
             h.release()
 
@@ -377,7 +399,7 @@ class TestGestureRelease(unittest.TestCase):
         button held measures a large distance from the stale start point
         and launches a drag the user never began."""
         h = self._armed()
-        h.panel.drop_material_at_release = self._boom
+        h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
             h.release()
 
@@ -397,7 +419,7 @@ class TestGestureRelease(unittest.TestCase):
         """The behaviour the leak causes, end to end: no button held,
         just a mouse move, and a full gesture arms itself."""
         h = self._armed()
-        h.panel.drop_material_at_release = self._boom
+        h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
             h.release()
 
@@ -412,12 +434,15 @@ class TestGestureRelease(unittest.TestCase):
         section, so a release after switching sections dispatches the
         wrong handler with an index into the wrong model."""
         h = self._armed("material")
-        h.panel.drop_material_at_release = self._boom
+        h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
             h.release()
         h.panel.calls.clear()
 
-        h.panel.section = "geometry"     # the user switched tabs
+        # The user switched tabs. `current_section` is the attribute
+        # the gesture reads at press time; this line set a `section`
+        # attribute nothing reads until 2026-08-13.
+        h.panel.current_section = "file"
         h.move(QtCore.QPoint(h.item_pos().x() + 200,
                              h.item_pos().y() + 200))
         h.release()

@@ -4554,31 +4554,6 @@ class MatLibPanel(QtWidgets.QWidget):
                     return True
         return False
 
-    def _edit_code_row(self, row: int) -> None:
-        asset = self.code_model.assets[row]
-        dialog = code_dialog.CodeDialog(
-            self.get_code_category_names(),
-            name=asset.name,
-            language=asset.renderer,
-            category=asset.categories[0] if asset.categories else "",
-            tags=", ".join(asset.tags),
-            code=asset.code,
-            description=asset.description,
-            title="Edit Snippet",
-        )
-        dialog.exec_()
-        if dialog.canceled:
-            return
-        if dialog.category:
-            self.code_category_model.check_add_category(dialog.category)
-        with ui_helpers.relayout(self.code_model,
-                                 self.code_category_model):
-            self.code_model.update_asset(
-                row, dialog.code, dialog.name, dialog.language,
-                dialog.category, dialog.tags, dialog.description,
-            )
-        self._refresh_sidebar_categories()
-
     def get_cop_category_names(self) -> list[str]:
         return self._category_names_from(self.cop_category_model)
 
@@ -4842,30 +4817,6 @@ class MatLibPanel(QtWidgets.QWidget):
         # container when one was built, else the loader itself.
         return container or loader
 
-    def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
-        """Geometry drag released: import in context at the release
-        point - on a SOP-capable node (geo, SOP Create) the loader
-        lands inside it; an OBJ network gets a new geo; a LOP network
-        a new SOP Create. Release over nothing is silent - a miss is a
-        normal drag outcome, not an error."""
-        context = self._drop_context_under_cursor(
-            self._is_sop_container, include_viewports=True
-        )
-        if context is None:
-            return False
-        path = index.data(self.file_files_model.PathRole)
-        if not path:
-            return False
-        with hou.undos.group("Amaze Import Geometry"):
-            created = self._import_geo_in_context(path, context)
-        if created is not None:
-            helpers.place_nodes([created],
-                                self._release_position_in(context))
-        return True
-
-
-
-
     @staticmethod
     def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
         # An explicit basis rebuilds the ramp from the gradient's
@@ -4967,40 +4918,6 @@ class MatLibPanel(QtWidgets.QWidget):
         except AttributeError:
             return None
 
-    def drop_cop_at_release(self, index) -> bool:
-        """Nodes drag released: same context rules as double-click, but
-        against the network editor under the RELEASE POINT - released
-        ON a network container (a geo, a copnet, a lopnet...) or INSIDE
-        one, the saved nodes load directly into it; any other network
-        gets a fresh container. An asset whose context doesn't match
-        where it landed is refused with a message rather than half
-        created. A release over nothing is silent - a miss is a normal
-        drag outcome, not an error."""
-        if not self.cop_model:
-            return False
-        if index is None or not index.isValid():
-            # A drag armed on EMPTY grid space arrives here with an
-            # invalid index; mapToSource() would return row -1, which
-            # Python-indexes to the LAST asset in the model.
-            return False
-        context = self._drop_context_under_cursor(self.cop_model.is_container)
-        if context is None:
-            return False
-        try:
-            source_index = self.cop_sorted_model.mapToSource(index)
-        except Exception:
-            return False
-        with hou.undos.group("Amaze Import COP Network"):
-            ok, reason, created = self.cop_model.import_asset_to_scene(
-                source_index, context_node=context
-            )
-        if not ok and reason:
-            hou.ui.displayMessage(reason)  # type: ignore
-        if ok:
-            helpers.place_nodes(created,
-                                self._release_position_in(context))
-        return True
-
     def _import_material_builder(self, asset_id, target, context_node=None):
         """One import shape for every release bridge: import a library
         material by id, report failures, return the builder VOP or
@@ -5084,70 +5001,6 @@ class MatLibPanel(QtWidgets.QWidget):
         except Exception:
             pass
         return ids
-
-    def drop_material_at_release(self, index) -> bool:
-        """Material drag released (Drag & Drop Engine gesture). THE
-        LAW: the drop lands where it was dropped, and nothing was
-        created before this moment.
-
-        - LOP viewport: ancestor-prim menu, import into a material-
-          library in THAT stage (stock resolution), assign with
-          Houdini's own stock helper. Never /mat.
-        - OBJ viewport: import to /mat and assign to the picked object
-          directly (the native OBJ behavior has no menu).
-        - Network editor: import into the network under the cursor.
-        - Anything else: a miss, silent.
-
-        Returns True when the release hit an actionable target, False
-        for a miss, and "menu" when a menu carried the interaction -
-        the drag widgets map this to the outcome icon (loader / X /
-        nothing)."""
-        if not self.material_model or index is None or not index.isValid():
-            return False
-        ids = self._selected_material_ids(index)
-        target = dragengine.viewport_release_target(self)
-        if target is not None:
-            kind, viewer, data = target
-            debug.event("drag", "material release", target=kind,
-                        data=str(data), count=len(ids))
-            if kind == "lop":
-                if not data:
-                    # Empty viewport space: no prim picked = a MISS,
-                    # not an import offer.
-                    return False
-                shown = self._material_lop_viewport_drop(ids, viewer, data)
-                # The menu IS the feedback on this path - no outcome
-                # icon on top of it, chosen or dismissed alike.
-                #
-                # But "menu" was returned unconditionally, and
-                # _material_lop_viewport_drop returns False in three
-                # cases where NO menu was ever shown: no stock LOP
-                # helper, a viewer whose pwd() failed, and - the
-                # reachable one - no choices at all, which happens on a
-                # stale prim path or a display node whose cook failed.
-                # _finish_preview reads "menu" as "suppress the miss
-                # icon", so the user dropped on a visible object and got
-                # nothing whatsoever: no menu, no red X, no message.
-                return "menu" if shown is not False else False
-            if kind == "obj" and data is not None:
-                with hou.undos.group("Amaze Assign Material"), \
-                        dragengine.keep_editor_focus():
-                    # Propagated, not discarded: assign_material_to_obj
-                    # returns False when the picked object has no
-                    # shop_materialpath, and a hard True here showed the
-                    # success feedback for an assignment that did not
-                    # happen.
-                    return bool(self.assign_material_to_obj(ids, data))
-            return False
-        context = self._drop_context_under_cursor("materiallibrary")
-        if context is None:
-            debug.event("drag", "material release", target="miss")
-            return False
-        debug.event("drag", "material release", target="network",
-                    context=context.path(), count=len(ids))
-        position = self._release_position_in(context)
-        self._import_materials_into_context(context, ids, position)
-        return True
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
         """LOP-viewport release: our ancestor-prim menu, then import
@@ -5382,33 +5235,6 @@ class MatLibPanel(QtWidgets.QWidget):
                     position.x() + offset * 0.6,
                     position.y() - offset * 0.9))
 
-    def drop_code_at_release(self, index, node: hou.Node) -> bool:
-        """Code snippet drag released (self-managed): apply the snippet to
-        the node under the cursor - same as a double-click, but targeting
-        where the drag landed. A release over nothing is silent; a node
-        with no code/snippet parm reports why."""
-        if not self.code_model or index is None or node is None:
-            return False
-        try:
-            source_index = self.code_sorted_model.mapToSource(index)
-        except Exception:
-            return False
-        with hou.undos.group("Amaze Apply Code Snippet"):
-            ok, reason = self.code_model.apply_to_node(
-                source_index.row(), node
-            )
-        if not ok:
-            # Drag-door rule: the miss indicator carries the refusal;
-            # the reason goes to the status line, never a dialog.
-            ui = getattr(hou, "ui", None)
-            if ui is not None and reason:
-                ui.setStatusMessage(
-                    "Amaze: %s" % reason,
-                    severity=hou.severityType.Warning,
-                )
-            return False
-        return True
-
     #: Sections whose sidebar holds real, assignable categories. The
     #: File section is excluded on purpose - deliberately partial: its
     #: sidebar is a list of filesystem FOLDERS, so a drop there would
@@ -5483,35 +5309,6 @@ class MatLibPanel(QtWidgets.QWidget):
                 if isinstance(candidate, hou.Node):
                     return candidate
         return None
-
-    def apply_gradient_to_node(
-        self, index: QtCore.QModelIndex, node: hou.Node,
-        basis: str = "",
-    ) -> bool:
-        """Drag-drop completion for the Gradients section: apply the
-        dragged combination to the node the drag was released over.
-        A node that takes nothing answers False - the gesture shows
-        its own miss (drag-door rule: the red indicator and the status
-        line, never a dialog)."""
-        if index is None or not index.isValid():
-            return False
-        source_index = self.gradient_sorted_model.mapToSource(index)
-        entry = self.gradient_model.entry(source_index.row())
-        if entry is None:
-            return False
-        parm = helpers.find_color_ramp_parm(node)
-        if parm is None:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.setStatusMessage(
-                    "Amaze: %s has no color ramp to take the gradient"
-                    % node.name(),
-                    severity=hou.severityType.Warning,
-                )
-            return False
-        with hou.undos.group("Amaze Apply Gradient"):
-            parm.set(self._entry_ramp(entry, basis))
-        return True
 
     def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
         """"Save Gradient to <app>" (node right-click, or any caller

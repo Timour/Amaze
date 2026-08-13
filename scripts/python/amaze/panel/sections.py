@@ -41,7 +41,9 @@ import collections
 import hou
 from PySide6 import QtCore
 
-from amaze.core import debug, file_library, grid_columns, scene_captures, notes
+from amaze.core import (debug, dragengine, file_library, grid_columns,
+                        scene_captures, notes)
+from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
 from amaze.panel import grid
 
@@ -1111,6 +1113,68 @@ class MaterialSection(AssetSection):
         self.panel.import_asset("auto")
         return True
 
+    def drop_material_at_release(self, index) -> bool:
+        """Material drag released (Drag & Drop Engine gesture). THE
+        LAW: the drop lands where it was dropped, and nothing was
+        created before this moment.
+
+        LOP viewport gets the ancestor-prim menu, an import into a
+        materiallibrary in THAT stage and Houdini's stock assign,
+        never /mat; OBJ viewport imports to /mat and assigns to the
+        picked object directly; a network editor imports into the
+        network under the cursor; anything else is a silent miss.
+
+        Returns True for a hit, False for a miss, and the string
+        "menu" when a menu carried the interaction - the drag widgets
+        map this to the outcome icon."""
+        panel = self.panel
+        if not panel.material_model or index is None or not index.isValid():
+            return False
+        ids = panel._selected_material_ids(index)
+        target = dragengine.viewport_release_target(panel)
+        if target is not None:
+            kind, viewer, data = target
+            debug.event("drag", "material release", target=kind,
+                        data=str(data), count=len(ids))
+            if kind == "lop":
+                if not data:
+                    # Empty viewport space: no prim picked = a MISS,
+                    # not an import offer.
+                    return False
+                shown = panel._material_lop_viewport_drop(ids, viewer, data)
+                # The menu IS the feedback on this path - no outcome
+                # icon on top of it, chosen or dismissed alike.
+                #
+                # But "menu" was returned unconditionally, and
+                # _material_lop_viewport_drop returns False in three
+                # cases where NO menu was ever shown: no stock LOP
+                # helper, a viewer whose pwd() failed, and - the
+                # reachable one - no choices at all, which happens on a
+                # stale prim path or a display node whose cook failed.
+                # _finish_preview reads "menu" as "suppress the miss
+                # icon", so the user dropped on a visible object and got
+                # nothing whatsoever: no menu, no red X, no message.
+                return "menu" if shown is not False else False
+            if kind == "obj" and data is not None:
+                with hou.undos.group("Amaze Assign Material"), \
+                        dragengine.keep_editor_focus():
+                    # Propagated, not discarded: assign_material_to_obj
+                    # returns False when the picked object has no
+                    # shop_materialpath, and a hard True here showed the
+                    # success feedback for an assignment that did not
+                    # happen.
+                    return bool(panel.assign_material_to_obj(ids, data))
+            return False
+        context = panel._drop_context_under_cursor("materiallibrary")
+        if context is None:
+            debug.event("drag", "material release", target="miss")
+            return False
+        debug.event("drag", "material release", target="network",
+                    context=context.path(), count=len(ids))
+        position = panel._release_position_in(context)
+        panel._import_materials_into_context(context, ids, position)
+        return True
+
     def selection_has_redshift(self, indexes, current) -> bool:
         return self.panel._selection_has_redshift()
 
@@ -1243,6 +1307,42 @@ class CopSection(AssetSection):
         self.panel.import_cop_assets()
         return True
 
+    def drop_cop_at_release(self, index) -> bool:
+        """Nodes drag released: same context rules as double-click, but
+        against the network editor under the RELEASE POINT - released
+        ON a network container (a geo, a copnet, a lopnet...) or INSIDE
+        one, the saved nodes load directly into it; any other network
+        gets a fresh container. An asset whose context doesn't match
+        where it landed is refused with a message rather than half
+        created. A release over nothing is silent - a miss is a normal
+        drag outcome, not an error."""
+        panel = self.panel
+        if not panel.cop_model:
+            return False
+        if index is None or not index.isValid():
+            # A drag armed on EMPTY grid space arrives here with an
+            # invalid index; mapToSource() would return row -1, which
+            # Python-indexes to the LAST asset in the model.
+            return False
+        context = panel._drop_context_under_cursor(
+            panel.cop_model.is_container)
+        if context is None:
+            return False
+        try:
+            source_index = panel.cop_sorted_model.mapToSource(index)
+        except Exception:
+            return False
+        with hou.undos.group("Amaze Import COP Network"):
+            ok, reason, created = panel.cop_model.import_asset_to_scene(
+                source_index, context_node=context
+            )
+        if not ok and reason:
+            hou.ui.displayMessage(reason)  # type: ignore
+        if ok:
+            helpers.place_nodes(created,
+                                panel._release_position_in(context))
+        return True
+
     def menu_load(self, indexes, current, payload=None) -> None:
         # Same wrapper as menu_copy_to: a menu import must not move
         # the artist's selection, current node or view.
@@ -1343,6 +1443,33 @@ class CodeSection(AssetSection):
     #: Per language AND per network kind, so the answer is a method.
     carrier_type_verb = "code_carrier_type"
 
+    def drop_code_at_release(self, index, node: hou.Node) -> bool:
+        """Code snippet drag released (self-managed): apply the snippet to
+        the node under the cursor - same as a double-click, but targeting
+        where the drag landed. A release over nothing is silent; a node
+        with no code/snippet parm reports why."""
+        panel = self.panel
+        if not panel.code_model or index is None or node is None:
+            return False
+        try:
+            source_index = panel.code_sorted_model.mapToSource(index)
+        except Exception:
+            return False
+        with hou.undos.group("Amaze Apply Code Snippet"):
+            ok, reason = panel.code_model.apply_to_node(
+                source_index.row(), node
+            )
+        if not ok:
+            # Drag-door rule: the miss indicator carries the refusal;
+            # the reason goes to the status line, never a dialog.
+            ui = getattr(hou, "ui", None)
+            if ui is not None and reason:
+                ui.setStatusMessage(
+                    "Amaze: %s" % reason,
+                    severity=hou.severityType.Warning,
+                )
+            return False
+        return True
 
     def menu_new_snippet(self, indexes, current, payload=None) -> None:
         self.panel.new_code_snippet()
@@ -1359,7 +1486,33 @@ class CodeSection(AssetSection):
             return
         source = self.panel.code_sorted_model.mapToSource(current)
         if source.isValid():
-            self.panel._edit_code_row(source.row())
+            self._edit_code_row(source.row())
+
+    def _edit_code_row(self, row: int) -> None:
+        panel = self.panel
+        asset = panel.code_model.assets[row]
+        dialog = code_dialog.CodeDialog(
+            panel.get_code_category_names(),
+            name=asset.name,
+            language=asset.renderer,
+            category=asset.categories[0] if asset.categories else "",
+            tags=", ".join(asset.tags),
+            code=asset.code,
+            description=asset.description,
+            title="Edit Snippet",
+        )
+        dialog.exec_()
+        if dialog.canceled:
+            return
+        if dialog.category:
+            panel.code_category_model.check_add_category(dialog.category)
+        with ui_helpers.relayout(panel.code_model,
+                                 panel.code_category_model):
+            panel.code_model.update_asset(
+                row, dialog.code, dialog.name, dialog.language,
+                dialog.category, dialog.tags, dialog.description,
+            )
+        panel._refresh_sidebar_categories()
     library_model_attrs = ("code_model", "code_category_model")
     model_attr = "code_model"
     proxy_attr = "code_sorted_model"
@@ -1802,6 +1955,28 @@ class FileSection(FolderSection):
         self.panel.import_geo_asset(index)
         return True
 
+    def drop_geo_at_release(self, index: QtCore.QModelIndex) -> bool:
+        """Geometry drag released: import in context at the release
+        point - on a SOP-capable node (geo, SOP Create) the loader
+        lands inside it; an OBJ network gets a new geo; a LOP network
+        a new SOP Create. Release over nothing is silent - a miss is a
+        normal drag outcome, not an error."""
+        panel = self.panel
+        context = panel._drop_context_under_cursor(
+            panel._is_sop_container, include_viewports=True
+        )
+        if context is None:
+            return False
+        path = index.data(panel.file_files_model.PathRole)
+        if not path:
+            return False
+        with hou.undos.group("Amaze Import Geometry"):
+            created = panel._import_geo_in_context(path, context)
+        if created is not None:
+            helpers.place_nodes([created],
+                                panel._release_position_in(context))
+        return True
+
     def click_open_hip(self, index) -> bool:
         self.panel.open_hip_scene(index)
         return True
@@ -2148,6 +2323,36 @@ class GradientSection(Section):
     DROP = DropRule(on_node="apply_gradient_to_node",
                     on_space="create_gradient_node_in",
                     click_on_node="apply_gradient_to_node")
+
+    def apply_gradient_to_node(
+        self, index: QtCore.QModelIndex, node: hou.Node,
+        basis: str = "",
+    ) -> bool:
+        """Drag-drop completion for the Gradients section: apply the
+        dragged combination to the node the drag was released over.
+        A node that takes nothing answers False - the gesture shows
+        its own miss (drag-door rule: the red indicator and the status
+        line, never a dialog)."""
+        panel = self.panel
+        if index is None or not index.isValid():
+            return False
+        source_index = panel.gradient_sorted_model.mapToSource(index)
+        entry = panel.gradient_model.entry(source_index.row())
+        if entry is None:
+            return False
+        parm = helpers.find_color_ramp_parm(node)
+        if parm is None:
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.setStatusMessage(
+                    "Amaze: %s has no color ramp to take the gradient"
+                    % node.name(),
+                    severity=hou.severityType.Warning,
+                )
+            return False
+        with hou.undos.group("Amaze Apply Gradient"):
+            parm.set(panel._entry_ramp(entry, basis))
+        return True
 
     #: The MaterialX colour ramp, wherever a network can hold one.
     carrier_type = "hmtlxrampc"

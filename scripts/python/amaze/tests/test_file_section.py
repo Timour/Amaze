@@ -1694,9 +1694,10 @@ class DoubleClickDispatchTest(unittest.TestCase):
     nothing selected, so the no-node route decides. The verbs live on
     the section (ROADMAP line 24); what lands in `calls` is the panel
     plumbing each one reaches for - except image, whose on-space verb
-    still resolves on the panel until line 24's B2. Breaks when a
-    DROP_BY_KIND row loses its verb, names a different one, or the
-    door's precedence stops reaching the no-node route."""
+    still resolves on the panel until the per-type flows move in line
+    24's B3. Breaks when a DROP_BY_KIND row loses its verb, names a
+    different one, or the door's precedence stops reaching the no-node
+    route."""
 
     def test_every_kind_reaches_its_own_verb(self):
         from amaze.panel import panel as panel_mod

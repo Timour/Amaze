@@ -803,5 +803,53 @@ class TheBindingsAreDeclaredNotHandWritten(unittest.TestCase):
             "removed" % assigned)
 
 
+class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
+    """ROADMAP line 24, slice B2: the release bodies are the section's
+    own. `sections.drop_verb` resolves section-first with the panel as
+    a TEMPORARY fallback; a verb that drifts back onto the panel would
+    resolve there silently once the section copy went missing, so both
+    halves are pinned - the verb is defined by its section class, and
+    panel.py defines no method of that name any more."""
+
+    #: (section class name, verb) - the six line 24's B1/B2 moved.
+    #: `_edit_code_row` was on B1's list and travelled with B2.
+    _MOVED = (
+        ("MaterialSection", "drop_material_at_release"),
+        ("CopSection", "drop_cop_at_release"),
+        ("CodeSection", "drop_code_at_release"),
+        ("CodeSection", "_edit_code_row"),
+        ("FileSection", "drop_geo_at_release"),
+        ("GradientSection", "apply_gradient_to_node"),
+    )
+
+    def test_each_moved_verb_is_defined_by_its_own_section(self):
+        from amaze.panel import sections
+        missing = [
+            "%s.%s" % (cls_name, verb)
+            for cls_name, verb in self._MOVED
+            if verb not in vars(getattr(sections, cls_name))]
+        self.assertEqual(
+            [], missing,
+            "these release verbs are not defined by the section that "
+            "declares them, so they resolve through the temporary "
+            "panel fallback line 24's B3 deletes: %s" % missing)
+
+    def test_the_panel_no_longer_defines_them(self):
+        import ast
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        source = open(os.path.join(root, "panel", "panel.py"),
+                      encoding="utf-8").read()
+        moved = {verb for _cls, verb in self._MOVED}
+        strays = sorted(
+            node.name for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.FunctionDef) and node.name in moved)
+        self.assertEqual(
+            [], strays,
+            "panel.py grew back a copy of a moved release verb - the "
+            "section's copy would shadow it through drop_verb while "
+            "every direct panel call reached the stale one: %s" % strays)
+
+
 if __name__ == "__main__":
     unittest.main()
