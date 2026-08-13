@@ -402,8 +402,12 @@ store that keeps per-key choices beside the thing they belong to.
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
   **User store** (`core/users.py` → `users.json`), the **Shared
   Settings store** (`core/library_prefs.py` → `prefs.json` — the
-  library-wide half of ROADMAP line 22; declared and guarded, nothing
-  reads it until that line's flip commits), and
+  library-wide half of ROADMAP line 22: nineteen settings that are one
+  answer for everyone who opens the library. `prefs/persistence.py` is
+  the one consumer — adopted onto `Prefs` at load and at the `dir`
+  setter, pushed back in one batch write from `save()`, with a
+  last-known `shared_settings` copy in settings.json serving when the
+  library is unreachable), and
   the **Location record** and **Favourites**
   (`core/locations.py` → `locations.json`, `favourites.json`).
   Favourites serve EVERY section since 2026-08-13, through one door —
@@ -685,7 +689,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN AND IN WHAT ORDER. `setDynamicSortFilter(False)`, set for performance, turns off three things at once, and each came back as a caller remembering: the re-sort after a filter change (2026-08-01 — picking a category then going back to All came back unsorted), the re-sort after an INSERT (2026-08-03 — a newly saved asset landed at the bottom of 548), and the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off). The re-test is role-aware (`watched_roles`) and every pass is coalesced onto one per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
 | **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
 | **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes hold (stretch 0), so every redistribution Qt performs lands on the grid. Each side pane OWNS its width: BOTH are `ui_helpers.HeldPane`, which asks for the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already honoured the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was true. Never bookkeeping around Qt's relayout — that shipped once and lost. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
-| **Prefs** | Settings, one shared instance injected into every model. Stored where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
+| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the nineteen SHARED settings are the library's own, in `prefs.json` through the Shared Settings store (§4c), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
 | **Database** | The JSON read/write layer, one connector per JSON filename — **all four databases, since 2026-08-09**. | `core/database.py` |
 
 ### The two stamps every database carries
@@ -976,8 +980,8 @@ core/users.py             WHO uses this library - a uuid4 UID per
                           relinks the label and moves nothing
 core/notes.py             the notes store (notes.json, per-asset pages)
 core/library_prefs.py     the SHARED settings store (prefs.json) - the
-                          library-wide half of ROADMAP line 22; nothing
-                          reads it until that line's flip commits
+                          library-wide half of ROADMAP line 22; read
+                          and written by prefs/persistence.py alone
 panel/notes_panel.py      the Comments pane (right splitter dock)
 core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)

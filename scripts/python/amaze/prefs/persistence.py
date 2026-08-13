@@ -1,14 +1,17 @@
 """
 Reading and writing the preferences document.
 
-Everything that carries settings between memory and `settings.json`
-lives here: the save/load round trip, the field-wise merge with what
-another PANE of the same session wrote, the preservation of a file
-that will not parse, and the path encoding.
+Everything that carries settings between memory and disk lives here:
+the save/load round trip, the field-wise merge with what another PANE
+of the same session wrote, the preservation of a file that will not
+parse, the path encoding - and the shared nineteen's trips to the
+LIBRARY (`SHARED_KEYS`, `_adopt_shared`, `_push_shared`): their truth
+is the library's `prefs.json`, and `settings.json` keeps them only as
+the last-known `shared_settings` copy.
 
-`settings.json` is PER-MACHINE and never travels (INSTALL.md ▸
-"settings.json NEVER travels"); it moved to the OS preferences dir on
-2026-08-05, and `_merge_settings_from_disk` exists for two panes of
+The FILE `settings.json` is PER-MACHINE and never travels (INSTALL.md
+▸ "settings.json never travels"); it moved to the OS preferences dir
+on 2026-08-05, and `_merge_settings_from_disk` exists for two panes of
 one session, not for two computers. The portable-path comment below
 still describes the install-folder era and is left exactly as it was
 found - correcting it is a separate change, not a rider on a move.
