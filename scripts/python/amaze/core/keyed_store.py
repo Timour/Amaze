@@ -422,7 +422,7 @@ register(
     # whoever opens the library - `locations._adopt_untagged`, through
     # `adopt_orphans` - and a removal still sweeps every user's keys
     # under the folder, because a removal is a shared act.
-    user_tagged=False,
+    user_tagged=True,
 )
 
 register(
