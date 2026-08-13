@@ -262,6 +262,111 @@ class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
         self.assertEqual(200, block.get("thumbsize"))
 
 
+class TheCopiesFollowTheirUser(PerUserCase):
+    """The last-known File copies mirror stores that are per-user
+    (locations and favourites are tagged), so the copies live with the
+    user's other state: in the block once somebody, flat while
+    nobody."""
+
+    FLAT = {
+        "library_user": UID_A,
+        "file_folders": ["/tex/a/"],
+        "file_favorites": ["%s|/tex/a/file.png" % UID_A],
+        "file_location_records": {"/tex/a/": {"registered": True,
+                                              "recursive": True}},
+    }
+
+    def test_the_three_copies_land_in_the_block(self):
+        self.write_settings(dict(self.FLAT))
+        p = self.prefs()
+        p.load()
+        self.assertEqual(["/tex/a/"], p.last_known_folders,
+                         "the flat copy fallback stopped loading")
+        self.assertEqual({"registered": True, "recursive": True},
+                         p.last_known_records.get("/tex/a/"))
+        p.save()
+        doc = self.read_settings()
+        block = doc.get("users", {}).get(UID_A, {})
+        self.assertEqual(["/tex/a/"], block.get("file_folders"),
+                         "the folders copy did not follow its user")
+        self.assertEqual(
+            {"/tex/a/": {"registered": True, "recursive": True}},
+            block.get("file_location_records"))
+        self.assertEqual(self.FLAT["file_favorites"],
+                         block.get("file_favorites"))
+        for flat in ("file_folders", "file_favorites",
+                     "file_location_records"):
+            self.assertNotIn(flat, doc,
+                             "a copied spelling stayed flat beside "
+                             "its block home")
+
+    def test_a_userless_save_keeps_the_copies_flat(self):
+        flat = dict(self.FLAT)
+        flat.pop("library_user")
+        self.write_settings(flat)
+        p = self.prefs()
+        p.load()
+        p.save()
+        doc = self.read_settings()
+        self.assertEqual(["/tex/a/"], doc.get("file_folders"),
+                         "a userless save lost the folders copy")
+        self.assertEqual(
+            {"/tex/a/": {"registered": True, "recursive": True}},
+            doc.get("file_location_records"))
+
+
+class TheFiveDerivedKeysAreGone(PerUserCase):
+    """The four decoration tables and the recursion global were the
+    location record in an older spelling, kept for a same-machine
+    rollback that pre-1.0 is not owed. The record is the one home."""
+
+    FIVE = ("file_folder_names", "file_folder_colors",
+            "file_folder_show_all", "file_recursive_folders",
+            "file_include_subfolders")
+
+    def test_no_derived_spelling_survives_a_save(self):
+        self.write_settings({
+            "library_user": UID_A,
+            "file_location_records": {"/tex/a/": {"registered": True}},
+            "file_folder_names": {"/tex/a/": "Alpha"},
+            "file_folder_colors": {"/tex/a/": "#112233"},
+            "file_folder_show_all": {"/tex/a/": True},
+            "file_recursive_folders": ["/tex/a/"],
+            "file_include_subfolders": True,
+        })
+        p = self.prefs()
+        p.load()
+        p.save()
+        doc = self.read_settings()
+        block = doc.get("users", {}).get(UID_A, {})
+        for key in self.FIVE:
+            self.assertNotIn(key, doc,
+                             "%s is still written flat" % key)
+            self.assertNotIn(key, block,
+                             "%s moved into the block instead of "
+                             "dying" % key)
+
+    def test_the_five_die_with_nobody_picked_too(self):
+        """Unconditional retirement: these are derived outputs, not
+        migration sources - their content is the record itself."""
+        self.write_settings({
+            "file_location_records": {"/tex/a/": {"registered": True}},
+            "file_folder_names": {"/tex/a/": "Alpha"},
+            "file_include_subfolders": True,
+        })
+        p = self.prefs()
+        p.load()
+        p.save()
+        doc = self.read_settings()
+        for key in self.FIVE:
+            self.assertNotIn(key, doc,
+                             "%s survived a userless save" % key)
+        self.assertEqual(
+            {"/tex/a/": {"registered": True}},
+            doc.get("file_location_records"),
+            "the record the five derive from was lost with them")
+
+
 class TheTableAgreesWithInit(PerUserCase):
 
     def test_every_table_default_matches_a_fresh_prefs(self):
