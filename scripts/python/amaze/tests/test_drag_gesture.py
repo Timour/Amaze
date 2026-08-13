@@ -83,23 +83,16 @@ class _StubPanel(QtWidgets.QWidget):
         import amaze
         return os.path.join(os.path.dirname(amaze.__file__), "ui", filename)
 
-    # -- the release actions, stubbed ---------------------------------
+    # -- the release actions -------------------------------------------
     #
-    # ONLY the verbs that still resolve on the panel live here. The
-    # five ROADMAP line 24 B2 moved (drop_material/cop/geo_at_release,
-    # drop_code_at_release, apply_gradient_to_node) are stubbed on the
-    # harness's SECTION instance instead - the seam the tests patch
-    # moves with the box, and a door that resolved on the panel again
-    # would find no verb here and fail loudly.
-    def open_hip_scene(self, idx):
-        self.calls.append("open_hip")
-
+    # NONE live here any more: every verb a DropRule names is the
+    # section's own (ROADMAP line 24, the panel fallback removed in
+    # B3), so the stubs sit on the harness's SECTION instance - the
+    # seam the tests patch moves with the box, and a door resolving on
+    # the panel again would find no verb and fail loudly. What stays
+    # on this stub is panel PLUMBING the dispatch itself calls.
     def assign_category_active(self, category):
         self.calls.append("category:%s" % category)
-
-    def drop_file_path_on_node(self, idx, node):
-        self.calls.append("file_path")
-        return self._file_path_outcome
 
     def _network_under_release(self):
         return self._network
@@ -110,18 +103,6 @@ class _StubPanel(QtWidgets.QWidget):
     def _release_position_in(self, net):
         """The gated resolver the engine passes to creation doors."""
         return None
-
-    def create_image_node_in(self, idx, dest, position=None):
-        self.calls.append("create_image")
-        return dest is not None
-
-    def create_gradient_node_in(self, idx, dest, position=None):
-        self.calls.append("create_gradient")
-        return dest is not None
-
-    def create_code_node_in(self, idx, dest, position=None):
-        self.calls.append("create_code")
-        return dest is not None
 
 
 def _event(kind, pos, button=QtCore.Qt.MouseButton.LeftButton,
@@ -185,15 +166,39 @@ class _Harness:
             def _geo(idx):
                 calls.append("geo")
                 return True
+
+            def _open_hip(idx):
+                calls.append("open_hip")
+
+            def _file_path(idx, node):
+                calls.append("file_path")
+                return self.panel._file_path_outcome
+
+            def _create_image(idx, dest, position=None):
+                calls.append("create_image")
+                return dest is not None
             self.section.drop_geo_at_release = _geo
+            self.section.open_hip_scene = _open_hip
+            self.section.drop_file_path_on_node = _file_path
+            self.section.create_image_node_in = _create_image
         elif section == "gradient":
             def _gradient(idx, node):
                 calls.append("gradient")
+
+            def _create_gradient(idx, dest, position=None):
+                calls.append("create_gradient")
+                return dest is not None
             self.section.apply_gradient_to_node = _gradient
+            self.section.create_gradient_node_in = _create_gradient
         elif section == "code":
             def _code(idx, node):
                 calls.append("code")
+
+            def _create_code(idx, dest, position=None):
+                calls.append("create_code")
+                return dest is not None
             self.section.drop_code_at_release = _code
+            self.section.create_code_node_in = _create_code
         # _find_panel walks the parent chain; parenting the view to the
         # stub is how the real panel provides itself.
         self.view.setParent(self.panel)

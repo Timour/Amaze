@@ -850,6 +850,45 @@ class TheReleaseVerbsLiveOnTheirSections(unittest.TestCase):
             "section's copy would shadow it through drop_verb while "
             "every direct panel call reached the stale one: %s" % strays)
 
+    def test_every_rule_named_verb_is_defined_by_its_section(self):
+        """DERIVED, not a hand list: walk every DROP / DROP_BY_KIND
+        declaration and the carrier-type verb, and require the named
+        verb to be callable on the declaring section class. This is
+        what makes the resolver's panel fallback removable - a rule
+        whose verb resolves nowhere must fail HERE, at declaration
+        altitude, not as a miss in a release handler."""
+        from amaze.panel import sections
+        missing = []
+        for cls in sections.SECTION_CLASSES:
+            rules = []
+            if getattr(cls, "DROP", None) is not None:
+                rules.append(cls.DROP)
+            rules.extend(getattr(cls, "DROP_BY_KIND", {}).values())
+            names = {name for rule in rules for name in (
+                rule.on_node, rule.on_space, rule.resolve, rule.outside,
+                rule.click_on_node, rule.click_resolve) if name}
+            if getattr(cls, "carrier_type_verb", ""):
+                names.add(cls.carrier_type_verb)
+            for name in sorted(names):
+                if not callable(getattr(cls, name, None)):
+                    missing.append("%s.%s" % (cls.__name__, name))
+        self.assertEqual(
+            [], missing,
+            "these declared verbs do not resolve on their own section, "
+            "and there is no panel fallback any more: %s" % missing)
+
+    def test_the_resolver_has_no_panel_fallback(self):
+        """Line 24 B3 removed it; the signature is the pin. A resolver
+        that can reach the panel is a resolver a verb can silently
+        drift back through."""
+        from amaze.panel import sections
+        params = list(
+            inspect.signature(sections.drop_verb).parameters)
+        self.assertEqual(
+            ["section", "name"], params,
+            "drop_verb takes %s - a parameter beyond (section, name) "
+            "is a fallback surface" % params)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -643,7 +643,7 @@ class GridGestureMixin:
         if not name and verb and index is not None:
             try:
                 live = getattr(panel, "sections", {}).get(section)
-                name = sections.drop_verb(live, panel, verb)(index, dest)
+                name = sections.drop_verb(live, verb)(index, dest)
             except (AttributeError, hou.OperationFailed):
                 name = ""
         return name or ""
@@ -725,24 +725,23 @@ class GridGestureMixin:
         on_space  the creation rule on empty network space - off any
                   editor there is no network and nothing is consulted
 
-        `section` is the LIVE section instance (None when the panel
-        has none for this key); the verbs a rule names resolve on it
-        first - sections.drop_verb, the same resolution the click
-        door uses, so the two doors cannot drift.
+        `section` is the LIVE section instance; the verbs a rule
+        names resolve on it - sections.drop_verb, the same resolution
+        the click door uses, so the two doors cannot drift.
         """
         if rule.on_node is not None:
             node = panel._node_under_cursor()
             if node is not None:
-                take = sections.drop_verb(section, panel, rule.on_node)
+                take = sections.drop_verb(section, rule.on_node)
                 return bool(take(idx, node))
         if rule.outside is not None:
             global_pos = event.globalPosition().toPoint()
             local = panel.mapFromGlobal(global_pos)
             if not panel.rect().contains(local):
-                sections.drop_verb(section, panel, rule.outside)(idx)
+                sections.drop_verb(section, rule.outside)(idx)
                 return True
         if rule.resolve is not None:
-            aim = sections.drop_verb(section, panel, rule.resolve)
+            aim = sections.drop_verb(section, rule.resolve)
             return bool(aim(idx))
         if rule.on_space is not None:
             net = panel._network_under_release()
@@ -752,7 +751,7 @@ class GridGestureMixin:
             # destination only when the release editor is showing
             # that network itself (the seam's rule; panel.
             # _release_position_in says why).
-            create = sections.drop_verb(section, panel, rule.on_space)
+            create = sections.drop_verb(section, rule.on_space)
             return bool(create(idx, net, panel._release_position_in(net)))
         return False
 

@@ -381,11 +381,11 @@ class NoAutomaticCaptureTest(unittest.TestCase):
     capture at all.
     """
 
-    def _panel_source(self):
+    def _stripped_source(self, filename):
         import tokenize
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "panel", "panel.py")
+            "panel", filename)
         with open(path, "rb") as fh:
             toks = list(tokenize.tokenize(fh.readline))
         rows = {}
@@ -407,10 +407,20 @@ class NoAutomaticCaptureTest(unittest.TestCase):
             out.append(line)
         return "\n".join(out)
 
+    def _panel_source(self):
+        return self._stripped_source("panel.py")
+
+    def _sections_source(self):
+        """open_hip_scene lives on FileSection (ROADMAP line 24), so
+        the scans that aim at it read sections.py."""
+        return self._stripped_source("sections.py")
+
     def test_nothing_schedules_a_capture(self):
         """Comments and docstrings are stripped first - the explanation
-        of why this must not exist would otherwise trip the check."""
-        code = self._panel_source()
+        of why this must not exist would otherwise trip the check.
+        Both files: the capture machinery is the panel's, the verbs
+        that could reach it are the sections'."""
+        code = self._panel_source() + "\n" + self._sections_source()
         for row in code.splitlines():
             if "capture_hip_thumbnail" in row:
                 self.assertNotIn(
@@ -426,7 +436,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
 
     def test_opening_a_scene_does_not_capture(self):
         """open_hip_scene must record the path and stop there."""
-        code = self._panel_source()
+        code = self._sections_source()
         start = code.find("def open_hip_scene")
         self.assertGreater(start, -1, "open_hip_scene is gone - this "
                                       "test is not exercising anything")
@@ -447,11 +457,13 @@ class NoAutomaticCaptureTest(unittest.TestCase):
 
     def test_the_scan_can_actually_see_the_panel(self):
         """Guards the guard: an empty read passes every assertion
-        above."""
-        code = self._panel_source()
-        self.assertIn("def open_hip_scene", code)
-        self.assertIn("def capture_hip_thumbnail", code)
-        self.assertGreater(len(code), 10000)
+        above - each file scan must see the function it is aimed at."""
+        panel_code = self._panel_source()
+        section_code = self._sections_source()
+        self.assertIn("def open_hip_scene", section_code)
+        self.assertIn("def capture_hip_thumbnail", panel_code)
+        self.assertGreater(len(panel_code), 10000)
+        self.assertGreater(len(section_code), 10000)
 
 
 class PlaceholderTest(unittest.TestCase):

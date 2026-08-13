@@ -2745,40 +2745,6 @@ class MatLibPanel(QtWidgets.QWidget):
             return ""
         return index.data(self.file_files_model.PathRole) or ""
 
-    def open_hip_scene(self, index) -> None:
-        """Open a scene file from the grid.
-
-        Houdini's own save prompt is left in charge of unsaved changes -
-        re-implementing that dialog would be a second, worse copy of a
-        decision the user already has a well-known answer for.
-        """
-        path = self._hip_path_for(index)
-        if not path:
-            return
-        if not os.path.isfile(path):
-            hou.ui.displayMessage(  # type: ignore
-                "That scene file is no longer there:\n%s" % path,
-                severity=hou.severityType.Warning)
-            debug.event("hip", "scene missing", file=path)
-            return
-        try:
-            hou.hipFile.load(path, suppress_save_prompt=False,
-                             ignore_load_warnings=False)
-        except hou.LoadWarning as warn:
-            # A scene that loads WITH warnings is still open and still
-            # worth a thumbnail - missing assets are the normal state of
-            # an old library, not a failure to open.
-            debug.event("hip", "opened with warnings", file=path,
-                        warning=str(warn)[:400])
-        except Exception as exc:                         # noqa: BLE001
-            hou.ui.displayMessage(  # type: ignore
-                "Could not open that scene:\n%s\n\n%s" % (path, exc),
-                severity=hou.severityType.Error)
-            debug.event("hip", "open failed", file=path, error=str(exc))
-            return
-        scene_captures.note_opened(path)
-        debug.event("hip", "scene opened", file=path)
-
     def _capture_and_report(self, target: str = "") -> None:
         """Run the shared capture and SAY WHY if it refuses.
 
@@ -4529,26 +4495,25 @@ class MatLibPanel(QtWidgets.QWidget):
         anything happened to be selected, which in Houdini is almost
         always.
 
-        The verbs a rule names resolve on the SECTION first
-        (sections.drop_verb) - the panel is the temporary fallback
-        while ROADMAP line 24 moves the rest over.
+        The verbs a rule names resolve on the SECTION
+        (sections.drop_verb) - the panel fallback is gone, line 24 B3.
         """
         # The menu's extra word, handed on ONLY when there is one, so
         # no verb ever sees a keyword it does not declare.
         extra = {"basis": payload} if payload else {}
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
-            hint = sections.drop_verb(section, self, rule.click_on_node)
+            hint = sections.drop_verb(section, rule.click_on_node)
             if bool(hint(index, sel[0], **extra)):
                 return True
             debug.event("interact", "click hint declined - falling "
                         "through to the network",
                         verb=rule.click_on_node, node=sel[0].path())
         if rule.click_resolve:
-            verb = sections.drop_verb(section, self, rule.click_resolve)
+            verb = sections.drop_verb(section, rule.click_resolve)
             return bool(verb(index, **extra))
         if rule.on_space:
-            create = sections.drop_verb(section, self, rule.on_space)
+            create = sections.drop_verb(section, rule.on_space)
             for network in self._view_create_networks():
                 if create(index, network, **extra):
                     return True
@@ -4816,44 +4781,6 @@ class MatLibPanel(QtWidgets.QWidget):
         # The import seam: the caller receives what was created - the
         # container when one was built, else the loader itself.
         return container or loader
-
-    @staticmethod
-    def _entry_ramp(entry: dict, basis: str = "") -> hou.Ramp:
-        # An explicit basis rebuilds the ramp from the gradient's
-        # colours on that one interpolation; otherwise the recorded
-        # ramp (bases/keys/values) applies exactly as saved.
-        if basis:
-            return helpers.build_basis_ramp(
-                [c["hex"] for c in entry["colors"]], basis)
-        ramp = entry.get("ramp")
-        if ramp:
-            return helpers.data_to_ramp(ramp)
-        return helpers.build_stepped_ramp([c["hex"] for c in entry["colors"]])
-
-
-    def _copy_gradient_swatch(self, color: dict) -> None:
-        """Put one swatch's hex code on the system clipboard.
-
-        Deliberately not an assignment: a material carries many colour
-        inputs (base, specular, coat, emission, subsurface...), so
-        choosing one for the user was a guess. A hex code pastes into
-        the input they meant - Houdini's own colour fields accept it,
-        and so does every other application."""
-        hex_code = str(color.get("hex", "")).strip()
-        if not hex_code:
-            return
-        if not hex_code.startswith("#"):
-            hex_code = "#" + hex_code
-        hex_code = hex_code.upper()
-        clipboard = QtWidgets.QApplication.clipboard()
-        if clipboard is None:
-            return
-        clipboard.setText(hex_code)
-        debug.event("gradient", "colour copied",
-                    name=color.get("name"), hex=hex_code)
-        hou.ui.setStatusMessage(  # type: ignore
-            "Amaze: copied %s (%s)" % (hex_code, color.get("name", ""))
-        )
 
     def _drop_context_under_cursor(
         self, matcher, include_viewports: bool = False
@@ -6448,17 +6375,6 @@ class MatLibPanel(QtWidgets.QWidget):
     #: door never dialogs - it has the miss indicator.
     CANNOT_LOAD_HERE = "This content can not be loaded into this context."
 
-    #: What the Code section creates per language and per network kind
-    #: - names from the shipped manual (sop/attribwrangle, cop/wrangle,
-    #: lop/attribwrangle, sop+cop/opencl, sop/python). A pair absent
-    #: here, or a type this Houdini does not carry, refuses.
-    CODE_CARRIERS = {
-        "vex": {"Sop": "attribwrangle", "Lop": "attribwrangle",
-                "Cop": "wrangle"},
-        "opencl": {"Sop": "opencl", "Cop": "opencl"},
-        "python": {"Sop": "python"},
-    }
-
     def _cannot_load_here(self) -> None:
         ui = getattr(hou, "ui", None)
         if ui is not None:
@@ -6601,139 +6517,6 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.event("interact", "carrier created", carrier=type_name,
                     dest=dest.path())
         return node
-
-    def code_carrier_type(self, index, dest) -> str:
-        """WHICH carrier a snippet becomes in `dest` - a wrangle, an
-        opencl, a python - or "" where this network kind has none.
-
-        ONE ANSWER, TWO READERS: `create_code_node_in` builds it, and
-        the drag ghost draws its shape before the drop happens. A
-        ghost that computed its own type could promise a wrangle and
-        deliver nothing.
-        """
-        if index is None or not index.isValid() or not self.code_model:
-            return ""
-        source_index = self.code_sorted_model.mapToSource(index)
-        row = source_index.row()
-        if not 0 <= row < len(self.code_model.assets) or dest is None:
-            return ""
-        asset = self.code_model.assets[row]
-        language = str(getattr(asset, "renderer", "") or "").lower()
-        try:
-            category = dest.childTypeCategory()
-        except (AttributeError, hou.OperationFailed):
-            return ""
-        return self.CODE_CARRIERS.get(language, {}).get(
-            category.name() if category is not None else "", "")
-
-    def create_image_node_in(self, index, dest, position=None) -> bool:
-        """The image creation rule: a release on empty network space
-        (or a double-click with nothing selected) makes a mtlximage
-        carrying the spelled path, wherever the network can hold one."""
-        path = index.data(self.file_files_model.PathRole)
-        if not path:
-            return False
-        base = helpers.sanitize_usd_path(
-            os.path.splitext(os.path.basename(path))[0]) or "image"
-        with hou.undos.group("Amaze Create Image Node"):
-            node = self._create_carrier(dest, "mtlximage", base, position)
-            if node is None:
-                return False
-            parm = helpers.find_file_parm(node)
-            if parm is None:
-                node.destroy()
-                return False
-            parm.set(self._scene_path(path))
-        return True
-
-    def create_gradient_node_in(self, index, dest, position=None,
-                                basis: str = "") -> bool:
-        """The gradient creation rule: a MtlX colour ramp carrying the
-        combination, wherever the network can hold one.
-
-        `basis` is Apply as's chosen interpolation, arriving through
-        the click door's payload; empty means the gradient's own
-        recorded ramp, which is every other door."""
-        if index is None or not index.isValid():
-            return False
-        source_index = self.gradient_sorted_model.mapToSource(index)
-        entry = self.gradient_model.entry(source_index.row())
-        if entry is None:
-            return False
-        return self._create_gradient_carrier(entry, dest, basis,
-                                             position=position)
-
-    def _create_gradient_carrier(self, entry, dest, basis: str = "",
-                                 position=None) -> bool:
-        """The carrier half shared by the drag door (an index) and the
-        double-click and menu doors (an entry, optionally re-based by
-        Apply as)."""
-        name = helpers.sanitize_usd_path(
-            str(entry.get("name") or "")) or "gradient"
-        with hou.undos.group("Amaze Create Gradient Node"):
-            node = self._create_carrier(dest, "hmtlxrampc", name,
-                                        position)
-            if node is None:
-                return False
-            parm = helpers.find_color_ramp_parm(node)
-            if parm is None:
-                node.destroy()
-                return False
-            parm.set(self._entry_ramp(entry, basis))
-        return True
-
-    def create_code_node_in(self, index, dest, position=None) -> bool:
-        """The code creation rule: the language's own carrier - a
-        wrangle, an opencl, a python - wherever the network kind has
-        one, loaded through the same apply the node drop uses."""
-        if index is None or not index.isValid() or not self.code_model:
-            return False
-        source_index = self.code_sorted_model.mapToSource(index)
-        row = source_index.row()
-        if not 0 <= row < len(self.code_model.assets):
-            return False
-        asset = self.code_model.assets[row]
-        type_name = self.code_carrier_type(index, dest)
-        if not type_name:
-            return False
-        name = helpers.sanitize_usd_path(
-            str(getattr(asset, "name", "") or "")) or "snippet"
-        with hou.undos.group("Amaze Create Code Node"):
-            node = self._create_carrier(dest, type_name, name, position)
-            if node is None:
-                return False
-            ok, _reason = self.code_model.apply_to_node(row, node)
-            if not ok:
-                node.destroy()
-                return False
-        return True
-
-    def drop_file_path_on_node(self, index, node) -> bool:
-        """A File row released on a node: the node's FIRST file
-        parameter takes the spelled path - the same act as selecting
-        the node and double-clicking the row, aimed by the cursor
-        instead of the selection. Uniform across kinds, unknown files
-        included (ROADMAP - the interaction matrix, 2026-08-07). A
-        node with no file parameter answers
-        False, so the gesture shows its own refusal - the miss
-        indicator and the tag flying home - never a dialog; the status
-        line carries the why."""
-        path = index.data(self.file_files_model.PathRole)
-        if not path:
-            return False
-        parm = helpers.find_file_parm(node)
-        if parm is None:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.setStatusMessage(
-                    "Amaze: %s has no file parameter to take %s"
-                    % (node.name(), os.path.basename(path)),
-                    severity=hou.severityType.Warning,
-                )
-            return False
-        with hou.undos.group("Amaze Set File Path"):
-            parm.set(self._scene_path(path))
-        return True
 
     def import_asset_to_mat(self):
         """Explicitly import the selected materials into /mat."""

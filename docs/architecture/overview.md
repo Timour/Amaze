@@ -230,6 +230,18 @@ to end, reintroduced one level down. The drag walker keeps only its
 key-to-class lookup, because a drag arrives carrying a section key and
 a click arrives carrying the section.
 
+**One RESOLVER for the verbs a rule names**, `sections.drop_verb(
+section, name)` (2026-08-13, ROADMAP line 24): every named verb — the
+release bodies, the click verbs, the creation rules, the carrier-type
+answer — is a method of the declaring Section, and both doors resolve
+it there. The panel fallback the migration carried is REMOVED; a
+declaration naming a verb its section does not define fails loudly,
+and `test_area_bindings` walks every declaration to keep it that way.
+The panel keeps the shared release plumbing the verbs call
+(`_drop_context_under_cursor`, `_release_position_in`,
+`_create_carrier`, `_scene_path`, `_node_under_cursor`) — shared
+because it carries no per-type meaning.
+
 > **THE SELECTION IS A HINT, NOT A VETO.** A single visible selected
 > node is offered the payload first; a node that cannot take it FALLS
 > THROUGH to the creation walk — the host's own rule, from Houdini's
@@ -736,8 +748,9 @@ resolution (`viewport_release_target`), the container/placement policy
 (`first_materiallibrary(connected_to=)`, `find_assignmaterial`),
 Houdini's stock LOP assignment helpers (`stock_lop()`), and the
 editor-focus policy (`keep_editor_focus`: a viewport release never
-moves the user's editors). The panel's release handlers bridge a
-release to the import machinery and the LOP menu (swap-first). The
+moves the user's editors). The SECTIONS' release verbs bridge a
+release to the import machinery and the LOP menu (swap-first); the
+panel keeps the shared plumbing they call (line 24, 2026-08-13). The
 one native drag left is the texture file drag (real file mime).
 Law: a drop lands where it is dropped; nothing exists before release;
 SOP and LOP worlds never cross-reference; empty viewport space is a
@@ -914,9 +927,12 @@ an unknown file might be the user's and a leftover scratch never is.
 ## 9. Where things live (quick map)
 
 ```
-panel/panel.py            The Panel (shell, widgets, shared handlers)
+panel/panel.py            The Panel (shell, widgets, shared handlers,
+                          shared release plumbing)
 panel/sections.py         The Sections (node-types) + registry + the
-                          per-section GRID_MENU tables
+                          per-section GRID_MENU tables + every verb a
+                          DROP rule names (release bodies, click verbs,
+                          creation rules - line 24, 2026-08-13)
 panel/grid.py             The GRID area - the one right-click menu
                           builder over those tables
 panel/sidebar.py          The SIDEBAR area - what a row means and what

@@ -567,7 +567,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
         geo = hou.node("/obj").createNode("geo", "amaze_droptest")
         self.addCleanup(geo.destroy)
         loader = geo.createNode("file")
-        self.assertTrue(self.panel.drop_file_path_on_node(
+        self.assertTrue(self.panel.sections["file"].drop_file_path_on_node(
             self._index_for(home + "/textures/amaze_drop.png"), loader))
         self.assertEqual(
             "$HOME/textures/amaze_drop.png",
@@ -580,7 +580,7 @@ class DropFilePathOnNodeTest(unittest.TestCase):
         self.addCleanup(geo.destroy)
         bare = geo.createNode("null")
         self.assertFalse(
-            self.panel.drop_file_path_on_node(
+            self.panel.sections["file"].drop_file_path_on_node(
                 self._index_for(home + "/x.png"), bare),
             "a node with nothing to take the path claimed success")
 
@@ -632,7 +632,7 @@ class CreationRuleTest(unittest.TestCase):
 
         home = self._home()
         net = self._matnet()
-        self.assertTrue(self.panel.create_image_node_in(
+        self.assertTrue(self.panel.sections["file"].create_image_node_in(
             self._index_for(home + "/textures/amaze_create.png"), net))
         children = net.children()
         self.assertEqual(1, len(children), "exactly one carrier")
@@ -644,7 +644,7 @@ class CreationRuleTest(unittest.TestCase):
 
     def test_a_sop_network_refuses_the_image_carrier(self):
         net = self._geo()
-        self.assertFalse(self.panel.create_image_node_in(
+        self.assertFalse(self.panel.sections["file"].create_image_node_in(
             self._index_for(self._home() + "/x.png"), net))
         self.assertEqual((), net.children(),
                          "a refusing network gained a child anyway")
@@ -656,7 +656,7 @@ class CreationRuleTest(unittest.TestCase):
         index = self.panel.gradient_sorted_model.index(0, 0)
         self.assertTrue(index.isValid(),
                         "premise: the fixture has gradients")
-        self.assertTrue(self.panel.create_gradient_node_in(index, net))
+        self.assertTrue(self.panel.sections["gradient"].create_gradient_node_in(index, net))
         children = net.children()
         self.assertEqual(1, len(children))
         self.assertIn("hmtlxrampc", children[0].type().name())
@@ -675,7 +675,7 @@ class CreationRuleTest(unittest.TestCase):
         asset = self.panel.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.assertTrue(self.panel.create_code_node_in(index, net))
+        self.assertTrue(self.panel.sections["code"].create_code_node_in(index, net))
         children = net.children()
         self.assertEqual(1, len(children))
         self.assertIn("attribwrangle", children[0].type().name())
@@ -690,7 +690,7 @@ class CreationRuleTest(unittest.TestCase):
         asset = self.panel.code_model.assets[source.row()]
         if str(getattr(asset, "renderer", "")).lower() != "vex":
             self.skipTest("the first snippet is not VEX")
-        self.assertFalse(self.panel.create_code_node_in(index, net))
+        self.assertFalse(self.panel.sections["code"].create_code_node_in(index, net))
         self.assertEqual((), net.children())
 
     def _with_view_networks(self, networks):
@@ -708,7 +708,7 @@ class CreationRuleTest(unittest.TestCase):
         net = self._matnet()
         spot = hou.Vector2(-3.5, -2.25)
         with mock.patch.object(hou.Node, "moveToGoodPosition") as auto:
-            ok = self.panel.create_image_node_in(
+            ok = self.panel.sections["file"].create_image_node_in(
                 self._index_for(self._home() + "/x.png"), net,
                 position=spot)
         self.assertTrue(ok)
@@ -879,7 +879,7 @@ class CreationRuleTest(unittest.TestCase):
         # and the carrier name was always "".
         promised = dragdrop_widgets.GridGestureMixin._ghost_type(
             self.panel, rule, "code", sop, index)
-        self.assertTrue(self.panel.create_code_node_in(index, sop))
+        self.assertTrue(self.panel.sections["code"].create_code_node_in(index, sop))
         made = [c for c in sop.children() if "wrangle" in c.type().name()]
         self.assertEqual(promised, made[0].type().name(),
                          "the ghost promised a different node than the "
@@ -1182,7 +1182,7 @@ class CreationRuleTest(unittest.TestCase):
         home = self._home()
         net = self._matnet()
         spot = hou.Vector2(3.5, -2.25)
-        self.assertTrue(self.panel.create_image_node_in(
+        self.assertTrue(self.panel.sections["file"].create_image_node_in(
             self._index_for(home + "/textures/amaze_pos.png"), net,
             spot))
         children = net.children()
@@ -1656,17 +1656,12 @@ class _RecordingPanel:
     def _cannot_load_here(self):
         self.calls.append("refused")
 
-    def create_image_node_in(self, index, network):
-        self.calls.append("create_image_node_in")
-        return True
-
-    # The click verbs live on FileSection now (ROADMAP line 24); what
-    # the recorder sees is the panel PLUMBING each section verb calls.
+    # The click AND door verbs live on FileSection now (ROADMAP line
+    # 24, fallback removed in B3); what the recorder sees is the panel
+    # PLUMBING each section verb calls. The verbs whose bodies moved
+    # onto the section are stubbed on the INSTANCE in the test below.
     def import_geo_asset(self, index):
         self.calls.append("import_geo_asset")
-
-    def open_hip_scene(self, index):
-        self.calls.append("open_hip_scene")
 
     def copy_file_paths(self, indexes):
         self.calls.append("copy_file_paths")
@@ -1692,10 +1687,10 @@ class DoubleClickDispatchTest(unittest.TestCase):
     """Each kind reaches its own verb THROUGH THE LIVE DOOR - the
     drop table plus click_on_row's precedence over a REAL FileSection,
     nothing selected, so the no-node route decides. The verbs live on
-    the section (ROADMAP line 24); what lands in `calls` is the panel
-    plumbing each one reaches for - except image, whose on-space verb
-    still resolves on the panel until the per-type flows move in line
-    24's B3. Breaks when a DROP_BY_KIND row loses its verb, names a
+    the section (ROADMAP line 24, no panel fallback); what lands in
+    `calls` is the panel plumbing each one reaches for, and the two
+    verbs whose bodies are the section's own are stubbed on the
+    instance. Breaks when a DROP_BY_KIND row loses its verb, names a
     different one, or the door's precedence stops reaching the no-node
     route."""
 
@@ -1711,6 +1706,11 @@ class DoubleClickDispatchTest(unittest.TestCase):
             recorder._apply_click_rule = (
                 panel_mod.MatLibPanel._apply_click_rule.__get__(recorder))
             section = sections.FileSection(recorder)
+            section.create_image_node_in = (
+                lambda index, network, position=None:
+                recorder.calls.append("create_image_node_in") or True)
+            section.open_hip_scene = (
+                lambda index: recorder.calls.append("open_hip_scene"))
             panel_mod.MatLibPanel.click_on_row(
                 recorder, section, _FakeIndex(kind))
             self.assertEqual([expected], recorder.calls,
@@ -1748,7 +1748,7 @@ class HipDragLoadsOutsideTest(unittest.TestCase):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import test_drag_gesture as harness_mod
         h = harness_mod._Harness(self, "file", kind="hip")
-        h.panel.open_hip_scene = (
+        h.section.open_hip_scene = (
             lambda idx: h.panel.calls.append("open"))
         h.press()
         h.view._dragging = True
