@@ -871,6 +871,32 @@ class TheKeyLifecycle(StoreCase):
             calls, "the removal half stopped asking it, which is the "
                    "exact drift that left every comment behind")
 
+    def test_a_removal_takes_EVERY_users_stars_with_it(self):
+        """Removing a folder is a SHARED act on the shared folder
+        list, so its sweep is a clean slate for every user - the
+        2026-08-03 ruling, kept across the user tag - and it still
+        works on a machine with nobody picked, because the per-user
+        half of a shared act must not refuse the shared half. Without
+        this, one user's removal left every other user's stars parked
+        under a folder that no longer exists, resurrected whole if the
+        folder ever came back."""
+        store = keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
+        store.set("/gone/a.exr", True)              # the first user's star
+        store.set("/kept/b.exr", True)
+        self.prefs.library_user = "second-uid"
+        store.set("/gone/a.exr", True)              # the second user's
+        self.prefs.library_user = ""                # nobody picked now
+
+        keyed_store.retire_prefix(self.prefs, "/gone/")
+
+        remaining = sorted(
+            keyed_store.untagged_key(locations.FAVOURITES_SPEC, stored)[1]
+            for stored in store.everyones())
+        self.assertEqual(
+            ["/kept/b.exr"], remaining,
+            "a folder removal left some user's stars under the removed "
+            "location - the clean slate went per-user with the tag")
+
     def test_favourites_are_in_the_registry_too(self):
         """They were swept by hand in the base folder model - a second
         list, with the same failure mode as the first two.

@@ -864,6 +864,25 @@ class Store:
             staged.setdefault(moves[old], value)
         return self._commit(staged, touched)
 
+    def retire_stored(self, keys) -> Written:
+        """Drop keys AS STORED - tags included, every owner's.
+
+        The location-removal altitude, beside `everyones()`: removing
+        a folder is a SHARED act on the shared folder list, so its
+        sweep covers EVERY user's keys under the location and needs no
+        user picked on the removing machine - the same rule that stops
+        the per-user half of a migration refusing the shared half.
+        Never the paint path; `retire()` below is the scoped door for
+        a caller speaking bare keys.
+        """
+        doomed = [str(k) for k in (keys or ()) if str(k) in self._table]
+        if not doomed:
+            return Written(True, REASON_UNCHANGED)
+        staged = dict(self._table)
+        for key in doomed:
+            staged.pop(key, None)
+        return self._commit(staged, doomed)
+
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
         keys = list(keys or ())
@@ -1168,6 +1187,18 @@ def retire_prefix(preferences, prefix: str) -> dict:
         if spec.survives_forget or spec.keyspace == KEY_ID:
             continue
         store = open_store(spec, preferences)
+        if spec.user_tagged:
+            # EVERY user's keys under the location, not the remover's.
+            # A removal is a shared act on the shared folder list - the
+            # 2026-08-03 clean slate holds across the tag - and it must
+            # work on a machine with nobody picked, so the walk is the
+            # stored table and the drop keeps the spellings it found.
+            doomed = [stored for stored in store.everyones()
+                      if _under(spec, untagged_key(spec, stored)[1],
+                                prefix)]
+            if doomed:
+                results[spec.filename] = store.retire_stored(doomed)
+            continue
         doomed = [k for k in store.all() if _under(spec, k, prefix)]
         if doomed:
             results[spec.filename] = store.retire(doomed)
