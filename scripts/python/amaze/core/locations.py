@@ -152,6 +152,25 @@ def showing_last_known(preferences) -> bool:
     return not _ready(preferences)
 
 
+def _awaiting_user(preferences) -> bool:
+    """The store is per-user and nobody has been picked here yet, so it
+    cannot answer WHOSE locations these are.
+
+    Reads then serve the settings copy - the sidebar keeps its
+    last-known list through the ASK dialog instead of opening empty on
+    a machine that has folders - and writes are refused, the
+    favourites' own no-user contract: writing the copy instead would
+    show a folder that silently vanishes the moment a user is picked.
+    Untagged, this is never the case and nothing here changes.
+    """
+    if not SPEC.user_tagged:
+        return False
+    try:
+        return not str(preferences.library_user or "")
+    except AttributeError:
+        return True
+
+
 def _ready(preferences) -> bool:
     """Is the library's own answer the one to use?
 
@@ -171,8 +190,16 @@ def _ready(preferences) -> bool:
         # NO MIGRATION UNDER TEST MODE. The store is present and
         # writable, so it is the answer - empty if this test library is
         # new, which is the truth about it. Falling through would seed
-        # it from the real library's copy.
+        # it from the real library's copy. The untagged-row adoption
+        # DOES run: it moves rows inside this library's own file and
+        # the copy plays no part in it.
+        _adopt_untagged(preferences)
         return True
+    if _awaiting_user(preferences):
+        # Not parked and not a migration attempt: the check is one
+        # attribute read, and the ASK dialog can land a user
+        # mid-session - the very next read serves the store.
+        return False
     data = getattr(preferences, "data", None)
     if isinstance(data, dict) and data.get(MIGRATED_KEY, False) \
             and _store_was_lost(preferences):
@@ -199,6 +226,68 @@ def _ready(preferences) -> bool:
         if not data.get(MIGRATED_KEY, False):
             _deferred.add(key)
             return False
+    if not _adopt_untagged(preferences):
+        # Pre-tag rows still await their owner: the copy keeps serving
+        # and the rows stay in the file for a session that can adopt.
+        return False
+    return True
+
+
+#: (dir, uid) pairs whose untagged-row adoption could not land this
+#: session - keyed on the USER too, like `_asset_deferred`, so picking
+#: somebody in the ASK dialog or Preferences retries immediately.
+_orphans_deferred: set = globals().get("_orphans_deferred", set())
+
+
+def _adopt_untagged(preferences) -> bool:
+    """File the rows from before locations were per-user under the
+    current user, and PROVE it landed (ROADMAP line 22 stage C).
+
+    SELF-MARKING: the file's own untagged rows are the to-do list. The
+    engine keeps them aside at load and `adopt_orphans` writes their
+    tagged spellings in the single commit that retires the untagged
+    ones, so the move lands whole or not at all. Adopt-only: a row the
+    user already holds wins. Runs from `_ready` and never from
+    `load()`, which beats the first ordinary write to the rows because
+    every write door passes through `_ready` first.
+
+    Answers whether the store's own answer may be SERVED - nothing was
+    waiting, or everything waiting landed and read back. False keeps
+    the copy serving, the rows intact in the file.
+    """
+    store = _store(preferences)
+    if not store.orphan_count():
+        return True
+    try:
+        tag = str(preferences.library_user or "")
+    except AttributeError:
+        tag = ""
+    if not tag:
+        # Nobody to file them under - not parked, because the ASK
+        # dialog can land a user mid-session and the next read should
+        # finish the job.
+        return False
+    key = (str(getattr(preferences, "dir", "")), tag)
+    if key in _orphans_deferred:
+        return False
+    waiting = list(store.orphaned())
+    written = store.adopt_orphans()
+    if not written:
+        _orphans_deferred.add(key)
+        debug.event("file", "untagged locations could not be adopted",
+                    reason=written.reason, waiting=len(waiting))
+        return False
+    missing = [p for p in waiting if not store.has(p)]
+    if missing:
+        # Comparing, not counting the write (practice.md ▸ A migration
+        # must COMPARE): a row that did not read back parks the
+        # adoption and the copy keeps serving.
+        _orphans_deferred.add(key)
+        debug.event("file", "the location adoption did not reproduce",
+                    missing=len(missing))
+        return False
+    debug.event("file", "locations from before the user tag adopted",
+                count=len(waiting))
     return True
 
 
@@ -414,6 +503,15 @@ def set_record(preferences, path: str, value) -> keyed_store.Written:
     # itself, the copy would not.
     path = hostos.storage_path_key(path)
     if not _ready(preferences):
+        if library_present(preferences) and _awaiting_user(preferences):
+            # The library is there and the store is per-user: a write
+            # with nobody picked has nobody to belong to. Refused like
+            # a favourite's - the folder never appears, which is the
+            # report. The copy is NOT written: a copy-only folder
+            # would show now and silently vanish the moment a user is
+            # picked, which is worse than the gesture doing nothing.
+            return keyed_store.Written(
+                False, keyed_store.REASON_NO_USER, "", (path,))
         return _write_copy(preferences, path, value)
     written = _store(preferences).set(path, value or {})
     _sync_mirror(preferences)
@@ -476,6 +574,11 @@ def relocate_record(preferences, old: str, new: str) -> keyed_store.Written:
     if not old or not new or old == new:
         return keyed_store.Written(True, keyed_store.REASON_UNCHANGED)
     if not _ready(preferences):
+        if library_present(preferences) and _awaiting_user(preferences):
+            # Same refusal as `set_record`: with the library present
+            # and nobody picked there is nobody to move a record for.
+            return keyed_store.Written(
+                False, keyed_store.REASON_NO_USER, "", (old, new))
         # No library to write into: the copy is the only truth, and it
         # carries the record under its own key.
         record = _copy_record(preferences, old)
@@ -575,6 +678,11 @@ def _sync_mirror(preferences) -> None:
         # THE OTHER DIRECTION, and the dangerous one. The copy is the
         # seed a future repair of the REAL library reads, so letting a
         # test library write it would arm that repair with test data.
+        return
+    if _awaiting_user(preferences):
+        # A scoped read with nobody picked answers {} - which is not
+        # "no locations", it is "no answer". Blanking the copy with it
+        # would lose the fallback at the exact moment it is serving.
         return
     store = _store(preferences)
     favourites = _favourites_store(preferences)
@@ -817,4 +925,5 @@ def forget() -> None:
     something has changed enough to call this."""
     _deferred.clear()
     _asset_deferred.clear()
+    _orphans_deferred.clear()
     keyed_store.release()
