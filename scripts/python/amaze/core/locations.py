@@ -234,6 +234,10 @@ def _ready(preferences) -> bool:
         if not data.get(MIGRATED_KEY, False):
             _deferred.add(key)
             return False
+    if not _adopt_untagged(preferences):
+        # Pre-tag rows still await their owner: the copy keeps serving
+        # and the rows stay in the file for a session that can adopt.
+        return False
     return True
 
 
