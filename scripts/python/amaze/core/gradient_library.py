@@ -29,6 +29,7 @@ from amaze.core import category, grid_proxy
 from amaze.core import grid_columns
 from amaze.core import database
 from amaze.core import debug
+from amaze.core import locations
 from amaze.core import thumbnails
 from amaze.core import tile_icons
 from amaze.helpers import hostos
@@ -310,7 +311,6 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                         "colors": colors,
                         "note": combo.get("note", ""),
                         "ramp": _palette_ramp_data(colors),
-                        "favorite": False,
                         # STAMPED AT BIRTH, like every other section's
                         # identity. Without it the backfill below found
                         # every seeded entry unstamped and saved the
@@ -597,8 +597,15 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
     # ------------------------------------------------------------------
     # Favorites - every gradient keeps its flag inline in gradients.json.
     def is_favorite(self, row: int) -> bool:
+        # THE STAR IS THE USER'S, IN THE LIBRARY STORE - keyed by the
+        # gradient's id, tagged with the owner, like every section
+        # (ROADMAP line 21). The record's own `favorite` field is dead:
+        # nothing writes it and the schema step strips it.
         entry = self.entry(row)
-        return bool(entry.get("favorite")) if entry is not None else False
+        if entry is None or self._preferences is None:
+            return False
+        key = str(entry.get("id") or "")
+        return bool(key) and locations.is_favourite(self._preferences, key)
 
     def category_color_of(self, name: str) -> str:
         """The colour set on a gradient category, "" for none."""
@@ -741,11 +748,19 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         self._save_user()
 
     def toggle_favorite(self, row: int) -> None:
+        # Through the one favourites door every section uses - the
+        # SHARED record is untouched and the document is not saved, so
+        # my star cannot toggle yours. A machine with no user picked is
+        # refused by the store and the star simply never lights.
         entry = self.entry(row)
-        if entry is None:
+        if entry is None or self._preferences is None:
             return
-        entry["favorite"] = not entry.get("favorite")
-        self._save_user()
+        key = str(entry.get("id") or "")
+        if not key:
+            return
+        locations.set_favourite(
+            self._preferences, key,
+            not locations.is_favourite(self._preferences, key))
         index = self.index(row, 0)
         self.row_changed(index.row(), [self.FavoriteRole])
 

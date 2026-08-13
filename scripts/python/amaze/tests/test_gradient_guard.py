@@ -34,6 +34,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 from amaze.core import category                          # noqa: E402
 from amaze.core import database                          # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
+from amaze.core import keyed_store                       # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
 
@@ -680,26 +681,24 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
 
 
 class AColourStarSurvivesAReloadTest(unittest.TestCase):
-    """Colors is the ONE section that still keeps its favourite on the
-    shared record, and schema 5 strips exactly that field.
+    """Colors stars go through the ONE favourites store, tagged with
+    their owner, like every section (ROADMAP line 21).
 
-    `GradientLibrary.toggle_favorite` writes `entry["favorite"]` and
-    saves; it does not go through `Material`, so nothing drops the key
-    on the way out. The step only runs while the document is BELOW the
-    current version, so a star written to a current document survives -
-    but nothing measured that, and a strip-on-load beside a
-    write-to-record is close enough to a data-loss bug to be worth a
-    test rather than an argument.
-
-    The transitional cost is real and is recorded rather than hidden:
-    a star already on a pre-5 document IS taken by the one-time step.
-    Measured on the real library before it ran - 0 of 388 palettes were
-    starred - so it cost nothing there. Line 21 removes the asymmetry
-    by moving every section onto one user-keyed store.
+    Until 2026-08-13 this was the last section writing the star onto
+    the SHARED record - `toggle_favorite` set `entry["favorite"]` and
+    saved gradients.json, so in a shared library my star toggled
+    yours. The record field is dead now: nothing writes it, and the
+    schema step strips what older documents still carry. These tests
+    pin the replacement from the model's own surface: the star lands
+    in the store under the picked user and survives a reload, the
+    record gains nothing in memory or on disk, and with NO user picked
+    the gesture is a silent no-op - the File section's contract.
     """
 
     def setUp(self):
         test_support.reset_database_singletons()
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_star_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -708,8 +707,14 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(document, fh, indent=1)
 
-    def _library(self):
-        lib = gradient_library.GradientLibrary(_Prefs(self.dir))
+    def _prefs(self, user="grad-star-uid"):
+        p = _Prefs(self.dir)
+        p.library_user = user
+        return p
+
+    def _library(self, preferences=None):
+        lib = gradient_library.GradientLibrary(
+            preferences if preferences is not None else _Prefs(self.dir))
         if lib._user_file() != self.path:
             self.skipTest("gradient library does not resolve this path")
         return lib
@@ -721,21 +726,52 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
                 return row
         self.fail("no palette named %r in the fixture" % name)
 
-    def test_a_star_written_to_a_current_document_survives(self):
+    def _one_warm_palette(self):
         self._write({"version": SCHEMA, "categories": ["Warm"],
                      "assets": [{"name": "warm", "id": "warmid",
                                  "categories": ["Warm"], "colors": []}]})
-        lib = self._library()
-        lib.toggle_favorite(self._row_named(lib, "warm"))
 
+    def test_a_star_lands_in_the_store_and_survives_a_reload(self):
+        self._one_warm_palette()
+        lib = self._library(self._prefs())
+        lib.toggle_favorite(self._row_named(lib, "warm"))
+        self.assertTrue(lib.is_favorite(self._row_named(lib, "warm")),
+                        "the toggle did not light the star it just set")
+
+        # The SHARED record gained nothing - in memory or on disk. A
+        # star that reaches gradients.json is everyone's again.
+        self.assertNotIn(
+            "favorite", lib.entry(self._row_named(lib, "warm")),
+            "the toggle still writes the shared record")
+        with open(self.path, encoding="utf-8") as fh:
+            rows = json.load(fh).get("assets", [])
+        self.assertFalse(
+            any("favorite" in row for row in rows if isinstance(row, dict)),
+            "the star reached gradients.json - the shared document "
+            "carries per-user state again")
+
+        # A fresh session reads it back out of the library store.
         test_support.reset_database_singletons()
-        again = gradient_library.GradientLibrary(_Prefs(self.dir))
-        row = self._row_named(again, "warm")
+        keyed_store.release()
+        again = self._library(self._prefs())
         self.assertTrue(
-            again.entry(row).get("favorite"),
-            "the star did not survive a reload - Colors writes the "
-            "favourite onto the record and schema 5 strips that field, "
-            "so a step running here would silently un-star every colour")
+            again.is_favorite(self._row_named(again, "warm")),
+            "the star did not survive a reload through the store")
+
+    def test_no_user_picked_means_no_star_and_no_write(self):
+        self._one_warm_palette()
+        lib = self._library(self._prefs(user=""))
+        lib.toggle_favorite(self._row_named(lib, "warm"))
+        self.assertFalse(
+            lib.is_favorite(self._row_named(lib, "warm")),
+            "a machine with nobody picked lit a star - the store filed "
+            "it under a blank tag, which is an ABSENT user, not a "
+            "shared one")
+        self.assertNotIn(
+            "favorite", lib.entry(self._row_named(lib, "warm")))
+        self.assertFalse(
+            os.path.exists(os.path.join(self.dir, "favourites.json")),
+            "a refused star still created the favourites store")
 
     def test_the_one_time_step_DOES_take_a_pre_5_star(self):
         """Stated as a fact, not asserted away. A palette starred on a
