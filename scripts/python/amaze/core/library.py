@@ -13,6 +13,7 @@ import hou
 
 from amaze.core import debug, library_policy
 from amaze.core import grid_columns
+from amaze.core import locations
 from amaze.core import material, database, thumbnails, tile_icons
 from amaze.core import versions
 from amaze.core import quarantine
@@ -664,13 +665,13 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return str(self._assets[index.row()].license or "")
 
         if role == self.FavoriteRole:
-            # PER-USER, from prefs - the shared field on the record is
-            # frozen history, kept only so older builds keep working.
-            try:
-                return self.preferences.is_material_favorite(
-                    self._assets[index.row()].mat_id)
-            except AttributeError:
-                return self._assets[index.row()].fav
+            # THE USER'S, IN THE LIBRARY STORE - keyed by the asset's
+            # id, tagged with the owner, the same door every section
+            # reads (ROADMAP line 21). The record field is stripped by
+            # schema 5 and `material_favorites` in settings.json is a
+            # migration source only.
+            return locations.is_favourite(
+                self.preferences, self._assets[index.row()].mat_id)
 
         if role == self.VersionsRole:
             mat_id = str(self._assets[index.row()].mat_id)
@@ -848,19 +849,15 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         else:
             tags = ", ".join(asset.tags)
 
-        # THE STAR IS PER-USER, like toggle_fav: it goes to settings,
-        # never onto the shared record (whose `favorite` is frozen
-        # history). None leaves the star alone - the recategorise path
-        # passes that, because it edits the record, not the star.
+        # THE STAR IS THE USER'S, like toggle_fav: it goes to the
+        # library's favourites store under its owner, never onto the
+        # shared record. None leaves the star alone - the recategorise
+        # path passes that, because it edits the record, not the star.
         if fav is not None:
-            try:
-                if bool(fav) != bool(
-                        self.preferences.is_material_favorite(
-                            asset.mat_id)):
-                    self.preferences.set_material_favorite(
-                        asset.mat_id, bool(fav))
-            except AttributeError:
-                pass
+            if bool(fav) != locations.is_favourite(
+                    self.preferences, asset.mat_id):
+                locations.set_favourite(
+                    self.preferences, asset.mat_id, bool(fav))
         asset.set_data(name, cats, tags, asset.fav, None, about=about,
                        license=license)
         if save:
@@ -2355,16 +2352,14 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         :type index: QtCore.QModelIndex
         """
         mat_id = self._assets[index.row()].mat_id
-        try:
-            now = not self.preferences.is_material_favorite(mat_id)
-            # prefs.set saves prefs itself; the LIBRARY is untouched -
-            # a favourite toggle no longer writes the shared index at
-            # all, which is the whole point: my star cannot collide
-            # with yours when it never leaves my settings.
-            self.preferences.set_material_favorite(mat_id, now)
-        except AttributeError:
-            self._assets[index.row()].fav = not self._assets[index.row()].fav
-            self.save()
+        # Through the one favourites door every section uses - the
+        # shared index is untouched, and the star lands in the
+        # library's favourites store tagged with its owner, so my star
+        # cannot collide with yours and the same user sees the same
+        # stars on every machine. No user picked refuses silently.
+        locations.set_favourite(
+            self.preferences, mat_id,
+            not locations.is_favourite(self.preferences, mat_id))
         model_index = self.index(index.row(), 0)
         self.row_changed(model_index.row(), [self.FavoriteRole])
 

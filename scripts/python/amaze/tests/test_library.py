@@ -184,15 +184,21 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual(result, ["test", "sample"])
 
     def test_data_favorite_role(self):
-        """Favourites are PER-USER now: the role answers from prefs,
-        not from the shared record (step 42)."""
-        self.mock_prefs.is_material_favorite.return_value = False
+        """The role answers the ONE favourites door, keyed by the
+        asset's id - never the shared record, never settings
+        (ROADMAP line 21)."""
+        from amaze.core import library as library_mod
         index = self.library.index(0, 0)
-        result = self.library.data(index, self.library.FavoriteRole)
-        self.assertEqual(result, False)
-        self.mock_prefs.is_material_favorite.return_value = True
-        self.assertTrue(self.library.data(index,
-                                          self.library.FavoriteRole))
+        mat_id = self.library._assets[0].mat_id
+        with patch.object(library_mod.locations, "is_favourite",
+                          return_value=False) as asked:
+            self.assertFalse(
+                self.library.data(index, self.library.FavoriteRole))
+        asked.assert_called_once_with(self.mock_prefs, mat_id)
+        with patch.object(library_mod.locations, "is_favourite",
+                          return_value=True):
+            self.assertTrue(self.library.data(index,
+                                              self.library.FavoriteRole))
 
     def test_data_renderer_role(self):
         """Test data() returns renderer"""
@@ -263,34 +269,39 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_db.save.assert_called_once()
 
     def test_toggle_fav_false_to_true(self):
-        """A toggle writes THIS USER'S prefs and nothing else - my star
-        cannot collide with yours when it never leaves my settings, and
-        the shared index is not written at all (step 42)."""
-        self.mock_prefs.is_material_favorite.return_value = False
+        """A toggle goes through the one favourites door with the
+        asset's id, so the star lands in the library store under its
+        owner and my star cannot collide with yours (ROADMAP line 21)."""
+        from amaze.core import library as library_mod
         index = self.library.index(0, 0)
-
-        self.library.toggle_fav(index)
-
         mat_id = self.library._assets[0].mat_id
-        self.mock_prefs.set_material_favorite.assert_called_once_with(
-            mat_id, True)
+        with patch.object(library_mod.locations, "is_favourite",
+                          return_value=False), \
+                patch.object(library_mod.locations,
+                             "set_favourite") as wrote:
+            self.library.toggle_fav(index)
+        wrote.assert_called_once_with(self.mock_prefs, mat_id, True)
 
     def test_toggle_fav_true_to_false(self):
-        """The other direction, through prefs (step 42)."""
-        self.mock_prefs.is_material_favorite.return_value = True
+        """The other direction, through the same door."""
+        from amaze.core import library as library_mod
         index = self.library.index(0, 0)
-
-        self.library.toggle_fav(index)
-
         mat_id = self.library._assets[0].mat_id
-        self.mock_prefs.set_material_favorite.assert_called_once_with(
-            mat_id, False)
+        with patch.object(library_mod.locations, "is_favourite",
+                          return_value=True), \
+                patch.object(library_mod.locations,
+                             "set_favourite") as wrote:
+            self.library.toggle_fav(index)
+        wrote.assert_called_once_with(self.mock_prefs, mat_id, False)
 
     def test_toggle_fav_does_not_write_the_library(self):
-        """The point of step 42, stated as its own assertion: a
-        favourite toggle no longer touches the shared index."""
-        self.mock_prefs.is_material_favorite.return_value = False
-        with patch.object(self.library, "save") as mock_save:
+        """Stated as its own assertion: a favourite toggle never
+        touches the shared index."""
+        from amaze.core import library as library_mod
+        with patch.object(library_mod.locations, "is_favourite",
+                          return_value=False), \
+                patch.object(library_mod.locations, "set_favourite"), \
+                patch.object(self.library, "save") as mock_save:
             self.library.toggle_fav(self.library.index(0, 0))
         mock_save.assert_not_called()
 
@@ -934,6 +945,72 @@ class ARetiredFieldDoesNotComeBackOnASaveTest(unittest.TestCase):
                 "the retired favourite came back on the save, so the "
                 "schema step is undone every time the panel writes")
             self.assertNotIn("icon", row, "the retired icon came back")
+
+
+class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
+    """Materials, Nodes and Code stars go through the ONE favourites
+    door, keyed by asset id and tagged with their owner (ROADMAP line
+    21) - so the same user sees the same stars on every machine, and
+    two users of one library each see their own. `material_favorites`
+    in settings.json, which never travels, is a migration source only:
+    a toggle must not touch it, and the role must answer the store.
+    """
+
+    def setUp(self):
+        from amaze.core import keyed_store, library as library_mod
+        from amaze.core import locations
+        self.keyed_store = keyed_store
+        self.locations = locations
+        self.library_mod = library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+
+    def test_a_toggle_lands_in_the_store_not_in_settings(self):
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(model.assets, "premise: the fixture rows loaded")
+        index = model.index(0, 0)
+        mat_id = str(model.assets[0].mat_id)
+        self.assertFalse(model.data(index, model.FavoriteRole),
+                         "premise: the fixture starts unstarred")
+
+        model.toggle_fav(index)
+        self.assertTrue(
+            model.data(index, model.FavoriteRole),
+            "the toggle did not light the star through the store")
+        store = self.keyed_store.open_store(
+            self.locations.FAVOURITES_SPEC, self.prefs)
+        self.assertTrue(
+            store.has(mat_id),
+            "the star is lit but the library store does not carry it - "
+            "the role is answering something machine-local again")
+        self.assertNotIn(
+            mat_id, list(getattr(self.prefs, "material_favorites", ()) or ()),
+            "the toggle wrote settings.json - the star went to the "
+            "machine, so the same user's other machine cannot see it")
+
+        # And it comes back through a fresh model reading the store.
+        test_support.reset_database_singletons()
+        self.keyed_store.release()
+        again = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        rows = {str(a.mat_id): r for r, a in enumerate(again.assets)}
+        self.assertTrue(
+            again.data(again.index(rows[mat_id], 0), again.FavoriteRole),
+            "the star did not survive a reload through the store")
+
+    def test_no_user_picked_means_no_star(self):
+        self.prefs.library_user = ""
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertTrue(model.assets, "premise: the fixture rows loaded")
+        index = model.index(0, 0)
+        model.toggle_fav(index)
+        self.assertFalse(
+            model.data(index, model.FavoriteRole),
+            "a machine with nobody picked lit a star - the store filed "
+            "it under a blank tag, which is an ABSENT user, not a "
+            "shared one")
 
 
 class MaterialRoundTripTest(unittest.TestCase):
