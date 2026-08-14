@@ -1278,6 +1278,9 @@ class Store:
         foreign = dict(self._foreign)
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            for key in retire:
+                staged.pop(str(key), None)
+                foreign.pop(str(key), None)
             self._adopt_from_disk(staged, foreign)
             # RETIREMENT GOES AFTER ADOPTION, and both halves of the
             # write are swept. Adoption is exactly the courtesy that
@@ -1285,9 +1288,6 @@ class Store:
             # build has removed would be read off the peer's copy and
             # written straight back out - every save, forever. Sweeping
             # before the adoption looks identical and does nothing.
-            for key in retire:
-                staged.pop(str(key), None)
-                foreign.pop(str(key), None)
             # A key the user just SET stops being foreign - the chosen
             # value must not be shadowed by the unreadable copy.
             for key in keys:
@@ -1531,7 +1531,7 @@ def _fold(rule: str, ours, theirs, rules: dict = None, path: tuple = ()):
                 continue
             below = path + (str(key),)
             named = rule_for(rules, below)
-            if False and _rules_below(rules, below):
+            if not named and _rules_below(rules, below):
                 # Nothing names THIS level, but something names one
                 # under it - so keep walking as fields rather than
                 # stopping at the built-in default.
