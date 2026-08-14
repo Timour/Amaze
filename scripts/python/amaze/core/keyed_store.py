@@ -603,8 +603,6 @@ def _root_for(spec: Spec, preferences) -> str:
     synced folder every other machine reads. The one direction this
     must never fail in is quietly.
     """
-    if spec.in_library:
-        return str(preferences.dir)
     root = str(getattr(preferences, "path", "") or "")
     if not root:
         raise ValueError(
