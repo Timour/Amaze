@@ -142,7 +142,12 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         # side tables' keys did above. Left pointing at `prefs.py` it
         # goes red for a move; dropping the entry instead would have
         # gone VACUOUS, which is worse.
-        os.path.join("prefs", "persistence.py"): ("prefs-unreadable",),
+        # RE-KEYED AGAIN 2026-08-14: `prefs-unreadable` left this file
+        # with the guards, when settings.json became a registered store.
+        # It is declared with the store and raised by the engine now, so
+        # a `key="..."` grep here finds nothing and would go VACUOUS -
+        # the registry test below asserts it instead, the same move
+        # `notes-unreadable` and `icons-unreadable` made in 2026-08-03.
         os.path.join("core", "matx_sources.py"): (
             "online-unsafe-archive-paths",),
     }
@@ -177,6 +182,13 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         keys = {spec.alert_key for spec in keyed_store.stores()}
         self.assertIn("notes-unreadable", keys)
         self.assertIn("icons-unreadable", keys)
+        # settings.json is machine-local, so the loop above skips it -
+        # but it raises the same condition through the same engine, and
+        # its sentence is the one that names the debug log as the way
+        # back. Asserted here because EXPECTED can no longer see it.
+        settings = keyed_store.store_for(keyed_store.SETTINGS)
+        self.assertEqual("prefs-unreadable", settings.alert_key)
+        self.assertIn("Repair tool", settings.unreadable_alert)
 
         source = open(os.path.join(self.ROOT, "core", "keyed_store.py"),
                       encoding="utf-8").read()
@@ -195,12 +207,13 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
         speaks = {spec.filename for spec in keyed_store.stores()
                   if spec.denied_alert}
         self.assertEqual(
-            {"notes.json", "icons.json", "prefs.json"}, speaks,
+            {"notes.json", "icons.json", "prefs.json", "settings.json"},
+            speaks,
             "the stores that report a denied write changed - a comment, "
-            "a tile icon and a shared setting stay on screen looking "
-            "saved, so nothing but this tells the user; a location and "
-            "a favourite are derived from their store and simply do "
-            "not appear")
+            "a tile icon, a shared setting and a preference stay on "
+            "screen looking saved, so nothing but this tells the user; "
+            "a location and a favourite are derived from their store "
+            "and simply do not appear")
         self.assertIn(
             "if spec.denied_alert:", source,
             "the engine no longer raises the declared denial, so those "

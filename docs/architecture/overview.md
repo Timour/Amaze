@@ -410,7 +410,23 @@ store that keeps per-key choices beside the thing they belong to.
   last-known `shared_settings` copy in settings.json serving when the
   library is unreachable), and
   the **Location record** and **Favourites**
-  (`core/locations.py` → `locations.json`, `favourites.json`).
+  (`core/locations.py` → `locations.json`, `favourites.json`), and —
+  since 2026-08-14 — **this machine's own settings**
+  (`prefs/persistence.py` → `settings.json`), the one store that is
+  NOT in the library, because it holds the pointer to it. It is a
+  DOCUMENT rather than a table of rows, and four declarations carry
+  that difference: `payload=""` (the file predates the engine and
+  cannot grow a wrapper without migrating the one file holding the
+  library pointer), `falsy_is_a_value` (`False`, `0` and `""` are
+  answers, so removal is `retire`), `absence_is_fresh` (deleting it is
+  its own prescribed recovery, and the `.unreadable` copy that
+  recovery leaves behind would otherwise be read as a trace and refuse
+  the fresh start), and `merge_rules` keyed by a PATH with a wildcard,
+  so `users/*/file_folders` reaches a collected key that the per-user
+  migration moved a level down. Its write door is `replace(document,
+  retire=…)`: one commit for a document composed whole, with the
+  retired keys dropped AFTER the peer adoption — before it they would
+  be adopted straight back on every save.
   Favourites serve EVERY section since 2026-08-13, through one door —
   `locations.is_favourite` / `set_favourite` — keyed by file PATH for
   File rows and by bare asset id for Material/Node/Code/Color, the

@@ -155,14 +155,16 @@ class Spec:
                  "normalise", "path_prefix", "unreadable_alert",
                  "refused_sentence", "alert_key", "denied_alert",
                  "category", "in_library", "survives_forget",
-                 "user_tagged", "merge_rules", "falsy_is_a_value")
+                 "user_tagged", "merge_rules", "falsy_is_a_value",
+                 "absence_is_fresh")
 
     def __init__(self, filename, payload, keyspace, label, noun,
                  normalise, path_prefix="", unreadable_alert="",
                  refused_sentence="", alert_key="", denied_alert="",
                  category="store", in_library=True,
                  survives_forget=True, user_tagged=False,
-                 merge_rules=None, falsy_is_a_value=False) -> None:
+                 merge_rules=None, falsy_is_a_value=False,
+                 absence_is_fresh=False) -> None:
         self.filename = filename
         self.payload = payload
         self.keyspace = keyspace
@@ -231,6 +233,22 @@ class Spec:
         #: an empty string are answers. Such a store rejects with None
         #: and removes through `retire` (ROADMAP line 26).
         self.falsy_is_a_value = bool(falsy_is_a_value)
+        #: IS AN ABSENT FILE ALWAYS A NEW ONE? Every LIBRARY store says
+        #: no: a library is SHARED, so a file can be late - a sync
+        #: placeholder still arriving, a conflict rename, a partial
+        #: restore - and absence with a surviving trace is BLIND rather
+        #: than an empty table to write over.
+        #:
+        #: A MACHINE-LOCAL store is the opposite case, and settings.json
+        #: is the one that proves it. Nothing is late on your own disk;
+        #: DELETING the file is the prescribed way out of an unreadable
+        #: one; and the `.unreadable` copy that refusal leaves behind is
+        #: itself one of the traces `existed_before` reads - so the
+        #: guard would find its own evidence and refuse the fresh start
+        #: it had just told the user to take. Declared rather than
+        #: inferred from `in_library`, because they are two questions:
+        #: WHERE a file lives, and whether its absence can be innocent.
+        self.absence_is_fresh = bool(absence_is_fresh)
 
     def is_path_key(self, key: str) -> bool:
         """Does a path move rewrite this key?"""
@@ -264,7 +282,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
              survives_forget: bool = True,
              user_tagged: bool = False,
              merge_rules: dict = None,
-             falsy_is_a_value: bool = False) -> Spec:
+             falsy_is_a_value: bool = False,
+             absence_is_fresh: bool = False) -> Spec:
     """Declare a store. Idempotent per filename, so a module reload
     re-registers rather than duplicating."""
     if keyspace not in (KEY_ID, KEY_PATH, KEY_MIXED):
@@ -286,7 +305,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
                 denied_alert=denied_alert, category=category,
                 in_library=in_library, survives_forget=survives_forget,
                 user_tagged=user_tagged, merge_rules=merge_rules,
-                falsy_is_a_value=falsy_is_a_value)
+                falsy_is_a_value=falsy_is_a_value,
+                absence_is_fresh=absence_is_fresh)
     _registry[filename] = spec
     return spec
 
@@ -607,6 +627,59 @@ register(
     survives_forget=True,
 )
 
+#: THIS MACHINE's own settings - the one store outside the library,
+#: because it holds the POINTER to the library (practice.md > A
+#: DOCUMENT IS NOT A TABLE OF ROWS, for the four declarations below
+#: that no library store carries).
+SETTINGS = "settings.json"
+
+register(
+    filename=SETTINGS,
+    payload="",
+    # A preference NAME: the paths inside are values, not keys.
+    keyspace=KEY_ID,
+    label="Settings",
+    noun="setting",
+    category="prefs",
+    in_library=False,
+    falsy_is_a_value=True,
+    absence_is_fresh=True,
+    # BOTH SHAPES ARE LIVE: flat while nobody is picked, under the
+    # user's block once somebody is. Measured on the real document, not
+    # inherited from the merge this replaces.
+    merge_rules={
+        "file_folders": MERGE_COMBINE,
+        "file_favorites": MERGE_COMBINE,
+        "users/*/file_folders": MERGE_COMBINE,
+        "users/*/file_favorites": MERGE_COMBINE,
+        "file_location_records": MERGE_FIELDS,
+        "users/*/file_location_records": MERGE_FIELDS,
+        "users": MERGE_FIELDS,
+    },
+    alert_key="prefs-unreadable",
+    unreadable_alert=(
+        "Your Amaze settings could not be read, so Amaze has opened "
+        "with the defaults.\n\n"
+        "Nothing has been lost. Your settings file was kept untouched, "
+        "and Amaze will not save over it - so your library path, "
+        "folders and favourites are still there.\n\n"
+        "Your settings are also recorded in the debug log. Use the "
+        "Repair tool in the Amaze shelf to put them back."),
+    refused_sentence=(
+        "your settings could not be read earlier this run, so this "
+        "change was not saved - writing now would replace the library "
+        "path, folders and favourites already in the file."),
+    # SPEAKS: a changed preference keeps applying, so only this says it
+    # did not reach disk. The cause comes from `hostos.why_failed`
+    # rather than the guess this wording used to carry.
+    denied_alert=(
+        "Amaze could not save your preferences.\n\n"
+        "Your settings for this session still work, but they will not "
+        "be there next time Houdini opens."),
+    # Nobody's folder removal reaches a machine's own settings.
+    survives_forget=True,
+)
+
 
 # -- the guarded table ------------------------------------------------
 
@@ -660,6 +733,21 @@ def open_store(spec: Spec, preferences) -> "Store":
         # bytes are the same, only whose rows they are has moved.
         handle.preferences = preferences
     return handle
+
+
+def own_store(spec: Spec, preferences) -> "Store":
+    """A store this caller alone holds, outside the shared cache.
+
+    The cache is right for the library's side tables: one file, one
+    table, every reader the same rows. It is wrong for a DOCUMENT whose
+    holders legitimately disagree - two panes of one Houdini each keep
+    their own view state - because the stale-write baseline that
+    decides whether to re-read a peer's file is then shared too, so the
+    second pane to save sees an unchanged file and skips the fold that
+    would have kept the first pane's folders.
+    """
+    return Store(spec, os.path.join(_root_for(spec, preferences),
+                                    spec.filename), preferences)
 
 
 class Store:
@@ -825,7 +913,14 @@ class Store:
                 # tuple to get wrong. notes.py passed five backup names
                 # that existed_before already checks unconditionally: a
                 # tuple that looks like evidence and adds none.
-                self.trace = hostos.existed_before(self.path)
+                # A MACHINE-LOCAL store may declare that absence is
+                # innocent, and then the traces are not consulted at
+                # all - not read and found wanting, never read. See
+                # `Spec.absence_is_fresh`: settings.json's own recovery
+                # instruction is to delete it, and its `.unreadable`
+                # copy is one of the traces below.
+                self.trace = ("" if spec.absence_is_fresh
+                              else hostos.existed_before(self.path))
                 if self.trace:
                     self.state = BLIND
                     self._refuse_and_alert(
@@ -1110,7 +1205,58 @@ class Store:
 
     # -- the one commit -----------------------------------------------
 
-    def _commit(self, staged: dict, keys) -> Written:
+    def replace(self, document: dict, retire=()) -> Written:
+        """Commit a WHOLE DOCUMENT - the door for a store whose keys are
+        a vocabulary this build knows, rather than rows it accumulates.
+
+        Every other door edits keys: `set` one, `update` many, `retire`
+        some. A document is composed whole by its owner, so an update
+        plus a retire would be two trips to disk with a window between
+        them where the file holds neither shape.
+
+        THE DOCUMENT IS THE WHOLE TABLE, so a key its author dropped is
+        GONE. Delete-by-omission is what every caller here already does
+        - a migration pops the key it has just consumed - and a table
+        that kept it would put it straight back. What a PEER wrote is
+        still folded in, by `_adopt_from_disk` under the same rules,
+        which is where the unknown-key courtesy lives.
+
+        `retire` names the keys this build has REMOVED, dropped after
+        the adoption (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS).
+        """
+        if not isinstance(document, dict):
+            raise TypeError("a document is an object, not %s"
+                            % type(document).__name__)
+        staged = {str(key): value for key, value in document.items()}
+        return self._commit(staged, tuple(staged), retire=retire)
+
+    def reread(self) -> Written:
+        """Read the file again, discarding what this Store cached.
+
+        A store's table is normally read once and kept - the file is
+        this process's own to change. settings.json is the exception
+        because its owner re-reads on purpose: `Prefs.load()` runs again
+        when Preferences closes and on a library switch, and its whole
+        job is to answer with what is on DISK. Without this the second
+        load would hand back the first one's bytes, and a test that
+        writes a settings file and constructs a Prefs over it would
+        read the previous test's document.
+
+        Answers what the reopened store can do, so a caller need not
+        ask twice.
+        """
+        self._table = {}
+        self._foreign = {}
+        self._orphans = {}
+        self._disk_state = None
+        self.state = FRESH
+        self.trace = ""
+        self._load()
+        return Written(self.writable, REASON_NONE if self.writable
+                       else (REASON_ABSENT if self.trace else REASON_LATCHED),
+                       self.spec.refused_sentence if not self.writable else "")
+
+    def _commit(self, staged: dict, keys, retire=()) -> Written:
         """Every write in this engine lands here, so the guard set runs
         in ONE place and the cache moves only on success."""
         spec = self.spec
@@ -1133,6 +1279,15 @@ class Store:
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
             self._adopt_from_disk(staged, foreign)
+            # RETIREMENT GOES AFTER ADOPTION, and both halves of the
+            # write are swept. Adoption is exactly the courtesy that
+            # keeps an unknown key alive across a save, so a key this
+            # build has removed would be read off the peer's copy and
+            # written straight back out - every save, forever. Sweeping
+            # before the adoption looks identical and does nothing.
+            for key in retire:
+                staged.pop(str(key), None)
+                foreign.pop(str(key), None)
             # A key the user just SET stops being foreign - the chosen
             # value must not be shadowed by the unreadable copy.
             for key in keys:
@@ -1234,8 +1389,10 @@ class Store:
                     # says the two ANSWERS can both be true - a folder
                     # each pane registered, a field each pane set.
                     folded = _fold(
-                        self.spec.merge_rules.get(stored, MERGE_MINE),
-                        staged[stored], kept)
+                        rule_for(self.spec.merge_rules, (stored,))
+                        or MERGE_MINE,
+                        staged[stored], kept,
+                        self.spec.merge_rules, (stored,))
                     if folded is not None:
                         staged[stored] = folded
                         adopted += 1
@@ -1265,7 +1422,85 @@ class Store:
 # someone can write short, and both of these already were.
 
 
-def _fold(rule: str, ours, theirs):
+#: What separates the levels of a nested merge rule, and the wildcard
+#: standing for any one key.
+RULE_SEP = "/"
+RULE_ANY = "*"
+
+
+def rule_for(rules: dict, path: tuple) -> str:
+    """The rule a store declares for this PATH into its document, or ""
+    when it declares none.
+
+    A rule is keyed by a `/`-joined path, so it can name a key that is
+    not at the top level, with `*` standing for any one key. The
+    settings document is why: every collected key sits under
+    `users/<uid>/`, and a uid is not a name a spec can write down
+    (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS, point 2).
+
+    MOST SPECIFIC WINS - fewest wildcards, so `users/*/file_folders`
+    beats `users/*/*`. Two patterns with the same wildcard count that
+    both match are the same pattern, so there is no tie to break.
+    """
+    if not rules:
+        return ""
+    best, fewest = "", None
+    for pattern, rule in rules.items():
+        parts = str(pattern).split(RULE_SEP)
+        if len(parts) != len(path):
+            continue
+        if not all(part in (RULE_ANY, actual)
+                   for part, actual in zip(parts, path)):
+            continue
+        stars = parts.count(RULE_ANY)
+        if fewest is None or stars < fewest:
+            best, fewest = rule, stars
+    return best
+
+
+def _rules_below(rules: dict, path: tuple) -> bool:
+    """Does any rule name something DEEPER than this path?
+
+    The default for a key both sides hold is one level of field union
+    and then ours (`_shallow_fields`), where the four library stores
+    stop. The walk must know a deeper rule exists BEFORE it reaches the
+    level that rule is about, or the default halts at `users/<uid>` and
+    `users/*/file_folders` is never consulted.
+    """
+    if not rules:
+        return False
+    for pattern in rules:
+        parts = str(pattern).split(RULE_SEP)
+        if len(parts) <= len(path):
+            continue
+        if all(part in (RULE_ANY, actual)
+               for part, actual in zip(parts, path)):
+            return True
+    return False
+
+
+def _shallow_fields(ours, theirs):
+    """MERGE_FIELDS' BUILT-IN answer for a key both sides hold that no
+    rule names: one level of field-wise union, then ours.
+
+    Its own function because it is the DEFAULT, and a default living
+    inline in the loop is one a nested-rule branch quietly changes for
+    every store at once.
+    """
+    if not (isinstance(ours, dict) and isinstance(theirs, dict)):
+        return None                         # ours, as the shallow rule
+    missing = {field: value for field, value in theirs.items()
+               if field not in ours}
+    if not missing:
+        return None
+    # REBOUND, never mutated: `dict(ours)` one level up is shallow, so
+    # the record under this key is the live cache's own object and
+    # editing it in place would move the table before the write that is
+    # supposed to commit it.
+    return {**ours, **missing}
+
+
+def _fold(rule: str, ours, theirs, rules: dict = None, path: tuple = ()):
     """OURS with the peer's additions folded in, or None if there were
     none - so the caller can count a real adoption and skip a rewrite
     that would change nothing.
@@ -1273,6 +1508,11 @@ def _fold(rule: str, ours, theirs):
     ADDS ONLY, like the adoption it extends. A shape that does not fit
     the rule answers None rather than guessing, which lands on ours -
     the same verdict a key with no rule gets, and the safe one.
+
+    `rules` and `path` are how a nested declaration reaches a key
+    several levels down; without them this behaves exactly as it did
+    before they existed, which is what keeps the four library stores
+    where they were.
     """
     if rule == MERGE_COMBINE:
         if not (isinstance(ours, list) and isinstance(theirs, list)):
@@ -1289,18 +1529,17 @@ def _fold(rule: str, ours, theirs):
                 merged[key] = value
                 changed = True
                 continue
-            mine = merged[key]
-            if not (isinstance(mine, dict) and isinstance(value, dict)):
-                continue                    # ours, as the shallow rule
-            missing = {field: field_value
-                       for field, field_value in value.items()
-                       if field not in mine}
-            if missing:
-                # REBOUND, never mutated: `dict(ours)` is shallow, so
-                # the record under this key is the live cache's own
-                # object and editing it in place would move the table
-                # before the write that is supposed to commit it.
-                merged[key] = {**mine, **missing}
+            below = path + (str(key),)
+            named = rule_for(rules, below)
+            if not named and _rules_below(rules, below):
+                # Nothing names THIS level, but something names one
+                # under it - so keep walking as fields rather than
+                # stopping at the built-in default.
+                named = MERGE_FIELDS
+            folded = (_fold(named, merged[key], value, rules, below)
+                      if named else _shallow_fields(merged[key], value))
+            if folded is not None:
+                merged[key] = folded
                 changed = True
         return merged if changed else None
     return None

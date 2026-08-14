@@ -806,8 +806,13 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
 
         with test_support.captured_log() as log:
             p.save()                                  # must not raise
+        # RE-KEYED 2026-08-14: the engine writes the file now, so the
+        # line is its `could not save <filename>` under the same `prefs`
+        # category. The condition is unchanged - a full disk must leave
+        # a trace - and pinning the retired wording would have gone
+        # VACUOUS rather than red.
         self.assertTrue(
-            log.matching("settings.json could not be written", "prefs"),
+            log.matching("could not save settings.json", "prefs"),
             "a failed settings write left no trace at all")
 
 
@@ -1080,28 +1085,43 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
             "the records merge adopted nothing")
 
     def test_every_collected_key_has_a_backing_attribute(self):
-        """The merge adopts into ATTRIBUTES, so a collected key with no
-        entry in _COLLECTED_ATTRS would raise KeyError mid-save - and a
-        new list-valued preference is exactly the kind of thing that
-        gets added to _LIST_KEYS alone.
+        """RE-KEYED 2026-08-14, in the change that moved the merge.
 
-        Asserted as an empty SET, not a count: "found none" and
-        "everything is covered" have to be different answers.
+        The three tables this walked - _LIST_KEYS, _DICT_KEYS and
+        _COLLECTED_ATTRS - are the store's `merge_rules` now, and they
+        could only spell a TOP-LEVEL key. That is what the per-user
+        migration broke: every collected key moved under `users/<uid>/`.
+        So the question is no longer whether a collected key has a
+        backing attribute, but whether every collected key is reachable
+        in BOTH shapes - flat while nobody is picked, nested once
+        somebody is. A rule declared for one and not the other is
+        exactly the drift that shipped nothing.
         """
-        collected = set(prefs.Prefs._LIST_KEYS) | set(prefs.Prefs._DICT_KEYS)
-        mapped = set(prefs.Prefs._COLLECTED_ATTRS)
+        from amaze.core import keyed_store
+        rules = keyed_store.store_for(keyed_store.SETTINGS).merge_rules
+        flat = {key for key in rules if "/" not in key and key != "users"}
+        nested = {key.split("/")[-1] for key in rules if "/" in key}
         self.assertEqual(
-            set(), collected - mapped,
-            "collected settings keys with no backing attribute mapped")
+            set(), flat - nested,
+            "a collected key is folded flat but not inside a user "
+            "block - unreachable on any machine that has a user")
         self.assertEqual(
-            set(), mapped - collected,
-            "_COLLECTED_ATTRS names keys the merge never walks")
+            set(), nested - flat,
+            "a collected key is folded inside a user block but not "
+            "flat - unreachable while nobody is picked")
+        self.assertEqual("fields", rules.get("users"),
+                         "a uid this pane has never seen must arrive "
+                         "whole, or a second user is invisible")
+        # The other half the attribute map used to carry: a fresh Prefs
+        # must actually own what `_absorb_committed` reads the folded
+        # document back into, or the first two-pane save raises.
         blank = prefs.Prefs()
-        for key, (attr, _is_path) in prefs.Prefs._COLLECTED_ATTRS.items():
+        for attr in ("_file_folders", "_file_favorites",
+                     "_file_location_records", "_users_blocks"):
             self.assertTrue(
                 hasattr(blank, attr),
-                "%s maps to %s, which a fresh Prefs does not have"
-                % (key, attr))
+                "the fold is absorbed into %s, which a fresh Prefs "
+                "does not have" % attr)
 
     def test_a_scalar_takes_the_saving_pane(self):
         """The merge must not turn scalars into a fight: the pane the

@@ -1630,5 +1630,124 @@ class ARelocateIsONEWrite(unittest.TestCase):
                          "the old path is still registered after a move")
 
 
+class ADocumentIsNotATableOfRows(StoreCase):
+    """ROADMAP line 26, stage 4. settings.json is a store now, and it
+    differs from the library's four in four ways that each cost a
+    mechanism (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS)."""
+
+    def _spec(self, rules=None, absence_is_fresh=True):
+        return keyed_store.Spec(
+            filename="doc.json", payload="", keyspace=keyed_store.KEY_ID,
+            label="A document", noun="setting",
+            normalise=lambda value: value, falsy_is_a_value=True,
+            absence_is_fresh=absence_is_fresh, merge_rules=rules)
+
+    def _own(self, spec):
+        """A holder's OWN store, the way persistence takes one - so two
+        of them keep two baselines, which is the whole point."""
+        return keyed_store.own_store(spec, self.prefs)
+
+    def _peer_wrote(self, document):
+        with open(self.path("doc.json"), "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+
+    # -- 1. absence ---------------------------------------------------
+
+    def test_a_trace_beside_an_absent_file_does_NOT_latch(self):
+        """settings.json's own prescribed recovery is to delete it, and
+        the copy that recovery leaves behind is one of the traces - so
+        the guard would refuse the fresh start it just asked for."""
+        with open(self.path("doc.json.bak-1"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("{}")
+        store = self._own(self._spec())
+        self.assertEqual(keyed_store.FRESH, store.state)
+        self.assertTrue(store.writable,
+                        "a machine-local store refused to write because "
+                        "an earlier rescue copy proved the file existed")
+
+    def test_the_same_trace_DOES_latch_a_library_store(self):
+        """The flag is a declaration, not a weakening: without it the
+        absent-but-known verdict is exactly what it always was."""
+        with open(self.path("doc.json.bak-1"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("{}")
+        store = self._own(self._spec(absence_is_fresh=False))
+        self.assertEqual(keyed_store.BLIND, store.state)
+        self.assertFalse(store.writable)
+
+    # -- 2. a rule that reaches a key one level down -------------------
+
+    NESTED = {"users": keyed_store.MERGE_FIELDS,
+              "users/*/file_folders": keyed_store.MERGE_COMBINE}
+
+    def test_a_peers_folder_inside_a_shared_user_block_SURVIVES(self):
+        """The regression a top-level rule would have shipped. Both
+        panes hold `file_folders`, so the field-wise fold adopts
+        nothing: it only takes fields the peer has that we lack."""
+        store = self._own(self._spec(self.NESTED))
+        store.replace({"users": {"u1": {"file_folders": ["/mine"],
+                                        "sidebar_width": 200}}})
+        self._peer_wrote({"users": {"u1": {"file_folders": ["/theirs"],
+                                           "sidebar_width": 300}}})
+        store.replace({"users": {"u1": {"file_folders": ["/mine"],
+                                        "sidebar_width": 200}}})
+        block = self.on_disk("doc.json")["users"]["u1"]
+        self.assertEqual(["/mine", "/theirs"], block["file_folders"],
+                         "the other pane's registered folder was "
+                         "flattened by this pane's save")
+        self.assertEqual(200, block["sidebar_width"],
+                         "a single choice was merged - the saving pane "
+                         "owns it")
+
+    def test_a_uid_this_pane_has_never_seen_arrives_whole(self):
+        store = self._own(self._spec(self.NESTED))
+        store.replace({"users": {"u1": {"file_folders": []}}})
+        self._peer_wrote({"users": {"u2": {"file_folders": ["/theirs"]}}})
+        store.replace({"users": {"u1": {"file_folders": []}}})
+        self.assertEqual({"u1", "u2"},
+                         set(self.on_disk("doc.json")["users"]))
+
+    # -- 3. retirement, after the adoption -----------------------------
+
+    def test_a_retired_key_a_PEER_still_holds_does_not_come_back(self):
+        """Sweeping the document before handing it over looks identical
+        and does nothing: adoption is what carries an unknown key across
+        a save, and it runs after any sweep the caller could make."""
+        store = self._own(self._spec())
+        store.replace({"kept": 1})
+        self._peer_wrote({"kept": 1, "gone": "old"})
+        store.replace({"kept": 1}, retire=("gone",))
+        self.assertNotIn("gone", self.on_disk("doc.json"),
+                         "a retired key was adopted off the peer's copy "
+                         "and written straight back")
+
+    def test_a_key_the_document_drops_is_GONE(self):
+        """Delete-by-omission is what the callers here do - a migration
+        pops the key it has just consumed."""
+        store = self._own(self._spec())
+        store.replace({"a": 1, "b": 2})
+        store.replace({"a": 1})
+        self.assertEqual({"a": 1}, self.on_disk("doc.json"))
+
+    def test_a_falsy_setting_is_an_ANSWER(self):
+        store = self._own(self._spec())
+        store.replace({"debug": False, "width": 0, "name": ""})
+        self.assertEqual({"debug": False, "width": 0, "name": ""},
+                         self.on_disk("doc.json"))
+
+    # -- 4. re-reading -------------------------------------------------
+
+    def test_reread_sees_what_another_writer_left(self):
+        """load() runs again when Preferences closes and on a library
+        switch, and its whole job is to answer with what is on disk."""
+        store = self._own(self._spec())
+        store.replace({"a": 1})
+        self._peer_wrote({"a": 99})
+        self.assertEqual(1, store.get("a"))
+        store.reread()
+        self.assertEqual(99, store.get("a"))
+
+
 if __name__ == "__main__":
     unittest.main()
