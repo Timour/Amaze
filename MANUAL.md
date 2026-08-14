@@ -93,6 +93,14 @@ add, rename, remove — or give a category a
 [colour](#category-colors). It can show per-category counts and hide empty
 categories — Preferences ▸ Look.
 
+The sidebar keeps the order **you** give it. Press and hold a row for
+about half a second and it picks up — drag it where you want, let go
+to keep the new order, or press Esc to put it back. **All** always
+stays at the top, and a new category appears at the bottom until you
+move it. This works the same in every section, File's registered
+folders included; category order travels with the library, folder
+order stays with each machine.
+
 Both side panes — the sidebar and the Comments pane — keep the width
 you drag them to, across sessions; the grid takes up the slack.
 
