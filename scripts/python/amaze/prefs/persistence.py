@@ -3,7 +3,7 @@ Reading and writing the preferences document.
 
 What carries settings between memory and disk lives here: the
 save/load round trip, WHAT a stored key means, the path encoding - and
-the shared nineteen's trips to the LIBRARY (`SHARED_KEYS`,
+the shared eighteen's trips to the LIBRARY (`SHARED_KEYS`,
 `_adopt_shared`, `_push_shared`): their truth is the library's
 `prefs.json`, and `settings.json` keeps them only as the last-known
 `shared_settings` copy.
@@ -237,7 +237,6 @@ def _through_setter(target, name, value, default):
 
 RENDERER_DEFAULTS = {
     "_renderer_matx_enabled": True,
-    "_renderer_mantra_enabled": False,
     "_renderer_redshift_enabled": True,
     "_renderer_octane_enabled": True,
 }
@@ -248,12 +247,16 @@ RENDERER_DEFAULTS = {
 #: be tidied to match.
 RENDERER_KEYS = {
     "_renderer_matx_enabled": "renderer_materialx",
-    "_renderer_mantra_enabled": "renderer_mantra",
     "_renderer_redshift_enabled": "renderer_redshift",
     "_renderer_octane_enabled": "renderer_octane",
 }
+#: `renderer_mantra` was the fourth until 2026-08-14. It is not
+#: migrated away: a library's `prefs.json` written before then still
+#: holds that record, and the store only reads keys something
+#: declares, so it sits unread rather than being read as a renderer
+#: nothing supports. Nothing may re-declare that spelling.
 
-#: THE SHARED NINETEEN (ROADMAP line 22): the keys whose truth is the
+#: THE SHARED EIGHTEEN (ROADMAP line 22): the keys whose truth is the
 #: LIBRARY's `prefs.json`, one answer for everyone who opens it.
 #: stored key -> (property, attribute); a None property is a
 #: read-only layout value with no setter, adopted straight onto the
@@ -394,7 +397,7 @@ class _Persistence:
         REFUSES if the store could not read the existing file: this
         object is then holding pure DEFAULTS. Asked BEFORE
         `_push_shared`, because the same refusal has to protect the
-        LIBRARY - nineteen defaulted values pushed into everyone's
+        LIBRARY - eighteen defaulted values pushed into everyone's
         `prefs.json` is the same accident one scope out.
         """
         store = self._settings_store()
@@ -402,7 +405,7 @@ class _Persistence:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
             return
-        # The shared nineteen go to the LIBRARY first - one batch
+        # The shared eighteen go to the LIBRARY first - one batch
         # write that collapses to nothing when no shared key moved -
         # so the document composed below only ever carries the copy.
         self._push_shared()
@@ -508,7 +511,7 @@ class _Persistence:
         "version_author",
     )
 
-    #: The shared nineteen's flat spellings retire WITH their values
+    #: The shared eighteen's flat spellings retire WITH their values
     #: safe: the same save that pops these writes them into the
     #: `shared_settings` copy and pushes them to the library. Derived
     #: from the one table so a twentieth shared key cannot be retired
@@ -530,7 +533,7 @@ class _Persistence:
     # third, and the store already keeps exactly this fingerprint
     # through the same `hostos.disk_state` call.
 
-    # -- the shared nineteen (ROADMAP line 22, stage D) -----------------
+    # -- the shared eighteen (ROADMAP line 22, stage D) -----------------
 
     def _adopt_shared(self) -> None:
         """Fold the library's shared settings over the attributes.
@@ -740,7 +743,7 @@ class _Persistence:
             self._directory = self._directory + "/"
 
         self.data["directory"] = _encode_path(self._directory)
-        # THE SHARED NINETEEN ARE THE LIBRARY'S (ROADMAP line 22).
+        # THE SHARED EIGHTEEN ARE THE LIBRARY'S (ROADMAP line 22).
         # What is written HERE is the last-known COPY, one dict under
         # one key, serving the next session when the library is
         # unreachable. The truth goes through _push_shared(); the flat
@@ -853,7 +856,7 @@ class _Persistence:
         # dict(data), not data: the parse result must not stay aliased
         # into a caller's document, and refresh_data() mutates this.
         self.data = dict(data)
-        # The shared nineteen load from the last-known COPY, falling
+        # The shared eighteen load from the last-known COPY, falling
         # back to the flat spelling an older file carries - the
         # migration source, popped by the same save that writes the
         # copy. The library's own answer lands over all of these at

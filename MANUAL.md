@@ -73,7 +73,7 @@ The **toolbar** sits top-right:
 | <img src="scripts/python/amaze/ui/star_on.svg" width="20"> | **Favorites** | Show only favorited assets. |
 | | **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
 | <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **View** | Your library, the online sources, categories, grid/list. |
-| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Renderer** | Filter materials: All, Karma, Mantra, Redshift, Octane. |
+| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Renderer** | Filter materials: All, Karma, Redshift, Octane. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens Preferences (five tabs). |
 
 **List mode** is a spreadsheet, and its columns fit themselves to the
@@ -120,7 +120,7 @@ on a dark backdrop so it stays readable on any thumbnail:
 
 Houdini-native material networks with rendered shaderball thumbnails:
 Redshift (classic and USD builders), Karma/MaterialX, Octane (classic
-and Solaris), Mantra.
+and Solaris).
 
 ### Saving
 

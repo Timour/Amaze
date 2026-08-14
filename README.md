@@ -18,7 +18,7 @@ Save a material and get a real rendered thumbnail back. Drop a texture onto a pa
 
 ## Sections
 
-- **Material** — a curated library of Houdini-native material networks with rendered shaderball thumbnails. Redshift (classic + USD builders), Karma/MaterialX, Octane (classic + Solaris builders), Mantra. Categories, tags, favorites, renderer filter, search.
+- **Material** — a curated library of Houdini-native material networks with rendered shaderball thumbnails. Redshift (classic + USD builders), Karma/MaterialX, Octane (classic + Solaris builders). Categories, tags, favorites, renderer filter, search.
 - **Color** — curated color-theory palettes (Sanzo Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers, Johannes Itten) plus your own saved gradients. Apply as stepped or linear ramps, or pick single swatches for color parameters.
 - **Node** — save node setups from any context (SOP, Copernicus, LOP, DOP, TOP, CHOP, object level): a whole network, a selection, or one node. Copernicus assets use their own output image as the thumbnail, SOP assets their geometry, the rest the node icon. An asset is only ever imported back into a matching context.
 - **Code** — a reusable snippet library for VEX / OpenCL / Python, with a syntax-highlighted preview on each tile and a curated "Starter Toolbox" to get going. Double-click or drag onto a node to apply.
@@ -41,7 +41,7 @@ Save a material and get a real rendered thumbnail back. Drop a texture onto a pa
 ## Requirements
 
 - Houdini **21.0+** (developed and tested on 21.0 and 22.0, macOS/Apple Silicon; theme-following requires 22)
-- Renderers: **Redshift** and **Karma/MaterialX** are the primary targets; **Octane** supported; Mantra works but sees less testing
+- Renderers: **Redshift** and **Karma/MaterialX** are the primary targets; **Octane** supported. Mantra is not supported — SideFX is retiring it in favour of Karma
 - `$OCIO` must be set for material saves (thumbnail rendering)
 - Python 3, unrestricted Houdini licensing (Commercial/Indie)
 - Linux/Windows: nothing intentionally platform-specific beyond the texture-thumbnail fast path (which falls back automatically), but untested

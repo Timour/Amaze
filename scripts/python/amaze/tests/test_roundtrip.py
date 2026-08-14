@@ -236,51 +236,25 @@ class TestRoundTrip(unittest.TestCase):
             "the imported material has nothing wired to its surface "
             "terminal - it renders black")
 
-    def test_a_mantra_import_keeps_its_builder(self):
-        """load_items_file(move_builder=False) moved the loaded children
-        OUT of the rebuilt materialbuilder and destroyed it. Measured:
-        five loose VOPs (surface_globals, displacement_globals, two
-        outputs, output_collect) dumped straight into /mat, no material
-        builder, material flag unset - and a later Rerender Thumbnail
-        called cleanup(), which destroyed one and left the other four in
-        the user's /mat permanently."""
-        mat_ctx = hou.node("/mat")
-        source = mat_ctx.createNode("materialbuilder", "mantra_src")
-        source.setGenericFlag(hou.nodeFlag.Material, True)
-
-        before = {n.path() for n in mat_ctx.children()}
-        self.model.add_asset(source, "MantraProbe", "", False)
-        asset = self.model.assets[-1]
-        self.assertEqual(
-            "Mantra", asset.renderer,
-            "this test needs a Mantra asset to mean anything")
-        self.assertTrue(
-            asset.builder,
-            "the saved asset did not record that it WAS a builder, so "
-            "load_interface_mantra will skip the saved .interface")
-
-        ok, reason, _created = nodes.NodeHandler(self.prefs).import_asset_to_scene(
-            asset, target="mat")
-        self.assertTrue(ok, reason)
-
-        # By PATH: hou.Node wrappers are not identity-stable.
-        created = [c for c in mat_ctx.children() if c.path() not in before]
-        loose = [c for c in created if c.type().name() != "materialbuilder"]
-        self.assertEqual(
-            [], [c.name() for c in loose],
-            "the Mantra import dumped loose VOPs into /mat instead of "
-            "rebuilding a material")
-        builders = [c for c in created
-                    if c.type().name() == "materialbuilder"]
-        self.assertEqual(1, len(builders), "expected exactly one builder")
-        self.assertTrue(
-            builders[0].children(),
-            "the rebuilt builder is empty - its contents went elsewhere")
-        for node in created:
-            try:
-                node.destroy()
-            except Exception:            # noqa: BLE001 - already gone
-                pass
+    # ⚑ A COVERAGE GAP, NAMED RATHER THAN LEFT TO BE DISCOVERED.
+    # `test_a_mantra_import_keeps_its_builder` lived here and was
+    # deleted 2026-08-14 with the renderer it exercised. It was the
+    # ONLY executable test of `load_items_file(move_builder=True)` -
+    # the rule that a rebuilt builder is kept and MOVED rather than
+    # having its children moved out and itself destroyed (measured
+    # once: five loose VOPs dumped into /mat, no material builder,
+    # material flag unset, and a later Rerender Thumbnail destroying
+    # one and stranding the rest).
+    #
+    # THAT RULE STILL APPLIES, to Redshift and Octane, and nothing
+    # tests it now. It cannot simply be repointed: this suite builds no
+    # Redshift or Octane material anywhere (see the docstring below
+    # saying so), because neither plugin is a given on a test machine -
+    # and the dropped renderer was the one whose builder is stock
+    # Houdini and could therefore be created in a fixture.
+    #
+    # Closing it needs a fixture that does not depend on a renderer
+    # plugin, which is its own piece of work rather than a line here.
 
     # -- clutter and containment ----------------------------------------
 

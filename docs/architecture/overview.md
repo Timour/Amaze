@@ -403,7 +403,7 @@ store that keeps per-key choices beside the thing they belong to.
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
   **User store** (`core/users.py` → `users.json`), the **Shared
   Settings store** (`core/library_prefs.py` → `prefs.json` — the
-  library-wide half of ROADMAP line 22: nineteen settings that are one
+  library-wide half of ROADMAP line 22: eighteen settings that are one
   answer for everyone who opens the library. `prefs/persistence.py` is
   the one consumer — adopted onto `Prefs` at load and at the `dir`
   setter, pushed back in one batch write from `save()`, with a
@@ -706,18 +706,28 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN AND IN WHAT ORDER. `setDynamicSortFilter(False)`, set for performance, turns off three things at once, and each came back as a caller remembering: the re-sort after a filter change (2026-08-01 — picking a category then going back to All came back unsorted), the re-sort after an INSERT (2026-08-03 — a newly saved asset landed at the bottom of 548), and the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off). The re-test is role-aware (`watched_roles`) and every pass is coalesced onto one per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
 | **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |
 | **Splitter panes** | THE construction (2026-08-01): sidebar \| grid \| comments, with exactly ONE flexible pane — the grid (stretch 1); both side panes hold (stretch 0), so every redistribution Qt performs lands on the grid. Each side pane OWNS its width: BOTH are `ui_helpers.HeldPane`, which asks for the remembered drag or the design width through `sizeHint`, and `_on_splitter_moved` records both into `sidebar_width` / `notes_panel_width`. Nothing on the panel computes a pane's width: measured 2026-08-03, the splitter has already honoured the hint before any post-show code runs, so the 50 lines that redistributed for the Comments pane were recomputing what was true. Never bookkeeping around Qt's relayout — that shipped once and lost. | `panel.py` `_build_splitter_and_sidebar`, `ui_helpers.HeldPane` |
-| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the nineteen SHARED settings are the library's own, in `prefs.json` through the Shared Settings store (§4c), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
+| **Prefs** | Settings, one shared instance injected into every model. `settings.json` lives where the OS keeps preferences (`~/Library/Preferences/Amaze` on macOS, `%APPDATA%/Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux) — never in the install — and holds bootstrap, this machine's view state and last-known copies; the eighteen SHARED settings are the library's own, in `prefs.json` through the Shared Settings store (§4c), adopted at load and pushed on save. Split in two 2026-08-09: `prefs.py` answers what a setting IS (64 property pairs plus the location, favourite and section-filter accessors), and `prefs/persistence.py` carries it to and from disk — save, load, the field-wise merge between two panes of one session, the migration out of older installs, and the portable path encoding. `_Persistence` is mixed into `Prefs`, so every call site still says `prefs.save()` and the document's shape is untouched. | `prefs/prefs.py` → `Prefs`, from `settings.json` |
 | **Database** | The JSON read/write layer, one connector per JSON filename — **all four databases, since 2026-08-09**. | `core/database.py` |
 
 ### The two stamps every database carries
 
 - **`version` — the SCHEMA**: what shape the document is in. A load
-  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**5**); step 4→5 strips
-  the retired `favorite` and `icon` fields from every row, which moved
-  to `settings.json` and `icons.json` respectively. The steps that
-  upgraded pre-release shapes were deleted — a document with no step
-  for its version keeps that version, records an incomplete chain, and
-  is refused rather than stamped as current.
+  applies `_MIGRATIONS` up to `SCHEMA_VERSION` (**6**), and two steps
+  are registered. **4→5** strips the retired `favorite` and `icon`
+  fields from every row; `icon` moved to `icons.json`, and neither is
+  left to the unknown-key courtesy, because a key carried verbatim
+  would be written straight back by the next save. **5→6** strips
+  `favorite` again, and the second pass is the interesting one: Colors
+  is the one section whose rows never pass through `Material`, so
+  nothing dropped the field on read and every colour star toggled after
+  the 4→5 step landed back on the shared document. Stars live in
+  `favourites.json` now, per-user and owner-tagged — a field on a
+  shared record is everyone's, which was the defect. Stripped rather
+  than adopted, matching the File store's rule that a star with no
+  owner is nobody's. The steps that upgraded pre-release shapes were
+  deleted — a document with no step for its version keeps that version,
+  records an incomplete chain, and is refused rather than stamped as
+  current.
 - **`format` — whether this build may WRITE at all**
   (`branding.LIBRARY_FORMAT`, **2**). A library stamped ahead of this
   build opens read-only and points at the updater. It is the general
@@ -928,8 +938,11 @@ an unknown file might be the user's and a leftover scratch never is.
 ## 7. The Renderer terms
 
 - **Renderer** — a material's engine label: `Karma`, `Redshift`,
-  `Octane`, `Mantra`, `COP`. Drives the Tile subtitle and the Renderer
-  filter. Online imports are plain Karma materials (their origin lives
+  `Octane`, `COP`. Drives the Tile subtitle and the Renderer filter.
+  `Mantra` was one until 2026-08-14, when it was dropped: SideFX is
+  retiring the renderer, and 1.0 had not shipped, so nothing needed
+  carrying. A `materialbuilder` or `principledshader::2.0` now matches
+  no renderer and is refused at save rather than labelled. Online imports are plain Karma materials (their origin lives
   in the About/License credit, not the renderer tag).
 - **Karma-family** — Karma plus the legacy stored labels MaterialX and
   MtlX, treated identically for routing, thumbnails and capability, and
@@ -1035,7 +1048,7 @@ preview/                  THE PREVIEW ENGINE (below) - the scene a
                           use `amaze.preview`, never its insides
 preview/shaderball_scene.py  the ball, the plane and their materials
 preview/thumbnail_scene.py   the room around them: lights, camera,
-                          output - Mantra, Redshift, Octane
+                          output - Redshift, Octane
 preview/karma_scene.py    Karma's, which is a USD stage: built once,
                           many materials rendered into it
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)

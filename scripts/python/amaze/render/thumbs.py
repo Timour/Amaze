@@ -108,8 +108,6 @@ class ThumbNailRenderer:
                     else:
                         self.create_thumb_mtlx(
                             node_handler.builder_node, self._mat.mat_id)
-                elif self._mat.renderer == "Mantra":
-                    self.create_thumb_mantra(node_handler.builder_node, self._mat.mat_id)
                 elif self._mat.renderer == "Redshift":
                     self.create_thumb_redshift(node_handler.builder_node, self._mat.mat_id)
                 elif self._mat.renderer == "Octane":
@@ -148,12 +146,14 @@ class ThumbNailRenderer:
         """Yield (scene, thumb) and destroy the scene on every exit.
 
         The finally used to be written out three times with the same
-        comment, and the boundary had already drifted: Mantra set its
-        material parm BEFORE its try, so a missing `mat` parm or a
-        deleted node raised where nothing cleaned up and left
-        /obj/Thumbnail_Mantra in the user's scene - which is then saved
+        comment, and the boundary had already drifted: ONE of the three
+        set its material parm BEFORE its try, so a missing `mat` parm
+        or a deleted node raised where nothing cleaned up and left a
+        Thumbnail_* subnet in the user's scene - which is then saved
         into their hip file. Reproduced against a scene whose `mat`
-        parm is absent: Mantra leaked, its two copies did not.
+        parm is absent: that one leaked, its two copies did not. (The
+        drifted copy was the renderer dropped 2026-08-14; the lesson is
+        why this is a contextmanager and outlives it.)
 
         Inside a `hou.undos.disabler()` for the reason create_thumb_sop
         already documents and research.md ▸ Undo names thumbnails for
@@ -192,7 +192,7 @@ class ThumbNailRenderer:
                   errors=None) -> bool:
         """Did the render actually write the image?
 
-        The Karma path has always checked; Mantra, Redshift and Octane
+        The Karma path has always checked; the other renderer paths
         ended with a bare `return True` after pressing the button, so
         every caller's failure branch in nodes.py was unreachable and a
         render that produced nothing reported success. Per practice.md
@@ -214,30 +214,6 @@ class ThumbNailRenderer:
                     renderer=renderer, asset_id=str(asset_id),
                     path=png_path, errors=errors or "")
         return False
-
-    def create_thumb_mantra(self, node: hou.Node, asset_id: str) -> bool:
-        # Build path. Intermediate EXR name is UNIQUE per render - same
-        # image-cache staleness hazard as create_thumb_mtlx above.
-        png_path = tile_icons.thumbnail_path(self._preferences, asset_id)
-        exr_path = "%s.%d.exr" % (os.path.splitext(png_path)[0],
-                                  int(time.time() * 1000))
-        with self._thumb_scene("Mantra") as (sc, thumb):
-            try:
-                self._setup_thumb_rop(thumb, node, exr_path)
-                preview.safe_set(thumb, "cop_out_img", png_path)
-                thumb.parm("render").pressButton()
-            finally:
-                # INSIDE the finally, same reason as render_karma_into.
-                if os.path.exists(exr_path):
-                    try:
-                        os.remove(exr_path)
-                    except OSError as exc:
-                        debug.event("thumb", "intermediate not removed",
-                                    path=exr_path, error=str(exc))
-            # INSIDE the block: the scene is destroyed on its way out
-            # and the ROP goes with it.
-            errors = helpers.node_errors(getattr(sc, "rop", None))
-        return self._rendered(png_path, "Mantra", asset_id, errors)
 
     @staticmethod
     def _pick_cop_thumb_source(temp: hou.Node) -> hou.Node | None:

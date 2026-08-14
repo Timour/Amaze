@@ -79,7 +79,12 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
     def test_a_saved_change_is_the_next_machines_answer(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
-        a.renderer_mantra_enabled = True
+        # OFF, not on. This asserted a renderer flag turned ON, which
+        # was a real change only while one renderer defaulted False -
+        # that was the one dropped 2026-08-14, and every survivor
+        # defaults True. Turning one OFF is now the change that proves
+        # the trip; asserting True would pass on the default alone.
+        a.renderer_octane_enabled = False
         a.save()
         # The machine boundary: nothing in memory may carry over.
         keyed_store.release()
@@ -87,8 +92,8 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
         self.assertEqual(512, b.rendersize,
                          "machine B still answers its own default - "
                          "the store was not adopted")
-        self.assertTrue(b.renderer_mantra_enabled,
-                        "a renderer flag did not travel")
+        self.assertFalse(b.renderer_octane_enabled,
+                         "a renderer flag did not travel")
 
     def test_a_falsy_value_survives_the_trip(self):
         """False, 0 and "" are legitimate choices, and the record wrap
@@ -133,7 +138,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
                   encoding="utf-8") as handle:
             json.dump({"directory": self.lib + "/",
                        "rendersize": 300,
-                       "renderer_mantra": True}, handle)
+                       "renderer_octane": False}, handle)
         p = prefs_mod.Prefs()
         p.path = self.home_a
         p.load()
@@ -141,7 +146,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
                          "the flat value no longer loads - the "
                          "migration source was dropped before the "
                          "migration ran")
-        self.assertTrue(p.renderer_mantra_enabled)
+        self.assertFalse(p.renderer_octane_enabled)
         p.save()
         raw = self.store_doc()["prefs"]
         self.assertEqual(300, raw.get("rendersize", {}).get("value"),

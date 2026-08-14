@@ -145,7 +145,7 @@ class Prefs(_Persistence):
         self._rendersamples = 256
         self._render_on_import = 1
         # THE SAME DEFAULTS load() APPLIES. These were all False here
-        # and True/False/True/True there, and only Mantra agreed - so
+        # and True/False/True/True there, and only one agreed - so
         # on a machine with NO settings.json, load() returns at its
         # FileNotFoundError branch before reaching those .get() calls
         # and the object keeps four Falses, which refresh_data() then
@@ -505,14 +505,6 @@ class Prefs(_Persistence):
     @matx_resolution.setter
     def matx_resolution(self, val: str) -> None:
         self._matx_resolution = str(val or "2k")
-
-    @property
-    def renderer_mantra_enabled(self) -> bool:
-        return self._renderer_mantra_enabled
-
-    @renderer_mantra_enabled.setter
-    def renderer_mantra_enabled(self, val: bool) -> None:
-        self._renderer_mantra_enabled = val
 
     @property
     def renderer_redshift_enabled(self) -> bool:

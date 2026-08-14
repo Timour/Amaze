@@ -15,7 +15,7 @@ class ShaderBallSetup:
 
     def __init__(
         self,
-        renderer: str = "Mantra",
+        renderer: str,
         parent: hou.Node = hou.node("/obj"),
     ) -> None:
         self.geo_node = parent.createNode("geo")
@@ -87,24 +87,7 @@ class ShaderBallSetup:
         """
         Apply Default Materials for the given Renderer
         """
-        if "Mantra" in renderer:
-            self.mat = self.matnet.createNode("principledshader::2.0")
-
-            self.mat.parm("basecolorr").set(1)
-            self.mat.parm("basecolorg").set(1)
-            self.mat.parm("basecolorb").set(1)
-            self.mat.parm("basecolor_usePointColor").set(0)
-            self.mat.parm("basecolor_useTexture").set(1)
-            self.mat.parm("basecolor_texture").set(
-                "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat"
-            )
-
-            self.mat.parm("rough").set(0)
-            self.mat.parm("reflect").set(0)
-
-            self.mat.setName("Plane", True)
-
-        elif "Redshift" in renderer:
+        if "Redshift" in renderer:
 
             self.mat = self.matnet.createNode("redshift_vopnet")
 

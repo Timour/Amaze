@@ -1306,7 +1306,6 @@ class MaterialSection(AssetSection):
     #: renderer string stored on the material, so the two cannot drift.
     RENDERER_PREFS = (
         ("Karma", "renderer_matx_enabled"),
-        ("Mantra", "renderer_mantra_enabled"),
         ("Redshift", "renderer_redshift_enabled"),
         ("Octane", "renderer_octane_enabled"),
     )

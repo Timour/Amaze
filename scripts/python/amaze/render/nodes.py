@@ -967,12 +967,11 @@ class NodeHandler:
         elif "rs_usd_material_builder" in node.type().name():
             self._renderer = "Redshift"
             self._builder = 1
-        elif node.type().name() == "materialbuilder":
-            self._renderer = "Mantra"
-            self._builder = 1
-        elif node.type().name() == "principledshader::2.0":
-            self._renderer = "Mantra"
-            self._builder = 0
+        # `materialbuilder` and `principledshader::2.0` were recognised
+        # here until 2026-08-14. With that renderer dropped they match
+        # nothing and fall through to the unrecognised-renderer
+        # refusal, which is the honest answer: a save that cannot be
+        # imported back should be refused at the door, not labelled.
         elif node.type().name() == "octane_vopnet":
             self._renderer = "Octane"
             self._builder = 1
@@ -1062,8 +1061,8 @@ class NodeHandler:
 
         - Karma/MaterialX mix freely -> both.
         - Redshift USD builder (and any LOP_CAPABLE_NODE_TYPES) -> both.
-        - Classic redshift_vopnet / octane_vopnet / Mantra -> "mat"
-          only; importing them into a LOP context is impossible.
+        - Classic redshift_vopnet / octane_vopnet -> "mat" only;
+          importing them into a LOP context is impossible.
         """
         if material.is_karma_renderer(mat.renderer):
             return {"mat", "lop"}
@@ -1237,24 +1236,18 @@ class NodeHandler:
             if material.is_karma_renderer(mat.renderer):
                 self.load_interface_mtlx(parms_file_name, mat)
                 self.load_items_file_mtlx(mat)
-            # SUBSTRING, matching the save side and its two classic
-            # siblings below. Import matched exact equality while
-            # save_node matched containment, so Mantra was the one
-            # renderer whose label could save one way and fail to
-            # import - falling into the unrecognised-renderer refusal.
-            elif "Mantra" in mat.renderer:
-                self.load_interface_mantra(parms_file_name, mat)
-                # move_builder=True: the .mat stores the builder's
-                # CHILDREN, so the rebuilt builder has to be kept and
-                # moved. With False it moved the children out and
-                # destroyed the builder - measured: five loose VOPs
-                # (surface_globals, displacement_globals, two outputs,
-                # output_collect) dumped straight into /mat, no material
-                # builder, material flag unset. A later "Rerender
-                # Thumbnail" then called cleanup(), which destroyed one
-                # of them and left the other four in the user's /mat
-                # permanently.
-                self.load_items_file(mat, move_builder=True)
+            # SUBSTRING, not equality: save_node matches containment,
+            # so a label that saves one way must import the same way or
+            # it falls into the unrecognised-renderer refusal below.
+            #
+            # move_builder=True on both: the .mat stores the builder's
+            # CHILDREN, so the rebuilt builder has to be kept and
+            # moved. With False it moved the children out and destroyed
+            # the builder - measured: five loose VOPs dumped straight
+            # into /mat, no material builder, material flag unset. A
+            # later "Rerender Thumbnail" then called cleanup(), which
+            # destroyed one of them and left the rest in the user's
+            # /mat permanently.
             elif "Redshift" in mat.renderer:
                 self.load_interface_other(parms_file_name, mat, "redshift_vopnet")
                 self.load_items_file(mat, move_builder=True)
@@ -1265,7 +1258,7 @@ class NodeHandler:
                 # NO else meant an unrecognised renderer label imported
                 # NOTHING and reported success: (True, "") with an empty
                 # scene and no message. Neither is_karma_renderer nor
-                # "Mantra"/"Redshift"/"Octane" matches "" or the
+                # "Redshift"/"Octane" matches "" or the
                 # Material class default "MatX", and the committed
                 # fixture library already contains a row with
                 # renderer: "". Worse, _builder_node was still its
@@ -1446,8 +1439,8 @@ class NodeHandler:
           "lop"  - force a LOP materiallibrary.
 
         Returns (ok, reason). If the resolved context is LOP and the material
-        cannot live there (classic redshift_vopnet / octane_vopnet /
-        Mantra), ok is False and nothing is created; otherwise ok is True and
+        cannot live there (classic redshift_vopnet / octane_vopnet),
+        ok is False and nothing is created; otherwise ok is True and
         self._import_path is set. /mat and SOP contexts accept every material
         MatLib handles, so only the LOP case can fail."""
         allowed = self.import_targets(mat)
@@ -1611,43 +1604,6 @@ class NodeHandler:
             read_builder_sidecar(self._builder_sidecar(mat)),
         )
 
-    def load_interface_mantra(self, parms_file_name, mat: material.Material) -> None:
-        """
-        Loads the Interface File from disk
-
-        :param self: Description
-        :param parms_file_name: Description
-        :param mat: Description
-        """
-        builder = None
-        if os.path.exists(parms_file_name):
-            # Only load parms if MatBuilder
-            if mat.builder:
-                # NO exec. The container is made by the same call the
-                # non-builder branch below already uses, then its own
-                # parameter interface is restored from the sidecar -
-                # read as data, never run.
-                builder = self._hou_parent.createNode("materialbuilder")
-                for child in builder.children():
-                    child.destroy()
-                apply_builder(
-                    builder, read_builder_sidecar(self._builder_sidecar(mat)))
-            # Selection will be empty if not a MaterialBuilder
-            else:
-                builder = self._import_path.createNode("materialbuilder")
-        else:
-            # _import_path is already a hou.Node here (same as the branch
-            # above) - wrapping it in hou.node() raised TypeError.
-            builder = self._import_path.createNode("materialbuilder")
-
-        builder.setName(mat.name, unique_name=True)
-        builder.setGenericFlag(hou.nodeFlag.Material, True)
-        # Delete Default children in MaterialBuilder
-        for node in builder.children():
-            node.destroy()
-
-        self._builder_node = builder
-
     def load_interface_other(
         self, parms_file_name: str, mat: material.Material, builder_name: str
     ) -> None:
@@ -1699,7 +1655,7 @@ class NodeHandler:
         Loads the actual Node Configuration from Disk.
         move_builder=True moves the rebuilt builder node itself to the import
         context (Redshift/Octane, whose .mat files store the builder's
-        children); False moves the loaded children (MaterialX/Mantra, whose
+        children); False moves the loaded children (MaterialX/Karma, whose
         .mat files store the material node itself).
 
         :param self: Description
@@ -1749,8 +1705,9 @@ class NodeHandler:
         material to the library - wiki, materials research - so the
         wrap is a structure/UX choice, not a translation requirement.)
         Left load_items_file() and its move_builder parameter
-        completely untouched, since Mantra shares that code path and
-        this behavior is only verified for MaterialX/Karma."""
+        completely untouched, since the classic renderers share that
+        code path and this behavior is only verified for
+        MaterialX/Karma."""
         file_name = material.payload_path(
             self._preferences, mat.mat_id, self._preferences.ext
         )
@@ -2493,11 +2450,6 @@ class NodeHandler:
                 "Rendering", "Performing Tasks", open_interrupt_dialog=True
             ):
                 val = self.save_node_redshift(node, asset_id, update)
-        elif "Mantra" in self._renderer:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                val = self.save_node_mantra(node, asset_id, update)
         elif "Octane" in self._renderer:
             with hou.InterruptableOperation(
                 "Rendering", "Performing Tasks", open_interrupt_dialog=True
@@ -2684,83 +2636,6 @@ class NodeHandler:
                 "saved and registered without one.")
         return True
 
-    def save_node_mantra(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Saves the Mantra node to disk - does not add to library"""
-        # Filepath where to save stuff
-        file_name = material.payload_path(
-            self._preferences, str(asset_id), self._preferences.ext
-        )
-
-        # COP companion: same pattern as save_node_redshift - compute on
-        # the real scene node before any copying, then rewrite the paths
-        # only on a temporary copy (forcing one even if node is already
-        # a materialbuilder) so the scene material is never touched.
-        path_map = self.prepare_cop_companion((node,), str(asset_id), node.name())
-
-        orig_node = node
-        builder = None
-        if node.type().name() != "materialbuilder" or path_map:
-            # Off the stack at BOTH ends, like staged_asset (#278) -
-            # /mat staging, same rule as /obj.
-            with hou.undos.disabler():
-                builder = hou.node("/mat").createNode("materialbuilder")
-                for c in builder.children():
-                    c.destroy()
-            hou.copyNodesTo((node,), builder)  # type: ignore
-            node = builder
-            if path_map:
-                self.rewrite_cop_refs((node,), path_map)
-
-        try:
-            # interface-stuff
-            parms_file_name = material.payload_path(
-            self._preferences, str(asset_id), ".interface"
-        )
-            children = node.children()
-
-            # ONE unit - see save_asset_pair.
-            self.save_asset_pair(
-                parms_file_name, file_name, node.asCode(),
-                lambda path: node.saveItemsToFile(
-                    children, path,
-                    save_hda_fallbacks=hda_fallbacks_needed(children),
-                ),
-                builder_node=node, asset_id=str(asset_id),
-            )
-        finally:
-            # Runs even on failure so the temporary save copy never
-            # lingers in the scene.
-            node = orig_node
-            if builder is not None:
-                with hou.undos.disabler():
-                    builder.destroy()
-
-        # If this is not a manual update and render_on_import is off, finish here
-        if not update:
-            if not self._preferences.render_on_import:
-                return True
-
-        try:
-            thumber = thumbs.ThumbNailRenderer(self._preferences)
-            ok = thumber.create_thumb_mantra(node, asset_id)
-        except Exception as exc:
-            debug.exception("Mantra thumbnail", exc, asset_id=asset_id,
-                            node=node.path())
-            debug.note("Mantra thumbnail failed ("
-                + str(exc)
-                + ") - material saved and registered without thumbnail.")
-            return True
-        if not ok:
-            # A thumbnail that merely RETURNS False must not lose the
-            # material either: save_node()'s result is what add_asset()
-            # gates registration on, so returning it directly meant a
-            # failed render silently discarded the whole asset.
-            debug.event("save", "Mantra thumbnail returned False",
-                        asset_id=asset_id, node=node.path())
-            debug.note("Mantra thumbnail did not render - material "
-                "saved and registered without one.")
-        return True
-
     def save_node_redshift(self, node: hou.Node, asset_id: str, update: bool) -> bool:
         """Saves the Redshift node to disk - does not add to library"""
         return self._save_staged_with_cop_companion(
@@ -2782,8 +2657,8 @@ class NodeHandler:
         paths, the same COP companion, the same `/obj` staging, the
         same try/finally, the same early return. They had already
         drifted once and been re-synced by hand: both carried a comment
-        explaining that this path used to log `str(e)` alone where
-        Karma and Mantra logged the traceback.
+        explaining that this path used to log `str(e)` alone where the
+        Karma path logged the traceback.
 
         `renderer` is the word the log uses; `thumb_method` names the
         ThumbNailRenderer call, the way the menu tables name a Section
@@ -2840,7 +2715,7 @@ class NodeHandler:
                     % renderer)
         except Exception as e:
             # The traceback and the structured fields, like the Karma
-            # and Mantra paths - this one recorded only the exception's
+            # path - this one recorded only the exception's
             # str(), so the log the WORKFLOW says to read before
             # reasoning about a cause held one sentence and no asset
             # id, no node path and no traceback.

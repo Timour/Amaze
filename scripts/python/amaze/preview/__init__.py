@@ -38,10 +38,13 @@ to talk to the node the engine returns.
 THE API
 =========================================================================
 
-    ThumbNailScene(renderer)      build a scene for "Mantra",
-                                  "Redshift" or "Octane". Raises if
-                                  there is no Scene Viewer to read a
-                                  colour space from.
+    ThumbNailScene(renderer)      build a scene for "Redshift" or
+                                  "Octane". Raises if there is no
+                                  Scene Viewer to read a colour space
+                                  from. (Mantra was the third until
+                                  2026-08-14; Karma has never been
+                                  here - its scene is a USD stage, in
+                                  karma_scene.)
         .get_node()               the subnet it built
         .rop                      the render node inside it - a
                                   different type per renderer
@@ -54,7 +57,7 @@ THE API
                                   has it; log and carry on if not.
 
 AND THE PART THAT IS NOT PYTHON. The scene returned by `get_node()`
-carries seven spare parameters, and the caller drives the engine by
+carries six spare parameters, and the caller drives the engine by
 setting them. They are as much the contract as the names above, and a
 replacement engine that spells one differently produces a
 thumbnail-shaped no-op rather than an error, because `safe_set`
@@ -62,11 +65,16 @@ deliberately swallows a missing parameter:
 
     mat            the material to put on the ball
     path           where the render is written
-    cop_out_img    where the converted PNG is written
     resx  resy     the render size
     obj_exclude    what the render must not see
     lights         which lights it uses
     render         the button that executes it
+
+It was SEVEN until 2026-08-14. `cop_out_img` said where the converted
+PNG was written, and only the Mantra path ever set it: Redshift and
+Octane write their picture straight out of the render node. It left
+with Mantra rather than staying as a parameter nothing sets, which
+would read as engine surface to whoever writes the next one.
 
 THE SCENE'S LIFETIME IS THE CALLER'S. This package creates a subnet in
 /obj and offers no destroy: `render/thumbs.py` builds inside

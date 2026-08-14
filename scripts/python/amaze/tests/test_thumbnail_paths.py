@@ -102,7 +102,7 @@ class _Thumb:
 
 
 class _Scene:
-    def __init__(self, renderer="Mantra", missing=()):
+    def __init__(self, renderer="Redshift", missing=()):
         self.renderer = renderer
         self.thumb = _Thumb(missing)
         self.rop = _Thumb()
@@ -125,12 +125,12 @@ class _RendererCase(unittest.TestCase):
         # resolves at call time. Patching the submodule instead leaves
         # the stub on a name nobody reads, and only ONE of the tests
         # using this would notice: the two that assert on whether a PNG
-        # exists would go on passing while really building Mantra,
-        # Redshift and Octane scenes in /obj during the suite.
+        # exists would go on passing while really building Redshift and
+        # Octane scenes in /obj during the suite.
         real = preview.ThumbNailScene
         self.addCleanup(setattr, preview, "ThumbNailScene", real)
 
-        def factory(renderer="Mantra"):
+        def factory(renderer="Redshift"):
             scene = _Scene(renderer, missing)
             self.scenes.append(scene)
             return scene
@@ -138,8 +138,11 @@ class _RendererCase(unittest.TestCase):
         preview.ThumbNailScene = factory
 
     def paths(self):
-        return (("Mantra", self.renderer.create_thumb_mantra),
-                ("Redshift", self.renderer.create_thumb_redshift),
+        # TWO, not three: the third was dropped with its renderer on
+        # 2026-08-14. Every case below walks this tuple, so a renderer
+        # path that stops being covered has to be removed HERE, in one
+        # place, rather than going quiet test by test.
+        return (("Redshift", self.renderer.create_thumb_redshift),
                 ("Octane", self.renderer.create_thumb_octane))
 
 
@@ -976,6 +979,62 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "an install path is glued together with +, so an unset "
             "variable raises TypeError instead of naming a file: %s"
             % offenders)
+
+
+class MantraIsNotASupportedRenderer(unittest.TestCase):
+    """Mantra support was removed 2026-08-14. It was one of three
+    renderer branches in the preview engine, one of four after-save
+    thumbnail blocks, its own save and import pair, its own thumbnail
+    method, and a preference; SideFX is retiring the renderer and 1.0
+    has not shipped, so there is no install base to carry it for.
+
+    SOURCE-DERIVED, because the surface was spread across eight modules
+    and a partial removal is the failure mode: a leftover `"Mantra" in
+    renderer` branch is unreachable code that still reads as support,
+    and a leftover preference key still draws a checkbox. This scans
+    for the renderer as a VALUE and as an IDENTIFIER rather than for
+    the word, so a comment may still explain what a removal left
+    behind - `Material.builder` is written by every save and, since the
+    only reader was `load_interface_mantra`, is now read by nothing.
+    """
+
+    def test_no_source_file_supports_mantra(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for folder, _dirs, files in os.walk(root):
+            if "tests" in folder or "__pycache__" in folder:
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, encoding="utf-8") as handle:
+                    lines = handle.read().splitlines()
+                # PROSE MAY NAME IT; CODE MAY NOT. Saying what a
+                # removal left behind is how the next author learns not
+                # to re-add it, so comments and docstrings are exempt
+                # and only executable lines are scanned. Docstring
+                # state is tracked because a `"""` block is prose that
+                # does not start with `#`.
+                in_doc = False
+                for number, line in enumerate(lines, 1):
+                    bare = line.strip()
+                    fences = line.count('"""') + line.count("'''")
+                    was_in_doc = in_doc
+                    if fences % 2:
+                        in_doc = not in_doc
+                    if was_in_doc or in_doc or bare.startswith("#"):
+                        continue
+                    code = line.split("#")[0]
+                    if '"Mantra"' in code or "'Mantra'" in code:
+                        offenders.append("%s:%d value" % (name, number))
+                    elif "mantra" in code.lower():
+                        offenders.append("%s:%d name" % (name, number))
+        self.assertEqual(
+            [], offenders,
+            "Mantra was dropped, so a branch or a name that still "
+            "carries it is either dead code reading as support or a "
+            "control with nothing behind it: %s" % offenders)
 
 
 if __name__ == "__main__":

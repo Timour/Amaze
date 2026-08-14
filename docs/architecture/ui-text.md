@@ -144,7 +144,6 @@ SHELL is the design, the CONTROLS are Houdini's.
 
 - All
 - Karma
-- Mantra
 - Redshift
 - Octane
 
@@ -498,7 +497,6 @@ TOGGLE SWITCHES, not tick checkboxes.)*
   - Parallel Downloads
 - **Show/Hide** tab  *(renderer switches, divider, section switches)*
   - Karma
-  - Mantra
   - Redshift
   - Octane
   - ---- divider ----

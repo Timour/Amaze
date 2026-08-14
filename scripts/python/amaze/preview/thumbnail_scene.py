@@ -73,7 +73,11 @@ class ThumbNailScene:
     Generates a Thumbnail Scene and allows for Rendering Material Preview
     """
 
-    def __init__(self, renderer: str = "Mantra"):
+    def __init__(self, renderer: str):
+        # No default. It used to be "Mantra", which meant a caller that
+        # forgot the argument silently built a scene for a renderer
+        # instead of failing - and the door's own docstring has always
+        # written it as ThumbNailScene(renderer), with no default.
         self.renderer = renderer
 
         # Checked BEFORE anything is created in the scene: raising after
@@ -111,41 +115,25 @@ class ThumbNailScene:
         try:
             self.display = ocio["display"]
             self.view = ocio["view"]
-            self.space = ocio["space"]
+            # `space` is deliberately not kept. The working space was
+            # read only by the old cop2net bake, which was Mantra's;
+            # karma_scene reads its own from ocio_from_viewer().
 
             self.build_parm_templates()
 
             self.geo_node.parm("path").set(
                 "$HIP/render/$HIPNAME.$OS.$F4.exr")
-            self.geo_node.parm("cop_out_img").set(
-                "$HIP/render/$HIPNAME.$OS.$F4.png")
             self.geo_node.parm("resx").set(512)
             self.geo_node.parm("resy").set(512)
             self.geo_node.parm("lights").set("*")
 
-            if "Mantra" in renderer:
-                self.shaderball = shaderball_scene.ShaderBallSetup(
-                    self.renderer, self.geo_node
-                )
-
-                self.build_scene()
-                self.shaderball.get_geo_node().parm("mat_ball").set(
-                    self.geo_node.parm("mat")
-                )
-                self.comp.parm("execute").set(self.geo_node.parm("render"))
-
-            elif "Redshift" in renderer:
-                self.shaderball = shaderball_scene.ShaderBallSetup(
-                    self.renderer, self.geo_node
-                )
-
-                self.build_scene()
-                self.shaderball.get_geo_node().parm("mat_ball").set(
-                    self.geo_node.parm("mat")
-                )
-                self.rop.parm("execute").set(self.geo_node.parm("render"))
-
-            elif "Octane" in renderer:
+            # ONE BODY FOR BOTH RENDERERS. It was three branches, one
+            # per renderer, character-identical except that Mantra
+            # executed through `self.comp` - the extra ROP its own
+            # EXR->PNG bake needed. With Mantra gone the remaining two
+            # were the same body twice, so the branch is only about
+            # which renderers this scene serves at all.
+            if "Redshift" in renderer or "Octane" in renderer:
                 self.shaderball = shaderball_scene.ShaderBallSetup(
                     self.renderer, self.geo_node
                 )
@@ -208,31 +196,18 @@ class ThumbNailScene:
         )
         self.geo_node.addSpareParmTuple(data_template)
 
-        data_template = hou.StringParmTemplate(
-            "cop_out_img",
-            "Output Picture",
-            1,
-            string_type=hou.stringParmType.FileReference,
-        )
-        self.geo_node.addSpareParmTuple(data_template)
-
         data_template = hou.ButtonParmTemplate("render", "Render", script_callback=None)
         self.geo_node.addSpareParmTuple(data_template)
 
     def build_scene(self) -> None:
         """
-        Build the entire Scene with Lights, Camera, Rops and Cops
+        Build the entire Scene with Lights, Camera and Rops
         """
         self.ropnet = self.geo_node.createNode("ropnet")
-        # The cop2net belongs to build_cops' Mantra branch, its only
-        # user - built here unconditionally, every Redshift and Octane
-        # scene carried a dead node per render.
-        self.copnet = None
 
         self.build_lights()
         self.build_cam()
         self.build_rops()
-        self.build_cops()
 
         self.geo_node.layoutChildren()
 
@@ -240,40 +215,7 @@ class ThumbNailScene:
         """
         Build Lights for the set Renderer
         """
-        if "Mantra" in self.renderer:
-            # Lights
-            self.lgt_right = self.geo_node.createNode("hlight::2.0")
-            self.lgt_right.setName("Right")
-            self.lgt_env = self.geo_node.createNode("envlight")
-            self.lgt_env.setName("Env")
-            self.lgt_left = self.geo_node.createNode("hlight::2.0")
-            self.lgt_left.setName("Left")
-
-            # Right
-            safe_set(self.lgt_right, "tx", 0.182989)
-            safe_set(self.lgt_right, "ty", 0.400678)
-            safe_set(self.lgt_right, "tz", -0.637707)
-            safe_set(self.lgt_right, "rx", -164.722)
-            safe_set(self.lgt_right, "ry", 0)
-            safe_set(self.lgt_right, "rz", 0)
-            safe_set(self.lgt_right, "light_type", 2)
-            safe_set(self.lgt_right, "light_intensity", 0.5)
-            safe_set(self.lgt_right, "areasize1", 0.25)
-            safe_set(self.lgt_right, "areasize2", 0.25)
-            safe_set(self.lgt_right, "singlesided", 1)
-            # Left
-            safe_set(self.lgt_left, "tx", 0.00626206)
-            safe_set(self.lgt_left, "ty", 0.290401)
-            safe_set(self.lgt_left, "tz", 0.562686)
-            safe_set(self.lgt_left, "rx", 180)
-            safe_set(self.lgt_left, "ry", 180)
-            safe_set(self.lgt_left, "rz", 0)
-            safe_set(self.lgt_left, "light_type", 2)
-            safe_set(self.lgt_left, "light_intensity", 0.06)
-            safe_set(self.lgt_left, "areasize1", 0.5)
-            safe_set(self.lgt_left, "areasize2", 0.5)
-            safe_set(self.lgt_left, "singlesided", 1)
-        elif "Redshift" in self.renderer:
+        if "Redshift" in self.renderer:
             # Lights
             self.lgt_right = self.geo_node.createNode("rslight")
             self.lgt_right.setName("Right")
@@ -472,45 +414,7 @@ class ThumbNailScene:
         Build Rops for the set Renderer
         """
 
-        if "Mantra" in self.renderer:
-            # RopNet Setup
-            self.rop = self.ropnet.createNode("ifd")
-            self.comp = self.ropnet.createNode("comp")
-            self.comp.setNextInput(self.rop)
-
-            self.rop.parm("camera").set("../../RenderCam")
-
-            self.rop.parm("vm_writecheckpoint").set(0)
-
-            self.rop.parm("vm_renderengine").set("pbrraytrace")
-            self.rop.parm("vm_samplesx").set(3)
-            self.rop.parm("vm_samplesy").set(3)
-            self.rop.parm("vm_variance").set(0.025)
-
-            self.rop.parm("vm_reflectlimit").set(1)
-            self.rop.parm("vm_refractlimit").set(2)
-            self.rop.parm("vm_diffuselimit").set(1)
-            self.rop.parm("vm_ssslimit").set(1)
-            self.rop.parm("vm_volumelimit").set(1)
-
-            self.rop.parm("vm_usemaxthreads").set(2)
-
-            self.rop.parm("excludeobject").set(self.geo_node.parm("obj_exclude"))
-            self.rop.parm("alights").set(self.geo_node.parm("lights"))
-            self.rop.parm("soho_autoheadlight").set(0)
-
-            self.rop.parm("soho_foreground").set(1)
-
-            self.rop.parm("vm_picture").set("`chs('../../path')`")
-            self.comp.parm("coppath").set("../../exr_to_png/OUT")
-            self.comp.parm("copoutput").set(self.geo_node.parm("cop_out_img"))
-            self.comp.parm("convertcolorspace").set(3)
-            self.comp.parm("ocio_display").set(self.display)
-            self.comp.parm("ocio_view").set(self.view)
-
-            self.comp.parm("trange").set(0)
-
-        elif "Redshift" in self.renderer:
+        if "Redshift" in self.renderer:
             self.rop = self.ropnet.createNode("Redshift_ROP")
             safe_set(self.rop, "RS_renderCamera", "../../RenderCam")
             safe_set(self.rop, "RS_OCIOColorCorrection", 1)
@@ -567,30 +471,6 @@ class ThumbNailScene:
                 self.geo_node.parm("path"),
                 follow_parm_reference=False,
             )
-
-    def build_cops(self) -> None:
-        """
-        Build COPs for the set Renderer
-        """
-        if "Mantra" in self.renderer:
-            # CopNet Setup - created here, in its only user's branch.
-            self.copnet = self.geo_node.createNode("cop2net")
-            self.copnet.setName("exr_to_png")
-
-            cop_file = self.copnet.createNode("file")
-            cop_file.parm("nodename").set(0)
-            # Mantra's vm_picture is already bound to the "path" spare
-            # parm in build_rops() via an hscript chs() expression.
-            cop_file.parm("filename1").set(self.rop.parm("vm_picture"))
-            cop_file.parm("colorspace").set(3)  # Set to OpenColorIO
-            cop_file.parm("ocio_space").set(self.space)
-
-            self.cop_out = self.copnet.createNode("null")
-            self.cop_out.setInput(0, cop_file)
-
-            self.cop_out.setGenericFlag(hou.nodeFlag.Display, True)
-            self.cop_out.setGenericFlag(hou.nodeFlag.Render, True)
-            self.cop_out.setName("OUT", True)
 
     def get_node(self) -> hou.Node:
         """

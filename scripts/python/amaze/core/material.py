@@ -487,10 +487,14 @@ class Material:
 
     @builder.setter
     def builder(self, value) -> None:
-        """Whether the saved node WAS a builder. Read-only until now,
-        so add_asset could not record it and every newly saved Mantra
-        asset carried 0 - which made load_interface_mantra skip the
-        saved .interface entirely."""
+        """Whether the saved node WAS a builder.
+
+        NOTHING READS THIS SINCE 2026-08-14. Its one consumer was the
+        import path of the renderer dropped that day, which used it to
+        decide whether to restore the container's own parameter
+        interface. Every save still records it, and the field stays on
+        the record rather than being stripped by a schema step, so the
+        decision to retire it can be taken on its own."""
         self._builder = int(bool(value))
 
     @property

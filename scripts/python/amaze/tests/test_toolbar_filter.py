@@ -125,7 +125,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "Materials lost its everything-entry")
         for label in material[1:]:
             self.assertIn(
-                label, ["Karma", "Mantra", "Redshift", "Octane"],
+                label, ["Karma", "Redshift", "Octane"],
                 "Materials offers something that is not a renderer")
 
     def test_the_panel_never_interprets_a_value(self):
