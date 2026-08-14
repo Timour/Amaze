@@ -29,11 +29,13 @@ and for a build ROLLBACK on THIS machine, which is a real case and the
 only back-compatibility a per-machine file can offer.
 
 **The copy also carries the ORDER.** A store is a dict written with
-`sort_keys=True`, so insertion order does not survive a write - and
-location order is registration order, which no user authored and no
-gesture can change. Keeping the local list's order means adding a
-location on one Mac does not reshuffle the sidebar on the other; order
-is a local presentation detail, membership is the shared fact.
+`sort_keys=True`, so insertion order does not survive a write - order
+lives in the local list alone. Since 2026-08-14 that order is
+USER-AUTHORED: the sidebar's press-hold gesture moves a row through
+`move_registered` and persists through `commit_registered_order`.
+Keeping the local list's order means adding a location on one Mac does
+not reshuffle the sidebar on the other; order is a local presentation
+detail, membership is the shared fact.
 
 **The records are PER-USER since ROADMAP line 22 stage C**: the store
 declares `user_tagged`, so each user of a shared library registers
@@ -390,6 +392,46 @@ def registered_paths(preferences) -> list:
     ordered = [path for path in known if path in live]
     ordered.extend(sorted(live.difference(ordered)))
     return [hostos.expand_storage_path(p) for p in ordered]
+
+
+def move_registered(preferences, path: str, row: int) -> bool:
+    """Move one registered location to another row of the sidebar
+    order - the press-hold gesture's move step, IN MEMORY only.
+
+    The order is the settings copy's and only the copy's (the store is
+    a sorted dict - the module docstring's ORDER paragraph), so a move
+    rewrites the copy: the CURRENT sidebar order with `path` placed at
+    `row`, adopted whole so a store-only path that was riding at the
+    end gets a real position the first time the user orders anything.
+    In this module because both ends of the copy already are - and
+    never an index assignment into whatever list an accessor hands
+    back (`FolderListModel`'s own rule).
+
+    Deliberately NO save: the gesture moves live while the mouse is
+    down and `commit_registered_order` persists once on release.
+    """
+    current = registered_paths(preferences)
+    if path not in current:
+        return False
+    at = current.index(path)
+    row = max(0, min(int(row), len(current) - 1))
+    if at == row:
+        return False
+    current.insert(row, current.pop(at))
+    hold = getattr(preferences, "hold_folder_order", None)
+    if not callable(hold):
+        return False
+    hold([hostos.storage_path_key(p) for p in current])
+    return True
+
+
+def commit_registered_order(preferences) -> None:
+    """Persist the order `move_registered` staged - one write per
+    gesture, on release. The copy already holds the order (that is
+    what a move mutates), so this is the plain settings save; the
+    next `_sync_mirror` rebuilds `registered_paths` FROM this copy,
+    which is how the order survives every later store write."""
+    preferences.save()
 
 
 def _copy_tag(preferences) -> str:

@@ -61,7 +61,11 @@ BINDINGS = {
         "grid": "gradient_sorted_model",
         "selection": "gradient_selection_model",
         "delegate": "gradient_delegate",
-        "sidebar": "gradient_categories_model",
+        # CHANGED 2026-08-14, deliberately: Color's sidebar goes
+        # through the same CategoriesSidebarProxy as the asset
+        # sections (unsorted - the manual order round). It was the
+        # bare model, the last odd-one-out pipeline.
+        "sidebar": "gradient_category_sorted_model",
     },
     "cop": {
         "grid": "cop_sorted_model",

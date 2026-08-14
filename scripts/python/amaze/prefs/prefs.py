@@ -624,6 +624,19 @@ class Prefs(_Persistence):
             self._file_favorites = list(favourites)
         self.save()
 
+    def hold_folder_order(self, order) -> None:
+        """Stage a USER-AUTHORED sidebar order for the registered
+        locations, WITHOUT saving - the reorder gesture's in-flight
+        state, mutated per row crossing while the mouse is down.
+
+        `core/locations.py` is the only caller (`move_registered`),
+        because both ends of the copy live there; the gesture persists
+        once on release through `commit_registered_order`, and Esc
+        stages the snapshot back through the same door. Storage
+        spelling, like everything in `_file_folders`.
+        """
+        self._file_folders = [str(p) for p in (order or [])]
+
     def add_file_folder(self, path: str) -> None:
         from amaze.core import locations
         locations.register(self, path)
@@ -665,6 +678,15 @@ class Prefs(_Persistence):
         self._file_folders.insert(min(at, len(self._file_folders)), new)
         self.save()
         return True
+
+    def move_file_folder(self, path: str, row: int) -> bool:
+        """Move one registered location to sidebar row `row` (0-based
+        among the folders, the All row excluded) - the reorder
+        gesture's move, IN MEMORY; the gesture saves once on release.
+        The same locations-module door the add/remove/relocate
+        siblings use."""
+        from amaze.core import locations
+        return locations.move_registered(self, path, row)
 
     @property
     def file_favorites(self) -> list[str]:

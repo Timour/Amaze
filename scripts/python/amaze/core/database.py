@@ -788,8 +788,10 @@ class DatabaseConnector:
                         % (self._filename, malformed))
                 self._migrate(parsed)
                 self._data = parsed
-                if self._filename != "library.json":
-                    self._normalize_all_category()
+                # EVERY category-bearing database - the primary was
+                # exempt while the name sort hid where _All sat, and
+                # the manual order shows the stored list as it is.
+                self._normalize_all_category()
                 self._note_suspicious_shrink(full)
             self._remember_disk_state()
         return self._data
@@ -911,10 +913,19 @@ class DatabaseConnector:
         # which the user loses something.
 
     def _normalize_all_category(self) -> None:
-        """One-time repair for secondary databases seeded before the
-        "_All" convention was honored there: a plain "All" entry sorted
-        alphabetically among real categories instead of pinning to the
-        top. Rewrites it to "_All" (and guarantees the entry exists)."""
+        """The categories invariant, kept at load: `_All` exists and
+        sits at row 0, and a pre-convention plain "All" is rewritten
+        rather than kept as a second row.
+
+        It was a one-time repair for the SECONDARY databases only,
+        and insert-if-missing only, because the primary's seeds put
+        `_All` first and the sidebar's name sort hid where the entry
+        actually sat. The manual order (2026-08-14) shows the stored
+        list as it is, so a stray `_All` mid-list would simply SHOW
+        mid-list - every category-bearing database keeps the
+        invariant now, library.json included.
+
+        IN PLACE throughout: models alias this list (see `set`)."""
         cats = self._data.get("categories")
         if not isinstance(cats, list):
             return
@@ -924,6 +935,10 @@ class DatabaseConnector:
             changed = True
         if "_All" not in cats:
             cats.insert(0, "_All")
+            changed = True
+        elif cats[0] != "_All":
+            cats[:] = (["_All"]
+                       + [c for c in cats if c != "_All"])
             changed = True
         if changed:
             self.save()

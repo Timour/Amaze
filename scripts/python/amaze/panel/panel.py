@@ -458,13 +458,14 @@ class MatLibPanel(QtWidgets.QWidget):
         return button
 
     def setup(self):
+        # UNSORTED, all four sidebar proxies: the stored list order IS
+        # the sidebar order (manual, drag-to-reorder - 2026-08-14).
+        # The name sort put "_All" below any digit-named category; the
+        # proxy now presents source order (probed) and only filters.
         self.category_model = category.Categories(preferences=self.prefs)
         self.category_sorted_model = category.CategoriesSidebarProxy()
         self.category_sorted_model.setSourceModel(self.category_model)
-        self.category_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.category_sorted_model.setSortRole(self.category_model.CatSortRole)
         self.category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-        self.category_sorted_model.sort(0)
 
         self.material_model = library.MaterialLibrary(preferences=self.prefs)
         self.material_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
@@ -571,6 +572,15 @@ class MatLibPanel(QtWidgets.QWidget):
         self.gradient_categories_model = gradient_library.GradientCategories(
             preferences=self.prefs
         )
+        # The SAME proxy class as the other three sidebars, unsorted
+        # like them (2026-08-14). Color showing its model bare was the
+        # last odd-one-out pipeline; nothing hides here (no renderer
+        # filter is ever pushed), the unification is the point.
+        self.gradient_category_sorted_model = category.CategoriesSidebarProxy()
+        self.gradient_category_sorted_model.setSourceModel(
+            self.gradient_categories_model)
+        self.gradient_category_sorted_model.hide_empty = (
+            self.prefs.hide_empty_categories)
         self.gradient_sorted_model = gradient_library.GradientFilterProxyModel()
         self.gradient_sorted_model.setSourceModel(self.gradient_model)
         self.gradient_selection_model = QtCore.QItemSelectionModel(
@@ -599,10 +609,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cop_category_model = cop_library.CopCategories(preferences=self.prefs)
         self.cop_category_sorted_model = category.CategoriesSidebarProxy()
         self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
-        self.cop_category_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.cop_category_sorted_model.setSortRole(self.cop_category_model.CatSortRole)
         self.cop_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-        self.cop_category_sorted_model.sort(0)
         self.cop_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
         self.cop_sorted_model.setSourceModel(self.cop_model)
         self.cop_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
@@ -620,10 +627,7 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self.code_category_sorted_model = category.CategoriesSidebarProxy()
         self.code_category_sorted_model.setSourceModel(self.code_category_model)
-        self.code_category_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.code_category_sorted_model.setSortRole(self.code_category_model.CatSortRole)
         self.code_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-        self.code_category_sorted_model.sort(0)
         self.code_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
         self.code_sorted_model.setSourceModel(self.code_model)
         self.code_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
@@ -723,6 +727,11 @@ class MatLibPanel(QtWidgets.QWidget):
         # self._section() instead of branching on current_section - a new
         # section is a new class in panel/sections.py, not edits here.
         self.sections = sections.build_sections(self)
+
+        # The press-hold sidebar reorder - one controller for the one
+        # sidebar list, asking whichever context is active. Parented
+        # to cat_list, so it dies with the widget.
+        self.sidebar_reorder = sidebar.SidebarReorder(self)
 
         # Tile subtitle line follows the accent preference for EVERY
         # tile delegate (instance attribute shadows the class default;
@@ -5584,18 +5593,12 @@ class MatLibPanel(QtWidgets.QWidget):
             getattr(self, "category_model", None),
             getattr(self, "cop_category_model", None),
             getattr(self, "code_category_model", None),
+            getattr(self, "gradient_categories_model", None),
         ):
             if cats_model is not None:
                 cats_model.drop_count_cache()
-        proxy = getattr(self, "category_sorted_model", None)
-        if proxy is not None:
+        for proxy in self.sidebar_proxies():
             proxy.invalidateFilter()
-        cop_proxy = getattr(self, "cop_category_sorted_model", None)
-        if cop_proxy is not None:
-            cop_proxy.invalidateFilter()
-        code_proxy = getattr(self, "code_category_sorted_model", None)
-        if code_proxy is not None:
-            code_proxy.invalidateFilter()
         if self.cat_list is not None:
             self.cat_list.viewport().update()
 
@@ -5608,6 +5611,9 @@ class MatLibPanel(QtWidgets.QWidget):
         "material": "category_sorted_model",
         "cop": "cop_category_sorted_model",
         "code": "code_category_sorted_model",
+        # Color joined the shared proxy 2026-08-14 (unsorted like the
+        # rest; nothing ever hides - no renderer filter is pushed).
+        "gradient": "gradient_category_sorted_model",
     }
 
     def sidebar_proxies(self) -> tuple:

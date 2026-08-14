@@ -216,6 +216,7 @@ class FileFolders(folders.FolderListModel):
     add_folder_method = "add_file_folder"
     remove_folder_method = "remove_file_folder"
     relocate_folder_method = "relocate_file_folder"
+    move_folder_method = "move_file_folder"
 
     def matches(self, filename: str) -> bool:
         """The flat contract, answered by the per-LOCATION rule.

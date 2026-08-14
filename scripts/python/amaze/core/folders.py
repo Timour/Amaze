@@ -79,6 +79,10 @@ class FolderListModel(QtCore.QAbstractListModel):
     #: handing back the live list is an implementation detail this model
     #: must not rest on.
     relocate_folder_method = ""
+    #: Prefs method that moves one registered folder to a row - the
+    #: sidebar reorder gesture. Same named-call rule as its siblings.
+    #: Empty = this section's folders do not reorder.
+    move_folder_method = ""
 
     def __init__(self, preferences, parent: QtCore.QObject | None = None) -> None:
         super().__init__()
@@ -259,6 +263,63 @@ class FolderListModel(QtCore.QAbstractListModel):
         getattr(self.preferences, self.remove_folder_method)(path)
         self.endRemoveRows()
         self.refresh_counts()
+
+    def move_folder(self, from_row: int, to_row: int) -> bool:
+        """Move one registered folder to another VIEW row - the
+        sidebar's press-hold reorder, in memory (the gesture persists
+        once on release). Row 0 is the synthetic "All" entry: it never
+        moves and nothing lands on it.
+
+        Bracketed by the MOVE signals with beginMoveRows' pre-move
+        destination (+1 moving down - research.md ▸ Model row moves);
+        the truth moves through the NAMED prefs call, this class's own
+        rule. A section whose folders do not reorder simply leaves
+        `move_folder_method` empty."""
+        if not self.move_folder_method:
+            return False
+        folders = self._folders()
+        count = len(folders)
+        if not (1 <= from_row <= count and 1 <= to_row <= count):
+            return False
+        if from_row == to_row:
+            return False
+        path = folders[from_row - 1]
+        destination = to_row if to_row < from_row else to_row + 1
+        if not self.beginMoveRows(QtCore.QModelIndex(), from_row,
+                                  from_row, QtCore.QModelIndex(),
+                                  destination):
+            return False
+        try:
+            moved = bool(getattr(self.preferences,
+                                 self.move_folder_method)(path,
+                                                          to_row - 1))
+        finally:
+            self.endMoveRows()
+        if not moved:
+            # The view moved and the truth did not (a race with another
+            # pane's mutation between the guard and the call): resync
+            # the view to the truth rather than leave them disagreeing.
+            self.beginResetModel()
+            self.endResetModel()
+        return moved
+
+    def restore_folder_order(self, paths) -> None:
+        """Put a snapshot's order back - the reorder gesture's Esc.
+        A whole-row-set statement, so it wears the reset pair; each
+        placement still goes through the NAMED prefs call, never a
+        list assignment."""
+        if not self.move_folder_method:
+            return
+        paths = [p for p in (paths or [])]
+        if paths == list(self._folders()):
+            return
+        self.beginResetModel()
+        try:
+            mover = getattr(self.preferences, self.move_folder_method)
+            for row, path in enumerate(paths):
+                mover(path, row)
+        finally:
+            self.endResetModel()
 
     def relocate_folder(self, row: int, new_path: str) -> int:
         """Re-points the registered folder at ROW to NEW_PATH - for a

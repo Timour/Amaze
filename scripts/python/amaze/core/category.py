@@ -266,6 +266,59 @@ class Categories(QtCore.QAbstractListModel):
             self.save()
         return changed
 
+    def move_category(self, from_row: int, to_row: int) -> bool:
+        """Move one category to another row - the manual order.
+
+        The stored list IS the order the sidebar shows (the name sort
+        retired 2026-08-14), so a move is list surgery on the
+        connector's own list, in place, bracketed by the MOVE signals -
+        a proxy and the selection follow a move without dangling
+        (probed, research.md ▸ Model row moves).
+
+        Row 0 is `_All` (the database pins it there) and it neither
+        moves nor accepts a row above it. Deliberately NO save: the
+        gesture moves live while the mouse is down and saves once on
+        release - `commit` is the caller's word to say.
+        """
+        count = len(self._categories)
+        if not (1 <= from_row < count and 1 <= to_row < count):
+            return False
+        if from_row == to_row:
+            return False
+        # beginMoveRows speaks PRE-move coordinates: moving DOWN to
+        # become row N is destination N+1 (research.md, probed). A
+        # destination inside [from, from+1] is the no-op range Qt
+        # refuses; the guards above already exclude it.
+        destination = to_row if to_row < from_row else to_row + 1
+        if not self.beginMoveRows(QtCore.QModelIndex(), from_row,
+                                  from_row, QtCore.QModelIndex(),
+                                  destination):
+            return False
+        try:
+            # IN PLACE: pop/insert on the aliased list, never a
+            # rebuild - `_categories` is the connector's document.
+            self._categories.insert(to_row, self._categories.pop(from_row))
+        finally:
+            self.endMoveRows()
+        return True
+
+    def order_snapshot(self) -> list:
+        """The order as it stands, copied - what Esc puts back."""
+        return list(self._categories)
+
+    def restore_order(self, snapshot: list) -> None:
+        """Put a snapshot's order back, in place, under a reset pair
+        (a whole-row-set replacement, same contract as
+        normalize_categories - an unbracketed one reads out of range
+        on the native side)."""
+        if list(snapshot) == self._categories:
+            return
+        self.beginResetModel()
+        try:
+            self._categories[:] = list(snapshot)
+        finally:
+            self.endResetModel()
+
     def _recolor(self, old_name: str, new_name: str) -> None:
         """Carry a colour across a rename; drop it on a removal (empty
         new_name). An orphan key would silently reattach the old colour
@@ -376,20 +429,28 @@ class Categories(QtCore.QAbstractListModel):
 
 
 class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
-    """Sidebar NAVIGATION proxy over Categories: sorts like the plain
-    proxy it replaces, and additionally hides categories with zero
-    visible assets - you can never click your way to an empty grid.
+    """Sidebar NAVIGATION proxy over Categories: PRESENTS the stored
+    order (it does not sort - the manual order retired the name sort
+    2026-08-14, whose "_All" lost to any digit so a category called
+    "2" sat above All), and hides categories with zero visible assets
+    - you can never click your way to an empty grid. An unsorted
+    QSortFilterProxyModel tracks source order across row moves
+    (probed, research.md ▸ Model row moves), so nobody may call
+    sort()/setSortRole on an instance serving a sidebar; the stored
+    list is the order, "_All" first because the database pins it.
     "Visible" respects the Materials renderer filter (pushed into the
     source model via Categories.set_renderer_filter), so with Redshift
     selected a category holding only Karma materials hides too; "_All"
     always shows. Editing surfaces (save dialog, details dropdown,
     Move to/Add to menus) deliberately do NOT use this proxy - they
     read the source model, so empty categories stay assignable and
-    come back to life the moment a material is filed into them.
+    come back to life the moment a material is filed into them; the
+    save dialog's own proxy keeps its alphabetical sort() on purpose
+    (a dropdown you type against stays predictable).
 
     The hiding is optional (prefs.hide_empty_categories, pushed in by
-    the panel): with hide_empty False this proxy passes every row,
-    behaving exactly like the plain sorting proxy it replaced."""
+    the panel): with hide_empty False this proxy passes every row in
+    stored order."""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)

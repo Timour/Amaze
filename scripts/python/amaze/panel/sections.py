@@ -457,6 +457,76 @@ class Section:
     def select_category(self, index) -> None:
         pass
 
+    # -- the sidebar reorder contract ------------------------------------
+    #
+    # The press-hold gesture (panel/sidebar.py SidebarReorder) asks the
+    # CONTEXT, never a list of section keys - the sidebar's own retired
+    # CATEGORY_SECTIONS lesson. The sidebar shows the STORED order (the
+    # name sort retired 2026-08-14), so a move is real data movement:
+    # live while the mouse is down, persisted ONCE on release, put back
+    # whole on Esc.
+    #
+    # The bodies below are the CATEGORY-sidebar form - a
+    # CategoriesSidebarProxy over a Categories model, which is what
+    # every `reorders_sidebar` section except File shows - written once
+    # here rather than once per archetype. FolderSection overrides the
+    # five for its folder rows; a context that answers False (Online)
+    # never has them called.
+
+    #: Whether this context's sidebar rows may be reordered at all.
+    reorders_sidebar = False
+
+    def _sidebar_categories(self):
+        """(proxy, source Categories) behind this context's sidebar,
+        or (None, None) where the sidebar is not that shape."""
+        proxy = self._p(self.sidebar_attr)
+        source = getattr(proxy, "sourceModel", lambda: None)()
+        if source is None or not hasattr(source, "move_category"):
+            return None, None
+        return proxy, source
+
+    def sidebar_movable(self, index) -> bool:
+        """May THIS row be picked up? Everything below All may."""
+        if not self.reorders_sidebar:
+            return False
+        if index is None or not index.isValid() or index.row() < 1:
+            return False
+        proxy, source = self._sidebar_categories()
+        if proxy is None:
+            return False
+        raw = proxy.index(index.row(), 0).data(source.CatSortRole)
+        return bool(raw) and raw != "_All"
+
+    def move_sidebar_row(self, index, to_view_row: int) -> bool:
+        """Move the row at `index` to VIEW row `to_view_row` - never
+        above All (clamped, so a drag past the top parks the row at
+        row 1 rather than refusing to follow the hand)."""
+        proxy, source = self._sidebar_categories()
+        if proxy is None or index is None or not index.isValid():
+            return False
+        to_view_row = max(1, min(int(to_view_row), proxy.rowCount() - 1))
+        from_source = proxy.mapToSource(
+            proxy.index(index.row(), 0)).row()
+        to_source = proxy.mapToSource(
+            proxy.index(to_view_row, 0)).row()
+        return source.move_category(from_source, to_source)
+
+    def sidebar_order_snapshot(self):
+        """The order before the gesture - what Esc puts back."""
+        _proxy, source = self._sidebar_categories()
+        return None if source is None else source.order_snapshot()
+
+    def restore_sidebar_order(self, snapshot) -> None:
+        _proxy, source = self._sidebar_categories()
+        if source is not None and snapshot is not None:
+            source.restore_order(snapshot)
+
+    def commit_sidebar_order(self) -> None:
+        """One write per gesture, on release."""
+        _proxy, source = self._sidebar_categories()
+        if source is not None:
+            source.save()
+
     def double_click(self, index) -> None:
         pass
 
@@ -658,6 +728,10 @@ class AssetSection(Section):
     Categories sidebar, filtered by the MultiFilterProxyModel. All three
     share the same filter/favourite/category logic; they differ only in
     which models they name and what a double-click does."""
+
+    #: The base's category-sidebar reorder bodies fit as written -
+    #: `sidebar_attr` names a CategoriesSidebarProxy here.
+    reorders_sidebar = True
 
     model_attr = ""
     proxy_attr = ""
@@ -1642,6 +1716,43 @@ class FolderSection(Section):
         if proxy is not None:
             proxy.set_kind_filter(value)
 
+    # -- the sidebar reorder contract, in FOLDER terms -------------------
+    #
+    # Same gesture, same one-write-on-release rule as the category
+    # form; the rows are registered locations and the truth moves
+    # through the FolderListModel's named prefs calls. The order is
+    # this machine's own (locations.py ▸ the ORDER paragraph), so a
+    # reorder here never reshuffles another machine's sidebar.
+
+    reorders_sidebar = True
+
+    def sidebar_movable(self, index) -> bool:
+        model = self._p(self.sidebar_attr)
+        if model is None or index is None or not index.isValid():
+            return False
+        # Row 0 is the synthetic All row; everything below it is real.
+        return 1 <= index.row() <= len(model._folders())
+
+    def move_sidebar_row(self, index, to_view_row: int) -> bool:
+        model = self._p(self.sidebar_attr)
+        if model is None or index is None or not index.isValid():
+            return False
+        to_view_row = max(1, min(int(to_view_row), model.rowCount() - 1))
+        return model.move_folder(index.row(), to_view_row)
+
+    def sidebar_order_snapshot(self):
+        model = self._p(self.sidebar_attr)
+        return None if model is None else list(model._folders())
+
+    def restore_sidebar_order(self, snapshot) -> None:
+        model = self._p(self.sidebar_attr)
+        if model is not None and snapshot is not None:
+            model.restore_folder_order(snapshot)
+
+    def commit_sidebar_order(self) -> None:
+        from amaze.core import locations
+        locations.commit_registered_order(self.panel.prefs)
+
     def activate(self) -> None:
         """Point the shared list/grid widgets at this section's models
         and restore the folder the user last had open.
@@ -2424,10 +2535,27 @@ class GradientSection(Section):
     #: `sidebar_attr` names a PROXY, which is exactly why this cannot
     #: be derived from `sidebar_attr` across the archetypes.
     library_model_attrs = ("gradient_model", "gradient_categories_model")
-    sidebar_attr = "gradient_categories_model"
+    #: The SAME proxy class the asset sidebars go through (2026-08-14).
+    #: Color showing its model bare was the last odd-one-out sidebar
+    #: pipeline, which is where the sections' order behaviour drifted
+    #: apart. Nothing hides here - no renderer filter is ever pushed,
+    #: so every row passes - the pipeline is what is unified.
+    sidebar_attr = "gradient_category_sorted_model"
     delegate_attr = "gradient_delegate"
     proxy_attr = "gradient_sorted_model"
     selection_attr = "gradient_selection_model"
+
+    #: The base's category-sidebar reorder bodies fit unchanged.
+    reorders_sidebar = True
+
+    def _sidebar_source_row(self, index) -> int:
+        """A cat_list index is a PROXY index since the sidebar proxy
+        arrived; `filter_for_row` speaks source rows."""
+        if index is None or not index.isValid():
+            return -1
+        return self.panel.gradient_category_sorted_model.mapToSource(
+            self.panel.gradient_category_sorted_model.index(
+                index.row(), 0)).row()
 
     def activate(self) -> None:
         """The same four bindings as every other section; the one thing
@@ -2648,10 +2776,12 @@ class GradientSection(Section):
         self.panel.gradient_model.remove_user_category(name)
         self.panel.gradient_categories_model.switch_model_data()
         # The removed row may have been the selection - fall back to
-        # "All" so the sidebar never points nowhere.
+        # "All" so the sidebar never points nowhere. A PROXY index:
+        # the view shows the sidebar proxy since 2026-08-14, and a
+        # source index setCurrentIndex silently selects nothing.
         self.panel.gradient_sorted_model.set_sidebar_filter("all", None)
         self.panel.cat_list.setCurrentIndex(
-            self.panel.gradient_categories_model.index(0, 0))
+            self.panel.gradient_category_sorted_model.index(0, 0))
 
     def tile_models(self):
         return self.panel.gradient_model, self.panel.gradient_sorted_model
@@ -2720,7 +2850,7 @@ class GradientSection(Section):
 
     def select_category(self, index) -> None:
         kind, value = self.panel.gradient_categories_model.filter_for_row(
-            index.row()
+            self._sidebar_source_row(index)
         )
         self.panel.gradient_sorted_model.set_sidebar_filter(kind, value)
 
@@ -2739,7 +2869,7 @@ class GradientSection(Section):
         if index is None or not index.isValid():
             return ""
         kind, value = self.panel.gradient_categories_model.filter_for_row(
-            index.row())
+            self._sidebar_source_row(index))
         return str(value or "") if kind == "category" else ""
 
     def sidebar_colour(self, name: str) -> str:
