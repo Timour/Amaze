@@ -36,7 +36,10 @@ AMAZE_SYNC_NO_VERIFY=1 AMAZE_SCRATCH_INSTALL="$scratch" \
     "$repo/tools/sync-install.sh" >/dev/null
 export AMAZE="$scratch"
 export HOUDINI_PACKAGE_SKIPLIST="Amaze"
-export HOUDINI_PATH="$scratch:&"
+# `;` is portable; `:` is Unix-only and on Windows swallows the whole
+# string as one entry, so `&` never expands and `$HH` leaves the path
+# (research.md - the portable HOUDINI_PATH separator).
+export HOUDINI_PATH="$scratch;&"
 
 # Ship the proven build. Green is necessary but not sufficient: the
 # live sync still refuses a dirty tree, because the suite just proved
