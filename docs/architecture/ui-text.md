@@ -868,6 +868,26 @@ give every gesture; the File menu's Import always did.
   retries: it says the change is still in Amaze, that saving anything
   else writes it too, and that it is NOT on disk yet and will not
   survive closing Houdini.
+- `Amaze could not save your preferences.` — settings.json's own
+  denied write (2026-08-14, when it became a keyed store). Body: the
+  settings still work for this session but will not be there next time
+  Houdini opens, then `This happened because <why>` from the same
+  errno reading. **It used to end on a guess** — *the usual cause is a
+  full disk or a folder Amaze is not allowed to write to*, with the
+  path — which is the invented cause the errno reading exists to
+  replace, so the guess is gone and the measured sentence took its
+  place.
+- `Your Amaze settings could not be read, so Amaze has opened with the
+  defaults.` — unchanged wording, moved: it is declared with the store
+  now rather than written at the call site, under the same
+  once-per-session key. Body promises nothing was lost, the file was
+  kept untouched and will not be saved over, and points at the debug
+  log plus `the Repair tool in the Amaze shelf`.
+- `your settings could not be read earlier this run, so this change
+  was not saved - writing now would replace the library path, folders
+  and favourites already in the file.` — the REFUSAL sentence, new
+  2026-08-14 and the one thing settings.json lacked while every other
+  store had one. Logged rather than shown, like its five siblings.
 - `Your comment could not be saved.` / `The icon you picked could not
   be saved.` / `Your setting could not be saved.` — each followed by
   what is unchanged, then `This happened because <why>` from the same
