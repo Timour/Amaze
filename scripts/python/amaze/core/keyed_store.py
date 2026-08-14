@@ -1245,7 +1245,9 @@ def _fold(rule: str, ours, theirs):
             mine = merged[key]
             if not (isinstance(mine, dict) and isinstance(value, dict)):
                 continue                    # ours, as the shallow rule
-            missing = {}
+            missing = {field: field_value
+                       for field, field_value in value.items()
+                       if field not in mine}
             if missing:
                 # REBOUND, never mutated: `dict(ours)` is shallow, so
                 # the record under this key is the live cache's own
