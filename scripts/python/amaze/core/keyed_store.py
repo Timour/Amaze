@@ -735,6 +735,21 @@ def open_store(spec: Spec, preferences) -> "Store":
     return handle
 
 
+def own_store(spec: Spec, preferences) -> "Store":
+    """A store this caller alone holds, outside the shared cache.
+
+    The cache is right for the library's side tables: one file, one
+    table, every reader the same rows. It is wrong for a DOCUMENT whose
+    holders legitimately disagree - two panes of one Houdini each keep
+    their own view state - because the stale-write baseline that
+    decides whether to re-read a peer's file is then shared too, so the
+    second pane to save sees an unchanged file and skips the fold that
+    would have kept the first pane's folders.
+    """
+    return Store(spec, os.path.join(_root_for(spec, preferences),
+                                    spec.filename), preferences)
+
+
 class Store:
     """One library's copy of one registered store."""
 
@@ -1199,11 +1214,12 @@ class Store:
         plus a retire would be two trips to disk with a window between
         them where the file holds neither shape.
 
-        WHAT THE STORE ALREADY HOLDS IS FOLDED IN, not discarded: an
-        unmentioned key is kept, and a key both hold takes the
-        DOCUMENT's value unless a merge rule says both answers can be
-        true. Two panes of one Houdini share this Store, so the table is
-        where the other pane's last save lives.
+        THE DOCUMENT IS THE WHOLE TABLE, so a key its author dropped is
+        GONE. Delete-by-omission is what every caller here already does
+        - a migration pops the key it has just consumed - and a table
+        that kept it would put it straight back. What a PEER wrote is
+        still folded in, by `_adopt_from_disk` under the same rules,
+        which is where the unknown-key courtesy lives.
 
         `retire` names the keys this build has REMOVED, dropped after
         the adoption (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS).
@@ -1211,18 +1227,8 @@ class Store:
         if not isinstance(document, dict):
             raise TypeError("a document is an object, not %s"
                             % type(document).__name__)
-        staged = dict(self._table)
-        for key, value in document.items():
-            key = str(key)
-            if key not in staged:
-                staged[key] = value
-                continue
-            folded = _fold(rule_for(self.spec.merge_rules, (key,))
-                           or MERGE_MINE,
-                           value, staged[key],
-                           self.spec.merge_rules, (key,))
-            staged[key] = value if folded is None else folded
-        return self._commit(staged, tuple(document), retire=retire)
+        staged = {str(key): value for key, value in document.items()}
+        return self._commit(staged, tuple(staged), retire=retire)
 
     def reread(self) -> Written:
         """Read the file again, discarding what this Store cached.

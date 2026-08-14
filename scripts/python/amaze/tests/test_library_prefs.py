@@ -77,16 +77,20 @@ class TheStoreIsDeclared(SharedSettingsCase):
 
     def test_no_two_stores_share_an_alert_key(self):
         """Alert keys are once-per-session, so a shared key means one
-        store's report swallows the other's. persistence.py already
-        owns "prefs-unreadable" for settings.json - measured before
-        this store nearly took the same name."""
+        store's report swallows the other's.
+
+        RE-KEYED 2026-08-14: settings.json is a registered store now
+        rather than a file persistence.py guarded by hand, so the
+        near-collision this pinned is expressible directly - both
+        declarations exist, and they must differ."""
         keys = [spec.alert_key for spec in keyed_store.stores()]
         self.assertEqual(len(keys), len(set(keys)),
                          "two stores share an alert key")
-        self.assertNotIn("prefs-unreadable", keys,
-                         "settings.json raises that key in "
-                         "persistence.py - the store must not shadow "
-                         "it")
+        self.assertNotEqual(
+            keyed_store.store_for(keyed_store.SETTINGS).alert_key,
+            keyed_store.store_for(library_prefs.PREFS_FILE).alert_key,
+            "whichever file breaks first would swallow the other's "
+            "report")
 
 
 class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):

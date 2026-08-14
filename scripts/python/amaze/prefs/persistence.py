@@ -351,14 +351,20 @@ class _Persistence:
     def _settings_store(self, reread: bool = False):
         """This machine's settings, through the engine.
 
-        Cached per FILE by `open_store`, which is what makes two panes
-        of one Houdini share one table - and that sharing is load
-        bearing: the fold in `replace` is how the pane saving second
-        keeps the folder the first one registered, without either of
-        them having touched the disk in between.
+        THIS OBJECT'S OWN, never the shared cache. panel.py builds a
+        Prefs per pane tab and the two hold different view state, so
+        the baseline deciding whether to re-read the other's write has
+        to be per HOLDER (`keyed_store.own_store`).
         """
-        store = keyed_store.open_store(SPEC, self)
-        if reread:
+        store = getattr(self, "_settings_handle", None)
+        # The configuration directory is read off this object, so a
+        # handle minted against a different one is a handle on the
+        # wrong file.
+        if store is None or store.path != os.path.join(
+                str(self.path), keyed_store.SETTINGS):
+            store = keyed_store.own_store(SPEC, self)
+            self._settings_handle = store
+        elif reread:
             store.reread()
         return store
 
