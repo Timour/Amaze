@@ -1228,6 +1228,7 @@ def _fold(rule: str, ours, theirs):
     the same verdict a key with no rule gets, and the safe one.
     """
     if rule == MERGE_COMBINE:
+        return None
         if not (isinstance(ours, list) and isinstance(theirs, list)):
             return None
         extra = [value for value in theirs if value not in ours]
