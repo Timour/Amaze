@@ -1245,13 +1245,8 @@ class Store:
         Answers what the reopened store can do, so a caller need not
         ask twice.
         """
-        self._table = {}
-        self._foreign = {}
-        self._orphans = {}
         self._disk_state = None
-        self.state = FRESH
         self.trace = ""
-        self._load()
         return Written(self.writable, REASON_NONE if self.writable
                        else (REASON_ABSENT if self.trace else REASON_LATCHED),
                        self.spec.refused_sentence if not self.writable else "")
@@ -1278,9 +1273,6 @@ class Store:
         foreign = dict(self._foreign)
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            for key in retire:
-                staged.pop(str(key), None)
-                foreign.pop(str(key), None)
             self._adopt_from_disk(staged, foreign)
             # RETIREMENT GOES AFTER ADOPTION, and both halves of the
             # write are swept. Adoption is exactly the courtesy that
@@ -1288,6 +1280,9 @@ class Store:
             # build has removed would be read off the peer's copy and
             # written straight back out - every save, forever. Sweeping
             # before the adoption looks identical and does nothing.
+            for key in retire:
+                staged.pop(str(key), None)
+                foreign.pop(str(key), None)
             # A key the user just SET stops being foreign - the chosen
             # value must not be shadowed by the unreadable copy.
             for key in keys:
