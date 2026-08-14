@@ -613,6 +613,11 @@ class PaintOnlyRolesCostNoPass(unittest.TestCase):
         for proxy in self._proxies():
             with self.subTest(proxy=type(proxy).__name__):
                 model = proxy.sourceModel()
+                if hasattr(proxy, "setFilter"):
+                    # The family proxy watches exactly its ACTIVE
+                    # filters - arm the favourites filter the way the
+                    # section does, then the role must matter.
+                    proxy.setFilter(model.FavoriteRole, True)
                 self.assertTrue(
                     proxy._matters([model.FavoriteRole]),
                     "un-favouriting with Favourites-only on would "

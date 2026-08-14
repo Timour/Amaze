@@ -2570,10 +2570,11 @@ class GradientSection(Section):
                               self._p(self.delegate_attr))
         panel.texture_progress.setVisible(False)
         panel.sync_list_columns()
-        # Start on "All" (row 0) with the size filter cleared - the
+        # Start on "All" (row 0) with the category filter cleared - the
         # programmatic select below does not fire clicked(), so the
         # filter is reset explicitly.
-        self._p(self.proxy_attr).set_sidebar_filter("all", None)
+        self._p(self.proxy_attr).setFilter(
+            panel.gradient_model.CategoryRole, "")
         panel._select_default_sidebar_row(sidebar)
     #: Apply puts the gradient on the selected node's first colour ramp
     #: exactly as it was saved; "Apply as" is the deliberate override,
@@ -2779,7 +2780,8 @@ class GradientSection(Section):
         # "All" so the sidebar never points nowhere. A PROXY index:
         # the view shows the sidebar proxy since 2026-08-14, and a
         # source index setCurrentIndex silently selects nothing.
-        self.panel.gradient_sorted_model.set_sidebar_filter("all", None)
+        self.panel.gradient_sorted_model.setFilter(
+            self.panel.gradient_model.CategoryRole, "")
         self.panel.cat_list.setCurrentIndex(
             self.panel.gradient_category_sorted_model.index(0, 0))
 
@@ -2840,10 +2842,14 @@ class GradientSection(Section):
     )
 
     def filter_text(self, text: str) -> None:
-        self.panel.gradient_sorted_model.set_name_filter(text)
+        # The family filter, by role - the proxy's own name test also
+        # matches the colour names inside a palette.
+        self.panel.gradient_sorted_model.setFilter(
+            QtCore.Qt.ItemDataRole.DisplayRole, text)
 
     def filter_favorites(self, on: bool) -> None:
-        self.panel.gradient_sorted_model.set_favorites_only(on)
+        self.panel.gradient_sorted_model.setFilter(
+            self.panel.gradient_model.FavoriteRole, True if on else "")
 
     def apply_filter(self, value) -> None:
         self.panel.gradient_sorted_model.set_size_filter(value)
@@ -2852,7 +2858,9 @@ class GradientSection(Section):
         kind, value = self.panel.gradient_categories_model.filter_for_row(
             self._sidebar_source_row(index)
         )
-        self.panel.gradient_sorted_model.set_sidebar_filter(kind, value)
+        self.panel.gradient_sorted_model.setFilter(
+            self.panel.gradient_model.CategoryRole,
+            value if kind == "category" else "")
 
     def toggle_favourite(self, indexes) -> None:
         model = self.panel.gradient_model

@@ -707,6 +707,71 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
                          "identical content answered different keys")
 
 
+class TheColorsProxyIsTheFamilys(unittest.TestCase):
+    """The Colors proxy is the shared `MultiFilterProxyModel` with the
+    section's two genuinely-own dimensions on top: the palette-size
+    filter, and a name search that also reaches the colour names
+    inside a palette - the one place searching goes past the tile
+    label."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_proxy_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        with open(os.path.join(self.dir, "gradients.json"), "w",
+                  encoding="utf-8") as fh:
+            json.dump({"version": SCHEMA, "categories": ["_All", "Warm"],
+                       "assets": [
+                {"id": "a", "name": "Sunrise", "categories": ["Warm"],
+                 "colors": [{"name": "crimson", "hex": "#dc143c"},
+                            {"name": "gold", "hex": "#ffd700"}]},
+                {"id": "b", "name": "Marine", "categories": [],
+                 "colors": [{"name": "teal", "hex": "#008080"}]},
+            ]}, fh)
+        self.model = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+        self.proxy = gradient_library.GradientFilterProxyModel()
+        self.proxy.setSourceModel(self.model)
+
+    def _shown(self):
+        return sorted(
+            self.proxy.data(self.proxy.index(row, 0),
+                            QtCore.Qt.ItemDataRole.DisplayRole)
+            for row in range(self.proxy.rowCount()))
+
+    def test_it_subclasses_the_family_proxy(self):
+        from amaze.core import multifilterproxy_model
+        self.assertTrue(
+            issubclass(gradient_library.GradientFilterProxyModel,
+                       multifilterproxy_model.MultiFilterProxyModel),
+            "the Colors proxy is a separate filter engine again")
+
+    def test_the_family_category_filter_narrows_the_grid(self):
+        self.proxy.setFilter(self.model.CategoryRole, "Warm")
+        self.assertEqual(["Sunrise"], self._shown())
+        self.proxy.setFilter(self.model.CategoryRole, "")
+        self.assertEqual(["Marine", "Sunrise"], self._shown())
+
+    def test_the_name_search_also_matches_a_colour_name(self):
+        """A palette is found by what is inside it - the shipped OR,
+        which a plain family name filter would lose."""
+        self.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "teal")
+        self.assertEqual(
+            ["Marine"], self._shown(),
+            "searching a colour name no longer finds its palette")
+        self.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "sunri")
+        self.assertEqual(["Sunrise"], self._shown(),
+                         "the ordinary name search broke in the fold")
+
+    def test_the_size_filter_reads_its_range(self):
+        self.proxy.set_size_filter((2, None))
+        self.assertEqual(["Sunrise"], self._shown())
+        self.proxy.set_size_filter((1, 1))
+        self.assertEqual(["Marine"], self._shown())
+        self.proxy.set_size_filter(None)
+        self.assertEqual(["Marine", "Sunrise"], self._shown())
+
+
 class AColourStarSurvivesAReloadTest(unittest.TestCase):
     """Colors stars go through the ONE favourites store, tagged with
     their owner, like every section (ROADMAP line 21). The record field

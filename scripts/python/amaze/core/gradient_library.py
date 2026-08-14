@@ -36,12 +36,13 @@ import os
 import hou
 from PySide6 import QtCore, QtGui
 
-from amaze.core import category, grid_proxy
+from amaze.core import category
 from amaze.core import database
 from amaze.core import debug
 from amaze.core import library
 from amaze.core import locations
 from amaze.core import material
+from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
 from amaze.core import tile_icons
 from amaze.helpers import hostos
@@ -81,22 +82,6 @@ def _palette_ramp_data(colors: list) -> dict:
         h = c["hex"].lstrip("#")
         values.append([int(h[j:j + 2], 16) / 255.0 for j in (0, 2, 4)])
     return {"keys": keys, "values": values, "bases": ["Constant"] * n}
-
-
-def _row_categories(entry) -> list:
-    """The categories one palette VIEW is filed under, as a list.
-
-    The one reader the proxy shares with the section verbs. Tolerates
-    the comma-string form for the reason `Categories._category_count`
-    does - a hand-edited file, and an older build's row arriving
-    through the peer merge.
-    """
-    cats = (entry or {}).get("categories", [])
-    if isinstance(cats, str):
-        cats = cats.split(",")
-    if not isinstance(cats, list):
-        return []
-    return [c.strip() for c in cats if isinstance(c, str) and c.strip()]
 
 
 class GradientCategories(category.Categories):
@@ -767,43 +752,24 @@ class GradientLibrary(library.MaterialLibrary):
         return super().data(index, role)
 
 
-class GradientFilterProxyModel(grid_proxy.GridProxyModel):
-    """Search over names AND the color names inside entries, combined
-    with the sidebar filter (a user category) and the toolbar's size
-    filter (how many colors the palette holds).
-
-    The Grid area's invariant - what is shown and in what order - is the
-    base class's (core/grid_proxy.py), the same one the asset sections
-    and File use."""
+class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):
+    """The family proxy with Colors' two genuinely-own dimensions on
+    top: the palette-size filter, and a name search that also matches
+    the colour names inside a palette - the one place searching goes
+    past the tile label. Name, category and favourite filtering is the
+    family's, by role, so the section drives this proxy exactly like
+    its siblings drive theirs."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._name_filter = ""
-        self._kind = "all"
-        self._value = None
-        self._favorites_only = False
         self._size_filter = None
-
-    def set_name_filter(self, text: str) -> None:
-        self._name_filter = (text or "").strip().lower()
-        self.refilter()
-
-    def set_favorites_only(self, enabled: bool) -> None:
-        self._favorites_only = bool(enabled)
-        self.refilter()
-
-    def set_sidebar_filter(self, kind: str, value) -> None:
-        """("all", None) or ("category", name)."""
-        self._kind = kind
-        self._value = value
-        self.refilter()
 
     def set_size_filter(self, bounds) -> None:
         """Show only palettes holding this many colors.
 
         `bounds` is (fewest, most), `most` None meaning no upper end -
-        so "5+ colors" is (5, None) and "3 colors" is (3, 3). None
-        switches the filter off entirely.
+        so 5+ colors is (5, None) and 3 colors is (3, 3). None switches
+        the filter off entirely.
 
         A range, not a count, so the open-ended entry needs no special
         case here: the menu decides what each entry MEANS and this
@@ -813,41 +779,20 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
         self._size_filter = bounds
         self.refilter()
 
-    def watched_roles(self):
-        """Exactly what this filter reads through roles - the display
-        name and the favourite - plus the sort role. Category and size
-        are read straight off the entry, and every edit that changes
-        them announces itself structurally (reset/insert), never as a
-        role-scoped dataChanged."""
-        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
-        role = getattr(self.sourceModel(), "FavoriteRole", None)
-        if role is not None:
-            watched.add(role)
-        return watched
+    def _name_matches(self, needle: str, index) -> bool:
+        if super()._name_matches(needle, index):
+            return True
+        entry = self.sourceModel().entry(index.row()) or {}
+        needle = needle.lower()
+        return any(needle in str(color.get("name", "")).lower()
+                   for color in entry.get("colors") or ())
 
     def filterAcceptsRow(self, source_row, source_parent) -> bool:
-        model = self.sourceModel()
-        entry = model.entry(source_row)
-        if entry is None:
+        if not super().filterAcceptsRow(source_row, source_parent):
             return False
-        if self._favorites_only and not model.is_favorite(source_row):
-            return False
-        if self._kind == "category" \
-                and self._value not in _row_categories(entry):
-            return False
-        if self._size_filter is not None:
-            fewest, most = self._size_filter
-            held = len(entry.get("colors") or ())
-            if held < fewest or (most is not None and held > most):
-                return False
-        if not self._name_filter:
+        if self._size_filter is None:
             return True
-        index = model.index(source_row, 0)
-        name = (model.data(index, QtCore.Qt.ItemDataRole.DisplayRole)
-                or "").lower()
-        if self._name_filter in name:
-            return True
-        for color in entry["colors"]:
-            if self._name_filter in color["name"].lower():
-                return True
-        return False
+        entry = self.sourceModel().entry(source_row) or {}
+        fewest, most = self._size_filter
+        held = len(entry.get("colors") or ())
+        return held >= fewest and (most is None or held <= most)

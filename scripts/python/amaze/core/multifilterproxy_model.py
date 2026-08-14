@@ -57,6 +57,13 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             # it with their own invalidate() calls).
             self.refilter()
 
+    def _name_matches(self, needle: str, index) -> bool:
+        """Does this row answer the search text? The ONE family test a
+        section may widen rather than copy the whole filter walk -
+        Colors also matches the colour names inside a palette."""
+        name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        return needle.lower() in name.lower()
+
     def filterAcceptsRow(
         self,
         source_row: int,
@@ -74,9 +81,8 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             data = index.data(role)
 
             if role == 0:  # Check Names
-                if curr_filter == "":
-                    name_filter = True
-                if curr_filter.lower() not in data.lower():
+                if curr_filter != "" \
+                        and not self._name_matches(curr_filter, index):
                     name_filter = False
             elif role == 257:  # Check Category:
                 # A material matches if ANY of its categories equals the
