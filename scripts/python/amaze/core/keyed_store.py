@@ -700,14 +700,14 @@ class Store:
         values ARE settings cannot - `False` is an answer - so it
         refuses with None (`Spec.falsy_is_a_value`).
         """
+        if self.spec.falsy_is_a_value:
+            return kept is None
         return not kept
 
     def _staged_value(self, value):
         """What to store, or None to REMOVE the key. For a store of
         records a falsy value is the removal; for a settings store the
         door is `retire`, because nothing falsy can mean gone there."""
-        if self.spec.falsy_is_a_value:
-            return self.spec.normalise(value)
         if not value:
             return None
         return self.spec.normalise(value) or None
