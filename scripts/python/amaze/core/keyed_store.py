@@ -700,8 +700,6 @@ class Store:
         values ARE settings cannot - `False` is an answer - so it
         refuses with None (`Spec.falsy_is_a_value`).
         """
-        if self.spec.falsy_is_a_value:
-            return kept is None
         return not kept
 
     def _staged_value(self, value):
