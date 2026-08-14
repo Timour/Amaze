@@ -3,8 +3,8 @@
 Redshift ends a material in a terminal NODE rather than a named
 `surface` connector, so the Karma-shaped check answered False for every
 Redshift asset in the real library (research.md > Redshift terminal
-shape). Skipped where the plugin is absent, which is every H22
-session on this machine.
+shape). The plugin-dependent cases skip where Redshift is not
+installed; the spelling cases below never do.
 """
 
 import os
@@ -22,6 +22,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.core import material  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -65,6 +66,131 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
         self.assertFalse(
             nodes.surface_terminal_wired(self.builder),
             "a Redshift terminal with nothing wired must be caught")
+
+
+class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
+    """ROADMAP batch 4's displacement item, CORRECTED by measurement.
+
+    The audit said these terminals do not name their inputs at all, so
+    the converter's `Displacement` lookup could never fire. Measured
+    2026-08-14 on 22.0.407 and 21.0.729 (the probe kept beside the
+    notes): `inputNames()` DOES name them - Surface, Displacement,
+    ... - and it is `inputLabels()` that answers the generic
+    `Input 1`..`Input N`. Displacement was never broken.
+
+    One spelling is: the classic `redshift_material` says `Bump Map`,
+    the USD `redshift_usd_material` says `BumpMap`, and the converter
+    asked only for the spaced one - so a bump wired into the OUTPUT
+    node was dropped on every USD-builder material, which is the
+    majority form in a real library.
+
+    Needs no plugin: the roles are a table, and a table can be read.
+    """
+
+    SENTINEL = object()
+
+    def test_the_usd_terminals_bump_spelling_is_found(self):
+        """The polarity that was red before the table existed."""
+        self.assertIs(
+            self.SENTINEL,
+            material.terminal_input({"BumpMap": self.SENTINEL}, "bump"))
+
+    def test_the_classic_terminals_bump_spelling_is_found(self):
+        self.assertIs(
+            self.SENTINEL,
+            material.terminal_input({"Bump Map": self.SENTINEL}, "bump"))
+
+    def test_displacement_is_one_spelling_on_both(self):
+        self.assertIs(
+            self.SENTINEL,
+            material.terminal_input(
+                {"Displacement": self.SENTINEL}, "displacement"))
+
+    def test_a_role_with_nothing_wired_answers_none(self):
+        self.assertIsNone(
+            material.terminal_input({"Surface": self.SENTINEL}, "bump"))
+
+    def test_a_role_the_table_does_not_name_is_a_programming_error(self):
+        """Silence here would be a lookup that never fires - the bug."""
+        with self.assertRaises(KeyError):
+            material.terminal_input({}, "diffuse")
+
+
+class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
+    """The spellings have ONE home, so the second form cannot be missed
+    again. This is the shape batch 4 asked for in its own words: make
+    the hand-written spelling stop working so it cannot come back.
+    """
+
+    def test_the_package_asks_through_terminal_input(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for base, _dirs, files in os.walk(root):
+            if os.path.basename(base) == "tests":
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(base, name)
+                with open(path, encoding="utf-8") as handle:
+                    text = handle.read()
+                for spellings in material.TERMINAL_INPUTS.values():
+                    for spelling in spellings:
+                        if 'get("%s")' % spelling in text:
+                            offenders.append(
+                                (os.path.relpath(path, root), spelling))
+        self.assertEqual(
+            [], offenders,
+            "a terminal input is looked up by hand - go through "
+            "material.terminal_input so both spellings are tried")
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not installed")
+class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
+    """The table is a measurement, so the plugin gets to refute it.
+
+    Runs on any host with Redshift - both majors carry it since the
+    22.x plugin build appeared (research.md > Renderer plugins under
+    hython), so this is no longer a one-version test.
+    """
+
+    def _terminal(self, parent, builder_type, terminal_type):
+        builder = parent.createNode(builder_type)
+        self.addCleanup(builder.destroy)
+        for child in builder.children():
+            if child.type().name() == terminal_type:
+                return child
+        self.fail("no %s among %r" % (
+            terminal_type, [c.type().name() for c in builder.children()]))
+
+    def _classic(self):
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        return self._terminal(parent, "redshift_vopnet", "redshift_material")
+
+    def _usd(self):
+        lib = hou.node("/stage").createNode("materiallibrary")
+        self.addCleanup(lib.destroy)
+        return self._terminal(
+            lib, "rs_usd_material_builder", "redshift_usd_material")
+
+    def test_the_classic_terminal_names_every_role_the_table_claims(self):
+        names = self._classic().inputNames()
+        self.assertIn("Surface", names)
+        self.assertIn("Displacement", names)
+        self.assertIn("Bump Map", names)
+
+    def test_the_usd_terminal_spells_bump_without_a_space(self):
+        names = self._usd().inputNames()
+        self.assertIn("BumpMap", names)
+        self.assertNotIn("Bump Map", names)
+        self.assertIn("Displacement", names)
+
+    def test_the_generic_Input_N_strings_are_the_LABELS(self):
+        """The misreading that sent batch 4 after the wrong half."""
+        terminal = self._classic()
+        self.assertEqual("Surface", terminal.inputNames()[0])
+        self.assertEqual("Input 1", terminal.inputLabels()[0])
 
 
 if __name__ == "__main__":
