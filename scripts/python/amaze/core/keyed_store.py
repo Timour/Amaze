@@ -1228,7 +1228,6 @@ def _fold(rule: str, ours, theirs):
     the same verdict a key with no rule gets, and the safe one.
     """
     if rule == MERGE_COMBINE:
-        return None
         if not (isinstance(ours, list) and isinstance(theirs, list)):
             return None
         extra = [value for value in theirs if value not in ours]
@@ -1246,9 +1245,7 @@ def _fold(rule: str, ours, theirs):
             mine = merged[key]
             if not (isinstance(mine, dict) and isinstance(value, dict)):
                 continue                    # ours, as the shallow rule
-            missing = {field: field_value
-                       for field, field_value in value.items()
-                       if field not in mine}
+            missing = {}
             if missing:
                 # REBOUND, never mutated: `dict(ours)` is shallow, so
                 # the record under this key is the live cache's own
