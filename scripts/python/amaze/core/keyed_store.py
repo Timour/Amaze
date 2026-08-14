@@ -919,8 +919,7 @@ class Store:
                 # `Spec.absence_is_fresh`: settings.json's own recovery
                 # instruction is to delete it, and its `.unreadable`
                 # copy is one of the traces below.
-                self.trace = ("" if spec.absence_is_fresh
-                              else hostos.existed_before(self.path))
+                self.trace = hostos.existed_before(self.path)
                 if self.trace:
                     self.state = BLIND
                     self._refuse_and_alert(
