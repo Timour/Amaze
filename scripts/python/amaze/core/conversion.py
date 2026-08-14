@@ -318,6 +318,26 @@ def _run_process(program: str, args: list, timeout_ms: int = CONVERT_TIMEOUT_MS,
             return False, "failed to start"
 
         if (
+            process.exitStatus() == QtCore.QProcess.ExitStatus.CrashExit
+            and process.exitCode() == 0
+        ):
+            # THE THIRD PRESENTATION of a stolen reap. On Linux Qt
+            # (6.8.3, pidfd child-watching) a death reaped past Qt
+            # still delivers `finished` - but with the status gone:
+            # CrashExit and exitCode 0. A real signal death carries
+            # its signal number in exitCode (measured 2026-08-14:
+            # SIGKILL -> 9; there is no signal 0), so this pair can
+            # ONLY mean the exit was reaped elsewhere. Same verdict as
+            # the vanished case above - the child's WORK is the
+            # verdict - logged with its own door so the record tells
+            # the presentations apart. macOS never reaches here for a
+            # stolen reap (Qt goes deaf there; the watchdog answers).
+            debug.event("convert", "a child's exit was reaped elsewhere",
+                        program=program, waited_ms=timeout_ms,
+                        via="crashexit0")
+            return (True, "")
+
+        if (
             process.exitStatus() != QtCore.QProcess.ExitStatus.NormalExit
             or process.exitCode() != 0
         ):
