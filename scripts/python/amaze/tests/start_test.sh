@@ -199,7 +199,7 @@ test_empty_state"
 # geometry updates is on by default on Linux and Windows - and NOT
 # macOS, which is why the Mac gate never met it. A/B on Linux: the
 # ten crash 10/10 threaded, 334 tests green single-threaded
-# (research.md > Houdini's Vulkan viewer threading, devlog #502).
+# (research.md > Houdini's Vulkan viewer threading, devlog #504).
 # Suite-only on purpose - a live Houdini keeps its own defaults.
 export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
 echo "suite: viewport draw single-threaded for this run" \
