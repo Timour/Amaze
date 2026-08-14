@@ -127,10 +127,17 @@ quarantine_size = quarantine.quarantine_size
 quarantine_file = quarantine.quarantine_file
 
 
-class MaterialLibrary(grid_columns.GridColumnsMixin,
-                     QtCore.QAbstractTableModel):
+class AssetLibrary(grid_columns.GridColumnsMixin,
+                   QtCore.QAbstractTableModel):
+    """The SHARED asset model - records, categories, tags, tile icons,
+    saves, deletes, thumbnails plumbing and the connector's guards -
+    that every library-backed section runs on. It carries nothing
+    renderer-shaped: what a MATERIAL is (renderer detection, USD-ness,
+    shader labels, the Karma render batch, MAT/LOP routing) lives on
+    `MaterialLibrary`, so Node, Code and Color inherit a correctly
+    named home instead of subclassing a model named for another tab.
+    overview.md ▸ Models & storage carries the map."""
 
-    
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
         "type": "RendererLabelRole",
@@ -141,12 +148,10 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         "tags": "TagRole",
         "license": "LicenceRole",
     }
-#: The notes-store key prefix for this model's assets
-    #: (notes.note_key(NOTES_SECTION, id)). Subclasses override.
-    NOTES_SECTION = "material"
-    """The Model for the ThumbList View in the MatLibPanel
-    Subclasses QtCore.QAbstractListModel
-    """
+    #: The notes-store key prefix for this model's assets
+    #: (notes.note_key(NOTES_SECTION, id)). Every subclass names its
+    #: own store section.
+    NOTES_SECTION = ""
 
     # THE FAMILY'S Qt ROLES - CLASS attributes, one declaration every
     # subclass inherits. They were assigned in __init__ until
@@ -182,10 +187,10 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
     #: where the grid's badge could only say that versions exist.
     ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267
 
-    #: which json file in the library dir backs this model - the COP
-    #: section subclasses this model over its own cops.json (see
-    #: core/cop_library.py), everything else shares library.json.
-    DB_FILENAME = "library.json"
+    #: which json file in the library dir backs this model - every
+    #: subclass names its own ("" here breaks loudly rather than
+    #: silently binding a nameless model to somebody's database).
+    DB_FILENAME = ""
 
     def __init__(
         self,
@@ -248,13 +253,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
 
         # (The Qt roles are CLASS attributes above - assigning them
         # here would shadow every subclass's declaration.)
-        # is_usd is derived from each material's .interface file; cache the
-        # result per material id so it is read once, not on every repaint.
-        self._usd_cache = {}
-        # Shader type (Standard/PBR/Toon/...) is derived from each
-        # material's .mat file - same reasoning, cache per material id.
-        self._shader_type_cache = {}
-
         self.rebuild_thumbs()
 
     @staticmethod
@@ -314,8 +312,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             # A reload is a fresh read of the library, content included.
             self._remember_content_state()
             self._tags = self._data.setdefault("tags", [])
-            self._usd_cache = {}
-            self._shader_type_cache = {}
+            self._drop_content_label_caches()
             self.rebuild_thumbs()
         finally:
             # finally, not a trailing call: a raising load must not leave
@@ -603,56 +600,19 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         self.rebuild_thumbs()
         return True
 
-    def is_usd_material(self, asset) -> bool:
-        """True if the material is a USD-builder type (rs_usd_material_builder
-        or octane_solaris_material_builder), detected from its .interface file
-        and cached per material id."""
-        mid = asset.mat_id
-        if mid in self._usd_cache:
-            return self._usd_cache[mid]
-        try:
-            handler = nodes.NodeHandler(self.preferences)
-            node_type = handler.get_saved_node_type(asset)
-            result = node_type in nodes.NodeHandler.LOP_CAPABLE_NODE_TYPES
-        except Exception:
-            result = False
-        self._usd_cache[mid] = result
-        return result
-
-    def shader_type_label(self, asset) -> str:
-        """Best-effort specific shader-type suffix (Standard/PBR/Toon/...),
-        cached per material id. Only meaningful for Redshift right now -
-        every other renderer returns ''."""
-        if "Redshift" not in str(asset.renderer or ""):
-            return ""
-        mid = asset.mat_id
-        if mid in self._shader_type_cache:
-            return self._shader_type_cache[mid]
-        try:
-            handler = nodes.NodeHandler(self.preferences)
-            result = handler.get_shader_type_label(asset)
-        except Exception:
-            result = ""
-        self._shader_type_cache[mid] = result
-        return result
-
     def renderer_label(self, asset) -> str:
-        """Human label for the material's renderer, prefixed 'USD ' for the
-        USD-builder types (e.g. 'USD Redshift', 'Octane', 'Karma'), plus a
-        ':<ShaderType>' suffix for Redshift when the underlying shader
-        type can be determined (e.g. 'Redshift:Standard',
-        'USD Redshift:PBR') - so "just Redshift" tiles are told apart
-        by actual shading model, not only by the USD/classic builder
-        split the plain 'USD ' prefix already covers.
-        Empty string if the renderer is unknown."""
-        renderer = str(asset.renderer or "").strip()
-        if not renderer:
-            return ""
-        label = ("USD " + renderer) if self.is_usd_material(asset) else renderer
-        shader_type = self.shader_type_label(asset)
-        if shader_type:
-            label += ":" + shader_type
-        return label
+        """The tile subtitle / Type column string for one asset - the
+        KIND field as it stands (a node context, a code language).
+        MaterialLibrary overrides with the renderer-shaped dressing
+        (the USD prefix, the shader-type suffix); the base knows no
+        renderer."""
+        return str(asset.renderer or "").strip()
+
+    def _drop_content_label_caches(self, mat_id=None) -> None:
+        """Evict whatever per-id labels a subclass derives from asset
+        CONTENT - called by the shared reload and version-switch
+        paths, which cannot know what a subclass caches. The base
+        derives none."""
 
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
@@ -1237,82 +1197,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         for asset in self._assets:
             asset.rename_category(old, new)
 
-    def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool) -> str:
-        """Add a Material to this Library.
-
-        Returns the renderer string on success, "" when the save was
-        refused - the same contract the cop and code add_assets keep.
-        """
-        handler = nodes.NodeHandler(self.preferences)
-        renderer = handler.get_renderer_from_node(node)
-        new_mat = material.Material()
-        tags = self.sanitize_tags(tags)
-        new_mat.set_data(node.name(), cats, tags, fav, renderer)
-        new_mat.node_color = nodes.custom_node_color(node)
-
-        saved = handler.save_node(node, new_mat.mat_id, False)
-        debug.event(
-            "save", "save_node result",
-            ok=bool(saved), name=new_mat.name,
-            renderer=getattr(handler, "_renderer", None),
-            node=node.path(), node_type=node.type().name(),
-            mat_id=new_mat.mat_id,
-        )
-        if saved:
-            # Whether the saved node WAS a builder. Never recorded, so
-            # every newly saved Mantra asset had builder == 0 and
-            # load_interface_mantra took its else branch - the saved
-            # .interface (promoted and spare parameters) was never
-            # executed at all, and the import dumped loose VOPs into
-            # /mat instead of rebuilding a material.
-            new_mat.builder = handler.builder
-            new_mat.cop_net = handler.cop_info
-            # Proper per-row insert signals (not a batch-wide layout
-            # change pair in the caller): each saved material's tile
-            # appears AS ITS SAVE FINISHES during a multi-save.
-            row = len(self._assets)
-            self.beginInsertRows(QtCore.QModelIndex(), row, row)
-            self._assets.append(new_mat)
-            self.endInsertRows()
-            self._add_thumb_paths(self.index(row, 0))
-            if not hasattr(self, "_content_state"):
-                self._content_state = {}
-            self._content_state[str(new_mat.mat_id)] = self._content_stat(
-                new_mat.mat_id)
-            # THE INDEX WRITE CAN BE REFUSED, and the material's files
-            # are already on disk by this point - save_node ran above.
-            # Reporting success then leaves the user with an asset they
-            # watched appear in the grid, absent from the library the
-            # next time Houdini opens.
-            #
-            # The files are deliberately LEFT where they are. Content
-            # without a row is the safe direction of this failure (a row
-            # without content is the phantom that looks fine until the
-            # day it is needed), and Repair Library recovers exactly
-            # this shape - so the recovery already exists and the honest
-            # thing is to name it.
-            if not self.save():
-                self.report_refused_index_write(new_mat)
-            # Stamp the scene node with its library id so a later
-            # "Save to Amaze" on the same node can offer
-            # update-instead-of-duplicate (standard file-save semantics).
-            try:
-                node.setUserData("assetlib_id", str(new_mat.mat_id))
-            except hou.OperationFailed:
-                pass
-            return renderer
-        # THE RENDERER-STRING CONTRACT: a renderer name means the asset
-        # is IN the library, "" means it is not. Both sibling
-        # add_assets (cop_library, code_library) have always answered
-        # this way, and code_library's docstring even names it as the
-        # contract - this one returned the renderer whether or not
-        # save_node worked, so all six call sites read a refused save
-        # as a good one and the only trace was a debug record.
-        debug.event("save", "add_asset refused - the node was not saved",
-                    name=new_mat.name, node=node.path(),
-                    mat_id=new_mat.mat_id)
-        return ""
-
     def find_asset_row_by_id(self, mat_id: str) -> int:
         """Row of the asset with the given id, or -1."""
         for row, asset in enumerate(self._assets):
@@ -1345,8 +1229,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             return False
         self._content_state[str(mat.mat_id)] = self._content_stat(
             mat.mat_id)
-        self._usd_cache.pop(mat.mat_id, None)
-        self._shader_type_cache.pop(mat.mat_id, None)
+        self._drop_content_label_caches(mat.mat_id)
         self._version_count_cache.pop(str(mat.mat_id), None)
         self._active_version_cache.pop(str(mat.mat_id), None)
         model_index = self.index(row, 0)
@@ -1459,166 +1342,6 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             if str(asset.mat_id) not in have:
                 self._version_count_cache[str(asset.mat_id)] = 0
                 self._active_version_cache[str(asset.mat_id)] = ""
-
-    def update_asset_content(self, row: int, node: hou.Node) -> str:
-        """Overwrite an EXISTING library entry's node content from the
-        given scene node - same id, name, categories, tags and favorite;
-        new node files, thumbnail, renderer/type info and date. This is
-        the 'Update Existing' half of the file-save-style flow (the
-        other half being a normal add_asset). Returns the detected
-        renderer on success, '' on failure."""
-        if row < 0 or row >= len(self._assets):
-            return ""
-        mat = self._assets[row]
-        # THE GATE, here rather than only in the dialog. The panel also
-        # stops offering Overwrite, but a UI-level check is a
-        # suggestion: this is the layer every caller goes through, and
-        # today's capture work is the standing example of what happens
-        # when a policy lives beside one of its callers.
-        if not library_policy.allow_overwrite(self.preferences.dir):
-            debug.event("library", "overwrite refused - the library "
-                        "does not allow it", mat_id=str(mat.mat_id),
-                        name=mat.name)
-            return ""
-        # THE CONTENT STALE-WRITE GUARD. This is the one write that
-        # stays genuinely exclusive even after Versions ships: two
-        # sessions both doing a structural Update Existing to the same
-        # id silently last-write-wins the .mat/.interface pair, and
-        # content is outside the index merge entirely. If the file
-        # moved since this session read it, refuse - loudly, naming the
-        # way out. The user's edit is PRESERVED by the refusal itself:
-        # their network is still in the scene, and Save As New keeps it
-        # without touching the other session's work.
-        known = getattr(self, "_content_state", {}).get(str(mat.mat_id))
-        current = self._content_stat(mat.mat_id)
-        if known is not None and current is not None and current != known:
-            debug.event("library", "content update refused - the files "
-                        "changed since this session read them",
-                        mat_id=str(mat.mat_id), name=mat.name)
-            debug.alert(
-                'Someone else has updated "%s" since this Houdini read '
-                "it, so Amaze did not save over their version.\n\n"
-                "Nothing is lost - your network is still in the scene. "
-                "Save it as a new material, or reopen the Amaze panel "
-                "to load their version first." % mat.name,
-                key="content-changed-on-disk")
-            return ""
-
-        # THE VERSIONS DECISION RULE. Same nodes, same wiring, only
-        # values differ -> this save becomes a new version; anything
-        # else -> the structural path below, exactly as before. Decided
-        # by instantiating the saved base in staging and comparing
-        # structure signatures - a textual diff cannot answer it
-        # (research.md: the .interface carries no child values).
-        #
-        # Any failure to ANSWER the question degrades to the structural
-        # path: a wrong "structural" merely skips a version; a wrong
-        # "version" would archive a lie.
-        # SYMMETRY IS THE CORRECTNESS. The first cut compared the live
-        # node's signature against a staged load of the base and read
-        # EVERY save as structural: the importer wires and wraps what
-        # the raw stage-load does not, so the two sides never matched.
-        # Both sides now pass through the same transform - stage-load
-        # the base BEFORE the save and stage-load it AFTER - so the
-        # only thing that can differ is what the save changed.
-        old_signature = None
-        pre_edit = {}
-        try:
-            old_signature = nodes.staged_asset(
-                self.preferences, mat, nodes.structure_signature)
-            if versions.version_count(self.preferences, mat.mat_id) == 0:
-                # The pre-edit files, held aside: if this turns out
-                # parameter-only they become Version 1 - the state the
-                # user is versioning away from must not be lost, and by
-                # then the save has overwritten the base.
-                pre_edit = self._hold_pre_edit_files(mat.mat_id)
-        except Exception as exc:                          # noqa: BLE001
-            debug.event("versions", "pre-save staging failed - the save "
-                        "will be treated as structural",
-                        mat_id=str(mat.mat_id), error=str(exc))
-
-        handler = nodes.NodeHandler(self.preferences)
-        renderer = handler.get_renderer_from_node(node)
-        # THE PRE-EDIT COPIES GO AWAY ON EVERY EXIT. The rmtree used to
-        # sit on the success path only, so the early return below - a
-        # node Houdini refuses to save, a locked file, a full disk -
-        # left a directory holding full copies of the asset's .mat,
-        # .interface, .builder.json and .png in the system temp dir,
-        # once per attempt. Outside the library, so no audit or cleanup
-        # sees it, and on macOS the system temp dir is only swept at
-        # reboot.
-        try:
-            # update=True: overwrites <id>.mat/.interface (+ COP
-            # companion) and always re-renders the thumbnail,
-            # regardless of the render_on_import preference.
-            if not handler.save_node(node, mat.mat_id, True):
-                return ""
-            # Our own write is the new baseline for this id.
-            self._content_state[str(mat.mat_id)] = self._content_stat(
-                mat.mat_id)
-            parameter_only = False
-            if old_signature is not None:
-                try:
-                    new_signature = nodes.staged_asset(
-                        self.preferences, mat, nodes.structure_signature)
-                    parameter_only = (new_signature == old_signature)
-                except Exception as exc:                  # noqa: BLE001
-                    debug.event("versions", "post-save staging failed - "
-                                "no version minted",
-                                mat_id=str(mat.mat_id), error=str(exc))
-            if parameter_only:
-                if pre_edit and versions.version_count(
-                        self.preferences, mat.mat_id) == 0:
-                    versions.create_version(self.preferences, mat.mat_id,
-                                            source_paths=pre_edit)
-                # The base now holds the new state; archive it as the
-                # new active version. Auto-named - never interrupt a
-                # save to ask for a name (practice.md) - renameable in
-                # the dialog.
-                versions.create_version(self.preferences, mat.mat_id)
-                self._version_count_cache.pop(str(mat.mat_id), None)
-                self._active_version_cache.pop(str(mat.mat_id), None)
-        finally:
-            if pre_edit:
-                shutil.rmtree(os.path.dirname(
-                    next(iter(pre_edit.values()))), ignore_errors=True)
-        mat.cop_net = handler.cop_info
-        if renderer:
-            mat.renderer = renderer
-        mat.node_color = nodes.custom_node_color(node)
-        mat.set_current_date()
-        # A content update is the one flow that can change what's inside
-        # the saved files, so the per-id label caches (USD-ness, shader
-        # type) genuinely go stale here - evict both.
-        self._usd_cache.pop(mat.mat_id, None)
-        self._shader_type_cache.pop(mat.mat_id, None)
-        # Stale companion file: if the updated network no longer
-        # references any COP net, remove the old <id>_cop.mat.
-        if not mat.cop_net:
-            cop_path = os.path.join(
-                self.preferences.dir,
-                self.preferences.asset_dir,
-                str(mat.mat_id) + "_cop.mat",
-            )
-            if os.path.exists(cop_path):
-                try:
-                    os.remove(cop_path)
-                except OSError as exc:
-                    debug.event(
-                        "library",
-                        "stale cop file remove skipped",
-                        file=cop_path,
-                        error=str(exc),
-                    )
-        # Reload the freshly rendered thumbnail into the model - the
-        # engine discard inside makes the repaint fetch the new PNG.
-        self._add_thumb_paths(self.index(row, 0))
-        self.save()
-        try:
-            node.setUserData("assetlib_id", str(mat.mat_id))
-        except hou.OperationFailed:
-            pass
-        return renderer
 
     def cleanup_db(self, show_dialog: bool = True) -> int:
         """Removes orphan data from disk, rescues uncategorized materials
@@ -2394,6 +2117,346 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
             not locations.is_favourite(self.preferences, mat_id))
         model_index = self.index(index.row(), 0)
         self.row_changed(model_index.row(), [self.FavoriteRole])
+
+    def render_thumbnail(self, index) -> None:
+        """Re-render one row's preview. The base has nothing to
+        render - the sections that do override this (a shaderball, a
+        network's output image, a repaint from content)."""
+
+    def render_thumbnails(self, indexes) -> None:
+        """Re-render every index - one row at a time, through each
+        section's own `render_thumbnail`. MaterialLibrary overrides
+        with the shared-scaffold Karma batch; routing every section
+        through that batch shaderball-imported node setups and code
+        snippets, which is not a render either of them has."""
+        for index in indexes:
+            if index.isValid():
+                self.render_thumbnail(index)
+
+
+class MaterialLibrary(AssetLibrary):
+    """The Material tab's model - the shared engine plus what a
+    MATERIAL is: renderer detection on save, USD-ness and shader-type
+    labels read from the saved files, the Karma-scaffold render batch,
+    MAT/LOP import routing and the Redshift conversion."""
+
+    NOTES_SECTION = "material"
+
+    DB_FILENAME = "library.json"
+
+    def __init__(self, parent=None, preferences=None) -> None:
+        super().__init__(parent, preferences=preferences)
+        # is_usd is derived from each material's .interface file; cache
+        # the result per material id so it is read once, not on every
+        # repaint. Shader type (Standard/PBR/Toon/...) likewise, from
+        # the .mat file.
+        self._usd_cache = {}
+        self._shader_type_cache = {}
+
+    def switch_model_data(self):
+        super().switch_model_data()
+        self._drop_content_label_caches()
+
+    def _drop_content_label_caches(self, mat_id=None) -> None:
+        """The per-id labels this model derives from asset content -
+        USD-ness and shader type - evicted whole on a reload, per id
+        on a version switch or content update."""
+        if not hasattr(self, "_usd_cache"):
+            # The base constructor reloads before this subclass's
+            # __init__ has made the caches.
+            return
+        if mat_id is None:
+            self._usd_cache = {}
+            self._shader_type_cache = {}
+        else:
+            self._usd_cache.pop(mat_id, None)
+            self._shader_type_cache.pop(mat_id, None)
+
+    def is_usd_material(self, asset) -> bool:
+        """True if the material is a USD-builder type (rs_usd_material_builder
+        or octane_solaris_material_builder), detected from its .interface file
+        and cached per material id."""
+        mid = asset.mat_id
+        if mid in self._usd_cache:
+            return self._usd_cache[mid]
+        try:
+            handler = nodes.NodeHandler(self.preferences)
+            node_type = handler.get_saved_node_type(asset)
+            result = node_type in nodes.NodeHandler.LOP_CAPABLE_NODE_TYPES
+        except Exception:
+            result = False
+        self._usd_cache[mid] = result
+        return result
+
+    def shader_type_label(self, asset) -> str:
+        """Best-effort specific shader-type suffix (Standard/PBR/Toon/...),
+        cached per material id. Only meaningful for Redshift right now -
+        every other renderer returns ''."""
+        if "Redshift" not in str(asset.renderer or ""):
+            return ""
+        mid = asset.mat_id
+        if mid in self._shader_type_cache:
+            return self._shader_type_cache[mid]
+        try:
+            handler = nodes.NodeHandler(self.preferences)
+            result = handler.get_shader_type_label(asset)
+        except Exception:
+            result = ""
+        self._shader_type_cache[mid] = result
+        return result
+
+    def renderer_label(self, asset) -> str:
+        """Human label for the material's renderer, prefixed 'USD ' for the
+        USD-builder types (e.g. 'USD Redshift', 'Octane', 'Karma'), plus a
+        ':<ShaderType>' suffix for Redshift when the underlying shader
+        type can be determined (e.g. 'Redshift:Standard',
+        'USD Redshift:PBR') - so plain Redshift tiles are told apart
+        by actual shading model, not only by the USD/classic builder
+        split the 'USD ' prefix already covers.
+        Empty string if the renderer is unknown."""
+        renderer = str(asset.renderer or "").strip()
+        if not renderer:
+            return ""
+        label = ("USD " + renderer) if self.is_usd_material(asset) else renderer
+        shader_type = self.shader_type_label(asset)
+        if shader_type:
+            label += ":" + shader_type
+        return label
+
+    def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool) -> str:
+        """Add a Material to this Library.
+
+        Returns the renderer string on success, "" when the save was
+        refused - the same contract the cop and code add_assets keep.
+        """
+        handler = nodes.NodeHandler(self.preferences)
+        renderer = handler.get_renderer_from_node(node)
+        new_mat = material.Material()
+        tags = self.sanitize_tags(tags)
+        new_mat.set_data(node.name(), cats, tags, fav, renderer)
+        new_mat.node_color = nodes.custom_node_color(node)
+
+        saved = handler.save_node(node, new_mat.mat_id, False)
+        debug.event(
+            "save", "save_node result",
+            ok=bool(saved), name=new_mat.name,
+            renderer=getattr(handler, "_renderer", None),
+            node=node.path(), node_type=node.type().name(),
+            mat_id=new_mat.mat_id,
+        )
+        if saved:
+            # Whether the saved node WAS a builder. Never recorded, so
+            # every newly saved Mantra asset had builder == 0 and
+            # load_interface_mantra took its else branch - the saved
+            # .interface (promoted and spare parameters) was never
+            # executed at all, and the import dumped loose VOPs into
+            # /mat instead of rebuilding a material.
+            new_mat.builder = handler.builder
+            new_mat.cop_net = handler.cop_info
+            # Proper per-row insert signals (not a batch-wide layout
+            # change pair in the caller): each saved material's tile
+            # appears AS ITS SAVE FINISHES during a multi-save.
+            row = len(self._assets)
+            self.beginInsertRows(QtCore.QModelIndex(), row, row)
+            self._assets.append(new_mat)
+            self.endInsertRows()
+            self._add_thumb_paths(self.index(row, 0))
+            if not hasattr(self, "_content_state"):
+                self._content_state = {}
+            self._content_state[str(new_mat.mat_id)] = self._content_stat(
+                new_mat.mat_id)
+            # THE INDEX WRITE CAN BE REFUSED, and the material's files
+            # are already on disk by this point - save_node ran above.
+            # Reporting success then leaves the user with an asset they
+            # watched appear in the grid, absent from the library the
+            # next time Houdini opens.
+            #
+            # The files are deliberately LEFT where they are. Content
+            # without a row is the safe direction of this failure (a row
+            # without content is the phantom that looks fine until the
+            # day it is needed), and Repair Library recovers exactly
+            # this shape - so the recovery already exists and the honest
+            # thing is to name it.
+            if not self.save():
+                self.report_refused_index_write(new_mat)
+            # Stamp the scene node with its library id so a later
+            # Save to Amaze on the same node can offer
+            # update-instead-of-duplicate (standard file-save semantics).
+            try:
+                node.setUserData("assetlib_id", str(new_mat.mat_id))
+            except hou.OperationFailed:
+                pass
+            return renderer
+        # THE RENDERER-STRING CONTRACT: a renderer name means the asset
+        # is IN the library, "" means it is not. Both sibling
+        # add_assets (cop_library, code_library) have always answered
+        # this way, and code_library's docstring even names it as the
+        # contract - this one returned the renderer whether or not
+        # save_node worked, so all six call sites read a refused save
+        # as a good one and the only trace was a debug record.
+        debug.event("save", "add_asset refused - the node was not saved",
+                    name=new_mat.name, node=node.path(),
+                    mat_id=new_mat.mat_id)
+        return ""
+
+    def update_asset_content(self, row: int, node: hou.Node) -> str:
+        """Overwrite an EXISTING library entry's node content from the
+        given scene node - same id, name, categories, tags and favorite;
+        new node files, thumbnail, renderer/type info and date. This is
+        the Update Existing half of the file-save-style flow (the
+        other half being a normal add_asset). Returns the detected
+        renderer on success, '' on failure."""
+        if row < 0 or row >= len(self._assets):
+            return ""
+        mat = self._assets[row]
+        # THE GATE, here rather than only in the dialog. The panel also
+        # stops offering Overwrite, but a UI-level check is a
+        # suggestion: this is the layer every caller goes through, and
+        # today's capture work is the standing example of what happens
+        # when a policy lives beside one of its callers.
+        if not library_policy.allow_overwrite(self.preferences.dir):
+            debug.event("library", "overwrite refused - the library "
+                        "does not allow it", mat_id=str(mat.mat_id),
+                        name=mat.name)
+            return ""
+        # THE CONTENT STALE-WRITE GUARD. This is the one write that
+        # stays genuinely exclusive even after Versions ships: two
+        # sessions both doing a structural Update Existing to the same
+        # id silently last-write-wins the .mat/.interface pair, and
+        # content is outside the index merge entirely. If the file
+        # moved since this session read it, refuse - loudly, naming the
+        # way out. The user's edit is PRESERVED by the refusal itself:
+        # their network is still in the scene, and Save As New keeps it
+        # without touching the other session's work.
+        known = getattr(self, "_content_state", {}).get(str(mat.mat_id))
+        current = self._content_stat(mat.mat_id)
+        if known is not None and current is not None and current != known:
+            debug.event("library", "content update refused - the files "
+                        "changed since this session read them",
+                        mat_id=str(mat.mat_id), name=mat.name)
+            debug.alert(
+                'Someone else has updated "%s" since this Houdini read '
+                "it, so Amaze did not save over their version.\n\n"
+                "Nothing is lost - your network is still in the scene. "
+                "Save it as a new material, or reopen the Amaze panel "
+                "to load their version first." % mat.name,
+                key="content-changed-on-disk")
+            return ""
+
+        # THE VERSIONS DECISION RULE. Same nodes, same wiring, only
+        # values differ -> this save becomes a new version; anything
+        # else -> the structural path below, exactly as before. Decided
+        # by instantiating the saved base in staging and comparing
+        # structure signatures - a textual diff cannot answer it
+        # (research.md: the .interface carries no child values).
+        #
+        # Any failure to ANSWER the question degrades to the structural
+        # path: a wrong structural merely skips a version; a wrong
+        # version would archive a lie.
+        # SYMMETRY IS THE CORRECTNESS. The first cut compared the live
+        # node's signature against a staged load of the base and read
+        # EVERY save as structural: the importer wires and wraps what
+        # the raw stage-load does not, so the two sides never matched.
+        # Both sides now pass through the same transform - stage-load
+        # the base BEFORE the save and stage-load it AFTER - so the
+        # only thing that can differ is what the save changed.
+        old_signature = None
+        pre_edit = {}
+        try:
+            old_signature = nodes.staged_asset(
+                self.preferences, mat, nodes.structure_signature)
+            if versions.version_count(self.preferences, mat.mat_id) == 0:
+                # The pre-edit files, held aside: if this turns out
+                # parameter-only they become Version 1 - the state the
+                # user is versioning away from must not be lost, and by
+                # then the save has overwritten the base.
+                pre_edit = self._hold_pre_edit_files(mat.mat_id)
+        except Exception as exc:                          # noqa: BLE001
+            debug.event("versions", "pre-save staging failed - the save "
+                        "will be treated as structural",
+                        mat_id=str(mat.mat_id), error=str(exc))
+
+        handler = nodes.NodeHandler(self.preferences)
+        renderer = handler.get_renderer_from_node(node)
+        # THE PRE-EDIT COPIES GO AWAY ON EVERY EXIT. The rmtree used to
+        # sit on the success path only, so the early return below - a
+        # node Houdini refuses to save, a locked file, a full disk -
+        # left a directory holding full copies of the asset's .mat,
+        # .interface, .builder.json and .png in the system temp dir,
+        # once per attempt. Outside the library, so no audit or cleanup
+        # sees it, and on macOS the system temp dir is only swept at
+        # reboot.
+        try:
+            # update=True: overwrites <id>.mat/.interface (+ COP
+            # companion) and always re-renders the thumbnail,
+            # regardless of the render_on_import preference.
+            if not handler.save_node(node, mat.mat_id, True):
+                return ""
+            # Our own write is the new baseline for this id.
+            self._content_state[str(mat.mat_id)] = self._content_stat(
+                mat.mat_id)
+            parameter_only = False
+            if old_signature is not None:
+                try:
+                    new_signature = nodes.staged_asset(
+                        self.preferences, mat, nodes.structure_signature)
+                    parameter_only = (new_signature == old_signature)
+                except Exception as exc:                  # noqa: BLE001
+                    debug.event("versions", "post-save staging failed - "
+                                "no version minted",
+                                mat_id=str(mat.mat_id), error=str(exc))
+            if parameter_only:
+                if pre_edit and versions.version_count(
+                        self.preferences, mat.mat_id) == 0:
+                    versions.create_version(self.preferences, mat.mat_id,
+                                            source_paths=pre_edit)
+                # The base now holds the new state; archive it as the
+                # new active version. Auto-named - never interrupt a
+                # save to ask for a name (practice.md) - renameable in
+                # the dialog.
+                versions.create_version(self.preferences, mat.mat_id)
+                self._version_count_cache.pop(str(mat.mat_id), None)
+                self._active_version_cache.pop(str(mat.mat_id), None)
+        finally:
+            if pre_edit:
+                shutil.rmtree(os.path.dirname(
+                    next(iter(pre_edit.values()))), ignore_errors=True)
+        mat.cop_net = handler.cop_info
+        if renderer:
+            mat.renderer = renderer
+        mat.node_color = nodes.custom_node_color(node)
+        mat.set_current_date()
+        # A content update is the one flow that can change what's inside
+        # the saved files, so the per-id label caches (USD-ness, shader
+        # type) genuinely go stale here - evict both.
+        self._drop_content_label_caches(mat.mat_id)
+        # Stale companion file: if the updated network no longer
+        # references any COP net, remove the old <id>_cop.mat.
+        if not mat.cop_net:
+            cop_path = os.path.join(
+                self.preferences.dir,
+                self.preferences.asset_dir,
+                str(mat.mat_id) + "_cop.mat",
+            )
+            if os.path.exists(cop_path):
+                try:
+                    os.remove(cop_path)
+                except OSError as exc:
+                    debug.event(
+                        "library",
+                        "stale cop file remove skipped",
+                        file=cop_path,
+                        error=str(exc),
+                    )
+        # Reload the freshly rendered thumbnail into the model - the
+        # engine discard inside makes the repaint fetch the new PNG.
+        self._add_thumb_paths(self.index(row, 0))
+        self.save()
+        try:
+            node.setUserData("assetlib_id", str(mat.mat_id))
+        except hou.OperationFailed:
+            pass
+        return renderer
 
     def render_thumbnail(self, index: QtCore.QModelIndex) -> None:
         """

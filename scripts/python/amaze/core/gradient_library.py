@@ -100,8 +100,8 @@ class GradientCategories(category.Categories):
     DB_FILENAME = "gradients.json"
 
 
-class GradientLibrary(library.MaterialLibrary):
-    """The Colors section's asset model - material machinery over
+class GradientLibrary(library.AssetLibrary):
+    """The Colors section's asset model - the shared engine over
     gradients.json, with the palette payload inline and a painted
     preview."""
 

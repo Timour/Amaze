@@ -1086,13 +1086,16 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
             "are a second implementation of the shared one")
 
     def test_the_library_subclasses_the_shared_model_too(self):
-        """The batch-1 target itself: the Colors MODEL is the family's,
-        so every engine guard is inherited rather than hand-kept."""
+        """The batch-1 target itself: the Colors MODEL is the family's
+        shared engine, so every engine guard is inherited rather than
+        hand-kept. RE-KEYED when the engine's shared half became
+        `AssetLibrary` - the contract is the ENGINE, not the Material
+        tab's own model."""
         from amaze.core import library
         self.assertTrue(
             issubclass(gradient_library.GradientLibrary,
-                       library.MaterialLibrary),
-            "GradientLibrary is standalone again - 51 engine guards "
+                       library.AssetLibrary),
+            "GradientLibrary is standalone again - the engine guards "
             "stop applying to Colors the day that happens")
 
     def test_it_reads_the_gradients_database(self):

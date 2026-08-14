@@ -1682,5 +1682,48 @@ class FavouritesArePerUserTest(unittest.TestCase):
         self.assertTrue(model.data(model.index(0, 0), model.FavoriteRole))
 
 
+class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
+    """ROADMAP line 25's closing contract: the shared engine is
+    `AssetLibrary`, every section model inherits it, and what a
+    MATERIAL is - renderer detection, USD and shader labels, the Karma
+    batch, MAT/LOP routing, the Redshift conversion - lives only on
+    `MaterialLibrary`."""
+
+    #: The renderer-shaped surface, by name. Declared ON MaterialLibrary
+    #: and absent from the base's own namespace - vars(), not getattr,
+    #: because inheritance answers getattr for every subclass.
+    RENDERER_SHAPED = (
+        "is_usd_material", "shader_type_label", "add_asset",
+        "update_asset_content", "import_asset_to_scene",
+        "convert_redshift_to_karma",
+    )
+
+    def test_the_four_models_inherit_the_base(self):
+        from amaze.core import (code_library, cop_library,
+                                gradient_library, library)
+        for model in (library.MaterialLibrary, cop_library.CopLibrary,
+                      code_library.CodeLibrary,
+                      gradient_library.GradientLibrary):
+            self.assertTrue(
+                issubclass(model, library.AssetLibrary),
+                "%s does not run on the shared engine" % model.__name__)
+
+    def test_the_base_declares_none_of_the_material_surface(self):
+        from amaze.core import library
+        on_base = [name for name in self.RENDERER_SHAPED
+                   if name in vars(library.AssetLibrary)]
+        self.assertEqual(
+            [], on_base,
+            "the shared base grew renderer-shaped weight again: %s"
+            % on_base)
+        # The positive control, so an emptied Material class cannot
+        # satisfy the line above by accident.
+        for name in self.RENDERER_SHAPED:
+            self.assertIn(
+                name, vars(library.MaterialLibrary),
+                "%s left MaterialLibrary - if it was retired, retire "
+                "it from this list in the same commit" % name)
+
+
 if __name__ == "__main__":
     unittest.main()

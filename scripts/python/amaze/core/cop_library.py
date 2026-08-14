@@ -41,8 +41,8 @@ class CopCategories(category.Categories):
     DB_FILENAME = "cops.json"
 
 
-class CopLibrary(library.MaterialLibrary):
-    """The Cop section's asset model - material machinery over cops.json."""
+class CopLibrary(library.AssetLibrary):
+    """The Cop section's asset model - the shared engine over cops.json."""
 
     NOTES_SECTION = "cop"
 

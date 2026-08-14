@@ -66,8 +66,8 @@ class CodeCategories(category.Categories):
     DB_FILENAME = "code.json"
 
 
-class CodeLibrary(library.MaterialLibrary):
-    """The Code section's asset model - material machinery over
+class CodeLibrary(library.AssetLibrary):
+    """The Code section's asset model - the shared engine over
     code.json, storing snippet text inline and painting a preview."""
 
     NOTES_SECTION = "code"
