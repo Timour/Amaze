@@ -51,6 +51,20 @@ from amaze.helpers import hostos  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
+
+def _redshift_available():
+    """Same probe test_redshift_terminal.py uses: ask for the TYPE.
+
+    The plugin loads under both majors on a wired machine, so this
+    skips only where Redshift genuinely is not installed - never on
+    every host at once, which would make it dead cover.
+    """
+    try:
+        return hou.vopNodeTypeCategory().nodeType(
+            "redshift_vopnet") is not None
+    except Exception:                                        # noqa: BLE001
+        return False
+
 #: Distinctive, non-default values - the point is proving THESE numbers
 #: survive disk, not that a node with defaults reappears.
 SPEC = {
@@ -236,25 +250,58 @@ class TestRoundTrip(unittest.TestCase):
             "the imported material has nothing wired to its surface "
             "terminal - it renders black")
 
-    # ⚑ A COVERAGE GAP, NAMED RATHER THAN LEFT TO BE DISCOVERED.
-    # `test_a_mantra_import_keeps_its_builder` lived here and was
-    # deleted 2026-08-14 with the renderer it exercised. It was the
-    # ONLY executable test of `load_items_file(move_builder=True)` -
-    # the rule that a rebuilt builder is kept and MOVED rather than
-    # having its children moved out and itself destroyed (measured
-    # once: five loose VOPs dumped into /mat, no material builder,
-    # material flag unset, and a later Rerender Thumbnail destroying
-    # one and stranding the rest).
-    #
-    # THAT RULE STILL APPLIES, to Redshift and Octane, and nothing
-    # tests it now. It cannot simply be repointed: this suite builds no
-    # Redshift or Octane material anywhere (see the docstring below
-    # saying so), because neither plugin is a given on a test machine -
-    # and the dropped renderer was the one whose builder is stock
-    # Houdini and could therefore be created in a fixture.
-    #
-    # Closing it needs a fixture that does not depend on a renderer
-    # plugin, which is its own piece of work rather than a line here.
+    @unittest.skipUnless(_redshift_available(),
+                         "the Redshift plugin is not loaded")
+    def test_an_import_keeps_its_builder(self):
+        """A rebuilt container is KEPT and moved, not gutted.
+
+        `load_items_file(move_builder=False)` moved the loaded children
+        OUT of the rebuilt container and destroyed it. Measured once:
+        five loose VOPs dumped straight into /mat, no material node,
+        material flag unset - and a later Rerender Thumbnail called
+        cleanup(), which destroyed one and left the rest in the user's
+        /mat permanently.
+
+        REPOINTED FROM MANTRA 2026-08-15. This was written against
+        `materialbuilder` and went with that renderer; the rule is the
+        same for the two that remain, and Redshift is the one with a
+        loaded plugin to build it. No render happens - setUp sets
+        render_on_import=0 - so this costs a save and an import.
+        """
+        mat_ctx = hou.node("/mat") or hou.node("/").createNode("mat")
+        source = mat_ctx.createNode("redshift_vopnet", "rs_src")
+        source.setGenericFlag(hou.nodeFlag.Material, True)
+
+        before = {n.path() for n in mat_ctx.children()}
+        self.model.add_asset(source, "RedshiftProbe", "", False)
+        asset = self.model.assets[-1]
+        self.assertEqual(
+            "Redshift", asset.renderer,
+            "this test needs a Redshift asset to mean anything")
+
+        ok, reason, _created = nodes.NodeHandler(
+            self.prefs).import_asset_to_scene(asset, target="mat")
+        self.assertTrue(ok, reason)
+
+        # By PATH: hou.Node wrappers are not identity-stable.
+        created = [c for c in mat_ctx.children() if c.path() not in before]
+        loose = [c for c in created
+                 if c.type().name() != "redshift_vopnet"]
+        self.assertEqual(
+            [], [c.name() for c in loose],
+            "the import dumped loose VOPs into /mat instead of "
+            "rebuilding a material")
+        builders = [c for c in created
+                    if c.type().name() == "redshift_vopnet"]
+        self.assertEqual(1, len(builders), "expected exactly one builder")
+        self.assertTrue(
+            builders[0].children(),
+            "the rebuilt builder is empty - its contents went elsewhere")
+        for node in created:
+            try:
+                node.destroy()
+            except Exception:            # noqa: BLE001 - already gone
+                pass
 
     # -- clutter and containment ----------------------------------------
 
