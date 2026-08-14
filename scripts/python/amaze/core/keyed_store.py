@@ -155,14 +155,14 @@ class Spec:
                  "normalise", "path_prefix", "unreadable_alert",
                  "refused_sentence", "alert_key", "denied_alert",
                  "category", "in_library", "survives_forget",
-                 "user_tagged", "merge_rules")
+                 "user_tagged", "merge_rules", "falsy_is_a_value")
 
     def __init__(self, filename, payload, keyspace, label, noun,
                  normalise, path_prefix="", unreadable_alert="",
                  refused_sentence="", alert_key="", denied_alert="",
                  category="store", in_library=True,
                  survives_forget=True, user_tagged=False,
-                 merge_rules=None) -> None:
+                 merge_rules=None, falsy_is_a_value=False) -> None:
         self.filename = filename
         self.payload = payload
         self.keyspace = keyspace
@@ -225,6 +225,12 @@ class Spec:
         #: answer. Copied, so a caller's dict cannot change the rules
         #: of a live store afterwards.
         self.merge_rules = dict(merge_rules or {})
+        #: IS A FALSY VALUE A VALUE? A store of records says no - an
+        #: empty note deletes the note, and that is the removal door.
+        #: A store whose values are SETTINGS cannot: `False`, `0` and
+        #: an empty string are answers. Such a store rejects with None
+        #: and removes through `retire` (ROADMAP line 26).
+        self.falsy_is_a_value = bool(falsy_is_a_value)
 
     def is_path_key(self, key: str) -> bool:
         """Does a path move rewrite this key?"""
@@ -257,7 +263,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
              category: str = "store", in_library: bool = True,
              survives_forget: bool = True,
              user_tagged: bool = False,
-             merge_rules: dict = None) -> Spec:
+             merge_rules: dict = None,
+             falsy_is_a_value: bool = False) -> Spec:
     """Declare a store. Idempotent per filename, so a module reload
     re-registers rather than duplicating."""
     if keyspace not in (KEY_ID, KEY_PATH, KEY_MIXED):
@@ -278,7 +285,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
                 refused_sentence=refused_sentence, alert_key=alert_key,
                 denied_alert=denied_alert, category=category,
                 in_library=in_library, survives_forget=survives_forget,
-                user_tagged=user_tagged, merge_rules=merge_rules)
+                user_tagged=user_tagged, merge_rules=merge_rules,
+                falsy_is_a_value=falsy_is_a_value)
     _registry[filename] = spec
     return spec
 
@@ -683,6 +691,40 @@ class Store:
         self.trace = ""
         self._load()
 
+    # -- what a store's own shape answers -----------------------------
+
+    def _rejected(self, kept) -> bool:
+        """Did the normaliser refuse this value?
+
+        A store of records refuses with something falsy. A store whose
+        values ARE settings cannot - `False` is an answer - so it
+        refuses with None (`Spec.falsy_is_a_value`).
+        """
+        if self.spec.falsy_is_a_value:
+            return kept is None
+        return not kept
+
+    def _staged_value(self, value):
+        """What to store, or None to REMOVE the key. For a store of
+        records a falsy value is the removal; for a settings store the
+        door is `retire`, because nothing falsy can mean gone there."""
+        if self.spec.falsy_is_a_value:
+            return self.spec.normalise(value)
+        if not value:
+            return None
+        return self.spec.normalise(value) or None
+
+    def _table_in(self, loaded: dict):
+        """The map inside a document that has just been read."""
+        return loaded.get(self.spec.payload) if self.spec.payload else loaded
+
+    def _document(self, table: dict) -> dict:
+        """The bytes to write: the map under its payload key, or the
+        map ITSELF for a store that declares no payload - a document
+        that predates this engine and cannot grow a wrapper without a
+        migration."""
+        return {self.spec.payload: table} if self.spec.payload else table
+
     # -- opening ------------------------------------------------------
 
     def _load(self) -> None:
@@ -699,7 +741,7 @@ class Store:
                 wrong = database.wrong_table_shape(loaded, spec.payload)
                 if wrong:
                     raise ValueError(wrong)
-                if spec.payload not in loaded:
+                if spec.payload and spec.payload not in loaded:
                     # THE PAYLOAD KEY MUST BE PRESENT on a file that
                     # exists. wrong_table_shape reads a MISSING key as
                     # a valid empty table, so icons.json copied over
@@ -714,7 +756,7 @@ class Store:
                         % (spec.filename, spec.payload, spec.label))
                 table = {}
                 orphans = 0
-                for key, value in loaded[spec.payload].items():
+                for key, value in self._table_in(loaded).items():
                     # Every legacy spelling is absorbed HERE, one
                     # conversion on the way in, no migration event: the
                     # real favourites held one file three ways. On a
@@ -737,12 +779,13 @@ class Store:
                         # 22 stage C - the locations; favourites drop
                         # theirs for good and never call the door).
                         kept = spec.normalise(value)
-                        if kept and stored not in self._orphans:
+                        if (not self._rejected(kept)
+                                and stored not in self._orphans):
                             self._orphans[stored] = kept
                         orphans += 1
                         continue
                     kept = spec.normalise(value)
-                    if not kept:
+                    if self._rejected(kept):
                         # A truthy value the normaliser cannot read is
                         # FOREIGN, not junk: held aside verbatim so the
                         # rewrite keeps it (see _foreign). A falsy one
@@ -859,8 +902,12 @@ class Store:
         note that was refused.
         """
         stored = self._key(key)
-        value = self._table.get(stored) if stored else None
-        return copy.deepcopy(value) if value else {}
+        if not stored or stored not in self._table:
+            return {}
+        value = self._table[stored]
+        if not (value or self.spec.falsy_is_a_value):
+            return {}
+        return copy.deepcopy(value)
 
     def all(self) -> dict:
         """THIS USER's entries, as a COPY, keyed without the tag.
@@ -919,9 +966,9 @@ class Store:
             debug.event(self.spec.category, "write skipped - no user",
                         store=self.spec.filename)
             return Written(False, REASON_NO_USER)
-        value = self.spec.normalise(value) if value else {}
-        if value:
-            if self._table.get(key) == value:
+        value = self._staged_value(value)
+        if value is not None:
+            if key in self._table and self._table[key] == value:
                 return Written(True, REASON_UNCHANGED, keys=(key,))
             staged = dict(self._table)
             staged[key] = value
@@ -955,9 +1002,9 @@ class Store:
             return Written(False, REASON_NO_USER)
         for key, value in (values or {}).items():
             key = self._key(str(key))
-            value = self.spec.normalise(value) if value else {}
-            if value:
-                if self._table.get(key) == value:
+            value = self._staged_value(value)
+            if value is not None:
+                if key in self._table and self._table[key] == value:
                     continue
                 staged[key] = value
             else:
@@ -1097,7 +1144,7 @@ class Store:
             hostos.snapshot_before_write(self.path)
             hostos.write_json_atomic(
                 self.path,
-                {spec.payload: {**foreign, **staged}},
+                self._document({**foreign, **staged}),
                 indent=1, sort_keys=True)
             if created:
                 # THE FLOOR, FROM THE FIRST WRITE. snapshot_before_write
@@ -1171,14 +1218,14 @@ class Store:
             return
         if not isinstance(loaded, dict):
             return
-        peer = loaded.get(self.spec.payload)
+        peer = self._table_in(loaded)
         if not isinstance(peer, dict):
             return
         adopted = 0
         for key, value in peer.items():
             stored = restored_key(self.spec, str(key))
             kept = self.spec.normalise(value)
-            if kept:
+            if not self._rejected(kept):
                 if stored not in staged:
                     staged[stored] = kept
                     adopted += 1
