@@ -148,6 +148,40 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
     Subclasses QtCore.QAbstractListModel
     """
 
+    # THE FAMILY'S Qt ROLES - CLASS attributes, one declaration every
+    # subclass inherits. They were assigned in __init__ until
+    # 2026-08-14, and an instance attribute SHADOWS a subclass's class
+    # attribute - the base's __init__ runs last and wins every shared
+    # name, so the engine's table and Colors' agreed only because they
+    # were renumbered by hand (practice.md ▸ AN INSTANCE ATTRIBUTE
+    # SHADOWS THE CLASS ONE). 257-260 are what MultiFilterProxyModel
+    # switches on BY NUMBER and 264/266 what the one tile delegate
+    # reads; test_role_numbers holds the whole table.
+    IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256
+    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
+    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
+    RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
+    TagRole = QtCore.Qt.ItemDataRole.UserRole + 4  # 260
+    DateRole = QtCore.Qt.ItemDataRole.UserRole + 5  # 261
+    RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
+    LicenceRole = QtCore.Qt.ItemDataRole.UserRole + 7  # 263
+    #: The colour of this asset's category, "" when it has none.
+    #: Read from the SAME data dict the Categories model writes -
+    #: one DatabaseConnector per file, shared - so the grid repaints
+    #: from the sidebar's edit with nothing wired between them.
+    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8  # 264
+    #: How many versions this asset has. The delegate draws the
+    #: chevrons badge at > 1; the dialog opens from a click on it.
+    VersionsRole = QtCore.Qt.ItemDataRole.UserRole + 9  # 265
+    #: Whether this asset carries a note (text or open to-dos) -
+    #: the Notes badge's question, answered live from the notes
+    #: store (a dict lookup, cheap per repaint).
+    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # 266
+    #: The ACTIVE version's name ("" when there are no versions).
+    #: List mode has room to say which version you are looking at,
+    #: where the grid's badge could only say that versions exist.
+    ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267
+
     #: which json file in the library dir backs this model - the COP
     #: section subclasses this model over its own cops.json (see
     #: core/cop_library.py), everything else shares library.json.
@@ -202,30 +236,8 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         # model wired to a dead one (see thumbnails._EngineSignals).
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)
 
-        self.IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256
-        self.CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
-        self.FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
-        self.RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
-        self.TagRole = QtCore.Qt.ItemDataRole.UserRole + 4  # 260
-        self.DateRole = QtCore.Qt.ItemDataRole.UserRole + 5  # 261
-        self.RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
-        self.LicenceRole = QtCore.Qt.ItemDataRole.UserRole + 7  # 263
-        #: The colour of this asset's category, "" when it has none.
-        #: Read from the SAME data dict the Categories model writes -
-        #: one DatabaseConnector per file, shared - so the grid repaints
-        #: from the sidebar's edit with nothing wired between them.
-        self.CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8  # 264
-        #: How many versions this asset has. The delegate draws the
-        #: chevrons badge at > 1; the dialog opens from a click on it.
-        self.VersionsRole = QtCore.Qt.ItemDataRole.UserRole + 9  # 265
-        #: Whether this asset carries a note (text or open to-dos) -
-        #: the Notes badge's question, answered live from the notes
-        #: store (a dict lookup, cheap per repaint).
-        self.NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # 266
-        #: The ACTIVE version's name ("" when there are no versions).
-        #: List mode has room to say which version you are looking at,
-        #: where the grid's badge could only say that versions exist.
-        self.ActiveVersionRole = QtCore.Qt.ItemDataRole.UserRole + 11  # 267
+        # (The Qt roles are CLASS attributes above - assigning them
+        # here would shadow every subclass's declaration.)
         # is_usd is derived from each material's .interface file; cache the
         # result per material id so it is read once, not on every repaint.
         self._usd_cache = {}

@@ -183,7 +183,7 @@ test_list_columns test_designed_dialog test_no_live_data \
 test_write_ordering test_thumbnail_paths test_panel_correctness \
 test_prefs_and_sources test_prefs_shared test_prefs_per_user test_unbound_names test_conversion test_keyed_store test_library_prefs test_area_bindings test_grid_order test_sidebar_area test_sidebar_order test_toolbar_area test_comments_area test_grid_operations test_grid_badges test_sidebar_colour test_grid_menu test_sidebar_menu test_grid_columns test_matx_translate \
 test_redshift_terminal test_dead_cover test_updater test_preview_boundary \
-test_empty_state"
+test_empty_state test_role_numbers"
 
 # The Vulkan viewport's multithreaded update/draw is switched off for
 # the suite on EVERY platform. The 2026-08-06 measurement scoped this

@@ -183,6 +183,19 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         "type": "RendererLabelRole",
     }
 
+    #: Same role numbers as MaterialLibrary - the delegate and the
+    #: filter proxy are shared, so they must line up exactly. CLASS
+    #: attributes like the rest of the family (this model cannot
+    #: inherit them - it is a catalogue, not a MaterialLibrary), held
+    #: equal by test_role_numbers.
+    IdRole = QtCore.Qt.ItemDataRole.UserRole            # 256
+    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
+    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
+    RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
+    TagRole = QtCore.Qt.ItemDataRole.UserRole + 4       # 260
+    DateRole = QtCore.Qt.ItemDataRole.UserRole + 5      # 261
+    RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
+
     #: (done, total) preview downloads, for the shared thin progress bar.
     #: Rolling, because previews load lazily as tiles scroll into view.
     progress_changed = QtCore.Signal(int, int)
@@ -217,16 +230,9 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         self._pending_scheduled = False
         self._preview_workers = []   # bounded download pool
 
-        # Same role numbers as MaterialLibrary - the delegate and the
-        # filter proxy are shared, so they must line up exactly.
-        self.IdRole = QtCore.Qt.ItemDataRole.UserRole            # 256
-        self.CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257
-        self.FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2  # 258
-        self.RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3  # 259
-        self.TagRole = QtCore.Qt.ItemDataRole.UserRole + 4       # 260
-        self.DateRole = QtCore.Qt.ItemDataRole.UserRole + 5      # 261
-        self.RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6  # 262
-
+        # (The Qt roles are CLASS attributes above - assigning them
+        # here would shadow a declaration, which is the trap the
+        # family just removed.)
                 # Through the RELAY, not the engine: the engine singleton is
         # replaced on every module reload, which would leave this
         # model wired to a dead one (see thumbnails._EngineSignals).
