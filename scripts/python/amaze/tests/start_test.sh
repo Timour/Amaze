@@ -185,20 +185,25 @@ test_prefs_and_sources test_prefs_shared test_prefs_per_user test_unbound_names 
 test_redshift_terminal test_dead_cover test_updater test_preview_boundary \
 test_empty_state"
 
-# Windows: the Vulkan viewport's multithreaded update/draw is switched
-# off for the suite. Nine panel modules crashed hython inside Houdini's
-# own draw - a TBB parallel phase exiting into viewport teardown - and
-# the cause was isolated by measurement, not read off the stack: the
-# same module crashes on NVIDIA, on AMD and on SwiftShader, and passes
-# on all of them with this one variable off, so it is a thread race in
-# the viewport code and not any GPU's driver (research.md > Windows).
-# This replaced a nine-module exclusion; the suite is whole again.
+# The Vulkan viewport's multithreaded update/draw is switched off for
+# the suite on EVERY platform. The 2026-08-06 measurement scoped this
+# to Windows and nine panel modules; 2026-08-14 on Linux (22.0.407)
+# the same crash took ten, and the isolated stacks finally NAMED it:
+# GR_Uniforms::assignRVGlobalBlock / pushObjectUniforms inside
+# DM_VPortAgent::setupGeometry's TBB renderParallelFor, reached from
+# every fixture-panel thumbnail render (the flipbook ROP drives the
+# viewport machinery even under hython), with tcmalloc trapping a
+# realloc of a garbage pointer. Houdini's heap misuse, not any GPU's:
+# NVIDIA, AMD and SwiftShader all crashed, all pass with this off.
+# The platform split is SideFX's own doc line - threading for Vulkan
+# geometry updates is on by default on Linux and Windows - and NOT
+# macOS, which is why the Mac gate never met it. A/B on Linux: the
+# ten crash 10/10 threaded, 334 tests green single-threaded
+# (research.md > Houdini's Vulkan viewer threading, devlog #502).
 # Suite-only on purpose - a live Houdini keeps its own defaults.
-if amaze_is_windows; then
-    export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
-    echo "WINDOWS: viewport draw single-threaded for this run" \
-         "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
-fi
+export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
+echo "suite: viewport draw single-threaded for this run" \
+     "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
 
 # ONE hython process by default. The original measurement, when this
 # was 13 modules and 203 tests: 13 separate launches cost ~110s,
