@@ -457,6 +457,107 @@ class AStoreLivesWhereItsSpecSays(StoreCase):
             keyed_store.open_store(self._machine_spec(), prefs)
 
 
+class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
+    """ROADMAP line 26, stage 2. The engine's adoption has one rule -
+    a key we lack is theirs and is kept, a key we both hold is ours -
+    which is right for a store of independent records and wrong for the
+    document about to join it.
+
+    settings.json needs three answers, and it has its own copy of all
+    three today (`_merge_settings_from_disk`): your registered FOLDERS
+    must end up holding both panes' additions; your thumbnail SIZE is a
+    single choice, so the pane doing the saving wins; and a folder's
+    record must merge field by field, so a colour set in one pane and a
+    name set in the other both survive. A store says which per key, and
+    a key it does not name behaves exactly as every store does now.
+    """
+
+    def _spec(self, rules):
+        return keyed_store.Spec(
+            filename="doc.json", payload="settings",
+            keyspace=keyed_store.KEY_ID, label="A document",
+            noun="entry", normalise=lambda value: value,
+            merge_rules=rules)
+
+    def _peer_wrote(self, document):
+        """The other pane's save, already on disk when ours commits."""
+        with open(self.path("doc.json"), "w", encoding="utf-8") as handle:
+            json.dump({"settings": document}, handle)
+
+    def _after_a_race(self, rules, ours, theirs):
+        spec = self._spec(rules)
+        store = keyed_store.open_store(spec, self.prefs)
+        for key, value in ours.items():
+            store.set(key, value)
+        self._peer_wrote(theirs)
+        store.set("_touch", 1)          # any write runs the adoption
+        return self.on_disk("doc.json")["settings"]
+
+    def test_a_combine_key_takes_BOTH_panes_entries(self):
+        """The folder case: two panes, two additions, both kept."""
+        after = self._after_a_race(
+            {"folders": keyed_store.MERGE_COMBINE},
+            ours={"folders": ["/mine"]},
+            theirs={"folders": ["/theirs"]})
+        self.assertEqual(["/mine", "/theirs"], after["folders"],
+                         "one pane's registered folder was flattened by "
+                         "the other pane's save")
+
+    def test_a_combine_key_does_not_duplicate_a_shared_entry(self):
+        after = self._after_a_race(
+            {"folders": keyed_store.MERGE_COMBINE},
+            ours={"folders": ["/both", "/mine"]},
+            theirs={"folders": ["/both", "/theirs"]})
+        self.assertEqual(["/both", "/mine", "/theirs"], after["folders"])
+
+    def test_a_key_with_no_rule_keeps_THIS_sessions_choice(self):
+        """The scalar case, and the default: a single choice cannot be
+        merged without a clock the engine does not have, so the pane
+        the user is actually touching wins."""
+        after = self._after_a_race(
+            {}, ours={"size": 128}, theirs={"size": 64})
+        self.assertEqual(128, after["size"])
+
+    def test_a_fields_key_merges_INSIDE_a_shared_record(self):
+        """The location case: a colour from one pane, a name from the
+        other, on the same folder."""
+        after = self._after_a_race(
+            {"records": keyed_store.MERGE_FIELDS},
+            ours={"records": {"/a": {"name": "Mine"}}},
+            theirs={"records": {"/a": {"color": "#ff8800"}}})
+        self.assertEqual({"name": "Mine", "color": "#ff8800"},
+                         after["records"]["/a"])
+
+    def test_a_fields_key_keeps_OURS_where_both_wrote_the_same_field(self):
+        after = self._after_a_race(
+            {"records": keyed_store.MERGE_FIELDS},
+            ours={"records": {"/a": {"name": "Mine"}}},
+            theirs={"records": {"/a": {"name": "Theirs"}}})
+        self.assertEqual("Mine", after["records"]["/a"]["name"])
+
+    def test_a_fields_key_adopts_a_record_we_never_had_whole(self):
+        after = self._after_a_race(
+            {"records": keyed_store.MERGE_FIELDS},
+            ours={"records": {"/a": {"name": "Mine"}}},
+            theirs={"records": {"/b": {"name": "Theirs"}}})
+        self.assertEqual({"name": "Theirs"}, after["records"]["/b"])
+
+    def test_a_library_store_adopts_exactly_as_it_always_did(self):
+        """The polarity. None of the four name a rule, so none of them
+        may change behaviour: a key we lack arrives, a key we hold is
+        ours."""
+        store = self.store()
+        store.set("material:1", self.page("mine"))
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": {"material:1": self.page("theirs"),
+                                 "material:2": self.page("new")}}, handle)
+        store.set("material:3", self.page("later"))
+        after = self.on_disk()["notes"]
+        self.assertEqual("mine",
+                         after["material:1"]["items"][0]["text"])
+        self.assertIn("material:2", after)
+
+
 class AReadHandsOutACopy(StoreCase):
     """`notes()` used to return the live cache. A caller holding that
     could mutate the table without writing anything - so a REFUSED save
