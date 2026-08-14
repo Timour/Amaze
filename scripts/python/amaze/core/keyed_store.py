@@ -588,6 +588,32 @@ register(
 _open: dict = {}
 
 
+def _root_for(spec: Spec, preferences) -> str:
+    """WHICH DIRECTORY this store's file lives in.
+
+    The library stores live with the library. A machine-local one lives
+    beside settings.json, because the file that holds the POINTER to a
+    library is the one file that cannot live inside it - `filenames()`
+    already excludes it from what Repair and the audit survey, and this
+    is the other half of that answer.
+
+    REFUSES rather than defaulting. A Prefs that cannot say where its
+    configuration lives used to mean "the library" by omission, and for
+    a machine-local store that writes one machine's own settings into a
+    synced folder every other machine reads. The one direction this
+    must never fail in is quietly.
+    """
+    if spec.in_library:
+        return str(preferences.dir)
+    root = str(getattr(preferences, "path", "") or "")
+    if not root:
+        raise ValueError(
+            "%s is machine-local and this Prefs cannot say where the "
+            "configuration lives - refusing to fall back to the "
+            "library" % spec.filename)
+    return root
+
+
 def open_store(spec: Spec, preferences) -> "Store":
     """The store for this library, read once and cached.
 
@@ -595,7 +621,7 @@ def open_store(spec: Spec, preferences) -> "Store":
     read by people, and shadowing the builtin inside it would make
     every plain file read here look like a store lookup.
     """
-    path = os.path.join(str(preferences.dir), spec.filename)
+    path = os.path.join(_root_for(spec, preferences), spec.filename)
     handle = _open.get((spec.filename, path))
     if handle is None:
         handle = Store(spec, path, preferences)
