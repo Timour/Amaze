@@ -1120,7 +1120,7 @@ class DatabaseConnector:
             self._save_outcome = "empty-document"
             return False
         full = self._path + self._filename
-        # STALE-WRITE GUARD: another session (the other Mac, the other
+        # STALE-WRITE GUARD: another session (another machine, another
         # Houdini version) may have saved since this one loaded -
         # writing our in-memory copy blind would silently erase their
         # work. A changed file merges by asset id first: their NEW ids

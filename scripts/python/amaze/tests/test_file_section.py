@@ -299,10 +299,10 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
             self.assertNotIn(retired, on_disk,
                              "%s is still written flat" % retired)
 
-    def test_the_second_mac_keeps_its_own_folders_and_gains_the_others(self):
-        """THE SECOND MACHINE. Its settings.json is its OWN - preferences
-        never synced between the two Macs (INSTALL.md), so its six keys
-        are registered folders nothing has ever carried anywhere.
+    def test_the_second_machine_keeps_its_own_folders_and_gains_the_others(self):
+        """THE SECOND MACHINE. Its settings.json is its OWN - the file
+        never travels between machines, so its six keys are registered
+        folders nothing has ever carried anywhere.
 
         The first version of this shipped taking the store as-is when it
         already held anything, on the reasoning that the six keys were a

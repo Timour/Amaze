@@ -158,7 +158,7 @@ class Material:
         self.categories = cats if cats else ""
         self._tags = [""] if not tags else tags
         # uuid4 hex for NEW materials: machine-independent, no
-        # timestamp-tick collision window across two Macs. Existing
+        # timestamp-tick collision window across two machines. Existing
         # materials keep their legacy timestamp ids forever - scene
         # nodes stamp them as userData and filenames carry them.
         self._mat_id = uuid.uuid4().hex if mat_id == "" else mat_id
@@ -242,8 +242,8 @@ class Material:
         # set, so an older build silently dropped a newer one's fields
         # on the next save - verified: a "future_field" on an asset
         # survived load and was absent after one save(). That is what an
-        # older build would do to `icon` across all 546 rows on the
-        # other Mac.
+        # older build would do to `icon` across all 546 rows on
+        # another machine.
         mat._extra = {
             key: value for key, value in material_dict.items()
             if key not in cls._KNOWN_KEYS

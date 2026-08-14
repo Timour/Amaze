@@ -995,7 +995,7 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
         self.lib.add_user_gradient("mine2", "", {"values": [], "keys": []})
         self.assertIn(
             "Bronze", self._on_disk().get("categories", []),
-            "the second Colors edit wrote the other Mac's category out "
+            "the second Colors edit wrote the other machine's category out "
             "of existence - _save_user rebuilds `categories` from a "
             "copy taken before the merge ran")
 

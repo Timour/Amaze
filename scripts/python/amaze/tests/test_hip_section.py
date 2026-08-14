@@ -1717,8 +1717,8 @@ class ShelfTest(unittest.TestCase):
         root = self._shelf()
         names = sorted(t.get("name") for t in root.findall("tool"))
         # THE WHOLE SET, listed. A count would pass a rename and an
-        # accidental duplicate; the names are what the refusals and
-        # INSTALL.md quote at the user.
+        # accidental duplicate; the names are what the refusals quote
+        # at the user.
         self.assertEqual(["amaze_capture_hip", "amaze_check_updates",
                           "amaze_open_panel", "amaze_repair_library"], names)
 
@@ -1726,7 +1726,7 @@ class ShelfTest(unittest.TestCase):
         """A toolshelf is NECESSARY but not SUFFICIENT for the tab to
         appear - the dock is populated from shelf SETS, and a loose
         toolshelf belongs to none. This asserts only the part the repo
-        controls; the per-machine step is INSTALL.md's job. The first
+        controls; the per-machine step is the manual's job. The first
         version of this test said "the tab would not appear", which
         stated a guarantee the package does not provide."""
         root = self._shelf()
@@ -1750,7 +1750,7 @@ class ShelfTest(unittest.TestCase):
             "no per-machine setup", body,
             "the shelf claims to need no setup - it needs one")
         self.assertIn(
-            "INSTALL.md", body,
+            "MANUAL.md", body,
             "the shelf does not point at where the setup step is written")
 
     def test_every_icon_resolves_to_a_file_that_exists(self):

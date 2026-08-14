@@ -1047,8 +1047,8 @@ class TheRouteFromCleanLibraryTest(_Case):
 
     def test_the_tab_the_refusal_tells_them_to_add_exists(self):
         """The refusal says "choose Shelves, then Amaze" - a per-machine
-        step (INSTALL.md 6b-2). If the shelf's label ever changed, that
-        sentence would name something not in the menu."""
+        step. If the shelf's label ever changed, that sentence would
+        name something not in the menu."""
         root = ET.parse(SHELF).getroot()
         labels = [shelf.get("label") for shelf in root.findall("toolshelf")]
         self.assertIn("Amaze", labels)

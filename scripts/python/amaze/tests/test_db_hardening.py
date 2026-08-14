@@ -2080,7 +2080,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                       "the way out does not say where the tool is")
         self.assertIn("Shelves", route[0],
                       "nothing says how to get the Amaze tab, and adding "
-                      "it is a per-machine step (INSTALL.md 6b-2)")
+                      "it is a per-machine step")
         # AND THE RESTART. This message can only be reached from the panel,
         # so this Houdini has already read the library - one connector per
         # file lives for the whole process and its next save writes what it

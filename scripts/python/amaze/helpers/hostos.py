@@ -1255,7 +1255,7 @@ def storage_path_key(path: str) -> str:
 
     `~` here is PYTHON's home, expanded by `expand_storage_path` and
     nothing else. It is NOT Houdini's `$HOME`, which on a stock
-    Windows machine defaults to Documents (INSTALL.md) - the display
+    Windows machine defaults to Documents - the display
     spelling `houdini_path()` writes serves that world; this one never
     passes through Houdini. Measured 2026-08-06: a package's `env`
     entries land in `os.environ`, so $AMAZE resolves here without hou.

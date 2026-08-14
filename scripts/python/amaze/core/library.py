@@ -2090,8 +2090,8 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         before interrupting. The specific finding is already named per
         section above; this is the step, and there is only one of it.
 
-        The shelf tab is a per-machine step (INSTALL.md 6b-2 - registered
-        is not displayed, so a fresh machine has the tools without a tab),
+        The shelf tab is a per-machine step (registered is not
+        displayed, so a fresh machine has the tools without a tab),
         which is why the sentence says how to get the tab. A next step
         that assumes setup nobody did is the same dead end one door along.
 

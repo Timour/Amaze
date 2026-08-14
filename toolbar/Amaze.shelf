@@ -15,7 +15,8 @@
        Shelves ▸ Amaze); Houdini records that in
        $HOUDINI_USER_PREF_DIR/toolbar/default.shelf as a <shelfSetEdit>.
        Note that record pins the Houdini BUILD in its fileLocation, so
-       it is lost on an upgrade and has to be redone. See INSTALL.md.
+       it is lost on an upgrade and has to be redone. MANUAL.md says
+       so to the user under First run.
 
        WHY A SHELF TOOL AT ALL. Houdini's hotkey system cannot bind an
        action inside a Python Panel - verified on 22.0.394 against the

@@ -1020,7 +1020,7 @@ class MaterialRoundTripTest(unittest.TestCase):
     list, so the round-trip was a fixed key set in BOTH directions:
 
     * A key a NEWER build wrote was silently dropped on the first save
-      by an older one, across all 546 rows on the other Mac.
+      by an older one, across all 546 rows on another machine.
     * A MISSING key raised KeyError out of MaterialLibrary.__init__, so
       one damaged row meant the panel could not open at all.
 
@@ -1158,7 +1158,7 @@ class UnreadableSiblingIsNotOverwrittenTest(unittest.TestCase):
 
 
 class TwoMachineMergeTest(unittest.TestCase):
-    """What the other Mac wrote must survive this Mac's next save.
+    """What another machine wrote must survive this machine's save.
 
     The stale-write guard merges a database another session changed
     underneath us. It adopted their new assets INTO THE FILE - but not

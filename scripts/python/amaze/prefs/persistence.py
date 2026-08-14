@@ -9,8 +9,8 @@ LIBRARY (`SHARED_KEYS`, `_adopt_shared`, `_push_shared`): their truth
 is the library's `prefs.json`, and `settings.json` keeps them only as
 the last-known `shared_settings` copy.
 
-The FILE `settings.json` is PER-MACHINE and never travels (INSTALL.md
-▸ "settings.json never travels"); it moved to the OS preferences dir
+The FILE `settings.json` is PER-MACHINE and never travels - no sync
+folder, no merge between computers; it moved to the OS preferences dir
 on 2026-08-05, and `_merge_settings_from_disk` exists for two panes of
 one session, not for two computers. The portable-path comment below
 still describes the install-folder era and is left exactly as it was
@@ -944,7 +944,7 @@ class _Persistence:
             # the one guarded store that must not have one. The
             # databases latch on absence because a library is SHARED and
             # a file can be late; settings.json is per-machine and never
-            # travels (INSTALL.md ▸ preferences are machine-local), so
+            # travels between machines, so
             # there is no late case to protect against - while deleting
             # this file IS the prescribed way out of an unreadable one,
             # and a trace-based latch would refuse the fresh start it

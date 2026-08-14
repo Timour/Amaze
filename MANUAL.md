@@ -34,6 +34,11 @@ of the app lives.
 
 Add the pane tab: **New Pane Tab Type ▸ Misc ▸ Amaze**.
 
+Add the shelf tab too: right-click the shelf dock ▸ **Shelves ▸
+Amaze**. Houdini records that choice per machine and per Houdini
+build, so redo it after an upgrade — the tools are all still there,
+only the tab needs re-adding.
+
 On first launch Amaze asks for a **library folder** — where your saved
 assets live. Keep it *outside* the plugin folder, so updating Amaze
 never touches your assets; a cloud-synced folder works well. You can

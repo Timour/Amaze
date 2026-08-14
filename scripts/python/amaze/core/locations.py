@@ -20,11 +20,11 @@ is unmounted or a sync has not landed, so the last-known list still
 shows, marked unreachable rather than silently missing. The
 copy is written FROM the store, never back into it.
 
-**It does NOT serve the other Mac.** The roadmap's A3 said to keep the
-six old keys "so the other Mac's older build still works", and that
-reason is hollow: settings.json is per-machine and has never travelled
-between the two (INSTALL.md - "Preferences no longer sync between the
-two Macs"). The keys are still worth writing, for the reason A4 gives
+**It does NOT serve another machine.** The plan that built this said
+to keep the six old keys so another machine's older build still works,
+and that reason is hollow: settings.json is per-machine and never
+travels between computers.
+The keys are still worth writing, for the reason A4 gives
 and for a build ROLLBACK on THIS machine, which is a real case and the
 only back-compatibility a per-machine file can offer.
 
@@ -764,16 +764,15 @@ def migrate(preferences) -> dict:
     mine, my_favs = _from_settings(preferences)
 
     # THE UNION, ADOPT-ONLY - the engine's own rule (`_adopt_from_disk`:
-    # adoption can only ADD). When the other machine migrated first the
+    # adoption can only ADD). When another machine migrated first the
     # store already holds ITS locations, and this machine's six keys are
-    # NOT a stale copy of them: **preferences never synced between the
-    # two Macs** (INSTALL.md - "favourites, registered folders and view
-    # state are per-machine"), so they are this machine's own registered
+    # NOT a stale copy of them: **settings.json never travels between
+    # machines**, so they are this machine's own registered
     # folders and nothing has ever carried them anywhere. Taking the
     # store as-is would empty that machine's sidebar on the first launch
     # of this build.
     #
-    # The cost, and it is the honest one: the two Macs end up with the
+    # The cost, and it is the honest one: the machines end up with the
     # union of both sets of folders, on both machines. That is what
     # "locations follow the library" MEANS, it is visible, and Remove
     # Folder undoes it - where a silent discard could not be undone at
@@ -852,7 +851,7 @@ def migrate(preferences) -> dict:
             #: How many of this machine's own locations JOINED ones the
             #: other machine had already put there. Reported because the
             #: union is a visible product outcome, not bookkeeping: the
-            #: second Mac's sidebar grows by the first Mac's folders.
+            #: second machine's sidebar grows by the first's folders.
             "joined": adopted, "already_there": len(existing)}
 
 
