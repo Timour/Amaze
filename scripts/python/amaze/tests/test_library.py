@@ -1502,14 +1502,16 @@ class GradientSwitchTest(unittest.TestCase):
         model's private stand-in retired with the move onto the
         connector, which is the point: one guard, inherited."""
         model = self._model()
-        self.assertTrue(model._db().serves(self.prefs.dir),
+        from amaze.core import database
+        connector = database.DatabaseConnector(model.DB_FILENAME)
+        self.assertTrue(connector.serves(self.prefs.dir),
                         "premise: the connector serves this library")
 
         # Move the library under the model WITHOUT switching it - the
         # exact state the missing switch left behind.
         self.prefs.dir = _empty_library_dir(self)
         self.assertFalse(
-            model._save_user(),
+            model.save(),
             "the gradient model saved colours from library A into "
             "library B - nothing refused the write")
 

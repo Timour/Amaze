@@ -62,7 +62,11 @@ class Categories(QtCore.QAbstractListModel):
             preferences.load()
         self.preferences = preferences
         db = database.DatabaseConnector(self.DB_FILENAME)
-        self._data = db.load(self.preferences.dir)
+        # Through the survivable door: this model is constructed during
+        # panel setup too, and a sidecar list that will not read must
+        # not take the panel down from the SIDEBAR's constructor after
+        # the asset model already survived it.
+        self._data = database.load_survivable(db, self.preferences.dir)
         self._categories = self._data["categories"]
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         # Active renderer filter (lowercased; "" = no filter). Pushed in

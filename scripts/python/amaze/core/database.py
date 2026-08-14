@@ -494,6 +494,46 @@ def section_noun(filename: str, count: int = 2) -> str:
     return noun if count == 1 else noun + "s"
 
 
+def load_survivable(db, path: str, reload: bool = False):
+    """load() for a model constructed or switched during panel setup.
+
+    The PRIMARY index raises through, so the panel can offer the
+    repair dialog. A SECONDARY that exists and will not read must not
+    take the panel down instead: the connector's write latch is set so
+    nothing saves over the evidence, the file is preserved beside
+    itself, the user told once, and the model gets an empty document
+    of its own - never the connector's cache, whose falsy state is
+    what makes the next load retry. Colors carried exactly this guard
+    alone (hand-built, 2026-07-30); every sidecar list shares it now.
+
+    `reload` picks the connector door, and which one is not cosmetic:
+    `load()` returns the cached document when one is held - right at
+    construction, wrong on a library switch (research.md ▸ the
+    connector's own latch rules).
+    """
+    try:
+        return db.reload_with_path(path) if reload else db.load(path)
+    except (OSError, ValueError) as exc:
+        if db._filename == "library.json":
+            raise
+        db._write_blocked = True
+        hostos.preserve_unreadable(
+            os.path.join(str(path), db._filename),
+            why=section_label(db._filename))
+        debug.event("database", "unreadable - saving disabled",
+                    file=db._filename, error=str(exc))
+        debug.alert(
+            "Your saved %s could not be read, so Amaze will not save "
+            "over them.\n\n"
+            "Nothing has been lost - the file is untouched. Changes "
+            "you make there now will not be kept.\n\n"
+            "Close Houdini and put back a recent copy with the Repair "
+            "tool in the Amaze shelf."
+            % section_noun(db._filename),
+            key="unreadable-" + db._filename)
+        return {"categories": ["_All"], "tags": [], "assets": []}
+
+
 class DatabaseConnector:
     """
     Database Handler for Matlib - saves data as json to disk with one

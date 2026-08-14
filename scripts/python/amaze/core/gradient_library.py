@@ -1,35 +1,47 @@
 """
 Models for the Gradients ("Colors") section.
 
-Every entry is a normal USER gradient, stored in <library dir>/
-gradients.json with its full ramp (basis/key/value) so it re-applies
-exactly as saved, in user-defined categories.
+Like the Cop and Code sections, a material-style library over its own
+gradients.json - `GradientLibrary` subclasses the material machinery,
+so records, categories, favourites, tile icons, search, deletion, the
+refused-save contracts and the connector's guards all come from the
+proven shared code paths. What differs:
+
+- **A palette's payload is INLINE** - its `colors` list and full
+  `ramp` (basis/key/value) ride on the record, so gradients.json is
+  self-contained and there are no `<id>.mat`/thumbnail files.
+- **Thumbnails are PAINTED**, not rendered - stacked bands for a
+  stepped palette, a left-to-right gradient for a smooth ramp - via
+  the unified engine's PAINT path, content-addressed so an edit mints
+  a fresh preview.
+- **The kind field reads `Gradient`** uniformly; which curated set or
+  palette size an entry belongs to is category information.
 
 The curated palettes are just prefilled colours, not read-only -
-SEEDED once into the user gradients on first run (see
-GradientLibrary._seed_curated_once), from the JSON defs in res/def/
-listed in CURATED_SETS: Sanzo Wada's "A Dictionary of Color Combinations"
-(348 combinations; data github.com/dblodorn/sanzo-wada, MIT, source work
-public domain), plus artist sets from colour theory - Paul Klee (palette
-sampled from "Farbtafel qu 1", 1930), Josef Albers (Homage to the Square /
+SEEDED once into the user gradients (see `seed_curated_palettes`),
+from the JSON defs in res/def/ listed in CURATED_SETS: Sanzo Wada's
+"A Dictionary of Color Combinations" (348 combinations; data
+github.com/dblodorn/sanzo-wada, MIT, source work public domain), plus
+artist sets from colour theory - Paul Klee (palette sampled from
+"Farbtafel qu 1", 1930), Josef Albers (Homage to the Square /
 Interaction of Color), Johannes Itten (twelve-part Farbkreis). After
-seeding they are ordinary gradients: moveable, editable, deletable, their
-categories removable, their colour-theory notes editable. Each JSON
-documents its own sources in a "source" field.
+seeding they are ordinary gradients: moveable, editable, deletable,
+their colour-theory notes on their Comments pages. Each JSON documents
+its own sources in a "source" field.
 """
 
 import json
 import os
-import uuid
 
 import hou
 from PySide6 import QtCore, QtGui
 
 from amaze.core import category, grid_proxy
-from amaze.core import grid_columns
 from amaze.core import database
 from amaze.core import debug
+from amaze.core import library
 from amaze.core import locations
+from amaze.core import material
 from amaze.core import thumbnails
 from amaze.core import tile_icons
 from amaze.helpers import hostos
@@ -46,11 +58,10 @@ def _def_path(filename: str) -> str:
     )
 
 
-# The curated (read-only) sets, in display order. Entry dicts get
-# "type" = the set key, and everything downstream branches only on
-# user-vs-curated, so adding a set here (plus its JSON in res/def/) is
-# the whole job. "label" feeds the sidebar group names and the list
-# view's Category column ("Wada 5 Colors", ...).
+# The curated (read-only) sets, in display order. Everything downstream
+# reads ordinary user gradients, so adding a set here (plus its JSON in
+# res/def/) is the whole job. "label" feeds the seeded category names
+# ("Wada 5 Colors", ...).
 CURATED_SETS = (
     {"key": "wada", "label": "Wada", "file": "sanzo_wada.json"},
     {"key": "klee", "label": "Klee", "file": "paul_klee.json"},
@@ -73,18 +84,12 @@ def _palette_ramp_data(colors: list) -> dict:
 
 
 def _row_categories(entry) -> list:
-    """The categories one palette is filed under, as a list.
+    """The categories one palette VIEW is filed under, as a list.
 
-    THE ONE READER. Nine sites here spelled `entry.get("category")`
-    against the singular string this file used to carry; schema v4
-    made it a LIST, like every other database's rows, so that the
-    Colors section can run on `category.Categories` instead of a second
-    implementation of it. One reader rather than nine conversions is
-    what stops them drifting while the section is mid-move.
-
-    Tolerates the comma-string form for exactly the reason
-    `Categories._category_count` does - a hand-edited file, and an
-    older build's row arriving through the peer merge.
+    The one reader the proxy shares with the section verbs. Tolerates
+    the comma-string form for the reason `Categories._category_count`
+    does - a hand-edited file, and an older build's row arriving
+    through the peer merge.
     """
     cats = (entry or {}).get("categories", [])
     if isinstance(cats, str):
@@ -92,17 +97,6 @@ def _row_categories(entry) -> list:
     if not isinstance(cats, list):
         return []
     return [c.strip() for c in cats if isinstance(c, str) and c.strip()]
-
-
-def _set_row_category(entry, name: str) -> None:
-    """File a palette under one category, or none for "".
-
-    Colors is single-category in the UI today; the field is a list so
-    the shared model can read it, and so multi-category costs nothing
-    when the UI is ready for it.
-    """
-    name = str(name or "").strip()
-    entry["categories"] = [name] if name else []
 
 
 class GradientCategories(category.Categories):
@@ -139,14 +133,19 @@ class GradientCategories(category.Categories):
         return ("all", None)
 
 
-class GradientLibrary(grid_columns.GridColumnsMixin,
-                     QtCore.QAbstractTableModel):
-    """User gradients first, then the Wada combinations. Entries are
-    dicts with a "type" key ("user"/"wada"); user entries carry their
-    full ramp data, Wada entries their color list. Thumbnails are
-    painted on demand and cached - Wada as stacked horizontal bands
-    (the dictionary's own presentation), user ramps as a left-to-right
-    gradient (banded when fully constant-basis)."""
+class GradientLibrary(library.MaterialLibrary):
+    """The Colors section's asset model - material machinery over
+    gradients.json, with the palette payload inline and a painted
+    preview."""
+
+    NOTES_SECTION = "gradient"
+
+    DB_FILENAME = "gradients.json"
+
+    #: A palette lives INLINE in gradients.json, so a refused list
+    #: write leaves nothing on disk to recover - the same answer the
+    #: Code section gives for its snippets.
+    CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE = False
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -156,106 +155,117 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         "comments": "NotesRole",
     }
 
-    # 257-260 are what `MultiFilterProxyModel` switches on, by NUMBER
-    # (practice.md > AN INSTANCE ATTRIBUTE SHADOWS THE CLASS ONE).
-
-    #: A LIST - the proxy iterates it.
-    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1
-    FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 2
-    #: The KIND field, as 259 is in every section.
-    RendererRole = QtCore.Qt.ItemDataRole.UserRole + 3
-    #: Empty, but answered: the proxy iterates whatever 260 returns.
-    TagRole = QtCore.Qt.ItemDataRole.UserRole + 4
-    #: Tile subtitle and Type column; was `SubtitleRole` at +1.
-    RendererLabelRole = QtCore.Qt.ItemDataRole.UserRole + 6
-    #: The colour set on this gradient's category. UserRole + 8 to
-    #: match MaterialLibrary, so the one tile delegate reads one
-    #: number whichever section it is painting.
-    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8
-    #: Whether this gradient carries a note - the badge's question,
-    #: shared role number with every other tile model (UserRole + 10).
-    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10
-
-    # Colors' own, past the family's last (+11).
-
-    ColorsRole = QtCore.Qt.ItemDataRole.UserRole + 12
-    #: list mode's Category column: the user category for saved
-    #: gradients, the curated set's label (Wada/Klee/...) otherwise
+    #: List mode's Category column: the palette's category by NAME,
+    #: "Uncategorized" for none. The family's CategoryRole answers a
+    #: LIST for the proxy; this is the display string. Past the
+    #: family's last number (+11); test_role_numbers holds the gap.
     CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13
 
-    def __init__(self, preferences=None, parent=None) -> None:
-        super().__init__(parent)
-        self._preferences = preferences
-        self._user = []
-        self._user_categories = []
-        # Category colours, name -> hex, beside the names in the same
-        # file - the shape every other section already uses.
-        self._category_colors: dict = {}
-        self._load_user()
-        # The curated palettes are no longer a read-only class of their
-        # own - they're SEEDED once into the user gradients (like the Code
-        # section's Starter Toolbox), so they can be moved, edited, deleted
-        # and their categories removed just like any saved gradient -
-        # ordinary editable entries, not read-only. After seeding
-        # every entry is a normal user gradient.
-        self._seed_curated_once()
-        self._entries = self._all_entries()
-        self._backfill_uids_once()
+    def __init__(self, parent=None, preferences=None) -> None:
+        super().__init__(parent, preferences=preferences)
+        self._persist_minted_ids_once()
         self._sweep_notes_to_store_once()
-        self._adopt_entry_icons_once()
 
-    #: The one database file this model owns. Named like every other
-    #: library model's, because it now IS one.
-    DB_FILENAME = "gradients.json"
+    @staticmethod
+    def _asset_from_row(row: dict):
+        """A palette rides as a `Material` - `colors` and `ramp` in its
+        carried-through keys - with two honesty rules of its own.
+
+        `uid` was the pre-connector spelling of the identity; mapping
+        it onto `id` keeps notes and tile icons keyed by the same
+        value. And a stored row WITHOUT a date keeps an empty one:
+        `Material` mints today's date for a blank, which is right for
+        an asset being born and fabricated history for 388 palettes
+        that simply predate the field.
+        """
+        row = dict(row)
+        legacy = str(row.get("uid") or "")
+        if legacy and not str(row.get("id") or ""):
+            row["id"] = legacy
+        mat = material.Material.from_dict(row)
+        if not str(row.get("date") or ""):
+            mat._date = ""
+        return mat
 
     @property
     def _load_failed(self) -> bool:
-        """Whether the connector is refusing to write this file.
-
-        The model kept its OWN latch, set on a parse failure and on an
-        absent-but-known file. The connector latches for both of those
-        reasons already (`_write_blocked`), so keeping a second one
-        meant two answers to one question - the shape this whole move
-        removes. Read through to the connector's."""
-        if self._preferences is None:
+        """Whether the connector is refusing to write this file. Read
+        through to the connector's own latch - one answer to whether
+        this file may be written."""
+        if self.preferences is None:
             return False
         return bool(getattr(
             database.DatabaseConnector(self.DB_FILENAME),
             "_write_blocked", False))
 
-    def _db(self):
-        """This model's connector, pointed at the current library."""
-        return database.DatabaseConnector(self.DB_FILENAME)
-
     def switch_model_data(self) -> None:
-        """Re-read the colours from the library the panel now points at.
+        super().switch_model_data()
+        self._persist_minted_ids_once()
+        self._sweep_notes_to_store_once()
 
-        Every other library-backed model is switched when the library
-        directory changes; this one was built once and never told, so
-        the Colors tab kept showing library A's palettes after a switch
-        to B - and the next edit wrote A's whole colour library into
-        B/gradients.json. Nothing refused it: the stale-write guard
-        compares against a file that does not exist yet, which reads as
-        "nothing moved underneath us".
+    # ------------------------------------------------------------------
+    # The once-per-library sweeps.
 
-        beginResetModel for the reason MaterialLibrary.switch_model_data
-        states: this replaces the whole row set, and a proxy left
-        holding the old count paints an out-of-range row.
-        """
-        self.beginResetModel()
-        try:
-            self._user = []
-            self._user_categories = []
-            self._category_colors = {}
-            # THROUGH reload_with_path, the door the other three take.
-            self._load_user(reload=True)
-            self._seed_curated_once()
-            self._entries = self._all_entries()
-            self._backfill_uids_once()
-            self._sweep_notes_to_store_once()
-            self._adopt_entry_icons_once()
-        finally:
-            self.endResetModel()
+    def _persist_minted_ids_once(self) -> None:
+        """Identity from birth: `Material` mints an id for a row that
+        arrived without one, and this writes the mint back so it IS the
+        row's identity rather than a value that changes every launch -
+        notes and tile icons are keyed by it.
+
+        Stamped INTO the connector's own row, in place, before the
+        save: the connector unions by id, so a save alone lands the
+        minted row BESIDE the id-less original instead of replacing
+        it - measured as a duplicate palette per launch."""
+        raw = [row for row in (self._data.get("assets") or [])
+               if isinstance(row, dict)]
+        minted = 0
+        for row, asset in zip(raw, self._assets):
+            if not str(row.get("id") or row.get("uid") or ""):
+                row["id"] = asset.mat_id
+                minted += 1
+        if minted and self.save():
+            debug.event("gradients", "ids minted and persisted",
+                        count=minted)
+
+    def _sweep_notes_to_store_once(self) -> None:
+        """The entry-level `note` text moved to the Notes store
+        (2026-08-01): a gradient's free text belongs on its Comments
+        page. Any row still carrying one - an old library, or a fresh
+        curated seed - has it appended to its page here and the field
+        consumed. Collected and written ONCE (per-entry writes rotated
+        a snapshot each, 39 times); a note the store cannot take stays
+        on the row and is retried next load - moved, never dropped."""
+        from amaze.core import notes
+        moved = cleared = 0
+        pages = {}
+        carriers = {}
+        for asset in self._assets:
+            extra = getattr(asset, "_extra", None)
+            if not isinstance(extra, dict) or "note" not in extra:
+                continue
+            text = str(extra.get("note", "") or "").strip()
+            if not text:
+                del extra["note"]
+                cleared += 1
+                continue
+            key = notes.note_key(self.NOTES_SECTION, asset.mat_id)
+            page = notes.note_for(self.preferences, key)
+            items = list(pages.get(key, page.get("items", [])))
+            items.append({"t": "text", "text": text})
+            pages[key] = items
+            carriers.setdefault(key, []).append(extra)
+        if pages and notes.set_notes(self.preferences, pages):
+            for extras in carriers.values():
+                for extra in extras:
+                    extra.pop("note", None)
+                    moved += 1
+        if moved or cleared:
+            self.save()
+            debug.event("gradients", "notes swept to the notes store",
+                        moved=moved, cleared=cleared)
+
+    # ------------------------------------------------------------------
+    # The curated seed.
 
     #: bump when the seed contents change, so a new set re-seeds
     _SEED_MARKER = ".amaze_gradient_seed_v1"
@@ -263,30 +273,29 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
     #: re-seed the curated gradients and duplicate them.
     _SEED_MARKER_LEGACY = ".assetlib_gradient_seed_v1"
 
-    def _seed_curated_once(self) -> None:
-        """First run per library: turn every curated combination into a
-        normal user gradient (stepped ramp, its set+size as the category,
-        its colour-theory note kept and now editable). Guarded by a marker
-        file so a later delete/edit/move sticks and it never re-seeds.
-        Best-effort - never blocks construction."""
-        if self._preferences is None:
-            return
-        if self._load_failed:
-            # _save_user() refuses while this is latched, so seeding here
-            # would write the MARKER for a save that never happened -
-            # and the marker is permanent, so the curated palettes would
-            # never seed again. The marker is usually the evidence that
-            # latched it, but a .bak can latch it with no marker present,
-            # which is exactly this case.
-            return
-        marker = os.path.join(self._preferences.dir, self._SEED_MARKER)
-        hostos.migrate_legacy_file(
-            self._preferences.dir, self._SEED_MARKER_LEGACY,
-            self._SEED_MARKER)
-        if os.path.exists(marker):
-            return
+    def seed_curated_palettes(self, category_model) -> None:
+        """First run per library: every curated combination becomes a
+        normal user gradient (stepped ramp, its set+size as the
+        category, its colour-theory note on its Comments page). Called
+        from the panel beside the Code section's snippet seed, with
+        the categories registered through `check_add_category` so the
+        sidebar hears its own insert signals. Guarded by a marker file;
+        best-effort - never blocks panel startup."""
         try:
+            lib_dir = self.preferences.dir
+            if not lib_dir:
+                return
+            if self._load_failed:
+                # A refused file must not earn a PERMANENT marker for a
+                # save that never happened.
+                return
+            marker = os.path.join(lib_dir, self._SEED_MARKER)
+            hostos.migrate_legacy_file(
+                lib_dir, self._SEED_MARKER_LEGACY, self._SEED_MARKER)
+            if os.path.exists(marker):
+                return
             seeded = 0
+            categories = []
             for curated in CURATED_SETS:
                 path = _def_path(curated["file"])
                 if not path or not os.path.exists(path):
@@ -299,60 +308,55 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                         continue
                     n = len(colors)
                     cat_name = "%s %s Color%s" % (
-                        curated["label"], n, "" if n == 1 else "s"
-                    )
-                    if cat_name not in self._user_categories:
-                        self._user_categories.append(cat_name)
-                    name = combo.get("name") or "Combination %s" % combo.get("id")
-                    self._user.append({
-                        "type": "user",
+                        curated["label"], n, "" if n == 1 else "s")
+                    if cat_name not in categories:
+                        categories.append(cat_name)
+                    name = (combo.get("name")
+                            or "Combination %s" % combo.get("id"))
+                    mat = self._asset_from_row({
                         "name": name,
-                        "categories": [cat_name] if cat_name else [],
+                        "categories": [cat_name],
                         "colors": colors,
-                        "note": combo.get("note", ""),
                         "ramp": _palette_ramp_data(colors),
-                        # STAMPED AT BIRTH, like every other section's
-                        # identity. Without it the backfill below found
-                        # every seeded entry unstamped and saved the
-                        # whole file a second time on first open.
-                        "id": uuid.uuid4().hex,
+                        "note": combo.get("note", ""),
                     })
+                    row = len(self._assets)
+                    self.beginInsertRows(QtCore.QModelIndex(), row, row)
+                    try:
+                        self._assets.append(mat)
+                    finally:
+                        self.endInsertRows()
                     seeded += 1
-            # Only mark "done" once we actually seeded something: if the
-            # def files were unreachable this run (e.g. AMAZE not set
-            # yet) we added nothing, so leave the marker off and retry next
-            # launch rather than permanently blocking the seed.
+            # Def files unreachable this run (AMAZE not set yet): leave
+            # the marker off and retry next launch rather than
+            # permanently blocking the seed.
             if not seeded:
                 return
-            # The marker is PERMANENT and it is the only trace
-            # gradients.json leaves, so it must not be minted for a save
-            # that never landed. code_library's seeder has always
-            # withheld its marker this way; this one wrote it whatever
-            # happened, and _save_user has three non-raising refusals -
-            # so marker-present + file-absent was reachable, and that
-            # pair latches _load_failed on the next launch and refuses
-            # every colour edit for the session.
-            if not self._save_user():
-                debug.event("gradient", "curated seed not marked - the save "
-                            "did not reach disk")
+            self.rebuild_thumbs()
+            # The marker is PERMANENT and gradients.json's only trace,
+            # so it must not be minted for a save that never landed -
+            # save() reports refusals by returning False, and the
+            # exists() gate below cannot see them.
+            if not self.save():
+                debug.event("gradient", "curated seed not marked - the "
+                            "save did not reach disk")
                 return
+            for cat_name in categories:
+                category_model.check_add_category(cat_name)
         except Exception as exc:                        # noqa: BLE001
-            # note vs event for this file: the same split as
-            # code_library's seeding - the seed failure itself is
-            # internal, while the marker failure below states a
-            # consequence the user can observe.
             debug.event("gradient", "curated palette seed failed",
                         error=str(exc))
             return
-        # The marker is written OUTSIDE the handler that wraps the save,
-        # and a failure to write it is a HARD STOP.
-        #
-        # Both were inside one broad `except Exception` that only
-        # printed. If _save_user succeeded and the marker write failed,
-        # the next launch seeded again: 348+ duplicated curated
-        # gradients per launch, growing without bound. If the save
-        # failed, the model showed seeded content that was never
-        # persisted, and the first user edit persisted a partial set.
+        # NOT written when the database is not on disk: the marker is
+        # the absent-database guard's evidence that this list existed,
+        # and database.save() reports an OSError instead of raising -
+        # so a save held off by a full disk lands here looking
+        # successful, and a marker with no database behind it refuses
+        # gradients.json on every future launch.
+        if not os.path.exists(os.path.join(lib_dir, self.DB_FILENAME)):
+            debug.event("gradient", "seed marker withheld - the "
+                        "database is not on disk", file=lib_dir)
+            return
         try:
             with open(marker, "w", encoding="utf-8") as handle:
                 handle.write("seeded %d curated palettes\n" % seeded)
@@ -363,502 +367,199 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 "adding them could not be recorded (%s) - so they "
                 "will be added a second time when Houdini next "
                 "starts. Your own palettes are not affected." % exc)
-            # A RECORD, not a guard - same as code_library's marker. The
-            # comment above says what actually happens next launch, and
-            # the message now says the same thing instead of claiming it
-            # was prevented. No remedy sentence: hand-deleting 348
-            # duplicated palettes is not a next step that works, and a
-            # fake one is worse than none.
+            # A RECORD, not a guard - the comment above says what
+            # actually happens next launch, and hand-deleting 348
+            # duplicated palettes is not a next step that works.
             self._seed_marker_failed = True
+            return
+        # The seeded notes move to their Comments pages in the SAME
+        # session, not on the next launch's sweep.
+        self._sweep_notes_to_store_once()
 
     # ------------------------------------------------------------------
-    # User-gradient persistence: <library dir>/gradients.json - lives
-    # with the library data (synced along with it), not in the app
-    # install or settings.
-    def _user_file(self) -> str:
-        if self._preferences is None:
+    # The palette payload, read off the record.
+
+    @staticmethod
+    def _colors_of(asset) -> list:
+        """The palette's colour dicts - carried through on the record
+        beside the fields the family knows."""
+        extra = getattr(asset, "_extra", None) or {}
+        colors = extra.get("colors")
+        return colors if isinstance(colors, list) else []
+
+    @staticmethod
+    def _ramp_of(asset) -> dict:
+        extra = getattr(asset, "_extra", None) or {}
+        ramp = extra.get("ramp")
+        return ramp if isinstance(ramp, dict) else {}
+
+    def entry(self, row: int) -> dict | None:
+        """READ-ONLY view of one palette - name, categories, colors,
+        ramp - for the section's ramp verbs and the proxy's colour-name
+        search. A copy on purpose: edits go through the record API, not
+        through this dict."""
+        if not 0 <= row < len(self._assets):
+            return None
+        asset = self._assets[row]
+        return {
+            "name": asset.name,
+            "categories": list(asset.categories),
+            "colors": self._colors_of(asset),
+            "ramp": self._ramp_of(asset),
+        }
+
+    def is_favorite(self, row: int) -> bool:
+        """The star, from the library store under its owner - the same
+        door the inherited FavoriteRole answers; this int-row spelling
+        is what the Colors proxy reads."""
+        if not 0 <= row < len(self._assets):
+            return False
+        return locations.is_favourite(
+            self.preferences, self._assets[row].mat_id)
+
+    def toggle_favorite(self, row: int) -> None:
+        self.toggle_fav(self.index(row, 0))
+
+    def note_uid(self, row: int) -> str:
+        """A palette's identity - its record id, same key its Comments
+        page and tile icon use."""
+        if not 0 <= row < len(self._assets):
             return ""
-        return os.path.join(self._preferences.dir, "gradients.json")
+        return str(self._assets[row].mat_id)
 
-    def _load_user(self, reload: bool = False) -> None:
-        """Read the palettes through the connector, like every other
-        library-backed model.
-
-        `reload` picks the DOOR, and which one is not cosmetic.
-        `load()` returns the connector's cached document when it
-        already holds one - correct at construction, wrong on a
-        library switch, where it would hand back the previous
-        library's rows AND keep its latches. `reload_with_path` is the
-        route `library.switch_model_data` takes for exactly that
-        reason: its own docstring records that a latch belonging to
-        library A, carried into healthy library B, silently drops
-        every save for the session. Re-derived from disk, never
-        remembered - so a repaired file heals on the next switch
-        instead of staying refused until restart.
-
-        WHAT WENT WHEN THIS ARRIVED: a hand-built copy of the
-        connector's whole load policy - the absent-but-known refusal
-        with its own `absent_traces` call and its own message, the
-        wrong-shape check, the non-dict row skip, the unreadable
-        preservation and latch. The connector does all five, which is
-        the entire reason for the move: `gradients.json` was the ONE
-        database not going through it, so every guard the other three
-        inherit had been given to it by hand and three were still
-        missing as late as 2026-07-30.
-
-        `_All` IS DROPPED HERE. Every secondary database gets it
-        inserted by the connector's `_normalize_all_category`; the
-        Colors sidebar builds its own All row at position 0, so
-        carrying the stored one through would show two.
-        """
-        if self._preferences is None:
-            return
-        path = str(self._preferences.dir) + os.sep
-        try:
-            db = self._db()
-            data = db.reload_with_path(path) if reload else db.load(path)
-        except (OSError, ValueError) as exc:
-            # A CORRUPT FILE MUST NOT TAKE THE PANEL DOWN. The
-            # connector raises here and its other callers are built
-            # for that; this model is constructed during panel setup,
-            # so an escape kills the panel before there is an
-            # interface to report anything in - the failure the old
-            # loader documented preventing, and it is not undone by
-            # moving house. The connector's OWN latch is set, not a
-            # second one beside it, so there is still one answer to
-            # whether this file may be written.
-            db = self._db()
-            db._write_blocked = True
-            hostos.preserve_unreadable(
-                os.path.join(str(self._preferences.dir), self.DB_FILENAME),
-                why="gradient library")
-            debug.event("gradient", "gradients.json unreadable - saving "
-                        "disabled", error=str(exc))
-            debug.alert(
-                "Your saved colours could not be read, so Amaze will not "
-                "save over them.\n\n"
-                "Nothing has been lost - the file is untouched. Colour "
-                "changes you make now will not be kept.\n\n"
-                "Close Houdini and put back a recent copy with the Repair "
-                "tool in the Amaze shelf.",
-                key="gradients-unreadable")
-            return
-        rows = data.get("assets")
-        rows = rows if isinstance(rows, list) else []
-        self._user = [row for row in rows if isinstance(row, dict)]
-        for entry in self._user:
-            # A MEMORY marker: every row here is a user gradient since
-            # the curated palettes became ordinary seeded entries.
-            entry["type"] = "user"
-        # LIVE ALIASES INTO THE CONNECTOR'S DOCUMENT, never copies -
-        # the same contract `category.Categories.__init__` holds with
-        # `self._data["categories"]` and `colors()` holds with the
-        # colour table, and the contract `DatabaseConnector.set` says
-        # it keeps by never rebinding these containers.
-        #
-        # They were comprehensions until 2026-08-12, and that was the
-        # last of the erasures: `_save_user` rebuilds the document from
-        # what it holds, so a category the peer merge adopted was
-        # written out of existence by the NEXT Colors edit - the merge
-        # landed correctly, and the save after it undid the merge.
-        # The assets half of exactly this was found and fixed on
-        # 2026-08-10 and these two keys were not, which is what the
-        # `take_adopted` comment in `_save_user` is about.
-        #
-        # `_All` STAYS IN THE LIST. It is the shared model's marker for
-        # the everything-row and the sidebar strips the leading
-        # underscore for display; filtering it out here and writing the
-        # filtered list back is what stripped it from disk on every
-        # save, so the next launch re-added it with a full rewrite and
-        # spent the snapshot slot before the user had touched anything.
-        self._user_categories = data.setdefault("categories", [])
-        table = data.get("category_colors")
-        if not isinstance(table, dict):
-            table = {}
-            data["category_colors"] = table
-        self._category_colors = table
-
-    def _save_user(self) -> bool:
-        """True only when the colours actually reached disk.
-
-        It used to return None from four different exits - the missing
-        path, the unreadable-file refusal, the changed-on-disk refusal
-        and a caught OSError - so a caller could not tell a completed
-        save from a refused one. The seeder is that caller, and it wrote
-        its permanent marker regardless.
-        """
-        path = self._user_file()
-        if not path:
-            return False
-        # EVERY GUARD BELOW IS THE CONNECTOR'S NOW. What stood here was
-        # a hand-built copy of each one, written because this file had
-        # no connector: the library-moved refusal (db.serves), the
-        # unreadable latch (_write_blocked), the stale-write compare
-        # (the connector's own content stat and merge), the snapshot,
-        # the atomic write and the loud failure. Two sets of guards
-        # answering one question is what this move removes - so they
-        # are DELETED rather than left beside the inherited ones.
-        db = self._db()
-        if not db.serves(self._preferences.dir):
-            debug.event("gradient", "save refused - these colours came "
-                        "from another library", file=path)
-            return False
-        # ONLY `assets` IS HANDED OVER. `categories` and
-        # `category_colors` are the connector's own containers, which
-        # this model mutates in place (see `_load_user`), so they are
-        # already current - handing them back would replace the live
-        # list with itself at best, and with a pre-merge copy of itself
-        # at worst. That second case is the erasure this batch removes.
-        db.set({
-            # `type` is a MEMORY marker, never stored - the same line
-            # the hand-built writer carried.
-            "assets": [
-                {k: v for k, v in entry.items() if k != "type"}
-                for entry in self._user
-            ],
-        })
-        stored = bool(db.save())
-        # WHAT THE MERGE ADOPTED REACHES THE MODEL, exactly as
-        # library.py does after its own save. `take_adopted` had ONE
-        # caller in the package and this was not it, so a palette the
-        # other machine added landed in gradients.json and never in
-        # `_user` - and `_save_user` rebuilds the document FROM `_user`,
-        # so the next save wrote it back out of existence while the
-        # grid, the sidebar counts and the filter never saw it at all.
-        self._adopt_rows(db.take_adopted())
-        return stored
-
-    def _adopt_rows(self, rows) -> None:
-        """Fold in palettes another session added while this one had the
-        library open.
-
-        A row this build cannot read is skipped rather than allowed to
-        break the model - it stays on disk untouched, which is the same
-        answer `_adopt_rows` gives in library.py.
-        """
-        if not isinstance(rows, list):
-            return
-        known = {self._id_of(entry) for entry in self._user}
-        added = 0
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            identity = self._id_of(row)
-            if identity and identity in known:
-                continue
-            entry = dict(row)
-            # `type` is a MEMORY marker, stripped on the way to disk -
-            # so an adopted row arrives without one and needs it back.
-            entry.setdefault("type", "user")
-            self._user.append(entry)
-            known.add(identity)
-            added += 1
-        if added:
-            debug.event("gradient", "adopted palettes another session "
-                                    "wrote", count=added)
-            self._reset_entries()
-
-    def _all_entries(self) -> list:
-        # Everything is a user gradient now (curated palettes are seeded
-        # in on first run - see _seed_curated_once).
-        return list(self._user)
-
-    def _reset_entries(self) -> None:
-        self.beginResetModel()
-        self._entries = self._all_entries()
-        self.endResetModel()
+    # ------------------------------------------------------------------
+    # The category list, through the connector's document. Temporary
+    # spellings: the section drives these until it rebases onto
+    # `AssetSection`, whose verbs use the sidebar model directly.
 
     def user_categories(self) -> list:
-        """The categories the sidebar lists, without the `_All` marker.
-
-        THE FILTER LIVES HERE, at the view edge, not in what is stored.
-        It used to be applied on LOAD and the filtered list written
-        back, which quietly deleted the marker from disk on every save.
-        """
-        return [name for name in self._user_categories
+        """The categories the save dialog lists, without the `_All`
+        marker - the view edge filters; what is stored keeps it."""
+        return [name for name in self._data.get("categories", [])
                 if isinstance(name, str) and name != "_All"]
 
     def add_user_category(self, name: str) -> None:
         name = (name or "").strip()
-        if name and name not in self._user_categories:
-            self._user_categories.append(name)
-            self._save_user()
+        cats = self._data.setdefault("categories", [])
+        if name and name not in cats:
+            cats.append(name)
+            self.save()
 
     def count_in_category(self, name: str) -> int:
-        return sum(1 for e in self._user if name in _row_categories(e))
+        return sum(1 for a in self._assets if name in a.categories)
 
-    def count_for_filter(self, kind: str, value) -> int:
-        """Entry count for a sidebar filter - same semantics as
-        GradientFilterProxyModel.filterAcceptsRow, minus search/favs."""
-        if kind == "category":
-            return self.count_in_category(value)
-        return len(self._entries)
-
-    # ------------------------------------------------------------------
-    # Favorites - every gradient keeps its flag inline in gradients.json.
-    def is_favorite(self, row: int) -> bool:
-        # THE STAR IS THE USER'S, IN THE LIBRARY STORE - keyed by the
-        # gradient's id, tagged with the owner, like every section
-        # (ROADMAP line 21). The record's own `favorite` field is dead:
-        # nothing writes it and the schema step strips it.
-        entry = self.entry(row)
-        if entry is None or self._preferences is None:
-            return False
-        key = str(entry.get("id") or "")
-        return bool(key) and locations.is_favourite(self._preferences, key)
-
-    def category_color_of(self, name: str) -> str:
-        """The colour set on a gradient category, "" for none."""
-        return str(self._category_colors.get(str(name), "") or "")
-
-    def category_color(self, row: int) -> str:
-        """The colour of THIS gradient's category - what the tile
-        paints, the same question MaterialLibrary answers."""
-        entry = self.entry(row)
-        if entry is None:
-            return ""
-        # FIRST category wins the tile's colour bar, the same answer
-        # MaterialLibrary gives for a multi-category material.
-        names = _row_categories(entry)
-        return self.category_color_of(names[0] if names else "")
-
-    def set_category_color(self, name: str, color: str) -> bool:
-        """Colour one category, or clear it with an empty colour.
-
-        Keyed by NAME, so a rename has to carry the colour across and
-        a removal takes it with it - both handled at their call sites,
-        because an orphan key silently reattaches if the name returns."""
-        name = str(name or "").strip()
-        if not name:
-            return False
-        if color:
-            self._category_colors[name] = str(color)
-        else:
-            self._category_colors.pop(name, None)
-        if not self._save_user():
-            return False
-        # The grid reads the colour per ROW, so every tile in that
-        # category has to repaint - role-scoped, never a bare emit.
-        if self.rowCount():
-            self.dataChanged.emit(
-                self.index(0, 0), self.index(self.rowCount() - 1, 0),
-                [self.CategoryColorRole])
-        return True
-
-    def rename_category_color(self, old: str, new: str) -> None:
-        """Carry a colour across a category rename."""
-        colour = self._category_colors.pop(str(old), "")
-        if colour and new:
-            self._category_colors[str(new)] = colour
-
-    def drop_category_color(self, name: str) -> None:
-        """A removed category takes its colour with it."""
-        self._category_colors.pop(str(name), None)
-
-    def tile_name(self, row: int) -> str:
-        """The gradient's display name - what the Customize dialog's
-        Name field shows."""
-        entry = self.entry(row)
-        return str((entry or {}).get("name", "") or "")
-
-    def set_tile_name(self, row: int, name: str) -> bool:
-        """Rename one gradient from the Customize dialog - the rename
-        path that replaced the retired Info dialog's Name field. A
-        blank or unchanged name is a no-op."""
-        name = (name or "").strip()
-        entry = self.entry(row)
-        if entry is None or not name or name == entry.get("name"):
-            return False
-        entry["name"] = name
-        self._save_user()
-        self._reset_entries()
-        return True
-
-    def _icon_of(self, entry: dict) -> dict:
-        """This entry's icon: the SHARED STORE first, the entry field
-        as the fallback - the same precedence `library.tile_icon` uses,
-        so both archetypes answer the question one way.
-
-        It mattered which way round. The entry field used to be the
-        only reader, with the store copied INTO it on load - so a pick
-        made through the store rode back out on the next save and the
-        dual-write survived its own retirement. Asking the store here
-        is what lets `set_tile_icon` stop writing the field at all.
-        """
-        if not entry:
-            return {}
-        uid = self._id_of(entry)
-        stored = tile_icons.override_for(self._preferences, uid) \
-            if uid else {}
-        return stored or tile_icons.normalise(entry.get("icon"))
-
-    def tile_icon(self, row: int) -> dict:
-        """This gradient's chosen icon, {} when it shows its swatch.
-        Same two-method contract every other section answers, so the
-        panel's one Customize handler serves Colors too."""
-        return self._icon_of(self.entry(row))
-
-    def tile_key(self, row: int) -> str:
-        """A palette is keyed by its uid - the same identity its
-        comment page uses, and the one a rename cannot move."""
-        return self.note_uid(row)
-
-    def set_tile_icon(self, index, spec, save: bool = True) -> bool:
-        """Give one gradient a tile icon, or clear it with an empty
-        spec.
-
-        NO PNG is written, unlike every other section: a gradient has
-        no asset id and no file of its own on disk (gradients.json
-        holds the whole entry), so there is nowhere to put an
-        `<id>_icon.png` and nothing to clean up when it is cleared.
-        The spec rides on the entry and the icon is composed in memory
-        by _thumb(), which is what the swatch already does."""
-        row = index.row() if hasattr(index, "row") else int(index)
-        entry = self.entry(row)
-        if entry is None:
-            return False
-        spec = tile_icons.normalise(spec)
-        # THE SHARED STORE IS THE ONE HOME, keyed by the entry uid. The
-        # entry field used to be written too, so a build predating the
-        # store still read the pick - retired 2026-08-09 with
-        # LIBRARY_FORMAT 2, which covers that case generally: such a
-        # build opens the library read-only and is told to update.
-        # The field is still READ (see _icon_of) and never deleted, so
-        # a library from an older build keeps its picks.
-        stored = tile_icons.set_override(
-            self._preferences, self.note_uid(row), spec)
-        if save:
-            self._save_user()
-        idx = self.index(row, 0)
-        self.row_changed(idx.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
-        return bool(stored)
-
-    def commit_tile_icons(self, rows=None) -> None:
-        """Save once after a multi-row Customize (the panel handler
-        passes save=False per row, then calls this).
-
-        `rows` is unused here, as it is in the two sibling models -
-        but the panel's ONE Customize handler passes it positionally
-        to whichever model the section owns, so the parameter is the
-        contract, not a convenience. Declaring it `(self)` made
-        Customize on a colour tile raise TypeError after the icon had
-        already been applied in memory: the tile repainted, the save
-        never ran, and the icon was gone at the next launch.
-        """
-        self._save_user()
-
-    def toggle_favorite(self, row: int) -> None:
-        # Through the one favourites door every section uses - the
-        # SHARED record is untouched and the document is not saved, so
-        # my star cannot toggle yours. A machine with no user picked is
-        # refused by the store and the star simply never lights.
-        entry = self.entry(row)
-        if entry is None or self._preferences is None:
-            return
-        key = str(entry.get("id") or "")
-        if not key:
-            return
-        locations.set_favourite(
-            self._preferences, key,
-            not locations.is_favourite(self._preferences, key))
-        index = self.index(row, 0)
-        self.row_changed(index.row(), [self.FavoriteRole])
-
-    def set_user_category(self, rows: list, category: str) -> int:
-        """Move the given rows' gradients to a category (dragged onto a
-        sidebar category, or the Move-to menu). Returns how many moved."""
-        category = (category or "").strip()
-        if not category:
+    def set_user_category(self, rows: list, category_name: str) -> int:
+        """Move the given rows' palettes to a category (dragged onto a
+        sidebar row, or the Move-to menu). Returns how many moved."""
+        category_name = (category_name or "").strip()
+        if not category_name:
             return 0
-        if category not in self._user_categories:
-            self._user_categories.append(category)
+        cats = self._data.setdefault("categories", [])
+        if category_name not in cats:
+            cats.append(category_name)
         moved = 0
         for row in rows:
-            entry = self.entry(row)
-            if entry is not None and _row_categories(entry) != [category]:
-                _set_row_category(entry, category)
+            if not 0 <= row < len(self._assets):
+                continue
+            asset = self._assets[row]
+            if asset.categories != [category_name]:
+                asset.categories = category_name
                 moved += 1
         if moved:
-            self._save_user()
-            self._reset_entries()
+            self.save()
+            for row in rows:
+                self.row_changed(row)
         return moved
 
-
     def rename_user_category(self, old: str, new: str) -> bool:
-        """Rename a gradient category, carrying its gradients AND its
+        """Rename a palette category, carrying its palettes AND its
         colour across - the same contract the asset sections have."""
         old = str(old or "").strip()
         new = str(new or "").strip()
         if not old or not new or old == new:
             return False
-        if old in self._user_categories:
-            self._user_categories[self._user_categories.index(old)] = new
-        elif new not in self._user_categories:
-            self._user_categories.append(new)
-        for entry in self._user:
-            names = _row_categories(entry)
-            if old in names:
-                entry["categories"] = [new if n == old else n for n in names]
-        self.rename_category_color(old, new)
-        if not self._save_user():
+        cats = self._data.setdefault("categories", [])
+        if old in cats:
+            # IN PLACE: the list is the connector's own document.
+            cats[cats.index(old)] = new
+        elif new not in cats:
+            cats.append(new)
+        table = self._data.get("category_colors")
+        if isinstance(table, dict):
+            colour = table.pop(old, "")
+            if colour:
+                table[new] = colour
+        self.rename_category(old, new)
+        if not self.save():
             return False
-        self._reset_entries()
+        self._repaint_rows()
         return True
 
     def remove_user_category(self, name: str) -> None:
-        """Drops the category itself; its gradients are kept, just
-        uncategorized (still listed under "All")."""
-        if name in self._user_categories:
-            self._user_categories.remove(name)
-        # A removed category takes its colour with it - an orphan key
-        # would silently reattach if the name ever came back.
-        self.drop_category_color(name)
-        changed = False
-        for entry in self._user:
-            names = _row_categories(entry)
-            if name in names:
-                entry["categories"] = [n for n in names if n != name]
-                changed = True
-        self._save_user()
-        if changed:
-            # Subtitles show the category, so affected rows repaint.
-            self._reset_entries()
+        """Drops the category itself; its palettes are kept, just
+        uncategorized (still listed under All)."""
+        cats = self._data.setdefault("categories", [])
+        if name in cats:
+            cats.remove(name)
+        table = self._data.get("category_colors")
+        if isinstance(table, dict):
+            # A removed category takes its colour with it - an orphan
+            # key would silently reattach if the name ever came back.
+            table.pop(name, None)
+        self.remove_category(name)
+        self.save()
+        self._repaint_rows()
 
-    def add_user_gradient(self, name: str, category: str, ramp_data: dict) -> None:
-        """Registers a saved ramp. The color list is derived from the
-        ramp values so search/swatches/subtitles work identically to the
-        Wada entries (hex stands in for a color name)."""
+    def _repaint_rows(self) -> None:
+        """Category edits change subtitles and the Category column on
+        every affected row; one bounded emit covers them."""
+        if self.rowCount():
+            self.dataChanged.emit(
+                self.index(0, 0), self.index(self.rowCount() - 1, 0),
+                [self.CategoryRole, self.CategoryLabelRole,
+                 self.CategoryColorRole])
+
+    # ------------------------------------------------------------------
+    # Add and delete - the record API over the shared save contracts.
+
+    def add_user_gradient(self, name: str, category_name: str,
+                          ramp_data: dict) -> None:
+        """Registers a saved ramp. The colour list is derived from the
+        ramp values so search/swatches/subtitles work identically to
+        the seeded entries (hex stands in for a colour name)."""
         colors = []
         for value in ramp_data.get("values", []):
             hex_color = "#%02x%02x%02x" % tuple(
                 max(0, min(255, round(c * 255))) for c in value[:3]
             )
             colors.append({"name": hex_color, "hex": hex_color})
-        category = (category or "").strip()
-        if category and category not in self._user_categories:
-            self._user_categories.append(category)
-        import uuid
-        self._user.insert(
-            0,
-            {
-                "type": "user",
-                "name": (name or "Gradient").strip() or "Gradient",
-                "categories": [category] if category else [],
-                "colors": colors,
-                "ramp": ramp_data,
-                # Identity at birth, like every section's assets -
-                # and the same mint: full uuid4 hex, exactly what
-                # Material stamps for mat_id.
-                "id": uuid.uuid4().hex,
-            },
-        )
-        if not self._save_user():
-            # NOTHING REACHED DISK, so nothing stays on screen. Built
-            # like `MaterialLibrary.add_asset`'s sibling refusal: a
-            # palette left in the grid by a save that was declined is
-            # gone at the next launch with nothing ever said.
-            self._user.pop(0)
-            self._reset_entries()
+        category_name = (category_name or "").strip()
+        cats = self._data.setdefault("categories", [])
+        if category_name and category_name not in cats:
+            cats.append(category_name)
+        mat = material.Material()
+        mat.set_data((name or "Gradient").strip() or "Gradient",
+                     category_name, "", False, "")
+        mat._extra = {"colors": colors, "ramp": ramp_data}
+        # At the TOP: the Colors grid shows source order (no sort is
+        # ever applied to its proxy), and the newest palette belongs
+        # where the eye is.
+        self.beginInsertRows(QtCore.QModelIndex(), 0, 0)
+        try:
+            self._assets.insert(0, mat)
+        finally:
+            self.endInsertRows()
+        self.rebuild_thumbs()
+        if not self.save():
+            # NOTHING REACHED DISK, so nothing stays on screen: a
+            # palette left in the grid by a refused save is gone at the
+            # next launch with nothing ever said.
+            self.beginRemoveRows(QtCore.QModelIndex(), 0, 0)
+            try:
+                del self._assets[0]
+            finally:
+                self.endRemoveRows()
+            self.rebuild_thumbs()
             debug.alert(
                 'Amaze could not save "%s".\n\n'
                 "Nothing else has been lost - your other colors are "
@@ -867,245 +568,129 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 "try again." % (name or "this palette"),
                 key="colors-not-saved")
             return
-        self._reset_entries()
+        self.row_changed(0)
 
     def remove_user_gradient(self, row: int) -> None:
-        """Delete a palette, and SAY SO to the connector.
+        """Delete a palette, honouring the connector's answer.
 
-        Dropping it from `_user` used to be the whole delete, because
-        the hand-built writer serialised that list wholesale. The
-        connector unions instead - a row the caller does not mention is
-        KEPT, deliberately, so two panes cannot erase each other's
-        additions - so an unspoken delete simply came back on the next
-        save. `forget()` is the connector's word for it, and it is what
-        the other three sections' deletes already use.
-
-        AND THE ANSWER IS HONOURED, like `MaterialLibrary.remove_asset`.
-        `_save_user` returns True only when the colours reached disk,
-        and this dropped that - so on a refusal the palette left the
-        grid while gradients.json still listed it, nothing was said,
-        and it returned at the next launch. Worse, `set()` had already
-        consumed the `forget()` mark into the connector's live document,
-        so ANY later write committed the delete that was just declined.
+        The shared shape of `remove_asset` without its file pass - a
+        palette owns nothing on disk beyond its row. `removeRow` says
+        the delete out loud (the connector unions rows, so an unspoken
+        delete comes straight back); a refusal puts the row back, in
+        the model AND in the connector's document, because `set()` has
+        already consumed the mark by then.
         """
-        entry = self.entry(row)
-        if entry is None:
+        if not 0 <= row < len(self._assets):
             return
-        identity = self._id_of(entry)
-        position = self._user.index(entry)
-        self._user.remove(entry)
-        if identity:
-            self._db().forget(identity)
-        if not self._save_user():
-            # PUT IT BACK - the palette, the mark, and the row in the
-            # connector's document, which is the one `remove_asset`
-            # learned had to be restored too.
-            self._user.insert(position, entry)
-            if identity:
-                db = self._db()
-                db.unforget(identity)
-                db.set({"assets": [{k: v for k, v in entry.items()
-                                    if k != "type"}]})
-            self._reset_entries()
+        asset = self._assets[row]
+        if not self.removeRow(row):
+            return
+        if not self.save():
+            self.beginInsertRows(QtCore.QModelIndex(), row, row)
+            try:
+                self._assets.insert(row, asset)
+            finally:
+                self.endInsertRows()
+            self.rebuild_thumbs()
+            try:
+                connector = database.DatabaseConnector(self.DB_FILENAME)
+                connector.unforget(asset.mat_id)
+                connector.set({"assets": [asset.get_as_dict()]})
+            except (AttributeError, TypeError) as exc:
+                debug.event("gradient", "could not take back a row "
+                            "removal", error=str(exc))
             debug.alert(
                 '"%s" was not deleted, because Amaze could not update '
                 "your colors.\n\n"
                 "Nothing was removed - the palette is exactly as it "
                 "was.\n\n"
                 "Close any other Amaze panel, or restart Houdini, then "
-                "try again." % (entry.get("name") or "That palette"),
+                "try again." % (asset.name or "That palette"),
                 key="colors-delete-refused")
-            return
-        self._reset_entries()
+
+    def cleanup_db(self, show_dialog: bool = True) -> int:
+        """A palette lives inline - there are no payload files - so the
+        inherited missing-file and lonely-file passes would classify
+        every palette as an orphan. Reduced to a state flush, the Code
+        section's answer."""
+        self.save()
+        self.last_cleanup_summary = [
+            "Colors: nothing to clean (palettes are stored inline)."
+        ]
+        return 0
 
     # ------------------------------------------------------------------
-    def rowCount(self, parent=None) -> int:
-        return len(self._entries)
+    # The painted preview.
 
-    def entry(self, row: int) -> dict | None:
-        if 0 <= row < len(self._entries):
-            return self._entries[row]
-        return None
-
-    @staticmethod
-    def _id_of(entry: dict) -> str:
-        """This entry's identity, whatever it is spelled.
-
-        `id` since the move onto the connector - which reads that field
-        in seven places, so a row without one collapses with every
-        other id-less row into a single key in its union and they
-        overwrite each other. `uid` is the pre-move spelling, read here
-        so an entry still carrying it in memory keeps working; the
-        VALUE is the same either way, which is what matters, because
-        comments are keyed `gradient:<value>` and tile icons by the
-        same value.
-        """
-        return str(entry.get("id") or entry.get("uid") or "")
-
-    def _backfill_uids_once(self) -> None:
-        """Every gradient carries a uid, like every asset carries its
-        id - identity from birth, not stamped when a feature happens
-        to need it ("this will just backfire trying to do shortcuts").
-        Existing libraries are brought up in ONE pass here; after the
-        first save, loads stamp nothing and cost nothing. A freshly
-        SEEDED entry arrives stamped, so this finds nothing to do and
-        does not write - the seed used to leave it a whole file to
-        save a second time on first open."""
-        stamped = 0
-        for entry in self._entries:
-            if not self._id_of(entry):
-                # Full uuid4 hex - ONE mint across the app (the asset
-                # family's, core/material.py). Early libraries carry
-                # 12-char uids from the first cut; they stay valid
-                # keys and are left alone.
-                entry["id"] = uuid.uuid4().hex
-                stamped += 1
-        if stamped:
-            self._save_user()
-            debug.event("gradients", "uids backfilled", count=stamped)
-
-
-    def _sweep_notes_to_store_once(self) -> None:
-        """The entry-level "note" text moved to the Notes store
-        (2026-08-01): a gradient's free text belongs on its Notes page
-        with everything else, not in a dialog of its own. Any entry
-        still carrying one - an old library, or a fresh curated seed -
-        has it appended to its page here and the field consumed, so
-        every future source is covered by the same sweep. A note the
-        store cannot take (read-only session) stays on the entry and
-        is retried next load - moved, never dropped."""
-        from amaze.core import notes
-        moved = cleared = 0
-        # COLLECTED, then written ONCE. Calling set_note per entry
-        # rewrote notes.json per entry and rotated a snapshot each
-        # time, so 39 old notes pushed the restore tier's real history
-        # out with 39 copies of the same minute.
-        pages = {}
-        carriers = {}
-        for entry in self._entries:
-            if "note" not in entry:
-                continue
-            text = str(entry.get("note", "") or "").strip()
-            if not text:
-                del entry["note"]
-                cleared += 1
-                continue
-            key = notes.note_key(
-                "gradient", self._id_of(entry))
-            page = notes.note_for(self._preferences, key)
-            items = list(pages.get(key, page.get("items", [])))
-            items.append({"t": "text", "text": text})
-            pages[key] = items
-            carriers.setdefault(key, []).append(entry)
-        if pages and notes.set_notes(self._preferences, pages):
-            # The field is consumed only on a write that LANDED - a
-            # read-only session keeps it and retries next load, which
-            # is the moved-never-dropped contract.
-            for entries in carriers.values():
-                for entry in entries:
-                    entry.pop("note", None)
-                    moved += 1
-        if moved or cleared:
-            self._save_user()
-            debug.event("gradients", "notes swept to the notes store",
-                        moved=moved, cleared=cleared)
-
-    def _adopt_entry_icons_once(self) -> None:
-        """Entry-level tile icons move to the shared store - one
-        icons.json for every section, this one keyed by the entry uid
-        beside asset ids and file paths. Unlike the notes sweep the
-        entry field is NOT consumed: it keeps being written for one
-        release so the other machine's older build still reads the
-        pick. A store entry this build finds (set on another machine
-        by a newer one) overlays into memory, so every reader of the
-        entry field sees the merged truth."""
-        adopted = 0
-        for entry in self._entries:
-            uid = self._id_of(entry)
-            if not uid:
-                continue
-            if tile_icons.override_for(self._preferences, uid):
-                # Already in the store, which is where every reader
-                # looks. NOT copied back onto the entry: that overlay
-                # is how a store pick rode out to disk on the next
-                # save and kept the dual-write alive.
-                continue
-            spec = tile_icons.normalise(entry.get("icon"))
-            if spec and tile_icons.set_override(
-                    self._preferences, uid, spec):
-                adopted += 1
-        if adopted:
-            debug.event("gradients", "entry icons adopted into the store",
-                        adopted=adopted)
-
-    def note_uid(self, row: int) -> str:
-        """The entry's own identity - present from load (backfill) or
-        birth (add_user_gradient), simply read here."""
-        entry = self.entry(row)
-        if entry is None:
-            return ""
-        return self._id_of(entry)
+    def set_tile_icon(self, index, spec, save: bool = True) -> bool:
+        """Give one palette a tile icon, or clear it with an empty
+        spec. NO PNG is written, unlike the file-backed sections: the
+        icon is composed in memory by the paint path, which is what the
+        swatch already does, so there is nothing on disk to clean up."""
+        row = index.row() if hasattr(index, "row") else int(index)
+        if not 0 <= row < len(self._assets):
+            return False
+        spec = tile_icons.normalise(spec)
+        stored = tile_icons.set_override(
+            self.preferences, str(self._assets[row].mat_id), spec)
+        if save:
+            self.save()
+        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        return bool(stored)
 
     @staticmethod
-    def _is_banded(entry: dict) -> bool:
+    def _is_banded(colors: list, ramp: dict) -> bool:
         """A palette / stepped ramp paints as bands; a smooth ramp as a
-        gradient. True when every basis is Constant (or there's no ramp
-        yet - a freshly seeded palette)."""
-        bases = (entry.get("ramp") or {}).get("bases") or []
-        return bool(entry.get("colors")) and (
+        gradient. True when every basis is Constant (or there is no
+        ramp yet)."""
+        bases = ramp.get("bases") or []
+        return bool(colors) and (
             not bases or all(b == "Constant" for b in bases)
         )
 
-    def _entry_thumb_key(self, entry: dict):
-        """Content-addressed (the hexes, plus ramp bases) - renames can't
-        stale it, edits naturally mint a new key and the old image ages
-        out of the shared LRU.
-
-        An INSTANCE method since 2026-08-09: the icon half now comes
-        from the shared store, which needs the preferences to reach.
-        It stays callable on a bare dict - an entry with no uid simply
-        has no stored pick and falls back to the field."""
-        hexes = tuple(c["hex"] for c in entry["colors"])
-        ramp = entry.get("ramp") or {}
+    def _swatch_key(self, row: int):
+        """Content-addressed (hexes, ramp bases, stop positions, the
+        icon) - renames cannot stale it, edits naturally mint a new key
+        and the old image ages out of the shared LRU."""
+        asset = self._assets[row]
+        colors = self._colors_of(asset)
+        ramp = self._ramp_of(asset)
+        hexes = tuple(c.get("hex") for c in colors if isinstance(c, dict))
         bases = tuple(ramp.get("bases") or ())
-        # THE STOP POSITIONS TOO. `_paint_ramp` reads `keys` for both of
-        # its branches - the band edges and `setColorAt` - so two
-        # palettes with the same colours in different PLACES painted
-        # differently and shared one cache slot. Drop a two-key ramp,
-        # move a stop, drop it again: the second tile showed the first
-        # one's gradient.
+        # The stop POSITIONS too: two palettes with the same colours in
+        # different places paint differently and must not share a slot.
         stops = tuple(round(float(k), 6) for k in (ramp.get("keys") or ())
                       if isinstance(k, (int, float)))
-        icon = self._icon_of(entry)
-        # The icon is part of the key: a tile that has one paints the
-        # icon INSTEAD of the swatch, so the two must not share a slot.
+        icon = self.tile_icon(row)
         icon_key = (icon.get("name"), icon.get("bg"), icon.get("ink")) \
             if icon else None
-        return ("grad", self._is_banded(entry), hexes, bases, stops,
-                icon_key, THUMB_SIZE)
+        return ("grad", self._is_banded(colors, ramp), hexes, bases,
+                stops, icon_key, THUMB_SIZE)
 
-    def _thumb(self, row: int) -> QtGui.QImage:
-        entry = self._entries[row]
-        key = self._entry_thumb_key(entry)
+    def _decoration_image(self, index: QtCore.QModelIndex):
+        """The painted swatch (or chosen icon) over the engine's PAINT
+        path - this section has no thumbnail files, so the base's file
+        loader never applies."""
+        row = index.row()
+        asset = self._assets[row]
+        key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:
             return image
-        icon = self._icon_of(entry)
-        if icon:
-            # Composed in memory - no file, see set_tile_icon.
-            composed = tile_icons.compose(
-                icon["name"], icon["bg"], THUMB_SIZE, ink=icon["ink"])
+        if self.tile_icon(row):
+            composed = self._missing_thumb_image(row)
             if composed is not None:
                 thumbnails.engine.deposit(key, composed)
                 return composed
+        colors = self._colors_of(asset)
+        ramp = self._ramp_of(asset)
         image = QtGui.QImage(
             THUMB_SIZE, THUMB_SIZE, QtGui.QImage.Format.Format_RGB32
         )
         painter = QtGui.QPainter(image)
-        if self._is_banded(entry):
-            # Palette / stepped ramp -> horizontal colour bands (the
-            # dictionary's own presentation, kept for the seeded palettes).
-            colors = entry["colors"]
+        if self._is_banded(colors, ramp):
+            # Stacked horizontal bands - the dictionary's own
+            # presentation, kept for the seeded palettes.
             band_h = THUMB_SIZE / max(len(colors), 1)
             for i, color in enumerate(colors):
                 painter.fillRect(
@@ -1113,10 +698,8 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                     QtGui.QColor(color["hex"]),
                 )
         else:
-            self._paint_ramp(painter, entry.get("ramp") or {})
+            self._paint_ramp(painter, ramp)
         painter.end()
-        # PAINT provider: synchronous paint-on-miss, deposited under
-        # the same shared budget as every other section's thumbnails.
         thumbnails.engine.deposit(key, image)
         return image
 
@@ -1129,7 +712,8 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
         values = ramp_data.get("values", [])
         bases = ramp_data.get("bases", [])
         if not keys or not values:
-            painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE, QtGui.QColor("#444444"))
+            painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
+                             QtGui.QColor("#444444"))
             return
         if all(b == "Constant" for b in bases):
             edges = list(keys) + [1.0]
@@ -1137,66 +721,50 @@ class GradientLibrary(grid_columns.GridColumnsMixin,
                 x0 = max(0.0, min(1.0, edges[i])) * THUMB_SIZE
                 x1 = max(0.0, min(1.0, edges[i + 1])) * THUMB_SIZE
                 color = QtGui.QColor.fromRgbF(*value[:3])
-                painter.fillRect(QtCore.QRectF(x0, 0, x1 - x0 + 1, THUMB_SIZE), color)
+                painter.fillRect(
+                    QtCore.QRectF(x0, 0, x1 - x0 + 1, THUMB_SIZE), color)
             return
         gradient = QtGui.QLinearGradient(0, 0, THUMB_SIZE, 0)
         for key, value in zip(keys, values):
             gradient.setColorAt(
                 max(0.0, min(1.0, key)), QtGui.QColor.fromRgbF(*value[:3])
             )
-        painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE, QtGui.QBrush(gradient))
+        painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
+                         QtGui.QBrush(gradient))
+
+    def render_thumbnail(self, index) -> None:
+        """No render - the preview is drawn from the palette's own
+        ramp; repaint it from current content."""
+        if 0 <= index.row() < len(self._assets):
+            thumbnails.engine.discard(self._swatch_key(index.row()))
+            self.row_changed(index.row(),
+                             [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def data(self, index, role: int = 0):
-        # LATER COLUMNS are the table's, not the row's (step 1 of the
-        # QTableView migration). Column 0 falls through unchanged, so
-        # grid mode cannot tell any of this happened.
+        # LATER COLUMNS are the table's, not the row's; column 0 falls
+        # through so grid mode cannot tell.
         if index.column() > 0:
             return self.column_data(index, role)
         row = index.row()
-        entry = self.entry(row)
-        if entry is None:
+        if not 0 <= row < len(self._assets):
             return None
+        asset = self._assets[row]
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            return entry.get("name") or "Gradient"
-        if role == self.NotesRole:
-            # Read-only here (data() is a paint path): a gradient with
-            # no uid HAS no note yet - stamping happens in
-            # ensure_note_uid when a note is actually opened.
-            uid = self._id_of(entry)
-            if not uid:
-                return False
-            from amaze.core import notes
-            return notes.has_note(self._preferences,
-                                  notes.note_key("gradient", uid))
+            return asset.name or "Gradient"
         if role in (self.RendererLabelRole, self.RendererRole):
-            # Uniformly "Gradient" - the Type column/grid subtitle names
-            # the KIND of thing, consistent with Materials' "Redshift"
-            # and Textures' "HDR". Which set/palette
-            # size an entry belongs to is Category-column information.
-            # Both roles: the family splits raw kind from label, and a
-            # palette has one word for both.
+            # Uniformly the KIND of thing, consistent with Materials'
+            # `Redshift` and Textures' `HDR`. Which set or palette size
+            # an entry belongs to is Category-column information.
             return "Gradient"
-        if role == self.CategoryRole:
-            return _row_categories(entry)
-        if role == self.TagRole:
-            return ()
-        if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            return self._thumb(row)
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
             from amaze.helpers import ui_helpers
-
-            names = ", ".join(c["name"] for c in entry["colors"])
+            names = ", ".join(
+                str(c.get("name", "")) for c in self._colors_of(asset))
             return ui_helpers.tooltip_text(names)
-        if role == self.ColorsRole:
-            return entry["colors"]
-        if role == self.FavoriteRole:
-            return self.is_favorite(row)
         if role == self.CategoryLabelRole:
-            names = _row_categories(entry)
-            return names[0] if names else "Uncategorized"
-        if role == self.CategoryColorRole:
-            return self.category_color(row)
-        return None
+            cats = asset.categories
+            return cats[0] if cats else "Uncategorized"
+        return super().data(index, role)
 
 
 class GradientFilterProxyModel(grid_proxy.GridProxyModel):
@@ -1250,11 +818,7 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
         name and the favourite - plus the sort role. Category and size
         are read straight off the entry, and every edit that changes
         them announces itself structurally (reset/insert), never as a
-        role-scoped dataChanged; the role-scoped emissions here are the
-        category-colour sweep (paint only, over every row), the
-        thumbnail's DecorationRole and FavoriteRole. Falling through to
-        the blacklist bought a full re-filter and re-sort per colour
-        pick (the base's watched_roles docstring names the gesture)."""
+        role-scoped dataChanged."""
         watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
         role = getattr(self.sourceModel(), "FavoriteRole", None)
         if role is not None:
@@ -1268,7 +832,8 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
             return False
         if self._favorites_only and not model.is_favorite(source_row):
             return False
-        if self._kind == "category" and self._value not in _row_categories(entry):
+        if self._kind == "category" \
+                and self._value not in _row_categories(entry):
             return False
         if self._size_filter is not None:
             fewest, most = self._size_filter
@@ -1278,7 +843,8 @@ class GradientFilterProxyModel(grid_proxy.GridProxyModel):
         if not self._name_filter:
             return True
         index = model.index(source_row, 0)
-        name = (model.data(index, QtCore.Qt.ItemDataRole.DisplayRole) or "").lower()
+        name = (model.data(index, QtCore.Qt.ItemDataRole.DisplayRole)
+                or "").lower()
         if self._name_filter in name:
             return True
         for color in entry["colors"]:

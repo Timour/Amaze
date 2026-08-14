@@ -221,12 +221,22 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         self._thumbsize = self.preferences.thumbsize
 
         db = database.DatabaseConnector(self.DB_FILENAME)
-        self._data = db.load(self.preferences.dir)
+        self._data = database.load_survivable(db, self.preferences.dir)
 
-        self._assets = [material.Material.from_dict(d) for d in self._data["assets"]]
+        # Non-dict rows are SKIPPED, not allowed to abort the model -
+        # the connector's own walks already skip them, and one junk row
+        # must not cost the whole library (the model-level half of the
+        # 23b `_remember_disk_state` fix; Colors' old loader had it and
+        # the family did not).
+        self._assets = [self._asset_from_row(d)
+                        for d in self._data["assets"]
+                        if isinstance(d, dict)]
         self._remember_content_state()
 
-        self._tags = self._data["tags"]
+        # setdefault, not an index: gradients.json has never carried a
+        # `tags` key, and a live alias into the document is the
+        # contract every list here keeps.
+        self._tags = self._data.setdefault("tags", [])
 
         # Engine deliveries arrive BY KEY - this maps them back to the
         # row to repaint. Rebuilt with the asset list.
@@ -246,6 +256,14 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         self._shader_type_cache = {}
 
         self.rebuild_thumbs()
+
+    @staticmethod
+    def _asset_from_row(row: dict):
+        """One stored row becomes one record - THE reader every load
+        path shares (construction, a library switch, an adopted peer
+        row), so a subclass with a rule about its rows states it once.
+        Colors suppresses the minted date its rows never carried."""
+        return material.Material.from_dict(row)
 
     def _get__mat_paths(self):
         self._mat_paths = []
@@ -285,15 +303,17 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         try:
             self.preferences.load()
             db = database.DatabaseConnector(self.DB_FILENAME)
-            self._data = db.reload_with_path(self.preferences.dir)
+            self._data = database.load_survivable(
+                db, self.preferences.dir, reload=True)
             self._thumbsize = self.preferences.thumbsize
 
             self._assets = [
-                material.Material.from_dict(d) for d in self._data["assets"]
+                self._asset_from_row(d) for d in self._data["assets"]
+                if isinstance(d, dict)
             ]
             # A reload is a fresh read of the library, content included.
             self._remember_content_state()
-            self._tags = self._data["tags"]
+            self._tags = self._data.setdefault("tags", [])
             self._usd_cache = {}
             self._shader_type_cache = {}
             self.rebuild_thumbs()
@@ -774,7 +794,7 @@ class MaterialLibrary(grid_columns.GridColumnsMixin,
         parsed = []
         for row in rows:
             try:
-                parsed.append(material.Material.from_dict(row))
+                parsed.append(self._asset_from_row(row))
             except Exception as exc:                        # noqa: BLE001
                 debug.event("database", "adopted row not readable",
                             file=self.DB_FILENAME, error=str(exc),

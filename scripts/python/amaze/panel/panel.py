@@ -568,7 +568,8 @@ class MatLibPanel(QtWidgets.QWidget):
         # curated, read-only content (see core/gradient_library.py).
         # Painted thumbnails, no files/workers, so the model trio is all
         # there is to set up.
-        self.gradient_model = gradient_library.GradientLibrary(self.prefs)
+        self.gradient_model = gradient_library.GradientLibrary(
+            preferences=self.prefs)
         self.gradient_categories_model = gradient_library.GradientCategories(
             preferences=self.prefs
         )
@@ -635,8 +636,10 @@ class MatLibPanel(QtWidgets.QWidget):
         self.code_sorted_model.sort(0)
         self.code_sorted_model.setDynamicSortFilter(False)
         self.code_selection_model = QtCore.QItemSelectionModel(self.code_sorted_model)
-        # Seed the curated "Starter Toolbox" snippets once per library.
-        self.code_model.seed_starter_snippets(self.code_category_model)
+        # Seed the curated content once per library - the snippets AND
+        # the palettes, through one door that a library switch also
+        # takes, so a virgin library seeds whichever way it arrives.
+        self._seed_curated_content()
 
         # Multi-category was removed: collapse every asset to a single
         # category (its first). Idempotent, so this one-time migration
@@ -938,6 +941,25 @@ class MatLibPanel(QtWidgets.QWidget):
             for m in models:
                 m.switch_model_data()
             self.click_slider.setValue(grid.active_thumbsize(self))
+        # A switch can land on a library nobody has opened before, and
+        # a virgin library gets its curated content however it arrives
+        # - the same door construction takes, marker-guarded, so an
+        # already-seeded library costs two stat calls.
+        self._seed_curated_content()
+
+    def _seed_curated_content(self) -> None:
+        """Seed the curated starters once per library: the Code
+        section's Toolbox snippets and the Colors section's palette
+        sets. One door for construction and the library switch.
+        getattr, not attribute reads - the libraryless shape leaves
+        model attributes None or absent."""
+        code_model = getattr(self, "code_model", None)
+        if code_model is not None:
+            code_model.seed_starter_snippets(self.code_category_model)
+        gradient_model = getattr(self, "gradient_model", None)
+        if gradient_model is not None:
+            gradient_model.seed_curated_palettes(
+                self.gradient_categories_model)
 
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""

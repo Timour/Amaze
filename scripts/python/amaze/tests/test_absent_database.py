@@ -69,13 +69,23 @@ SCHEMA = database.SCHEMA_VERSION
 
 
 class _Prefs:
-    """The two attributes gradient_library reads. Deliberately NOT a
-    real Prefs: one constructed under hython resolves $AMAZE to the live
-    install, and that is how a test overwrote the real settings once."""
+    """The attributes the family model reads. Deliberately NOT a real
+    Prefs: one constructed under hython resolves $AMAZE to the live
+    install, and that is how a test overwrote the real settings once.
+    Colors reads the shared model surface since the rebase, so the stub
+    carries it - and the dir keeps its trailing separator, the shape
+    `Prefs.save()` forces on the real field."""
+
+    asset_dir = "mat/"
+    img_dir = "img/"
+    img_ext = ".png"
+    ext = ".mat"
+    thumbsize = 128
+    library_user = "absent-fixture-uid"
 
     def __init__(self, directory):
-        self.dir = directory
-        self.directory = directory
+        self.dir = directory.rstrip(os.sep) + os.sep
+        self.directory = self.dir
 
 
 class _NoteWatcher:
@@ -794,7 +804,7 @@ class SectionLabelsMatchThePanelTest(unittest.TestCase):
 
 
 class GradientAbsenceTest(unittest.TestCase):
-    """gradient_library._load_user(): absent + the seed marker.
+    """gradients.json absent + the seed marker, through the connector.
 
     Every test here asserts there is no `.bak` first. That is not
     decoration - the real library's gradients.json has none, so a guard
@@ -802,6 +812,8 @@ class GradientAbsenceTest(unittest.TestCase):
     exactly where it was."""
 
     def setUp(self):
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
         self.dir = tempfile.mkdtemp(prefix="amaze_absent_grad_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
@@ -822,10 +834,16 @@ class GradientAbsenceTest(unittest.TestCase):
             "present - the real library's gradients.json has none")
 
     def _library(self):
-        lib = gradient_library.GradientLibrary(_Prefs(self.dir))
-        if lib._user_file() != self.path:
-            self.skipTest("gradient library does not resolve this path")
-        return lib
+        return gradient_library.GradientLibrary(
+            preferences=_Prefs(self.dir))
+
+    def _names(self, lib):
+        return [(lib.entry(row) or {}).get("name")
+                for row in range(lib.rowCount())]
+
+    def _seed(self, lib):
+        lib.seed_curated_palettes(gradient_library.GradientCategories(
+            preferences=_Prefs(self.dir)))
 
     # -- the guard FIRES ----------------------------------------------
 
@@ -849,7 +867,7 @@ class GradientAbsenceTest(unittest.TestCase):
         before = sorted(os.listdir(self.dir))
         lib = self._library()
         lib.add_user_category("Warm")       # an ordinary panel action
-        lib._save_user()                    # and the direct call
+        lib.save()                          # and the direct call
         self.assertFalse(
             os.path.exists(self.path),
             "a 39-byte gradients.json was written where 290KB belongs")
@@ -857,14 +875,14 @@ class GradientAbsenceTest(unittest.TestCase):
                          "the refusal path touched the directory")
 
     def test_the_curated_palettes_are_not_reseeded_over_it(self):
-        """Seeding calls _save_user() and THEN writes the marker, which
-        is permanent - so a seed that runs while saving is refused burns
-        the marker for gradients that never reached disk, and the
-        palettes never seed again on that machine.
+        """The seed saves and THEN writes its permanent marker - so a
+        seed that runs while saving is refused must burn neither: no
+        palettes over a library whose real gradients simply have not
+        arrived, and no marker for a save that never landed.
 
         Driven from the .bak evidence deliberately: with the marker
-        present, _seed_curated_once returns on the marker check and this
-        would pass without the latch being consulted at all."""
+        present the seed returns on the marker check and this would
+        pass without the latch being consulted at all."""
         if not os.path.exists(gradient_library._def_path("sanzo_wada.json")):
             self.skipTest("curated defs unreachable ($AMAZE not resolved) "
                           "- seeding cannot be exercised here")
@@ -875,7 +893,8 @@ class GradientAbsenceTest(unittest.TestCase):
                          "premise: no marker, or the seed never runs and "
                          "this test proves nothing")
         lib = self._library()
-        self.assertEqual([], lib._user,
+        self._seed(lib)
+        self.assertEqual([], self._names(lib),
                          "the curated palettes were seeded into a library "
                          "whose real gradients simply have not arrived")
         self.assertFalse(
@@ -938,8 +957,7 @@ class GradientAbsenceTest(unittest.TestCase):
             lib._load_failed,
             "a brand-new library was latched as unreadable - the guard "
             "fires always, which is an outage, not a guard")
-        lib._user = [{"name": "first", "type": "user", "points": []}]
-        lib._save_user()
+        lib.add_user_gradient("first", "", {"values": [], "keys": []})
         self.assertTrue(os.path.isfile(self.path),
                         "a fresh install cannot save gradients at all")
         with open(self.path, encoding="utf-8") as handle:
@@ -951,8 +969,9 @@ class GradientAbsenceTest(unittest.TestCase):
             self.skipTest("curated defs unreachable ($AMAZE not resolved) "
                           "- seeding cannot be exercised here")
         lib = self._library()
+        self._seed(lib)
         self.assertGreater(
-            len(lib._user), 0,
+            lib.rowCount(), 0,
             "a new library seeded nothing - the curated palettes are the "
             "first thing a new user sees")
         self.assertTrue(os.path.isfile(self.marker),
@@ -969,9 +988,8 @@ class GradientAbsenceTest(unittest.TestCase):
                        "assets": [{"name": "ours", "id": "oursid"}]}, handle)
         lib = self._library()
         self.assertFalse(lib._load_failed)
-        self.assertEqual(["ours"], [g["name"] for g in lib._user])
-        lib._user = [{"name": "edited", "type": "user"}]
-        lib._save_user()
+        self.assertEqual(["ours"], self._names(lib))
+        lib.add_user_gradient("edited", "", {"values": [], "keys": []})
         with open(self.path, encoding="utf-8") as handle:
             names = [g["name"] for g in json.load(handle)["assets"]]
         # assertIn, not an exact list: the connector UNIONS, so a row

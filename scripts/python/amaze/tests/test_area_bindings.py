@@ -245,13 +245,13 @@ BADGE_ROLES = {
 
 EXPECTED_BADGES = {
     "material": {"favourite", "versions", "comment"},
-    # NOT versions, although CopLibrary subclasses MaterialLibrary and
-    # inherits VersionsRole. A version can only be minted by
+    # NOT versions, although these three subclass MaterialLibrary and
+    # inherit VersionsRole. A version can only be minted by
     # `MaterialLibrary.update_asset_content`, which is reached from one
-    # call site on `material_model` alone - so no Node or Code asset can
-    # ever hold a second version. Wiring it anyway gave both a "Version"
-    # column reading "none" on every row, and a badge click that mapped
-    # through the MATERIAL proxy into an unrelated asset.
+    # call site on `material_model` alone - so no Node, Code or Color
+    # asset can ever hold a second version. Wiring it anyway gave both
+    # a "Version" column reading "none" on every row, and a badge click
+    # that mapped through the MATERIAL proxy into an unrelated asset.
     "cop": {"favourite", "comment"},
     "code": {"favourite", "comment"},
     # File has the OPEN badge, which nothing else does: only a scene can
@@ -300,9 +300,10 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
                     continue
                 self.assertIn(
                     (key, badge),
-                    (("cop", "versions"), ("code", "versions")),
+                    (("cop", "versions"), ("code", "versions"),
+                     ("gradient", "versions")),
                     "%s's model answers %s but its tiles carry no %s "
-                    "badge, and that is not one of the two exceptions "
+                    "badge, and that is not one of the exceptions "
                     "this file records a reason for" % (key, role_name,
                                                         badge))
 

@@ -112,10 +112,15 @@ class TheTenSitesAreConvertedTest(unittest.TestCase):
             # than refused, so there is no longer a moment to
             # interrupt the user about. An alert for a condition that
             # cannot arise is the dead cover this list exists to stop.
+            # `gradients-unreadable` RE-KEYED 2026-08-14, in the same
+            # change that moved it: the survivable load lives in
+            # database.py for EVERY sidecar list now, keyed per file -
+            # the entry below matches the prefix the key is built from.
             # The trailing comma is load-bearing: without it this is a
             # bare string, and the walk below iterates it one CHARACTER
             # at a time.
-            "gradients-unreadable",),
+            "colors-not-saved",),
+        os.path.join("core", "database.py"): ("unreadable-",),
         # The unreadable alert moved into the Keyed Store Engine on
         # 2026-08-03 - it is now ONE sentence per store, declared with
         # the store and raised by the engine that discovers the

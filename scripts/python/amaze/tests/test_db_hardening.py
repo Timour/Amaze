@@ -658,12 +658,23 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         from amaze.core import gradient_library
 
         class _Prefs:
-            """Only the attribute gradient_library reads. NOT a real
-            Prefs: one constructed under hython resolves $AMAZE to the
-            live install, which is how a test overwrote real settings."""
+            """The family-model surface, as a stub. NOT a real Prefs:
+            one constructed under hython resolves $AMAZE to the live
+            install, which is how a test overwrote real settings."""
+
+            asset_dir = "mat/"
+            img_dir = "img/"
+            img_ext = ".png"
+            ext = ".mat"
+            thumbsize = 128
+            library_user = "relatch-fixture-uid"
 
             def __init__(self, directory):
-                self.dir = directory
+                self.dir = directory.rstrip(os.sep) + os.sep
+
+            def load(self):
+                # The switch path re-reads settings; a stub has none.
+                return True
 
         library = tempfile.mkdtemp(prefix="amaze_relatch_grad_")
         self.addCleanup(shutil.rmtree, library, ignore_errors=True)
@@ -677,9 +688,8 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
             handle.write('{"gradients": [')            # truncated
         import contextlib
         with contextlib.redirect_stdout(io.StringIO()):
-            lib = gradient_library.GradientLibrary(_Prefs(library))
-        if lib._user_file() != path:
-            self.skipTest("gradient library does not resolve this path")
+            lib = gradient_library.GradientLibrary(
+                preferences=_Prefs(library))
         self.assertTrue(lib._load_failed,
                         "premise: the truncated file must latch")
         with open(path, "w", encoding="utf-8") as handle:
@@ -697,9 +707,8 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
             lib._load_failed,
             "the latch survived a clean read - the Colors section can "
             "never be saved again this session")
-        lib._user = [{"name": "mine", "type": "user", "id": "mineid"}]
         with contextlib.redirect_stdout(io.StringIO()):
-            lib._save_user()
+            lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         with open(path, encoding="utf-8") as handle:
             names = [g["name"] for g in json.load(handle)["assets"]]
         self.assertIn("mine", names,
