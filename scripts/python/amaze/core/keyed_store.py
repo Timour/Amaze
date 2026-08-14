@@ -708,6 +708,8 @@ class Store:
         """What to store, or None to REMOVE the key. For a store of
         records a falsy value is the removal; for a settings store the
         door is `retire`, because nothing falsy can mean gone there."""
+        if self.spec.falsy_is_a_value:
+            return self.spec.normalise(value)
         if not value:
             return None
         return self.spec.normalise(value) or None
