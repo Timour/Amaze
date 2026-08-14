@@ -133,6 +133,20 @@ class Written:
             "" if not self.reason else ": " + self.reason)
 
 
+#: HOW A PEER'S VALUE FOR A KEY WE ALREADY HOLD IS FOLDED IN. Ours
+#: wins is right for independent records and wrong for a document,
+#: whose keys are different KINDS of thing (ROADMAP line 26). Every
+#: rule only ADDS, and `MINE` is both the default and what every store
+#: does today.
+MERGE_MINE = "mine"
+#: A list two panes each added to: ours, then theirs, no duplicates.
+MERGE_COMBINE = "combine"
+#: A map of records, merged field by field inside a record both hold.
+#: A record only they have arrives whole; a value either side spells as
+#: something other than a map takes ours.
+MERGE_FIELDS = "fields"
+
+
 class Spec:
     """One store, as DATA. Everything the engine needs to guard a file
     it has never heard of."""
@@ -141,13 +155,14 @@ class Spec:
                  "normalise", "path_prefix", "unreadable_alert",
                  "refused_sentence", "alert_key", "denied_alert",
                  "category", "in_library", "survives_forget",
-                 "user_tagged")
+                 "user_tagged", "merge_rules")
 
     def __init__(self, filename, payload, keyspace, label, noun,
                  normalise, path_prefix="", unreadable_alert="",
                  refused_sentence="", alert_key="", denied_alert="",
                  category="store", in_library=True,
-                 survives_forget=True, user_tagged=False) -> None:
+                 survives_forget=True, user_tagged=False,
+                 merge_rules=None) -> None:
         self.filename = filename
         self.payload = payload
         self.keyspace = keyspace
@@ -206,6 +221,10 @@ class Spec:
         #: and a keyspace test could not carry it even when they
         #: differed, because they are all path-keyed.
         self.survives_forget = survives_forget
+        #: key -> MERGE_*, for the keys where ours-wins is the wrong
+        #: answer. Copied, so a caller's dict cannot change the rules
+        #: of a live store afterwards.
+        self.merge_rules = dict(merge_rules or {})
 
     def is_path_key(self, key: str) -> bool:
         """Does a path move rewrite this key?"""
@@ -237,7 +256,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
              alert_key: str = "", denied_alert: str = "",
              category: str = "store", in_library: bool = True,
              survives_forget: bool = True,
-             user_tagged: bool = False) -> Spec:
+             user_tagged: bool = False,
+             merge_rules: dict = None) -> Spec:
     """Declare a store. Idempotent per filename, so a module reload
     re-registers rather than duplicating."""
     if keyspace not in (KEY_ID, KEY_PATH, KEY_MIXED):
@@ -258,7 +278,7 @@ def register(filename: str, payload: str, keyspace: str, label: str,
                 refused_sentence=refused_sentence, alert_key=alert_key,
                 denied_alert=denied_alert, category=category,
                 in_library=in_library, survives_forget=survives_forget,
-                user_tagged=user_tagged)
+                user_tagged=user_tagged, merge_rules=merge_rules)
     _registry[filename] = spec
     return spec
 
@@ -1162,6 +1182,16 @@ class Store:
                 if stored not in staged:
                     staged[stored] = kept
                     adopted += 1
+                else:
+                    # BOTH HOLD IT. Ours stands unless this key's rule
+                    # says the two ANSWERS can both be true - a folder
+                    # each pane registered, a field each pane set.
+                    folded = _fold(
+                        self.spec.merge_rules.get(stored, MERGE_MINE),
+                        staged[stored], kept)
+                    if folded is not None:
+                        staged[stored] = folded
+                        adopted += 1
             elif (value and stored not in staged
                   and stored not in foreign):
                 # The peer's unreadable entry is as foreign as one from
@@ -1186,6 +1216,47 @@ class Store:
 # per-location dicts and neither side table, and the removal hook named
 # two of those same four. An enumeration held by a caller is a list
 # someone can write short, and both of these already were.
+
+
+def _fold(rule: str, ours, theirs):
+    """OURS with the peer's additions folded in, or None if there were
+    none - so the caller can count a real adoption and skip a rewrite
+    that would change nothing.
+
+    ADDS ONLY, like the adoption it extends. A shape that does not fit
+    the rule answers None rather than guessing, which lands on ours -
+    the same verdict a key with no rule gets, and the safe one.
+    """
+    if rule == MERGE_COMBINE:
+        if not (isinstance(ours, list) and isinstance(theirs, list)):
+            return None
+        extra = [value for value in theirs if value not in ours]
+        return (ours + extra) if extra else None
+    if rule == MERGE_FIELDS:
+        if not (isinstance(ours, dict) and isinstance(theirs, dict)):
+            return None
+        merged = dict(ours)
+        changed = False
+        for key, value in theirs.items():
+            if key not in merged:
+                merged[key] = value
+                changed = True
+                continue
+            mine = merged[key]
+            if not (isinstance(mine, dict) and isinstance(value, dict)):
+                continue                    # ours, as the shallow rule
+            missing = {field: field_value
+                       for field, field_value in value.items()
+                       if field not in mine}
+            if missing:
+                # REBOUND, never mutated: `dict(ours)` is shallow, so
+                # the record under this key is the live cache's own
+                # object and editing it in place would move the table
+                # before the write that is supposed to commit it.
+                merged[key] = {**mine, **missing}
+                changed = True
+        return merged if changed else None
+    return None
 
 
 def _boundary(prefix: str) -> str:
