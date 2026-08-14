@@ -558,6 +558,104 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
         self.assertIn("material:2", after)
 
 
+class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
+    """ROADMAP line 26, stage 3. Two spec-level questions stand between
+    the engine and settings.json, and neither may change the four.
+
+    ITS DOCUMENT IS FLAT. Every store writes `{payload: {...}}`, and a
+    file that lacks its payload key is refused as the wrong file - a
+    guard that exists because icons.json copied over notes.json parsed
+    as zero notes. settings.json has no wrapper and cannot grow one
+    without a migration, so a store may declare no payload and BE the
+    map. The wrong-file guard then rests on the top level being an
+    object, which is the only claim a flat document makes.
+
+    ITS FALSY VALUES ARE VALUES. `get`, `set`, `_load` and the adoption
+    all read a falsy value as absent, which is the delete contract an
+    empty note wants. A setting of `False`, `0` or `""` is a setting.
+    """
+
+    def _flat(self, **kwargs):
+        return keyed_store.Spec(
+            filename="flat.json", payload="", keyspace=keyed_store.KEY_ID,
+            label="A flat document", noun="entry",
+            normalise=lambda value: value, **kwargs)
+
+    def _raw(self, name="flat.json"):
+        with open(self.path(name), encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_a_flat_store_writes_the_document_ITSELF(self):
+        store = keyed_store.open_store(self._flat(), self.prefs)
+        store.set("size", 128)
+        self.assertEqual({"size": 128}, self._raw(),
+                         "a flat store wrapped its document, which is a "
+                         "format change nobody asked for")
+
+    def test_a_flat_store_reads_a_document_written_flat(self):
+        with open(self.path("flat.json"), "w", encoding="utf-8") as handle:
+            json.dump({"size": 64}, handle)
+        store = keyed_store.open_store(self._flat(), self.prefs)
+        self.assertEqual(64, store.get("size"))
+
+    def test_a_flat_store_still_refuses_what_is_not_an_object(self):
+        """The wrong-file guard survives losing the payload key: a JSON
+        list is not a document, and a store that cannot read its file
+        must latch rather than write over it."""
+        with open(self.path("flat.json"), "w", encoding="utf-8") as handle:
+            json.dump([1, 2, 3], handle)
+        store = keyed_store.open_store(self._flat(), self.prefs)
+        self.assertFalse(store.writable)
+
+    def test_a_wrapped_store_still_carries_its_payload_key(self):
+        """The polarity: the four are wrapped and stay wrapped."""
+        self.store().set("material:1", self.page())
+        self.assertIn("notes", self._raw("notes.json"))
+
+    def test_a_setting_of_False_is_a_VALUE(self):
+        store = keyed_store.open_store(
+            self._flat(falsy_is_a_value=True), self.prefs)
+        store.set("show_all", False)
+        self.assertIs(False, store.get("show_all"))
+        self.assertEqual({"show_all": False}, self._raw(),
+                         "a setting the user turned OFF was read as a "
+                         "removal, so it went back to its default")
+
+    def test_a_zero_and_an_empty_string_survive_a_reload(self):
+        store = keyed_store.open_store(
+            self._flat(falsy_is_a_value=True), self.prefs)
+        store.update({"count": 0, "label": ""})
+        keyed_store.release()
+        again = keyed_store.open_store(
+            self._flat(falsy_is_a_value=True), self.prefs)
+        self.assertTrue(again.has("count"))
+        self.assertEqual(0, again.get("count"))
+        self.assertEqual("", again.get("label"))
+
+    def test_only_a_normalise_answering_None_rejects(self):
+        """The reject channel has to move somewhere when falsy stops
+        meaning no - it moves to None, and a rejected value is held
+        aside as foreign exactly as before."""
+        spec = self._flat(falsy_is_a_value=True)
+        spec.normalise = lambda value: None if value == "junk" else value
+        with open(self.path("flat.json"), "w", encoding="utf-8") as handle:
+            json.dump({"good": 0, "bad": "junk"}, handle)
+        store = keyed_store.open_store(spec, self.prefs)
+        self.assertTrue(store.has("good"))
+        self.assertFalse(store.has("bad"))
+        store.set("later", 1)
+        self.assertIn("bad", self._raw(),
+                      "a rejected entry was erased rather than kept")
+
+    def test_a_library_store_still_reads_a_falsy_value_as_a_REMOVAL(self):
+        """The polarity, and it is the older contract: an empty note
+        deletes the note."""
+        store = self.store()
+        store.set("material:1", self.page())
+        store.set("material:1", {})
+        self.assertFalse(store.has("material:1"))
+
+
 class AReadHandsOutACopy(StoreCase):
     """`notes()` used to return the live cache. A caller holding that
     could mutate the table without writing anything - so a REFUSED save
