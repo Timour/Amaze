@@ -1,20 +1,30 @@
 """
 Reading and writing the preferences document.
 
-Everything that carries settings between memory and disk lives here:
-the save/load round trip, the field-wise merge with what another PANE
-of the same session wrote, the preservation of a file that will not
-parse, the path encoding - and the shared nineteen's trips to the
-LIBRARY (`SHARED_KEYS`, `_adopt_shared`, `_push_shared`): their truth
-is the library's `prefs.json`, and `settings.json` keeps them only as
-the last-known `shared_settings` copy.
+What carries settings between memory and disk lives here: the
+save/load round trip, WHAT a stored key means, the path encoding - and
+the shared nineteen's trips to the LIBRARY (`SHARED_KEYS`,
+`_adopt_shared`, `_push_shared`): their truth is the library's
+`prefs.json`, and `settings.json` keeps them only as the last-known
+`shared_settings` copy.
+
+THE GUARDS ARE THE KEYED STORE ENGINE'S SINCE 2026-08-14 (ROADMAP line
+26). settings.json is a registered store like the five in the library -
+`keyed_store.SETTINGS`, declared there, normaliser bound here - so the
+read verdict, the unreadable latch and its kept copy, the peer fold,
+the atomic write, the snapshot tier, the write-once floor and the one
+report a denied write owes the user are written ONCE and proved once.
+This file had its own copy of every one of them, and they were the
+third such copy in the package. What stays here is what only this
+module can know: which keys exist, what each one may hold, and which
+of them this build has retired.
 
 The FILE `settings.json` is PER-MACHINE and never travels - no sync
 folder, no merge between computers; it moved to the OS preferences dir
-on 2026-08-05, and `_merge_settings_from_disk` exists for two panes of
-one session, not for two computers. The portable-path comment below
-still describes the install-folder era and is left exactly as it was
-found - correcting it is a separate change, not a rider on a move.
+on 2026-08-05, and the fold is for two panes of one session, not for
+two computers. The portable-path comment below still describes the
+install-folder era and is left exactly as it was found - correcting it
+is a separate change, not a rider on a move.
 
 Split out of `prefs.py` 2026-08-09 (ROADMAP line 9). `Prefs` inherits
 `_Persistence`, so every call site still says `prefs.save()`. The
@@ -30,12 +40,37 @@ of `prefs.py`, and leaving them there would make this module import
 """
 
 import os
-import json
-import shutil
 import hou
 
-from amaze.core import debug
+from amaze.core import debug, keyed_store
 from amaze.helpers import hostos
+
+
+def _settings_value(value):
+    """A settings VALUE, as the engine sees one.
+
+    Anything json can hold is a legitimate setting, so this keeps what
+    it is handed. WHAT a key may hold is checked one key at a time by
+    the typed readers in `load()`, each with a default
+    (`_through_setter`) - never at the store boundary, because a
+    boundary that judged them would have to know all sixty-four and
+    would silently drop the one it had not been told about. That is the
+    unknown-key courtesy, and it is the reason this file survives a
+    mixed fleet at all.
+
+    `None` is the one refusal, and it costs nothing: the store declares
+    `falsy_is_a_value`, so None is how a normaliser says no, and a null
+    preference means exactly what a missing one means - both reach
+    `_through_setter` and become the default.
+    """
+    return value
+
+
+#: settings.json through the KEYED STORE ENGINE (ROADMAP line 26). The
+#: declaration is in `keyed_store` with the other five, so enumerating
+#: the guarded files costs no import of Houdini; only the normaliser
+#: lives here, with the module that knows what a setting is.
+SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)
 
 
 # ---------------------------------------------------------------------------
@@ -313,14 +348,51 @@ class _Persistence:
     reaches into fields it does not define.
     """
 
+    def _settings_store(self, reread: bool = False):
+        """This machine's settings, through the engine.
+
+        Cached per FILE by `open_store`, which is what makes two panes
+        of one Houdini share one table - and that sharing is load
+        bearing: the fold in `replace` is how the pane saving second
+        keeps the folder the first one registered, without either of
+        them having touched the disk in between.
+        """
+        store = keyed_store.open_store(SPEC, self)
+        if reread:
+            store.reread()
+        return store
+
+    @property
+    def _load_failed(self) -> bool:
+        """THE ENGINE'S LATCH, read rather than kept (ROADMAP line 26).
+
+        This was a flag set in three branches of `load()` and cleared in
+        two, and the bug it kept producing was a stale one: a repaired
+        settings.json could not be saved for the life of the object
+        because nothing cleared it, and later, a fresh install latched
+        it on a file that had simply never existed. It is DERIVED now -
+        the store re-decides on every read, so there is no third place
+        that can forget to move it.
+        """
+        try:
+            return not self._settings_store().writable
+        except (ValueError, AttributeError):
+            # A Prefs that cannot say where its configuration lives has
+            # no store to ask - and no file it could have failed to
+            # read, so nothing is latched.
+            return False
+
     def save(self) -> None:
         """Sanitize and save the preferences to disk as json.
 
-        REFUSES if load() could not read the existing file: this object
-        is then holding pure DEFAULTS, and writing them is how "200
-        gradients -> 1" happened to the settings file.
+        REFUSES if the store could not read the existing file: this
+        object is then holding pure DEFAULTS. Asked BEFORE
+        `_push_shared`, because the same refusal has to protect the
+        LIBRARY - nineteen defaulted values pushed into everyone's
+        `prefs.json` is the same accident one scope out.
         """
-        if getattr(self, "_load_failed", False):
+        store = self._settings_store()
+        if not store.writable:
             debug.event("prefs", "save refused - settings.json could not "
                         "be read this session", path=self.path)
             return
@@ -329,104 +401,71 @@ class _Persistence:
         # so the document composed below only ever carries the copy.
         self._push_shared()
         self.refresh_data()
-        final = self.path + "/settings.json"
-        # The preferences directory may not exist yet (first run on a
-        # new machine) - and it is outside the install now, so nothing
-        # else guarantees it.
-        try:
-            os.makedirs(self.path, exist_ok=True)
-        except OSError as exc:
-            debug.event("prefs", "cannot create the preferences "
-                        "directory", path=self.path, error=str(exc))
-            return
-        self._merge_settings_from_disk(final)
-        # AFTER the merge: its unknown-key courtesy just setdefault-ed
-        # anything the on-disk file still carries, retired keys
-        # included.
-        for retired in self._RETIRED_KEYS:
-            self.data.pop(retired, None)
+        # RETIREMENT IS SAID OUT LOUD, and the engine drops these AFTER
+        # it has adopted what the file still carries. Sweeping
+        # `self.data` here instead looks identical and does nothing
+        # (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS, point 3).
+        retire = list(self._RETIRED_KEYS)
         # The per-user spellings retire only once a user EXISTS to
         # carry them - flat while nobody, block once somebody - so a
         # userless session keeps full persistence in the old shape and
         # the migration source survives until the migration can run.
         if self._library_user:
-            for retired in USER_RETIRED:
-                self.data.pop(retired, None)
-        hostos.snapshot_before_write(final)
-        # Whether this write CREATES the file, asked before it does -
-        # the floor is minted below. snapshot_before_write rightly
-        # declines a path that is not there yet, so the first save left
-        # no `.bak` tier of any kind, and load()'s absence verdict had
-        # nothing to read on the one launch where it matters most.
-        created = not os.path.isfile(final)
-        # A UNIQUE scratch name, not the fixed `final + ".tmp"` this used.
-        # Two writers of one destination shared that single buffer and
-        # interleaved into it - measured for the database case at 794
-        # reads out of 1200 that PARSED while holding records from both
-        # writers. settings.json has the same two-writer case: panel.py
-        # constructs a Prefs per pane tab, and add_file_folder and
-        # friends save from ordinary sidebar use.
-        try:
-            hostos.write_json_atomic(final, self.data, indent=4)
-            self._remember_disk_state(final)
-            if created:
-                # THE FLOOR, FROM THE FIRST WRITE - the same line
-                # keyed_store carries and for the reason its own
-                # docstring gives. No new KIND of file: `.bak-first` is
-                # already the documented immutable first-seen copy, it
-                # simply arrives one write earlier so that absence is
-                # answerable.
-                hostos.seed_restore_floor(final)
-        except OSError as exc:
-            # The only one of the package's atomic writers that recorded
-            # NOTHING on failure, and none of its 21 callers wraps it -
-            # so a full disk, a read-only volume or a sync conflict lost
-            # every preference change in silence. You think you saved;
-            # the next launch says otherwise and there is no trace of
-            # why. The other writers all report; this one now matches
-            # them.
-            debug.event("prefs", "settings.json could not be written",
-                        path=final, error=str(exc))
-            debug.alert(
-                "Amaze could not save your preferences.\n\n"
-                "Your settings for this session still work, but they "
-                "will not be there next time Houdini opens.\n\n"
-                "The usual cause is a full disk or a folder Amaze is "
-                "not allowed to write to:\n%s" % self.path,
-                key="prefs-write-failed")
+            retire.extend(USER_RETIRED)
+        # The whole guard set is the engine's from here - atomic write,
+        # snapshot tier, write-once floor, peer fold, foreign entries,
+        # and the report a denied write owes the user.
+        if store.replace(self.data, retire=retire):
+            self._absorb_committed(store)
 
-    #: Keys whose value is a LIST OF THINGS THE USER COLLECTED - folder
-    #: pointers and favourites. Two panes both add one; a whole-document
-    #: write from either drops the other's. These union on save; every
-    #: scalar key takes this instance's value, because a scalar is a
-    #: single choice and the last editor is the active one.
-    _LIST_KEYS = ("file_folders", "file_favorites")
+    def _absorb_committed(self, store) -> None:
+        """The committed document back into the attributes.
 
-    #: Dict-valued collected keys merge KEY-WISE on a two-pane race:
-    #: ours wins per key, theirs adopted for keys we lack - the same
-    #: shape the list union has, for the same reason. EMPTY today: the
-    #: location decorations (and the recursive flag) moved INSIDE
-    #: `file_location_records`, which merges key-wise below with a
-    #: field-wise union per record. The mechanism stays for the next
-    #: dict-valued collected key.
-    _DICT_KEYS: tuple = ()
+        THE FOLD HAPPENS AT WRITE TIME, and the attributes are what the
+        panel paints from - so a fold that reached only the bytes would
+        leave the other pane's folder missing from this pane's sidebar
+        until Houdini restarted (practice.md > A DOCUMENT IS NOT A
+        TABLE OF ROWS, point 4).
 
-    #: The BACKING ATTRIBUTE behind every collected key, and whether
-    #: its list values (or dict keys) are path-encoded on disk.
-    #:
-    #: The merge adopts into these attributes, never into `self.data`.
-    #: It wrote into `self.data` until 2026-08-02, which held for
-    #: exactly one save: `save()` calls `refresh_data()` FIRST, and
-    #: refresh_data rebuilds every one of these keys from the
-    #: attribute, so the adopted entries were dropped on the next save
-    #: from the same object - and by then `_disk_stat` matched the file
-    #: this instance had just written, so the merge early-returned
-    #: instead of re-adopting. Two panes, two saves, and the other
-    #: pane's folders and favourites were gone for good.
-    _COLLECTED_ATTRS = {
-        "file_folders": ("_file_folders", True),
-        "file_favorites": ("_file_favorites", True),
-    }
+        ONLY THE COLLECTED KEYS: the scalars are this pane's own and
+        the fold never moves them.
+        """
+        self.data = store.everyones()
+        stored = self.data.get("users")
+        self._users_blocks = {
+            uid: dict(block) for uid, block in stored.items()
+            if isinstance(uid, str) and isinstance(block, dict)
+        } if isinstance(stored, dict) else {}
+        # Where the three live depends on whether anybody is picked -
+        # inside the block once somebody is, flat while nobody is - and
+        # both shapes are live, so both are read.
+        block = (self._users_blocks.get(self._library_user, {})
+                 if self._library_user else {})
+
+        def committed(key):
+            value = block.get(key)
+            return self.data.get(key) if value is None else value
+
+        folders = committed("file_folders")
+        if isinstance(folders, list):
+            self._file_folders = _decode_paths(folders)
+        favourites = committed("file_favorites")
+        if isinstance(favourites, list):
+            self._file_favorites = _decode_paths(favourites)
+        records = committed("file_location_records")
+        if isinstance(records, dict):
+            self._file_location_records = {
+                _decode_path(key): dict(value)
+                for key, value in records.items()
+                if isinstance(key, str) and isinstance(value, dict)}
+
+    # WHICH KEYS COLLECT RATHER THAN OVERWRITE is the STORE's
+    # declaration now (`keyed_store.SETTINGS` > `merge_rules`), not
+    # three tables here. The three could only spell a TOP-LEVEL key,
+    # which the per-user migration silently broke by moving every
+    # collected key under `users/<uid>/` (practice.md > A DOCUMENT IS
+    # NOT A TABLE OF ROWS, point 2). `_absorb_committed` reads the
+    # folded document back into the attributes they fed.
 
     #: Keys this build DELIBERATELY removed. The unknown-key courtesy
     #: below keeps a NEWER build's keys alive across a save - which
@@ -480,8 +519,10 @@ class _Persistence:
         "file_folder_show_all", "file_recursive_folders",
         "file_include_subfolders")
 
-    def _remember_disk_state(self, final: str) -> None:
-        self._disk_stat = hostos.disk_state(final)
+    # THE STALE-WRITE BASELINE is the store's `_disk_state` now. It was
+    # `_disk_stat` here, remembered in two places and compared in a
+    # third, and the store already keeps exactly this fingerprint
+    # through the same `hostos.disk_state` call.
 
     # -- the shared nineteen (ROADMAP line 22, stage D) -----------------
 
@@ -659,131 +700,24 @@ class _Persistence:
             return
         self._apply_user_block(dict(block), {})
 
-    def _merge_settings_from_disk(self, final: str) -> None:
-        """Fold in what another writer saved since this one read.
-
-        settings.json had NO stale-write handling while gradients.json
-        already did - and panel.py constructs a Prefs per pane tab, so
-        the two-writer case is ordinary use, not an edge: pane A adds a
-        texture folder, pane B changes the thumbnail size, and whichever
-        saves second erases the other's whole document.
-
-        List-valued keys union. Scalars keep this instance's value - a
-        merge cannot know which single choice is newer without a clock
-        it does not have, and the instance saving is the one the user is
-        actually touching.
-        """
-        current = hostos.disk_state(final)
-        if current is None or getattr(self, "_disk_stat", None) == current:
-            return
-        try:
-            with open(final, encoding="utf-8-sig") as handle:
-                theirs = json.load(handle)
-        except (OSError, ValueError):
-            return          # unreadable peers are load()'s business
-        if not isinstance(theirs, dict):
-            return
-        adopted = 0
-
-        def their_value(key):
-            # The peer's per-user keys live in THEIR copy of the same
-            # user's block now; the flat spelling is the shape a
-            # userless pane still writes.
-            users = theirs.get("users")
-            if isinstance(users, dict):
-                block = users.get(self._library_user)
-                if isinstance(block, dict) and key in block:
-                    return block[key]
-            return theirs.get(key)
-
-        for key in self._LIST_KEYS:
-            their_list = their_value(key)
-            if not isinstance(their_list, list):
-                continue
-            attr, is_path = self._COLLECTED_ATTRS[key]
-            ours = getattr(self, attr, None)
-            if not isinstance(ours, list):
-                continue
-            for value in their_list:
-                if not isinstance(value, str):
-                    continue
-                mine = _decode_path(value) if is_path else value
-                if mine not in ours:
-                    ours.append(mine)
-                    adopted += 1
-        for key in self._DICT_KEYS:
-            their_map = their_value(key)
-            if not isinstance(their_map, dict):
-                continue
-            attr, is_path = self._COLLECTED_ATTRS[key]
-            ours = getattr(self, attr, None)
-            if not isinstance(ours, dict):
-                continue
-            for name, value in their_map.items():
-                if not isinstance(name, str):
-                    continue
-                mine = _decode_path(name) if is_path else name
-                if mine not in ours:
-                    ours[mine] = value
-                    adopted += 1
-        # THE LOCATION RECORDS: key-wise - ours wins per key, theirs
-        # adopted for keys we lack - and field-wise INSIDE a shared
-        # record, so a label from one pane and a colour from the other
-        # both survive. The four decoration keys (names / colors /
-        # show_all / recursive) are DERIVED from these records by
-        # refresh_data(), so this one merge keeps all four honest. The
-        # old dict arms adopted the derived keys into attributes
-        # refresh_data no longer reads - dead writes, the second life
-        # of the 2026-08-02 bug the _COLLECTED_ATTRS docstring records
-        # (found 2026-08-06).
-        their_records = their_value("file_location_records")
-        if not isinstance(their_records, dict):
-            their_records = {}
-        for key, value in their_records.items():
-            if not (isinstance(key, str) and isinstance(value, dict)):
-                continue
-            mine = _decode_path(key)
-            ours_record = self._file_location_records.get(mine)
-            if ours_record is None:
-                self._file_location_records[mine] = dict(value)
-                adopted += 1
-                continue
-            for field, field_value in value.items():
-                if field not in ours_record:
-                    ours_record[field] = field_value
-                    adopted += 1
-        # THE PER-USER BLOCKS: the location records' two-level shape -
-        # a UID this pane lacks arrives whole, and inside a shared UID
-        # ours wins per key with theirs adopted for keys we lack. Into
-        # the ATTRIBUTE, never self.data - the re-serialise below
-        # rebuilds the key from it (the 2026-08-02 lesson above).
-        their_users = theirs.get("users")
-        if isinstance(their_users, dict):
-            for uid, block in their_users.items():
-                if not (isinstance(uid, str) and isinstance(block, dict)):
-                    continue
-                mine = self._users_blocks.get(uid)
-                if mine is None:
-                    self._users_blocks[uid] = dict(block)
-                    adopted += 1
-                    continue
-                for field, field_value in block.items():
-                    if field not in mine:
-                        mine[field] = field_value
-                        adopted += 1
-        # RE-SERIALISE. save() ran refresh_data() before calling this,
-        # and refresh_data() is what turns these attributes into
-        # self.data - so the adoption only reaches disk if that runs
-        # again with the peer's entries now in the attributes.
-        if adopted:
-            self.refresh_data()
-        # A key a NEWER build writes that this one does not know: keep
-        # it, the same courtesy step 5 taught the load path.
-        for key, value in theirs.items():
-            self.data.setdefault(key, value)
-        if adopted:
-            debug.event("prefs", "adopted settings another writer saved",
-                        adopted=adopted)
+    # `_merge_settings_from_disk` STOOD HERE and is the engine's now
+    # (ROADMAP line 26, stage 4). It answered the same question
+    # `Store._adopt_from_disk` answers - a peer wrote since I read, what
+    # do I write - step for step: a `hostos.disk_state` stamp, a
+    # re-read, adopt what we lack, ours wins, no tombstones, count and
+    # log. What it added was the UNIT: lists that combine, scalars where
+    # the saving pane wins, records merged field by field. That is
+    # `Spec.merge_rules` on the declaration, and the engine's fold reads
+    # it.
+    #
+    # It also had a defect this move fixes rather than carries. Its
+    # `their_value` helper looked inside the peer's `users.<uid>` block
+    # for the three collected keys, but the ADOPTION wrote into flat
+    # attributes and `_DICT_KEYS`/`_LIST_KEYS` named only top-level
+    # spellings - so the shape it was reading and the shape it was
+    # writing had drifted apart in the per-user migration. The rules
+    # spell the nesting out (`users/*/file_folders`) and the fold walks
+    # to it.
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and
@@ -831,65 +765,21 @@ class _Persistence:
             for uid, block in self._users_blocks.items()}
         return self.data
 
-    def _preserve_unreadable(self, exc) -> None:
-        """Keep a settings.json we could not parse, before anything
-        overwrites it.
-
-        load() returning False leaves this object holding PURE DEFAULTS,
-        and the panel opens anyway - by design, so a bad settings file
-        cannot cost you the whole panel. But nothing downstream can tell
-        "no settings yet" from "settings we failed to read", and save()
-        is unconditional: opening Preferences and closing it is enough.
-        Reproduced end to end - a truncated settings.json, then one
-        save(), and two registered texture folders, a favourite and a
-        custom accent were gone:
-
-            before : folders=2 favs=1 accent=#ff8800
-            after  : folders=0 favs=0 accent=#5d7abd   (defaults)
-
-        There was no recovery either: hostos.snapshot_before_write is
-        once-per-session, and the marker had already been spent (fixed
-        there too). So take a copy HERE, at the moment we know the file
-        is both present and unparseable.
-
-        Never overwritten once written, like .bak-first: a second failed
-        load in the same session must not replace the good evidence with
-        the already-defaulted rewrite.
-        """
-        source = self.path + "/settings.json"
-        try:
-            if not os.path.exists(source) or os.path.getsize(source) == 0:
-                return          # nothing to preserve - a first run
-            target = source + ".unreadable"
-            if not os.path.exists(target):
-                shutil.copy2(source, target)
-            debug.note("settings.json could not be read - kept a copy",
-                       source=source, target=target, error=str(exc))
-            # Name the recovery that actually works. The unreadable copy
-            # preserves whatever survived, but the COMPLETE state is in
-            # the debug log: prefs_snapshot mirrors the saved file by
-            # design and is written even with Debug Mode off, precisely
-            # to be the restore source for this situation.
-            # The exception, the kept path and the log path all go to the
-            # log; the DIALOG carries only what the user can act on.
-            # practice.md: no raw exception text on screen, and no
-            # filename they have never opened unless they must touch it -
-            # here they must, so the folder is named with it.
-            debug.event("prefs", "settings unreadable - opened with "
-                        "defaults, saving disabled", error=str(exc),
-                        kept=target, log=debug.log_path())
-            debug.alert(
-                "Your Amaze settings could not be read, so Amaze has "
-                "opened with the defaults.\n\n"
-                "Nothing has been lost. Your settings file was kept "
-                "untouched, and Amaze will not save over it - so your "
-                "library path, folders and favourites are still there.\n\n"
-                "Your settings are also recorded in the debug log. Use "
-                "the Repair tool in the Amaze shelf to put them back.",
-                key="prefs-unreadable")
-        except OSError as copy_exc:
-            debug.note("could not preserve the unreadable settings file",
-                       error=str(copy_exc))
+    # `_preserve_unreadable` STOOD HERE, and the behaviour it earned
+    # SURVIVES WHOLE - resilience outranks (practice.md), and that copy
+    # is what a truncated settings file is recovered from. It is
+    # `hostos.preserve_unreadable`, called by `Store._load` at the same
+    # moment for the same reason, with the same write-once rule and the
+    # same 0-byte refusal; its WORDS are the spec's `unreadable_alert`
+    # under the same `prefs-unreadable` key, so nothing about what the
+    # user sees has moved.
+    #
+    # What it was reproduced against stays worth stating, because it is
+    # what the guard is for: a truncated settings.json, then one save,
+    # and two registered folders, a favourite and a custom accent were
+    # gone - `folders=2 favs=1 accent=#ff8800` before,
+    # `folders=0 favs=0 accent=#5d7abd` after, pure defaults written
+    # over a file nobody could read.
 
     def load(self) -> bool:
         """
@@ -903,84 +793,44 @@ class _Persistence:
         key is read with a default for the same reason: a settings file
         written by an older version, or hand-edited, must not be fatal.
         """
-        try:
-            with open(self.path + "/settings.json",
-                      encoding="utf-8-sig") as f:
-                data = json.load(f)
-            # VALID JSON IS NOT VALID SETTINGS. Every key below is read
-            # with .get() precisely so an old or hand-edited file is not
-            # fatal - but a top level that is a list or a string has no
-            # .get() at all, so it raised AttributeError straight out of
-            # the constructor and took the panel with it. Exactly what
-            # this function's docstring promises will not happen.
+        # RE-READ ON PURPOSE. panel.py calls this same Prefs's load()
+        # again when Preferences closes and on a library switch, and its
+        # whole job is to answer with what is on DISK - so the cached
+        # table is dropped and the file parsed again. Everything this
+        # did inline is the store's now: the parse, the BOM, the
+        # wrong-shape guard that stops a top-level list or string
+        # raising AttributeError out of the constructor, the
+        # `.unreadable` copy, the alert, and the write latch.
+        store = self._settings_store(reread=True)
+        if store.state == keyed_store.FRESH:
+            # ABSENT IS NOT BROKEN, and it fires on a FRESH INSTALL: a
+            # new machine has no settings.json, and a guard that latched
+            # here meant the library folder the user picks in
+            # Preferences was never persisted - the next launch in
+            # exactly the same state.
             #
-            # Raised as ValueError so it joins the parse failures in the
-            # handler below and gets the whole path they already have:
-            # the file preserved, the write latch set, the user told.
-            if not isinstance(data, dict):
-                raise ValueError("top level is %s, not an object"
-                                 % type(data).__name__)
-            # Baseline for the stale-write merge: without it the first
-            # save always re-reads, which is harmless but noisy; with a
-            # wrong one it never re-reads, which is the bug. Taken from
-            # the same file just read.
-            self._remember_disk_state(self.path + "/settings.json")
-        except FileNotFoundError:
-            # ABSENT IS NOT BROKEN - the mirror image of the bug this
-            # whole change is about, and it fires on a FRESH INSTALL. A
-            # new machine has no settings.json, FileNotFoundError is an
-            # OSError, so the handler below latched _load_failed and
-            # save() then refused for the session: the library folder
-            # the user picks in Preferences was never persisted, and the
-            # next launch was in exactly the same state. A guard that
-            # fires when there is nothing to protect is an outage.
-            #
-            # No _preserve_unreadable either: there is no file to
-            # preserve, and it printed "could not read your settings"
-            # over a first launch where nothing was wrong.
+            # NO ABSENT-BUT-KNOWN VERDICT, deliberately, and this is the
+            # one guarded store that must not have one - the store says
+            # so as `absence_is_fresh`. The databases latch on absence
+            # because a library is SHARED and a file can be late;
+            # nothing is late on this machine's own disk, deleting this
+            # file IS the prescribed way out of an unreadable one, and
+            # the `.unreadable` copy that refusal leaves behind is
+            # itself one of the traces the guard reads.
             debug.event("prefs", "no settings.json yet - opening "
                         "unconfigured", path=self.path)
-            # NO ABSENT-BUT-KNOWN VERDICT HERE, deliberately, and it is
-            # the one guarded store that must not have one. The
-            # databases latch on absence because a library is SHARED and
-            # a file can be late; settings.json is per-machine and never
-            # travels between machines, so
-            # there is no late case to protect against - while deleting
-            # this file IS the prescribed way out of an unreadable one,
-            # and a trace-based latch would refuse the fresh start it
-            # offers. The `.unreadable` copy the refusal leaves behind
-            # would be exactly that trace.
-            #
-            # The latch CLEARS, exactly as a healthy read clears it: the
-            # refusal is re-derived from the file on every read, and
-            # load() runs again when Preferences closes, so a latch left
-            # set here refused every save for the life of the panel.
-            self._load_failed = False
             return False
-        except (OSError, ValueError) as exc:
+        if not store.writable:
+            # The file is there and will not parse. The engine has
+            # already kept the copy and told the user; refusing to WRITE
+            # for the session is the other half, and it is the store's
+            # state rather than a flag - re-derived on every read, so a
+            # repaired file saves again without anything having to
+            # remember to clear it.
             debug.event("prefs", "settings unreadable - opening without a "
-                        "library", path=self.path, error=str(exc))
-            self._preserve_unreadable(exc)
-            # Refuse to WRITE for the session too. Preserving a copy is
-            # a mitigation; the policy is "refuse to write for the
-            # session, and SAY so". gradient_library and tile_icons both
-            # latch; settings.json did not, and add_file_folder and
-            # friends call save() from ordinary sidebar use - so the
-            # defaults reached disk without anyone opening Preferences.
-            self._load_failed = True
+                        "library", path=self.path, trace=store.trace)
             return False
-        # A SUCCESSFUL READ CLEARS THE LATCH. It was set nowhere else and
-        # cleared nowhere at all, so a repaired settings.json could never
-        # be saved again for the life of this object - and the object
-        # lives as long as the panel: panel.py calls this same Prefs's
-        # load() again when Preferences closes and on a library switch.
-        # So the sequence "launch while the file is half-synced, wait,
-        # reopen Preferences" reads the file back perfectly and still
-        # refuses every save, with the once-per-session line already
-        # spent. The refusal is re-derived from the file on every read, so
-        # clearing it here weakens nothing: a file that is still broken
-        # latches again on the very next line above.
-        self._load_failed = False
+        data = store.everyones()
         # KEEP WHAT WE DID NOT READ. Every key below is pulled out with
         # .get() into a private attribute and refresh_data() then rebuilds
         # self.data from those attributes alone - so a key this build does
