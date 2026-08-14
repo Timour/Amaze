@@ -1826,13 +1826,16 @@ def convert_redshift_material(
         # same BumpMap node in every observed case) - only one normal
         # input to feed either way.
         # StandardMaterial wires bump into bump_input or the output's
-        # "Bump Map"; OpenPBR wires its normal/bump into the shader's
-        # own geometry_normal input. Check all three.
+        # bump input; OpenPBR wires its normal/bump into the shader's
+        # own geometry_normal input. Check all three - and ask the
+        # terminal by ROLE, because the classic and USD forms spell that
+        # input differently and asking for one spelling dropped every
+        # output-node bump on the USD form (material.TERMINAL_INPUTS).
         shader_inputs = _named_inputs(shader)
         bump_src = (
             shader_inputs.get("geometry_normal")
             or shader_inputs.get("bump_input")
-            or out_inputs.get("Bump Map")
+            or material.terminal_input(out_inputs, "bump")
         )
         if bump_src is not None:
             nm = convert_bump_map(bump_src, prefs_dir_parent, report)
@@ -1846,7 +1849,7 @@ def convert_redshift_material(
                     )
         mtlx_disp = None
         if out_node is not None:
-            disp_src = out_inputs.get("Displacement")
+            disp_src = material.terminal_input(out_inputs, "displacement")
             if disp_src is not None:
                 mtlx_disp = convert_displacement(disp_src, prefs_dir_parent, report)
 

@@ -10,9 +10,15 @@ import datetime
 
 #: Redshift's terminal node types, measured 2026-08-09 on 21.0.729 with
 #: the plugin loaded: a `redshift_vopnet` ships a `redshift_material`
-#: and an `rs_usd_material_builder` a `redshift_usd_material`. Neither
-#: names its inputs - they are `Input 1`..`Input 8` - so there is no
-#: `surface` connector to look for, and the whole node IS the terminal.
+#: and an `rs_usd_material_builder` a `redshift_usd_material`. There is
+#: no `surface` connector to look for and the whole node IS the
+#: terminal - a Karma-shaped check answers False for every one of them.
+#:
+#: CORRECTED 2026-08-14: this used to say the terminals do not name
+#: their inputs, `Input 1`..`Input 8`. That is `inputLabels()`.
+#: `inputNames()` names every one of them, which is what
+#: TERMINAL_INPUTS below is built on, and a whole roadmap finding was
+#: written on the strength of the wrong half.
 #:
 #: HERE rather than in `render/nodes.py`, where it was: the preview
 #: engine needs it too and imports only `amaze.core` and
@@ -20,6 +26,37 @@ import datetime
 #: literal alone, so every `rs_usd_material_builder` was invisible to
 #: them - `nodes` re-exports this name so its own callers are unchanged.
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
+
+
+#: What each terminal calls the input a converter needs, by ROLE -
+#: because THE TWO FORMS DISAGREE. Measured 2026-08-14 on 22.0.407 and
+#: 21.0.729, identical on both: `redshift_material` says "Bump Map",
+#: `redshift_usd_material` says "BumpMap", and Surface and Displacement
+#: are spelled alike. Asking for one spelling silently dropped every
+#: output-node bump on the USD form, which is the majority of a real
+#: library - so the spellings live here, once, and callers ask by role
+#: through terminal_input(). A test walks the package for a by-hand
+#: `get("<spelling>")` so the straggler cannot come back.
+TERMINAL_INPUTS = {
+    "surface": ("Surface",),
+    "displacement": ("Displacement",),
+    "bump": ("Bump Map", "BumpMap"),
+}
+
+
+def terminal_input(named_inputs: dict, role: str):
+    """The node wired into a Redshift terminal's `role` input, or None.
+
+    `named_inputs` is {input name: node} for the terminal - the shape
+    material_converter._named_inputs builds. Raises KeyError on a role
+    the table does not name: a silent None there would be exactly the
+    lookup-that-never-fires this table exists to prevent.
+    """
+    for spelling in TERMINAL_INPUTS[role]:
+        wired = named_inputs.get(spelling)
+        if wired is not None:
+            return wired
+    return None
 
 
 #: THE MIXED-SELECTION SENTINEL - what an edit field shows when the
