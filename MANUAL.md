@@ -147,8 +147,8 @@ costs the history, never the material.
 
 Turn the whole behaviour off in Preferences ▸ Library ▸ **Material
 Versions** — then saving over an existing material always adds a new
-one instead. The switch is stored in the library rather than in your
-preferences, because it governs something shared.
+one instead. The switch lives with the library, like the rest of the
+shared settings — it governs something everyone using it relies on.
 
 ### Getting one back out
 
@@ -366,11 +366,10 @@ Right-click the sidebar:
   are the exception and are kept: you framed those by hand, and
   nothing can render them again.
 
-  If you use the same library on two computers, a folder you remove on
-  one can come back on the other — the other computer still has it
-  registered, and the next time it saves, it puts it back. It returns
-  bare, with no label or colour, and nothing is scanned until you open
-  it. Remove it on both to be rid of it.
+  Removing a folder clears it for everyone who uses the library —
+  registrations live with the library now, so it does not come back
+  from the other computer. If Amaze was open on the other computer at
+  that moment, close and reopen it there and the removal shows.
 - **Locate Folder…** re-points a location that moved on disk;
   favorites, its name and its settings follow.
 - **Rename Folder…** gives it your own label. The default name is the
@@ -513,12 +512,17 @@ you work.
 **Library** — library path, **Clean Up Library**, **Reload Library**,
 **Open Library Folder**; cache path and **Delete Local Cache**.
 
-> Your preferences are stored where the OS keeps preferences —
-> `~/Library/Preferences/Amaze` on macOS, `%APPDATA%\Amaze` on Windows,
-> `$XDG_CONFIG_HOME/Amaze` on Linux — not in the plugin folder, so
-> updating or reinstalling Amaze never touches them. A settings file
-> from an older version is moved there automatically the first time,
-> and the original is left behind as a backup.
+> Settings that govern the library itself — the render settings and
+> renderer choices, conversion and download throughput, and how paths
+> are written — are stored **with the library** and shared by everyone
+> who opens it: change the thumbnail samples on one computer and the
+> other answers the same. What is yours on this machine — view mode,
+> icon sizes, panel widths, which tabs show — is stored per person
+> where the OS keeps preferences (`~/Library/Preferences/Amaze` on
+> macOS, `%APPDATA%\Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on
+> Linux), not in the plugin folder, so updating or reinstalling Amaze
+> never touches it. If the library is unreachable, Amaze keeps
+> working on the last values it saw.
 
 **Render** — thumbnail resolution, samples (Redshift and Karma
 separately), RAM cache, geometry shading mode and
