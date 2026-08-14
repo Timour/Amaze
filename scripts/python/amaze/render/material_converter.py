@@ -1835,7 +1835,7 @@ def convert_redshift_material(
         bump_src = (
             shader_inputs.get("geometry_normal")
             or shader_inputs.get("bump_input")
-            or material.terminal_input(out_inputs, "bump")
+            or out_inputs.get("Bump Map")
         )
         if bump_src is not None:
             nm = convert_bump_map(bump_src, prefs_dir_parent, report)
