@@ -845,6 +845,15 @@ give every gesture; the File menu's Import always did.
   per session when a database carries a format number ahead of this
   build's. Reads work, every save refuses. The updater's offer joins
   this dialog when the in-Houdini updater ships.
+- `Your saved <things> could not be read, so Amaze will not save over
+  them.` — a SIDECAR list (nodes, snippets, colors) that exists and
+  will not read, at panel open or a library switch (2026-08-14, one
+  sentence for every secondary database through
+  `database.load_survivable`; `<things>` is the section's own noun).
+  The section opens empty and read-only for the session; the body
+  says nothing has been lost, the file is untouched, and ends on the
+  Repair route. It replaces a Colors-only wording — the other
+  sections previously showed the raw traceback.
 - `Your library's list could not be read.` — the unreadable-index
   dialog (2026-08-08), replacing the raw traceback at panel open.
   Buttons: `Repair` (default) / `Open Without Library` (also the
