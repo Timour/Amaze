@@ -979,19 +979,26 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
         the remembered category was no longer a row the proxy kept its
         old filter while the sidebar highlighted nothing.
 
-        RE-KEYED 2026-08-03, in the batch that moved them. The four
-        bodies were in panel.py and are now two `activate()` methods on
-        the Sections - one shared by Materials, Node and Code, one for
-        Color. This went RED rather than vacuous when they moved, which
+        RE-KEYED 2026-08-03, in the batch that moved them, and AGAIN
+        2026-08-14 when Color rebased onto `AssetSection`: the four
+        bodies are ONE `activate()` now, shared by all four category
+        sidebars. This went RED rather than vacuous both times, which
         is what a source-scan detector should do: `func_source` raises
-        on a name it cannot find instead of scanning nothing."""
-        for name in ("AssetSection.activate", "GradientSection.activate"):
-            cls, method = name.split(".")
-            self.assertIn(
-                "_select_default_sidebar_row",
-                method_source("panel/sections.py", cls, method),
-                "%s establishes its default sidebar row on its own "
-                "again, or not at all" % name)
+        on a name it cannot find instead of scanning nothing. A pin
+        holds the sharing itself, so a section growing its own
+        activate again has to say so here."""
+        self.assertIn(
+            "_select_default_sidebar_row",
+            method_source("panel/sections.py", "AssetSection",
+                          "activate"),
+            "AssetSection.activate establishes its default sidebar "
+            "row on its own again, or not at all")
+        from amaze.panel import sections
+        self.assertIs(
+            sections.GradientSection.activate,
+            sections.AssetSection.activate,
+            "Color carries its own activate again - if that is "
+            "deliberate, scan its body here like the shared one")
 
 
 class TheGridPaneIsResolvedByElimination(_PanelCase):

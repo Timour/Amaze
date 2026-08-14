@@ -866,8 +866,9 @@ class GradientAbsenceTest(unittest.TestCase):
         self._assert_no_backup()
         before = sorted(os.listdir(self.dir))
         lib = self._library()
-        lib.add_user_category("Warm")       # an ordinary panel action
-        lib.save()                          # and the direct call
+        # An ordinary panel action, and the direct call.
+        lib.add_user_gradient("mine", "Warm", {"values": [], "keys": []})
+        lib.save()
         self.assertFalse(
             os.path.exists(self.path),
             "a 39-byte gradients.json was written where 290KB belongs")

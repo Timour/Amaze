@@ -85,11 +85,10 @@ def _palette_ramp_data(colors: list) -> dict:
 
 
 class GradientCategories(category.Categories):
-    """The Colors section's category sidebar - same model, own database.
-
-    Three lines, like `CopCategories` and `CodeCategories`, plus the one
-    thing this section genuinely asks that they do not: the proxy is
-    driven by a (kind, value) pair rather than by a category name.
+    """The Colors section's category sidebar - same model, own
+    database. Three lines, like `CopCategories` and `CodeCategories`:
+    the section reads a row's meaning through the family's own
+    `sidebar_key`, so the (kind, value) reader this carried is gone.
 
     It was a standalone list model until 2026-08-12, reading its rows
     through the library instead of the connector's document, and that
@@ -99,23 +98,6 @@ class GradientCategories(category.Categories):
     """
 
     DB_FILENAME = "gradients.json"
-
-    def filter_for_row(self, row: int):
-        """(kind, value) for the proxy: ("all", None) or
-        ("category", name).
-
-        DERIVED from the shared model's own rows rather than kept in a
-        parallel list: row 0 is the `_All` marker and the rest are
-        names, which is the order `Categories` already guarantees.
-        `sections.py` reads this for both `select_category` and
-        `sidebar_key`, so it stays the section's one reader of what a
-        row MEANS.
-        """
-        if 0 <= row < len(self._categories):
-            name = self._categories[row]
-            if isinstance(name, str) and not name.startswith("_"):
-                return ("category", name)
-        return ("all", None)
 
 
 class GradientLibrary(library.MaterialLibrary):
@@ -423,16 +405,6 @@ class GradientLibrary(library.MaterialLibrary):
         return [name for name in self._data.get("categories", [])
                 if isinstance(name, str) and name != "_All"]
 
-    def add_user_category(self, name: str) -> None:
-        name = (name or "").strip()
-        cats = self._data.setdefault("categories", [])
-        if name and name not in cats:
-            cats.append(name)
-            self.save()
-
-    def count_in_category(self, name: str) -> int:
-        return sum(1 for a in self._assets if name in a.categories)
-
     def set_user_category(self, rows: list, category_name: str) -> int:
         """Move the given rows' palettes to a category (dragged onto a
         sidebar row, or the Move-to menu). Returns how many moved."""
@@ -455,54 +427,6 @@ class GradientLibrary(library.MaterialLibrary):
             for row in rows:
                 self.row_changed(row)
         return moved
-
-    def rename_user_category(self, old: str, new: str) -> bool:
-        """Rename a palette category, carrying its palettes AND its
-        colour across - the same contract the asset sections have."""
-        old = str(old or "").strip()
-        new = str(new or "").strip()
-        if not old or not new or old == new:
-            return False
-        cats = self._data.setdefault("categories", [])
-        if old in cats:
-            # IN PLACE: the list is the connector's own document.
-            cats[cats.index(old)] = new
-        elif new not in cats:
-            cats.append(new)
-        table = self._data.get("category_colors")
-        if isinstance(table, dict):
-            colour = table.pop(old, "")
-            if colour:
-                table[new] = colour
-        self.rename_category(old, new)
-        if not self.save():
-            return False
-        self._repaint_rows()
-        return True
-
-    def remove_user_category(self, name: str) -> None:
-        """Drops the category itself; its palettes are kept, just
-        uncategorized (still listed under All)."""
-        cats = self._data.setdefault("categories", [])
-        if name in cats:
-            cats.remove(name)
-        table = self._data.get("category_colors")
-        if isinstance(table, dict):
-            # A removed category takes its colour with it - an orphan
-            # key would silently reattach if the name ever came back.
-            table.pop(name, None)
-        self.remove_category(name)
-        self.save()
-        self._repaint_rows()
-
-    def _repaint_rows(self) -> None:
-        """Category edits change subtitles and the Category column on
-        every affected row; one bounded emit covers them."""
-        if self.rowCount():
-            self.dataChanged.emit(
-                self.index(0, 0), self.index(self.rowCount() - 1, 0),
-                [self.CategoryRole, self.CategoryLabelRole,
-                 self.CategoryColorRole])
 
     # ------------------------------------------------------------------
     # Add and delete - the record API over the shared save contracts.
@@ -554,6 +478,13 @@ class GradientLibrary(library.MaterialLibrary):
                 key="colors-not-saved")
             return
         self.row_changed(0)
+
+    def remove_asset(self, index) -> None:
+        """The family's delete verb, in Colors' terms: a palette owns
+        nothing on disk beyond its row, so there is no file pass, and
+        the refusal names the palette rather than a material."""
+        if index.isValid():
+            self.remove_user_gradient(index.row())
 
     def remove_user_gradient(self, row: int) -> None:
         """Delete a palette, honouring the connector's answer.

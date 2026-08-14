@@ -2494,8 +2494,11 @@ class OnlineContext(Section):
     takes_filter_menu = False
 
 
-class GradientSection(Section):
-    deletes_rows = True
+class GradientSection(AssetSection):
+    """Colors on the asset spine: model, sidebar, proxy and verbs are
+    the family's. What stays its own is what a palette IS - the ramp
+    verbs, the swatch menu, the size filter - and the one documented
+    keep, `apply_filter`."""
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -2509,13 +2512,6 @@ class GradientSection(Section):
                     % (name or "this palette"))
         return ("Delete %d gradients? They go for good. Ramps already "
                 "applied to a node are not affected." % count)
-
-    def delete_rows(self, indexes) -> None:
-        model = self.panel.gradient_model
-        for row in sorted({index.row() for index in indexes},
-                          reverse=True):
-            model.remove_user_gradient(row)
-        self.panel.gradient_categories_model.switch_model_data()
 
     key = "gradient"
     label = "Color"
@@ -2540,42 +2536,17 @@ class GradientSection(Section):
     #: pipeline, which is where the sections' order behaviour drifted
     #: apart. Nothing hides here - no renderer filter is ever pushed,
     #: so every row passes - the pipeline is what is unified.
+    model_attr = "gradient_model"
+    category_attr = "gradient_categories_model"
     sidebar_attr = "gradient_category_sorted_model"
     delegate_attr = "gradient_delegate"
     proxy_attr = "gradient_sorted_model"
     selection_attr = "gradient_selection_model"
 
-    #: The base's category-sidebar reorder bodies fit unchanged.
-    reorders_sidebar = True
-
-    def _sidebar_source_row(self, index) -> int:
-        """A cat_list index is a PROXY index since the sidebar proxy
-        arrived; `filter_for_row` speaks source rows."""
-        if index is None or not index.isValid():
-            return -1
-        return self.panel.gradient_category_sorted_model.mapToSource(
-            self.panel.gradient_category_sorted_model.index(
-                index.row(), 0)).row()
-
-    def activate(self) -> None:
-        """The same four bindings as every other section; the one thing
-        of its own is that its sidebar filter is a SIZE range rather
-        than a category name, so it is cleared by its own call."""
-        panel = self.panel
-        sidebar = self._p(self.sidebar_attr)
-        if panel.cat_list and sidebar is not None:
-            panel.cat_list.setModel(sidebar)
-        panel.bind_grid_views(self._p(self.proxy_attr),
-                              self._p(self.selection_attr),
-                              self._p(self.delegate_attr))
-        panel.texture_progress.setVisible(False)
-        panel.sync_list_columns()
-        # Start on "All" (row 0) with the category filter cleared - the
-        # programmatic select below does not fire clicked(), so the
-        # filter is reset explicitly.
-        self._p(self.proxy_attr).setFilter(
-            panel.gradient_model.CategoryRole, "")
-        panel._select_default_sidebar_row(sidebar)
+    #: A palette's preview is drawn from its own ramp, so there is
+    #: nothing to re-render and the menu entry would lie - the base
+    #: turns this on for the rendered sections.
+    offers_preview_update = False
     #: Apply puts the gradient on the selected node's first colour ramp
     #: exactly as it was saved; "Apply as" is the deliberate override,
     #: one entry per interpolation Houdini has. Copy Color COPIES a hex
@@ -2707,8 +2678,6 @@ class GradientSection(Section):
     #: The MaterialX colour ramp, wherever a network can hold one.
     carrier_type = "hmtlxrampc"
 
-    takes_category_drops = True
-
     def accepts_category_drop(self, index, name: str) -> bool:
         """Defensive: every gradient category listed is a real,
         editable user category now (the palettes are seeded as such),
@@ -2719,10 +2688,10 @@ class GradientSection(Section):
         """
         return name in self.panel.gradient_model.user_categories()
 
-    #: The same spine, with one difference that is real: everything
-    #: below "All" is a user category, so the per-category entries
-    #: EXIST only on such a row. `sidebar_key` answers "" for All,
-    #: which is what `on_a_category` reads.
+    #: The family spine driving the INHERITED verbs, with one gate
+    #: that is a declaration, not machinery: everything below All is a
+    #: real user category, so the per-category entries exist only on
+    #: such a row (pinned by test_sidebar_menu as the shipped menu).
     SIDEBAR_MENU = (
         MenuEntry("Add Category", verb="menu_add_category",
                   needs="always"),
@@ -2738,55 +2707,12 @@ class GradientSection(Section):
     )
 
     def on_a_category(self, indexes, current) -> bool:
-        """Is the row under the cursor a real user category?
-
-        Not a crash site - `filter_for_row` takes only `.row()` and
-        dereferences no mapping. But a stale row is a stale ANSWER: it
-        names whichever category now sits at that position, so the menu
-        would offer to remove the wrong one.
-        """
-        return bool(self.sidebar_key(current)) if current is not None else False
-
-    def menu_add_category(self, indexes, current, payload=None) -> None:
-        name = self.panel.ask_category_name("Add Category")
-        if not name:
-            return
-        self.panel.gradient_model.add_user_category(name)
-        self.panel.gradient_categories_model.switch_model_data()
-
-    def menu_rename_category(self, indexes, current, payload=None) -> None:
-        old_name = self.sidebar_key(current)
-        new_name = self.panel.ask_category_name("Rename Category")
-        if not old_name or not new_name:
-            return
-        if self.panel.gradient_model.rename_user_category(old_name,
-                                                          new_name):
-            self.panel.gradient_categories_model.switch_model_data()
-
-    def menu_remove_category(self, indexes, current, payload=None) -> None:
+        """Is the row under the cursor a real user category? The
+        STORED name answers, and the everything-marker is not one."""
+        if current is None:
+            return False
         name = self.sidebar_key(current)
-        if not name:
-            return
-        count = self.panel.gradient_model.count_in_category(name)
-        message = 'Remove category "%s"?' % name
-        if count:
-            message += " Its %s gradient%s will be kept (shown under All)." % (
-                count, "" if count == 1 else "s")
-        if not hou.ui.displayConfirmation(message):      # type: ignore
-            return
-        self.panel.gradient_model.remove_user_category(name)
-        self.panel.gradient_categories_model.switch_model_data()
-        # The removed row may have been the selection - fall back to
-        # "All" so the sidebar never points nowhere. A PROXY index:
-        # the view shows the sidebar proxy since 2026-08-14, and a
-        # source index setCurrentIndex silently selects nothing.
-        self.panel.gradient_sorted_model.setFilter(
-            self.panel.gradient_model.CategoryRole, "")
-        self.panel.cat_list.setCurrentIndex(
-            self.panel.gradient_category_sorted_model.index(0, 0))
-
-    def tile_models(self):
-        return self.panel.gradient_model, self.panel.gradient_sorted_model
+        return bool(name) and name not in ("All", "_All")
 
     def _entry_at(self, index):
         if index is None or not index.isValid():
@@ -2841,84 +2767,16 @@ class GradientSection(Section):
         ("5+ colors", (5, None)),
     )
 
-    def filter_text(self, text: str) -> None:
-        # The family filter, by role - the proxy's own name test also
-        # matches the colour names inside a palette.
-        self.panel.gradient_sorted_model.setFilter(
-            QtCore.Qt.ItemDataRole.DisplayRole, text)
-
-    def filter_favorites(self, on: bool) -> None:
-        self.panel.gradient_sorted_model.setFilter(
-            self.panel.gradient_model.FavoriteRole, True if on else "")
-
     def apply_filter(self, value) -> None:
+        """The documented KEEP: this must NOT be inherited. The base's
+        `apply_filter` pushes the menu value into
+        `set_renderer_filter`, and Colors' filter choices are
+        colour-COUNT tuples - `(2, 2)` stores as a string matching no
+        renderer, every category counts 0, and Hide Empty collapses
+        the sidebar to `_All`. A palette's kind field is uniformly
+        `Gradient`, so the menu narrows by SIZE instead, a dimension
+        the Colors proxy alone carries."""
         self.panel.gradient_sorted_model.set_size_filter(value)
-
-    def select_category(self, index) -> None:
-        kind, value = self.panel.gradient_categories_model.filter_for_row(
-            self._sidebar_source_row(index)
-        )
-        self.panel.gradient_sorted_model.setFilter(
-            self.panel.gradient_model.CategoryRole,
-            value if kind == "category" else "")
-
-    def toggle_favourite(self, indexes) -> None:
-        model = self.panel.gradient_model
-        proxy = self.panel.gradient_sorted_model
-        for index in indexes:
-            source = proxy.mapToSource(index)
-            if source.isValid():
-                model.toggle_favorite(source.row())
-
-    def sidebar_key(self, index) -> str:
-        """Its rows are user categories; `filter_for_row` is the one
-        reader of what a row means, and answers ("category", name) for
-        everything below All."""
-        if index is None or not index.isValid():
-            return ""
-        kind, value = self.panel.gradient_categories_model.filter_for_row(
-            self._sidebar_source_row(index))
-        return str(value or "") if kind == "category" else ""
-
-    def sidebar_colour(self, name: str) -> str:
-        # THE SIDEBAR MODEL, exactly as the asset sections read it.
-        # This asked the LIBRARY, which kept its own colour dict, so
-        # clearing a colour took it off one store and left it on the
-        # other and the row went on wearing it.
-        return self.panel.gradient_categories_model.color_of(name)
-
-    def set_sidebar_colour(self, name: str, colour: str) -> None:
-        self.panel.gradient_categories_model.set_color(name, colour)
-        # The grid reads the colour through a role on the ASSET model,
-        # which shares the category model's data dict, so a repaint is
-        # all that is needed - role-scoped for the reason the asset
-        # sections give.
-        model = self.panel.gradient_model
-        if model is not None and model.rowCount():
-            model.dataChanged.emit(
-                model.index(0, 0),
-                model.index(model.rowCount() - 1, 0),
-                [model.CategoryColorRole],
-            )
-
-    def comment_subject(self, index):
-        """Keyed by the palette's UID, not its name: a palette can be
-        renamed and the page has to follow it."""
-        model = self.panel.gradient_model
-        source = self.panel.gradient_sorted_model.mapToSource(index)
-        if not source.isValid():
-            return None
-        uid = model.note_uid(source.row())
-        if not uid:
-            return None
-        return CommentSubject(
-            key=notes.note_key(self.key, uid),
-            section=self.label.lower(),
-            name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
-            type=source.data(model.RendererLabelRole) or "",
-            category=str(source.data(model.CategoryLabelRole) or ""),
-            colour=str(source.data(model.CategoryColorRole) or ""),
-        )
 
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)

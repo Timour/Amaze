@@ -457,17 +457,24 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.assertEqual("#4af2a1", self.lib.category_color(self.row))
 
     def test_a_rename_carries_the_colour(self):
-        """Keyed by name, so a rename that drops the colour leaves an
-        orphan key that silently reattaches if the name comes back."""
+        """The family flow: the sidebar model renames its row and
+        carries the colour, the asset model renames its rows, one save
+        lands both - keyed by name, so a rename that drops the colour
+        leaves an orphan key that silently reattaches if the name
+        comes back."""
         self.sidebar.set_color("Warm", "#4af2a1")
-        self.assertTrue(self.lib.rename_user_category("Warm", "Hot"))
+        self.lib.rename_category("Warm", "Hot")
+        self.sidebar.rename_category("Warm", "Hot")
+        self.assertTrue(self.lib.save())
         again = self._reload_sidebar()
         self.assertEqual("#4af2a1", again.color_of("Hot"))
         self.assertEqual("", again.color_of("Warm"))
 
     def test_removing_a_category_takes_its_colour(self):
         self.sidebar.set_color("Warm", "#4af2a1")
-        self.lib.remove_user_category("Warm")
+        self.lib.remove_category("Warm")
+        self.sidebar.remove_category("Warm")
+        self.assertTrue(self.lib.save())
         self.assertEqual("", self._reload_sidebar().color_of("Warm"))
 
 
@@ -1092,14 +1099,19 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
         self.assertEqual("gradients.json",
                          gradient_library.GradientCategories.DB_FILENAME)
 
-    def test_the_All_row_answers_all(self):
-        self.assertEqual(("all", None), self._sidebar().filter_for_row(0))
-
-    def test_a_category_row_answers_its_name(self):
+    def test_the_All_row_is_pinned_first(self):
         sidebar = self._sidebar()
-        found = [sidebar.filter_for_row(row)
+        self.assertEqual(
+            "_All",
+            sidebar.data(sidebar.index(0, 0), sidebar.CatSortRole),
+            "row 0 is not the everything-marker, so the section's "
+            "sidebar_key would read a category as All")
+
+    def test_a_category_row_answers_its_stored_name(self):
+        sidebar = self._sidebar()
+        found = [sidebar.data(sidebar.index(row, 0), sidebar.CatSortRole)
                  for row in range(sidebar.rowCount())]
-        self.assertIn(("category", "Warm"), found,
+        self.assertIn("Warm", found,
                       "the sidebar cannot name its own category, so a "
                       "click filters the grid to nothing")
 
