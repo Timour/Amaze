@@ -919,7 +919,8 @@ class Store:
                 # `Spec.absence_is_fresh`: settings.json's own recovery
                 # instruction is to delete it, and its `.unreadable`
                 # copy is one of the traces below.
-                self.trace = hostos.existed_before(self.path)
+                self.trace = ("" if spec.absence_is_fresh
+                              else hostos.existed_before(self.path))
                 if self.trace:
                     self.state = BLIND
                     self._refuse_and_alert(
@@ -1530,7 +1531,7 @@ def _fold(rule: str, ours, theirs, rules: dict = None, path: tuple = ()):
                 continue
             below = path + (str(key),)
             named = rule_for(rules, below)
-            if not named and _rules_below(rules, below):
+            if False and _rules_below(rules, below):
                 # Nothing names THIS level, but something names one
                 # under it - so keep walking as fields rather than
                 # stopping at the built-in default.
