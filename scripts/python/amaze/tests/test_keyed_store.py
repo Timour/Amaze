@@ -393,6 +393,70 @@ class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
             "a release aimed at another library took this one's tables")
 
 
+class AStoreLivesWhereItsSpecSays(StoreCase):
+    """ROADMAP line 26, stage 1. Every store's path was
+    `<library>/<filename>`, which is right for the four library stores
+    and wrong for the one about to join them: settings.json is
+    MACHINE-local. It holds the POINTER to the library, so it is the one
+    file that cannot live inside it - the shared-settings note in
+    keyed_store.py says exactly that.
+
+    `Spec.in_library` already existed, and its own comment already
+    anticipated a store that answers False; nothing consulted it when
+    the path was resolved.
+    """
+
+    def _machine_spec(self, filename="machine.json"):
+        return keyed_store.Spec(
+            filename=filename, payload="settings",
+            keyspace=keyed_store.KEY_ID, label="Machine settings",
+            noun="setting", normalise=lambda value: value,
+            in_library=False)
+
+    def test_a_machine_local_store_lives_beside_the_settings(self):
+        elsewhere = tempfile.mkdtemp(prefix="amaze_config_")
+        self.addCleanup(shutil.rmtree, elsewhere, ignore_errors=True)
+        prefs = _Prefs(self.dir)
+        prefs.path = elsewhere
+        store = keyed_store.open_store(self._machine_spec(), prefs)
+        self.assertEqual(os.path.join(elsewhere, "machine.json"),
+                         store.path,
+                         "a machine-local store was written into the "
+                         "user's LIBRARY, which is the one place the "
+                         "pointer to that library must not live")
+
+    def test_a_library_store_is_where_it_always_was(self):
+        """The polarity: asking the question must not move the four."""
+        prefs = _Prefs(self.dir)
+        prefs.path = tempfile.gettempdir()
+        store = keyed_store.open_store(notes.SPEC, prefs)
+        self.assertEqual(self.path("notes.json"), store.path)
+
+    def test_a_machine_local_store_outlives_a_library_switch(self):
+        """Switching library drops that library's tables. This file is
+        not that library's - its rows are the same rows afterwards."""
+        elsewhere = tempfile.mkdtemp(prefix="amaze_config_")
+        self.addCleanup(shutil.rmtree, elsewhere, ignore_errors=True)
+        prefs = _Prefs(self.dir)
+        prefs.path = elsewhere
+        keyed_store.open_store(self._machine_spec(), prefs)
+        keyed_store.open_store(notes.SPEC, prefs)
+        keyed_store.release(prefs)
+        left = [key[0] for key in keyed_store._open]
+        self.assertEqual(
+            ["machine.json"], left,
+            "a library switch took the machine's own settings with it")
+
+    def test_a_prefs_that_cannot_say_where_is_REFUSED(self):
+        """The silent-fallback hazard, named. A stub or an early Prefs
+        with no config path must not quietly mean "the library" - that
+        writes settings.json into the user's synced library, which is
+        the exact outcome in_library=False exists to prevent."""
+        prefs = _Prefs(self.dir)          # no `path` at all
+        with self.assertRaises(ValueError):
+            keyed_store.open_store(self._machine_spec(), prefs)
+
+
 class AReadHandsOutACopy(StoreCase):
     """`notes()` used to return the live cache. A caller holding that
     could mutate the table without writing anything - so a REFUSED save
