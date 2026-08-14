@@ -228,12 +228,14 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
             "again - the enumeration that was short is exactly how "
             "Code was missed")
 
-    def test_sidebar_proxies_names_all_three(self):
+    def test_sidebar_proxies_names_all_four(self):
+        # Gradient joined 2026-08-14, when Color's sidebar took the
+        # shared proxy (unsorted, manual-order round).
         from amaze.panel import panel as panel_mod
         self.assertEqual(
-            {"material", "cop", "code"},
+            {"material", "cop", "code", "gradient"},
             set(panel_mod.MatLibPanel.SIDEBAR_PROXY_ATTRS),
-            "an asset section gained or lost a sidebar without the "
+            "a section gained or lost a sidebar proxy without the "
             "one list that every push walks")
 
 
