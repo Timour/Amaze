@@ -1245,8 +1245,13 @@ class Store:
         Answers what the reopened store can do, so a caller need not
         ask twice.
         """
+        self._table = {}
+        self._foreign = {}
+        self._orphans = {}
         self._disk_state = None
+        self.state = FRESH
         self.trace = ""
+        self._load()
         return Written(self.writable, REASON_NONE if self.writable
                        else (REASON_ABSENT if self.trace else REASON_LATCHED),
                        self.spec.refused_sentence if not self.writable else "")
