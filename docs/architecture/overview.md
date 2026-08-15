@@ -59,13 +59,9 @@ lists the sections reads that one function - the tab strip, the
 Show/Hide toggles, and the pref that persists them. `panel.ALL_SECTIONS`
 is its cached result, not a second list to keep in step.
 
-> **Display names and KEYS differ, deliberately.** The labels went
-> singular (2026-07-31) and Cop is labelled **Node** without renaming
-> its key — the keys are load-bearing in saved preferences and in
-> every asset record. Read a key as an identifier, never as a name.
-> The pre-merge keys `texture`/`geometry`/`hip` are retired but still
-> present in older machines' saved preferences; nothing may strip
-> them (see the Show/Hide rebuild in prefs_dialog.py).
+Read a KEY as an identifier, never as a name: keys are load-bearing in
+saved preferences and in every asset record, and the retired
+`texture`/`geometry`/`hip` must never be stripped.
 
 The five sections, grouped by **Archetype** (they share machinery):
 
@@ -108,40 +104,11 @@ Plus one *view mode*, not a section:
   icon. Per-location recursion, custom names and the remove-time cache
   sweep live on `FileFolders`.
 
-  > **Scene rows break one Folder rule deliberately.** The other kinds
-  > RENDER a missing thumbnail from the file; a scene file cannot be
-  > re-rendered without reconstructing the whole scene, which fails
-  > whenever a dependency has moved. Their thumbnails are CAPTURED
-  > from the viewport instead, so a row without a capture simply shows
-  > a placeholder and opening a folder never starts a capture. The
-  > store is also not mtime-invalidated: a hand-framed capture must
-  > survive re-saving the scene.
 - **Gradient Archetype** (`GradientSection`) — the palette library.
   Color. Fully read-write: gradients are added (including from a
   dropped ramp node), renamed, recategorised and deleted, and so are
   their categories.
 
-  > **It was called "the read-only palette library" here until
-  > 2026-07-30**, which was true only while the curated palettes were
-  > the whole content. They are ordinary user gradients now — the same
-  > staleness that had the register gating three Colors menu entries on a
-  > curated-vs-user distinction the code no longer makes.
-  >
-  > **It used to be the odd one out and no longer is (2026-08-09).**
-  > `gradients.json` was the one database not going through
-  > `DatabaseConnector`, so every guard the others inherit had been
-  > given to it by hand — and three were still missing as late as
-  > 2026-07-30. It goes through the connector now: same schema chain,
-  > same restore tier, same unreadable latch, same adopt-on-write,
-  > same merge. The FILE adopted the one shape rather than the
-  > connector learning a second — rows under `assets`, identity in
-  > `id` — so all four databases work the same way.
-  >
-  > Two consequences worth knowing, both the connector's and both
-  > shared with the other three: a concurrent edit MERGES rather than
-  > being refused, and **absence is not a delete** — a row the caller
-  > does not mention is kept, so a delete is said out loud through
-  > `forget()`.
 
 ### The Section API (what every Section implements) {#o/section-api}
 
@@ -181,39 +148,21 @@ matches the colour names inside a palette). The Panel writes it in
 mode changes; the **Online Browser** supplies its own, since its search
 is a third thing again. Wording in the UI text register.
 
-
-> USD idea again — an opinion attached to a value rather than inferred
-> from where it sits). Wherever several values travel together they go
-> as a named tuple, never as a bare tuple read by position:
-> `sections.AssetStack` (the four models), `sections.CommentSubject`
-> (the six the Comments pane points at) and `sections.FileLocation` (a
-> File row's registered location). Three more made the same point and
-> are gone with the machinery they named — `ui_helpers.ListColumns`,
-> `delegates.ListRow` and `ListRowStyle` retired with the QTableView
-> migration, which is the better ending: the rule held right up to the
-> code being deleted. Each replaced positional arguments or positional
-> reads that several authors had to keep in step by hand —
-> and in every case nothing would have RAISED when they drifted, the
-> wrong value would simply have been used.
+**A VALUE CARRIES ITS OWN NAME.** Several values travelling together go
+as a named tuple, never a bare tuple read by position:
+`sections.AssetStack`, `sections.CommentSubject`, `sections.FileLocation`.
 
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
 entry — and `panel/grid.py` is the ONLY code that turns one into a
-QMenu. A row carries its label (from the UI text register), the
-NAME of the Section method that performs it, the name of the fact that
-decides whether it EXISTS (`shown`), what it needs to be LIVE
-(`needs`), and optionally the name of a method building a submenu's
-children. Names rather than callables, so the six tables read side by
-side. The last four rows are `GRID_MENU_TAIL` — Update Preview,
-Customize, Favorite, Delete — shared by every context and gated on
-facts it already declares (`menu_offers_preview`, `deletes_rows`), so
-adding a section adds no copy of them. Before this there were six
-handlers in `panel.py`, 406 lines, giving three different answers to
-"what does an empty selection show" and each carrying its own guard
-against the same dispatch bug: a dismissed menu returns None and so
-does an entry that was never built, so `action == action_convert_karma`
-matched `None == None`. Dispatch is a dict keyed by QAction now, and
-that whole family is unwritable.
+QMenu. A row carries its label (from the UI text register), the NAME of
+the Section method that performs it, the fact deciding whether it EXISTS
+(`shown`), what it needs to be LIVE (`needs`), and optionally the method
+building a submenu's children. Names, not callables. The last four rows
+are `GRID_MENU_TAIL` — Update Preview, Customize, Favorite, Delete —
+shared by every context and gated on facts it already declares, so
+adding a section adds no copy of them. Dispatch is a dict keyed by
+QAction, never `==` against an action that may be None.
 
 **The Click Door** is where a double-click AND the menu entry
 labelled with the same verb both land — `panel.click_on_row`, one
@@ -243,20 +192,11 @@ The panel keeps the shared release plumbing the verbs call
 `_create_carrier`, `_scene_path`, `_node_under_cursor`) — shared
 because it carries no per-type meaning.
 
-> **THE SELECTION IS A HINT, NOT A VETO.** A single visible selected
-> node is offered the payload first; a node that cannot take it FALLS
-> THROUGH to the creation walk — the host's own rule, from Houdini's
-> tab menu, where a selection never blocks a creation. Anything other
-> than exactly one visible selected node skips straight to the
-> creation walk.
->
-> It was TWO implementations of one policy until 2026-08-09: the
-> double-click fell through, and Apply (Code), Apply / Apply as
-> (Color) and Import-image (File) called the refusal directly — so the
-> same tile with the same selection created a node one way and showed
-> a modal refusal the other. The menu's extra word (Color's ramp
-> basis) rides as a `payload` and reaches only the verbs that declare
-> they take one.
+**THE SELECTION IS A HINT, NOT A VETO.** One visible selected node is
+offered the payload first; a node that cannot take it FALLS THROUGH to
+the creation walk. Anything other than exactly one visible selected node
+skips straight to that walk. A menu's extra word (Color's ramp basis)
+rides as a `payload` and reaches only verbs that declare they take one.
 
 **WHICH MODELS A LIBRARY SWITCH REPOINTS is derived, not listed.**
 Each section declares `library_model_attrs` — the panel attributes
@@ -371,14 +311,9 @@ measurement applied to the converted temp.
 Above a **1GB decoded ceiling** Amaze declines and says so, because
 every route inflates the whole image before shrinking it.
 
-> **AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.**
-> The **Material Engine** has had this since it was built
-> (`surface_terminal_wired`); the conversion path never did, so an exit
-> code was read as an answer to a correctness question and 178 HDR
-> tiles went black with nothing in the log. A uniform result is a
-> SUSPICION, not a verdict — the engine tries the next adapter and
-> keeps it, and delivers it if nothing does better, because a black
-> texture is also a real picture.
+**AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.** A
+uniform result is a SUSPICION, not a verdict: try the next adapter, and
+deliver the uniform one if nothing does better.
 
 ### 4c. The **Keyed Store Engine** {#o/keyed-store}
 
@@ -402,31 +337,24 @@ store that keeps per-key choices beside the thing they belong to.
 - **Adapters:** the **Comments store** (`core/notes.py` → `notes.json`),
   the **Tile Icon store** (`core/tile_icons.py` → `icons.json`), the
   **User store** (`core/users.py` → `users.json`), the **Shared
-  Settings store** (`core/library_prefs.py` → `prefs.json` — the
-  library-wide half of ROADMAP line 22: eighteen settings that are one
-  answer for everyone who opens the library. `prefs/persistence.py` is
-  the one consumer — adopted onto `Prefs` at load and at the `dir`
-  setter, pushed back in one batch write from `save()`, with a
-  last-known `shared_settings` copy in settings.json serving when the
-  library is unreachable), and
-  the **Location record** and **Favourites**
-  (`core/locations.py` → `locations.json`, `favourites.json`), and —
-  since 2026-08-14 — **this machine's own settings**
-  (`prefs/persistence.py` → `settings.json`), the one store that is
-  NOT in the library, because it holds the pointer to it. It is a
-  DOCUMENT rather than a table of rows, and four declarations carry
-  that difference: `payload=""` (the file predates the engine and
-  cannot grow a wrapper without migrating the one file holding the
-  library pointer), `falsy_is_a_value` (`False`, `0` and `""` are
-  answers, so removal is `retire`), `absence_is_fresh` (deleting it is
-  its own prescribed recovery, and the `.unreadable` copy that
-  recovery leaves behind would otherwise be read as a trace and refuse
-  the fresh start), and `merge_rules` keyed by a PATH with a wildcard,
-  so `users/*/file_folders` reaches a collected key that the per-user
-  migration moved a level down. Its write door is `replace(document,
-  retire=…)`: one commit for a document composed whole, with the
-  retired keys dropped AFTER the peer adoption — before it they would
-  be adopted straight back on every save.
+  Settings store** (`core/library_prefs.py` → `prefs.json`, the
+  eighteen settings that are one answer for everyone who opens the
+  library; `prefs/persistence.py` is the one consumer, with a
+  last-known `shared_settings` copy in settings.json for when the
+  library is unreachable), the **Location record** and **Favourites**
+  (`core/locations.py` → `locations.json`, `favourites.json`), and
+  **this machine's own settings** (`prefs/persistence.py` →
+  `settings.json`) — the one store NOT in the library, because it holds
+  the pointer to it.
+
+  settings.json is a DOCUMENT, not a table of rows, and four
+  declarations carry that: `payload=""`, `falsy_is_a_value` (`False`,
+  `0` and `""` are answers, so removal is `retire`), `absence_is_fresh`
+  (deleting it is its own prescribed recovery), and `merge_rules` keyed
+  by a PATH with a wildcard so `users/*/file_folders` reaches a
+  collected key. Its write door is `replace(document, retire=…)`, and
+  retired keys drop AFTER the peer adoption or they are adopted
+  straight back on every save.
   Favourites serve EVERY section since 2026-08-13, through one door —
   `locations.is_favourite` / `set_favourite` — keyed by file PATH for
   File rows and by bare asset id for Material/Node/Code/Color, the
@@ -530,12 +458,9 @@ had been. Whether a store SURVIVES a location removal is
 `survives_forget` on its spec — a product decision said once (comments
 and tile icons stay; the location record dies with the pointer).
 
-> **`<file>.json.bak-first` now arrives on the FIRST write.**
-> `snapshot_before_write` copies what is already on disk and rightly
-> declines when there is nothing there, so a store written exactly once
-> had no trace of any kind and absent-but-known could not fire.
-> `hostos.seed_restore_floor` mints the write-once floor from the file
-> just created. No new kind of file — the same name, one write earlier.
+`<file>.json.bak-first` arrives on the FIRST write —
+`hostos.seed_restore_floor` mints the write-once floor from the file
+just created, since `snapshot_before_write` has nothing to copy yet.
 
 ### 4d. The **Material Engine**
 
@@ -678,11 +603,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 - **The scene's lifetime is the CALLER'S:** `thumbs.py` builds inside
   `hou.undos.disabler()` and destroys in a `finally`.
 
-> This is the most [egMatLib](https://github.com/eglaubauf/egMatLib)
-> -derived part of Amaze still doing a job of its own, its art
-> included; boxing it changes engineering and framing, not the licence
-> of the shipped whole, which stays GPLv3 while any derived line ships.
-> `tests/test_preview_boundary.py` keeps the door a door.
+`tests/test_preview_boundary.py` keeps the door a door.
 
 ---
 
@@ -783,20 +704,16 @@ reports reasons rather than showing dialogs, so it is testable
 headlessly (`tests/test_lop_assign.py`). The panel keeps the menu,
 because choosing the prim is UI.
 
-One SELF-MANAGED gesture for every section (no native QDrag, no drop
-hooks - both retired): the widgets run the press-move-release cycle on
-the live event loop (a floating name tag follows the cursor), and the
-engine owns everything spatial and temporal about it - throttled
-per-move picking (`locateSceneGraphPrim` / `queryNodeAtPixel`),
-selection-driven hover highlight with restore-on-end, release-target
-resolution (`viewport_release_target`), the container/placement policy
-(`first_materiallibrary(connected_to=)`, `find_assignmaterial`),
-Houdini's stock LOP assignment helpers (`stock_lop()`), and the
-editor-focus policy (`keep_editor_focus`: a viewport release never
-moves the user's editors). The SECTIONS' release verbs bridge a
-release to the import machinery and the LOP menu (swap-first); the
-panel keeps the shared plumbing they call (line 24, 2026-08-13). The
-one native drag left is the texture file drag (real file mime).
+One SELF-MANAGED gesture for every section — no native QDrag, no drop
+hooks. The widgets run press-move-release on the live event loop; the
+engine owns everything spatial and temporal: throttled per-move picking
+(`locateSceneGraphPrim` / `queryNodeAtPixel`), the hover highlight with
+restore-on-end, release-target resolution (`viewport_release_target`),
+container placement (`first_materiallibrary(connected_to=)`,
+`find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
+`keep_editor_focus` — a viewport release never moves the user's editors.
+Sections' release verbs bridge to the import machinery; the panel keeps
+the shared plumbing. The one native drag left is the texture file drag.
 Law: a drop lands where it is dropped; nothing exists before release;
 SOP and LOP worlds never cross-reference; empty viewport space is a
 miss (red X); a menu is its own feedback (no icon).
@@ -840,19 +757,11 @@ ships would have read every version file as an orphan.
 `<writer>` is the artist's own **Library User** — the `library_user`
 preference — never a harvested machine or account name.
 
-> **ONE IDENTITY, and it replaced two (2026-08-12).** `library_user` is
-> both the name versions are signed with and the key everything stored
-> per user is filed under. It was `version_author`, which minted a
-> colour-name placeholder PER MACHINE so two machines could never write
-> one filename — correct for a filename, and the exact opposite of what
-> an identity spanning a user's machines needs. One preference could not
-> do both. The old key is retired, its value ADOPTED on load so every
-> `<name>-<n>` stem already on disk still matches its writer, and a
-> library that has never had a user starts at `prefs.DEFAULT_LIBRARY_USER`
-> — the same string on every install, deliberately.
->
-> What keeps two writers off one filename is not the name: it is
-> stepping past a stem already on disk before writing.
+`library_user` is ONE identity: the name versions are signed with and
+the key everything per-user is filed under. The retired `version_author`
+is ADOPTED on load, so existing `<name>-<n>` stems still match their
+writer. What keeps two writers off one filename is not the name — it is
+stepping past a stem already on disk before writing.
 
 ### `policy.json` — a per-library write policy, on disk only
 
@@ -1074,17 +983,10 @@ tests/test_no_live_data.py  the gate: no test may reach the machine's own
                           files. Source ban + runtime path check.
 ```
 
-> **A test never touches the machine's own data** (2026-08-02). Seven
-> test classes used to construct the panel directly behind
-> `ui_snapshot._protect_live_settings`, which disables `Prefs.save` and
-> redirects the log — so the settings FILE was safe while the panel
-> still opened the real library and, through it, the real File
-> locations recorded in the user's own preferences. Those are personal
-> photograph and texture archives, and `FileSection.activate()` scans
-> every registered location and converts every image in it. Use
-> `test_support.fixture_panel(testcase)`, or
-> `fixture_panel(class_scope(cls))` for a class-scoped one; it asserts
-> every path it would touch is inside the temp dir before it returns.
+**A test never touches the machine's own data.** Never construct the
+panel directly — use `test_support.fixture_panel(testcase)`, or
+`fixture_panel(class_scope(cls))` for a class-scoped one. It asserts
+every path it would touch is inside the temp dir before it returns.
 
 ---
 
