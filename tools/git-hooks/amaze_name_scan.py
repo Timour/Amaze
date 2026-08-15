@@ -1,55 +1,35 @@
 #!/usr/bin/env python3
 """Scan a staged commit, or a commit message, for personal data.
 
-Three things are refused, not one:
+Three things are refused:
 
   * the author's IDENTITY, from the private pattern list, in staged
     content and in the message;
-  * ATTRIBUTION - a person referred to without being named. The identity
-    list cannot see these, because they name nobody: measured against
-    the published history, 31 of 445 commits on main carry one, and
-    every attribution written on 2026-08-04 passed this gate while the
-    rule it breaks was being quoted correctly in the same session;
-  * QUOTED SPEECH in a commit message. Machine text - an error string, a
-    UI label, an identifier - goes in backticks, which 157 published
-    commits already do, so quotation marks around a sentence mean a
-    person was quoted.
+  * ATTRIBUTION - a person referred to without being named, which the
+    identity list cannot see because it names nobody;
+  * QUOTED SPEECH in a commit message. Machine text goes in backticks,
+    so quotation marks around a sentence mean a person was quoted.
 
-A commit message carries the FUNCTION of the code and the RESULT of the
-tests. Not the conversation that produced it.
+NAMES NOBODY. This file is PUBLIC, so a deny-list of an identity here
+would be the leak it exists to prevent - the patterns live in the
+private notes repo and this side only knows how to find them. The
+attribution patterns are generic English and so belong here, readable
+and testable in the open.
 
-NAMES NOBODY. This file lives in the PUBLIC repo, so a deny-list of an
-identity committed here would be the leak it exists to prevent. The
-patterns come from a file in the private notes repo; this side only
-knows how to find it and how to apply it. The attribution patterns name
-nobody either - they are generic English - so unlike the identity list
-they belong here, where they can be read and tested in the open.
+NEVER REWRITE THIS IN SHELL. Two drafts were, and both were walked
+through by a path that becomes a hostile string: `core.quotePath=false`
+still C-quotes control characters, and a file named `0:notes.md` makes
+`git show ":0:notes.md"` resolve as stage 0 of a DIFFERENT file and
+report the leaking one clean. Here `--raw -z` gives raw paths plus the
+blob OID and content is read BY OID, so no path is ever interpolated
+into a command or a pattern.
 
-WHY PYTHON. The first two drafts were shell, and an adversarial review
-walked through both by exploiting how a PATH becomes a STRING:
+FAILS CLOSED: a missing list, an empty list, an uncompilable pattern or
+any git error all refuse.
 
-  * `core.quotePath=false` suppresses quoting of bytes >= 0x80 only.
-    Control characters, `"` and `\\` are C-quoted ALWAYS, so a file
-    named "no\\ntes.md" arrived as a 14-byte literal, `git show ":..."`
-    could not find it, and `|| continue` read that as "nothing to
-    scan".
-  * A file named `0:notes.md` made `git show ":0:notes.md"` resolve as
-    *stage 0 of notes.md* - so the gate scanned a DIFFERENT file and
-    reported the leaking one clean. A false clean, not a skip.
-  * The report was built with `sed "s|^|$path:|"`, so a path
-    containing `|` produced a sed error and an empty refusal body.
-
-None of those shapes exist here: `--raw -z` gives raw unquoted paths
-and the destination blob OID, and the content is read BY OID. A path is
-never interpolated into a command or a pattern.
-
-FAILS CLOSED. A missing list, an empty list, a pattern that will not
-compile, or any git call that errors all refuse.
-
-KNOWN LIMITATIONS, stated rather than pretended away:
-  * BINARY content is not scanned (.hip/.otl/.png embed the OS user
-    name). Their PATHS are checked; their bytes are not.
-  * cherry-pick and rebase run no content hook - git provides none.
+LIMITATIONS: binary content is not scanned (.hip/.otl/.png embed the OS
+user name) - only its paths; and cherry-pick and rebase run no content
+hook, because git provides none.
 """
 import os
 import re

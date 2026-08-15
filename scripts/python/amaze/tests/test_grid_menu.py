@@ -1,36 +1,15 @@
 """The Grid area's MENU: one builder over a per-section entry table.
 
-BATCH 6 of the four-areas restructure, the third and largest piece.
-Six right-click handlers in panel.py - 406 lines - each rebuilt the
-same five decisions in its own words:
+Pins both halves: the table says what ui-text.md says, and the builder
+turns it into exactly the menu that shipped.
 
-* what the selection is, and which row the menu is ABOUT (read three
-  different ways, and only two of the three fell back from a dead
-  current index to the first selected row);
-* which entries EXIST (Convert to Karma needs a Redshift material,
-  File's Import/Load/Capture need a row of the right KIND);
-* which entries are LIVE (three different answers for an empty
-  selection: Material opened a menu of live entries that acted on
-  nothing, Color/Node/File opened nothing at all, Code opened New
-  File);
-* what a submenu holds;
-* which action was picked - by a chain of `==` against names that may
-  be None, which is why the Redshift converter needed an explicit
-  `is not None` guard: a dismissed menu and an unbuilt entry are both
-  None, and without it every dismissed right-click ran the converter.
+THE PINNED MENUS BELOW ARE RECORDED OUTPUT of the six handlers this
+replaced, captured at 723a574 before a line was moved - not a
+transcription of what they were meant to do. Do not "correct" one to
+match a reading of the code.
 
-A menu is DATA now (`Section.GRID_MENU`) and `panel/grid.py` is the
-only code that renders one. This module pins both halves: the table
-says what ui-text.md says, and the builder turns it into exactly the
-menu that shipped.
-
-THE PINNED MENUS BELOW ARE THE RECORDED OUTPUT OF THE SIX HANDLERS
-THIS REPLACES, captured at 723a574 before a line was moved - not a
-transcription of what they were meant to do. The one deliberate
-difference is the empty selection, decided 2026-08-03: the menu
-always opens and entries that need a selection grey out, which is the
-selection law that already governed one-versus-many extended to cover
-none.
+The single deliberate difference is the empty selection: the menu
+always opens and entries needing a selection grey out.
 """
 
 import ast

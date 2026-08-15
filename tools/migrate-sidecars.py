@@ -225,33 +225,18 @@ def main(argv=None) -> int:
             failed += 1
             continue
 
-        # ONLY write when the loader cannot already reproduce it.
-        #
-        # The first version of this tool wrote a sidecar for every
-        # asset, capturing whatever the executed file built. That is the
-        # wrong node for Karma: load_interface_mtlx DISCARDS the exec'd
-        # container and uses make_karma_builder's, so 147 sidecars
-        # described something the loader never uses - and applying them
-        # made 147 previously-perfect materials differ. Measured, not
-        # reasoned: the corpus check went from 13 differences to 72.
-        # KARMA IS SKIPPED, and not as an optimisation. The old
-        # load_interface_mtlx exec'd the file and then OVERWROTE the
-        # builder with make_karma_builder's - verified in git at
-        # 6ab4a92 - so the exec'd container was never the one that
-        # became the material. Capturing it produces a sidecar that
-        # describes a node the loader has never used, and applying that
-        # is what turned 147 perfect Karma materials into 147
-        # differences on the first run of this tool.
+        # ONLY write when the loader cannot already reproduce it, and
+        # SKIP KARMA entirely: load_interface_mtlx discards the exec'd
+        # container for make_karma_builder's, so a sidecar captured here
+        # describes a node the loader never uses. Writing them made 147
+        # perfect materials differ.
         if material.is_karma_renderer(asset.get("renderer")):
             skipped += 1
             continue
 
-        # BOTH halves, not just the interface. Comparing dialog_script
-        # alone skipped three rs_material_id_* assets whose parameter
-        # INTERFACE the loader reproduces perfectly and whose VALUES it
-        # does not - so the sidecar that would have carried those values
-        # was never written, and the values were lost. An interface with
-        # the wrong numbers in it is not a reproduction.
+        # BOTH halves, not just the interface: an asset whose parameter
+        # INTERFACE the loader reproduces perfectly may still have values
+        # it does not, and comparing dialog_script alone loses them.
         row = model.find_asset_row_by_id(asset_id)
         current = loaded_now(model, row) if row != -1 else ""
         if current:

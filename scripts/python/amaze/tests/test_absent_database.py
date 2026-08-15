@@ -1,36 +1,21 @@
 """A database that is momentarily ABSENT is not a new one.
 
-Two reproduced data-loss bugs, one shape. Both loaders treated "the
-file is not there right now" as "this is a fresh library", and both
-then wrote that emptiness to disk:
+Two reproduced data-loss bugs, one shape: a loader read "the file is
+not there right now" as "this is a fresh library" and wrote that
+emptiness to disk. The file only has to be gone for the instant a model
+is constructed - a sync placeholder still arriving, a conflict rename,
+a partial restore - and `panel.py` constructs CopLibrary on every open.
 
-* `database.py load()` SEEDED an empty secondary database and saved it
-  immediately. cops.json 5,537 bytes / 8 records -> 96 bytes / 0. Clean
-  Library then read the 21 files those 8 live assets owned as orphans
-  and `os.remove`d them, because an EMPTY sibling parses perfectly and
-  contributes zero ids - the existing "sibling will not parse" guard
-  never fired.
-* `gradient_library.py _load_user()` returned silently, leaving `_user`
-  empty with `_load_failed` False, and the next `_save_user()`
-  serialised that. 290,454 bytes / 388 gradients / 12 categories -> 39
-  bytes / 0 / 0.
-
-The file only has to be gone for the instant a model is constructed - a
-sync placeholder still arriving, a conflict rename, a partial restore -
-and panel.py constructs CopLibrary on EVERY panel open.
-
-THE TRAP THIS FILE EXISTS TO PIN: the obvious evidence is a `.bak-*`
-beside the file, and it is not enough. Measured on the real library
-2026-07-29 - gradients.json has NO backups at all (388 gradients, 12
-categories, and not one `.bak`), and neither does code.json (17
-records). A `.bak`-only guard fails OPEN on exactly those two while
+THE TRAP THIS FILE PINS: a `.bak-*` beside the file is NOT sufficient
+evidence. gradients.json has no backups at all, and neither does
+code.json, so a `.bak`-only guard fails OPEN on exactly those two while
 looking fixed. Their evidence is the SEED MARKER. Every refusal test
-below therefore states which trace it is going on, and the gradient
-ones assert that no `.bak` exists first.
+below states which trace it goes on, and the gradient ones assert no
+`.bak` exists first.
 
-And a guard that always fires is an outage, not a guard: a genuinely
-new library - no marker, no backup, no file - must still initialise,
-seed and save. That is tested as hard as the refusal.
+A guard that always fires is an outage: a genuinely new library - no
+marker, no backup, no file - must still initialise, seed and save, and
+that is tested as hard as the refusal.
 """
 
 import contextlib

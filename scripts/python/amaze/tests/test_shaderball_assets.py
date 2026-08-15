@@ -1,36 +1,21 @@
 """The shader-ball scene must COMPOSE, not merely exist.
 
-The Karma preview scene is two files: `shaderBallScene_Simple.usd`, which
-the engine loads, and `shaderBallScene.usd`, which it references for the
-camera, the floor and the lights. The ball itself comes from Houdini's own
-`houdini/usd/assets/shaderball/shaderball.usd`.
+The Karma preview scene is two files: `shaderBallScene_Simple.usd`,
+which the engine loads, and `shaderBallScene.usd`, which it references
+for the camera, floor and lights. The ball is Houdini's own.
 
-(The entry file was `shaderBallScene2_Simple.usd` until 2026-08-10. The 2
-was upstream's, distinguishing the two scenes egMatLib shipped for its
-ballmode toggle; Amaze only ever shipped one, so the digit named nothing.)
+Break any link and every Karma thumbnail dies with "no cameras found",
+while the app keeps the old thumbnail and stays quiet - so nothing looks
+broken until someone renders. A crate is BINARY, so a text grep for
+consumers reports "referenced by nothing" and the reference can be
+deleted invisibly, which has happened.
 
-Break any part of that chain and every Karma thumbnail dies with "no cameras
-found" - while the app keeps the old thumbnail and stays quiet, so nothing
-looks broken until someone tries to render. That deletion happened once
-already (2026-08-01, found in the debug log): a crate is BINARY, so a text
-grep for consumers reports "referenced by nothing" and the reference dies
-invisibly.
+NEVER GUARD THIS WITH A FILE SIZE. It passed for a 41.7MB file with the
+camera prim deleted, and failed for a scene that was merely smaller.
+This asks what the size stood in for: does the scene COMPOSE, and does
+it carry the prims the engine addresses by name?
 
-WHY THIS TEST NO LONGER MEASURES A FILE SIZE (2026-08-10). It used to assert
-`getsize(big) > 40_000_000`, because the referenced scene was 41.7MB. That
-was a proxy for "intact" and a bad one in both directions: it passed for a
-41.7MB file with the camera prim deleted - the exact failure above - and it
-failed for a scene that was merely smaller. Both happened. The scene is
-131KB now, the same composition with a 417,286-point ball that was switched
-off and replaced by Houdini's own; the picture is identical, verified by
-rendering both and comparing pixels (33 of 196,608 subpixels, max channel
-delta 2 of 255).
-
-So this asks the question the size was standing in for: does the scene the
-engine loads compose, and does it carry the prims the engine addresses by
-name? THE PATHS ARE READ OUT OF `karma_scene.py` rather than repeated here,
-so the guard cannot drift from the code it guards - a hand-kept copy of a
-list is a list someone can write short.
+The paths are read out of `karma_scene.py`, never repeated here.
 """
 
 import os

@@ -1,33 +1,23 @@
 #!/usr/bin/env python3
 """Inspect and restore Amaze's database snapshots.
 
-Every write to a critical database (the library index, settings, the
-code/COP indexes) first copies the current on-disk file to a rolling
-``.bak-1/2/3`` beside it, plus an immutable ``.bak-first`` that never
-rotates. Those snapshots have saved this project's data twice - but
-until now restoring meant knowing they existed, knowing which one to
-pick, and copying it by hand with Houdini closed.
+Every write to a critical database first copies the on-disk file to a
+rolling ``.bak-1/2/3`` beside it, plus an immutable ``.bak-first``.
 
     tools/restore.py list <file>            what snapshots exist
     tools/restore.py restore <file> bak-2   put one back
 
-Restoring SNAPSHOTS THE CURRENT STATE FIRST, to a timestamped
-``.bak-before-restore-<when>`` that no later restore overwrites, so a
-restore chosen in a panic is itself reversible - and every one of those
-copies is listed and restorable like any other (``list`` prints the
-exact name to pass), which is what makes the reversibility real rather
-than stated. A fixed undo name was measured losing data here: two
-restores in a row overwrote the only copy of the starting state.
+CLOSE HOUDINI FIRST, or the running panel overwrites what you put back.
 
-Close Houdini first: the panel writes the index on many actions, and a
-running session would overwrite what you just put back.
+A restore SNAPSHOTS THE CURRENT STATE first, to a timestamped
+``.bak-before-restore-<when>`` that no later restore overwrites, and
+``list`` prints its exact name - so a restore chosen in a panic is
+itself reversible. Never give that copy a fixed name: two restores in a
+row then overwrite the only copy of the starting state.
 
-THE LOGIC LIVES IN THE PACKAGE, not here: ``amaze/helpers/restore.py``,
-which the **Repair** shelf tool uses as well. This file is the terminal
-front end - argument parsing and printing. A second implementation of a
-restore would be a second answer, and the one the user happened to reach
-would be the one that decided. Still pure stdlib either way, which is
-the point of this tool: it works when Houdini does not start.
+The LOGIC is in ``amaze/helpers/restore.py``, which the Repair shelf
+tool shares; this is only the terminal front end. Keep both pure
+stdlib - the tool has to work when Houdini will not start.
 """
 
 import argparse

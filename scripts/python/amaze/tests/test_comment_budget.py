@@ -7,7 +7,11 @@ import ast
 import os
 import unittest
 
-_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+#: The whole REPO, not the package: `tools/` and `toolbar/` ship too,
+#: and scanning only `amaze/` left the fattest block in the tree unseen.
+_ROOT = os.path.abspath(__file__)
+for _ in range(5):
+    _ROOT = os.path.dirname(_ROOT)
 
 #: The sizes the sweep works to, not style limits.
 COMMENT_LINES = 12
@@ -15,7 +19,7 @@ DOCSTRING_LINES = 20
 
 #: Blocks still over the cap (2026-08-15). LOWER it as the sweep
 #: advances; never raise it.
-BUDGET = 273
+BUDGET = 274
 
 
 def _blocks(path):
@@ -55,7 +59,7 @@ def _blocks(path):
 def over_the_cap():
     """Every block in the package over the cap, fattest first."""
     found = []
-    for folder, dirs, files in os.walk(_PKG):
+    for folder, dirs, files in os.walk(_ROOT):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for name in sorted(files):
             if not name.endswith(".py"):
@@ -63,7 +67,7 @@ def over_the_cap():
             path = os.path.join(folder, name)
             for size, line, what in _blocks(path):
                 found.append((size, "%s:%d" % (
-                    os.path.relpath(path, _PKG), line), what))
+                    os.path.relpath(path, _ROOT), line), what))
     found.sort(reverse=True)
     return found
 
