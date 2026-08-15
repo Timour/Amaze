@@ -1,31 +1,14 @@
-"""The Keyed Store Engine: one guarded side table, for every store.
+"""The ENGINE's guarantees, not a store's shape; every path here is inside a temp dir. ▸p/store-guards"""
 
-BATCH 2 of the four-areas restructure. Three stores were the same store
-implemented three times - notes.json, icons.json and the four
-per-location preference dicts - each with its own copy of a guard set,
-and each copy missing a different part of it. `notes.py`'s docstring
-said its guards were icons.json's, "copied deliberately"; they were
-not, and the tuple it passed to prove the one guard it did have was a
-no-op.
-
-What is tested here is the ENGINE's guarantees, not a store's shape:
-
-* absence is a VERDICT the engine resolves, never a value a caller gets;
-* a read hands out a COPY, a write STAGES and commits only on success;
-* the registry is the ONE enumeration, so Repair cannot be one short;
-* a key lifecycle (a folder moved, a location is gone) is announced by
-  its owner and fanned out by the engine.
-
-Every path here is inside a temp dir. Nothing reads the machine's own
-
-are real photograph archives.
-"""
-
+import ast
+import copy
+import inspect
 import json
 import os
 import shutil
 import sys
 import tempfile
+import textwrap
 import unittest
 from unittest import mock
 
@@ -44,14 +27,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class _Prefs:
-    """Only what a store reads: where the library is, and WHO this is.
-
-    The user joined the list when a store could declare its keys tagged
-    with an owner. A stub carrying only the directory makes every
-    tagged entry vanish silently rather than fail, which is the shape
-    practice.md ▸ FIND THE LANDING SEQUENCE warns about: a stub with
-    the READ surface and not the WRITE one verifies itself.
-    """
+    """Only what a store reads: where the library is, and WHO this is - both, or tagged entries vanish silently."""
 
     def __init__(self, directory, library_user=test_support.FIXTURE_USER):
         self.dir = directory
@@ -82,40 +58,10 @@ class StoreCase(unittest.TestCase):
 
 
 class OneFileIsOneTable(StoreCase):
-    """ONE file, ONE table, every reader the same rows - `own_store`'s
-    docstring states it from the other side, and names what a second
-    instance costs: its own stale-write baseline, so a peer's write
-    reads as an unchanged file and the fold that would have kept its
-    rows never runs.
-
-    `open_store` keyed its cache on `os.path.join(preferences.dir,
-    filename)` RAW, so two spellings of one directory minted two Stores
-    over one file. On macOS and Linux the spellings that arise in
-    practice are already identical, so it never showed. On Windows
-    `prefs.save()` rewrites `directory` into forward slashes with a
-    trailing one, so a Prefs that opened a store BEFORE a save and read
-    it after was holding two - and the second read served a table
-    loaded before the write.
-
-    MEASURED on the parity VM 2026-08-15, and it cost a registered
-    folder: the second machine's `/laptop/only/` was written to
-    locations.json, verified there in the file's own bytes, and still
-    absent from the sidebar, because the post-save read came back
-    through a store instance cached under the pre-save spelling.
-    `migrate` reported `migrated` with `joined: 1` while it happened -
-    it compared against the instance that was correct. ROADMAP line 17,
-    the tenth failure, untraced through three sessions.
-
-    The red is earned PORTABLY with a `/./` spelling: the same class of
-    difference - two strings, one file - without needing the platform.
-    `AmazeNotes/tools/probe-windows-migration-union.py` is the measured
-    version.
-    """
+    """ONE file, ONE table, every reader the same rows - the red is earned portably with a `/./` spelling. ▸p/one-file-one-table"""
 
     def _other_spelling(self):
-        """The same directory, spelled so `os.path.join` cannot collapse
-        it. A trailing separator alone will not do: `join` already
-        absorbs that, so it never reached the cache key."""
+        """The same directory spelled so `os.path.join` cannot collapse it - a trailing separator alone will not do."""
         other = os.path.join(self.dir, ".", "")
         self.assertNotEqual(
             os.path.join(self.dir, "notes.json"),
@@ -124,8 +70,7 @@ class OneFileIsOneTable(StoreCase):
         return _Prefs(other)
 
     def test_a_write_through_one_spelling_is_seen_through_the_other(self):
-        """The failure exactly as it happened: the stale reader is
-        opened FIRST, so it has a table, and the write lands after."""
+        """The failure exactly as it happened: the stale reader opens FIRST, and the write lands after."""
         stale = self.store()
         self.assertEqual({}, stale.all())
 
@@ -139,8 +84,7 @@ class OneFileIsOneTable(StoreCase):
             "serving a table it loaded before the write")
 
     def test_the_two_spellings_resolve_to_one_instance(self):
-        """The mechanism under the behaviour above, asserted directly so
-        a failure says WHICH of the two broke."""
+        """The mechanism under the behaviour above, asserted directly so a failure says which broke."""
         self.assertIs(
             self.store(),
             keyed_store.open_store(notes.SPEC, self._other_spelling()),
@@ -148,21 +92,10 @@ class OneFileIsOneTable(StoreCase):
 
 
 class TestModeKeepsItsLocationsToItself(StoreCase):
-    """A test library gets its OWN locations, in both directions.
-
-    The settings copy is a MIGRATION SEED. Pointing at another library
-    is indistinguishable from the two accidents that seeding exists
-    for - a restored snapshot, a hand-deleted `locations.json` - so on
-    2026-08-08 the very first switch handed the test library the real
-    library's registered folders, and the mirror would then have
-    carried the test set back into the copy, arming a future repair of
-    the REAL library with test data.
-    """
+    """A test library gets its OWN locations, in both directions - the settings copy is a migration SEED."""
 
     def _switched(self, keep_calls):
-        """A prefs the way the switch leaves one: Test Mode on, a copy
-        of the real library's folders still in settings, and a library
-        that has never held a locations.json."""
+        """A prefs the way the switch leaves one: Test Mode on, the real library's folders still in settings."""
         p = _Prefs(self.dir)
         p.test_mode = True
         p.test_dir = self.dir
@@ -171,8 +104,6 @@ class TestModeKeepsItsLocationsToItself(StoreCase):
         p.last_known_records = {
             "/Users/someone/Real/Textures": {"registered": True}}
         p.keep_last_known = lambda *a: keep_calls.append(a)
-        # The migration persists, and the shared stub is deliberately
-        # minimal - so this supplies what only that path needs.
         p.save = lambda: None
         return p
 
@@ -188,8 +119,7 @@ class TestModeKeepsItsLocationsToItself(StoreCase):
             "a locations.json was written into the test library")
 
     def test_the_settings_copy_is_never_written_from_it(self):
-        """The dangerous direction: the copy is what a later repair of
-        the REAL library reads."""
+        """The dangerous direction: the copy is what a later repair of the REAL library reads."""
         calls = []
         p = self._switched(calls)
         locations.register(p, os.path.join(self.dir, "probe"))
@@ -200,21 +130,17 @@ class TestModeKeepsItsLocationsToItself(StoreCase):
             "seed a repair of the real library reads")
 
     def test_its_own_locations_still_work(self):
-        """Isolated, not disabled - the test library keeps what is
-        registered in it."""
+        """Isolated, not disabled - the test library keeps what is registered in it."""
         calls = []
         p = self._switched(calls)
         folder = os.path.join(self.dir, "probe")
         locations.register(p, folder)
 
-        # `registered_paths` answers in the STORE's spelling, so the
-        # expectation is built in it too - `os.path.join` is the host's.
         self.assertIn(test_support.posix_path(folder),
                       locations.registered_paths(p))
 
     def test_a_normal_library_still_migrates(self):
-        """The isolation is keyed on Test Mode alone: with it off, the
-        seeding that recovers a restored snapshot is untouched."""
+        """The isolation is keyed on Test Mode alone - with it off, the recovery seeding is untouched."""
         calls = []
         p = self._switched(calls)
         p.test_mode = False
@@ -226,11 +152,7 @@ class TestModeKeepsItsLocationsToItself(StoreCase):
 
 
 class AbsenceIsAVerdict(StoreCase):
-    """`if os.path.exists(path):` with no `else` is what icons.json
-    was: a missing file read as "this library has no chosen icons", so
-    one pick rewrote the whole table as a one-key file. There is no
-    such branch in any store now, because absence is resolved once, by
-    the engine, into an answer a caller cannot mistake for data."""
+    """Absence is resolved ONCE by the engine into an answer a caller cannot mistake for data. ▸p/store-guards"""
 
     def test_a_library_with_nothing_yet_is_FRESH_and_writable(self):
         store = self.store()
@@ -244,9 +166,7 @@ class AbsenceIsAVerdict(StoreCase):
         self.assertEqual(keyed_store.READ, self.store().state)
 
     def test_ABSENT_WITH_A_TRACE_IS_BLIND_and_refuses_to_write(self):
-        """The 178-black-tiles shape, one level down: a sync
-        placeholder still arriving, a conflict rename or a partial
-        restore all look like an empty library for one instant."""
+        """A late file looks like an empty library for one instant, and a key written into that instant is the table."""
         self.store().set("material:1", self.page())
         keyed_store.release()
         os.remove(self.path())                # the file blinks out...
@@ -277,9 +197,7 @@ class AbsenceIsAVerdict(StoreCase):
             "the file that would not parse was not kept beside itself")
 
     def test_the_icons_store_has_the_guard_it_never_had(self):
-        """THE FINDING, in one test. icons.json had no absent-but-known
-        branch at all - and it did not get one by having a branch
-        written for it. It got one by being declared."""
+        """icons.json got the absent-but-known guard by being DECLARED, not by a branch written for it. ▸p/store-guards"""
         store = self.store(tile_icons.SPEC)
         self.assertTrue(store.set("/tex/a.exr",
                                   {"name": "box", "bg": "#ef8878"}))
@@ -294,14 +212,7 @@ class AbsenceIsAVerdict(StoreCase):
 
 
 class TheRestoreFloorArrivesOnCreate(StoreCase):
-    """snapshot_before_write copies what is ALREADY on disk and rightly
-    declines when there is nothing there - so a store written exactly
-    once had no trace of any kind, and absent-but-known cannot find
-    evidence that was never written.
-
-    Measured on the real library 2026-08-03: notes.json has all four
-    tiers and icons.json is absent with none, so the first icon ever
-    picked was also the one write with nothing behind it."""
+    """A store written exactly once still gets a trace, minted on CREATE. ▸p/store-commit-order"""
 
     def test_the_first_write_leaves_a_floor(self):
         self.assertTrue(self.store().set("material:1", self.page()))
@@ -320,14 +231,7 @@ class TheRestoreFloorArrivesOnCreate(StoreCase):
                          "the write-once floor rotated")
 
     def test_a_floor_is_not_minted_from_bytes_that_do_not_parse(self):
-        """A permanent floor made of garbage is worse than no floor: a
-        single half-synced launch used to mint the one copy that never
-        rotates from a truncated file.
-
-        The file has to EXIST for this to reach the guard - the first
-        version of this test pointed at a path that was not there, so
-        it returned False before the parse check and was green with
-        the guard deleted."""
+        """A permanent floor made of garbage is worse than none - the file must EXIST to reach the parse guard."""
         target = self.path("icons.json")
         with open(target, "w", encoding="utf-8") as handle:
             handle.write("{ truncated")
@@ -335,8 +239,7 @@ class TheRestoreFloorArrivesOnCreate(StoreCase):
         self.assertFalse(os.path.exists(target + ".bak-first"))
 
     def test_calling_it_twice_never_replaces_the_floor(self):
-        """Directly, because the caller only reaches it on a CREATE -
-        so the write-once rule inside it has no other way to be held."""
+        """Directly, because the caller only reaches it on a CREATE, so the write-once rule has no other guard."""
         target = self.path("icons.json")
         with open(target, "w", encoding="utf-8") as handle:
             handle.write('{"icons": {}}')
@@ -352,15 +255,7 @@ class TheRestoreFloorArrivesOnCreate(StoreCase):
 
 
 class AFailedWriteLeavesTheForeignTableWhereItWas(StoreCase):
-    """The engine's own rule is that the cache moves only on success,
-    and `_table` obeys it. `_foreign` does not: `_commit` adopts the
-    peer's foreign entries and pops the caller's keys BEFORE the write,
-    and the `except OSError` returns without putting them back.
-
-    A foreign entry is a value a NEWER build wrote that this one's
-    normaliser cannot read - held verbatim so a rewrite never erases
-    it. Losing it from memory means the next successful write of any
-    other key serialises the file without it."""
+    """`_foreign` obeys the cache-moves-only-on-success rule too, or a refused write drops a newer build's value. ▸p/store-commit-order"""
 
     def _with_a_foreign_entry(self):
         """A store whose file holds one entry this build cannot read."""
@@ -387,8 +282,7 @@ class AFailedWriteLeavesTheForeignTableWhereItWas(StoreCase):
             "file")
 
     def test_the_newer_builds_value_survives_a_later_write(self):
-        """What the memory state costs on disk - the question the user
-        would actually notice."""
+        """What the memory state costs ON DISK - the question the user would actually notice."""
         from unittest.mock import patch
 
         store = self._with_a_foreign_entry()
@@ -403,8 +297,7 @@ class AFailedWriteLeavesTheForeignTableWhereItWas(StoreCase):
             "that followed a refused one")
 
     def test_a_successful_write_still_claims_the_key(self):
-        """The accept path: a key the user SET stops being foreign, or
-        the unreadable copy shadows the value just chosen."""
+        """The accept path: a key the user SET stops being foreign, or the unreadable copy shadows it."""
         store = self._with_a_foreign_entry()
         self.assertTrue(store.set("material:K", self.page("mine")))
         self.assertNotIn("material:K", store._foreign)
@@ -413,27 +306,10 @@ class AFailedWriteLeavesTheForeignTableWhereItWas(StoreCase):
 
 
 class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
-    """`release(preferences)` compared `os.path.dirname(<dir>/notes.json)`,
-    which carries no trailing separator, against `preferences.dir`, which
-    `prefs._normalised_dir` guarantees ends with one - so the per-library
-    branch could never match and the call released nothing at all.
-
-    Latent when found: all three production callers pass no argument and
-    take the clear-everything path. It reads as the library-switch hook
-    and is the one live requirement the two retired `forget_*` wrappers
-    each half-expressed, so it will be wired up as one."""
+    """Releasing ONE library's tables drops them - both sides compare through the same canonical key."""
 
     def test_the_named_librarys_tables_are_dropped(self):
-        """THE PRODUCT'S OWN SPELLING, deliberately. `prefs.dir` is
-        passed through `prefs._normalised_dir`, which guarantees a
-        trailing `/` - and `os.path.dirname` of the store path never has
-        one, so the comparison could not match for any real Prefs.
-
-        `StoreCase`'s `_Prefs` hands out a bare `mkdtemp` path, which is
-        why every other test in this file happens to sit on the one
-        spelling that worked (practice.md ▸ *A FIXTURE MUST WRITE FILES
-        THE WAY THE PRODUCT DOES* - the same shape, pointed at an
-        argument rather than a file)."""
+        """THE PRODUCT'S OWN SPELLING - `prefs.dir` carries a trailing slash and `dirname` never does."""
         self.store().set("material:1", self.page())
         self.assertTrue(keyed_store._open, "premise: a table is cached")
         keyed_store.release(_Prefs(self.dir + os.sep))
@@ -444,17 +320,14 @@ class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
             "unreadable entries and their disk fingerprint")
 
     def test_the_separatorless_spelling_matches_too(self):
-        """Both spellings name one library, and the store must not care
-        which one the caller happens to hold."""
+        """Both spellings name one library; the store must not care which the caller holds."""
         self.store().set("material:1", self.page())
         keyed_store.release(_Prefs(self.dir))
         self.assertFalse(keyed_store._open,
                          "the bare-path spelling matched nothing")
 
     def test_another_librarys_tables_are_KEPT(self):
-        """The accept path: release names ONE library. Dropping every
-        table whatever the argument is the same outage as dropping none,
-        wearing the opposite face."""
+        """The accept path: release names ONE library, and dropping every table is the same outage inverted."""
         self.store().set("material:1", self.page())
         keyed_store.release(_Prefs(os.path.join(self.dir, "elsewhere")))
         self.assertTrue(
@@ -463,17 +336,7 @@ class ReleasingONELibrarysTablesActuallyDropsThem(StoreCase):
 
 
 class AStoreLivesWhereItsSpecSays(StoreCase):
-    """ROADMAP line 26, stage 1. Every store's path was
-    `<library>/<filename>`, which is right for the four library stores
-    and wrong for the one about to join them: settings.json is
-    MACHINE-local. It holds the POINTER to the library, so it is the one
-    file that cannot live inside it - the shared-settings note in
-    keyed_store.py says exactly that.
-
-    `Spec.in_library` already existed, and its own comment already
-    anticipated a store that answers False; nothing consulted it when
-    the path was resolved.
-    """
+    """A machine-local store lives beside settings.json, not in the library it points at. ▸p/store-declarations"""
 
     def _machine_spec(self, filename="machine.json"):
         return keyed_store.Spec(
@@ -502,8 +365,7 @@ class AStoreLivesWhereItsSpecSays(StoreCase):
         self.assertEqual(self.path("notes.json"), store.path)
 
     def test_a_machine_local_store_outlives_a_library_switch(self):
-        """Switching library drops that library's tables. This file is
-        not that library's - its rows are the same rows afterwards."""
+        """A library switch drops that library's tables; this file is not that library's."""
         elsewhere = tempfile.mkdtemp(prefix="amaze_config_")
         self.addCleanup(shutil.rmtree, elsewhere, ignore_errors=True)
         prefs = _Prefs(self.dir)
@@ -517,29 +379,14 @@ class AStoreLivesWhereItsSpecSays(StoreCase):
             "a library switch took the machine's own settings with it")
 
     def test_a_prefs_that_cannot_say_where_is_REFUSED(self):
-        """The silent-fallback hazard, named. A stub or an early Prefs
-        with no config path must not quietly mean "the library" - that
-        writes settings.json into the user's synced library, which is
-        the exact outcome in_library=False exists to prevent."""
+        """A Prefs with no config path must not quietly mean "the library" - that writes into the synced tree."""
         prefs = _Prefs(self.dir)          # no `path` at all
         with self.assertRaises(ValueError):
             keyed_store.open_store(self._machine_spec(), prefs)
 
 
 class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
-    """ROADMAP line 26, stage 2. The engine's adoption has one rule -
-    a key we lack is theirs and is kept, a key we both hold is ours -
-    which is right for a store of independent records and wrong for the
-    document about to join it.
-
-    settings.json needs three answers, and it has its own copy of all
-    three today (`_merge_settings_from_disk`): your registered FOLDERS
-    must end up holding both panes' additions; your thumbnail SIZE is a
-    single choice, so the pane doing the saving wins; and a folder's
-    record must merge field by field, so a colour set in one pane and a
-    name set in the other both survive. A store says which per key, and
-    a key it does not name behaves exactly as every store does now.
-    """
+    """A store declares per key where ours-wins is the wrong answer; a key it does not name is unchanged. ▸p/document-not-table"""
 
     def _spec(self, rules):
         return keyed_store.Spec(
@@ -580,16 +427,13 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
         self.assertEqual(["/both", "/mine", "/theirs"], after["folders"])
 
     def test_a_key_with_no_rule_keeps_THIS_sessions_choice(self):
-        """The scalar case, and the default: a single choice cannot be
-        merged without a clock the engine does not have, so the pane
-        the user is actually touching wins."""
+        """The scalar default: a single choice cannot be merged without a clock, so the saving pane wins."""
         after = self._after_a_race(
             {}, ours={"size": 128}, theirs={"size": 64})
         self.assertEqual(128, after["size"])
 
     def test_a_fields_key_merges_INSIDE_a_shared_record(self):
-        """The location case: a colour from one pane, a name from the
-        other, on the same folder."""
+        """The location case: a colour from one pane, a name from the other, on one folder."""
         after = self._after_a_race(
             {"records": keyed_store.MERGE_FIELDS},
             ours={"records": {"/a": {"name": "Mine"}}},
@@ -612,9 +456,7 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
         self.assertEqual({"name": "Theirs"}, after["records"]["/b"])
 
     def test_a_library_store_adopts_exactly_as_it_always_did(self):
-        """The polarity. None of the four name a rule, so none of them
-        may change behaviour: a key we lack arrives, a key we hold is
-        ours."""
+        """The polarity: none of the four name a rule, so none of them may change behaviour."""
         store = self.store()
         store.set("material:1", self.page("mine"))
         with open(self.path(), "w", encoding="utf-8") as handle:
@@ -628,21 +470,7 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
 
 
 class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
-    """ROADMAP line 26, stage 3. Two spec-level questions stand between
-    the engine and settings.json, and neither may change the four.
-
-    ITS DOCUMENT IS FLAT. Every store writes `{payload: {...}}`, and a
-    file that lacks its payload key is refused as the wrong file - a
-    guard that exists because icons.json copied over notes.json parsed
-    as zero notes. settings.json has no wrapper and cannot grow one
-    without a migration, so a store may declare no payload and BE the
-    map. The wrong-file guard then rests on the top level being an
-    object, which is the only claim a flat document makes.
-
-    ITS FALSY VALUES ARE VALUES. `get`, `set`, `_load` and the adoption
-    all read a falsy value as absent, which is the delete contract an
-    empty note wants. A setting of `False`, `0` or `""` is a setting.
-    """
+    """A store may declare NO payload and BE the map, and say its falsy values are answers. ▸p/store-declarations"""
 
     def _flat(self, **kwargs):
         return keyed_store.Spec(
@@ -668,9 +496,7 @@ class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
         self.assertEqual(64, store.get("size"))
 
     def test_a_flat_store_still_refuses_what_is_not_an_object(self):
-        """The wrong-file guard survives losing the payload key: a JSON
-        list is not a document, and a store that cannot read its file
-        must latch rather than write over it."""
+        """The wrong-file guard survives losing the payload key - a JSON list is not a document."""
         with open(self.path("flat.json"), "w", encoding="utf-8") as handle:
             json.dump([1, 2, 3], handle)
         store = keyed_store.open_store(self._flat(), self.prefs)
@@ -702,9 +528,7 @@ class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
         self.assertEqual("", again.get("label"))
 
     def test_only_a_normalise_answering_None_rejects(self):
-        """The reject channel has to move somewhere when falsy stops
-        meaning no - it moves to None, and a rejected value is held
-        aside as foreign exactly as before."""
+        """When falsy stops meaning no, the reject channel moves to None and foreign still works."""
         spec = self._flat(falsy_is_a_value=True)
         spec.normalise = lambda value: None if value == "junk" else value
         with open(self.path("flat.json"), "w", encoding="utf-8") as handle:
@@ -717,8 +541,7 @@ class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
                       "a rejected entry was erased rather than kept")
 
     def test_a_library_store_still_reads_a_falsy_value_as_a_REMOVAL(self):
-        """The polarity, and it is the older contract: an empty note
-        deletes the note."""
+        """The polarity, and the older contract: an empty note deletes the note."""
         store = self.store()
         store.set("material:1", self.page())
         store.set("material:1", {})
@@ -726,10 +549,7 @@ class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):
 
 
 class AReadHandsOutACopy(StoreCase):
-    """`notes()` used to return the live cache. A caller holding that
-    could mutate the table without writing anything - so a REFUSED save
-    still lit the tile's comment badge, and a later sweep read the
-    phantom back and wrote its text a second time."""
+    """A read hands out a COPY - the live cache lets a caller mutate the table without writing. ▸p/store-guards"""
 
     def test_mutating_a_get_does_not_reach_the_store(self):
         store = self.store()
@@ -792,9 +612,7 @@ class AWriteCommitsOnlyOnSuccess(StoreCase):
                         "a failed write dropped what was already there")
 
     def test_the_answer_says_WHY_not_just_no(self):
-        """A bare False could not tell a read-only folder from a file
-        that would not parse - and the panel guessed, telling the user
-        to check the folder was writable when the folder was fine."""
+        """A bare False cannot tell a read-only folder from a file that will not parse, so the panel guessed."""
         with open(self.path(), "w", encoding="utf-8") as handle:
             handle.write("nonsense")
         result = self.store().set("material:1", self.page())
@@ -812,9 +630,7 @@ class AWriteCommitsOnlyOnSuccess(StoreCase):
 class TheFileMustBeTHISStoresFile(StoreCase):
 
     def test_a_document_holding_the_other_stores_key_is_refused(self):
-        """`wrong_table_shape` reads a MISSING payload key as a valid
-        empty table, so icons.json copied over notes.json parses, reads
-        as zero notes, and the next note written replaces the file."""
+        """A missing payload key reads as a valid empty table, so the wrong file parses as zero rows. ▸p/store-commit-order"""
         with open(self.path(), "w", encoding="utf-8") as handle:
             json.dump({"icons": {"/a.exr": {"name": "box"}}}, handle)
         store = self.store()
@@ -822,8 +638,7 @@ class TheFileMustBeTHISStoresFile(StoreCase):
         self.assertFalse(store.set("material:1", self.page()))
 
     def test_a_byte_order_mark_is_read_not_latched(self):
-        """A BOM is what a Windows editor leaves behind. Reading plain
-        utf-8 made that file "damaged" and latched the whole store."""
+        """A BOM is what a Windows editor leaves behind; plain utf-8 reads it as damaged and latches."""
         with open(self.path(), "wb") as handle:
             handle.write(b"\xef\xbb\xbf" + json.dumps(
                 {"notes": {"material:1": self.page("from windows")}}
@@ -836,10 +651,7 @@ class TheFileMustBeTHISStoresFile(StoreCase):
 class TheRegistryIsTheOneEnumeration(StoreCase):
 
     def test_it_can_be_read_without_qt_or_houdini(self):
-        """Repair must be able to name these files on a machine where
-        Houdini will not start, and `tile_icons`' normaliser pulls in
-        Qt - so WHICH files exist is declared apart from what a valid
-        value of one is."""
+        """WHICH files exist is declared apart from what a valid value is, so Repair runs without Qt. ▸p/store-declarations"""
         source = open(keyed_store.__file__.replace(".pyc", ".py"),
                       encoding="utf-8").read()
         head = source[:source.index('class Written', 0)]
@@ -852,9 +664,7 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             self.assertTrue(spec.noun, "%s has no noun" % spec.filename)
 
     def test_repair_surveys_what_the_registry_declares(self):
-        """The SURVEY, not just the helper that names them. Asserting
-        the helper alone left the survey free to loop over the four
-        databases and ignore it - which is what it did for a day."""
+        """The SURVEY, not just the helper that names them - asserting the helper left the survey free to ignore it."""
         from amaze.core import repair
 
         self.assertEqual(set(keyed_store.filenames()),
@@ -875,12 +685,7 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             "Repair surveys it without being able to name it")
 
     def test_the_audit_tools_list_agrees_with_the_registry(self):
-        """`tools/library-audit.py` keeps its OWN literal, on purpose -
-        it promises to run with no import from the package, in a hook,
-        on a machine where Houdini will not start. A second list is
-        allowed only when a test makes drift RED, which is what this
-        is: the audit's copy grew the side tables on 2026-08-02 and
-        Repair's copy stayed narrow, silently, for a day."""
+        """The audit keeps its OWN literal so it runs without the package; this test is what makes drift RED. ▸p/store-declarations"""
         import ast
 
         root = os.path.dirname(os.path.dirname(os.path.dirname(
@@ -901,14 +706,7 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             "files a library contains")
 
     def test_the_audit_tools_DATABASE_list_agrees_with_the_package(self):
-        """The same guard its neighbour has, for the list beside it.
-
-        `SIDE_TABLES` was pinned; `DATABASES` was not, so a fifth
-        database would leave the audit reading its `library.json`
-        sibling as not-part-of-a-library and `--strict` failing a
-        healthy library. The package names the four in
-        `database._SECTION_LABELS`, which Repair and the connector
-        already share."""
+        """The same guard its neighbour has, for the list beside it - a fifth database must not fail `--strict`."""
         import ast
 
         from amaze.core import database
@@ -930,8 +728,7 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
             "a library contains")
 
     def test_a_side_table_can_be_counted_by_the_restore_picker(self):
-        """It counted a 40-note notes.json as "1 settings", so the
-        restore refusal that compares record counts never fired."""
+        """A 40-note file counted as "1 settings", so the restore refusal comparing record counts never fired."""
         from amaze.helpers import restore as restore_lib
 
         store = self.store()
@@ -943,15 +740,7 @@ class TheRegistryIsTheOneEnumeration(StoreCase):
 
 
 class TheStoreSpeaksPortableSpelling(StoreCase):
-    """Path keys are stored VARIABLE-RELATIVE - `$AMAZE/...` under the
-    install tree, `~/...` under home, absolute only when neither covers
-    it - so one entry resolves on every machine that shares the library
-    (the 2026-08-06 unification, devlog #416).
-
-    The API keeps speaking absolutes: callers pass whatever spelling
-    they hold, the store converts at its own boundary, and every legacy
-    spelling is absorbed on LOAD - the real favourites held the same
-    file under three spellings at once, which is the disease, measured."""
+    """Path keys are stored VARIABLE-RELATIVE; the API keeps speaking absolutes and the boundary converts."""
 
     def _fake_home(self, *made):
         home = tempfile.mkdtemp(prefix="amaze_home_")
@@ -997,9 +786,7 @@ class TheStoreSpeaksPortableSpelling(StoreCase):
         self.assertTrue(store.has(notes.note_key("file", absolute)))
 
     def test_legacy_spellings_converge_on_load(self):
-        """Three spellings of ONE file - the absolute, the home form,
-        and an uncollapsed dot-dot absolute - are one entry after a
-        load, first in wins, and a lookup by any spelling finds it."""
+        """Three spellings of ONE file are one entry after a load, first in wins, found by any of them."""
         home = self._fake_home("plates/a.exr")
         absolute = home + "/plates/a.exr"
         detour = home + "/plates/sub/../a.exr"
@@ -1024,10 +811,7 @@ class TheStoreSpeaksPortableSpelling(StoreCase):
         self.assertIn("file:/old/a.exr", self.on_disk()["notes"])
 
     def test_locations_speak_walkable_absolutes_over_portable_bytes(self):
-        """The sidebar and the scanner need paths `os.walk` can open;
-        the FILE needs paths the other machine can resolve. The store
-        holds the portable spelling, the reader hands back the
-        absolute."""
+        """The store holds the portable spelling; the reader hands back an absolute `os.walk` can open."""
         home = self._fake_home("plates/a.exr")
         absolute = home + "/plates"
         locations.register(self.prefs, absolute)
@@ -1050,11 +834,7 @@ class TheStoreSpeaksPortableSpelling(StoreCase):
 
 
 class TheKeyLifecycle(StoreCase):
-    """The owner announces; the ENGINE fans out. A caller that
-    enumerates the stores is a list someone can write short, and both
-    of the callers that did had already been written short - the
-    relocate hook named four preferences and neither side table, the
-    removal hook named two of those same four."""
+    """The owner announces; the ENGINE fans out - a caller that enumerates the stores writes the list short. ▸p/store-guards"""
 
     def test_a_relocate_moves_only_path_shaped_keys(self):
         store = self.store()
@@ -1071,11 +851,7 @@ class TheKeyLifecycle(StoreCase):
             "by a folder move")
 
     def test_the_path_prefix_is_what_makes_a_key_movable(self):
-        """notes.json holds `material:<id>` beside `file:<path>` in ONE
-        file, and the on-disk format cannot change. Which keys a folder
-        move may rewrite is therefore the declared PREFIX - get it
-        wrong and either every File note is orphaned or every asset id
-        is rewritten."""
+        """Which keys a folder move may rewrite is the declared PREFIX, not the whole store. ▸p/store-declarations"""
         self.assertEqual(keyed_store.KEY_MIXED, notes.SPEC.keyspace)
         self.assertEqual("file:", notes.SPEC.path_prefix)
         self.assertTrue(notes.SPEC.is_path_key("file:/a/b.exr"))
@@ -1122,13 +898,7 @@ class TheKeyLifecycle(StoreCase):
             "relocating /a/tex captured /a/textures")
 
     def test_a_removal_forgets_EVERYTHING_about_the_location(self):
-        """
-        comments and icons". Removal means removal; re-adding the
-        folder gives a clean slate.
-
-        This reverses the behaviour the UI text register documented since
-        2026-07-31 ("captures and favorites are kept"), which is why
-        the wording moved in the same change."""
+        """Removal means removal - re-adding the folder gives a clean slate. ▸p/store-declarations"""
         page_store = self.store()
         icon_store = self.store(tile_icons.SPEC)
         page_store.set(notes.note_key("file", "/gone/a.exr"), self.page())
@@ -1144,8 +914,7 @@ class TheKeyLifecycle(StoreCase):
             "removing a location left the custom icons in it behind")
 
     def test_a_removal_leaves_everything_OUTSIDE_the_location_alone(self):
-        """The other half, and the one that matters more: forgetting a
-        folder must not reach an asset's comment or another folder."""
+        """The half that matters more: forgetting a folder must not reach an asset's comment or another folder."""
         page_store = self.store()
         page_store.set(notes.note_key("material", "a1"), self.page("asset"))
         page_store.set(notes.note_key("file", "/kept/a.exr"), self.page())
@@ -1161,13 +930,7 @@ class TheKeyLifecycle(StoreCase):
             "removing one location reached into another")
 
     def test_a_prefixed_key_is_matched_by_the_SAME_rule_both_ways(self):
-        """The bug this pins, found by driving the real thing rather
-        than by a test: `relocate` stripped the `file:` prefix before
-        comparing and `retire_prefix` did not, so a removal swept the
-        locations and the icons and silently left every comment behind.
-        Two places asking one question, one of them wrong - which is
-        the shape this whole engine exists to end, grown inside the
-        engine itself within the hour."""
+        """Both halves of the lifecycle strip the `file:` prefix through ONE function, or a sweep leaves comments behind."""
         key = notes.note_key("file", "/gone/a.exr")
         self.assertTrue(keyed_store._under(notes.SPEC, key, "/gone/"))
         self.assertTrue(keyed_store._under(notes.SPEC, key, "/gone"))
@@ -1177,12 +940,6 @@ class TheKeyLifecycle(StoreCase):
                                notes.note_key("material", "/gone/a.exr"),
                                "/gone/"),
             "an asset id shaped like a path was swept by a folder removal")
-        # ASSERT THE CALL, NOT THE TEXT. This read
-        # `"_bare_path(" in inspect.getsource(func)` - and getsource
-        # returns COMMENTS, so an inlined copy of the rule with the
-        # words `_bare_path(...)` left behind in a comment satisfied
-        # it. Proved 2026-08-03: inlining the rule in both functions
-        # made `_bare_path` dead code and the test stayed green.
         calls = []
         real = keyed_store._bare_path
         self.addCleanup(setattr, keyed_store, "_bare_path", real)
@@ -1208,14 +965,7 @@ class TheKeyLifecycle(StoreCase):
                    "exact drift that left every comment behind")
 
     def test_a_removal_takes_EVERY_users_stars_with_it(self):
-        """Removing a folder is a SHARED act on the shared folder
-        list, so its sweep is a clean slate for every user - the
-        2026-08-03 ruling, kept across the user tag - and it still
-        works on a machine with nobody picked, because the per-user
-        half of a shared act must not refuse the shared half. Without
-        this, one user's removal left every other user's stars parked
-        under a folder that no longer exists, resurrected whole if the
-        folder ever came back."""
+        """A removal is a SHARED act: every user's keys go, and it works with nobody picked. ▸p/store-declarations"""
         store = keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
         store.set("/gone/a.exr", True)              # the first user's star
         store.set("/kept/b.exr", True)
@@ -1234,14 +984,7 @@ class TheKeyLifecycle(StoreCase):
             "location - the clean slate went per-user with the tag")
 
     def test_favourites_are_in_the_registry_too(self):
-        """They were swept by hand in the base folder model - a second
-        list, with the same failure mode as the first two.
-
-        A real library file since 2026-08-05, so this now reads the
-        store rather than a settings attribute: it used to seed a plain
-        list on the stub and assert against that same list, which the
-        engine could only satisfy while it was reaching into prefs.
-        """
+        """Reads the STORE, not a settings attribute - asserting against a list the stub seeded proved nothing."""
         store = keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
         store.update({"/gone/a.exr": True, "/kept/b.exr": True})
         keyed_store.retire_prefix(self.prefs, "/gone/")
@@ -1249,13 +992,7 @@ class TheKeyLifecycle(StoreCase):
                          "a removed location's favourites outlived it")
 
     def test_a_store_created_by_its_own_write_reports_READ(self):
-        """`state` was set once at load and never moved, so a store that
-        wrote itself into existence went on answering FRESH - "absent,
-        and nothing says it was ever here" - for the rest of the
-        session. Any caller telling "no file at all" apart from "a file
-        holding nothing" got the wrong answer, and one did: a rule keyed
-        on FRESH fired after the last key was removed and put it back.
-        """
+        """A store that wrote itself into existence answers READ, never still FRESH. ▸p/store-commit-order"""
         store = self.store()
         self.assertEqual(keyed_store.FRESH, store.state,
                          "a library with no notes.json is not FRESH, so "
@@ -1267,9 +1004,7 @@ class TheKeyLifecycle(StoreCase):
             "the store wrote its own file and still calls itself FRESH")
 
     def test_emptying_a_store_leaves_it_READ_not_FRESH(self):
-        """The case that matters: removing the last key writes a real
-        file holding an empty table. That is READ - a file that is
-        there - and NOT the same thing as no file at all."""
+        """Removing the last key writes a real file holding an empty table: READ, not no file at all."""
         store = self.store()
         store.set("material:1", self.page())
         self.assertTrue(store.set("material:1", {}))
@@ -1288,12 +1023,7 @@ class TheKeyLifecycle(StoreCase):
 
 
 class ForeignEntriesSurviveTheRewrite(StoreCase):
-    """An entry the CURRENT build's normaliser rejects is not junk to
-    delete - it is usually a NEWER build's data: an icon name this
-    build's Feather set lacks, a record shape from next year. The load
-    keeps it aside verbatim, invisible to readers, and every commit
-    writes it back - an older build must not erase what a newer one
-    wrote into the shared file."""
+    """A rejected entry is usually a NEWER build's data - kept verbatim and written back by every commit. ▸p/store-commit-order"""
 
     def _seed(self, entries):
         with open(self.path(), "w", encoding="utf-8") as handle:
@@ -1339,19 +1069,7 @@ class ForeignEntriesSurviveTheRewrite(StoreCase):
 
 
 class UntaggedRowsAwaitAdoption(StoreCase):
-    """A tagged store's row from before the store had owners is DROPPED
-    from every read surface - nothing on it says whose it was - but the
-    engine keeps it aside so a store that CHOOSES adoption can file it
-    under the current user before the first commit erases it from disk.
-
-    Two stores, two product calls, one mechanism: favourites drop their
-    pre-tag rows for good (decided 2026-08-13 - nothing calls the
-    door), locations adopt theirs into the user doing the opening
-    (ROADMAP line 22 stage C). The dirt is planted BY HAND on a file at
-    the current shape, because a fixture the migration has already
-    cleaned tests the migration and not the drop - practice.md ▸ A TEST
-    OF A DROP-ON-READ RULE MUST BEAT THE MIGRATION TO THE ROW.
-    """
+    """A pre-tag row is dropped from every read surface but kept aside for a store that CHOOSES adoption. ▸p/store-commit-order"""
 
     OTHER = "0f0e0d0c0b0a09080706050403020100"
 
@@ -1467,19 +1185,14 @@ class UntaggedRowsAwaitAdoption(StoreCase):
 
 
 class EveryDoorSpeaksThePortableSpelling(StoreCase):
-    """set/get/has convert keys at the boundary (storage_key); update,
-    rekey and retire took raw strings - so a caller speaking absolutes
-    grew a SECOND spelling of a key the table already held, and the
-    next load kept only the first: the newer entry's data silently
-    dropped."""
+    """EVERY door converts at the boundary, or a caller speaking absolutes grows a second spelling of one key."""
 
     def _table(self, name="locations.json"):
         document = self.on_disk(name)
         return next(iter(document.values()))
 
     def _bare(self, key):
-        # The locations are user-tagged; the spelling under test is
-        # the PATH half of the stored key.
+        # locations are user-tagged: the spelling under test is the PATH half
         return keyed_store.untagged_key(locations.SPEC, key)[1]
 
     def test_update_rekey_and_retire_match_the_stored_spelling(self):
@@ -1510,11 +1223,7 @@ class EveryDoorSpeaksThePortableSpelling(StoreCase):
 
 
 class ARecordCarriesFieldsItDoesNotKnow(StoreCase):
-    """The engine keeps whole foreign ENTRIES; the adapters keep
-    foreign FIELDS inside entries they accept - the same reason at the
-    next level down. A location record rebuilt from the five known
-    fields dropped whatever a newer build had added, on the first write
-    from an older one."""
+    """Adapters keep foreign FIELDS inside entries they accept - the same reason one level down."""
 
     def test_locations_normalise_keeps_unknown_fields(self):
         record = locations.normalise({
@@ -1541,22 +1250,7 @@ class ARecordCarriesFieldsItDoesNotKnow(StoreCase):
 
 
 class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
-    """Who gets told when a write is refused by the disk, and who does
-    not - as a declared decision rather than an accident.
-
-    The policy used to live in `notes.written` and `tile_icons.written`
-    as ten lines each with two words different, and the other two
-    stores had no copy at all. It is on the Spec now (`denied_alert`)
-    with the engine performing it, which is where the engine's other
-    two failure reports already lived.
-
-    BLANK IS THE INTERESTING CASE. A comment stays on screen after a
-    refused save, so nothing but an alert tells the user. A location is
-    DERIVED from its store and the cache does not move on failure, so
-    the folder never appears - the gesture visibly does nothing, so an
-    alert would announce an outcome already on screen (practice.md ▸
-    Dialogs are a bill you send the user).
-    """
+    """Who is told when the disk refuses a write and who is not, declared on the Spec. ▸p/speak-when-invisible"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_denied_")
@@ -1565,9 +1259,7 @@ class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
         self.addCleanup(keyed_store.release)
 
     def _denied(self, filename):
-        """Drive a real write into a real OSError and collect the
-        alerts. Not a stubbed `set` - the point is that the engine's
-        own commit path reports."""
+        """Drive a REAL write into a real OSError - the point is that the engine's own commit path reports."""
         prefs = _Prefs(self.dir)
         store = keyed_store.open_store(
             keyed_store.store_for(filename), prefs)
@@ -1591,8 +1283,7 @@ class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
                          "on screen would say it either")
         text = seen[0][0]
         self.assertIn("comment could not be saved", text)
-        # The CAUSE, from the errno - not the one guess the old copy
-        # made for every failure.
+        # the CAUSE, from the errno - never one guess for every failure
         self.assertIn("cannot be reached", text)
 
     def test_a_location_that_could_not_be_saved_says_NOTHING(self):
@@ -1604,8 +1295,7 @@ class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
                          "so this announces what the user just watched")
 
     def test_the_reason_still_reaches_the_caller_either_way(self):
-        """Silence is not ignorance: the sentence rides on the result
-        for anything that wants it, and the log gets it regardless."""
+        """Silence is not ignorance - the sentence rides on the result, and the log gets it regardless."""
         from amaze.core import keyed_store
 
         result, _seen = self._denied("locations.json")
@@ -1614,17 +1304,7 @@ class ADENIEDWriteSpeaksONLYWhereTheFailureIsInvisible(unittest.TestCase):
 
 
 class ARelocateIsONEWrite(unittest.TestCase):
-    """A location's move must land whole or not at all.
-
-    It was two `set_record` calls - remove the old key, then add the
-    new one - and they are two independent trips to disk. Deny the
-    second, which is one transient outage of a synced library, and the
-    location is deregistered with its record gone: colour, custom name,
-    recursion and Show All Files, with the folder just missing.
-
-    `rekey`'s own docstring is about this shape: *a rename expressed as
-    delete-then-add can be half-resurrected by the other pane.*
-    """
+    """A location's move lands whole or not at all - delete-then-add is two trips to disk."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_reloc_")
@@ -1634,15 +1314,7 @@ class ARelocateIsONEWrite(unittest.TestCase):
         self.prefs = _Prefs(self.dir)
 
     def test_a_move_never_loses_the_record_to_a_half_write(self):
-        """THE SECOND WRITE IS THE ONE THAT FAILS, which is the whole
-        point and is what an earlier version of this test missed.
-
-        Failing EVERY write proves nothing: remove-then-add and one
-        `rekey` both leave the record untouched, because neither commit
-        lands and the cache moves only on success. The damage needs the
-        FIRST write to land and the second not - the old key gone, the
-        new one never written - so the fake lets one through.
-        """
+        """THE SECOND write is the one that fails - failing every write proves nothing, since no commit lands."""
         real_write = hostos.write_json_atomic
         calls = []
 
@@ -1668,8 +1340,6 @@ class ARelocateIsONEWrite(unittest.TestCase):
                                side_effect=once_then_fail):
             locations.relocate_record(self.prefs, old, new)
 
-        # Wherever it ended up, it still EXISTS. One write moves it to
-        # `new`; two writes lost it between them.
         found = (locations.record(self.prefs, new)
                  or locations.record(self.prefs, old))
         self.assertEqual(
@@ -1700,9 +1370,7 @@ class ARelocateIsONEWrite(unittest.TestCase):
 
 
 class ADocumentIsNotATableOfRows(StoreCase):
-    """ROADMAP line 26, stage 4. settings.json is a store now, and it
-    differs from the library's four in four ways that each cost a
-    mechanism (practice.md > A DOCUMENT IS NOT A TABLE OF ROWS)."""
+    """settings.json is a store, and differs from the library's four in four ways. ▸p/document-not-table"""
 
     def _spec(self, rules=None, absence_is_fresh=True):
         return keyed_store.Spec(
@@ -1712,20 +1380,16 @@ class ADocumentIsNotATableOfRows(StoreCase):
             absence_is_fresh=absence_is_fresh, merge_rules=rules)
 
     def _own(self, spec):
-        """A holder's OWN store, the way persistence takes one - so two
-        of them keep two baselines, which is the whole point."""
+        """A holder's OWN store, the way persistence takes one - two of them keep two baselines."""
         return keyed_store.own_store(spec, self.prefs)
 
     def _peer_wrote(self, document):
         with open(self.path("doc.json"), "w", encoding="utf-8") as handle:
             json.dump(document, handle)
 
-    # -- 1. absence ---------------------------------------------------
 
     def test_a_trace_beside_an_absent_file_does_NOT_latch(self):
-        """settings.json's own prescribed recovery is to delete it, and
-        the copy that recovery leaves behind is one of the traces - so
-        the guard would refuse the fresh start it just asked for."""
+        """Its own prescribed recovery is to delete it, so the guard would refuse the fresh start it advised."""
         with open(self.path("doc.json.bak-1"), "w",
                   encoding="utf-8") as handle:
             handle.write("{}")
@@ -1736,8 +1400,7 @@ class ADocumentIsNotATableOfRows(StoreCase):
                         "an earlier rescue copy proved the file existed")
 
     def test_the_same_trace_DOES_latch_a_library_store(self):
-        """The flag is a declaration, not a weakening: without it the
-        absent-but-known verdict is exactly what it always was."""
+        """The flag is a declaration, not a weakening - without it the verdict is what it always was."""
         with open(self.path("doc.json.bak-1"), "w",
                   encoding="utf-8") as handle:
             handle.write("{}")
@@ -1745,15 +1408,12 @@ class ADocumentIsNotATableOfRows(StoreCase):
         self.assertEqual(keyed_store.BLIND, store.state)
         self.assertFalse(store.writable)
 
-    # -- 2. a rule that reaches a key one level down -------------------
 
     NESTED = {"users": keyed_store.MERGE_FIELDS,
               "users/*/file_folders": keyed_store.MERGE_COMBINE}
 
     def test_a_peers_folder_inside_a_shared_user_block_SURVIVES(self):
-        """The regression a top-level rule would have shipped. Both
-        panes hold `file_folders`, so the field-wise fold adopts
-        nothing: it only takes fields the peer has that we lack."""
+        """The regression a top-level rule would have shipped: both panes hold it, so a field-wise fold adopts nothing."""
         store = self._own(self._spec(self.NESTED))
         store.replace({"users": {"u1": {"file_folders": ["/mine"],
                                         "sidebar_width": 200}}})
@@ -1777,12 +1437,9 @@ class ADocumentIsNotATableOfRows(StoreCase):
         self.assertEqual({"u1", "u2"},
                          set(self.on_disk("doc.json")["users"]))
 
-    # -- 3. retirement, after the adoption -----------------------------
 
     def test_a_retired_key_a_PEER_still_holds_does_not_come_back(self):
-        """Sweeping the document before handing it over looks identical
-        and does nothing: adoption is what carries an unknown key across
-        a save, and it runs after any sweep the caller could make."""
+        """Sweeping before handing it over looks identical and does nothing - adoption runs after. ▸p/store-commit-order"""
         store = self._own(self._spec())
         store.replace({"kept": 1})
         self._peer_wrote({"kept": 1, "gone": "old"})
@@ -1792,8 +1449,7 @@ class ADocumentIsNotATableOfRows(StoreCase):
                          "and written straight back")
 
     def test_a_key_the_document_drops_is_GONE(self):
-        """Delete-by-omission is what the callers here do - a migration
-        pops the key it has just consumed."""
+        """Delete-by-omission is what the callers here do - a migration pops the key it consumed."""
         store = self._own(self._spec())
         store.replace({"a": 1, "b": 2})
         store.replace({"a": 1})
@@ -1805,17 +1461,139 @@ class ADocumentIsNotATableOfRows(StoreCase):
         self.assertEqual({"debug": False, "width": 0, "name": ""},
                          self.on_disk("doc.json"))
 
-    # -- 4. re-reading -------------------------------------------------
 
     def test_reread_sees_what_another_writer_left(self):
-        """load() runs again when Preferences closes and on a library
-        switch, and its whole job is to answer with what is on disk."""
+        """load() runs again when Preferences closes and on a library switch, answering with DISK."""
         store = self._own(self._spec())
         store.replace({"a": 1})
         self._peer_wrote({"a": 99})
         self.assertEqual(1, store.get("a"))
         store.reread()
         self.assertEqual(99, store.get("a"))
+
+
+def _slate_fields():
+    """Every attribute the two slate helpers write, read off their own source. ▸p/keyed-store-slate"""
+    found = set()
+    for helper in (keyed_store.Store._blank_slate,
+                   keyed_store.Store._forget_tables):
+        tree = ast.parse(textwrap.dedent(inspect.getsource(helper)))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute)
+                    and isinstance(node.ctx, ast.Store)
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "self"):
+                found.add(node.attr)
+    return found
+
+
+def _store_methods(*names):
+    """The named methods of `Store`, as AST - so a guard reads the shipped source. ▸p/source-derived-tests"""
+    tree = ast.parse(inspect.getsource(keyed_store))
+    for klass in ast.walk(tree):
+        if isinstance(klass, ast.ClassDef) and klass.name == "Store":
+            for scope in klass.body:
+                if (isinstance(scope, ast.FunctionDef)
+                        and scope.name in names):
+                    yield scope
+
+
+class TheStoresBlankSlate(StoreCase):
+    """What a Store forgets before a load, at all three doors. ▸p/keyed-store-slate"""
+
+    def _spec(self, normalise):
+        return keyed_store.Spec(
+            filename="slate.json", payload="slate",
+            keyspace=keyed_store.KEY_ID, label="A slate", noun="entry",
+            normalise=normalise)
+
+    def _store(self, normalise=lambda value: value):
+        return keyed_store.own_store(self._spec(normalise), self.prefs)
+
+    def _wrote(self, table):
+        with open(self.path("slate.json"), "w", encoding="utf-8") as handle:
+            json.dump({"slate": table}, handle)
+
+    def test_a_latched_load_forgets_what_it_had_already_kept_aside(self):
+        """The gap this family closed: an unreadable file emptied two tables and left `_foreign` holding a part-read row."""
+        def normalise(value):
+            if value == "boom":
+                raise ValueError("this row cannot be read")
+            return "" if value == "foreign" else value
+
+        self._wrote({"a": "foreign", "b": "boom"})
+        store = self._store(normalise)
+        self.assertEqual(keyed_store.BLIND, store.state)
+        self.assertEqual(
+            {}, store._foreign,
+            "a file that would not parse left the entries an earlier row "
+            "had put aside sitting in memory")
+
+    def test_the_whole_slate_is_written_by_the_helper(self):
+        """Derived from the helpers, so a field joining the list is guarded the day it joins."""
+        store = self._store()
+        store._blank_slate()
+        blank = {name: copy.deepcopy(getattr(store, name))
+                 for name in _slate_fields()}
+        for name in blank:
+            setattr(store, name, {"dirty": 1})
+        store._blank_slate()
+        self.assertEqual(
+            blank, {name: getattr(store, name) for name in blank},
+            "a field the slate names was not put back by the helper")
+
+    def test_a_reread_writes_the_slate_rather_than_its_own_list(self):
+        """Fires when a door stops calling the helper - the failure that left one debug door short of the record counter."""
+        self._wrote({"a": {"kept": 1}})
+        store = self._store()
+        for name in _slate_fields():
+            setattr(store, name, {"dirty": 1})
+        store.reread()
+        self.assertEqual({"a": {"kept": 1}}, store.everyones())
+        for name in ("_foreign", "_orphans"):
+            self.assertNotIn("dirty", getattr(store, name),
+                             "%s survived a reread" % name)
+
+    def test_no_reset_door_keeps_its_own_copy_of_the_list(self):
+        """Two hand-kept copies is what let `_foreign` be forgotten at one door and not the other."""
+        owned = _slate_fields()
+        found = []
+        for scope in _store_methods("__init__", "reread"):
+            for node in ast.walk(scope):
+                if (isinstance(node, ast.Attribute)
+                        and isinstance(node.ctx, ast.Store)
+                        and isinstance(node.value, ast.Name)
+                        and node.value.id == "self"
+                        and node.attr in owned):
+                    found.append("%s assigns %s" % (scope.name, node.attr))
+        self.assertEqual(
+            [], sorted(found),
+            "the slate is written outside the helper: %s"
+            % ", ".join(sorted(found)))
+
+    def test_neither_retire_door_stages_its_own_commit(self):
+        """Both doors resolve WHICH keys are doomed and hand them to one tail; only the tail commits."""
+        found = []
+        for scope in _store_methods("retire", "retire_stored"):
+            for node in ast.walk(scope):
+                if (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "_commit"):
+                    found.append(scope.name)
+        self.assertEqual(
+            [], sorted(found),
+            "a retire door stages and commits its own write: %s"
+            % ", ".join(sorted(found)))
+
+    def test_retiring_nothing_is_unchanged_at_both_doors(self):
+        """An empty list is not a failure, and `retire` answers it BEFORE it asks who the user is."""
+        spec = self._spec(lambda value: value)
+        spec.user_tagged = True
+        store = keyed_store.own_store(spec, _Prefs(self.dir, library_user=""))
+        for answer in (store.retire(()), store.retire_stored(())):
+            self.assertTrue(
+                answer, "doing nothing was refused for want of a user")
+            self.assertEqual(keyed_store.REASON_UNCHANGED, answer.reason)
 
 
 if __name__ == "__main__":
