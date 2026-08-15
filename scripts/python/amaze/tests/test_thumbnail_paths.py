@@ -8,6 +8,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtGui, QtWidgets  # noqa: E402
@@ -928,6 +929,120 @@ class MantraIsNotASupportedRenderer(unittest.TestCase):
             "Mantra was dropped, so a branch or a name that still "
             "carries it is either dead code reading as support or a "
             "control with nothing behind it: %s" % offenders)
+
+
+class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
+    """Four copies of the after-save thumbnail block is how two of them lost the traceback the debug log is read for."""
+
+    @staticmethod
+    def _scopes_containing(needle):
+        source = source_of("render/nodes.py")
+        lines = source.splitlines()
+        found = []
+        for node in ast.walk(ast.parse(source)):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            body = lines[node.lineno - 1:node.end_lineno]
+            code = [line.split("#")[0] for line in body]
+            if any(needle in line for line in code):
+                found.append(node.name)
+        return sorted(found)
+
+    def _handler(self, render_on_import=1):
+        from amaze.render import nodes
+
+        class _Prefs:
+            pass
+
+        prefs = _Prefs()
+        prefs.render_on_import = render_on_import
+        return nodes, nodes.NodeHandler(prefs)
+
+    def test_one_scope_decides_whether_to_render(self):
+        """Every save asks the preference in the same place; four copies is four chances for one to answer differently."""
+        scopes = self._scopes_containing("render_on_import")
+        self.assertEqual(
+            ["after_save_thumbnail"], scopes,
+            "the render_on_import decision is written in %d places, so a "
+            "save path can drift out of step with the others: %s"
+            % (len(scopes), scopes))
+
+    def test_no_save_path_catches_its_own_thumbnail_failure(self):
+        """One block catches what the render raises; four catches is how two of them came to record less than the other two."""
+        source = source_of("render/nodes.py")
+        lines = source.splitlines()
+        offenders = []
+        for scope in ast.walk(ast.parse(source)):
+            if (not isinstance(scope, ast.FunctionDef)
+                    or scope.name == "after_save_thumbnail"):
+                continue
+            for block in ast.walk(scope):
+                if not isinstance(block, ast.Try):
+                    continue
+                body = lines[block.lineno - 1:block.end_lineno]
+                code = "\n".join(line.split("#")[0] for line in body)
+                if "thumb" in code.lower():
+                    offenders.append("%s:%d" % (scope.name, block.lineno))
+        self.assertEqual(
+            [], offenders,
+            "a save path handles its own thumbnail failure instead of "
+            "going through the one block: %s" % offenders)
+
+    def test_a_thumbnail_that_raises_is_recorded_with_its_traceback(self):
+        """A failure records the traceback AND the asset id and node path, which is what the log is read for."""
+        nodes, handler = self._handler()
+
+        def boom():
+            raise RuntimeError("no licence")
+
+        with mock.patch.object(nodes.debug, "exception") as caught, \
+                mock.patch.object(nodes.debug, "note"):
+            handler.after_save_thumbnail(
+                False, "Karma", "abc123", "/mat/x", boom)
+        self.assertEqual(1, caught.call_count)
+        self.assertEqual(
+            {"asset_id": "abc123", "node": "/mat/x"}, caught.call_args.kwargs)
+
+    def test_a_thumbnail_that_reports_failure_is_recorded_as_one(self):
+        """False means it tried and failed - a structured save record, on every renderer rather than only on Karma."""
+        nodes, handler = self._handler()
+        with mock.patch.object(nodes.debug, "event") as recorded, \
+                mock.patch.object(nodes.debug, "note"):
+            handler.after_save_thumbnail(
+                False, "Octane", "abc123", "/mat/x", lambda: False)
+        self.assertEqual(1, recorded.call_count)
+        self.assertEqual("save", recorded.call_args.args[0])
+
+    def test_a_context_with_no_picture_is_not_a_failure(self):
+        """render_network_thumbnail answers None where a context has nothing to draw - Lop, Dop - and that must not read as a failed render."""
+        nodes, handler = self._handler()
+        with mock.patch.object(nodes.debug, "event") as recorded, \
+                mock.patch.object(nodes.debug, "exception") as caught, \
+                mock.patch.object(nodes.debug, "note") as said:
+            handler.after_save_thumbnail(
+                False, "Network", "abc123", "/obj/x", lambda: None)
+        self.assertEqual(
+            (0, 0, 0),
+            (recorded.call_count, caught.call_count, said.call_count))
+
+    def test_the_preference_is_honoured_and_an_update_overrides_it(self):
+        """Render Thumbs on Import off means no render on a save, and an explicit update re-renders regardless."""
+        nodes, handler = self._handler(render_on_import=0)
+        ran = []
+        handler.after_save_thumbnail(
+            False, "Karma", "abc123", "/mat/x", lambda: ran.append("save"))
+        handler.after_save_thumbnail(
+            True, "Karma", "abc123", "/mat/x", lambda: ran.append("update"))
+        self.assertEqual(["update"], ran)
+
+    def test_the_network_save_asks_the_one_context_helper(self):
+        """The Cop-or-Sop context read is CopLibrary.context_of; nodes.py hand-rolled the same guarded read beside it."""
+        scopes = self._scopes_containing("childTypeCategory")
+        self.assertNotIn(
+            "save_node_cop", scopes,
+            "save_node_cop reads childTypeCategory itself instead of "
+            "asking context_of, which answers the same question with the "
+            "same guard")
 
 
 if __name__ == "__main__":
