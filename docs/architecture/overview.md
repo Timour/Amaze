@@ -588,8 +588,14 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 - **Package:** `preview/` · **Door:** `amaze.preview`
 - **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
   `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
-  `build_karma_scaffold(prefs)` · `render_karma_into(scaffold, node,
-  id, png_path)`
+  `rig_key(renderer)` · `build_karma_scaffold(prefs)` ·
+  `render_karma_into(scaffold, node, id, png_path)`
+- **The two light rigs are ONE table.** Redshift and Octane place their
+  key lights from shared constants and differ only in the size parm's
+  spelling (`areasize1/2/3` against `sx/sy/sz`); `rig_key` answers which
+  spelling a renderer uses and RAISES on one the table does not name,
+  rather than placing a light with no size. Intensity is not shared —
+  the two use different physical models.
 - **Karma is the odd shape and the caller still names the file.** Its
   scene is a USD stage, too expensive to build per material, so it is
   built once and rendered into many times — but like the other three it
