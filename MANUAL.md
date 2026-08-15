@@ -624,9 +624,8 @@ relaunch. Reopening the panel is not enough.
 
 ## Credits and licence
 
-Amaze is its own product, and it contains code from
-[egMatLib](https://github.com/eglaubauf/egMatLib) by Elmar Glaubauf —
-the foundation it grew from.
+Amaze was inspired by and contains code from
+[egMatLib](https://github.com/eglaubauf/egMatLib) by Elmar Glaubauf. Thanks
 
 Tile icons are [Feather](https://feathericons.com) by Cole Bemis (MIT).
 
