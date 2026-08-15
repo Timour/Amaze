@@ -136,31 +136,44 @@ def _unreachable_sentence(exc) -> str:
 def download(url: str, into: str) -> str:
     """Stream a release to `into`, returning the file written.
 
-    LENGTH-CHECKED. A short body closes the connection and the read
-    loop ends NORMALLY (research.md), so a rename-on-success scheme
-    promotes a truncated archive without noticing. A missing
-    Content-Length is UNKNOWN, never zero.
+    LENGTH-CHECKED, AND WRITTEN BESIDE THE TARGET. The two cover
+    different halves and neither covers the other's. A short body
+    closes the connection and the read loop ends NORMALLY
+    (research.md), so only the length check sees it; a transfer that
+    RAISES - a reset, a timeout, the process killed - never reaches any
+    check at all, and a writer aimed at the final path has already put
+    a truncated archive there for the next run to find. So the bytes
+    land on a scratch beside the target and are swapped in only on the
+    way out of a completed block. A missing Content-Length is UNKNOWN,
+    never zero.
+
+    `hostos.scratch_beside` rather than a private rename: it is the
+    package's one promote-on-success shape, and it fsyncs before the
+    swap and retries the Windows case where the destination is
+    momentarily held.
     """
+    from amaze.helpers import hostos
+
     os.makedirs(into, exist_ok=True)
     target = os.path.join(into, "amaze-update.zip")
     read = 0
-    with _open(url) as response:
-        declared = response.headers.get("Content-Length")
-        with open(target, "wb") as handle:
-            while True:
-                chunk = response.read(65536)
-                if not chunk:
-                    break
-                handle.write(chunk)
-                read += len(chunk)
-    if declared is not None and read != int(declared):
-        os.remove(target)
-        raise OSError(
-            "the download stopped early - %d bytes of %s. Nothing has "
-            "been changed." % (read, declared))
-    if not read:
-        os.remove(target)
-        raise OSError("the download was empty. Nothing has been changed.")
+    with hostos.scratch_beside(target) as scratch:
+        with _open(url) as response:
+            declared = response.headers.get("Content-Length")
+            with open(scratch, "wb") as handle:
+                while True:
+                    chunk = response.read(65536)
+                    if not chunk:
+                        break
+                    handle.write(chunk)
+                    read += len(chunk)
+        if declared is not None and read != int(declared):
+            raise OSError(
+                "the download stopped early - %d bytes of %s. Nothing has "
+                "been changed." % (read, declared))
+        if not read:
+            raise OSError(
+                "the download was empty. Nothing has been changed.")
     return target
 
 

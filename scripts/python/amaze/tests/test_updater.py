@@ -180,6 +180,39 @@ class TheDownloadTest(_FeedMixin):
         self.assertTrue(
             os.path.exists(updater.download("https://x.invalid/z", self.dir)))
 
+    def test_a_transfer_that_DIES_mid_read_leaves_nothing_behind(self):
+        """The structural half, which the length check cannot cover.
+
+        A short body ends the loop normally and the check above catches
+        it. A transfer that RAISES part way - a reset, a timeout, the
+        process being killed - never reaches any check, and a writer
+        aimed at its final path has already put a truncated archive
+        there. `hostos.scratch_beside` is the package's answer: the
+        bytes land on a unique scratch and are promoted only on the way
+        out of a completed block.
+        """
+        class _Dying(_Response):
+            def read(self, *args):
+                if self.tell():
+                    raise OSError("connection reset")
+                return super().read(4)
+
+        def fake(url):
+            return _Dying(b"PK\x03\x04and then the wire drops",
+                          {"Content-Length": "26"})
+
+        real = matx_sources._request
+        matx_sources._request = fake
+        self.addCleanup(setattr, matx_sources, "_request", real)
+
+        with self.assertRaises(OSError):
+            updater.download("https://example.invalid/z", self.dir)
+        self.assertEqual(
+            [], os.listdir(self.dir),
+            "a transfer that died mid-read left a truncated archive at "
+            "the final path, where the next run reads it as a download "
+            "that finished")
+
 
 class TheSwapTest(unittest.TestCase):
 

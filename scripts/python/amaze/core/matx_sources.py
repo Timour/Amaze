@@ -296,23 +296,25 @@ def download(url: str, dest_path: str, on_bytes=None) -> str:
     on the main thread can drive a progress bar (total is 0 if the server
     sent no Content-Length)."""
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    # Stream into a temp sibling and promote atomically on success -
-    # an interrupted transfer (timeout/reset mid-read) must never leave
-    # a truncated file at the final path, where cache layers would
-    # treat it as a finished download forever.
+    # Stream into a scratch sibling and promote on success - an
+    # interrupted transfer (timeout/reset mid-read) must never leave a
+    # truncated file at the final path, where cache layers would treat
+    # it as a finished download forever.
     #
-    # A UNIQUE scratch name, not the fixed `dest_path + ".part"` this
-    # used. Two fetches of the same asset - two panes, two sessions, or a
-    # retry racing a slow first attempt - shared one buffer, and the
-    # `finally` below then removed whichever copy was still there
-    # regardless of who was writing it. That is the RAISING half of the
-    # same defect measured for the asset pair: 417 of 800 saves failed
-    # outright because one writer's cleanup deleted the scratch the other
-    # was about to rename. Here it lands on a downloaded texture, where
-    # the truncation check above is the only thing between a partial file
-    # and a material that renders wrong forever.
-    tmp_path = hostos.unique_scratch(dest_path, suffix=".part")
-    try:
+    # `hostos.scratch_beside` rather than the unique_scratch/os.replace/
+    # discard trio written out here: it IS that trio, and it adds the
+    # fsync before the swap and the Windows retry. The name it picks is
+    # unique, which is the half that matters most - the fixed
+    # `dest_path + ".part"` this once used was one shared buffer, so two
+    # fetches of the same asset (two panes, two sessions, or a retry
+    # racing a slow first attempt) interleaved into it and the cleanup
+    # removed whichever copy was still there regardless of who was
+    # writing. That is the RAISING half of the defect measured for the
+    # asset pair: 417 of 800 saves failed because one writer's cleanup
+    # deleted the scratch the other was about to rename. Its `.writing`
+    # suffix is also the one `tools/library-audit.py` classifies as
+    # ours, where a leftover `.part` read as an unknown file.
+    with hostos.scratch_beside(dest_path) as tmp_path:
         with _request(url) as resp, open(tmp_path, "wb") as fh:
             try:
                 total = int(resp.headers.get("Content-Length") or 0)
@@ -327,11 +329,11 @@ def download(url: str, dest_path: str, on_bytes=None) -> str:
                 read += len(chunk)
                 if on_bytes is not None:
                     on_bytes(read, total)
-        # The .part dance above is NOT enough on its own, which is the
-        # trap this check exists for: CPython's HTTPResponse.readinto
+        # The scratch dance is NOT enough on its own, which is the trap
+        # this check exists for: CPython's HTTPResponse.readinto
         # deliberately does not raise on a short body - it closes the
         # connection and returns 0 - so a transfer cut off half way
-        # exits the loop NORMALLY and os.replace promotes the fragment
+        # exits the loop NORMALLY and the promote lands the fragment
         # as a finished download. Measured against a server advertising
         # 100000 bytes and sending 1000: the loop returned cleanly and
         # the 1000-byte file was promoted.
@@ -347,12 +349,6 @@ def download(url: str, dest_path: str, on_bytes=None) -> str:
                 "truncated download: got %d of %d bytes from %s"
                 % (read, total, url)
             )
-        os.replace(tmp_path, dest_path)
-    finally:
-        # Only ever OUR scratch now that the name is unique - which is the
-        # point: this line used to be able to delete another download's
-        # part-file, and it ran on the success path too.
-        hostos.discard_scratch(tmp_path)
     return dest_path
 
 
