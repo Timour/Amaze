@@ -1460,7 +1460,13 @@ class HoudiniPathTest(unittest.TestCase):
         p.test_mode = True
         dlg._sync_test_mode_rows()
 
-        self.assertEqual(os.path.join(folder, "lib") + "/", p.dir)
+        # `p.dir` is forward-slashed by `prefs._normalised_dir`, so the
+        # expectation is spelled that way too rather than in the host's
+        # separator - `os.path.join` alone reddens this on Windows
+        # against an overlay that is behaving (ROADMAP line 17).
+        self.assertEqual(
+            test_support.posix_path(os.path.join(folder, "lib") + "/"),
+            p.dir)
         self.assertEqual(p.dir, dlg.line_workdir.text(),
                          "the row still shows the real library while "
                          "the panel reads the test one")

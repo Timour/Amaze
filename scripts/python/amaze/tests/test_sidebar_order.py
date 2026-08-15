@@ -514,7 +514,75 @@ class FolderOrderTest(unittest.TestCase):
         one, two, three = (os.path.join(base, n) for n in ("1", "2", "3"))
         prefs = self._prefs([one, two, three])
         self.assertTrue(locations.move_registered(prefs, one, 2))
-        self.assertEqual([two, three, one], prefs.file_folders)
+        self.assertEqual([test_support.posix_path(p)
+                          for p in (two, three, one)],
+                         prefs.file_folders)
+
+    def test_a_move_accepts_ANY_spelling_of_a_registered_path(self):
+        """The door NORMALISES what it is handed, like every sibling in
+        the module - `set_record`, `relocate_record`, `set_favourite`,
+        `record` and `is_favourite` all do it first thing.
+
+        `move_registered` read `registered_paths` (canonical) and then
+        compared the caller's `path` RAW, so one legal spelling of a
+        registered location answered "not registered" and the move
+        returned False without saying why. On Windows that is EVERY
+        `os.path.join` spelling, which is how it was found (ROADMAP
+        line 17, measured on the parity VM 2026-08-15).
+
+        The red is earned PORTABLY, with a non-normalised spelling
+        rather than a native separator: `os.sep` is already `/` here, so
+        trusting the Windows run would be trusting the platform to prove
+        a contract the code owes on all three.
+        """
+        from amaze.core import locations
+        base = self._base()
+        one, two, three = (os.path.join(base, n) for n in ("1", "2", "3"))
+        prefs = self._prefs([one, two, three])
+        detour = os.path.join(base, "elsewhere", os.pardir, "1")
+        self.assertNotEqual(detour, one, "the detour spelling collapsed "
+                                         "before the door ever saw it")
+        self.assertTrue(locations.move_registered(prefs, detour, 2))
+        self.assertEqual([test_support.posix_path(p)
+                          for p in (two, three, one)],
+                         prefs.file_folders)
+
+    def test_a_move_works_where_the_STORED_spelling_is_not_the_absolute(self):
+        """A guard on the REPAIR, not on the original defect - it is
+        green either side of the bug above and red for a plausible wrong
+        fix, which is the only reason it is worth a line.
+
+        Under home the two spellings of one folder diverge:
+        `storage_path_key` shortens to `~/1` while `registered_paths`
+        hands back the expanded absolute. Normalising only the CALLER's
+        side - the one-line repair ROADMAP line 17 proposed - puts `~/1`
+        against a list of absolutes, so every move under home returns
+        False while the tempdir cases keep passing and look like proof.
+        Both sides are normalised instead, which is what the siblings do.
+
+        `_home_root` is the sanctioned seam: its own docstring says it
+        exists so a test can pin home without patching the world.
+        """
+        from amaze.core import locations
+        from amaze.helpers import hostos
+        base = self._base()
+        # CANONICAL, because the real `_home_root` is
+        # `canonical_path_key(expanduser("~"))` - a stand-in spelled the
+        # host's way makes `storage_path_key`'s startswith test fail on
+        # Windows and the home branch never fires, which is the one
+        # thing this test needs to happen.
+        with mock.patch.object(hostos, "_home_root",
+                               return_value=test_support.posix_path(base)):
+            one, two, three = (os.path.join(base, n)
+                               for n in ("1", "2", "3"))
+            prefs = self._prefs([one, two, three])
+            self.assertEqual(
+                "~/1", hostos.storage_path_key(one),
+                "the home branch never fired, so this proves nothing")
+            self.assertTrue(locations.move_registered(prefs, one, 2))
+            self.assertEqual([test_support.posix_path(p)
+                              for p in (two, three, one)],
+                             prefs.file_folders)
 
     def test_the_move_alone_does_not_save(self):
         from amaze.core import locations
@@ -533,7 +601,8 @@ class FolderOrderTest(unittest.TestCase):
         locations.move_registered(prefs, one, 1)
         locations.commit_registered_order(prefs)
         reloaded = self._reloaded(prefs)
-        self.assertEqual([two, one], reloaded.file_folders)
+        self.assertEqual([test_support.posix_path(p) for p in (two, one)],
+                         reloaded.file_folders)
 
     def test_the_model_move_brackets_and_respects_the_all_row(self):
         from amaze.core import file_library
@@ -549,7 +618,8 @@ class FolderOrderTest(unittest.TestCase):
         self.assertEqual([], seen)
         self.assertTrue(model.move_folder(1, 2))
         self.assertEqual(["about", "moved"], seen)
-        self.assertEqual([two, one], prefs.file_folders)
+        self.assertEqual([test_support.posix_path(p) for p in (two, one)],
+                         prefs.file_folders)
 
 
 if __name__ == "__main__":

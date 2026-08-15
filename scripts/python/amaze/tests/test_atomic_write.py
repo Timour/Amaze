@@ -1873,7 +1873,14 @@ class OnePathHasOneSpelling(unittest.TestCase):
         """`directory` is stored WITH one, and the connectors build
         their paths as `self._path + self._filename`."""
         from amaze.prefs import persistence
-        for path in (os.path.expanduser("~") + "/Cloud/lib/",
+        # The home half is built CANONICALLY, never concatenated: on
+        # Windows `expanduser` answers `C:\Users\Dev` and gluing a POSIX
+        # literal onto it mints `C:\Users\Dev/Cloud/lib/`, a spelling no
+        # encoder here can emit. The round trip was answering correctly
+        # and the INPUT was the mixed one (ROADMAP line 17; practice.md ▸
+        # *`assertEqual` PRINTS EXPECTED FIRST*).
+        for path in (test_support.posix_path(os.path.expanduser("~"))
+                     + "/Cloud/lib/",
                      "/Volumes/Share/lib/"):
             self.assertEqual(
                 path, persistence._decode_path(

@@ -413,7 +413,8 @@ class TheMapNamesEveryModule(unittest.TestCase):
             for name in files:
                 if not name.endswith(".py") or name == "__init__.py":
                     continue
-                rel = os.path.relpath(os.path.join(root, name), PACKAGE)
+                rel = test_support.posix_relpath(
+                    os.path.join(root, name), PACKAGE)
                 if rel in self.SHORTHAND or rel in braces:
                     continue
                 if rel[:-3] in body:          # dir/stem, extension free

@@ -629,7 +629,8 @@ class TheSentinelHasOneHome(unittest.TestCase):
                 with open(path, encoding="utf-8") as handle:
                     count = handle.read().count("Multiple Values...")
                 if count:
-                    spellings.append((os.path.relpath(path, root), count))
+                    spellings.append(
+                        (test_support.posix_relpath(path, root), count))
         self.assertEqual(
             [("core/material.py", 1)], spellings,
             "the sentinel is spelled outside its one home - import "

@@ -374,10 +374,20 @@ def move_registered(preferences, path: str, row: int) -> bool:
     Deliberately NO save: the gesture moves live while the mouse is
     down and `commit_registered_order` persists once on release.
     """
+    # BOTH sides in storage spelling before they are compared, the way
+    # `is_favourite` does it and `set_record`, `relocate_record`,
+    # `set_favourite` and `record` all normalise at the door. Comparing
+    # the caller's `path` RAW against a canonical answer meant one legal
+    # spelling of a registered location read as "not registered" and the
+    # move returned False silently - every native `os.path.join` spelling
+    # on Windows (ROADMAP line 17). `current` itself stays absolute:
+    # it is what the caller ordered and `hold` re-keys it on the way out.
     current = registered_paths(preferences)
-    if path not in current:
+    keys = [hostos.storage_path_key(p) for p in current]
+    wanted = hostos.storage_path_key(path)
+    if wanted not in keys:
         return False
-    at = current.index(path)
+    at = keys.index(wanted)
     row = max(0, min(int(row), len(current) - 1))
     if at == row:
         return False

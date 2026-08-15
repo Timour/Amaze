@@ -673,6 +673,33 @@ def _root_for(spec: Spec, preferences) -> str:
     return root
 
 
+def _same_file(path: str) -> str:
+    """The CACHE IDENTITY of a store file - one string per file, whatever
+    spelling the caller's `preferences.dir` happens to carry.
+
+    Only the key is canonicalised; `Store.path` stays exactly the path
+    that was joined. The bug being closed is one of IDENTITY, and
+    rewriting what every consumer sees as the store's location is more
+    than it needs - the stores' own tests assert `store.path` against an
+    `os.path.join`, which is the codebase saying that spelling is part
+    of the contract.
+
+    `preferences.dir` is not stable as text: `save()` rewrites
+    `directory` into forward slashes with a trailing one, so on Windows
+    a Prefs that opened a store BEFORE a save and read it after resolved
+    two different keys for one file - two Store objects, two tables, two
+    stale-write baselines, which is the split brain `own_store` below
+    exists to opt INTO deliberately and nothing else should get by
+    accident. Measured on the parity VM 2026-08-15: a registered folder
+    was written to locations.json, confirmed in the file's own bytes,
+    and still missing from the sidebar, while `migrate` reported success
+    because it compared against the instance that was correct (ROADMAP
+    line 17). Invisible on macOS and Linux, where the two spellings
+    coincide.
+    """
+    return hostos.canonical_path_key(path)
+
+
 def open_store(spec: Spec, preferences) -> "Store":
     """The store for this library, read once and cached.
 
@@ -681,10 +708,10 @@ def open_store(spec: Spec, preferences) -> "Store":
     every plain file read here look like a store lookup.
     """
     path = os.path.join(_root_for(spec, preferences), spec.filename)
-    handle = _open.get((spec.filename, path))
+    handle = _open.get((spec.filename, _same_file(path)))
     if handle is None:
         handle = Store(spec, path, preferences)
-        _open[(spec.filename, path)] = handle
+        _open[(spec.filename, _same_file(path))] = handle
     else:
         # The cache is keyed by FILE, and the user can change under it
         # (the Preferences picker). Re-point rather than re-read: the

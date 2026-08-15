@@ -1,4 +1,4 @@
-"""Run unittest, report, and LEAVE - without interpreter shutdown.
+"""Run unittest, report, and LEAVE.
 
 WHY THIS EXISTS INSTEAD OF `hython -m unittest`. A thumbnail helper
 that wedges in uninterruptible disk I/O outlives its SIGKILL, so
@@ -11,18 +11,30 @@ printed `Ran 1741 tests OK` and then sat at 0% CPU in `poll()` for
 eleven, twenty and twenty-six minutes before they were stopped by
 hand. The tests had finished; only the exit had not.
 
-There is no Qt escape - the destructor waits whenever the process
-state is still Running, and a deferred SIGKILL keeps it Running. So
-the runner stops asking for a shutdown it does not need. The result
-is already computed and printed; `os._exit` hands the status straight
-to the shell.
+That is why this used `os._exit`, and WHY IT NO LONGER DOES
+(2026-08-15, ROADMAP line 17). On Windows `os._exit` is not a fast
+exit, it is a CRASH: every run, green ones included, ends
+`Fatal error: Segmentation fault` AFTER the summary prints, so the
+status is unreadable and the runner's promote step can never fire
+there. Houdini registers a CRT onexit handler - `UT_Exit::doExit` ->
+`PYrunPythonStatements` - that runs PYTHON during process shutdown,
+into the interpreter `os._exit` has just abandoned. It is not PySide:
+a process building no QApplication at all segfaults identically, so no
+Qt-side care could have fixed it. research.md > *`os._exit` IS THE
+CRASH ON WINDOWS, AND PySide IS NOT INVOLVED*.
 
-WHAT THIS SKIPS, deliberately: atexit handlers, garbage collection
-and static destructors. Nothing the suite's correctness rests on
-lives there - unittest's own cleanups (tearDown, addCleanup,
-tearDownModule) all run BEFORE this point, and the log-leak check is
-a separate process that runs after. Streams are flushed by hand
-because os._exit will not do it.
+WHAT THE SWAP COSTS, measured rather than assumed: nothing here.
+The full suite, 2176 tests, ran 3m41.458s with `sys.exit` against
+3m41.578s with `os._exit` - Linux, H22.0.407, 2026-08-15. The
+2026-08-08 hang was a QProcess still Running at teardown; nothing in
+that run reproduced it.
+
+STILL UNPROVEN, and it is the reason to read the timing above as one
+data point rather than a clearance: **the hang was measured on macOS,
+and macOS has not been re-measured since the swap.** If a suite ever
+parks at 0% CPU after printing its summary again, this is the line
+that changed and a Windows-only branch is the answer - at the price of
+a second exit path to maintain.
 """
 import json
 import os
@@ -64,9 +76,10 @@ def write_skip_report(result, path: str, houdini: str = "") -> None:
     carries `skipped=3` and no names at all. Reading them back off the
     console would make the check a guess about formatting.
 
-    WRITTEN BEFORE `os._exit`, deliberately. This module leaves without
-    atexit or a flush (see the module docstring), so anything not
-    closed by then is lost.
+    WRITTEN BEFORE THE EXIT, deliberately, and it stays that way now
+    the exit is an ordinary one: the report is the input to a SEPARATE
+    process, so writing it while the result object is in hand costs
+    nothing and never depends on shutdown ordering.
 
     AND ITS ABSENCE IS THE POINT. A suite that crashes never reaches
     here, so no file appears - and `check_dead_cover.py` refuses rather
@@ -94,12 +107,11 @@ def main(argv) -> None:
     ok = program.result.wasSuccessful()
     report_path = os.environ.get(SKIP_REPORT_VAR)
     if report_path:
-        # LOUD, then carry on to os._exit. A raise here would take the
-        # normal interpreter shutdown this module exists to avoid - the
-        # PySide teardown that parked three suites for eleven, twenty
-        # and twenty-six minutes. And a report that was not written is
-        # an ABSENT one, which check_dead_cover.py already refuses to
-        # compare. Loud plus refuse, never a silent half-answer.
+        # LOUD, then carry on to the exit. A raise here would leave the
+        # status to a traceback rather than to `ok`, and a report that
+        # was not written is an ABSENT one, which check_dead_cover.py
+        # already refuses to compare. Loud plus refuse, never a silent
+        # half-answer.
         try:
             write_skip_report(program.result, report_path,
                               os.environ.get("AMAZE_HOUDINI", ""))
@@ -107,11 +119,14 @@ def main(argv) -> None:
             print("run_suite: could not write the skip report to %s (%s) - "
                   "the dead-cover check will refuse rather than guess"
                   % (report_path, exc), file=sys.stderr)
-    # By hand: os._exit skips the flush that a normal exit performs,
-    # and a truncated last line would make a green run unreadable.
+    # KEPT after the swap to `sys.exit`, which does flush: Houdini's own
+    # shutdown handler runs Python on the way out, so the last thing
+    # this file controls is the last point the summary is certainly on
+    # the console. A truncated final line makes a green run unreadable,
+    # and the flush costs nothing.
     sys.stdout.flush()
     sys.stderr.flush()
-    os._exit(0 if ok else 1)
+    sys.exit(0 if ok else 1)
 
 
 if __name__ == "__main__":

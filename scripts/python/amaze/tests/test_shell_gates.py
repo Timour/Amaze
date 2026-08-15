@@ -978,10 +978,12 @@ class TargetedRunTest(unittest.TestCase):
         not MODULES - are what the runner is handed.
 
         The runner is run_suite.py rather than `-m unittest` since
-        2026-08-08: same unittest, same module names, but it leaves
-        via os._exit so a wedged helper cannot hold the process in
-        PySide's shutdown. What this test pins is unchanged - the
-        RESOLVED list is what gets run."""
+        2026-08-08: same unittest, same module names, but it owns its
+        own exit and writes the skip report on the way out. It left via
+        `os._exit` until 2026-08-15, when that turned out to be a
+        segfault on Windows rather than a fast exit (ROADMAP line 17).
+        What this test pins is unchanged either way - the RESOLVED list
+        is what gets run."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         self.assertIn("run_suite.py\" $run_modules", source,

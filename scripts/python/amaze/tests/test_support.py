@@ -147,6 +147,41 @@ def reset_database_singletons() -> None:
 FILES_FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "files")
 
 
+def posix_relpath(path: str, start: str) -> str:
+    """A RELATIVE path in the one spelling the product and the docs
+    use: forward slashes, on every OS.
+
+    `os.path.relpath` answers in the HOST's separator, so a test that
+    compares its answer against a literal (`core/material.py`) or looks
+    it up in a markdown map is asserting in the host's dialect rather
+    than the product's. It passes on macOS and Linux only because
+    `os.sep` is already `/` there; on Windows it reddens against code
+    that is not wrong. Measured on the parity VM 2026-08-15 (ROADMAP
+    line 17): five modules failed this way and none of them had a bug.
+
+    Shared rather than copied per test, because the copies are what
+    drift - practice.md ▸ *ONE list, walked by every site*.
+    """
+    return os.path.relpath(path, start).replace(os.sep, "/")
+
+
+def posix_path(path: str) -> str:
+    """An ABSOLUTE path spelled the way the stores spell it, trailing
+    separator intact - what `locations.registered_paths` and `prefs.dir`
+    hand back, so it is what an expectation compared against them must
+    be built from.
+
+    The product's OWN round trip, not a re-derivation of it: a test that
+    re-implemented `normpath().replace(os.sep, "/")` would verify its
+    copy of the transform (practice.md ▸ *A test that re-derives the
+    logic verifies the copy*). Going out through `storage_path_key` and
+    back through `expand_storage_path` also carries the trailing
+    separator, which `normpath` alone strips - and a location's identity
+    CARRIES it.
+    """
+    return hostos.expand_storage_path(hostos.storage_path_key(path))
+
+
 def fresh_files_folder(testcase) -> str:
     """A throwaway COPY of the committed File-section fixture.
 
@@ -163,18 +198,27 @@ def fresh_files_folder(testcase) -> str:
     testcase.addCleanup(shutil.rmtree, tmp, True)
     dest = os.path.join(tmp, "files")
     shutil.copytree(FILES_FIXTURE_DIR, dest)
-    return dest + os.sep
+    return posix_path(dest) + "/"
 
 
 def fresh_library(testcase) -> str:
     """A throwaway COPY of the committed fixture library, auto-removed
-    after the test. Returns the directory with a trailing separator
-    (the prefs.dir convention). Tests may mutate and save freely."""
+    after the test. Returns the directory in the prefs.dir convention -
+    forward slashes AND a trailing separator. Tests may mutate and save
+    freely.
+
+    BOTH halves of that convention, since 2026-08-15. It used to answer
+    `dest + os.sep`, which is the trailing half only: on Windows that is
+    a native-separator path, while `prefs._normalised_dir` forces
+    forward slashes on the real field, so a fixture library was spelled
+    a way the product never spells one and every assertion comparing the
+    two reddened against working code (ROADMAP line 17).
+    """
     tmp = tempfile.mkdtemp(prefix="amaze_test_lib_")
     testcase.addCleanup(shutil.rmtree, tmp, True)
     dest = os.path.join(tmp, "library")
     shutil.copytree(FIXTURE_DIR, dest)
-    return dest + os.sep
+    return posix_path(dest) + "/"
 
 
 class _RecordedLog:

@@ -81,6 +81,72 @@ class StoreCase(unittest.TestCase):
             return json.load(handle)
 
 
+class OneFileIsOneTable(StoreCase):
+    """ONE file, ONE table, every reader the same rows - `own_store`'s
+    docstring states it from the other side, and names what a second
+    instance costs: its own stale-write baseline, so a peer's write
+    reads as an unchanged file and the fold that would have kept its
+    rows never runs.
+
+    `open_store` keyed its cache on `os.path.join(preferences.dir,
+    filename)` RAW, so two spellings of one directory minted two Stores
+    over one file. On macOS and Linux the spellings that arise in
+    practice are already identical, so it never showed. On Windows
+    `prefs.save()` rewrites `directory` into forward slashes with a
+    trailing one, so a Prefs that opened a store BEFORE a save and read
+    it after was holding two - and the second read served a table
+    loaded before the write.
+
+    MEASURED on the parity VM 2026-08-15, and it cost a registered
+    folder: the second machine's `/laptop/only/` was written to
+    locations.json, verified there in the file's own bytes, and still
+    absent from the sidebar, because the post-save read came back
+    through a store instance cached under the pre-save spelling.
+    `migrate` reported `migrated` with `joined: 1` while it happened -
+    it compared against the instance that was correct. ROADMAP line 17,
+    the tenth failure, untraced through three sessions.
+
+    The red is earned PORTABLY with a `/./` spelling: the same class of
+    difference - two strings, one file - without needing the platform.
+    `AmazeNotes/tools/probe-windows-migration-union.py` is the measured
+    version.
+    """
+
+    def _other_spelling(self):
+        """The same directory, spelled so `os.path.join` cannot collapse
+        it. A trailing separator alone will not do: `join` already
+        absorbs that, so it never reached the cache key."""
+        other = os.path.join(self.dir, ".", "")
+        self.assertNotEqual(
+            os.path.join(self.dir, "notes.json"),
+            os.path.join(other, "notes.json"),
+            "the two spellings collapsed before the cache saw them")
+        return _Prefs(other)
+
+    def test_a_write_through_one_spelling_is_seen_through_the_other(self):
+        """The failure exactly as it happened: the stale reader is
+        opened FIRST, so it has a table, and the write lands after."""
+        stale = self.store()
+        self.assertEqual({}, stale.all())
+
+        writer = keyed_store.open_store(notes.SPEC, self._other_spelling())
+        self.assertTrue(writer.update({"a": self.page("written once")}))
+
+        self.assertIn(
+            "a", stale.all(),
+            "two Store instances are open on one file, so a row written "
+            "through one is invisible through the other - the reader is "
+            "serving a table it loaded before the write")
+
+    def test_the_two_spellings_resolve_to_one_instance(self):
+        """The mechanism under the behaviour above, asserted directly so
+        a failure says WHICH of the two broke."""
+        self.assertIs(
+            self.store(),
+            keyed_store.open_store(notes.SPEC, self._other_spelling()),
+            "one file resolved to two Store objects")
+
+
 class TestModeKeepsItsLocationsToItself(StoreCase):
     """A test library gets its OWN locations, in both directions.
 
@@ -141,7 +207,10 @@ class TestModeKeepsItsLocationsToItself(StoreCase):
         folder = os.path.join(self.dir, "probe")
         locations.register(p, folder)
 
-        self.assertIn(folder, locations.registered_paths(p))
+        # `registered_paths` answers in the STORE's spelling, so the
+        # expectation is built in it too - `os.path.join` is the host's.
+        self.assertIn(test_support.posix_path(folder),
+                      locations.registered_paths(p))
 
     def test_a_normal_library_still_migrates(self):
         """The isolation is keyed on Test Mode alone: with it off, the
