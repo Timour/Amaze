@@ -1,46 +1,24 @@
 """The debug engine: a structured session log, off unless asked for.
 
-Why this exists: several bugs this project cost multiple round-trips
-because the evidence wasn't recorded anywhere. Python `print()` does NOT
-reach Houdini's Log Window (only the terminal Houdini was launched from),
-and PySide swallows exceptions raised inside Qt slots after printing them
-to stderr - so a failure could be completely invisible in a saved log
-while looking obvious live.
+One JSON Lines file - `amaze_debug.jsonl` in the per-OS log dir
+`hostos` resolves - so a session can be filtered by category, counted
+and diffed rather than read as prose. A `print()` reaches only the
+terminal Houdini was launched from, and PySide swallows exceptions
+raised in Qt slots, so neither survives in a log the user can send.
 
-It writes to one file that can be read and analysed directly -
-amaze_debug.jsonl in the OS-integration engine's per-OS log dir
-(helpers/hostos.py: ~/Library/Logs/Amaze on macOS,
-%LOCALAPPDATA%/Amaze/Logs on Windows, XDG state dir on Linux)
+THREE WRITERS, TWO OF THEM ALWAYS ON:
 
-**Two tiers:**
+* the crash recorder, armed by `install()`, writes any UNCAUGHT
+  exception with the environment header even with Debug Mode off;
+* `prefs_snapshot()` also writes with Debug off, deliberately - it is
+  the recovery route `prefs.py`'s dialog points at when settings.json
+  will not parse, and that session is exactly the one nobody had Debug
+  Mode on for;
+* `event()` / `note()` / `exception()` are gated on Debug Mode
+  (Preferences -> Debug), and off means off - one boolean test.
 
-* **Crash recorder - ALWAYS ON, but ONLY a real crash.** An *uncaught*
-  exception (via the hook `install()` arms at panel construction) is
-  always written, even with Debug Mode off, so if the app actually
-  crashes there's a log to read - carrying the environment header
-  (Houdini version, which renderer plugins loaded).
-* **The settings snapshot - also always on.** `prefs_snapshot()` writes
-  with Debug Mode OFF, deliberately: it is the recovery route
-  prefs.py's own dialog points the user at when settings.json will not
-  parse ("Your settings are also recorded in the debug log. Use the
-  Repair tool in the Amaze shelf to put them back"), and the session
-  that needs it is precisely the one nobody had Debug Mode on for.
-  Gating it would silently destroy that promise. This tier and the
-  crash recorder are the ONLY always-on writers; a quiet session with
-  Debug off writes one settings record per panel open and nothing else.
-* **Verbose tier - Debug Mode gated.** `event()` / `note()` /
-  `exception()` (handled) only write when Debug Mode is on
-  (Preferences → Debug). Debug Off means OFF. Development sessions
-  typically run with it on; turning it off silences everything except a
-  crash and the settings snapshot.
-
-**Format: JSON Lines** - one self-describing JSON object per line. Not
-prose, because the point is machine analysis: filter by category
-(`session` / `exception` / `note` / your own), count failures, diff two
-sessions, reconstruct a sequence.
-
-**Cost when off is one boolean test** for the verbose tier; the crash
-recorder only does work if the app actually crashes.
+A quiet session with Debug off therefore writes one settings record per
+panel open and nothing else.
 
 Use:
     from amaze.core import debug

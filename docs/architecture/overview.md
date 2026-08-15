@@ -143,7 +143,7 @@ Plus one *view mode*, not a section:
   > does not mention is kept, so a delete is said out loud through
   > `forget()`.
 
-### The Section API (what every Section implements)
+### The Section API (what every Section implements) {#o/section-api}
 
 | Method | Called when | 
 |---|---|
@@ -328,7 +328,7 @@ image.
   (config_root, not the cache). Color/Code paint in RAM and store
   nothing.
 
-### 4b. The **Conversion Engine**
+### 4b. The **Conversion Engine** {#o/conversion}
 
 One funnel from a file on disk to a thumbnail-sized image, for every
 section that shows a picture. It returns an image OR a **reason** —
@@ -380,7 +380,7 @@ every route inflates the whole image before shrinking it.
 > keeps it, and delivers it if nothing does better, because a black
 > texture is also a real picture.
 
-### 4c. The **Keyed Store Engine**
+### 4c. The **Keyed Store Engine** {#o/keyed-store}
 
 One guarded JSON side-table, keyed by a stable identity, for every
 store that keeps per-key choices beside the thing they belong to.

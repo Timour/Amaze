@@ -1,55 +1,27 @@
 """Repair: what is wrong with this library, and what is safe to do.
 
-Clean Library's opposite number, and the split is the design:
+Clean Library's opposite number. Clean Library deletes permanently and
+refuses when it cannot tell a leftover from somebody's asset; Repair
+NEVER deletes - the strongest thing it may do is MOVE files into a dated
+folder inside the library - and it is built for the library that is
+already incoherent.
 
-    | |Clean Library|Repair|
-    |deletes    |yes, permanently|NEVER|
-    |runs when  |the library is coherent|especially when it is NOT|
-    |answers    |"tidy what is settled"|"what is wrong, what is safe"|
+A SHELF TOOL, NOT A PANEL COMMAND. A running panel writes the index on
+many actions and flushes deferred saves, so a list put back from inside
+it is overwritten seconds later by its own host and the user is left
+believing they recovered. ▸p/db-restore
 
-Clean Library refuses when it cannot tell a leftover from somebody's
-asset, and a refusal with no way out is an outage wearing a safety hat.
-This is the way out. It reads, it reports in plain words, and the
-strongest thing it may do is MOVE files into a dated folder inside the
-library - never `os.remove`, never `shutil.rmtree`, not once, not on a
-confirmation.
+For the same reason it REFUSES TO CHANGE ANYTHING once a library is open
+in this session: `DatabaseConnector.load()` is gated on `if not
+self._data`, so a connector that has already read a list holds the OLD
+document and the next save writes it back over anything put back here.
+The report is always safe and always runs. Nothing here imports the
+panel or builds a model, which is what lets Repair work when the panel
+will not open - the case it exists for.
 
-*** WHY THIS IS A SHELF TOOL AND NOT A PANEL COMMAND. ***
-
-practice.md ▸ Restoring a database opens its procedure with "QUIT
-HOUDINI. A running panel writes the index on many actions and will
-overwrite whatever you put back", and records that a restore races the
-panel's own deferred save timers. A list put back from inside the panel
-is overwritten by its own host seconds later and the user is left
-believing they recovered - which converts a recoverable library into a
-confident wrong belief. That is worse than no tool at all.
-
-So Repair runs from the shelf, where the panel is closed, nothing holds
-a model, and nothing is about to flush a deferred save. It also means
-Repair works when the panel will not open, which is the case it exists
-for - and it is why nothing in this module imports the panel or builds a
-model.
-
-For the same reason it REFUSES TO CHANGE ANYTHING while a library is
-open in this Houdini session, and that refusal is read from code rather
-than guessed: `DatabaseConnector.load()` is gated on `if not self._data`
-(database.py), so a connector that has already read a list will NOT
-re-read it - it holds the OLD document and the next save writes that
-document back over anything put back here. The report is always safe and
-always runs; changing needs a session that has not opened a library yet.
-There is deliberately no detect-and-latch cleverness around a live
-panel: a pgrep-wait pattern was once written up here as if it were
-system behaviour and never existed. One honest refusal beats a
-mechanism nobody has measured.
-
-NOT debug.alert, and that is not an oversight. That sink is for telling
-someone something they did not ask about - deferred to the next event
-loop turn so it cannot steal a drop's release click, and shown once per
-session so a condition inside a loop cannot produce ten dialogs. Every
-dialog here is the opposite: the user clicked Repair and is waiting for
-an answer, the answer decides what happens next, and running Repair
-twice must say it twice. Its findings go to debug.event either way, so
-the log carries the whole run.
+Dialogs here are blocking, not `debug.alert`: the user clicked Repair
+and is waiting, the answer decides what happens next, and running it
+twice must say it twice. Findings go to `debug.event` either way.
 """
 
 import datetime

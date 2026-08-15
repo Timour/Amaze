@@ -1,49 +1,26 @@
 """Registered FILE LOCATIONS and File FAVOURITES, as library stores.
 
-**A File row's facts used to answer to two different scopes.** Its tile
-icon and its comment were written into whichever library was open; the
-location that listed it, and whether it was starred, were written into
-settings.json beside the install. Switch library and the file was still
-registered, still on disk, still listed - and its icon was gone. Two
-libraries could hold different icons for the same file with nothing
-reconciling them.
+Content facts follow the library; only the POINTER to it stays behind in
+settings.json. Registering a file in one library and losing its icon in
+another was one row answering to two scopes. ▸o/keyed-store
 
-So the content facts follow the library, and only the POINTER to the
-library stays behind: the bootstrap problem is real, but it covers
-`directory` and nothing else (devlog #260, reversed on that narrow
-ground 2026-08-05).
+**settings.json keeps a copy, and it is not a second truth.** Written
+FROM the store, never back into it, for the one job the library cannot
+do - be readable when the library is not, so an unmounted drive shows a
+last-known list marked unreachable rather than nothing. It serves a
+build ROLLBACK on THIS machine, never another machine: settings.json is
+per-machine and never travels.
 
-**settings.json keeps a copy, and it is not a second truth.** It does
-the one job the library cannot do - be readable when the library is
-not. The File section is the browser you most want working when a drive
-is unmounted or a sync has not landed, so the last-known list still
-shows, marked unreachable rather than silently missing. The
-copy is written FROM the store, never back into it.
+**The copy also carries the ORDER**, because a store is written with
+`sort_keys=True` and insertion order does not survive. The order is
+user-authored (`move_registered`, `commit_registered_order`) and stays
+local: membership is the shared fact, order is presentation.
 
-**It does NOT serve another machine.** The plan that built this said
-to keep the six old keys so another machine's older build still works,
-and that reason is hollow: settings.json is per-machine and never
-travels between computers.
-The keys are still worth writing, for the reason A4 gives
-and for a build ROLLBACK on THIS machine, which is a real case and the
-only back-compatibility a per-machine file can offer.
-
-**The copy also carries the ORDER.** A store is a dict written with
-`sort_keys=True`, so insertion order does not survive a write - order
-lives in the local list alone. Since 2026-08-14 that order is
-USER-AUTHORED: the sidebar's press-hold gesture moves a row through
-`move_registered` and persists through `commit_registered_order`.
-Keeping the local list's order means adding a location on one Mac does
-not reshuffle the sidebar on the other; order is a local presentation
-detail, membership is the shared fact.
-
-**The records are PER-USER since ROADMAP line 22 stage C**: the store
-declares `user_tagged`, so each user of a shared library registers
-their own folders and rows from before the tag adopt into whoever
-opens the library (`_adopt_untagged`). With a library present and
-nobody picked, reads serve the copy - the sidebar keeps its last-known
-list through the ASK dialog - and writes refuse; a removal still
-sweeps EVERY user's keys under the folder, the shared-act rule.
+**The records are PER-USER** - the store declares `user_tagged`, so
+each user of a shared library registers their own folders and untagged
+rows adopt into whoever opens it (`_adopt_untagged`). With a library
+present and nobody picked, reads serve the copy and writes refuse; a
+removal still sweeps EVERY user's keys under the folder.
 """
 
 from __future__ import annotations

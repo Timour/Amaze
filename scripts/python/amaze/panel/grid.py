@@ -1,46 +1,22 @@
 """The Grid area - the code that drives the ONE thumbnail view.
 
-Batch 6 of the four-areas restructure. The Grid is already one widget
-(`panel.thumblist`); what was written six times is the code that
-CONFIGURES it. This module is where that code goes as it leaves
-`panel.py`, and the first thing to arrive is the right-click menu.
+The Grid is already one widget (`panel.thumblist`); what was written six
+times was the code that CONFIGURES it. A menu is DATA now -
+`Section.GRID_MENU`, one row per entry - and this module is the only
+code that turns that data into a QMenu. ▸o/section-api
 
-**Seven menus became one builder over a per-section entry table.**
-`_material_rc_menu`, `_file_rc_menu`, `_cop_rc_menu`, `_code_rc_menu`,
-`_gradient_rc_menu` and `_matx_rc_menu` were 406 lines that each
-rebuilt the same five decisions - what the selection is, which entries
-exist, which are greyed, what a submenu holds, and which action was
-picked - and disagreed on every one of them. A menu is DATA now
-(`Section.GRID_MENU`, one row per entry) and this module is the only
-code that turns that data into a QMenu.
+A row says whether the entry EXISTS (`shown`), whether it is ENABLED
+(`needs` - it greys, never vanishes, so the menu keeps its shape), what
+its submenu holds (`children`), and the NAME of a Section method to
+call. A name rather than a callable, so the tables can be read side by
+side. Swatch pixmaps are drawn here, which keeps `sections.py` free of
+QtGui.
 
-What the table has to carry, and therefore what a row can say:
-
-* **existence** (`shown`) - Convert to Karma exists only when the
-  selection holds a Redshift material; File's Import, Load and Capture
-  Preview exist only when the selection holds a row of the right KIND.
-* **enabled-ness** (`needs`) - the selection law, extended: an entry
-  that acts on ONE item greys out while several are selected, and an
-  entry that needs ANY selection greys out while none is. It never
-
-  it, Material opened a menu of live entries over an empty selection,
-  Color/Node/File opened nothing at all, and Code opened New File -
-  three answers to one question).
-* **children** (`children`) - a submenu built per selection: Color's
-  ramp bases and its per-palette swatches, Material's Copy To targets.
-  The section says the label, the payload and a swatch COLOUR; the
-  pixmap is drawn here, so `sections.py` stays free of QtGui.
-* **the verb** - the name of a method on the Section. Not a callable:
-  a table of names reads as a table, and the five menus can be
-  compared side by side without following six lambdas.
-
-**Dispatch is by IDENTITY through a dict**, which is what retires the
-family of bug the old menus each guarded against by hand: a dismissed
-menu returns None, and a conditional entry that was not built is also
-None, so `action == action_convert_karma` fired the Redshift converter
-(with its "Converted 0 of 0" dialog) on every dismissed right-click
-until someone remembered the `is not None` guard. A dict lookup on
-None finds nothing, so there is nothing to remember.
+**Dispatch is by IDENTITY through a dict.** A dismissed menu returns
+None and so does an entry that was never built, so comparing actions
+fired the Redshift converter on every dismissed right-click until
+someone remembered an `is not None`. A dict lookup on None finds
+nothing, so there is nothing to remember.
 """
 
 from __future__ import annotations

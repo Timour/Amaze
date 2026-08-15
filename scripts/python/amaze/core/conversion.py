@@ -4,50 +4,31 @@ thumbnail-sized QImage, for every section that shows a picture.
 One responsibility, one API: :func:`convert_image`. It returns an
 image OR a reason, never a bare None that hides which.
 
-**DECODE and FIT are two different problems, and conflating them cost
-178 tiles.**
+**DECODE and FIT are two different problems**, and conflating them cost
+178 black tiles:
 
-- **FIT** - Qt can read this format, but the whole decode would pass
-  its allocation limit, so it refuses (research.md: a null image and
-  nothing raised). The way out is another PROCESS, and it MUST
-  resample while converting: a full-size temp file is refused all over
-  again. `sips -Z` and Pillow do that; `iconvert` cannot resize at all
-  (measured 2026-08-01), so it is not in this order.
-- **FORMAT** - Qt cannot read this format at ALL (exr, hdr, rat). The
-  file is not oversized, just foreign. ANY converter that writes a
-  Qt-readable file answers, at any size, and the engine scales the
-  result. Resampling during conversion buys only speed here.
+- **FIT** - Qt reads the format but refuses this file's allocation. The
+  way out is another process that resamples WHILE converting, since a
+  full-size temp file is refused all over again.
+- **FORMAT** - Qt cannot read the format at all (exr, hdr, rat). Any
+  converter that writes a Qt-readable file answers, at any size, and
+  the engine scales the result.
 
-**Which one applies is a property of the IMAGE, measured per file - it
-is never a property of the format.** That is why there is no `.hdr`
-special case anywhere below. `sips -Z` on a Radiance .hdr returns EXIT
-0 and a solid black PNG (measured 2026-08-02, and reproduced from a
-synthetic fixture: 1,675 bytes out of 2MB, every pixel identical);
-without `-Z` the same sips decodes it correctly. `-Z` was added to a
-shared helper for the FIT caller and silently destroyed HDR for the
-FORMAT caller - one function serving two contracts, which
-practice.md now records as the moment a helper became two functions.
+**Which applies is a property of the IMAGE, measured per file, never of
+the format** - hence no `.hdr` special case anywhere below. The `-Z`
+that FIT requires is what silently destroyed HDR for FORMAT.
+▸r/sips-hdr
 
-**AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.**
-The Material Engine has had this since the day it was built
-(`surface_terminal_wired`); the conversion path never did, which is
-how exit 0 and a black picture became 178 black tiles with not one
-line in the log. An adapter answers "here is an image". Deciding
-whether that is ACCEPTABLE is this module's job, in one place, for
-every adapter it owns. That is the GUARD - the FIX is the split above.
+**AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.** An
+adapter says "here is an image"; deciding whether that is ACCEPTABLE is
+this module's job, once, for every adapter it owns. Exit 0 and a black
+picture is how the 178 tiles happened with nothing in the log.
 
-**The adapters only produce.** Each one writes a PNG into a scratch
-file the engine hands it and says whether it succeeded. It chooses no
-order, trusts nothing, judges nothing and logs nothing. The engine
-owns the order, the size contract, the verification, the temp-file
-lifetime (three hand-rolled copies before this) and the ONE log line
-naming who answered and why the one before it did not.
-
-Pillow resamples in process and could hand back pixels directly; it
-writes a PNG like the others instead, so that every adapter's output
-travels the same verification and the same scratch-file lifetime.
-Measured: a 256px PNG write is 3.0ms against Pillow's 660ms resample
-of a 9000x9000 source - 0.5%, for one protocol instead of two.
+The engine owns the order, the size contract, the verification, the
+scratch-file lifetime and the one log line naming who answered.
+Pillow could hand back pixels in-process and writes a PNG like the rest
+anyway, so every adapter travels the same verification: 3.0ms against
+its own 660ms resample of a 9000x9000 source. ▸o/conversion
 """
 
 import contextlib

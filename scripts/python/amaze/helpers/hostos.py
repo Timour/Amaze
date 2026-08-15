@@ -414,45 +414,25 @@ SNAPSHOT_INTERVAL = 30 * 60
 def preserve_unreadable(path: str, why: str = "") -> str:
     """Copy a file we could not parse to `<path>.unreadable`, ONCE.
 
-    The policy this serves is written down: an unreadable file is NOT an
-    empty one, and the difference is everything - the model loads empty,
-    believes it is complete, and the first save makes it true (measured:
-    200 gradients -> 1 after one truncated launch plus one save).
+    An unreadable file is not an empty one: the model loads empty,
+    believes it is complete, and the first save makes it true (measured -
+    200 gradients to 1, after one truncated launch and one save).
 
-    Never overwritten once written, like `.bak-first`: the SECOND
-    failure is usually a write we caused, so keeping the first copy is
-    what keeps the original. Returns the copy's path, or "" if there was
-    nothing to preserve or the copy failed.
+    Write-once like `.bak-first`, because the SECOND failure is usually a
+    write we caused. Two exceptions, each of which had spent that one
+    slot on nothing: a 0-byte SOURCE is not preserved at all (a sync
+    placeholder is ordinary), and a 0-byte `.unreadable` IS replaced.
 
-    prefs.py grew its own version of this before it was shared; this is
-    the one new callers should use.
+    Returns the copy's path, or "" - and that is exactly what the caller
+    may claim to the user, since a path may be this call's copy or an
+    earlier one's and "" means there is nothing beside the file. The log
+    line tells the two apart; during a diagnosis they are different
+    facts.
 
-    TWO DEGENERATE CASES, both of which made the one rescue slot useless:
-
-    * A 0-BYTE SOURCE IS NOT WORTH PRESERVING. A sync placeholder is a
-      real, ordinary state for a file in a synced library, and copying it
-      spent the never-overwritten slot on nothing - so the genuinely
-      truncated file that arrived a minute later got no copy at all. ""
-      is returned, and nothing is created.
-    * A 0-BYTE `.unreadable` IS REPLACED. Write-once is right for a copy
-      that holds bytes; a copy that holds none is not evidence of
-      anything, and keeping it forever locked the slot shut.
-
-    The return value is what the CALLER may claim to the user: a path
-    means a copy is genuinely there (this call's or an earlier one's),
-    "" means there is nothing beside the file and no message may say
-    there is. The log line distinguishes the two, since "we kept a copy
-    just now" and "a copy from an earlier incident is still there" are
-    different facts during a diagnosis and read identically otherwise.
-
-    NOTHING HERE SPEAKS TO THE USER, and the return value is why. Every
-    caller on this path already prints a full paragraph about the file it
-    could not read, and both of them now name the copy - or do not - from
-    what this returned, so a printed line from in here was a second
-    paragraph about the same event, in vocabulary (rescue slot, sync
-    placeholder, write-once) the reader cannot act on separately. The
-    helper records; the caller speaks. It used to print, and the three
-    lines below were the loudest thing in a suite run.
+    NOTHING HERE SPEAKS TO THE USER. Every caller already prints a
+    paragraph about the file it could not read and names the copy from
+    this return value, so printing here was a second paragraph in
+    vocabulary the reader cannot act on.
     """
     import shutil
 
