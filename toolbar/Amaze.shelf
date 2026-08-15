@@ -1,37 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <shelfDocument>
-  <!-- Amaze's own shelf. Ships with the package: the install directory
-       is on HOUDINI_PATH and Houdini scans toolbar/ under every path
-       entry, so the tools and the "amaze" toolshelf are REGISTERED
-       automatically.
-
-       ONE PER-MACHINE STEP IS STILL NEEDED, and an earlier version of
-       this comment claimed otherwise. Registered is not displayed: the
-       shelf dock is populated from shelf SETS named in the desktop, and
-       a loose toolshelf belongs to no set. SideFX Labs has the same
-       shape - it ships <toolshelf name="labs_toolset"> and it is
-       Houdini's own GameTools.shelf that adopts it into a shelfSet.
-       Add the tab once per machine (right-click the shelf dock ▸
-       Shelves ▸ Amaze); Houdini records that in
-       $HOUDINI_USER_PREF_DIR/toolbar/default.shelf as a <shelfSetEdit>.
-       Note that record pins the Houdini BUILD in its fileLocation, so
-       it is lost on an upgrade and has to be redone. MANUAL.md says
-       so to the user under First run.
-
-       WHY A SHELF TOOL AT ALL. Houdini's hotkey system cannot bind an
-       action inside a Python Panel - verified on 22.0.394 against the
-       docs and the shipped tables: hou.hotkeys.addContext is
-       documented as "only useful for adding hotkeys to Python states",
-       PluginHotkeyDefinitions is for viewer states, and
-       HotkeyContexts.json carries no Python-Panel context (built-in
-       panes have one, custom panels do not). A shelf tool CAN take a
-       hotkey, and it fires from anywhere - including while the
-       viewport has focus, which is where you are when you have just
-       framed the shot you want to keep.
-
-       NO DEFAULT BINDING IS SHIPPED, deliberately. Assign a key in
-       Houdini's Hotkey Editor; choosing one here would silently take a
-       key that already means something to somebody. -->
+  <!-- Ships and auto-registers, but the TAB is a per-machine add, lost
+       on a Houdini upgrade (▸m/first-run). A shelf tool because a Python
+       Panel action cannot take a hotkey; no default binding. ▸r/hotkeys -->
 
   <tool name="amaze_capture_hip" label="Capture"
         icon="$AMAZE/scripts/python/amaze/ui/icon_screenshot.svg">

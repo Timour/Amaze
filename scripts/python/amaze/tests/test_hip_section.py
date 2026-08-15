@@ -1749,8 +1749,10 @@ class ShelfTest(unittest.TestCase):
         self.assertNotIn(
             "no per-machine setup", body,
             "the shelf claims to need no setup - it needs one")
+        # The id, not the filename: pointers are `▸m/first-run` since
+        # 2026-08-15 and tools/wiki-refs.py proves they resolve.
         self.assertIn(
-            "MANUAL.md", body,
+            "▸m/first-run", body,
             "the shelf does not point at where the setup step is written")
 
     def test_every_icon_resolves_to_a_file_that_exists(self):

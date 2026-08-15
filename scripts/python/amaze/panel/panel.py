@@ -420,15 +420,10 @@ class MatLibPanel(QtWidgets.QWidget):
     }
 
     def _ui_icon_path(self, filename: str) -> str:
-        """Absolute path of an icon asset in the plugin's ui/ folder, or
-        "" when no filename was given (callers and render_svg_pixmap
-        treat "" as icon-missing and degrade).
+        """An icon in ui/, or "" for no filename (callers degrade).
 
-        THE ONE ui/ LOOKUP, the same one the badge art goes through.
-        This rebuilt the join itself and answered "" whenever $AMAZE was
-        unset, where `ui_asset` falls back to the package's own folder -
-        so in one window the badge SVGs drew and the thirteen toolbar
-        icons did not, from the same missing variable.
+        Through `ui_asset` like the badge art: a second join here
+        answered "" with $AMAZE unset. ▸p/adoption
         """
         if not filename:
             return ""
@@ -2708,10 +2703,8 @@ class MatLibPanel(QtWidgets.QWidget):
     def catlist_rc_menu(self) -> None:
         """Sidebar right-click - the active context builds its own menu.
 
-        A remote catalogue's categories are still not ours to edit, and
-        nothing here has to know that: the online world declares no
-        SIDEBAR_MENU, and `grid.open_catlist_menu` returns on an empty
-        table.
+        The online world declares no SIDEBAR_MENU and the builder
+        returns on an empty table, so no world test belongs here.
         """
         section = self._section()
         if section is not None:

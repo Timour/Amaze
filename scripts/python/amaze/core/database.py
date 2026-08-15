@@ -172,32 +172,14 @@ def absent_traces(directory: str, filename: str) -> list:
     )
 
 
-#: THE FOUR LISTS, ONCE - filename, what the PANEL calls it, and what
-#: ONE of the things it holds is called. In the order the panel shows
-#: them, which is the order Repair reports in.
+#: THE FOUR LISTS, ONCE - filename, panel label, singular noun for a
+#: count - in panel order, which is Repair's order.
 #:
-#: These filenames were written out by hand in five places, and the
-#: copies had already drifted the way such copies do: gradients.json
-#: was the ONE database missing from `_EXISTED_MARKERS` above, so
-#: Repair and the colours loader reached opposite verdicts on whether
-#: the same file had ever existed.
-#:
-#: THE LABELS ARE DUPLICATED FROM panel/sections.py, deliberately: core
-#: must not depend on the UI package (panel imports core, and the reload
-#: chain relies on that staying one-way). test_absent_database asserts
-#: the two agree, so the copy cannot drift silently. `tools/library-
-#: audit.py` keeps its own copy for a different reason it states at both
-#: ends - it must run where Houdini will not start, so it may not import
-#: this module at all.
-#:
-#: The NOUN is singular because every one of them pluralises with an s,
-#: and "1 saved material" is the half that reads wrong when a table
-#: stores the plural. A count without one answers nothing: "548 saved"
-#: - saved what?
-#:
-#: gradients.json is listed although it has no DatabaseConnector: the
-#: gradient library runs the same absent-but-known guard and must name
-#: its section the same way.
+#: Labels are copied from panel/sections.py because core must not
+#: import the UI package; test_absent_database asserts they agree.
+#: tools/library-audit.py keeps a third copy, stated at both ends: it
+#: runs where Houdini will not start. gradients.json has no
+#: DatabaseConnector but takes the same absent-but-known guard.
 SECTION_DATABASES = (
     ("library.json", "Material", "material"),
     ("cops.json", "Node", "node"),
@@ -205,8 +187,7 @@ SECTION_DATABASES = (
     ("gradients.json", "Color", "color"),
 )
 
-#: Every list, in panel order. The one enumeration; everything that
-#: walks all four reads this.
+#: The one enumeration. Everything that walks all four reads this.
 DATABASES = tuple(name for name, _label, _holds in SECTION_DATABASES)
 
 _SECTION_LABELS = {name: label

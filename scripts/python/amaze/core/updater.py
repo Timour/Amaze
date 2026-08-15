@@ -136,21 +136,11 @@ def _unreachable_sentence(exc) -> str:
 def download(url: str, into: str) -> str:
     """Stream a release to `into`, returning the file written.
 
-    LENGTH-CHECKED, AND WRITTEN BESIDE THE TARGET. The two cover
-    different halves and neither covers the other's. A short body
-    closes the connection and the read loop ends NORMALLY
-    (research.md), so only the length check sees it; a transfer that
-    RAISES - a reset, a timeout, the process killed - never reaches any
-    check at all, and a writer aimed at the final path has already put
-    a truncated archive there for the next run to find. So the bytes
-    land on a scratch beside the target and are swapped in only on the
-    way out of a completed block. A missing Content-Length is UNKNOWN,
-    never zero.
-
-    `hostos.scratch_beside` rather than a private rename: it is the
-    package's one promote-on-success shape, and it fsyncs before the
-    swap and retries the Windows case where the destination is
-    momentarily held.
+    Two guards, neither covering the other's half. A short body ends
+    the read loop normally (research.md), so only the length check
+    sees it; a transfer that RAISES reaches no check at all, so the
+    bytes land on a scratch and promote only on a completed block.
+    A missing Content-Length is UNKNOWN, never zero.
     """
     from amaze.helpers import hostos
 

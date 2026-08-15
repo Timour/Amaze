@@ -297,24 +297,11 @@ def download(url: str, dest_path: str, on_bytes=None) -> str:
     on the main thread can drive a progress bar (total is 0 if the server
     sent no Content-Length)."""
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-    # Stream into a scratch sibling and promote on success - an
-    # interrupted transfer (timeout/reset mid-read) must never leave a
-    # truncated file at the final path, where cache layers would treat
-    # it as a finished download forever.
-    #
-    # `hostos.scratch_beside` rather than the unique_scratch/os.replace/
-    # discard trio written out here: it IS that trio, and it adds the
-    # fsync before the swap and the Windows retry. The name it picks is
-    # unique, which is the half that matters most - the fixed
-    # `dest_path + ".part"` this once used was one shared buffer, so two
-    # fetches of the same asset (two panes, two sessions, or a retry
-    # racing a slow first attempt) interleaved into it and the cleanup
-    # removed whichever copy was still there regardless of who was
-    # writing. That is the RAISING half of the defect measured for the
-    # asset pair: 417 of 800 saves failed because one writer's cleanup
-    # deleted the scratch the other was about to rename. Its `.writing`
-    # suffix is also the one `tools/library-audit.py` classifies as
-    # ours, where a leftover `.part` read as an unknown file.
+    # Promote on success: an interrupted transfer must not leave a
+    # truncated file at the final path, which cache layers read as a
+    # finished download forever. scratch_beside gives the unique name
+    # (a fixed `.part` was one shared buffer between concurrent
+    # fetches), the fsync, and the Windows retry.
     with hostos.scratch_beside(dest_path) as tmp_path:
         with _request(url) as resp, open(tmp_path, "wb") as fh:
             try:

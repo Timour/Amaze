@@ -30,7 +30,7 @@ of the app lives.
 
 ---
 
-## First run
+## First run {#m/first-run}
 
 Add the pane tab: **New Pane Tab Type ▸ Misc ▸ Amaze**.
 
