@@ -335,16 +335,13 @@ def render_svg_pixmap(path, size, color_replacements=None):
 
 
 class DesignedDialog(QtWidgets.QDialog):
-    """
+    """A dialog in the shape the HTML designs describe.
 
-    First one built from an HTML handover (the Versions pop-up,
-    2026-08-02). The shell is here rather than in the one dialog that
-    needed it because the SHAPE is the design language, not this
-    dialog: a dark header band carrying an icon, a small subtitle, a
-    big bold title and a kind line, over a body column inset equally
-    on both sides, ending in two buttons that fill that column.
+    A dark header band carrying an icon, a small subtitle, a big bold
+    title and a kind line, over a body column inset equally on both
+    sides, ending in two buttons that fill that column.
 
-
+    THE NUMBERS ARE THE DESIGN'S, stated once here:
 
         frame          512 x 435
         header band    512 x 132        #22232b
@@ -357,17 +354,11 @@ class DesignedDialog(QtWidgets.QDialog):
         field          442 x 60         #3e3f4a
         buttons        202 x 42, gap 38 #3e3f4a, radius 10, 23px
 
-    NOT THROUGH theme.ui_px. Everything else in the panel scales by
-
-
-    FIXED 512 x 435 window, and a design given in final pixels is
-    final: scaling it would be the panel overruling the design.
-
-
-    Source Sans 3 because it matches Houdini's own UI font, so a 23px
-    label in the design is a 23px label here (practice.md). The
-    colours are literal for the same reason - they are the design's
-    answer, not an approximation of a theme token.
+    NOT THROUGH `theme.ui_px`. The window is a FIXED 512 x 435; a design
+    given in final pixels is final, and scaling it by Houdini's UI
+    factor opens it at 1024. Sizes go straight across - the design is
+    drawn in Source Sans 3, which matches Houdini's UI font - and the
+    colours are literal, not theme tokens.
     """
 
     FRAME = (512, 435)

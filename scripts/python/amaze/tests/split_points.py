@@ -12,32 +12,20 @@ method's top-level statements and reports those boundaries.
 this local to an attribute buy me?" - it reports the cuts that would
 open up if NAME no longer counted as crossing.
 
-**Module-level names are not locals.** Imports, module constants and
-classes are visible inside any method, so they never block a split -
-counting them (as the first version of this analysis did) makes a
-method look hopelessly entangled and hides the one local that is
-actually pinning it together. For init_ui that was `central_layout`:
-excluding the imports took the largest unsplittable block from 278
-lines to 62.
+Module-level names are not locals: imports, constants and classes are
+visible in any method and never block a split.
 
-**What this CANNOT see, and it is a big exclusion:** `self` is treated
-as always-available, so ordering constraints expressed through
-attributes are invisible. In a method that is almost entirely
-`self.*` mutation - which init_ui is - that covers most of the real
-constraints: an index saved on self and consumed later, a widget that
-must be added to a layout before another is inserted at position 0, a
-connect that must follow the widget it binds. It reports where no
-LOCAL crosses; it does not report where the ORDER matters.
+**WHAT IT CANNOT SEE.** `self` counts as always-available, so ordering
+constraints expressed through attributes are invisible - an index saved
+on self and read later, a widget that must be added before another is
+inserted at 0, a connect that must follow its widget. It reports where
+no LOCAL crosses, never where the ORDER matters. Taking its "promote
+this local to an attribute" advice converts a constraint it CAN see
+into one it cannot; only worth it when the attribute is genuinely
+panel-wide state.
 
-Worse, taking its "promote this local to an attribute" advice converts
-a constraint it CAN see into one it cannot. That is a real trade, not
-a free win: it is only worth making when the resulting attribute is
-genuinely panel-wide state (central_layout was; a filter row or a
-short-lived palette is not).
-
-The cuts this finds are therefore necessary, not sufficient. Pair it
-with tests/ui_snapshot.py, which compares the constructed panel before
-and after - and keep the cuts small enough to read.
+Its cuts are necessary, not sufficient. Pair with tests/ui_snapshot.py,
+which compares the constructed panel before and after.
 """
 
 import argparse

@@ -24,34 +24,22 @@ def make_karma_builder(parent: hou.Node, name: str) -> hou.Node:
     """Create a MaterialX Material Builder subnet matching the
     KARMA_REF reference material EXACTLY.
 
-    A plain "subnet" is NOT a MaterialX builder: its Tab menu doesn't
-    offer mtlx* nodes and its network isn't picked up as a material.
-    This calls voptoolutils._setupMtlXBuilderSubnet - the same function
-    Houdini's own shelf tools use.
+    A plain "subnet" is NOT a MaterialX builder - its Tab menu offers no
+    mtlx* nodes and it is not picked up as a material. This calls
+    `voptoolutils._setupMtlXBuilderSubnet`, as Houdini's own shelf tools
+    do.
 
-    **Two flavours exist, and this uses the one KARMA_REF uses** (read
-    from the saved reference, 2026-07-20):
+    Two flavours exist; this builds the `mtlx` one, whose terminals are
+    separate `subnetconnector` nodes each carrying its own `parmname`.
+    Do not use the `kma` flavour: its single `suboutput` loses its
+    `name1`/`name2` parms when the starter shader is destroyed, and the
+    material renders pitch black. `kma_*` nodes still create fine here
+    through `createNode` - the tab-menu mask only limits the Tab menu.
 
-    | | render_context | output nodes |
-    |---|---|---|
-    | Karma Material Builder | `kma` | one `suboutput` + `kma_material_properties` |
-    | **MaterialX Material Builder** (KARMA_REF, this) | `mtlx` | two `subnetconnector`s: `surface_output` / `displacement_output` |
-
-    The mtlx flavour is not just a style choice - it's also more
-    ROBUST. Its output terminals are separate `subnetconnector` nodes
-    each carrying its own `parmname` ("surface" / "displacement"), so
-    destroying the starter shader can't wipe the terminal names the way
-    it wipes a `suboutput`'s `name1`/`name2` parms (the pitch-black bug).
-    `kma_rampconst` and other `kma_*` nodes still create fine here via
-    createNode - the tab-menu mask only limits the interactive Tab menu,
-    not programmatic creation (verified).
-
-    Starter `mtlxstandard_surface`/`mtlxdisplacement` are removed (real
-    content is built/loaded right after); the `subnetconnector` output
-    nodes are KEPT. Wire the shader in with `wire_builder_output()`.
-
-    Shared by the import path AND the Redshift->Karma converter, so a
-    converted material is structurally identical to a hand-built one."""
+    The starter `mtlxstandard_surface`/`mtlxdisplacement` are removed
+    and the `subnetconnector`s are KEPT. Wire the shader in with
+    `wire_builder_output()`.
+    """
     builder = parent.createNode("subnet")
     builder.setName(helpers.sanitize_usd_path(name), unique_name=True)
     builder = voptoolutils._setupMtlXBuilderSubnet(

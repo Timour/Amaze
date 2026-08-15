@@ -362,41 +362,24 @@ ALL_SECTION_KEYS = ("material", "gradient", "cop", "code", "file")
 def fixture_panel(testcase):
     """A REAL MatLibPanel, built against a private fixture library.
 
-    The panel takes no preferences - it constructs its own `Prefs()` and
-    calls `load()` - so the only way in is the directory `Prefs.__init__`
-    reads its settings from. Redirecting `hostos.config_root` puts both
-    the settings file and (through the settings we write there) the
-    library inside a tempdir, so this reaches nothing of the user's.
+    The panel constructs its own `Prefs()` and calls `load()`, so the
+    only way in is the directory `Prefs.__init__` reads from.
+    Redirecting `hostos.config_root` puts the settings and the library
+    in a tempdir, and this reaches nothing of the user's.
 
-    TWO ORDERING TRAPS, both measured:
+    ORDER MATTERS, twice:
 
     * **Import the panel module BEFORE patching.** `panel.py` reloads
-      `hostos` at import time, which re-executes the module and restored
-      the real `config_root` - a patch applied first was silently undone
-      and the panel opened the user's real library (measured: prefs.dir
-      came back as the live path).
-    * **Reset the connector cache before constructing**, per this
-      module's own docstring: the models are built during construction.
+      `hostos` at import, which restores the real `config_root` - patch
+      first and the panel silently opens the user's real library.
+    * **Reset the connector cache before constructing**; the models are
+      built during construction.
 
-    THREE MORE THINGS A CONSTRUCTED PANEL REACHES, all closed here:
-
-    * **`Prefs.save` is disabled**, as practice.md requires of every
-      panel-constructing script: the view-mode toggle persists itself
-      while the panel builds. Redirecting config_root already sends that
-      write into the tempdir, but the tempdir is removed at cleanup while
-      the panel object is still alive (deleteLater never runs without an
-      event loop), so a deferred save timer would fire at a deleted path.
-    * **The network is blocked**, at `matx_sources._request` - the one
-      urlopen in the package. Entering the online browser starts a
-      catalogue worker that fetches EVERY source, so one placeholder
-      assertion made four live third-party requests, each able to stall
-      for TIMEOUT (30s) while shutdown terminates the thread after 3.
-      The worker turns the refusal into an ordinary "could not reach"
-      errors entry, which is what an offline machine looks like anyway.
-    * **The catalogue cache is asserted**, not assumed. It used to be an
-      import-time constant off the real cache root (see matx_library),
-      and a fixture panel read the user's real 684KB catalogue and was
-      one `if errors:` away from writing it.
+    Three more reaches, closed here: `Prefs.save` is disabled (a
+    deferred save would fire at the deleted tempdir), the network is
+    blocked at `matx_sources._request`, and the catalogue cache is
+    ASSERTED rather than assumed - it was once an import-time constant
+    off the real cache root.
 
     The panel is deleted and every patch restored on cleanup.
     """

@@ -1,42 +1,21 @@
 """Reading a stored index through a proxy - and the theory this KILLED.
 
-2026-07-30 00:13, Houdini 22.0.394, signal 11. A section-tab
-click reached _capture_section_state, which called `.data()` on the
-sidebar's stored currentIndex. The sidebar's model is a
-QSortFilterProxyModel, so that call went straight into
-mapToSource -> proxy_to_source and died there:
+**`live_current_index` IS NOT A PROVEN FIX, and must never be described
+as one.** The crash it was written for - a SIGSEGV in
+`proxy_to_source`, reading a stored currentIndex through a proxy - was
+blamed on a shrinking model leaving the index valid-but-out-of-bounds.
+The tests below disprove that: Qt maintains currentIndex through
+removeRows, clear, reset, setSourceModel, a filter change and
+takeRow-without-reset. THE CAUSE REMAINS UNKNOWN.
 
-    9  QSortFilterProxyModel::data
-    8  QSortFilterProxyModelWrapper::mapToSource
-    7  QSortFilterProxyModelPrivate::proxy_to_source   <- SEGV
+It is kept as defence in depth, at four comparisons. `isValid()` alone
+is weak - row, column and a non-null model POINTER, nothing about
+whether the model still holds that row.
 
-Nothing reached the debug log, because a SIGSEGV is not a Python
-exception - @debug.guarded and the excepthook both see it and can do
-nothing. The crash was localised by which log line was MISSING: the
-`switched` event two statements later never appeared.
-
-`isValid()` is a weak check either way - row >= 0, column >= 0 and a
-non-null model POINTER, nothing about whether the model still holds that
-row. That much is true and is why the helper does not rely on it.
-
-*** THE FIRST DIAGNOSIS WAS WRONG, AND THIS FILE IS WHY. ***
-The crash was blamed on a shrinking model leaving the view's
-currentIndex valid-but-out-of-bounds. Writing the test below disproved
-it in one run: Qt maintains currentIndex through removeRows, clear,
-reset, setSourceModel, a filter change and takeRow-without-reset. So
-currentIndex is NOT the vector, the research.md entry claiming it was
-has been corrected, and THE CAUSE OF THE CRASH REMAINS UNKNOWN.
-
-`live_current_index` is kept anyway: refusing an index that belongs to a
-model the view no longer shows is correct on its own merits and costs
-four comparisons. It is defence in depth, NOT a proven fix - and it must
-never be described as one.
-
-The one shape that IS still refused, and matters: an index from a
-PREVIOUS model after a section switch replaces the view's model. That is
-a real bug the drag path already hit once, where an ONLINE index read
-through the MATERIAL proxy dragged whichever local material sat at that
-row.
+The one shape it DOES refuse, and it is a real bug already hit once: an
+index from a PREVIOUS model, after a section switch replaced the view's
+model, so an ONLINE index read through the MATERIAL proxy dragged
+whichever local material sat at that row.
 """
 
 import os

@@ -15,7 +15,7 @@ DOCSTRING_LINES = 20
 
 #: Blocks still over the cap (2026-08-15). LOWER it as the sweep
 #: advances; never raise it.
-BUDGET = 275
+BUDGET = 273
 
 
 def _blocks(path):
