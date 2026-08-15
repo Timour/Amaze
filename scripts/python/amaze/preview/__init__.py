@@ -5,27 +5,31 @@ from amaze.preview import shaderball_scene
 from amaze.preview import thumbnail_scene
 from amaze.preview import karma_scene
 
-ThumbNailScene = thumbnail_scene.ThumbNailScene
-ocio_from_viewer = thumbnail_scene.ocio_from_viewer
-safe_set = thumbnail_scene.safe_set
-rig_key = thumbnail_scene.rig_key
-build_karma_scaffold = karma_scene.build_karma_scaffold
-render_karma_into = karma_scene.render_karma_into
+_LEAF_FIRST = (shaderball_scene, thumbnail_scene, karma_scene)
 
-__all__ = ["ThumbNailScene", "ocio_from_viewer", "safe_set", "rig_key",
-           "build_karma_scaffold", "render_karma_into", "reload_engine"]
+_DOOR = {
+    "ThumbNailScene": thumbnail_scene,
+    "ocio_from_viewer": thumbnail_scene,
+    "safe_set": thumbnail_scene,
+    "rig_key": thumbnail_scene,
+    "build_karma_scaffold": karma_scene,
+    "render_karma_into": karma_scene,
+}
+
+__all__ = list(_DOOR) + ["reload_engine"]
 
 
-def reload_engine():
+def _bind() -> None:
+    """Point every name in `_DOOR` at what its module holds NOW. ▸p/preview-door"""
+    globals().update({name: getattr(module, name)
+                      for name, module in _DOOR.items()})
+
+
+def reload_engine() -> None:
     """Re-execute this package's modules leaf first and re-bind; reloading the package alone refreshes nothing. ▸r/package-reload"""
-    global ThumbNailScene, ocio_from_viewer, safe_set, rig_key
-    global build_karma_scaffold, render_karma_into
-    importlib.reload(shaderball_scene)
-    importlib.reload(thumbnail_scene)
-    importlib.reload(karma_scene)
-    ThumbNailScene = thumbnail_scene.ThumbNailScene
-    ocio_from_viewer = thumbnail_scene.ocio_from_viewer
-    safe_set = thumbnail_scene.safe_set
-    rig_key = thumbnail_scene.rig_key
-    build_karma_scaffold = karma_scene.build_karma_scaffold
-    render_karma_into = karma_scene.render_karma_into
+    for module in _LEAF_FIRST:
+        importlib.reload(module)
+    _bind()
+
+
+_bind()

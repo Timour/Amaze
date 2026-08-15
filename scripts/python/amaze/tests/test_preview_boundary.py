@@ -1,30 +1,12 @@
-"""The preview engine is a BOX, and this is what makes that true.
-
-`amaze/preview/` is the scene a material thumbnail is rendered in - the
-most egMatLib-derived part of Amaze still doing a job of its own
-(overview.md 4h). Boxing it is only worth something if callers actually
-go through its door: a package everyone reaches into is a directory,
-not an engine, and "swap the preview engine" stops being a sentence
-anyone can act on.
-
-So: the rest of the tree may name `amaze.preview`. It may not import
-what is inside it.
-
-WHY A TEST AND NOT A CONVENTION. Before the move, `render/thumbs.py`
-imported `thumbnail_scene` directly and `panel/panel.py` imported both
-submodules to reload them - which is exactly the shape this forbids, so
-this file was RED on the tree that existed before the package did. A
-boundary nothing checks is a boundary that lasts until the next hurry.
-"""
+"""The preview engine is a BOX: name `amaze.preview`, never its insides. ▸p/preview-door"""
 import ast
 import os
+import types
 import unittest
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(PACKAGE, "preview")
 
-#: How the engine is named from outside. Everything else in the package
-#: is its own business.
 DOOR = "amaze.preview"
 
 
@@ -37,15 +19,7 @@ def _python_files(root):
 
 
 def _imports(path):
-    """Every module name this file imports, however it spells it.
-
-    Both forms matter and they fail differently: `from amaze.preview
-    import thumbnail_scene` binds the submodule, and `import
-    amaze.preview.thumbnail_scene` binds the top package but still
-    names the internal path. Reading the AST rather than grepping,
-    because a comment mentioning the module is not an import - the
-    mistake practice.md records against a guard that matched prose.
-    """
+    """Every module name this file imports, in either spelling. ▸p/preview-door"""
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
     found = set()
@@ -65,9 +39,7 @@ def _imports(path):
 class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
 
     def test_the_engine_has_modules_to_protect(self):
-        """Guards the guard: an empty package makes every assertion
-        below vacuously true, which is how a boundary test survives the
-        deletion of the thing it protects."""
+        """Guards the guard: an empty package makes every assertion below vacuous."""
         self.assertTrue(os.path.isdir(ENGINE),
                         "the preview engine package is gone: %s" % ENGINE)
         inside = [os.path.basename(p) for p in _python_files(ENGINE)
@@ -78,34 +50,49 @@ class ThePreviewEngineIsAPackageWithADoor(unittest.TestCase):
             "is asserting nothing: %s" % inside)
 
     def test_the_engine_states_its_api(self):
-        """__init__.py is the door, and a door with nothing written on
-        it is a wall with a hole. It is also the one file the system
-        map guard skips, so nothing else would notice it going empty."""
-        init = os.path.join(ENGINE, "__init__.py")
-        with open(init, encoding="utf-8") as handle:
-            tree = ast.parse(handle.read(), filename=init)
-        exported = set()
-        for node in tree.body:
-            if not isinstance(node, ast.Assign):
-                continue
-            names = [t.id for t in node.targets if isinstance(t, ast.Name)]
-            if "__all__" not in names:
-                continue
-            if isinstance(node.value, (ast.List, ast.Tuple)):
-                exported = {element.value for element in node.value.elts
-                            if isinstance(element, ast.Constant)}
+        """A door with nothing written on it is a wall with a hole."""
+        from amaze import preview
         self.assertTrue(
-            ast.get_docstring(tree),
+            preview.__doc__,
             "preview/__init__.py carries no docstring, so the engine "
             "has no stated API")
         self.assertTrue(
-            exported,
+            getattr(preview, "__all__", None),
             "preview/__init__.py declares no __all__, so what is inside "
             "the box and what is offered are the same thing")
 
+    def test_a_reload_rebinds_every_name_the_door_offers(self):
+        """A name the reload forgets keeps its OLD function bound. ▸p/preview-door"""
+        from amaze import preview
+        preview.reload_engine()
+        inside = [m for m in vars(preview).values()
+                  if isinstance(m, types.ModuleType)
+                  and getattr(m, "__name__", "").startswith(DOOR + ".")]
+        self.assertTrue(
+            inside,
+            "the door binds no submodule of its own, so there is nothing "
+            "to compare a rebind against and this test proves nothing")
+        unowned, stale = [], []
+        for name in preview.__all__:
+            if name == "reload_engine":
+                continue
+            owners = [m for m in inside if hasattr(m, name)]
+            if not owners:
+                unowned.append(name)
+            elif all(getattr(m, name) is not getattr(preview, name)
+                     for m in owners):
+                stale.append(name)
+        self.assertEqual(
+            [], unowned,
+            "the door offers these but no submodule of it defines them, "
+            "so __all__ has drifted from what is behind it: %s" % unowned)
+        self.assertEqual(
+            [], stale,
+            "reload_engine() left these bound to the code it replaced, "
+            "so a dev reload refreshes everything but them: %s" % stale)
+
     def test_nothing_outside_reaches_past_the_door(self):
-        """The whole point. Naming `amaze.preview` is fine; naming
-        anything under it is not."""
+        """Naming `amaze.preview` is fine; naming anything under it is not."""
         offenders = []
         for path in _python_files(PACKAGE):
             if path.startswith(ENGINE + os.sep):
