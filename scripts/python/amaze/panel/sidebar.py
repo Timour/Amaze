@@ -1,31 +1,4 @@
-"""The Sidebar area - the code that drives the ONE category/folder list.
-
-Batch 7 of the four-areas restructure, the counterpart to
-`panel/grid.py`. The Sidebar is already one widget (`panel.cat_list`);
-what was spread across `panel.py` is the code that decides what a row
-MEANS and what may be dropped on it.
-
-**The drag-hover cluster lives here.** Ten methods answering one
-question in layers - is the thing under the cursor a row a tile can be
-dropped onto, and if so, which - plus the highlight that says so. They
-are functions over the panel rather than methods on it, the same shape
-`grid.open_grid_menu` uses.
-
-**What actually changed on the way, and it is not the move.** The
-cluster branched on the section KEY twice: a `CATEGORY_SECTIONS` tuple
-of four key strings, and `if self.current_section == "gradient"`
-reaching into `gradient_model` by name. That is the shape batches 4 to
-9 took out of activation, the toolbar, comments and both menus, still
-standing in the sidebar. The context answers now -
-`Section.takes_category_drops` and `Section.accepts_category_drop` -
-so a sixth section brings its own answer instead of being added to a
-tuple somebody has to remember.
-
-The HIGHLIGHT repaints rather than updates, deliberately: a native
-`QDrag.exec()` (the texture file drag) runs macOS's own drag loop,
-which does not process Qt's deferred paint events until the drag ends,
-so `update()` never showed the drop target at all.
-"""
+"""The Sidebar: what a row MEANS, and what may be dropped on it. ▸o/section-api"""
 
 from __future__ import annotations
 
@@ -35,37 +8,15 @@ from amaze.core import debug
 
 
 class SidebarReorder(QtCore.QObject):
-    """The press-hold row reorder for the ONE sidebar list.
+    """Press-hold row reorder; asks the Section, owns only the state machine. ▸r/press-gestures"""
 
-    Hold a row for `QApplication.startDragTime` and it grabs - a
-    closed-hand cursor, live model moves under the mouse, one write
-    on release, Esc restores the snapshot, moving before the hold
-    fires stays a click; self-managed like every gesture here, on the
-    probed facts in research.md ▸ *Model row moves, proxy order &
-    press gestures*. The gesture asks the CONTEXT
-    (`Section.reorders_sidebar` and the verbs beside it), never a
-    list of section keys; this controller owns only the state
-    machine. An event filter on the viewport (mouse) and the view
-    (Esc) because `cat_list` comes from the .ui loader; while
-    reordering, move and release events are CONSUMED so the view's
-    drag-selection never fights the gesture - the release passes
-    through, so the click path finishes as a plain click would.
-    """
-
-    #: Distance from the viewport's top/bottom edge, in px, inside
-    #: which a move event nudges the scrollbar one step - the
-    #: self-managed gesture is invisible to Qt's own autoScroll.
     EDGE_SCROLL_MARGIN = 16
 
     def __init__(self, panel):
         view = panel.cat_list
         super().__init__(view)
         self._panel = panel
-        self._pressed_pos = None
-        self._grabbed = None
-        self._snapshot = None
-        self._changed = False
-        self._reordering = False
+        self._clear()
         self._hold_timer = QtCore.QTimer(self)
         self._hold_timer.setSingleShot(True)
         self._hold_timer.timeout.connect(self._hold_fired)
@@ -75,16 +26,20 @@ class SidebarReorder(QtCore.QObject):
     def reordering(self) -> bool:
         return self._reordering
 
-    # -- state ---------------------------------------------------------
-
-    def _reset(self) -> None:
-        self._hold_timer.stop()
+    def _clear(self) -> None:
+        """The blank slate: no press, no grab, no snapshot, nothing moved."""
         self._pressed_pos = None
         self._grabbed = None
         self._snapshot = None
         self._changed = False
-        if self._reordering:
-            self._reordering = False
+        self._reordering = False
+
+    def _reset(self) -> None:
+        """The blank slate again, and the cursor goes back with it."""
+        self._hold_timer.stop()
+        was_reordering = self._reordering
+        self._clear()
+        if was_reordering:
             view = self._panel.cat_list
             if view is not None:
                 view.viewport().unsetCursor()
@@ -95,8 +50,6 @@ class SidebarReorder(QtCore.QObject):
                                           False):
             return None
         return section
-
-    # -- the event filter ----------------------------------------------
 
     @debug.guarded("SidebarReorder.eventFilter")
     def eventFilter(self, watched, event):
@@ -162,10 +115,7 @@ class SidebarReorder(QtCore.QObject):
         return False
 
     def _follow(self, pos) -> None:
-        """The row under the (clamped) cursor is where the grabbed
-        row goes; crossings repeat this, and hidden rows between
-        visible neighbours ride along in source terms (research.md ▸
-        *Model row moves, proxy order & press gestures*)."""
+        """The grabbed row goes to the row under the clamped cursor. ▸r/press-gestures"""
         section = self._section()
         view = self._panel.cat_list
         if (section is None or view is None
@@ -203,13 +153,11 @@ class SidebarReorder(QtCore.QObject):
                 section.commit_sidebar_order()
         else:
             self._reset()
-        # Passed through either way - after a reorder the row under
-        # the hand IS the grabbed row, so the click path lands there
+        # Passed through: the row under the hand IS the grabbed row.
         return False
 
     def _abort(self) -> None:
-        """Esc, or the world moved under the gesture (model reset,
-        section switch): put the order back and let go."""
+        """Esc, or the world moved under the gesture: put the order back."""
         section = self._section()
         snapshot = self._snapshot
         self._reset()
@@ -218,13 +166,7 @@ class SidebarReorder(QtCore.QObject):
 
 
 def droppable_index(panel, pos):
-    """The sidebar index under a sidebar-local point IF a tile may be
-    dropped on it. Else None.
-
-    THE ONE PLACE the drop-target rules live. Three of them are shared
-    - the context takes drops at all, the row is real, the row is not
-    "All" - and whatever is left is the context's own.
-    """
+    """THE ONE PLACE the drop-target rules live; None if no tile may land here."""
     context = panel._section()
     if context is None or not context.takes_category_drops:
         return None
@@ -233,8 +175,6 @@ def droppable_index(panel, pos):
     index = panel.cat_list.indexAt(pos)
     if not index.isValid():
         return None
-    # The STORED name: the sidebar shows "_WIP" as "WIP", and every
-    # rule below - and the write that follows - is about the stored one.
     name = panel._raw_category_name(index)
     if not name or name in ("All", "_All"):
         return None
@@ -244,20 +184,13 @@ def droppable_index(panel, pos):
 
 
 def category_at_point(panel, pos):
-    """The droppable category NAME at a sidebar-local point, or None.
-
-    The stored name, which is what `assign_category_active` writes onto
-    the asset. By its LABEL, a drop onto "_WIP" called
-    `check_add_category("WIP")` and created a SECOND category beside
-    it - so the tile vanished from the row it was dropped on.
-    """
+    """The droppable category at a point, by its STORED name - the form the write needs."""
     index = droppable_index(panel, pos)
     return None if index is None else panel._raw_category_name(index)
 
 
 def _cursor_in_sidebar(panel):
-    """The cursor's sidebar-local position, or None when it is not over
-    the sidebar at all. The guard both global-cursor paths need."""
+    """The cursor's sidebar-local position, or None when it is not over it."""
     if panel.cat_list is None or not panel.cat_list.isVisible():
         return None
     viewport = panel.cat_list.viewport()
@@ -266,25 +199,13 @@ def _cursor_in_sidebar(panel):
 
 
 def category_under_cursor(panel):
-    """The assignable category name under the GLOBAL cursor, or None.
-
-    Every self-managed release checks this first: a drop on a sidebar
-    category recategorises instead of importing.
-    """
+    """The assignable category under the GLOBAL cursor - every self-managed release asks first."""
     pos = _cursor_in_sidebar(panel)
     return None if pos is None else category_at_point(panel, pos)
 
 
 def set_hover_row(panel, row: int) -> None:
-    """Highlight (row) or clear (row=-1) the category being dragged
-    over, in the accent purple - the drop-target feedback.
-
-    `repaint()`, not `update()`: a native `QDrag.exec()` (the texture
-    file drag) runs macOS's own drag loop, which does not process Qt's
-    DEFERRED paint events until the drag ends, so the highlight never
-    showed at all through `update()`. This paints synchronously, inside
-    the drag loop.
-    """
+    """Highlight a row (-1 clears); `repaint()`, never `update()`. ▸r/native-drag-paint"""
     delegate = getattr(panel, "sidebar_delegate", None)
     if delegate is None or delegate.drag_row == row:
         return
@@ -300,9 +221,7 @@ def update_hover(panel, pos) -> None:
 
 
 def update_hover_global(panel) -> None:
-    """The highlight for the SELF-MANAGED drags (Node/Color/Code, which
-    have no Qt drag events) - maps the global cursor into the sidebar
-    and highlights whatever droppable row it is over."""
+    """The highlight for the SELF-MANAGED drags, which have no Qt drag events."""
     pos = _cursor_in_sidebar(panel)
     if pos is None:
         set_hover_row(panel, -1)
@@ -311,9 +230,7 @@ def update_hover_global(panel) -> None:
 
 
 def can_drop(panel, event) -> bool:
-    """The sidebar accepts a drop only from OUR OWN grid, and only into
-    a context that takes them - so a node dragged in from a Houdini
-    network editor still falls through to the save-node handler."""
+    """Only OUR OWN grid, only into a context that takes drops - the rest falls through."""
     context = panel._section()
     return bool(context is not None
                 and context.takes_category_drops
@@ -321,12 +238,7 @@ def can_drop(panel, event) -> bool:
 
 
 def handle_drop(panel, event) -> bool:
-    """A grid drag was dropped on the sidebar.
-
-    Recategorise the selection if it landed on a real category; consume
-    the drop either way - even over "All" or empty space - so it never
-    reaches the central widget's save-node flow.
-    """
+    """Recategorise if it landed on a real category; CONSUME the drop either way."""
     if not can_drop(panel, event):
         return False
     category = category_at_point(panel, event.position().toPoint())

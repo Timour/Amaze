@@ -1,26 +1,4 @@
-"""The sidebar's MANUAL order - one engine for every section.
-
-The sections used to disagree three ways about the same list: the
-asset sidebars sorted by name through their proxy (and "_All" loses a
-name sort to any digit, so a category called "2" sat ABOVE All), Color
-showed its stored list unsorted, and File was a third shape again.
-The engine now is: the STORED list order is the order, "_All" is
-pinned to row 0 by the database, and a press-hold on a row moves it.
-
-What is pinned here:
-
-* `Categories.move_category` - the one row-move, in place, refusing
-  All and anything above it;
-* `_normalize_all_category` - runs for EVERY category-bearing
-  database (library.json included) and MOVES a stray `_All` to the
-  front rather than only inserting a missing one;
-* the sidebar proxy presents STORED order - no sort() anywhere on a
-  sidebar proxy in panel.py, while the save dialog's dropdown keeps
-  its alphabetical sort();
-* the press-hold gesture's state machine (arm, cancel, fire, move,
-  commit once, Esc restores);
-* the reorder contract every section answers.
-"""
+"""The sidebar's MANUAL order: the STORED list is the order, "_All" pinned to row 0."""
 
 import json
 import os
@@ -46,9 +24,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def _categories(testcase, entries):
-    """A real Categories over a fixture library, its list set IN PLACE
-    (the model aliases the connector's document list - a rebind is the
-    erasure test_category.py pins)."""
+    """A real Categories over a fixture library, its list set IN PLACE."""
     prefs = test_support.fixture_prefs(testcase)
     test_support.reset_database_singletons()
     testcase.addCleanup(test_support.reset_database_singletons)
@@ -71,10 +47,7 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertEqual(["_All", "c", "a", "b"], model._categories)
 
     def test_the_move_is_bracketed_by_the_move_signals(self):
-        """beginMoveRows/endMoveRows, not a reset and not silence - a
-        proxy and the selection follow a MOVE without losing the
-        current row; research.md records what an unbracketed row-set
-        change does to the native side."""
+        """beginMoveRows/endMoveRows, not a reset and not silence. ▸r/press-gestures"""
         model = _categories(self, ["_All", "a", "b"])
         seen = []
         model.rowsAboutToBeMoved.connect(lambda *a: seen.append("about"))
@@ -98,8 +71,7 @@ class MoveCategoryTest(unittest.TestCase):
         self.assertEqual([], seen, "a refused move emitted signals")
 
     def test_the_move_mutates_in_place_and_does_not_save(self):
-        """The list is the connector's own; the gesture saves ONCE on
-        release, so the move itself must neither rebind nor write."""
+        """The gesture saves ONCE on release: the move neither rebinds nor writes."""
         model = _categories(self, ["_All", "a", "b"])
         held = model._categories
         with mock.patch.object(model, "save") as save:
@@ -108,8 +80,7 @@ class MoveCategoryTest(unittest.TestCase):
         save.assert_not_called()
 
     def test_the_saved_order_survives_a_reload(self):
-        """The stored list IS the manual order - what a save writes is
-        what the next session shows."""
+        """What a save writes is what the next session shows."""
         model = _categories(self, ["_All", "a", "b", "c"])
         self.assertTrue(model.move_category(1, 3))
         self.assertTrue(model.save())
@@ -143,16 +114,10 @@ class OrderSnapshotTest(unittest.TestCase):
 
 
 class AllPinnedByTheDatabaseTest(unittest.TestCase):
-    """`_normalize_all_category` is the invariant, not a seeding
-    repair: every category-bearing database keeps `_All` present AND
-    first. With the name sort gone, a stray `_All` would otherwise
-    simply SHOW wherever it sits."""
+    """Every category-bearing database keeps `_All` present AND first."""
 
     def _rewrite(self, prefs, filename, categories):
-        """Plant a category order on disk. The fixture library carries
-        only the primary; a missing secondary is seeded at the CURRENT
-        schema, because a hand-written stamp below it has no migration
-        steps left and is refused rather than upgraded."""
+        """Plant a category order on disk, seeding at the CURRENT schema."""
         path = os.path.join(prefs.dir, filename)
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as handle:
@@ -170,9 +135,7 @@ class AllPinnedByTheDatabaseTest(unittest.TestCase):
         return database.DatabaseConnector(filename).load(prefs.dir)
 
     def test_a_stray_all_moves_to_the_front_of_the_primary(self):
-        """library.json was EXEMPT from the normalize - its seeds put
-        _All first and the sort hid every stray. The manual order
-        unhides them."""
+        """library.json is no longer exempt from the normalize."""
         prefs = test_support.fixture_prefs(self)
         self._rewrite(prefs, "library.json", ["Wood", "_All", "Metal"])
         data = self._load(prefs, "library.json")
@@ -185,8 +148,7 @@ class AllPinnedByTheDatabaseTest(unittest.TestCase):
         self.assertEqual(["_All", "X", "Y"], data["categories"])
 
     def test_a_plain_all_is_still_rewritten(self):
-        """The original repair stays: a pre-convention plain "All"
-        becomes the marker, never a second row."""
+        """A pre-convention plain "All" becomes the marker, never a second row."""
         prefs = test_support.fixture_prefs(self)
         self._rewrite(prefs, "cops.json", ["All", "X"])
         data = self._load(prefs, "cops.json")
@@ -219,16 +181,7 @@ class SidebarShowsStoredOrderTest(unittest.TestCase):
 
 
 class PanelWiresNoSidebarSortTest(unittest.TestCase):
-    """The structure test for the wiring: the four sidebar proxies are
-    built UNSORTED in panel.py, Color goes through the same proxy class
-    as the other three, and the save dialog's dropdown keeps its
-    alphabetical sort - the sidebar is where the manual order shows,
-    a dropdown you type against stays predictable.
-
-    Source-derived (grep for STRUCTURE, practice.md): the wiring is
-    six lines in setup(), and an activate test would need the whole
-    panel for what is a construction-time fact.
-    """
+    """Source-derived: the four sidebar proxies are built UNSORTED in panel.py."""
 
     SIDEBAR_PROXIES = (
         "category_sorted_model",
@@ -243,8 +196,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
         with open(os.path.join(root, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             cls.panel_source = handle.read()
-        # STRUCTURE, not prose: a wrapped call is the same call, so
-        # the needles below match with all whitespace removed.
+        # A wrapped call is the same call: the needles match whitespace-free.
         cls.flat_source = "".join(cls.panel_source.split())
 
     def test_no_sidebar_proxy_is_sorted_or_sort_roled(self):
@@ -276,9 +228,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
 
 class ReorderContractTest(unittest.TestCase):
-    """Every section answers the reorder contract - the gesture asks
-    the CONTEXT, never a list of section keys (the sidebar's own
-    retired-CATEGORY_SECTIONS lesson)."""
+    """Every section answers the reorder contract; the gesture asks the CONTEXT."""
 
     def test_the_five_sections_reorder_and_online_does_not(self):
         from amaze.panel import sections
@@ -302,8 +252,7 @@ class ReorderContractTest(unittest.TestCase):
 
 
 class _RecordingSection:
-    """The contract the gesture speaks, recorded - the controller's
-    state machine is under test here, not any section's mapping."""
+    """The contract the gesture speaks, recorded - the state machine is under test."""
 
     reorders_sidebar = True
 
@@ -342,10 +291,7 @@ def _mouse(kind, pos, buttons=QtCore.Qt.MouseButton.LeftButton):
 
 
 class HoldGestureTest(unittest.TestCase):
-    """The press-hold state machine, replayed headlessly against a
-    real view over the real models. The hold TIME is the platform's
-    own (`QApplication.startDragTime`), never a literal in the
-    controller; firing is driven directly so no test sleeps."""
+    """The press-hold state machine, replayed headlessly; no test sleeps."""
 
     def _harness(self, entries=("_All", "a", "b", "c")):
         from amaze.panel import sidebar
@@ -460,13 +406,32 @@ class HoldGestureTest(unittest.TestCase):
         self.assertEqual(0, section.commits)
 
     def test_a_release_without_a_move_commits_nothing(self):
-        """Holding without dragging anywhere writes nothing - a save
-        that changes nothing still spends a write."""
+        """A save that changes nothing still spends a write."""
         _model, _proxy, view, section, controller = self._harness()
         pos = self._press(view, controller, 1)
         controller._hold_fired()
         self._release(view, controller, pos)
         self.assertEqual(0, section.commits)
+
+    def test_a_reset_returns_every_field_to_its_born_state(self):
+        """The blank slate is written ONCE: a field one of the pair misses reddens here."""
+        _model, _proxy, view, _section, controller = self._harness()
+        born = dict(vars(controller))
+        self._press(view, controller, 1)
+        controller._hold_fired()
+        self._move(view, controller, self._row_center(view, 3))
+        controller._reset()
+        self.assertEqual(born, dict(vars(controller)))
+
+    def test_a_reset_lets_the_closed_hand_cursor_go(self):
+        _model, _proxy, view, _section, controller = self._harness()
+        self._press(view, controller, 1)
+        controller._hold_fired()
+        self.assertEqual(QtCore.Qt.CursorShape.ClosedHandCursor,
+                         view.viewport().cursor().shape())
+        controller._reset()
+        self.assertNotEqual(QtCore.Qt.CursorShape.ClosedHandCursor,
+                            view.viewport().cursor().shape())
 
     def test_a_section_that_does_not_reorder_never_arms(self):
         _model, _proxy, view, section, controller = self._harness()
@@ -476,17 +441,10 @@ class HoldGestureTest(unittest.TestCase):
 
 
 class FolderOrderTest(unittest.TestCase):
-    """The File sidebar speaks the same gesture: the ORDER of the
-    registered locations is the settings copy's, user-authored now,
-    and a move goes through `locations` - the module that owns both
-    ends of the copy - never an index assignment into whatever list
-    the accessor hands back."""
+    """The File sidebar speaks the same gesture; a move goes through `locations`."""
 
     def _base(self):
-        """A realpath'd scratch root: macOS tempdirs live under the
-        /var -> /private/var symlink, and the location store speaks in
-        resolved paths - comparing against the literal spelling fails
-        on the alias, not on the behaviour."""
+        """A realpath'd scratch root - the location store speaks resolved paths."""
         base = os.path.realpath(tempfile.mkdtemp(prefix="amaze_folders_"))
         self.addCleanup(shutil.rmtree, base, True)
         return base
@@ -499,8 +457,7 @@ class FolderOrderTest(unittest.TestCase):
         return prefs
 
     def _reloaded(self, fixture):
-        """A second Prefs over the same settings.json - the next
-        session, as `load()` would build it."""
+        """A second Prefs over the same settings.json - the next session."""
         from amaze.prefs import prefs as prefs_mod
         p = prefs_mod.Prefs()
         p.path = fixture.path
@@ -519,22 +476,7 @@ class FolderOrderTest(unittest.TestCase):
                          prefs.file_folders)
 
     def test_a_move_accepts_ANY_spelling_of_a_registered_path(self):
-        """The door NORMALISES what it is handed, like every sibling in
-        the module - `set_record`, `relocate_record`, `set_favourite`,
-        `record` and `is_favourite` all do it first thing.
-
-        `move_registered` read `registered_paths` (canonical) and then
-        compared the caller's `path` RAW, so one legal spelling of a
-        registered location answered "not registered" and the move
-        returned False without saying why. On Windows that is EVERY
-        `os.path.join` spelling, which is how it was found (ROADMAP
-        line 17, measured on the parity VM 2026-08-15).
-
-        The red is earned PORTABLY, with a non-normalised spelling
-        rather than a native separator: `os.sep` is already `/` here, so
-        trusting the Windows run would be trusting the platform to prove
-        a contract the code owes on all three.
-        """
+        """The door NORMALISES what it is handed, like every sibling. ▸p/one-file-one-table"""
         from amaze.core import locations
         base = self._base()
         one, two, three = (os.path.join(base, n) for n in ("1", "2", "3"))
@@ -548,29 +490,10 @@ class FolderOrderTest(unittest.TestCase):
                          prefs.file_folders)
 
     def test_a_move_works_where_the_STORED_spelling_is_not_the_absolute(self):
-        """A guard on the REPAIR, not on the original defect - it is
-        green either side of the bug above and red for a plausible wrong
-        fix, which is the only reason it is worth a line.
-
-        Under home the two spellings of one folder diverge:
-        `storage_path_key` shortens to `~/1` while `registered_paths`
-        hands back the expanded absolute. Normalising only the CALLER's
-        side - the one-line repair ROADMAP line 17 proposed - puts `~/1`
-        against a list of absolutes, so every move under home returns
-        False while the tempdir cases keep passing and look like proof.
-        Both sides are normalised instead, which is what the siblings do.
-
-        `_home_root` is the sanctioned seam: its own docstring says it
-        exists so a test can pin home without patching the world.
-        """
+        """Red for the plausible wrong fix: normalising the CALLER alone. ▸p/one-file-one-table"""
         from amaze.core import locations
         from amaze.helpers import hostos
         base = self._base()
-        # CANONICAL, because the real `_home_root` is
-        # `canonical_path_key(expanduser("~"))` - a stand-in spelled the
-        # host's way makes `storage_path_key`'s startswith test fail on
-        # Windows and the home branch never fires, which is the one
-        # thing this test needs to happen.
         with mock.patch.object(hostos, "_home_root",
                                return_value=test_support.posix_path(base)):
             one, two, three = (os.path.join(base, n)
