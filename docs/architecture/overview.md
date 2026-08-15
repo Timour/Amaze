@@ -322,6 +322,13 @@ store that keeps per-key choices beside the thing they belong to.
 
 - **File:** `core/keyed_store.py` · **Entry point:**
   `open_store(spec, preferences) -> Store`
+- **ONE FILE, ONE TABLE.** `open_store` caches per file, so every
+  reader of a store shares one table and one stale-write baseline —
+  and the cache identity is the CANONICAL path, because
+  `preferences.dir` is not stable as text and two spellings of one
+  directory would otherwise mint two Stores over one file.
+  `own_store` is the deliberate opt-out, for a document whose holders
+  legitimately disagree (two panes of one Houdini).
 - **Adapter API:** a store is DATA — `register(filename, payload,
   keyspace, label, noun, …)` declares it; the adapter attaches its
   normaliser with `bind()`. **Registration is how a store comes into
