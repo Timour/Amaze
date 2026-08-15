@@ -1,0 +1,88 @@
+"""The comment sweep, ratcheted: the count may fall, never rise.
+
+Cut a block and this test fails, naming the number to pin. ▸p/comment-standard
+"""
+
+import ast
+import os
+import unittest
+
+_PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+#: The sizes the sweep works to, not style limits.
+COMMENT_LINES = 12
+DOCSTRING_LINES = 20
+
+#: Blocks still over the cap (2026-08-15). LOWER it as the sweep
+#: advances; never raise it.
+BUDGET = 280
+
+
+def _blocks(path):
+    """(size, line, what) for every block in one file over the cap."""
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+    found = []
+    run = start = 0
+    for number, line in enumerate(source.splitlines(), 1):
+        if line.strip().startswith("#"):
+            start = number if run == 0 else start
+            run += 1
+            continue
+        if run >= COMMENT_LINES:
+            found.append((run, start, "comment"))
+        run = 0
+    if run >= COMMENT_LINES:
+        found.append((run, start, "comment"))
+
+    try:
+        tree = ast.parse(source, filename=path)
+    except SyntaxError:
+        return found
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+            continue
+        # clean=False, so the count is the lines as WRITTEN.
+        doc = ast.get_docstring(node, clean=False)
+        if doc and len(doc.splitlines()) >= DOCSTRING_LINES:
+            found.append((len(doc.splitlines()),
+                          node.body[0].lineno if node.body else 1,
+                          "docstring %s" % getattr(node, "name", "<module>")))
+    return found
+
+
+def over_the_cap():
+    """Every block in the package over the cap, fattest first."""
+    found = []
+    for folder, dirs, files in os.walk(_PKG):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(folder, name)
+            for size, line, what in _blocks(path):
+                found.append((size, "%s:%d" % (
+                    os.path.relpath(path, _PKG), line), what))
+    found.sort(reverse=True)
+    return found
+
+
+class TheCommentBudget(unittest.TestCase):
+
+    def test_no_block_is_added_that_the_sweep_has_not_cut(self):
+        found = over_the_cap()
+        self.assertEqual(
+            BUDGET, len(found),
+            "%d blocks over the cap, pinned at %d. Fewer: lower BUDGET to "
+            "%d. More: a fat block was added - say what it DOES and what "
+            "to watch when calling it, and put the rest in the wiki.\n%s"
+            % (len(found), BUDGET, len(found),
+               "\n".join("  %4d  %s  %s" % row for row in found[:10])))
+
+    def test_the_scan_can_find_a_block(self):
+        """A budget test that scans nothing passes forever."""
+        self.assertTrue(
+            over_the_cap(),
+            "the scan found no block at all, so it cannot fail when one "
+            "is added - the counter is broken, not the package clean")
