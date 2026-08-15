@@ -179,7 +179,7 @@ def scan_text(text, pattern, allow_credit):
 #: arriving new. The diff already says what changed; the dev log in the
 #: private notes already carries the story.
 MAX_SUBJECT_CHARS = 72
-MAX_BODY_LINES = 10
+MAX_BODY_LINES = 4
 
 #: A person, referred to without being named - so the identity list
 #: cannot see any of it. Generic English, naming nobody, which is why
