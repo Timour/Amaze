@@ -242,10 +242,16 @@ printf 'Rename the section\n\nThe "Notes" pane is now Comments; identifiers unch
 check "a short quoted label passes" 0 $?
 
 { printf 'Widen the tick column\n\n'
-  for i in $(seq 1 10); do printf 'Body line %d of ordinary technical text.\n' "$i"; done
+  for i in $(seq 1 4); do printf 'Body line %d of ordinary technical text.\n' "$i"; done
 } > msg.txt
 "$here/commit-msg" msg.txt >/dev/null 2>&1
-check "a body of exactly ten lines passes" 0 $?
+check "a body of exactly four lines passes" 0 $?
+
+{ printf 'Widen the tick column\n\n'
+  for i in $(seq 1 5); do printf 'Body line %d of ordinary technical text.\n' "$i"; done
+} > msg.txt
+"$here/commit-msg" msg.txt >/dev/null 2>&1
+check "a body of five lines refuses" 1 $?
 
 echo "REFUSES - a gate that cannot trust itself must not pass"
 printf 'x = 1  # a plain technical comment\n' > m2.py
