@@ -719,63 +719,16 @@ class NodeHandler:
                         write_mat, builder_node=None, asset_id="") -> None:
         """Write an asset's .interface and .mat as ONE unit.
 
-        The two files ARE one asset - the .interface holds the promoted
-        parameters, the .mat the nodes - and every save wrote the
-        .interface FIRST, with a plain open(..., "w") that truncates,
-        then attempted the .mat. So a .mat write that failed (disk full,
-        permissions, a cloud-sync hiccup - and this library lives in a
-        synced folder) left the new .interface on disk beside a stale or
-        missing .mat, with the library row still pointing at the pair.
+        The two files ARE the asset, so a .mat write that fails after the
+        .interface was truncated leaves a material that no longer exists
+        - and `mat/` has no `.bak-*` tier to restore from. Both go to
+        UNIQUE scratch siblings and promote only after both succeed.
 
-        Verified by forcing saveItemsToFile to fail on an Overwrite: the
-        .interface had already been rewritten (57177 bytes against the
-        old 57023) and the previous good asset was unrecoverable.
-
-        Both files are written to siblings and promoted only after BOTH
-        succeed. The two replaces are not one atomic operation - nothing
-        portable is - but they are two renames of fully-written files,
-        microseconds apart, instead of a truncation followed by work
-        that can fail.
-
-        write_mat(path) does the .mat write; it is a callback because
-        every caller saves a different node with different arguments.
-
-        THE SCRATCH NAMES MUST BE UNIQUE. They were FIXED - `<dest> +
-        ".writing"` for both files - which is one shared buffer per
-        destination, the same defect class already measured and fixed for
-        the JSON writers: two processes x 600 saves through a fixed name
-        produced 790 unparseable reads and 794 that PARSED while holding
-        records from BOTH writers, with the destination left larger than
-        either document.
-
-        This is the worst place in the package to carry that defect, on
-        two counts. The `.mat`/`.interface` pair IS the asset rather than
-        an index of assets, so a mixture of two writers is not a
-        recoverable inconsistency - it is a material that no longer
-        exists. And `mat/` has no `.bak-*` tier at all: the databases get
-        snapshot_before_write, asset content gets nothing, so there is
-        nothing to restore from.
-
-        MEASURED HERE, and the null result that came first is the
-        interesting part. A review pass could not reproduce mixed content
-        at 20KB payloads in ~7000 samples - because a payload handed to
-        one write() call is close enough to atomic to hide the
-        interleaving entirely. Real writers do not write that way:
-        json.dump emits many small writes, and so does Houdini's own
-        saveItemsToFile. Re-run at 512-byte granularity, two processes x
-        400 saves of a 20KB pair:
-
-            fixed name   344 of 4800 reads held BOTH writers' bytes
-                         417 of 800 saves RAISED, because one writer's
-                         cleanup removes the scratch the other is about
-                         to rename
-            unique name  0 mixed, 0 raised, 0 scratch files left
-
-        The raising half is its own defect and it lands exactly where this
-        function is least able to absorb it: the .interface promote can
-        succeed and the .mat promote then fail on a scratch the other
-        writer deleted, which is the half-written asset this whole
-        function exists to prevent.
+        `write_mat(path)` is a callback because every caller saves a
+        different node. The scratch names must be unique, not `<dest> +
+        ".writing"`: a shared name mixes two writers' bytes silently, and
+        its cleanup deletes the scratch the other is mid-rename on.
+        ▸r/atomic-writes
         """
         # BOTH created INSIDE the try, so the cleanup covers both. With the
         # first call outside it, a failure of the SECOND - the directory is

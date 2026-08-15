@@ -1,58 +1,25 @@
 """The KEYED STORE ENGINE - one guarded JSON side-table, keyed by a
-stable identity, for every store that keeps per-key choices beside the
-thing they belong to.
+stable identity, for every store of per-key choices.
 
-Three stores were the same store and each implemented the guard set
-separately: `notes.json` (a comment page per asset), `icons.json` (a
-chosen tile icon per asset or path), and the per-location preference
-dicts in settings.json. `notes.py`'s own docstring says it copied its
-guards from `icons.json` - and it did not copy them all, because
-`icons.json` never had them all. That is the shape this engine exists
-to end.
-
-FOUR STORES NOW, ALL OF THEM REAL FILES IN THE LIBRARY (2026-08-05).
-The registered locations and the File favourites used to be presented
-through this protocol while their bytes stayed in settings.json, so
-they joined the ENUMERATION and the LIFECYCLE but never the guards.
-They are `locations.json` and `favourites.json`, and the adapter class
-that faked them is gone: a File row's icon, comment, favourite and the
-location listing it now answer to the same scope, which is what stopped
-an icon vanishing when you switched library. settings.json keeps a copy
-of both, written from here, for the one job the library cannot do - be
-readable when the library is not (`core/locations.py`).
+:func:`stores` is the register and the only honest list - a count
+written here goes stale (this said "four" through two additions). Most
+live in the LIBRARY and travel with it; `prefs.json` and `settings.json`
+are MACHINE-LOCAL and never sync, which is why the latter also keeps a
+copy of what the library owns: to stay readable when the library is not
+(`core/locations.py`).
 
 **REGISTRATION IS HOW A STORE COMES INTO EXISTENCE.** A store is DATA -
-a filename, a payload key, a keyspace, the words the user reads, and
-one normaliser - handed to :func:`register`. There is no way to have a
-store and not be in :func:`stores`, which is what lets Repair, restore
-and the library audit enumerate the side tables instead of each keeping
-a hand-written list that can be one short. Both of those lists were one
-short, and neither went red when it happened.
+filename, payload key, keyspace, the words the user reads, one
+normaliser - handed to :func:`register`. There is no way to have a store
+and not be in :func:`stores`, so Repair, restore and the audit enumerate
+rather than each keeping a hand-written list that can be one short.
 
-**ABSENCE IS A VERDICT THE ENGINE RESOLVES, NEVER A VALUE A CALLER
-RECEIVES.** Opening a store answers READ, FRESH or BLIND. Only the
-first two may be written. There is no `if os.path.exists(path):` in any
-store, so there is no missing `else` for a store to be missing - which
-is exactly what `icons.json` was missing (measured on the real library
-2026-08-03: `icons.json` is absent and has no `.bak` tier of any kind,
-so the very next icon picked would have been written as the whole
-file).
-
-**A READ HANDS OUT A COPY; A WRITE STAGES AND COMMITS ONLY ON SUCCESS.**
-The cache is a projection of the last successful write, never a
-scratchpad a caller mutates in place. `notes.set_note` used to mutate
-the live table and then attempt the write, so a REFUSED write still lit
-the tile's comment badge for a note that was never saved - and a later
-pass read that phantom back and wrote it twice.
-
-**AN ENGINE VERIFIES ITS OWN OUTPUT.** The same rule the Conversion
-Engine ships (`core/conversion.py`) and the Material Engine has always
-had: `set`/`rekey`/`retire` answer with a :class:`Written`, which
-carries a REASON and a sentence fit for a dialog - never a bare False
-that leaves the caller guessing whether the folder was read-only or the
-file would not parse. A measured case: a refused icon write returned
-False and the panel told the user to check the library folder was
-writable, when the folder was fine and the file simply would not parse.
+The three properties a caller has to know: absence is a VERDICT the
+engine resolves (READ / FRESH / BLIND, decided at open - never an `if
+exists` for a store to be missing an `else` on); a read hands out a
+COPY and a write stages and commits only on success; and
+`set`/`rekey`/`retire` answer with a :class:`Written` carrying a reason
+fit for a dialog, never a bare False. ▸p/store-guards
 """
 
 from __future__ import annotations

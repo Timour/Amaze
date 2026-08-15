@@ -1,96 +1,21 @@
 """The host-capability engine: every "does this environment behave
 differently here?" question lives HERE.
 
-The sibling of hostos.py, which owns OS facts and OS integration.
-Nothing else in the codebase may compare hou.applicationVersion()
-against a number.
+Sibling of `hostos.py`, which owns OS facts. Nothing else in the
+codebase may compare `hou.applicationVersion()` against a number, and
+callers ask for the ANSWER ("which point does the pick want?"), never
+the version.
 
-**Ask for the ANSWER, not the version.** A caller wants to know "which
-point does the viewport pick want?", never "am I on 21?". Wrapping a
-raw comparison in a function called houdini_major() would move the
-branch without removing it - the call site would still be where a
-reader reconstructs WHY 21 differs, and where things go stale when 23
-ships.
-
-
-COMPOSITION, NOT CONDITIONALS
------------------------------
-
-Modelled on USD's opinions, which is the right shape for this. A
-capability has a BASE value and a set of OPINIONS.
-Each opinion states a value, the conditions under which it applies, and
-the evidence that established it. The environment is resolved by
-composing every opinion that applies; the strongest wins.
-
-    capability = base value + opinions that apply to THIS environment
-
-Why this beats a chain of ifs, and beats the version-keyed table it
-replaces:
-
-- **Axes stop being special.** The viewport-pick difference is Houdini
-  AND macOS AND a scaled display. A version-keyed table handles one
-  axis and forces the other two into ad-hoc guards somewhere else -
-  which is exactly how the macOS condition came to be missing entirely
-  and a macOS workaround got applied to Windows at 150% scaling. An
-  opinion just lists its conditions; no axis is privileged.
-- **It EXPLAINS itself.** explain() reports every opinion, whether it
-  applied, and which condition vetoed it. "Why is this environment
-  getting device pixels?" is answerable at runtime, in the debug log,
-  on the user's machine. A day was spent on a bug that this would have
-  reduced to one line.
-- **Unknown environments compose predictably.** A build nobody has
-  flagged simply matches no opinion and takes the base.
-
-**The base is what the vendor DOCUMENTS - never the oldest behaviour.**
-This is the one place the USD analogy needs care. Chronologically H21
-came first and H22 changed, so it is tempting to make H21 the base and
-call H22 the opinion. Do not: every future version and every untested
-build composes against the base, so a base carrying an old workaround
-silently hands that workaround to H23, H24 and anything else nobody has
-run. The support floor ("Amaze targets H21 and forward") and the
-weakest opinion are different things. Base = documented behaviour;
-deviations from it are bounded opinions with evidence.
-
-**Place an opinion only where there is EVIDENCE, and scope it to the
-COARSEST boundary that keeps every tested configuration correct.** The
-two failure modes are not symmetric:
-
-  - Leaving a host bug unworked-around on an untested build costs the
-    user the bug they would have had anyway.
-  - Applying an untested workaround to a build that WORKS breaks
-    something that was fine.
-
-Learned by breaking it. The changelog says Retina picking was fixed in
-22.0.391, and that became an opinion boundary at 22.0.391 - and a test
-asserting 22.0.390 needs the workaround. That build HAS run here -
-two Windows sessions on 2026-07-25 - but it crashed on a stale
-pre-rebrand install and produced no pick data, so it is unmeasured for
-this question either way.
-The measurements are 21.0.780/790 broken and 22.0.393/394 correct;
-everything between is inference. The boundary therefore sits at 22.0.0,
-so the whole H22 series behaves like the H22 actually measured, and the
-changelog is documentation of WHY rather than a gate.
+A capability is a BASE value plus OPINIONS, each carrying its own
+conditions and the evidence that established it; the environment
+composes every opinion that applies and `explain()` reports which one
+vetoed. The base is the vendor's DOCUMENTED behaviour, never the oldest
+one, and an opinion is scoped to the coarsest boundary its evidence
+supports. Adding one without reading this first is how a macOS
+workaround reached Windows: ▸p/host-opinions
 
 An opinion whose scope is unverified says so, and names the observation
 that would settle it.
-
-Direction of dependency: hostver may consult hostos; hostos must never
-consult hostver. A cycle between them would be unfixable without
-splitting one.
-
-Two boundaries, so this does not grow into a switchboard:
-
-- **The engine owns the KNOWLEDGE; the call site may still own the
-  CODE.** has_new_cops() answers which COP generation exists, but the
-  two node graphs stay in the renderer - moving fifty lines of
-  node-building in here would put render code in a helper. What is
-  forbidden elsewhere is the raw comparison, not the branch.
-- **Renderer VERSIONS belong here; renderer IDENTITY does not.** "This
-  is a Redshift material" is the app's subject matter and appears
-  legitimately across ~21 modules. "Redshift 2026 renamed this
-  parameter" is noise of the same shape as a y-flip: the caller means
-  "set the diffuse colour", never "I am on 2026.1". None is invented in
-  advance - a capability with no call site is a guess with a docstring.
 """
 
 import hou
