@@ -71,7 +71,10 @@ from amaze.prefs import prefs as prefs_module
 #: sentences; gradients.json was the last one in and is still the least
 #: protected on the real library (no rolling copies at all when this
 #: was measured), which is what makes reporting on it worth the line.
-DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
+#:
+#: The names and their order are `database.SECTION_DATABASES`, not a
+#: copy: a section that arrives there is one Repair reports on.
+DATABASES = database.DATABASES
 
 #: Every file suffix an asset row owns in the asset folder - the ONE
 #: home for the set. Clean Library sweeps with these and the survey

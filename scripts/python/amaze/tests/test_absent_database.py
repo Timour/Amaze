@@ -1554,5 +1554,94 @@ class AStampedAssetIsNotAnOrphanTest(unittest.TestCase):
             "however many findings, per _the_repair_route")
 
 
+class TheFourListsAreEnumeratedOnce(unittest.TestCase):
+    """The same four database filenames were written out by hand in
+    five places (part-four audit A13, which found four of them).
+
+    Not a tidying job: the copies had already drifted in the way this
+    kind of copy always does. `gradients.json` was the ONE database
+    missing from `_EXISTED_MARKERS`, which made Repair and the colours
+    loader answer "was this file ever here?" differently about the same
+    file - the defect this module was written for.
+
+    ONE duplicate is deliberate and stays: `tools/library-audit.py`
+    must run where Houdini will not start, so it may not import the
+    package at all. Its own header states that at both ends, and it is
+    the end that fails loudly on an undeclared file.
+    """
+
+    #: Every module that may spell all four filenames in one literal.
+    #: A list, not a count - the exemption is what has to be argued for.
+    MAY_ENUMERATE = {
+        os.path.join("core", "database.py"),
+    }
+
+    def _package_sources(self):
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for root, _dirs, files in os.walk(package):
+            for name in files:
+                if name.endswith(".py"):
+                    path = os.path.join(root, name)
+                    yield os.path.relpath(path, package), path
+
+    def test_the_table_names_every_database_that_ships(self):
+        """Derived from the LIBRARY CLASSES, which is the one place a
+        filename is a declaration rather than a repetition - so a fifth
+        section arriving with its own list cannot leave this table
+        quietly short, which is exactly how gradients.json went missing
+        from the marker table."""
+        from amaze.core import code_library, cop_library
+
+        declared = {
+            library_mod.MaterialLibrary.DB_FILENAME,
+            cop_library.CopLibrary.DB_FILENAME,
+            code_library.CodeLibrary.DB_FILENAME,
+            gradient_library.GradientLibrary.DB_FILENAME,
+        }
+        self.assertEqual(
+            declared, set(database.DATABASES),
+            "a library class declares a database the one table does "
+            "not name, or the other way about")
+
+    def test_repair_reads_the_table_rather_than_its_own_copy(self):
+        from amaze.core import repair
+
+        self.assertEqual(
+            tuple(database.DATABASES), tuple(repair.DATABASES),
+            "Repair carries its own list of the databases again")
+
+    def test_nothing_else_writes_the_four_out_by_hand(self):
+        """STRUCTURE, not prose: an AST walk for a literal collection
+        that names all four, so a docstring mentioning them is not a
+        finding and a list built in another shape still is."""
+        import ast
+
+        wanted = set(database.DATABASES)
+        offenders = []
+        for relative, path in self._package_sources():
+            if relative in self.MAY_ENUMERATE:
+                continue
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                    strings = {el.value for el in node.elts
+                               if isinstance(el, ast.Constant)
+                               and isinstance(el.value, str)}
+                elif isinstance(node, ast.Dict):
+                    strings = {key.value for key in node.keys
+                               if isinstance(key, ast.Constant)
+                               and isinstance(key.value, str)}
+                else:
+                    continue
+                if wanted <= strings:
+                    offenders.append("%s:%d" % (relative, node.lineno))
+        self.assertEqual(
+            [], sorted(offenders),
+            "the four databases are written out by hand at %s - "
+            "database.DATABASES is the one enumeration"
+            % ", ".join(sorted(offenders)))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

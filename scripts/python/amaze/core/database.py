@@ -172,38 +172,48 @@ def absent_traces(directory: str, filename: str) -> list:
     )
 
 
-#: What the PANEL calls each database, so a refusal can talk about the
-#: section the user can actually see instead of only the storage file.
-#: "cops.json" means nothing to someone looking at a tab labelled
-#: "Nodes", and a message that cannot be matched to anything on screen
-#: is indistinguishable from noise.
+#: THE FOUR LISTS, ONCE - filename, what the PANEL calls it, and what
+#: ONE of the things it holds is called. In the order the panel shows
+#: them, which is the order Repair reports in.
 #:
-#: Duplicated from panel/sections.py rather than imported: core must not
-#: depend on the UI package (panel imports core, and the reload chain
-#: relies on that staying one-way). test_absent_database asserts the two
-#: agree, so the copy cannot drift silently.
+#: These filenames were written out by hand in five places, and the
+#: copies had already drifted the way such copies do: gradients.json
+#: was the ONE database missing from `_EXISTED_MARKERS` above, so
+#: Repair and the colours loader reached opposite verdicts on whether
+#: the same file had ever existed.
+#:
+#: THE LABELS ARE DUPLICATED FROM panel/sections.py, deliberately: core
+#: must not depend on the UI package (panel imports core, and the reload
+#: chain relies on that staying one-way). test_absent_database asserts
+#: the two agree, so the copy cannot drift silently. `tools/library-
+#: audit.py` keeps its own copy for a different reason it states at both
+#: ends - it must run where Houdini will not start, so it may not import
+#: this module at all.
+#:
+#: The NOUN is singular because every one of them pluralises with an s,
+#: and "1 saved material" is the half that reads wrong when a table
+#: stores the plural. A count without one answers nothing: "548 saved"
+#: - saved what?
 #:
 #: gradients.json is listed although it has no DatabaseConnector: the
 #: gradient library runs the same absent-but-known guard and must name
 #: its section the same way.
-_SECTION_LABELS = {
-    "library.json": "Material",
-    "cops.json": "Node",
-    "code.json": "Code",
-    "gradients.json": "Color",
-}
+SECTION_DATABASES = (
+    ("library.json", "Material", "material"),
+    ("cops.json", "Node", "node"),
+    ("code.json", "Code", "snippet"),
+    ("gradients.json", "Color", "color"),
+)
 
-#: What ONE of a section's saved things is called, so a count can carry a
-#: noun. "548 saved" answers nothing - saved what? - and the answer is
-#: different per section: materials, nodes, snippets, colors. Singular,
-#: because every one of them pluralises with an s and "1 saved material"
-#: is the half that reads wrong when a table stores the plural.
-_SECTION_HOLDS = {
-    "library.json": "material",
-    "cops.json": "node",
-    "code.json": "snippet",
-    "gradients.json": "color",
-}
+#: Every list, in panel order. The one enumeration; everything that
+#: walks all four reads this.
+DATABASES = tuple(name for name, _label, _holds in SECTION_DATABASES)
+
+_SECTION_LABELS = {name: label
+                   for name, label, _holds in SECTION_DATABASES}
+
+_SECTION_HOLDS = {name: holds
+                  for name, _label, holds in SECTION_DATABASES}
 
 #: The lists whose assets own files in the shared ASSET folder, and
 #: therefore the only lists whose emptiness can say anything about a

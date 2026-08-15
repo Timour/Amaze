@@ -1229,7 +1229,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
     556 .mat files, exactly. The real library is only ever READ.
     """
 
-    LISTS = ("library.json", "cops.json", "code.json", "gradients.json")
+    LISTS = database.DATABASES
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
@@ -1463,15 +1463,24 @@ class TestLibraryManifest(unittest.TestCase):
         return module
 
     def test_product_data_is_recognised(self):
+        """The databases come from `database.DATABASES`, not a copy.
+
+        The audit tool keeps its own list on purpose - it must run
+        where Houdini will not start, so it cannot import the package -
+        and that is exactly why this end has to be derived: a fifth
+        section added to the product must fail HERE if the audit was
+        never told about it.
+        """
         audit = self._audit_module()
-        for rel in ("library.json", "cops.json", "code.json",
-                    "gradients.json", "policy.json",
-                    "library.json.bak-1", "cops.json.bak-first",
-                    "code.json.unreadable", ".amaze_gradient_seed_v1",
-                    os.path.join("mat", "abc.mat"),
-                    os.path.join("mat", "abc.interface"),
-                    os.path.join("img", "abc.png"),
-                    os.path.join("matX", "pack", "tex.exr")):
+        checked = tuple(database.DATABASES) + (
+            "policy.json",
+            "library.json.bak-1", "cops.json.bak-first",
+            "code.json.unreadable", ".amaze_gradient_seed_v1",
+            os.path.join("mat", "abc.mat"),
+            os.path.join("mat", "abc.interface"),
+            os.path.join("img", "abc.png"),
+            os.path.join("matX", "pack", "tex.exr"))
+        for rel in checked:
             self.assertEqual("ok", audit.classify(rel), rel)
 
     def test_the_restore_tier_is_never_called_clutter(self):
