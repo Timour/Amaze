@@ -2704,10 +2704,13 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.event("file", "paths copied", count=len(paths))
 
     def catlist_rc_menu(self) -> None:
-        """Sidebar right-click - the active section builds its own menu."""
-        if self._is_online():
-            # A remote catalogue's categories aren't ours to edit.
-            return
+        """Sidebar right-click - the active context builds its own menu.
+
+        A remote catalogue's categories are still not ours to edit, and
+        nothing here has to know that: the online world declares no
+        SIDEBAR_MENU, and `grid.open_catlist_menu` returns on an empty
+        table.
+        """
         section = self._section()
         if section is not None:
             section.catlist_menu()
@@ -3737,15 +3740,15 @@ class MatLibPanel(QtWidgets.QWidget):
         online browser matches name, category and tag with no prefix at
         all. So the text cannot be set once at construction - it is set
         from here, which _sync_toolbar_for_mode already documents as the
-        place that runs on every section AND mode change."""
+        place that runs on every section AND mode change.
+
+        The online browser is not a branch: it declares the empty hint
+        like any other context, for the reason its own line gives."""
         if self.line_filter is None:
             return
-        if self._is_online():
-            hint = ""
-        else:
-            hint = getattr(self._section(), "search_hint",
-                           sections.Section.search_hint)
-        self.line_filter.setPlaceholderText(hint)
+        self.line_filter.setPlaceholderText(
+            getattr(self._section(), "search_hint",
+                    sections.Section.search_hint))
 
     def _section(self):
         """The active CONTEXT - a Section, or the online world.
@@ -5496,23 +5499,24 @@ class MatLibPanel(QtWidgets.QWidget):
         return section.stack() if section is not None else None
 
     def filter_thumb_view(self) -> None:
-        """Search box changed - the active section applies it."""
-        if self._is_online():
-            # Online browsing searches the SOURCE's API, not a local
-            # model - the whole catalogue is never resident.
-            self.matx_online_model.set_search(self.line_filter.text())
-            return
+        """Search box changed - the active context applies it.
+
+        Online browsing searches the SOURCE's API rather than a local
+        model, because the whole catalogue is never resident - that is
+        `OnlineContext.filter_text`, which this path reaches like any
+        other section's."""
         section = self._section()
         if section is not None:
             section.filter_text(self.line_filter.text())
 
     def filter_favs(self) -> None:
-        """Favourites star toggled - the active section applies it."""
-        if self._is_online():
-            # Belt and braces: the button is disabled online, but a
-            # stale checked state must never filter the material proxy
-            # while the online grid is showing.
-            return
+        """Favourites star toggled - the active context applies it.
+
+        A stale checked state still cannot filter the material proxy
+        while the online grid shows: the star is disabled there, and
+        `OnlineContext.filter_favorites` is a no-op by declaration, so
+        the belt-and-braces branch that used to live here is the
+        context's answer now."""
         section = self._section()
         if section is not None:
             section.filter_favorites(self.cb_favsonly.isChecked())
@@ -5903,20 +5907,12 @@ class MatLibPanel(QtWidgets.QWidget):
         # no "single selection but never empty" mode, so an emptied
         # selection is simply re-selected in place; the active category
         # never actually changed, so nothing else needs to run.
-        if self._is_online():
-            sel = self.cat_list.selectedIndexes()
-            if sel:
-                cat = self.matx_source_model.category_at(sel[0].row())
-                if cat is None:
-                    self.matx_sorted_model.removeFilter(
-                        self.matx_online_model.CategoryRole
-                    )
-                else:
-                    self.matx_sorted_model.setFilter(
-                        self.matx_online_model.CategoryRole, cat
-                    )
-                grid.visible_view(self).scrollToTop()
-            return
+        #
+        # THE ONLINE WORLD TAKES THAT RULE TOO NOW. It used to return
+        # from its own branch above this, so a ctrl-click emptied the
+        # online sidebar and left the catalogue unfiltered with no row
+        # highlighted - the same nonsense one world over, kept only
+        # because the branch sat above the guard rather than below it.
         indexes = self.cat_list.selectedIndexes()
         if not indexes:
             current = ui_helpers.live_current_index(self.cat_list)
@@ -6373,27 +6369,15 @@ class MatLibPanel(QtWidgets.QWidget):
         target argument that import_asset() expects a string for).
         Textures: push the double-clicked file's path onto a selected
         texture node's image parm - here the index *is* what's needed, to
-        know which file was double-clicked."""
+        know which file was double-clicked. The online world answers
+        this like any other context (OnlineContext.double_click), which
+        is what stopped it falling through to Materials."""
         if index is not None and index.isValid():
             # THE ROW, not the clicked cell: in list mode the double-
             # click lands on a visible column >= 1, where the models
             # answer roles with None (research.md > Row selection over
             # a table view).
             index = index.siblingAtColumn(0)
-        if self._is_online():
-            # Without this the online branch fell through to Materials,
-            # and import_asset() reads the MATERIAL selection model -
-            # which still holds whatever was selected before going
-            # online, so double-clicking imported an unrelated local
-            # material. Double-click is "the primary action" in every
-            # section; here - as for a local material - that is putting
-            # the material INTO THE SCENE, not into the library.
-            if index is not None and index.isValid():
-                source = self.matx_sorted_model.mapToSource(index)
-                record = self.matx_online_model.record(source.row())
-                if record is not None:
-                    self._import_online_records_to_scene([record])
-            return
         section = self._section()
         if section is not None:
             section.double_click(index)

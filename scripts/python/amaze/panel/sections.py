@@ -2428,6 +2428,42 @@ class OnlineContext(Section):
         """Nothing to do: an online record carries no favourite state,
         which is why the star is disabled here."""
 
+    def select_category(self, index) -> None:
+        """A sidebar row narrows the catalogue to one category.
+
+        Row 0 is the everything-row and `category_at` answers None for
+        it, which is REMOVING the filter rather than storing a
+        sentinel that accepts every row - the same shape every
+        section's `apply_filter` uses.
+        """
+        panel = self.panel
+        category = panel.matx_source_model.category_at(index.row())
+        role = panel.matx_online_model.CategoryRole
+        if category is None:
+            panel.matx_sorted_model.removeFilter(role)
+        else:
+            panel.matx_sorted_model.setFilter(role, category)
+        grid.visible_view(panel).scrollToTop()
+
+    def double_click(self, index) -> None:
+        """The primary action - which here, exactly as for a local
+        material, is putting the material INTO THE SCENE rather than
+        into the library.
+
+        This lived as an `_is_online()` branch in `import_asset_auto`,
+        and without it that path fell through to Materials -
+        `import_asset()` reads the MATERIAL selection model, which
+        still holds whatever was selected before going online, so a
+        double-click imported an unrelated local material.
+        """
+        if index is None or not index.isValid():
+            return
+        panel = self.panel
+        source = panel.matx_sorted_model.mapToSource(index)
+        record = panel.matx_online_model.record(source.row())
+        if record is not None:
+            panel._import_online_records_to_scene([record])
+
     def stack(self):
         return None
 

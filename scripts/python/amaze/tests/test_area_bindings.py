@@ -225,6 +225,22 @@ class AreaBindingCase(unittest.TestCase):
             "sidebar": panel.cat_list.model() if panel.cat_list else None,
         }
 
+    def _restore(self):
+        """Put the shared panel back in a local world.
+
+        One panel serves the whole class, so a test that ENTERS the
+        online world and leaves it there hands the next one a fixture
+        it never asked for. On the base rather than on one class: two
+        classes here go online now.
+        """
+        panel = self.panel
+        if panel._is_online():
+            panel.leave_online_world()
+        section = panel._section()
+        if section is not None:
+            section.activate()
+        QtWidgets.QApplication.processEvents()
+
 
 #: Which badge each context's tiles carry, and the role its own model
 #: must answer for it. THIS is the list that used to be invisible: a
@@ -571,14 +587,125 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
             "_is_online()", subject_source,
             "the Comments subject lookup still branches on _is_online()")
 
-    def _restore(self):
-        panel = self.panel
-        if panel._is_online():
-            panel.leave_online_world()
-        section = panel._section()
-        if section is not None:
-            section.activate()
+
+class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
+    """Six panel paths tested which WORLD they were in, and the online
+    context already answered every one of them (part-four audit A12).
+
+    `_section()` hands back the OnlineContext while the online world
+    shows, and that context already declared `search_hint`,
+    `filter_text`, `filter_favorites` and the base's empty
+    `SIDEBAR_MENU` - so four of the six branches guarded behaviour the
+    context was carrying anyway, and deleting them changes nothing.
+    The other two held a body nothing else could reach; those move
+    onto the context, beside the verbs they belong with.
+
+    NAMED, NEVER COUNTED (test_grid_menu's law): a count says "one too
+    many" without saying which. ELEVEN `_is_online()` reads survive
+    deliberately and none of them is a section question - which tab
+    strip to build, which world a progress bar is drawing over,
+    whether the Online chip is lit, which world the debug log is
+    recording. Those ask about the WORLD, which is the one thing a
+    context cannot answer for itself.
+    """
+
+    #: The six, and what answers each one instead.
+    DISSOLVED = (
+        ("catlist_rc_menu",
+         "OnlineContext inherits the base's empty SIDEBAR_MENU, and "
+         "open_catlist_menu returns on no entries"),
+        ("_sync_filter_placeholder",
+         "OnlineContext.search_hint is already the empty hint"),
+        ("filter_thumb_view",
+         "OnlineContext.filter_text already asks the SOURCE"),
+        ("filter_favs",
+         "OnlineContext.filter_favorites is already the documented no-op"),
+        ("update_selected_cat",
+         "OnlineContext.select_category carries the catalogue filter"),
+        ("import_asset_auto",
+         "OnlineContext.double_click carries the import-to-scene"),
+    )
+
+    #: What each deleted branch now lands on. Deleting a branch is only
+    #: safe while the context still answers it, so this is the other
+    #: half of the pin - without it, retiring a verb from OnlineContext
+    #: would leave the panel silently doing nothing at all.
+    def test_the_context_declares_every_verb_the_branches_relied_on(self):
+        from amaze.panel import sections
+        online = sections.OnlineContext
+        self.assertEqual(
+            "", online.search_hint,
+            "the online world wants a placeholder now, so deleting "
+            "_sync_filter_placeholder's branch changed what is drawn")
+        self.assertEqual(
+            (), getattr(online, "SIDEBAR_MENU", None),
+            "the online world declares a sidebar menu now, so "
+            "catlist_rc_menu's deleted branch is no longer a no-op")
+        for verb in ("filter_text", "filter_favorites",
+                     "select_category", "double_click"):
+            self.assertIn(
+                verb, vars(online),
+                "OnlineContext does not declare %s, so the panel branch "
+                "deleted for it has nothing to land on and the online "
+                "world silently does nothing" % verb)
+
+    def test_the_six_no_longer_ask_which_world_they_are_in(self):
+        offenders = [name for name, _why in self.DISSOLVED
+                     if "_is_online" in inspect.getsource(
+                         getattr(type(self.panel), name))]
+        self.assertEqual(
+            [], offenders,
+            "%s still branches on _is_online(), and the online context "
+            "already answers it" % ", ".join(offenders))
+
+    def test_the_sidebar_still_filters_the_catalogue_when_online(self):
+        """The moved body, RUN rather than read.
+
+        A source scan cannot see that `select_category` was moved onto
+        a context the sidebar never reaches - and the fixture blocks
+        the network, so this drives the category models directly
+        rather than asserting on rows that will never arrive.
+        """
+        from amaze.core import matx_sources
+
+        panel = self.activate("material")
+        self.addCleanup(self._restore)
+        panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
+
+        # SEEDED, never waited for. The fixture blocks the network, so
+        # the catalogue is empty and there is no category to click - and
+        # a skipTest on that would be exactly the dead cover line 31 is
+        # about, a test that goes quiet the moment its fixture thins
+        # out. `_all` is the model's own cache; test_generator seeds it
+        # the same way. The source is read back off the model rather
+        # than named, because entering the world sets a source filter
+        # and a record outside it is filtered away before `categories()`
+        # ever sees it.
+        online = panel.matx_online_model
+        previous = online._all
+        online._all = [matx_sources.MatxRecord(
+            source=online._source_filter, uid="a12-probe",
+            title="A12 Probe", category="Metal")]
+        self.addCleanup(setattr, online, "_all", previous)
+        source_model = panel.matx_source_model
+        source_model.refresh()
+
+        row = next((r for r in range(source_model.rowCount())
+                    if source_model.category_at(r) == "Metal"), None)
+        self.assertIsNotNone(
+            row, "the seeded category never reached the online sidebar, "
+                 "so clicking it cannot prove anything")
+        panel.online_context.select_category(source_model.index(row, 0))
+        # `_filters` is the proxy's own store - MultiFilterProxyModel
+        # offers setFilter/removeFilter and no reader, so this is the
+        # only way to see WHICH value landed rather than just that the
+        # row count moved.
+        self.assertEqual(
+            "Metal",
+            panel.matx_sorted_model._filters.get(online.CategoryRole),
+            "selecting an online category did not narrow the catalogue, "
+            "so the branch moved off the panel without arriving")
 
 
 class EveryTileDelegateIsSweptByEverySweep(AreaBindingCase):
