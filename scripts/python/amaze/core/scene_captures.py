@@ -660,45 +660,27 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
 def _capture_scratch(out: str) -> str:
     """The name Houdini writes a capture to before it is put in place.
 
-    A FUNCTION, not two lines inside capture_thumbnail, because
-    capture_thumbnail needs a live scene viewer and cannot be driven from a
-    headless test at all - so the naming rules below, every one of which
-    has been got wrong once, would otherwise be pinned by nothing.
+    A FUNCTION, not two lines inside `capture_thumbnail`, which needs a
+    live scene viewer and so cannot be driven headlessly - these three
+    rules would otherwise be pinned by nothing. Each was got wrong once.
 
-    WRITE ASIDE, THEN REPLACE. The old shape moved the existing thumbnail
-    to `<out>.prev` first and restored it on failure - which opened a
-    window where the ONLY copy of a hand-framed capture lived under a name
-    nothing in this project ever reads. A crash inside the flipbook (and
-    one has already taken Houdini down here, at 86GB) left the picture
-    orphaned and the tile back on the placeholder, and the next successful
-    capture could not clean it up because `out` was missing. Writing aside
-    removes the window instead of trying to recover from it.
+    WRITE ASIDE, THEN REPLACE - never move the existing thumbnail to
+    `<out>.prev` first. That left the only copy of a hand-framed capture
+    under a name nothing reads, and a crash inside the flipbook orphaned
+    it with `out` missing, so the next capture could not clean up.
 
-    THE SUFFIX GOES BEFORE THE EXTENSION, and that is not cosmetic.
-    Houdini chooses the image FORMAT from the extension, so the first shape
-    of this - `out + ".new"` - asked it to write `<hash>.png.new`, whose
-    extension is `.new`. Houdini does not know `.new` and falls back to its
-    own PIC2 format (probed, 22.0.394: a .png.new written by
-    hou.saveImageDataToFile starts "PIC2", not the PNG magic). _looks_blank
-    then called the result blank, because QImage cannot read PIC2 and a
-    null image reads as no picture - so the user got "the captured frame
-    was a single flat colour" for a frame that was never a PNG.
+    THE SUFFIX GOES BEFORE THE EXTENSION. Houdini picks the FORMAT from
+    the extension, so `out + ".new"` wrote PIC2, which QImage cannot
+    read - reported to the user as a flat-colour frame. ▸r/image-extension
 
-    AND THE NAME MUST BE UNIQUE. `root + ".capturing" + ext` was one fixed
-    name per destination, i.e. one shared buffer: `out` is derived from the
-    hip file's path, so two Houdini sessions capturing the same scene write
-    into the same scratch, and the loser gets the winner's picture - or a
-    mixture, which for a PNG is a decode failure the user is told about as
-    a blank frame. Same defect class measured for the JSON writers at 794
-    mixed reads of 1200.
+    THE NAME MUST BE UNIQUE. `out` derives from the hip path, so a fixed
+    scratch is one shared buffer and two sessions capturing the same
+    scene mix their bytes. ▸r/atomic-writes
 
-    create=False, unlike every other caller in the package: HOUDINI writes
-    this file, and saveThumbnailFromViewer's behaviour against a
-    pre-created 0-byte file cannot be measured without a viewer. The unique
-    name is the fix; reserving the inode is the bonus, and it is given up
-    here rather than assumed. It also keeps capture_thumbnail's
-    `not os.path.isfile(scratch)` check meaning exactly what it always
-    meant - "Houdini wrote nothing".
+    `create=False`, unlike every other caller: HOUDINI writes this file
+    and `saveThumbnailFromViewer` cannot be measured against a
+    pre-created 0-byte one without a viewer. It also keeps
+    `not os.path.isfile(scratch)` meaning "Houdini wrote nothing".
     """
     root, ext = os.path.splitext(out)
     return hostos.unique_scratch(out, suffix=".capturing" + (ext or ".png"),

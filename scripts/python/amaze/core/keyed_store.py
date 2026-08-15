@@ -2,11 +2,12 @@
 stable identity, for every store of per-key choices.
 
 :func:`stores` is the register and the only honest list - a count
-written here goes stale (this said "four" through two additions). Most
-live in the LIBRARY and travel with it; `prefs.json` and `settings.json`
-are MACHINE-LOCAL and never sync, which is why the latter also keeps a
-copy of what the library owns: to stay readable when the library is not
-(`core/locations.py`).
+written here goes stale (this said "four" through two additions). All
+but one live in the LIBRARY and travel with it. The exception is
+`settings.json`, which is THIS MACHINE's and never travels, because it
+holds the pointer to the library and so cannot live inside it; it also
+keeps a last-known copy of what the library owns, to stay readable when
+the library is not (`core/locations.py`).
 
 **REGISTRATION IS HOW A STORE COMES INTO EXISTENCE.** A store is DATA -
 filename, payload key, keyspace, the words the user reads, one

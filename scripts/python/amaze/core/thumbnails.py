@@ -1,42 +1,26 @@
 """The ONE thumbnail system - every section's thumbnails flow through
 this engine: one system for all sections, by design.
 
-Design:
-
-- **Keys, not rows.** Every thumbnail is identified by a hashable key
-  (e.g. ``("library.json", mat_id)``) and deliveries are BY KEY, so
-  row reordering or a library reload can never mis-deliver an image -
-  the whole generation-guard bug class from the old per-model workers
-  dies at the root here.
+- **Keys, not rows.** A thumbnail is identified by a hashable key
+  (e.g. ``("library.json", mat_id)``) and delivered BY KEY, so a row
+  reorder or a library reload cannot mis-deliver an image. The whole
+  generation-guard bug class dies at the root here.
 
 - **One RAM budget.** A byte-capped LRU shared by every section (the
-  "RAM Cache (MB)" preference). Eviction is safe because every
-  thumbnail already exists on disk - an evicted row simply re-reads
-  its file the next time it scrolls into view. Disk is the swap, and
-  it is already written. Small sets (Cop) never reach the budget, so
-  no section needs an exemption.
+  "RAM Cache (MB)" preference). Eviction is safe because the file is
+  already on disk - disk is the swap - so an evicted row re-reads on
+  its next repaint and no section needs an exemption.
 
-- **States.** absent = never requested, "pending" = in flight,
-  "done" = delivered at least once (the image lives in the LRU; an
-  evicted key re-queues on its next repaint), "missing" = the load
-  genuinely failed - the model shows its placeholder; sticky until
-  discard() (a rerender/overwrite discards, so failures get retried
-  exactly when their file could actually have changed).
+- **States.** absent (never requested), pending (in flight), done
+  (delivered; an evicted key re-queues on repaint), missing (the load
+  genuinely failed - placeholder shown, sticky until `discard()`, so a
+  failure retries exactly when its file could have changed).
 
-- **Providers.** How bytes become a QImage is the only per-source
-  code. Shipped: FILE (materials/cop library PNGs, and texture rows
-  already in the disk cache) and CONVERT (textures - one call to the
-  **Conversion Engine**, `core/conversion.py`, which owns the decoder
-  order, the size contract, the verification of what a converter
-  returned and the temp files), RENDER (geometry: the model's
-  main-thread Houdini pass deposits finished frames via deposit())
-  and PAINT (colors: synchronous paint-on-miss, also via deposit()).
-
-  This engine used to BE the conversion code as well: four converter
-  functions, the order between them written inside the worker thread
-  below, three hand-rolled temp-file lifetimes, and nobody checking
-  what any of them returned. It keeps the cache, the budget and the
-  loaders; conversion is its own engine now.
+- **Providers** are the only per-source code: FILE, CONVERT (one call
+  to `core/conversion.py` ▸o/conversion), RENDER (the model's
+  main-thread Houdini pass deposits frames) and PAINT (synchronous
+  paint-on-miss). This engine keeps the cache, the budget and the
+  loaders; it is not the decoder.
 """
 
 import atexit

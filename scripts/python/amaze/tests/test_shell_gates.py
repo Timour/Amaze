@@ -1,30 +1,18 @@
 """The shell gates, tested like code - because they are code.
 
-Four shell files decide whether a build reaches the live install and
-whether a commit reaches the remote. They had zero tests while the
-Python had 203, and it showed: in ONE hour, three separate gates were
-written that LOOKED like they worked. All three were the same bug -
-a command that returns non-zero on a perfectly ordinary outcome,
-under `set -e`:
+Four shell files decide whether a build reaches the live install and a
+commit reaches the remote. Untested, they collected three gates in one
+hour that LOOKED like they worked - all the same bug, a command
+returning non-zero on an ordinary outcome under `set -e`, which
+shellcheck catches in none of its forms. ▸r/shell-errexit
 
-    out="$(failing_cmd)"          # aborts before its own error handling
-    [ "$x" -eq 0 ] && echo ...    # returns 1 when the test is false
-    n="$(... | grep -c PAT)"      # grep -c EXITS 1 when the count is 0
-
-shellcheck catches NONE of the three (measured). Two of them abort
-SILENTLY: the script stops mid-way and the exit status looks plausible,
-so a green run and a dead run are indistinguishable from the outside.
-
-So these tests never ask "did it exit 0". They ask three things:
-  1. the right STATUS, and
-  2. the right WORDS (a gate that refuses silently is a gate nobody
-     obeys), and
-  3. a TERMINAL MARKER - the last thing the script prints on that path.
-     A marker is what turns "aborted at line 93" from invisible into a
-     failing test, whatever the cause.
-
-The state that shipped broken is covered explicitly: a suite that
-cannot run at all must make the gate REFUSE, not report success.
+Two of those abort SILENTLY, so a green run and a dead run look
+identical from outside. These tests therefore never ask "did it exit
+0". They ask for the right STATUS, the right WORDS (a gate that refuses
+silently is a gate nobody obeys), and a TERMINAL MARKER - the last
+thing the script prints on that path, which is what turns "aborted at
+line 93" into a failing test whatever the cause. A suite that cannot
+run at all must make the gate REFUSE, not report success.
 
 SAFETY - these run in the suite, repeatedly, on a developer machine
 that has the real install and the real library on it:

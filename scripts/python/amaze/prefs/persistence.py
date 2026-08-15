@@ -8,35 +8,22 @@ the shared eighteen's trips to the LIBRARY (`SHARED_KEYS`,
 `prefs.json`, and `settings.json` keeps them only as the last-known
 `shared_settings` copy.
 
-THE GUARDS ARE THE KEYED STORE ENGINE'S SINCE 2026-08-14 (ROADMAP line
-26). settings.json is a registered store like the five in the library -
-`keyed_store.SETTINGS`, declared there, normaliser bound here - so the
-read verdict, the unreadable latch and its kept copy, the peer fold,
-the atomic write, the snapshot tier, the write-once floor and the one
-report a denied write owes the user are written ONCE and proved once.
-This file had its own copy of every one of them, and they were the
-third such copy in the package. What stays here is what only this
-module can know: which keys exist, what each one may hold, and which
-of them this build has retired.
+THE GUARDS ARE THE KEYED STORE ENGINE'S. settings.json is a registered
+store - `keyed_store.SETTINGS`, declared there, normaliser bound here -
+so the read verdict, the unreadable latch, the peer fold, the atomic
+write, the snapshot tier and what a denied write owes the user are
+written once and proved once. What stays here is what only this module
+can know: which keys exist, what each may hold, and which this build
+has retired. ▸p/store-guards
 
 The FILE `settings.json` is PER-MACHINE and never travels - no sync
-folder, no merge between computers; it moved to the OS preferences dir
-on 2026-08-05, and the fold is for two panes of one session, not for
-two computers. The portable-path comment below still describes the
-install-folder era and is left exactly as it was found - correcting it
-is a separate change, not a rider on a move.
+folder, no merge between computers, and the fold is for two panes of
+one session.
 
-Split out of `prefs.py` 2026-08-09 (ROADMAP line 9). `Prefs` inherits
-`_Persistence`, so every call site still says `prefs.save()`. The
-methods moved BYTE FOR BYTE and deliberately: this file is where a
-user's accumulated configuration is composed - the library pointer,
-the registered locations, the favourites - and a retyped line can
-change what lands on disk without anything raising.
-
-The portable-path helpers travel WITH these methods rather than
-staying behind. They are used 53 times here against twice in the rest
-of `prefs.py`, and leaving them there would make this module import
-`prefs.py`, which imports this one.
+`Prefs` inherits `_Persistence`, so every call site still says
+`prefs.save()`. The portable-path helpers live here rather than in
+`prefs.py`: they are used 53 times here against twice there, and the
+other way round would make this module import its own importer.
 """
 
 import os
@@ -76,11 +63,13 @@ SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)
 # ---------------------------------------------------------------------------
 # Portable paths across machines
 #
-# settings.json lives in the install folder, which multi-machine users
-# sync between computers - but library/folder/favorite paths are
-# absolute and machine-specific. The GENERAL rule (no folder names, no
-# sync-service assumptions): store every path relative to an anchor
-# every machine already knows.
+# A stored path must survive the install MOVING - and, if a settings
+# file is ever copied by hand, landing on a machine whose home folder
+# is spelled differently. (This used to say settings.json lives in the
+# install folder and syncs between computers; it moved to the OS
+# preferences dir on 2026-08-05 and never travels.) The general rule,
+# with no folder names and no sync-service assumptions: store every
+# path relative to an anchor every machine already knows.
 #
 #   * "$AMAZE/../<rest>"  - relative to the install folder, whose
 #     per-machine location the package file defines. Used whenever the
