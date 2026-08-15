@@ -1,50 +1,13 @@
 #!/usr/bin/env python3
-"""Scan a staged commit, or a commit message, for personal data.
-
-Three things are refused:
-
-  * the author's IDENTITY, from the private pattern list, in staged
-    content and in the message;
-  * ATTRIBUTION - a person referred to without being named, which the
-    identity list cannot see because it names nobody;
-  * QUOTED SPEECH in a commit message. Machine text goes in backticks,
-    so quotation marks around a sentence mean a person was quoted.
-
-NAMES NOBODY. This file is PUBLIC, so a deny-list of an identity here
-would be the leak it exists to prevent - the patterns live in the
-private notes repo and this side only knows how to find them. The
-attribution patterns are generic English and so belong here, readable
-and testable in the open.
-
-NEVER REWRITE THIS IN SHELL. Two drafts were, and both were walked
-through by a path that becomes a hostile string: `core.quotePath=false`
-still C-quotes control characters, and a file named `0:notes.md` makes
-`git show ":0:notes.md"` resolve as stage 0 of a DIFFERENT file and
-report the leaking one clean. Here `--raw -z` gives raw paths plus the
-blob OID and content is read BY OID, so no path is ever interpolated
-into a command or a pattern.
-
-FAILS CLOSED: a missing list, an empty list, an uncompilable pattern or
-any git error all refuse.
-
-LIMITATIONS: binary content is not scanned (.hip/.otl/.png embed the OS
-user name) - only its paths; and cherry-pick and rebase run no content
-hook, because git provides none.
-"""
+"""Refuse a staged commit or message carrying personal data. ▸p/name-gate"""
+import ast
 import os
 import re
 import subprocess
 import sys
 
-#: Match git's own binary heuristic exactly. git sniffs the FIRST 8000
-#: bytes for a NUL; scanning the whole blob instead meant a file with a
-#: NUL at byte 16000 was "binary" here and TEXT to git - so it diffed,
-#: grepped and rendered as ordinary markdown everywhere except in the
-#: gate, which skipped it.
 SNIFF = 8000
 
-#: Zero-width and soft-hyphen characters render as nothing, so a name
-#: split by one still READS as the name on GitHub.
 INVISIBLE = re.compile(r"[­​-‍﻿]")
 
 
@@ -66,10 +29,9 @@ def refuse(headline, *detail):
 
 
 def load_patterns(repo):
+    """The compiled identity pattern and its path; refuses if unusable."""
     explicit = os.environ.get("AMAZE_PRIVATE_NAMES")
     if explicit:
-        # Used as given or not at all - a silent fallback made a wrong
-        # path look like success.
         path = explicit if os.path.isfile(explicit) else None
     else:
         guess = os.path.join(repo, "..", "AmazeNotes", "private-names.txt")
@@ -93,12 +55,7 @@ def load_patterns(repo):
 
 
 def own_url():
-    """The repo's OWN address, discovered rather than hardcoded - this
-    file cannot name the org any more than it can name the author.
-
-    Only this URL is exempt. Stripping ANY url exempted a name inside an
-    unrelated one: a personal profile link and a mailto query both
-    sailed through, which is the exemption deleting the evidence."""
+    """The repo's OWN address, discovered not hardcoded. ▸p/name-gate"""
     ok, out = run("git", "config", "--get", "remote.origin.url")
     if not ok:
         return None
@@ -109,23 +66,11 @@ def own_url():
     return url or None
 
 
-#: The About-box product credit, ANCHORED and letters-only. The first
-#: version matched anywhere on a line and accepted enough characters to
-#: swallow an email address, a phone number and a sentence of prose.
 CREDIT = re.compile(r'^\s*"<p>By [A-Za-z.]+(?: [A-Za-z.]+){0,3}<br>"\s*$')
 
 
 def api_owner(owner):
-    """The same host/owner prefix in the API spelling, or None.
-
-    ONE address, two spellings. `remote.origin.url` gives the browse
-    form, and the release feed is reached at `api.<host>/repos/<owner>/
-    <repo>` - so a repo whose owner segment is a listed name was exempt
-    when written one way and refused when written the other, and every
-    commit touching the updater was refused on a literal that has to be
-    there for it to work. Derived from the discovered remote, so this
-    file still names nobody.
-    """
+    """The same host/owner prefix in the API spelling, or None. ▸p/name-gate"""
     if not owner:
         return None
     host, _, name = owner.partition("/")
@@ -133,18 +78,12 @@ def api_owner(owner):
 
 
 def sanitize(line, allow_credit):
+    """A line with our own url, owner and invisible marks removed. ▸p/name-gate"""
     line = INVISIBLE.sub("", line)
     url = sanitize.url
     if url:
         line = re.sub(r"[a-z+]*://" + re.escape(url) + r"\S*", "", line)
         line = re.sub(re.escape(url) + r"\S*", "", line)
-    # The host/owner prefix of our OWN url is public by design and
-    # appears in the code as a bare literal, in both spellings. Stripped
-    # only at a BOUNDARY: `host/owner-personal-notes` is a different
-    # account and must stay visible, which is why `-` and `.` do not end
-    # the token. Getting this wrong re-opens the bypass where a name
-    # sits inside a foreign url - so the API form takes the same rule
-    # and the gate suite refuses a lookalike in both.
     for owner in (sanitize.owner, sanitize.api_owner):
         if owner:
             line = re.sub(re.escape(owner) + r"(?![A-Za-z0-9._-])", "", line)
@@ -166,24 +105,9 @@ def scan_text(text, pattern, allow_credit):
     return hits
 
 
-# ---------------------------------------------------------- message rules
-#
-# A commit message carries the FUNCTION of the code and the RESULT of the
-# tests. Everything below is what kept arriving instead, and none of it
-# is reachable by the identity list.
-
-#: Measured over the 445 commits on main before this gate: a median body
-#: of 22 lines and 185 words, 78% of them past ten lines, the longest at
-#: 141 lines and 1380 words. Length is the only mechanical handle on
-#: narrative, and narrative is what makes a history unreadable to anyone
-#: arriving new. The diff already says what changed; the dev log in the
-#: private notes already carries the story.
 MAX_SUBJECT_CHARS = 72
 MAX_BODY_LINES = 4
 
-#: A person, referred to without being named - so the identity list
-#: cannot see any of it. Generic English, naming nobody, which is why
-#: these live in the public repo where they can be read and tested.
 ATTRIBUTION = (
     (re.compile(r"\b(?:he|him|his|she|her|hers|himself|herself)\b", re.I),
      "a pronoun standing in for a person"),
@@ -207,31 +131,19 @@ ATTRIBUTION = (
      "a conversation recorded instead of a reason"),
 )
 
-#: Machine text goes in backticks, which 157 published commits already
-#: do. Their contents are removed before the quote rule looks, so an
-#: error string or an identifier is never read as speech.
 BACKTICK = re.compile(r"`[^`]*`")
 FENCE = re.compile(r"^\s*```")
 
 QUOTED = (
     re.compile(r'"([^"\n]{2,400})"'),
     re.compile("“([^”\n]{2,400})”"),
-    # A single quote needs non-letter boundaries, or the apostrophe in a
-    # possessive opens a span that runs to the next one.
     re.compile(r"(?<![A-Za-z])'([^'\n]{2,400})'(?![A-Za-z])"),
     re.compile("‘([^’\n]{2,400})’"),
 )
 HAS_LETTER = re.compile(r"[A-Za-z]")
 
-#: Below three words a quoted span is a label or an identifier; at three
-#: and above it is a sentence, and a sentence in quotation marks is
-#: somebody being quoted.
 QUOTE_MIN_WORDS = 3
 
-#: Tool advertising. A message records the change; what typed it is not
-#: part of the change, and a published history is not advertising space.
-#: 195 of the 445 commits on main carry one of these, in three variants,
-#: because it arrives by default and nothing refused it.
 ADVERTISING = re.compile(
     r"co-authored-by:\s*(?:claude|[^<]*anthropic)"
     r"|generated with \[?claude"
@@ -243,12 +155,7 @@ ADVERTISING = re.compile(
 
 
 def quoted_speech(text):
-    """The first quoted span of QUOTE_MIN_WORDS words or more, or None.
-
-    Words are WHITESPACE-separated. Counting runs of letters instead
-    read a slash-separated path as seven words, which made every icon
-    path in the manual look like a reproduced sentence.
-    """
+    """The first quoted span of QUOTE_MIN_WORDS words or more. ▸p/name-gate"""
     for pattern in QUOTED:
         for match in pattern.finditer(BACKTICK.sub(" ", text)):
             inner = match.group(1)
@@ -259,17 +166,7 @@ def quoted_speech(text):
 
 
 def paragraphs(text):
-    """[(first_line_number, joined_text)] per blank-line-separated block.
-
-    JOINED, because a message wraps at 72 columns and both an
-    attribution and a quotation routinely straddle the break. A scan
-    reading one line at a time sees two clean lines and passes - found
-    by audit in published commits, where a quotation opens on one line
-    and closes on the next, and in source where a two-word attribution
-    is split by a comment marker.
-
-    Fenced blocks are skipped: they are pasted output, not prose.
-    """
+    """[(first_line, joined_text)] per blank-line block, JOINED. ▸p/name-gate"""
     blocks, start, buf, fenced = [], 0, [], False
     for number, line in enumerate(text.splitlines(), 1):
         if FENCE.match(line):
@@ -309,8 +206,6 @@ def scan_message(text):
         hits.append((1, "the subject is %d characters, over %d"
                      % (len(subject), MAX_SUBJECT_CHARS), subject))
 
-    # Checked on the RAW lines: a trailer is its own line, and it must be
-    # caught whether or not it sits in a paragraph.
     for number, line in enumerate(lines, 1):
         if ADVERTISING.search(line):
             hits.append((number, "tool advertising", line.strip()[:110]))
@@ -331,20 +226,11 @@ def scan_message(text):
         if spoken:
             hits.append((number, "quoted speech - machine text goes in "
                                  "backticks", spoken[:110]))
-    # Reported in the order they appear, so the list can be worked down
-    # the message from the top rather than jumped around.
     return sorted(hits, key=lambda hit: hit[0])
 
 
 def read_blobs(oids):
-    """{oid: bytes} for every oid, in ONE git process.
-
-    `git cat-file --batch` takes oids on stdin and answers
-    "<oid> <type> <size>\\n<payload>\\n". One spawn instead of one per
-    file: the previous draft ran THREE full blob reads per file and took
-    33 seconds over a 300-file staged set - and a gate slow enough to be
-    annoying is a gate that gets bypassed with --no-verify.
-    """
+    """{oid: bytes} for every oid, in ONE git process. ▸r/git-hook-surface"""
     if not oids:
         return {}
     try:
@@ -364,7 +250,6 @@ def read_blobs(oids):
         header = out[pos:end].split()
         pos = end + 1
         if len(header) < 3:
-            # "<oid> missing" - fail closed rather than skip silently.
             return None
         size = int(header[2])
         blobs[header[0].decode()] = out[pos:pos + size]
@@ -373,14 +258,7 @@ def read_blobs(oids):
 
 
 def staged_entries():
-    """(status, dst_oid, paths) per staged change, from --raw -z.
-
-    -z means raw unquoted paths; the OID means the content is fetched
-    without the path ever being parsed as a revision."""
-    # --abbrev=40 because --raw ABBREVIATES oids by default, while
-    # `cat-file --batch` echoes the FULL oid in its header - so every
-    # lookup missed and the scan refused everything. It failed closed,
-    # which is the right direction, but it was still wrong.
+    """(status, dst_oid, paths) per staged change. ▸r/git-hook-surface"""
     ok, out = run("git", "diff", "--cached", "--raw", "-z", "--abbrev=40")
     if not ok:
         refuse("git diff --cached failed, so the staged set is unknown.")
@@ -403,40 +281,22 @@ def staged_entries():
     return entries
 
 
-#: Extensions the attribution pass reads. Binary is skipped by git's own
-#: NUL rule for the identity scan; here the diff is already text, so the
-#: filter is about NOISE - a .usd or a .jpg whose bytes happen to spell
-#: pronoun-shaped bytes produced 1,137 of 1,218 raw matches.
 ATTRIBUTABLE = (".py", ".md", ".sh", ".txt", ".ui", ".qss", ".xml",
                 ".pypanel")
 
-
-#: A comment block may run to this many sentences. Same ceiling as a
-#: commit body, for the same reason: prose grows until something stops
-#: it, and the dev log in the private notes is where the story goes.
 MAX_COMMENT_SENTENCES = 10
 
 SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
 
-#: A triple-quote OPENS or CLOSES a docstring; it is never speech. Left
-#: in place, every added docstring read as a quotation and the gate
-#: refused its own source.
 TRIPLE = re.compile(r'"""|\'\'\'')
 
-#: Prose, per file kind. In code only a `#` comment or a docstring line
-#: is prose; the rest is code, where a string literal is not a
-#: quotation and `a.b` is not a sentence. In markdown every line is.
 PROSE_MARKUP = (".md", ".txt")
 
-#: Markup, where a quotation mark is SYNTAX. An attribute value in
-#: OPmenu.xml or a .ui file is not somebody being quoted.
 MARKUP = (".xml", ".ui", ".qss", ".pypanel", ".json")
 CODE_COMMENT = re.compile(r'^\s*(?:#|"""|\'\'\'|\*)')
 
-#: This file must contain the patterns it matches, so it cannot be
-#: scanned by them - the same reason the identity list lives in the
-#: private repo instead of here.
 SELF = "tools/git-hooks/amaze_name_scan.py"
+
 
 def prose_of(path, line):
     """The prose in an added line, or None when the line is not prose."""
@@ -448,17 +308,7 @@ def prose_of(path, line):
 
 
 def countable_prose(path, lines):
-    """The prose the sentence ceiling should measure.
-
-    A DOCSTRING'S FIRST SENTENCE IS ITS SUMMARY - API documentation,
-    not story - so it does not count. Without this the ceiling scales
-    with the number of FUNCTIONS rather than with how much is being
-    explained: a new module carrying one short docstring each was over
-    it at eleven before a single explanatory sentence existed, which is
-    the rule refusing the house style instead of the story it is aimed
-    at (2026-08-11). Everything after that first sentence counts, and a
-    plain `#` comment counts whole.
-    """
+    """The prose the sentence ceiling measures, summaries out. ▸p/name-gate"""
     if path.endswith(PROSE_MARKUP):
         return " ".join(t for t in (prose_of(path, b) for b in lines)
                         if t is not None)
@@ -466,11 +316,6 @@ def countable_prose(path, lines):
     for body in lines:
         marks = len(TRIPLE.findall(body))
         opening = bool(marks) and not in_doc
-        # A DOCSTRING'S BODY IS PROSE TOO. `prose_of` answers only for a
-        # line that STARTS with a marker, so before this the ceiling saw
-        # a docstring's first line and none of the paragraphs under it -
-        # the exact shape it exists to stop, uncounted. Measured while
-        # adding the summary rule above.
         inside = in_doc and not opening
         text = prose_of(path, body)
         if text is None and inside:
@@ -497,9 +342,6 @@ def added_blocks():
     ok, out = run("git", "diff", "--cached", "-U0", "--no-color")
     if not ok:
         refuse("git diff --cached failed, so the added lines are unscanned.")
-    # DECODED here: run() answers bytes, and a str .startswith against
-    # them raises rather than matching - the gate then failed closed on
-    # its own TypeError, which is safe and useless.
     out = out.decode("utf-8", "replace")
     blocks, path, number, run_lines, start = [], None, 0, [], 0
     def flush():
@@ -528,16 +370,85 @@ def added_blocks():
     return blocks
 
 
+MAX_COMMENT_LINES = 1
+
+DIRECTIVE = re.compile(
+    r'^\s*#\s*(?:!|-\*-|type:|noqa|pylint|pragma|shellcheck|:type|:rtype)')
+
+
+def comment_lines_by_scope(source):
+    """{scope: [line numbers]}, `#` lines and docstrings alike. ▸p/comment-standard"""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return {}
+    lines = source.splitlines()
+    starts = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef,
+                             ast.AsyncFunctionDef)):
+            first = min([node.lineno]
+                        + [d.lineno for d in node.decorator_list])
+            starts.append((first, node.name, node))
+    starts.sort()
+
+    def owner(number):
+        name = "<module>"
+        for first, scope_name, node in starts:
+            if first <= number <= getattr(node, "end_lineno", first):
+                name = scope_name
+        return name
+
+    found = {}
+    for number, line in enumerate(lines, 1):
+        if line.strip().startswith("#") and not DIRECTIVE.match(line):
+            found.setdefault(owner(number), []).append(number)
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
+                                 ast.AsyncFunctionDef)):
+            continue
+        doc = ast.get_docstring(node, clean=False)
+        if not doc:
+            continue
+        name = getattr(node, "name", "<module>")
+        first = node.body[0].lineno
+        found.setdefault(name, []).extend(
+            range(first, first + len(doc.splitlines())))
+    return found
+
+
+def comment_budget_offences():
+    """[(path, line, reason, text)] per scope over the cap, WHOLE-file."""
+    entries = staged_entries()
+    if entries is None:
+        return None
+    wanted = {}
+    for status, oid, paths in entries:
+        if status[:1] == "D" or set(oid) == {"0"}:
+            continue
+        path = paths[-1].decode("utf-8", "replace")
+        if path.endswith(".py"):
+            wanted[oid] = path
+    blobs = read_blobs(list(wanted))
+    if blobs is None:
+        return None
+    hits = []
+    for oid, path in sorted(wanted.items(), key=lambda kv: kv[1]):
+        try:
+            source = blobs[oid].decode("utf-8")
+        except (KeyError, UnicodeDecodeError):
+            return None
+        for scope, numbers in sorted(comment_lines_by_scope(source).items()):
+            if len(numbers) > MAX_COMMENT_LINES:
+                hits.append((path, min(numbers),
+                             "%s carries %d comment lines, over %d"
+                             % (scope, len(numbers), MAX_COMMENT_LINES),
+                             "one line, then an id into AmazeNotes"))
+    return hits
+
+
 def added_text_offences():
-    """[(path, line, reason, text)] for what this commit ADDS.
-
-    Three rules, and they are the whole policy for text I write:
-    no quoted speech, no attribution, at most ten sentences.
-
-    Added lines only. 81 attribution-shaped lines were already committed
-    when this was written, so a whole-file rule would refuse every
-    commit to those files and be switched off the same day.
-    """
+    """[(path, line, reason, text)] for ADDED lines only. ▸p/name-gate"""
     hits = []
     for path, start, lines in added_blocks():
         if path == SELF:
@@ -587,9 +498,7 @@ def main():
             refuse("no commit message file was given, so it cannot be checked.")
         with open(path, encoding="utf-8", errors="replace") as handle:
             message = handle.read()
-        # allow_credit=False: that exemption exists for one string
-        # literal in a dialog and has no business excusing a commit
-        # message, which is where the breaches actually happened.
+        # allow_credit=False: the About-box exemption is for a dialog only.
         named = scan_text(message, pattern, allow_credit=False)
         prose = scan_message(message)
         if named or prose:
@@ -657,7 +566,7 @@ def main():
             "  what you were asked for and not the discussion that led\n"
             "  there.\n\n"
             "  THE STORY GOES IN THE PRIVATE NOTES, AND THE CODE POINTS\n"
-            "  AT IT. 33 comments in this repo already do it:\n\n"
+            "  AT IT:\n\n"
             "      # ...one guarded write each (research.md \u25b8 Widget teardown)\n\n"
             "  research.md for facts about the world, practice.md for\n"
             "  facts about the work, the dev log for what happened.\n"
@@ -668,6 +577,25 @@ def main():
             "      AMAZE_ALLOW_PRIVATE=$(git rev-parse HEAD) git commit ...\n"
             % MAX_COMMENT_SENTENCES)
         return 1
+
+    budget = comment_budget_offences()
+    if budget is None:
+        refuse("the staged content could not be read, so it is unscanned.")
+    if budget:
+        sys.stderr.write(
+            "COMMIT REFUSED - a scope carries more than %d comment "
+            "line:\n\n" % MAX_COMMENT_LINES)
+        for where, number, reason, text in budget:
+            sys.stderr.write("  %s:%d  %s\n      %s\n"
+                             % (where, number, reason, text))
+        sys.stderr.write(
+            "\n  ONE LINE per module, class and function. Say what it\n"
+            "  DOES and what to watch when calling it. Everything else\n"
+            "  goes to AmazeNotes and the code keeps the id:\n\n"
+            "      # ...cannot take a hotkey. ▸r/hotkeys\n\n"
+            "  Whole-file, not added lines: a file you touch is a file\n"
+            "  you bring under the cap.\n")
+        return 1
     return 0
 
 
@@ -675,7 +603,6 @@ if __name__ == "__main__":
     try:
         code = main()
     except Exception as exc:                             # noqa: BLE001
-        # Fail CLOSED: an unexpected error must never read as clean.
         sys.stderr.write("COMMIT REFUSED - the name scan itself failed: %r\n"
                          % (exc,))
         code = 1

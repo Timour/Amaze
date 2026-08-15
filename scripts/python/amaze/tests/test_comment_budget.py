@@ -1,30 +1,19 @@
-"""The comment sweep, ratcheted: the count may fall, never rise.
-
-Cut a block and this test fails, naming the number to pin. ▸p/comment-standard
-"""
+"""The comment sweep, ratcheted: the count may fall, never rise. ▸p/comment-standard"""
 
 import ast
 import os
 import unittest
 
-#: The whole REPO, not the package: `tools/` and `toolbar/` ship too,
-#: and scanning only `amaze/` left the fattest block in the tree unseen.
 _ROOT = os.path.abspath(__file__)
 for _ in range(5):
     _ROOT = os.path.dirname(_ROOT)
 
-#: The sizes the sweep works to, not style limits.
 COMMENT_LINES = 12
 DOCSTRING_LINES = 20
 
-#: Comment runs are counted in every SHIPPED file that has them, not
-#: only Python - `.sh` and `.shelf` hid whole blocks from the count.
-#: Docstrings are Python's alone.
 SCANNED = (".py", ".sh", ".shelf", ".xml")
 
-#: Blocks still over the cap (2026-08-15). LOWER it as the sweep
-#: advances; never raise it.
-BUDGET = 276
+BUDGET = 275
 
 
 def _blocks(path):
@@ -54,7 +43,6 @@ def _blocks(path):
         if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef,
                                  ast.AsyncFunctionDef)):
             continue
-        # clean=False, so the count is the lines as WRITTEN.
         doc = ast.get_docstring(node, clean=False)
         if doc and len(doc.splitlines()) >= DOCSTRING_LINES:
             found.append((len(doc.splitlines()),

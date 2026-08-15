@@ -310,6 +310,52 @@ git add long_story.py
 check "story UNDER the summary is still refused" 1 $?
 reset_tree
 
+echo "ONE COMMENT LINE PER SCOPE - whole-file, docstrings counted too"
+
+# AT the cap. Every scope here HAS a comment, so a broken counter shows
+# up as a refusal rather than as a pass with nothing to count. The
+# shebang is a machine directive and must not consume the module's line.
+{ printf '#!/usr/bin/env python3\n'
+  printf '"""A module summary line."""\n'
+  printf 'import os\n\n\n'
+  printf 'class Thing:\n    """A class summary line."""\n\n'
+  printf '    def method(self):\n        """A method summary line."""\n'
+  printf '        return os.sep\n\n\n'
+  printf 'def alone():\n    """A function summary line."""\n    return 2\n'
+} > at_cap.py
+git add at_cap.py
+"$here/pre-commit" >/dev/null 2>&1
+check "a file at one comment line per scope passes" 0 $?
+reset_tree
+
+# OVER by one line, in a function, with nothing else wrong - no
+# pronoun, no quotation, two sentences. So the refusal can only be the
+# cap, and the message is checked to prove it.
+{ printf 'def widen(value):\n'
+  printf '    # Clamp to the grid pitch before drawing.\n'
+  printf '    # A raw value lands between rows and renders blurred.\n'
+  printf '    return max(8, value - value %% 8)\n'
+} > over_cap.py
+git add over_cap.py
+"$here/pre-commit" 2> over_cap.err >/dev/null
+check "a scope over the cap is refused" 1 $?
+grep -q "widen carries 2 comment lines, over 1" over_cap.err
+check "and the CAP is what refused it, not another rule" 0 $?
+reset_tree
+
+# The directive exemption, on material the rule CAN match: two comment
+# lines in one scope, one of them a directive. If the exemption broke,
+# this refuses.
+{ printf 'def tagged():\n'
+  printf '    # noqa: E501\n'
+  printf '    # A real summary line.\n'
+  printf '    return 1\n'
+} > directive.py
+git add directive.py
+"$here/pre-commit" >/dev/null 2>&1
+check "a machine directive does not consume the scope's line" 0 $?
+reset_tree
+
 echo "END TO END - real commits, through git itself"
 printf 'x = 1  # %s wanted this\n' "$probe" > real.py
 git add -A && git commit -qm "A technical message" >/dev/null 2>&1
