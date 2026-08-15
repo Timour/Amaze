@@ -135,21 +135,39 @@ def own_url():
 CREDIT = re.compile(r'^\s*"<p>By [A-Za-z.]+(?: [A-Za-z.]+){0,3}<br>"\s*$')
 
 
+def api_owner(owner):
+    """The same host/owner prefix in the API spelling, or None.
+
+    ONE address, two spellings. `remote.origin.url` gives the browse
+    form, and the release feed is reached at `api.<host>/repos/<owner>/
+    <repo>` - so a repo whose owner segment is a listed name was exempt
+    when written one way and refused when written the other, and every
+    commit touching the updater was refused on a literal that has to be
+    there for it to work. Derived from the discovered remote, so this
+    file still names nobody.
+    """
+    if not owner:
+        return None
+    host, _, name = owner.partition("/")
+    return "api.%s/repos/%s" % (host, name) if host and name else None
+
+
 def sanitize(line, allow_credit):
     line = INVISIBLE.sub("", line)
     url = sanitize.url
     if url:
         line = re.sub(r"[a-z+]*://" + re.escape(url) + r"\S*", "", line)
         line = re.sub(re.escape(url) + r"\S*", "", line)
-    owner = sanitize.owner
-    if owner:
-        # The host/owner prefix of our OWN url is public by design and
-        # appears in the code as a bare literal. Stripped only at a
-        # BOUNDARY: `host/owner-personal-notes` is a different account
-        # and must stay visible, which is why `-` and `.` do not end the
-        # token. Getting this wrong re-opens the "a name inside a
-        # foreign url" bypass.
-        line = re.sub(re.escape(owner) + r"(?![A-Za-z0-9._-])", "", line)
+    # The host/owner prefix of our OWN url is public by design and
+    # appears in the code as a bare literal, in both spellings. Stripped
+    # only at a BOUNDARY: `host/owner-personal-notes` is a different
+    # account and must stay visible, which is why `-` and `.` do not end
+    # the token. Getting this wrong re-opens the bypass where a name
+    # sits inside a foreign url - so the API form takes the same rule
+    # and the gate suite refuses a lookalike in both.
+    for owner in (sanitize.owner, sanitize.api_owner):
+        if owner:
+            line = re.sub(re.escape(owner) + r"(?![A-Za-z0-9._-])", "", line)
     if allow_credit and CREDIT.match(line):
         return ""
     return line
@@ -157,6 +175,7 @@ def sanitize(line, allow_credit):
 
 sanitize.url = None
 sanitize.owner = None
+sanitize.api_owner = None
 
 
 def scan_text(text, pattern, allow_credit):
@@ -598,6 +617,7 @@ def main():
     sanitize.url = own_url()
     if sanitize.url and sanitize.url.count("/") >= 2:
         sanitize.owner = "/".join(sanitize.url.split("/")[:2])
+        sanitize.api_owner = api_owner(sanitize.owner)
 
     if len(sys.argv) > 2 and sys.argv[1] == "--message":
         path = sys.argv[2]

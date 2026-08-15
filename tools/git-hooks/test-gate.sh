@@ -36,7 +36,15 @@ git config user.email "gate-test@example.invalid"
 git config user.name "Gate Test"
 # An origin the scanner can discover, so the "our own URL is exempt"
 # rule has something to be exempt ABOUT without this file naming it.
-git remote add origin "https://github.com/gate-test-org/gate-test-repo.git"
+#
+# THE OWNER MUST CONTAIN THE PROBE NAME, or the own-url cases test
+# nothing: with an owner spelling no listed pattern, those lines name
+# nobody and pass whether the exemption works or not. That is the fault
+# already recorded for the LOOKALIKE case a few lines down, sitting
+# unnoticed in its neighbour - and it hid a real gap, where the same
+# address in the host's API spelling was refused. Built after `probe`
+# is derived, which is why the remote is added down here rather than
+# with the other git config above.
 
 pass=0
 fail=0
@@ -55,6 +63,7 @@ echo "seed" > seed.txt && git add seed.txt && git commit -qm "Seed"
 patterns="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$list" \
             | grep -v '^#' | awk 'NF')"
 probe="$(printf '%s\n' "$patterns" | head -1 | tr -d '\\')"
+git remote add origin "https://github.com/$probe/gate-test-repo.git"
 
 echo "REFUSES - every pattern in the list, in content and in a message"
 while read -r pattern; do
@@ -133,14 +142,31 @@ git add -A && "$here/pre-commit" >/dev/null 2>&1
 check "the About-box product credit passes" 0 $?
 reset_tree
 
-printf 'URL = "https://github.com/gate-test-org/gate-test-repo/issues/1"\n' > url.py
+printf 'URL = "https://github.com/%s/gate-test-repo/issues/1"\n' "$probe" > url.py
 git add -A && "$here/pre-commit" >/dev/null 2>&1
 check "our OWN repo url passes" 0 $?
 reset_tree
 
-printf 'x = [u for u in x if "github.com/gate-test-org" not in u]\n' > owner.py
+printf 'x = [u for u in x if "github.com/%s" not in u]\n' "$probe" > owner.py
 git add -A && "$here/pre-commit" >/dev/null 2>&1
 check "our own host/owner prefix passes as a bare literal" 0 $?
+reset_tree
+
+# The SAME address in the host's API spelling. `remote.origin.url` is
+# the browse form, and the product reaches the release feed through
+# `api.<host>/repos/<owner>/<repo>` - one address, two spellings, and
+# only the browse one was exempt. Every commit touching the updater was
+# refused on a literal that has to be there for it to work.
+printf 'URL = "https://api.github.com/repos/%s/gate-test-repo/releases/latest"\n' "$probe" > api.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "our own repo url in the API spelling passes" 0 $?
+reset_tree
+
+# And the exemption must not widen with the spelling: the lookalike is
+# refused in the API form exactly as in the browse form.
+printf 'REF = "https://api.github.com/repos/%s-personal-notes/private/issues"\n' "$probe" > apilookalike.py
+git add -A && "$here/pre-commit" >/dev/null 2>&1
+check "an API-spelled LOOKALIKE owner is still refused" 1 $?
 reset_tree
 
 # The lookalike must CONTAIN the name, or it tests nothing - the
