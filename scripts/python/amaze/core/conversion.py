@@ -4,31 +4,19 @@ thumbnail-sized QImage, for every section that shows a picture.
 One responsibility, one API: :func:`convert_image`. It returns an
 image OR a reason, never a bare None that hides which.
 
-**DECODE and FIT are two different problems**, and conflating them cost
-178 black tiles:
+Two different failures, and which one applies is a property of the
+IMAGE, measured per file, never of the format - so write no `.hdr` case:
 
-- **FIT** - Qt reads the format but refuses this file's allocation. The
-  way out is another process that resamples WHILE converting, since a
-  full-size temp file is refused all over again.
-- **FORMAT** - Qt cannot read the format at all (exr, hdr, rat). Any
-  converter that writes a Qt-readable file answers, at any size, and
-  the engine scales the result.
+- **FIT** - Qt reads the format but refuses this file's allocation, so
+  a converter must resample WHILE converting.
+- **FORMAT** - Qt cannot read the format at all. Any converter answers,
+  at any size, and the engine scales the result.
 
-**Which applies is a property of the IMAGE, measured per file, never of
-the format** - hence no `.hdr` special case anywhere below. The `-Z`
-that FIT requires is what silently destroyed HDR for FORMAT.
-▸r/sips-hdr
+The `-Z` that FIT needs silently destroys HDR for FORMAT. ▸r/sips-hdr
 
-**AN ENGINE VERIFIES ITS OWN OUTPUT; AN ADAPTER IS NEVER TRUSTED.** An
-adapter says "here is an image"; deciding whether that is ACCEPTABLE is
-this module's job, once, for every adapter it owns. Exit 0 and a black
-picture is how the 178 tiles happened with nothing in the log.
-
-The engine owns the order, the size contract, the verification, the
-scratch-file lifetime and the one log line naming who answered.
-Pillow could hand back pixels in-process and writes a PNG like the rest
-anyway, so every adapter travels the same verification: 3.0ms against
-its own 660ms resample of a 9000x9000 source. ▸o/conversion
+Adding an adapter: it writes a PNG and says whether it worked, nothing
+more. Never trust its exit code - the engine owns the order, the size
+contract and the verification. ▸o/conversion
 """
 
 import contextlib

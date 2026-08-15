@@ -1,18 +1,13 @@
 """The shell gates, tested like code - because they are code.
 
 Four shell files decide whether a build reaches the live install and a
-commit reaches the remote. Untested, they collected three gates in one
-hour that LOOKED like they worked - all the same bug, a command
-returning non-zero on an ordinary outcome under `set -e`, which
-shellcheck catches in none of its forms. ▸r/shell-errexit
+commit reaches the remote. Under `set -e` they abort SILENTLY, so a
+green run and a dead run look identical from outside, and shellcheck
+catches none of the forms. ▸r/shell-errexit
 
-Two of those abort SILENTLY, so a green run and a dead run look
-identical from outside. These tests therefore never ask "did it exit
-0". They ask for the right STATUS, the right WORDS (a gate that refuses
-silently is a gate nobody obeys), and a TERMINAL MARKER - the last
-thing the script prints on that path, which is what turns "aborted at
-line 93" into a failing test whatever the cause. A suite that cannot
-run at all must make the gate REFUSE, not report success.
+So never assert "it exited 0". Assert the STATUS, the WORDS, and a
+TERMINAL MARKER - the last thing the script prints on that path, which
+is what turns an abort at line 93 into a failing test.
 
 SAFETY - these run in the suite, repeatedly, on a developer machine
 that has the real install and the real library on it:

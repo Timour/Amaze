@@ -1,26 +1,16 @@
 """The KEYED STORE ENGINE - one guarded JSON side-table, keyed by a
 stable identity, for every store of per-key choices.
 
-:func:`stores` is the register and the only honest list - a count
-written here goes stale (this said "four" through two additions). All
-but one live in the LIBRARY and travel with it. The exception is
-`settings.json`, which is THIS MACHINE's and never travels, because it
-holds the pointer to the library and so cannot live inside it; it also
-keeps a last-known copy of what the library owns, to stay readable when
-the library is not (`core/locations.py`).
+Declare a store with :func:`register` - filename, payload key, keyspace,
+the words the user reads, one normaliser. Enumerate them with
+:func:`stores`; never write a list of your own, and never a count.
 
-**REGISTRATION IS HOW A STORE COMES INTO EXISTENCE.** A store is DATA -
-filename, payload key, keyspace, the words the user reads, one
-normaliser - handed to :func:`register`. There is no way to have a store
-and not be in :func:`stores`, so Repair, restore and the audit enumerate
-rather than each keeping a hand-written list that can be one short.
+All but `settings.json` live in the library. That one is machine-local,
+because it holds the pointer to the library.
 
-The three properties a caller has to know: absence is a VERDICT the
-engine resolves (READ / FRESH / BLIND, decided at open - never an `if
-exists` for a store to be missing an `else` on); a read hands out a
-COPY and a write stages and commits only on success; and
-`set`/`rekey`/`retire` answer with a :class:`Written` carrying a reason
-fit for a dialog, never a bare False. ▸p/store-guards
+Calling one: absence is a VERDICT (READ / FRESH / BLIND, decided at
+open), a read hands out a COPY, and `set`/`rekey`/`retire` answer with a
+:class:`Written` - never a bare False. ▸p/store-guards
 """
 
 from __future__ import annotations

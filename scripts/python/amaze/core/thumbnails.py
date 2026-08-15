@@ -1,26 +1,15 @@
 """The ONE thumbnail system - every section's thumbnails flow through
 this engine: one system for all sections, by design.
 
-- **Keys, not rows.** A thumbnail is identified by a hashable key
-  (e.g. ``("library.json", mat_id)``) and delivered BY KEY, so a row
-  reorder or a library reload cannot mis-deliver an image. The whole
-  generation-guard bug class dies at the root here.
-
-- **One RAM budget.** A byte-capped LRU shared by every section (the
-  "RAM Cache (MB)" preference). Eviction is safe because the file is
-  already on disk - disk is the swap - so an evicted row re-reads on
-  its next repaint and no section needs an exemption.
-
-- **States.** absent (never requested), pending (in flight), done
-  (delivered; an evicted key re-queues on repaint), missing (the load
-  genuinely failed - placeholder shown, sticky until `discard()`, so a
-  failure retries exactly when its file could have changed).
-
-- **Providers** are the only per-source code: FILE, CONVERT (one call
-  to `core/conversion.py` ▸o/conversion), RENDER (the model's
-  main-thread Houdini pass deposits frames) and PAINT (synchronous
-  paint-on-miss). This engine keeps the cache, the budget and the
-  loaders; it is not the decoder.
+- **Keys, not rows** (e.g. ``("library.json", mat_id)``), so a reorder
+  or a library reload cannot mis-deliver an image.
+- **One RAM budget** - a byte-capped LRU shared by every section. Disk
+  is the swap, so an evicted row just re-reads on its next repaint.
+- **States**: absent, pending, done, missing. Missing is sticky until
+  `discard()`, so a failure retries when its file could have changed.
+- **Providers** are the only per-source code: FILE, CONVERT
+  (▸o/conversion), RENDER and PAINT. This engine keeps the cache and
+  the loaders; it is not the decoder.
 """
 
 import atexit

@@ -719,16 +719,14 @@ class NodeHandler:
                         write_mat, builder_node=None, asset_id="") -> None:
         """Write an asset's .interface and .mat as ONE unit.
 
-        The two files ARE the asset, so a .mat write that fails after the
-        .interface was truncated leaves a material that no longer exists
-        - and `mat/` has no `.bak-*` tier to restore from. Both go to
-        UNIQUE scratch siblings and promote only after both succeed.
+        Both go to UNIQUE scratch siblings and promote only after both
+        succeed. `mat/` has no `.bak-*` tier, so a half-written pair is
+        unrecoverable.
 
-        `write_mat(path)` is a callback because every caller saves a
-        different node. The scratch names must be unique, not `<dest> +
-        ".writing"`: a shared name mixes two writers' bytes silently, and
-        its cleanup deletes the scratch the other is mid-rename on.
-        ▸r/atomic-writes
+        `write_mat(path)` does the .mat write - a callback, since every
+        caller saves a different node. Keep the scratch names unique: a
+        fixed one mixes two writers' bytes and deletes the scratch the
+        other is mid-rename on. ▸r/atomic-writes
         """
         # BOTH created INSIDE the try, so the cleanup covers both. With the
         # first call outside it, a failure of the SECOND - the directory is

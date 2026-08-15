@@ -1,26 +1,13 @@
 """Registered FILE LOCATIONS and File FAVOURITES, as library stores.
 
-Content facts follow the library; only the POINTER to it stays behind in
-settings.json. Registering a file in one library and losing its icon in
-another was one row answering to two scopes. ▸o/keyed-store
+Content facts follow the library; only the POINTER to it stays in
+settings.json, which also keeps a last-known copy so the list still
+shows when the library is unreachable. Write that copy FROM the store,
+never back into it.
 
-**settings.json keeps a copy, and it is not a second truth.** Written
-FROM the store, never back into it, for the one job the library cannot
-do - be readable when the library is not, so an unmounted drive shows a
-last-known list marked unreachable rather than nothing. It serves a
-build ROLLBACK on THIS machine, never another machine: settings.json is
-per-machine and never travels.
-
-**The copy also carries the ORDER**, because a store is written with
-`sort_keys=True` and insertion order does not survive. The order is
-user-authored (`move_registered`, `commit_registered_order`) and stays
-local: membership is the shared fact, order is presentation.
-
-**The records are PER-USER** - the store declares `user_tagged`, so
-each user of a shared library registers their own folders and untagged
-rows adopt into whoever opens it (`_adopt_untagged`). With a library
-present and nobody picked, reads serve the copy and writes refuse; a
-removal still sweeps EVERY user's keys under the folder.
+Order lives in the local list, not the store - `sort_keys=True` loses
+it. Records are PER-USER (`user_tagged`). With a library present and no
+user picked, reads serve the copy and writes refuse. ▸o/keyed-store
 """
 
 from __future__ import annotations

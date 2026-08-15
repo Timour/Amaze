@@ -1,22 +1,11 @@
 """The Grid area - the code that drives the ONE thumbnail view.
 
-The Grid is already one widget (`panel.thumblist`); what was written six
-times was the code that CONFIGURES it. A menu is DATA now -
-`Section.GRID_MENU`, one row per entry - and this module is the only
-code that turns that data into a QMenu. ▸o/section-api
+A menu is DATA: `Section.GRID_MENU`, one row per entry. This is the only
+code that turns it into a QMenu, so swatch pixmaps are drawn here and
+`sections.py` stays free of QtGui. ▸o/section-api
 
-A row says whether the entry EXISTS (`shown`), whether it is ENABLED
-(`needs` - it greys, never vanishes, so the menu keeps its shape), what
-its submenu holds (`children`), and the NAME of a Section method to
-call. A name rather than a callable, so the tables can be read side by
-side. Swatch pixmaps are drawn here, which keeps `sections.py` free of
-QtGui.
-
-**Dispatch is by IDENTITY through a dict.** A dismissed menu returns
-None and so does an entry that was never built, so comparing actions
-fired the Redshift converter on every dismissed right-click until
-someone remembered an `is not None`. A dict lookup on None finds
-nothing, so there is nothing to remember.
+Dispatch is by IDENTITY through a dict, never by comparing actions: a
+dismissed menu and an entry that was never built are both None.
 """
 
 from __future__ import annotations

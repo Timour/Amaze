@@ -8,22 +8,14 @@ the shared eighteen's trips to the LIBRARY (`SHARED_KEYS`,
 `prefs.json`, and `settings.json` keeps them only as the last-known
 `shared_settings` copy.
 
-THE GUARDS ARE THE KEYED STORE ENGINE'S. settings.json is a registered
-store - `keyed_store.SETTINGS`, declared there, normaliser bound here -
-so the read verdict, the unreadable latch, the peer fold, the atomic
-write, the snapshot tier and what a denied write owes the user are
-written once and proved once. What stays here is what only this module
-can know: which keys exist, what each may hold, and which this build
-has retired. ▸p/store-guards
+THE GUARDS ARE THE KEYED STORE ENGINE'S - settings.json is a registered
+store (`keyed_store.SETTINGS`, normaliser bound here). What stays here
+is what only this module can know: which keys exist, what each may
+hold, and which this build has retired. ▸p/store-guards
 
-The FILE `settings.json` is PER-MACHINE and never travels - no sync
-folder, no merge between computers, and the fold is for two panes of
-one session.
-
-`Prefs` inherits `_Persistence`, so every call site still says
-`prefs.save()`. The portable-path helpers live here rather than in
-`prefs.py`: they are used 53 times here against twice there, and the
-other way round would make this module import its own importer.
+The FILE is PER-MACHINE and never travels; the fold is for two panes of
+one session. `Prefs` inherits `_Persistence`, so call sites still say
+`prefs.save()`.
 """
 
 import os

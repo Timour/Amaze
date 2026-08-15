@@ -1,24 +1,15 @@
 """The debug engine: a structured session log, off unless asked for.
 
 One JSON Lines file - `amaze_debug.jsonl` in the per-OS log dir
-`hostos` resolves - so a session can be filtered by category, counted
-and diffed rather than read as prose. A `print()` reaches only the
-terminal Houdini was launched from, and PySide swallows exceptions
-raised in Qt slots, so neither survives in a log the user can send.
+`hostos` resolves - so a session can be filtered and counted rather
+than read as prose. A `print()` reaches only the launching terminal and
+PySide swallows exceptions raised in Qt slots, so neither survives in a
+log the user can send.
 
-THREE WRITERS, TWO OF THEM ALWAYS ON:
-
-* the crash recorder, armed by `install()`, writes any UNCAUGHT
-  exception with the environment header even with Debug Mode off;
-* `prefs_snapshot()` also writes with Debug off, deliberately - it is
-  the recovery route `prefs.py`'s dialog points at when settings.json
-  will not parse, and that session is exactly the one nobody had Debug
-  Mode on for;
-* `event()` / `note()` / `exception()` are gated on Debug Mode
-  (Preferences -> Debug), and off means off - one boolean test.
-
-A quiet session with Debug off therefore writes one settings record per
-panel open and nothing else.
+Three writers. `install()`'s crash recorder and `prefs_snapshot()` are
+ALWAYS on - the snapshot deliberately, since the session that needs it
+is the one nobody had Debug Mode on for. `event()` / `note()` /
+`exception()` are gated on Debug Mode, and off means off.
 
 Use:
     from amaze.core import debug

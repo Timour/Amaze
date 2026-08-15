@@ -660,27 +660,21 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
 def _capture_scratch(out: str) -> str:
     """The name Houdini writes a capture to before it is put in place.
 
-    A FUNCTION, not two lines inside `capture_thumbnail`, which needs a
-    live scene viewer and so cannot be driven headlessly - these three
-    rules would otherwise be pinned by nothing. Each was got wrong once.
+    Three rules, each got wrong once. It is a function so a headless
+    test can pin them; `capture_thumbnail` needs a live scene viewer.
 
-    WRITE ASIDE, THEN REPLACE - never move the existing thumbnail to
-    `<out>.prev` first. That left the only copy of a hand-framed capture
-    under a name nothing reads, and a crash inside the flipbook orphaned
-    it with `out` missing, so the next capture could not clean up.
+    - Write ASIDE and replace. Never move the existing thumbnail out of
+      the way first, or a crash mid-flipbook orphans the only copy.
+    - The suffix goes BEFORE the extension. Houdini picks the format
+      from the extension, so `out + ".new"` writes PIC2, which QImage
+      reads as a blank frame. ▸r/image-extension
+    - The name must be UNIQUE. `out` derives from the hip path, so a
+      fixed scratch is one buffer shared by every session capturing that
+      scene. ▸r/atomic-writes
 
-    THE SUFFIX GOES BEFORE THE EXTENSION. Houdini picks the FORMAT from
-    the extension, so `out + ".new"` wrote PIC2, which QImage cannot
-    read - reported to the user as a flat-colour frame. ▸r/image-extension
-
-    THE NAME MUST BE UNIQUE. `out` derives from the hip path, so a fixed
-    scratch is one shared buffer and two sessions capturing the same
-    scene mix their bytes. ▸r/atomic-writes
-
-    `create=False`, unlike every other caller: HOUDINI writes this file
-    and `saveThumbnailFromViewer` cannot be measured against a
-    pre-created 0-byte one without a viewer. It also keeps
-    `not os.path.isfile(scratch)` meaning "Houdini wrote nothing".
+    `create=False`, unlike every other caller: Houdini writes this file,
+    which keeps `not os.path.isfile(scratch)` meaning "Houdini wrote
+    nothing".
     """
     root, ext = os.path.splitext(out)
     return hostos.unique_scratch(out, suffix=".capturing" + (ext or ".png"),

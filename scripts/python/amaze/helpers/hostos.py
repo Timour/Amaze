@@ -414,25 +414,16 @@ SNAPSHOT_INTERVAL = 30 * 60
 def preserve_unreadable(path: str, why: str = "") -> str:
     """Copy a file we could not parse to `<path>.unreadable`, ONCE.
 
-    An unreadable file is not an empty one: the model loads empty,
-    believes it is complete, and the first save makes it true (measured -
-    200 gradients to 1, after one truncated launch and one save).
-
-    Write-once like `.bak-first`, because the SECOND failure is usually a
-    write we caused. Two exceptions, each of which had spent that one
-    slot on nothing: a 0-byte SOURCE is not preserved at all (a sync
+    Write-once, like `.bak-first` - the second failure is usually a write
+    we caused. Two exceptions: a 0-byte SOURCE is not preserved (a sync
     placeholder is ordinary), and a 0-byte `.unreadable` IS replaced.
 
-    Returns the copy's path, or "" - and that is exactly what the caller
-    may claim to the user, since a path may be this call's copy or an
-    earlier one's and "" means there is nothing beside the file. The log
-    line tells the two apart; during a diagnosis they are different
-    facts.
+    Returns the copy's path, or "". That is exactly what the caller may
+    claim to the user - a path may be this call's copy or an earlier
+    one's, and "" means there is nothing beside the file. The log line
+    tells the two apart.
 
-    NOTHING HERE SPEAKS TO THE USER. Every caller already prints a
-    paragraph about the file it could not read and names the copy from
-    this return value, so printing here was a second paragraph in
-    vocabulary the reader cannot act on.
+    Says nothing to the user. Callers speak, using this return value.
     """
     import shutil
 

@@ -1,27 +1,15 @@
 """Repair: what is wrong with this library, and what is safe to do.
 
-Clean Library's opposite number. Clean Library deletes permanently and
-refuses when it cannot tell a leftover from somebody's asset; Repair
-NEVER deletes - the strongest thing it may do is MOVE files into a dated
-folder inside the library - and it is built for the library that is
-already incoherent.
+NEVER deletes. The strongest thing it may do is MOVE files into a dated
+folder inside the library.
 
-A SHELF TOOL, NOT A PANEL COMMAND. A running panel writes the index on
-many actions and flushes deferred saves, so a list put back from inside
-it is overwritten seconds later by its own host and the user is left
-believing they recovered. ▸p/db-restore
+Run it from the shelf, in a session that has not opened a library: it
+REFUSES to change anything once one is open, because a connector that
+has already read a list will write its old document back over whatever
+was put back. The report always runs. ▸p/db-restore
 
-For the same reason it REFUSES TO CHANGE ANYTHING once a library is open
-in this session: `DatabaseConnector.load()` is gated on `if not
-self._data`, so a connector that has already read a list holds the OLD
-document and the next save writes it back over anything put back here.
-The report is always safe and always runs. Nothing here imports the
-panel or builds a model, which is what lets Repair work when the panel
-will not open - the case it exists for.
-
-Dialogs here are blocking, not `debug.alert`: the user clicked Repair
-and is waiting, the answer decides what happens next, and running it
-twice must say it twice. Findings go to `debug.event` either way.
+Nothing here may import the panel - Repair has to work when the panel
+will not open. Its dialogs block; `debug.alert` is the wrong sink.
 """
 
 import datetime

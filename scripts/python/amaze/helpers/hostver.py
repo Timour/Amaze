@@ -1,21 +1,14 @@
 """The host-capability engine: every "does this environment behave
 differently here?" question lives HERE.
 
-Sibling of `hostos.py`, which owns OS facts. Nothing else in the
-codebase may compare `hou.applicationVersion()` against a number, and
-callers ask for the ANSWER ("which point does the pick want?"), never
-the version.
+Sibling of `hostos.py`, which owns OS facts. Nothing else may compare
+`hou.applicationVersion()` against a number, and callers ask for the
+ANSWER ("which point does the pick want?"), never the version.
 
-A capability is a BASE value plus OPINIONS, each carrying its own
-conditions and the evidence that established it; the environment
-composes every opinion that applies and `explain()` reports which one
-vetoed. The base is the vendor's DOCUMENTED behaviour, never the oldest
-one, and an opinion is scoped to the coarsest boundary its evidence
-supports. Adding one without reading this first is how a macOS
-workaround reached Windows: ▸p/host-opinions
-
-An opinion whose scope is unverified says so, and names the observation
-that would settle it.
+A capability is a BASE value plus OPINIONS, each carrying its
+conditions and its evidence. Read ▸p/host-opinions before adding one -
+where the base comes from and how far an opinion may be scoped are the
+two things that go wrong.
 """
 
 import hou
