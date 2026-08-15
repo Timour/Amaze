@@ -32,6 +32,8 @@ from PySide6 import QtCore, QtGui, QtSvg
 
 import hou
 
+from amaze.helpers import ui_helpers
+
 #: Alpha of the black transparency swatch for a TRANSMISSIVE material.
 #: Opaque materials use 1.0 (the checker is fully covered).
 TRANSMISSIVE_ALPHA = 0.25
@@ -61,10 +63,7 @@ def _template(source: str = "") -> str:
     """The SVG source for one value-only source, read once each."""
     name = TEMPLATES.get(source, DEFAULT_TEMPLATE)
     if name not in _SVG_CACHE:
-        path = os.path.join(
-            hou.getenv("AMAZE") or "",
-            "scripts", "python", "amaze", "ui", name,
-        )
+        path = ui_helpers.ui_asset(name)
         with open(path, "r", encoding="utf-8") as handle:
             _SVG_CACHE[name] = handle.read()
     return _SVG_CACHE[name]

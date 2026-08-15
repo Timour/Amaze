@@ -421,16 +421,18 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _ui_icon_path(self, filename: str) -> str:
         """Absolute path of an icon asset in the plugin's ui/ folder, or
-        "" if $AMAZE isn't set or no filename was given (callers and
-        render_svg_pixmap treat "" as icon-missing and degrade). The
-        four icon-loading sites all computed this same join inline
-        before."""
-        base = hou.getenv("AMAZE")
-        if not base or not filename:
+        "" when no filename was given (callers and render_svg_pixmap
+        treat "" as icon-missing and degrade).
+
+        THE ONE ui/ LOOKUP, the same one the badge art goes through.
+        This rebuilt the join itself and answered "" whenever $AMAZE was
+        unset, where `ui_asset` falls back to the package's own folder -
+        so in one window the badge SVGs drew and the thirteen toolbar
+        icons did not, from the same missing variable.
+        """
+        if not filename:
             return ""
-        return os.path.join(
-            base, "scripts", "python", "amaze", "ui", filename
-        )
+        return ui_helpers.ui_asset(filename)
 
     def _make_menu_button(self, menu: QtWidgets.QMenu) -> "ui_helpers.IconMenuButton":
         """Stands in for a real QMenuBar item - QMainWindow reserves a

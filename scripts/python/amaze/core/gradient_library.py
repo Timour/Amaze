@@ -36,6 +36,7 @@ import os
 import hou
 from PySide6 import QtCore, QtGui
 
+import amaze
 from amaze.core import category
 from amaze.core import database
 from amaze.core import debug
@@ -51,12 +52,14 @@ THUMB_SIZE = 256
 
 
 def _def_path(filename: str) -> str:
-    base = hou.getenv("AMAZE")
-    if not base:
-        return ""
-    return os.path.join(
-        base, "scripts", "python", "amaze", "res", "def", filename
-    )
+    """A curated set shipped inside the package.
+
+    `package_file`, not a rebuilt install path: this answered "" with
+    $AMAZE unset, so the curated palettes silently did not seed. The
+    package root is derived from this module's own location and needs
+    no environment at all.
+    """
+    return amaze.package_file("res", "def", filename)
 
 
 # The curated (read-only) sets, in display order. Everything downstream

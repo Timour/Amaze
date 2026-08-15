@@ -36,6 +36,7 @@ import zipfile
 
 import hou
 
+import amaze
 from amaze.core import debug
 from amaze.helpers import hostos
 
@@ -920,10 +921,7 @@ class PhysicallyBasedSource(MatxSource):
         return len(good) >= max(1, shipped // 2)
 
     def _table_path(self) -> str:
-        return os.path.join(
-            hou.getenv("AMAZE") or "", "scripts", "python", "amaze",
-            "res", self.TABLE_FILE,
-        )
+        return amaze.package_file("res", self.TABLE_FILE)
 
     def _load(self):
         """The dataset: LIVE when reachable, the shipped table when not.
@@ -1115,10 +1113,7 @@ class RGLSource(MatxSource):
     def table(self) -> dict:
         """uid -> measured values, read once from the shipped table."""
         if self._table is None:
-            path = os.path.join(
-                hou.getenv("AMAZE") or "", "scripts", "python", "amaze",
-                "res", self.TABLE_FILE,
-            )
+            path = amaze.package_file("res", self.TABLE_FILE)
             try:
                 with open(path, encoding="utf-8") as handle:
                     self._table = json.load(handle).get("materials", {})

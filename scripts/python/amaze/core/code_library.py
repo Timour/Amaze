@@ -28,6 +28,7 @@ import json
 import hou
 from PySide6 import QtCore, QtGui
 
+import amaze
 from amaze.core import debug, library, category, material, thumbnails
 from amaze.helpers import hostos, vex_syntax
 
@@ -208,11 +209,7 @@ class CodeLibrary(library.AssetLibrary):
             marker = os.path.join(lib_dir, _STARTER_MARKER)
             if os.path.exists(marker):
                 return
-            def_path = os.path.join(
-                hou.getenv("AMAZE") or "",
-                "scripts/python/amaze",
-                _STARTER_DEF,
-            )
+            def_path = amaze.package_file(_STARTER_DEF)
             if not os.path.exists(def_path):
                 return
             with open(def_path, encoding="utf-8") as f:

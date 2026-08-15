@@ -980,6 +980,79 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "variable raises TypeError instead of naming a file: %s"
             % offenders)
 
+    #: The ONE place that may still spell the install-relative path,
+    #: with the reason it must. Named, not counted: `ui_asset` prefers
+    #: the INSTALLED copy and falls back to the module, deliberately,
+    #: because preferring the module would let a dev tree and an
+    #: installed $AMAZE disagree silently.
+    MAY_SPELL_THE_INSTALL_JOIN = {"ui_helpers.py"}
+
+    def test_no_bundled_file_is_located_by_rebuilding_the_install_path(self):
+        """STRUCTURE, not a grep for the variable: any `os.path.join`
+        whose parts spell out the install-relative package path is the
+        hand-built lookup `package_file` exists to replace, however the
+        root was obtained. Assigning the root to a variable first was
+        how most of these were written."""
+        import ast
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for folder, _dirs, files in os.walk(root):
+            if "tests" in folder or "__pycache__" in folder:
+                continue
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                if name in self.MAY_SPELL_THE_INSTALL_JOIN:
+                    continue
+                path = os.path.join(folder, name)
+                with open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    if not (isinstance(node.func, ast.Attribute)
+                            and node.func.attr == "join"):
+                        continue
+                    parts = " ".join(
+                        arg.value for arg in node.args
+                        if isinstance(arg, ast.Constant)
+                        and isinstance(arg.value, str))
+                    if "python" in parts and "amaze" in parts:
+                        offenders.append("%s:%d" % (name, node.lineno))
+        self.assertEqual(
+            [], sorted(offenders),
+            "a bundled file is located by rebuilding the install path at "
+            "%s - amaze.package_file and ui_helpers.ui_asset are the two "
+            "lookups" % ", ".join(sorted(offenders)))
+
+    def test_a_bundled_lookup_survives_an_UNSET_install_variable(self):
+        """The defect the audit missed, and it was visible on screen.
+
+        `ui_asset` falls back to the module's own folder when $AMAZE is
+        unset; the toolbar's own copy of the same join returned "" and
+        the curated-palette lookup returned "" too. So in one window the
+        badge SVGs drew and the thirteen toolbar icons did not, from the
+        same missing variable.
+        """
+        import amaze
+        from amaze.core import gradient_library
+        from amaze.helpers import ui_helpers
+
+        real = hou.getenv("AMAZE")
+        hou.putenv("AMAZE", "")
+        self.addCleanup(hou.putenv, "AMAZE", real or "")
+        for label, found in (
+                ("a bundled resource", amaze.package_file("res", "def",
+                                                          "library.json")),
+                ("a ui asset", ui_helpers.ui_asset("badge_favourite.svg")),
+                ("a curated def", gradient_library._def_path("gradients.json")),
+        ):
+            self.assertTrue(
+                found and os.path.isabs(found),
+                "%s cannot be located with $AMAZE unset, so it silently "
+                "does not draw" % label)
+
 
 class MantraIsNotASupportedRenderer(unittest.TestCase):
     """Mantra support was removed 2026-08-14. It was one of three
