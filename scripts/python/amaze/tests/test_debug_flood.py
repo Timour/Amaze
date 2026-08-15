@@ -1,18 +1,14 @@
-"""One repeating failure must not fill the log.
+"""One repeating failure must not fill the log, and a new file starts from zero. ▸o/debug-engine"""
 
-A stale callback in a paint or timer path re-fires per event-loop tick.
-The log has a session where that wrote 8,973 identical records - 8,996
-events, of which 23 were anything else, which is a log that cannot be
-read exactly when it matters most. Every path that records a traceback
-is rate-limited: the first few in full, then one counting marker.
-"""
-
+import ast
 import importlib
+import inspect
 import json
 import os
 import shutil
 import sys
 import tempfile
+import textwrap
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -35,13 +31,10 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 class TestFloodGuard(unittest.TestCase):
 
     def setUp(self):
+        """Point the module at a temp log, and put it back or later records vanish into a deleted dir."""
         self.tmp = tempfile.mkdtemp(prefix="amaze_flood_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.log = os.path.join(self.tmp, "flood.jsonl")
-        # Put the module back where it was afterwards - the isolated
-        # suite log, verbose off. Leaving it pointed at this test's
-        # temp dir (which cleanup then deletes) means any later record
-        # in the same process goes nowhere and says nothing about it.
         was_on, was_path = debug.is_on(), debug.log_path()
         self.addCleanup(debug.configure, was_on, was_path)
         debug.configure(True, self.log)
@@ -67,20 +60,14 @@ class TestFloodGuard(unittest.TestCase):
         # 5 verbatim + markers at 10/100/1000/2000/3000, not 3000 records.
         self.assertLess(len(written), 20, "the flood was not contained")
         self.assertGreaterEqual(len(written), debug.FLOOD_VERBATIM)
-        # The count is reported, so the log still says how bad it got.
         last = written[-1]
         self.assertEqual(last["data"].get("repeat_count"), 3000)
-        # "suppressed" is COUNTED, not inferred. It used to be
-        # count - FLOOD_VERBATIM, which forgets that the marker records
-        # themselves were kept, so it over-reported by one per marker.
         self.assertEqual(
             last["data"].get("suppressed"), 3000 - len(written),
             "suppressed does not match the records actually written")
 
     def test_a_small_flood_still_reports_its_size(self):
-        """The gap that made this worth changing: markers fired only at
-        multiples of 1000, so 100 occurrences wrote 5 records and said
-        NOTHING about the other 95 - and log-check reported 5."""
+        """A flood too small for the every-1000 marker must still leave its count."""
         for _ in range(100):
             self._raise_and_record(where="small")
         written = [r for r in self._records()
@@ -123,9 +110,7 @@ class TestFloodGuard(unittest.TestCase):
 
 
 class TestPerPassBudget(TestFloodGuard):
-    """A pass writes per-item records; the flood guard keys on
-    (category, message) alone, so they share one key and go dark for
-    the SESSION. (practice.md > Per-pass log budgets)"""
+    """Per-item records share one flood key, so a pass needs its own allowance."""
 
     def test_identical_per_item_records_go_dark_without_a_budget(self):
         for i in range(273):
@@ -168,8 +153,7 @@ class TestPerPassBudget(TestFloodGuard):
 
 
 class TestOneRecordCarriesTheWholeList(TestFloodGuard):
-    """The cleanup and quarantine records name every file they moved.
-    A sample is useless the moment somebody needs to put one back."""
+    """Cleanup and quarantine name every file they moved - a sample cannot put one back."""
 
     def test_one_record_survives_where_per_item_records_would_not(self):
         moved = [["mat/%d.mat" % i, "quarantine/%d.mat" % i]
@@ -185,8 +169,7 @@ class TestOneRecordCarriesTheWholeList(TestFloodGuard):
             "because this is the only trace of where a file went")
 
     def test_the_moving_loops_write_no_per_item_record(self):
-        """Source-derived: the loops must not regrow one, or the flood
-        guard eats it again and the list is short without saying so."""
+        """Source-derived: a regrown per-item record shares one flood key and goes dark."""
         import re
         here = os.path.dirname(os.path.abspath(__file__))
         package = os.path.dirname(here)
@@ -204,16 +187,7 @@ class TestOneRecordCarriesTheWholeList(TestFloodGuard):
 
 
 class TestLogIsolation(unittest.TestCase):
-    """The suite must not write the user's real log.
-
-    guarded() and the excepthook record tracebacks with Debug Mode OFF -
-    by design, a genuine crash is always worth a record. The cost was
-    that tests which raise ON PURPOSE (this file raises 6,500 times; the
-    drag suite raises inside a Qt slot deliberately) wrote crash records
-    into the real log, until 18,975 of them made its exception count
-    meaningless. Importing test_support redirects the log; these tests
-    check the redirect is real, and that it did not turn verbose logging
-    on as a side effect of moving the file."""
+    """The suite raises on purpose and the crash tier is always on, so the redirect must be real."""
 
     def test_the_log_is_not_the_users(self):
         self.assertFalse(
@@ -222,9 +196,7 @@ class TestLogIsolation(unittest.TestCase):
             "the suite is writing %s" % debug.log_path())
 
     def test_the_env_var_isolates_a_fresh_import(self):
-        """The runner exports AMAZE_LOG_DIR before any module loads;
-        debug reads it at import, so even a module that never imports
-        test_support is isolated. Proved by re-importing the module."""
+        """`AMAZE_LOG_DIR` is read at IMPORT, so a module that never imports test_support is isolated too."""
         tmp = tempfile.mkdtemp(prefix="amaze_env_log_")
         self.addCleanup(shutil.rmtree, tmp, True)
         previous = os.environ.get("AMAZE_LOG_DIR")
@@ -236,8 +208,6 @@ class TestLogIsolation(unittest.TestCase):
             else:
                 os.environ["AMAZE_LOG_DIR"] = previous
         self.addCleanup(restore)
-        # A reload re-runs the module body, which is where the variable
-        # is read - the same thing a fresh process does.
         was_on, was_path = debug.is_on(), debug.log_path()
         self.addCleanup(debug.configure, was_on, was_path)
         importlib.reload(debug)
@@ -245,9 +215,7 @@ class TestLogIsolation(unittest.TestCase):
         self.assertTrue(debug.log_path().startswith(tmp))
 
     def test_redirect_does_not_turn_debug_mode_on(self):
-        """configure() is the user's switch; redirect() only moves the
-        file. A test harness that flipped Debug Mode on would change the
-        behaviour it is trying to observe."""
+        """A harness that flipped Debug Mode on would change the behaviour it observes."""
         tmp = tempfile.mkdtemp(prefix="amaze_redirect_")
         self.addCleanup(shutil.rmtree, tmp, True)
         was_on, was_path = debug.is_on(), debug.log_path()
@@ -258,15 +226,9 @@ class TestLogIsolation(unittest.TestCase):
         self.assertFalse(debug.is_on(), "redirect() enabled verbose logging")
         self.assertEqual(os.path.join(tmp, "moved.jsonl"), debug.log_path())
 
-        # Verbose records stay dropped (event/note/exception are all
-        # Debug-Mode gated)...
         debug.event("test", "should not be written")
         self.assertFalse(os.path.exists(debug.log_path()))
 
-        # ...while the ALWAYS-ON crash tier still writes, into the NEW
-        # file. guarded() is that tier, and the exact path that leaked:
-        # it wraps the mouse handlers, so the drag suite's deliberate
-        # failure was recorded no matter what Debug Mode said.
         @debug.guarded("TestWidget.mouseReleaseEvent")
         def _slot():
             raise RuntimeError("crash tier is always on")
@@ -286,12 +248,7 @@ class TestLogIsolation(unittest.TestCase):
 
 
 class TestLeakCheck(unittest.TestCase):
-    """The check that guards the isolation, checked itself.
-
-    It has to tell two appending processes apart: the user's Houdini,
-    which may well be open while the suite runs, and a headless test
-    process, which must never touch this file. Synthetic logs, because
-    the real one is exactly what these tests must not write to."""
+    """The isolation check itself: an open Houdini appending is fine, a headless process is not."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_leakcheck_")
@@ -332,45 +289,142 @@ class TestLeakCheck(unittest.TestCase):
         self.assertEqual(2, count)
 
     def test_a_session_with_no_header_here_is_a_leak(self):
-        """The shape a product check alone would miss: a process that
-        starts logging elsewhere and switches to this file mid-run, so
-        its header is in the OTHER file."""
+        """A process that starts elsewhere and switches here mid-run leaves its header in the OTHER file."""
         offset = self._write([self._record("orphan")])
         leaks = check_log_leak.leaked_sessions(self.log, offset)
         self.assertEqual([("orphan", "UNKNOWN", 1)], leaks)
 
     def test_historical_leaks_do_not_fail_todays_run(self):
-        """95 headless sessions are already in the real log. The check
-        is about what THIS run appended, or it can never pass."""
+        """The check is about what THIS run appended; the real log already holds historical leaks."""
         self._write([self._header("old", "hython"), self._record("old")])
         offset = self._write([self._header("now", "hindie")])
         self._write([self._record("now")])
         self.assertEqual([], check_log_leak.leaked_sessions(self.log, offset))
 
 
+def _slate_fields():
+    """(always, on_request): what `_blank_slate` blanks, read off its own source."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(debug._blank_slate)))
+
+    def touched(statements):
+        found = set()
+        for statement in statements:
+            for node in ast.walk(statement):
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+                    found.add(node.id)
+                elif (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "clear"
+                        and isinstance(node.func.value, ast.Name)):
+                    found.add(node.func.value.id)
+        return found
+
+    body = tree.body[0].body
+    return (touched([s for s in body if not isinstance(s, ast.If)]),
+            touched([s for s in body if isinstance(s, ast.If)]))
+
+
+class TheBlankSlate(unittest.TestCase):
+    """What a switch to a new log file leaves behind, at all three doors. ▸p/log-blank-slate"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="amaze_slate_")
+        was_on, was_path = debug.is_on(), debug.log_path()
+        self.addCleanup(debug._blank_slate, True)
+        self.addCleanup(debug.configure, was_on, was_path)
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    def _dirty(self):
+        """Every field the slate owns carrying something, whatever its type."""
+        always, on_request = _slate_fields()
+        for name in always | on_request:
+            value = getattr(debug, name)
+            if isinstance(value, dict):
+                value["dirty"] = 1
+            elif isinstance(value, set):
+                value.add("dirty")
+            elif isinstance(value, bool):
+                setattr(debug, name, True)
+            elif isinstance(value, int):
+                setattr(debug, name, 4317)
+            else:
+                setattr(debug, name, "dirty")
+
+    def _records(self, path):
+        with open(path, encoding="utf-8") as handle:
+            return [json.loads(line) for line in handle if line.strip()]
+
+    def test_a_path_change_numbers_the_new_file_from_one(self):
+        """`n` is a record's place in ITS OWN file, never the process's count."""
+        first = os.path.join(self.tmp, "first.jsonl")
+        second = os.path.join(self.tmp, "second.jsonl")
+        debug.configure(True, first)
+        for _ in range(5):
+            debug.event("test", "filling the first file")
+        debug.configure(True, second)
+        debug.event("test", "the first record after the switch")
+        numbers = [record["n"] for record in self._records(second)]
+        self.assertEqual(
+            1, min(numbers),
+            "the new file continued the old one's numbering, opening at %d"
+            % min(numbers))
+
+    def test_the_whole_slate_is_blanked(self):
+        """Derived from the helper, so a field joining the list is guarded that day."""
+        always, _ = _slate_fields()
+        self._dirty()
+        debug.redirect(os.path.join(self.tmp, "moved.jsonl"))
+        left = sorted(name for name in always if getattr(debug, name))
+        self.assertEqual(
+            [], left, "%s survived the move to a new file" % ", ".join(left))
+
+    def test_an_alert_survives_a_move_and_dies_on_a_clear(self):
+        """A dismissed dialog is a fact about the USER's session, not about logging."""
+        debug.configure(True, os.path.join(self.tmp, "alerts.jsonl"))
+        debug._alerted.add("thumbnail-failed")
+        debug.redirect(os.path.join(self.tmp, "moved.jsonl"))
+        self.assertIn("thumbnail-failed", debug._alerted,
+                      "a redirect re-showed a dialog the user dismissed")
+        debug.configure(True, os.path.join(self.tmp, "third.jsonl"))
+        self.assertIn("thumbnail-failed", debug._alerted,
+                      "a path change re-showed a dialog the user dismissed")
+        self.assertEqual((True, ""), debug.clear_log())
+        self.assertNotIn("thumbnail-failed", debug._alerted,
+                         "Clear Log kept the alert history")
+
+    def test_no_door_keeps_its_own_copy_of_the_list(self):
+        """Three hand-kept copies is what left one door short of the record counter."""
+        always, on_request = _slate_fields()
+        owned = always | on_request
+        found = []
+        for scope in ast.walk(ast.parse(inspect.getsource(debug))):
+            if (not isinstance(scope, ast.FunctionDef)
+                    or scope.name not in ("clear_log", "configure", "redirect")):
+                continue
+            for node in ast.walk(scope):
+                if (isinstance(node, ast.Name)
+                        and isinstance(node.ctx, ast.Store)
+                        and node.id in owned):
+                    found.append("%s assigns %s" % (scope.name, node.id))
+                elif (isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "clear"
+                        and isinstance(node.func.value, ast.Name)
+                        and node.func.value.id in owned):
+                    found.append("%s clears %s"
+                                 % (scope.name, node.func.value.id))
+        self.assertEqual(
+            [], sorted(found),
+            "the slate is written outside _blank_slate: %s"
+            % ", ".join(sorted(found)))
+
+
 class TestExcepthookSurvivesReload(unittest.TestCase):
-    """The crash recorder must survive a panel REOPEN.
-
-    panel.py reloads every amaze module on open so edits take effect
-    without restarting Houdini, and importlib.reload re-executes the
-    module body into the SAME module dict. debug.py reset
-    _excepthook_installed and _previous_excepthook there, while the hook
-    installed by the previous open was still sys.excepthook - and that
-    closure reads _previous_excepthook out of the shared dict at call
-    time. So the second install stored the OLD HOOK as its own previous,
-    and the hook chained to itself.
-
-    Effect: from the second panel open onward, the next uncaught
-    exception recursed to RecursionError, Houdini's own excepthook never
-    ran, and the log got a truncated record instead of a traceback. The
-    recorder died exactly when it was needed - and this project's
-    working rule is to read that log on every symptom report."""
+    """The crash recorder must survive a panel REOPEN without chaining to itself. ▸r/module-reload"""
 
     def setUp(self):
         self._real_hook = sys.excepthook
         self.addCleanup(setattr, sys, "excepthook", self._real_hook)
-        # Restore the module's own flags too - this test deliberately
-        # drives the install path, and the flags now survive reload.
         for name in ("_excepthook_installed", "_previous_excepthook",
                      "_installed"):
             self.addCleanup(setattr, debug, name, getattr(debug, name))
@@ -390,14 +444,7 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
             "the next uncaught exception recurses to RecursionError")
 
     def test_a_crash_still_records_after_a_reopen(self):
-        """The behaviour, not just the wiring: three reopens, then fire
-        a real exception through sys.excepthook.
-
-        The sentinel is planted BEFORE the first install so it becomes
-        the legitimate bottom of the chain. Planting it afterwards would
-        overwrite the very self-reference this is meant to detect - the
-        first version of this test did that and stayed green under
-        sabotage."""
+        """The sentinel is planted BEFORE the first install, or it overwrites the self-reference this detects."""
         forwarded = []
         sys.excepthook = lambda *a: forwarded.append(a)
         debug._excepthook_installed = False

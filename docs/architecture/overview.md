@@ -517,7 +517,7 @@ rule system would drive.
 - **Provenance** — every generated material's node comment names the
   measurement it came from and what was varied.
 
-### 4f. The **Debug Engine**
+### 4f. The **Debug Engine** {#o/debug-engine}
 
 Structured session logging, JSON Lines. **Two tiers:**
 
@@ -541,6 +541,32 @@ Structured session logging, JSON Lines. **Two tiers:**
   `event(cat, msg)` · `note(...)` · `timed(cat, msg)` · snapshots:
   `image_stats()` · `texture_snapshot()` · `node_snapshot()` ·
   `material_snapshot()`
+- **`$AMAZE_LOG_DIR` moves the whole log dir, read ONCE at import** so a
+  process can be isolated before any module has logged anything. The
+  test runner sets it: the crash tier writes with Debug Mode off, so a
+  suite that raises on purpose would otherwise fill the user's own log
+  with genuine-looking crash records.
+- **One repeating failure cannot flood the file.** Identity is the
+  event kind plus the exception type plus its deepest frame, so a noisy
+  neighbour never suppresses a different failure. The first
+  `FLOOD_VERBATIM` are written in full, then one marker at each power of
+  ten and every `FLOOD_MARKER_EVERY` after that; a key quiet for
+  `FLOOD_DECAY_SECONDS` counts as a new occurrence rather than a
+  continuing flood. An atexit flush writes each key's exact total, so a
+  session that ended mid-flood still says how bad it got.
+- **A new file starts from zero — one blank slate, three doors.**
+  `configure()` with a changed path, `redirect()` and `clear_log()` all
+  reset the session id, the record counter, the rotation latch and the
+  flood counts, because `n` is a record's place in ITS OWN file and the
+  counters are per-file too. The single exception is the alert history:
+  a dialog the user dismissed stays dismissed through a move or a Debug
+  Mode toggle, and only Clear Log forgets it.
+- **The off-marker is written BEFORE the switch flips.** `configure()`
+  records *debug mode turned off* while `_enabled` is still true,
+  because `event()` drops records the moment it goes false — and a
+  verbose session log that simply stops reads as a crash. The ordering
+  is load-bearing and has no test; reordering those two lines loses the
+  marker silently.
 - **Two of the snapshots are CONSOLE TOOLS, not wired** (2026-08-05):
   `image_stats` and `texture_snapshot` are called from the thumbnail
   path, `node_snapshot` and `material_snapshot` by hand from the
