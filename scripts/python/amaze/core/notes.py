@@ -1,38 +1,21 @@
 """The notes store: a notebook page per asset, in the library.
 
-The Notes panel (2026-08-01 design: a right-docked page with free text
-and a to-do list) writes here. One notes.json beside the index, keyed
-`<section>:<asset id>` for the asset sections and `file:<path>` for
-File rows - so a note comes back when a removed folder is re-added.
+One notes.json beside the index, keyed `<section>:<asset id>` for the
+asset sections and `file:<path>` for File rows.
 
 A note is `{"items": [...]}` - an ORDERED flow of
 `{"t": "text", "text": str}` and `{"t": "todo", "label": str,
-"done": bool}` entries, because the page IS a flowing document: text
-above, below and between the to-do frames, in the order written (the
-live-pass correction of the first, two-stacks build). The first
-build's `{"text", "todos"}` shape converts on read. An EMPTY page is
-not stored: writing one removes the key, which is how a note is
-deleted - the same shape as clearing a tile icon.
+"done": bool}`, so text sits above, below and between the to-do frames.
+The older `{"text", "todos"}` shape converts on read. Writing an EMPTY
+page removes the key: that is how a note is deleted.
 
-**This module is now an ADAPTER over the Keyed Store Engine**
-(`core/keyed_store.py`, 2026-08-03). It owns the note's SHAPE - what a
-page is, how a key is spelled, the words the user reads - and nothing
-else. Absence, damage, the restore tier, the merge, the atomic write
-and the refusal all belong to the engine, in one place, for every
-keyed side table.
+An ADAPTER over the Keyed Store Engine. It owns the note's SHAPE - what
+a page is, how a key is spelled, the words the user reads - and nothing
+else. ▸p/store-guards
 
-The docstring here used to say the guard set was icons.json's, "copied
-deliberately". It was not: this file had the absent-but-known guard and
-icons.json had none, and the tuple of markers this one passed to prove
-it was a no-op - five backup names `existed_before` already checks
-unconditionally. Two files claiming to share a guard set while each
-holds a different part of it is the whole argument for the engine.
-
-**A key is not a path here, and that is deliberate.** The File ident is
-the RAW `os.path.join`, un-canonicalised, because canonicalising it
-would orphan every entry written before the 2026-07-31 merge. It
-follows that a File note does NOT travel between operating systems -
-the older docstring claimed it did, and that was never true.
+A File key is the RAW `os.path.join`, NOT canonicalised, so it does not
+travel between operating systems. Canonicalising would orphan every
+entry written before the 2026-07-31 merge.
 """
 
 from __future__ import annotations

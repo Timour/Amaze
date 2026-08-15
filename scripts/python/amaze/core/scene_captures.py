@@ -1,39 +1,24 @@
 """
 The scene-capture store and open-scene state for hip files.
 
-The HIP section merged into the File section on 2026-07-31
-(core/file_library.py), taking its models with it. What stays here is
-everything a hip ROW still needs wherever it appears: the capture
-store and its manifest, the capture decision path, the placeholder,
-matched_extension, and which scene is open / was opened by Amaze.
+The capture store and its manifest, the capture decision path, the
+placeholder, `matched_extension`, and which scene is open or was opened
+by Amaze.
 
-TWO THINGS ARE DELIBERATELY DIFFERENT FROM EVERY OTHER SECTION.
+Two rules, both unlike every other section:
 
-**Thumbnails are CAPTURED, never rendered.** Geometry renders a missing
-thumbnail on demand: it imports the file into a scene Amaze controls and
-frames a camera at it. A scene file cannot be imported into a controlled
-scene - it IS a scene - and re-rendering one means reconstructing it,
-which fails the moment any dependency is missing. Measured 2026-07-28 on
-the first real scene tried: a LOP scene whose sublayer .usdc had been
-renamed out from under it could not be cooked at all, headless or
-otherwise. So a HIP thumbnail is a capture of the scene view as it was
-actually displayed - `husd.assetutils.saveThumbnailFromViewer`, which
-wraps a flipbook and therefore keeps handles, gizmos and overlays. A row
-with no capture yet simply has no thumbnail; nothing renders in the
-background, and opening a folder never blocks.
+**Thumbnails are CAPTURED, never rendered.** A scene file cannot be
+imported into a scene Amaze controls - it IS a scene - and rebuilding
+one fails the moment a dependency is missing. A capture is
+`husd.assetutils.saveThumbnailFromViewer`, which wraps a flipbook and
+so keeps handles, gizmos and overlays. A row with no capture has no
+thumbnail; nothing renders in the background.
 
-**The store is not mtime-invalidated.** ThumbnailCache drops an entry
-when the source file changes, which is right for a derived render and
-wrong for a hand-framed one: re-saving a scene would silently erase a
-thumbnail the user deliberately composed. HIP thumbnails live in their
-own directory keyed by a hash of the absolute path and persist until
-explicitly re-captured. That layout - path -> sha1 -> png, plus a
-manifest - is also what an external reader (Anchorpoint, say) would
-consume, so it is a deliberate contract rather than an implementation
-detail.
-
-BETA: the section is functional but young. Known gaps are listed in
-AmazeNotes/devlog.md rather than pretended away here.
+**The store is NOT mtime-invalidated**, unlike ThumbnailCache. Dropping
+a hand-framed capture because the scene was re-saved would erase what
+the user composed. Captures live in their own directory, path -> sha1
+-> png plus a manifest, and persist until re-captured. Treat that
+layout as a contract: an external reader consumes it.
 """
 
 import hashlib

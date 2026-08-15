@@ -1,38 +1,23 @@
 """Models for the File section - the merge of Images, Geometry and HIP.
 
 One folder-pointer list, one files model, EVERY file in the chosen
-folder. Each row carries a KIND - image, geometry, hip or other - and
-keeps exactly the behaviour its own section had before the merge
-(decided 2026-07-30 via the shared function sheet; recorded in
-AmazeNotes/ROADMAP.md):
+folder. Each row carries a KIND, and the kind decides the behaviour:
 
-* **image** - thumbnails through the background convert pipeline,
-  double-click / drag loads the file onto a node's file parameter.
-* **geometry** - thumbnails rendered by Houdini in the blocking,
-  ESC-interruptable main-thread pass, double-click imports in context.
-* **hip** - thumbnails are hand-framed CAPTURES from the store under
-  config_root (never rendered, never mtime-invalidated - see
-  scene_captures's module docstring for why both rules exist).
-* **other** - any file Amaze does not recognise, shown with its OS icon
-  (QFileIconProvider - verified to never come back empty) and exactly
-  one action: Copy Path. Houdini often cannot open these; a path pasted
-  into a parameter is the real workflow.
+* **image** - background convert pipeline; double-click or drag loads
+  the file onto a node's file parameter.
+* **geometry** - rendered by Houdini in the blocking, ESC-interruptable
+  main-thread pass; double-click imports in context.
+* **hip** - hand-framed CAPTURES from the store under config_root,
+  never rendered and never mtime-invalidated.
+* **other** - shown with its OS icon, and its one action is Copy Path.
 
-THE ENGINES STAY WHERE THEY WERE. This module composes
-texture_library's convert pipeline, geo_library's render pass and
-scene_captures's capture store - it does not fork them. Every cache key
-keeps its old shape (('tex', path, size), ('geo', path, cache_dir),
-('hip', path, thumb_dir)) and tile-icon keys stay raw joined paths, so
-nothing a user already generated is orphaned or re-rendered by the
-merge.
+This module COMPOSES texture_library, geo_library and scene_captures;
+it does not fork them. Keep every cache key's existing shape
+(`('tex', path, size)`, `('geo', path, cache_dir)`,
+`('hip', path, thumb_dir)`) and keep tile-icon keys as raw joined
+paths, or a user's generated thumbnails orphan.
 
-Role numbering extends the folder-section convention (FormatRole..
-FolderRole match TextureFiles/GeoFiles, OpenSceneRole matches HipFiles)
-so the shared TextureFilterProxyModel, the drag code's PathRole lookup
-and the AssetItemDelegate wiring carry over unchanged.
-
-Hidden files (dotfiles) are skipped: a section that lists EVERYTHING
-would otherwise fill with .DS_Store on the first macOS folder.
+Dotfiles are skipped, or the list fills with `.DS_Store`.
 """
 
 from __future__ import annotations

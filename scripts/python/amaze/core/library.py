@@ -1826,38 +1826,16 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def _the_repair_route(self) -> str:
         """The ONE next step for every way this sweep can be held back.
 
-        A REFUSAL NAMES THE WAY OUT, or it is a dead end - and the way out
-        cannot be "delete a copy beside the file" for the case that
-        matters, because what stands in the way is real files in the asset
-        folder that no section lists, and deleting backups does not make
-        them accounted for.
+        One line for all three causes - aggregate before interrupting;
+        each specific finding is already named per section above.
 
-        So it is Repair, and Repair exists for this sentence to point at:
-        it reads the same files, says in plain words which list will not
-        load and which files nothing accounts for, can put a saved copy of
-        a list back, and never deletes anything. It lives on the SHELF
-        rather than in the panel because a list put back while the panel
-        is open is overwritten by the panel's own next save - a recovery
-        that does not stick is worse than no recovery, since it turns a
-        recoverable library into a confident wrong belief.
-
-        ONE line for all three causes, not one per finding: aggregate
-        before interrupting. The specific finding is already named per
-        section above; this is the step, and there is only one of it.
-
-        The shelf tab is a per-machine step (registered is not
-        displayed, so a fresh machine has the tools without a tab),
-        which is why the sentence says how to get the tab. A next step
-        that assumes setup nobody did is the same dead end one door along.
-
-        IT ALSO NAMES THE RESTART, and that is not padding. This message
-        can only be reached from the panel, so by the time it is on screen
-        this Houdini has read the library - one connector per file lives
-        for the whole process, holding the document it read, and its next
-        save writes that document over anything put back. So Repair
-        reports in this session and can only ACT in a fresh one. Sending
-        someone to a tool that will tell them to quit and come back, and
-        not saying so here, is the same broken remedy one step later.
+        The sentence must carry three things or it is a dead end: send
+        the user to Repair (deleting backups cannot account for unlisted
+        files), say how to get the shelf TAB (registered is not
+        displayed, so a fresh machine has the tools without one), and
+        say to RESTART. This message is only reachable from the panel,
+        so this Houdini has already read the library and its connector
+        will write that document back over anything put right.
         """
         return (
             "Run the Repair tool on the Amaze shelf to see what is wrong: "

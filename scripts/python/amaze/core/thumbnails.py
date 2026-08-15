@@ -506,42 +506,19 @@ class ThumbnailEngine(QtCore.QObject):
         self._convert_scheduled = False
 
     def _prune_threads(self, finisher=None) -> None:
-        """A loader finished. Its deliveries were queued before its
-        finished signal, so any of its keys STILL pending never
-        delivered - the file is genuinely unreadable/absent: mark
-        missing and notify, so the row repaints with its placeholder.
+        """A loader finished: mark its still-pending keys missing.
 
-        THAT ORDERING GUARANTEE IS PER-THREAD, and this used to judge
-        every thread it found finished. A sibling loader that had just
-        finished reported isFinished() True while its own `loaded`
-        signals were still sitting in the main thread's queue, unhandled
-        - so the finisher's prune condemned the sibling's keys, and when
-        those deliveries finally arrived _on_loaded dropped them,
-        because the state was no longer "pending".
+        Its deliveries were queued before its finished signal, so a key
+        of ITS that is still pending never delivered - the file is
+        genuinely absent or unreadable, and the row wants its
+        placeholder.
 
-        Sticky, too: texture_library short-circuits on is_missing(), so
-        those rows never even fall back to the disk cache on a revisit.
-        Only a rerender or a panel reopen cleared them.
-
-        Measured over 300 real PNGs, keys never reaching "done", with a
-        3ms repaint handler standing in for the model (A = HEAD,
-        B = this fix, 4 runs each):
-
-            parallel=4, idle main thread   A 0,0,0,0      B 0,0,0,0
-            parallel=4, 3ms repaints       A 3,2,15,5     B 0,0,0,0
-            parallel=8, idle main thread   A 2,1,3,1      B 0,0,0,0
-            parallel=8, 3ms repaints       A 27,29,52,22  B 0,0,0,0
-
-        Every lost key had already been emitted by its worker, and the
-        losses were the TAIL of each chunk across all eight siblings -
-        exactly the deliveries still queued behind the finished being
-        handled. Zero loss with an idle main thread at parallel=4, which
-        is why this read as intermittent rather than as a bug.
-
-        So: judge ONLY the loader that emitted the signal. Siblings stay
-        in the list and are judged when their own finished arrives.
-        (The review reported 293 of 300 lost; reproduction never
-        exceeded 52.)
+        JUDGE ONLY THE LOADER THAT EMITTED THE SIGNAL. The ordering
+        guarantee is per-thread: a sibling reports `isFinished()` True
+        while its own `loaded` signals are still queued, so condemning
+        its keys makes `_on_loaded` drop the deliveries when they
+        arrive. Sticky, too - `texture_library` short-circuits on
+        `is_missing()`, so those rows never retry from the disk cache.
         """
         if finisher is None:
             # Fallback for a direct call; the connect sites pass the

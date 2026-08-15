@@ -1,39 +1,27 @@
 """The Generator Engine: materials from FACTS.
 
 A generation is a SPEC - a plain dict of named float/color values -
-turned into a material through the Material Engine's one funnel
-(build_karma_material + an adapter). The spec IS the interface: a
-parametric UI, a rule system or a learned model only needs to produce
-the same dict.
+turned into a material through `build_karma_material` and an adapter.
+The spec IS the interface: a parametric UI, a rule system or a learned
+model only has to produce the same dict.
 
-**Where the numbers come from.** The online VALUES sources publish
-real measurements, shipped with Amaze as tables (res/*.json, written
-by tests/harvest_online.py):
+Numbers come from two shipped tables (res/*.json, written by
+tests/harvest_online.py), and generation reads BOTH:
 
-  * **PhysicallyBased** (86, CC0) - reference constants: real copper,
-    real gold, water's 1.333 IOR, skin's scattering radii. Its metals
-    are idealised (roughness 0): a spectral identity, not a surface.
-  * **RGL / EPFL** (62, CC0) - measured materials: real surface
-    roughness for brushed aluminium, copper sheet, felt, silk, paper.
+  * **PhysicallyBased** (86, CC0) - reference constants. Its metals are
+    idealised at roughness 0: a spectral identity, not a surface.
+  * **RGL / EPFL** (62, CC0) - measured surface roughness.
 
-They are complementary, which is exactly why generation reads BOTH: a
-metal takes its COLOUR from the reference set (a metal's colour is its
-spectrum - hue-rotating copper produces a metal that exists nowhere)
-and its FINISH from the measured set.
+So a metal takes its COLOUR from the reference set and its FINISH from
+the measured one.
 
-A material is generated IN ITS CLASS, because the classes behave
-differently: metals keep their spectrum, transmissive materials keep
-their IOR exactly (water is 1.333 or it is not water), scattering
-materials keep their measured mean free path, and only opaque
-dielectrics - where colour is pigment, and pigment is arbitrary - get
-a free hue.
+Generate IN CLASS. Metals keep their spectrum, transmissive materials
+keep their IOR exactly, scattering materials keep their measured mean
+free path. Only opaque dielectrics may take a free hue.
 
-The one thing the measurements never mention is what an ARTIST adds on
-top: clearcoat, sheen, emission. Those rates come from the authored
-corpus (res/material_specs.json - 287 real materials from Houdini's
-own library and the user's), so a generated material is dressed the
-way authored materials are dressed: clearcoat on about a third of
-them, emission on almost none.
+Clearcoat, sheen and emission appear in no measurement - their rates
+come from the authored corpus (res/material_specs.json), so a generated
+material is dressed the way authored ones are.
 """
 
 import colorsys

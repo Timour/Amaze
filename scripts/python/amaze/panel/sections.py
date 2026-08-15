@@ -1,37 +1,24 @@
 """Section objects - one per library tab, like a small node type.
 
-The panel owns the widgets (cat_list, thumblist, filter box, star) and
-builds every model in setup(). A Section encapsulates how ONE section
-drives them: what its activate does, how it filters, what a sidebar
-click means, what a double-click does. The panel's shared handlers then
-dispatch to `panel._section()` instead of branching on
-`current_section`, so a new section is a new class here, not edits to a
-dozen handlers.
+The panel owns the widgets and builds every model in `setup()`. A
+Section says how ONE section drives them, and the panel's shared
+handlers dispatch to `panel._section()` rather than branching on
+`current_section` - so a new section is a new class here, never edits
+to a dozen handlers.
 
 Three archetypes, mirroring the three model families:
 
-* **AssetSection** - the curated-library machinery (a MaterialLibrary
-  over its own json + a Categories sidebar): Material, Node, Code.
+* **AssetSection** - a MaterialLibrary over its own json plus a
+  Categories sidebar: Material, Node, Code.
 * **FolderSection** - a folder-pointer list over real files on disk:
-  the File section (the 2026-07-31 merge of Images, Geometry and HIP -
-  one folder list, EVERY file shown, per-kind behaviour).
-* **GradientSection** - the palette library: Color. (Not read-only -
-  it adds, renames, recategorises and deletes user palettes.)
+  File.
+* **GradientSection** - the palette library: Color. Not read-only; it
+  adds, renames, recategorises and deletes user palettes.
 
-`activate()` used to delegate back to the panel; the bodies moved onto
-the sections in batch 4 (2026-08-03), so an archetype now points the
-shared widgets at its own models directly. `activate_method` survives
-only as the base's fallback for a context that has not been moved.
-
-The module docstring below each class says what that class owns; the
-four AREAS each have a hook here - activate (Grid + Sidebar bindings),
-select_category (Sidebar), comment_subject (Comments), and the toolbar
-facts declared as data.
-
-**A section's grid right-click MENU is data here too** (`GRID_MENU`,
-2026-08-03): six handlers in panel.py became one table per context and
-one builder in `panel/grid.py`. See `MenuEntry` below for what a row
-carries and why every behaviour in it is a NAME rather than a callable.
+Each of the four AREAS has a hook here: `activate` (Grid + Sidebar
+bindings), `select_category` (Sidebar), `comment_subject` (Comments),
+and the toolbar facts declared as data. The grid right-click menu is
+data too - see `MenuEntry` below. ▸o/section-api
 """
 
 from __future__ import annotations
@@ -75,41 +62,28 @@ CommentSubject = collections.namedtuple(
 FileLocation = collections.namedtuple(
     "FileLocation", "path label colour")
 
-#: WHAT A GESTURE DOES HERE (ROADMAP - the interaction matrix): one
-#: behaviour, two aiming methods, BOTH doors reading this one rule.
+#: ONE behaviour, two aiming methods, both walkers reading this rule.
 #:
-#: The DRAG walker (GridGestureMixin._apply_drop_rule) aims by the
-#: cursor: a node under the release takes the payload `(index,
-#: node)`; a release outside the panel runs `outside(index)`; a
-#: self-aiming verb `resolve(index)` finds its own landing; empty
-#: network space runs the creation rule `(index, network, position)`.
+#: DRAG (`GridGestureMixin._apply_drop_rule`) aims by the CURSOR: a node
+#: under the release takes `(index, node)`; a release outside the panel
+#: runs `outside(index)`; `resolve(index)` finds its own landing; empty
+#: network space runs `(index, network, position)`.
 #:
-#: The CLICK walker (MatLibPanel._apply_click_rule) aims by the
-#: SELECTION: one visible selected node is tried through `on_node` as
-#: a HINT - a node that cannot take the payload falls through, never
-#: vetoes (the host's own Tab behaviour: a selection never blocks a
-#: creation); then `click_resolve(index)` for sections that aim
-#: themselves; then the creation walk over the visible networks; the
-#: one dialog only when nothing held it.
+#: CLICK (`MatLibPanel._apply_click_rule`) aims by the SELECTION: one
+#: visible selected node is tried through `on_node` as a HINT and falls
+#: through if it cannot take the payload - a selection never VETOES;
+#: then `click_resolve(index)`; then the creation walk; then the dialog.
 #:
-#: Undeclared doors fall through; no door left = the uniform miss.
-#: This retired the release ladder AND the five hand-written
-#: double-click handlers - two doors, one rule (ROADMAP - the
-#: interaction matrix).
-#: `on_node`/`on_space`/`resolve`/`outside` are the DRAG's doors;
-#: `click_on_node`/`click_resolve` are the CLICK's, and they are
-#: separate because the function sheet aims the two doors
-#: differently in exactly two rows: a double-clicked scene file
-#: opens the scene and an unknown file copies its path, whatever
-#: happens to be selected, while a DRAGGED one still hands its path
-#: to the node under the cursor. Where both doors agree - code,
-#: colour, images - the same verb name appears in both fields, which
-#: is one fact stated twice, not two mechanisms.
-#: `carrier_type` names what the space door CREATES, when the answer
-#: is a constant - the DRAG GHOST draws that type's shape while the
-#: payload is still in the air, from the same declaration the creator
-#: builds from. A per-kind rule carries its own; a section-wide one
-#: sits on the class (Section.carrier_type / carrier_type_verb).
+#: `on_node`/`on_space`/`resolve`/`outside` are DRAG's doors,
+#: `click_on_node`/`click_resolve` are CLICK's. They differ in exactly
+#: two rows: a double-clicked scene file opens and an unknown file
+#: copies its path whatever is selected, while a DRAGGED one hands its
+#: path to the node under the cursor. Elsewhere the same verb name
+#: appears in both, which is one fact stated twice.
+#:
+#: `carrier_type` names what the space door CREATES when that is a
+#: constant, so the drag ghost draws the right shape from the same
+#: declaration the creator builds from. Undeclared doors fall through.
 DropRule = collections.namedtuple(
     "DropRule",
     "on_node on_space resolve outside click_on_node click_resolve "
@@ -119,36 +93,25 @@ DropRule = collections.namedtuple(
 
 
 #: ONE ROW OF A GRID RIGHT-CLICK MENU - data, never a callable.
+#: `panel/grid.py` is the only reader.
 #:
-#: The seven menus this replaces were 406 lines of panel.py, and each
-#: rebuilt the same five decisions in its own words. The behaviour is
-#: still per-section; what stops being per-section is the CODE that
-#: renders it (panel/grid.py is the only reader).
-#:
-#: * `label` - the text, from ui-text.md, which is the source for
-#:   every user-facing string. An empty label is a divider (SEPARATOR
-#:   below); the builder drops leading, doubled and trailing ones, so
-#:   a table with conditional rows never has to place them by hand.
+#: * `label` - the text, taken from ui-text.md. Empty means a divider;
+#:   the builder drops leading, doubled and trailing ones, so a table
+#:   with conditional rows never places them by hand.
 #: * `verb` - the NAME of a method on this section, called as
-#:   `verb(indexes, current, payload)`. A name rather than a function
-#:   so the five tables read side by side.
-#: * `needs` - what the entry needs to be LIVE: "any" (a selection,
-#:   the default), "one" (exactly one row), "always" (New File and
-#:   Refresh act on nothing), or the name of a fact answering for this
-#:   selection. It greys; it never hides.
-#: * `shown` - the name of a fact deciding whether the entry EXISTS at
-#:   all. A plain attribute (`deletes_rows`) or a method asked about
-#:   this selection - the same two forms the toolbar table reads.
+#:   `verb(indexes, current, payload)`.
+#: * `needs` - what makes it LIVE: "any" (default), "one", "always", or
+#:   the name of a fact. It greys; it never hides.
+#: * `shown` - the name of a fact deciding whether it EXISTS at all: a
+#:   plain attribute, or a method asked about this selection.
 #: * `children` - the name of a method returning
-#:   ((label, payload, swatch_colour), ...) for a submenu. The colour
-#:   is a hex string or ""; the pixmap is drawn in panel/grid.py, so
-#:   nothing here needs QtGui.
-#: * `count_suffix` - append " (N)" on a multi-selection, which is how
-#:   the online imports say how many they are about to fetch.
-#: * `checkable` - the name of a fact giving the entry's CURRENT state.
-#:   Makes it a tick-box rather than a command, and the verb is handed
-#:   the state the user just asked for. Only the File sidebar's two
-#:   per-location toggles use it.
+#:   `((label, payload, swatch_colour), ...)`. The colour is a hex
+#:   string or ""; the pixmap is drawn in grid.py, so nothing here
+#:   needs QtGui.
+#: * `count_suffix` - append " (N)" on a multi-selection.
+#: * `checkable` - the name of a fact giving the CURRENT state. Makes
+#:   it a tick-box, and the verb is handed the state the user asked
+#:   for.
 MenuEntry = collections.namedtuple(
     "MenuEntry",
     "label verb needs shown children count_suffix checkable",
@@ -1056,44 +1019,22 @@ class AssetSection(Section):
         st.proxy.setFilter(st.model.FavoriteRole, True if on else "")
 
     def apply_filter(self, value) -> None:
-        """All three asset sections filter on RendererRole, because all
-        three KEEP THEIR KIND IN THAT ONE FIELD: a renderer for
-        Materials, the context a setup was saved from for Nodes
-        ("Sop"/"Cop"/"Lop"...), the language for Code ("VEX"/"OpenCL"/
-        "Python"). cop_library and code_library both say so in their
-        module docstrings - the field was widened by those sections,
-        not copied.
+        """Filter the grid AND the sidebar on RendererRole.
 
-        That is why this method is here once and not three times, and
-        why Nodes and Code needed no filtering machinery built at all:
-        MultiFilterProxyModel matches on hard-coded role NUMBERS (259
-        is RendererRole, and a filter set on any other role is silently
-        ignored - research.md), so the route these three need already
-        existed and was only ever driven from the Materials menu.
+        All three asset sections keep their kind in that one field: the
+        renderer for Materials, the saved-from context for Nodes, the
+        language for Code. `MultiFilterProxyModel` matches on hard-coded
+        role NUMBERS and silently ignores a filter set on any other
+        role, so this route only works on 259.
 
-        None REMOVES the filter rather than storing a value that
-        accepts everything: both reach the same yes, but a stored
-        filter costs an index.data() per row on every pass forever, and
-        removing it lets the proxy take its no-filters-at-all fast path.
+        `None` REMOVES the filter rather than storing an accept-all
+        value - a stored filter costs an `index.data()` per row forever
+        and blocks the proxy's no-filters fast path.
 
-        THE SIDEBAR IS PART OF THIS ROUTE, not a Materials extra. The
-        push into the category model is what makes the sidebar list
-        only categories holding a VISIBLE asset and count only those,
-        and it used to hang off a MaterialSection override - so Node
-        and Code inherited the grid half and not the sidebar half.
-        Nothing ever called set_renderer_filter on their category
-        models, `showing_all_renderers()` stayed True, every row was
-        accepted and every asset counted: filter Node to SOP and a
-        category holding three LOP setups still reads "MyCat (3)" and
-        opens EMPTY - which CategoriesSidebarProxy's own docstring says
-        cannot happen ("you can never click your way to an empty
-        grid"). Hide Empty Categories had no effect on those two
-        sidebars either.
-
-        The override's comment said "Materials is the only section with
-        renderer-aware category counts". That stopped being a decision
-        the day the shared Filter menu gave Node and Code the same
-        field; it was a description of the gap.
+        Push into the CATEGORY model too, not only the grid. That is
+        what makes the sidebar list and count only categories holding a
+        visible asset; skip it and a category of three LOP setups still
+        reads "MyCat (3)" and opens empty.
         """
         st = self.stack()
         if st is None:

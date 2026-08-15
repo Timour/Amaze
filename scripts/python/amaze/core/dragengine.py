@@ -1,37 +1,25 @@
 """The Drag & Drop Engine - ONE self-managed gesture for every section.
 
-THE LAW (design spec 2026-07-26): a drop lands where it is dropped,
-and nothing is created anywhere before release.
+THE LAW: a drop lands where it is dropped, and nothing is created
+anywhere before release.
 
-v2, after the native-drag experiments (dev log #220/#221): a Qt drag
-loop starves the event loop, and no HOM call can flush a viewport
-repaint inside it (GeometryViewport.draw() is documented as a merged
-REQUEST; even Houdini's own LOP drags never highlight live). So the
-engine rides the panel's self-managed gesture instead - normal mouse
-moves, live event loop, everything paints.
+Never reach for a native Qt drag - its loop starves the event loop and
+no HOM call can flush a viewport repaint inside it. This rides the
+panel's self-managed gesture instead: normal mouse moves, live event
+loop, everything paints.
 
-What the engine owns:
+- Gesture state: section key plus a serial per gesture (begin/end).
+- VIEWPORT HOVER, throttled per move: finds the scene viewer under the
+  cursor, picks with `locateSceneGraphPrim` (LOP) or
+  `queryNodeAtPixel` (OBJ), and drives the SELECTION as the highlight.
+  `end()` restores the pre-gesture selection however the gesture ends.
+- `viewport_release_target()` - one more pick at release, classifying
+  the drop world for the section's release handler.
+- `stock_lop()` - Houdini's own `lop_dragdrop.py` from $HH, so material
+  assignment reuses SideFX's helpers without shadowing a Houdini file.
 
-- Gesture state: section key + a serial per gesture (begin/end).
-- VIEWPORT HOVER: per-move (throttled) it finds the scene viewer under
-  the cursor, picks the target with the documented query APIs
-  (locateSceneGraphPrim in LOP, queryNodeAtPixel in OBJ - the same
-  calls SideFX's own tools use) and drives the selection as the
-  highlight; end() restores the pre-gesture selection however the
-  gesture ends. The cursor->viewport mapping is the same y-flipped
-  qtScreenGeometry idiom the network-editor resolver uses.
-- viewport_release_target(): one more pick at release, classifying the
-  drop world for the section's release handler.
-- stock_lop(): Houdini's own lop_dragdrop.py loaded from $HH, so
-  material-library resolution and assignment reuse SideFX's stock
-  helpers (getMaterialLibraryLop / assignMat / getMaterialPrimPathFor-
-  Node) without shadowing any Houdini file.
-
-Sections plug in per gesture phase: the drag widgets call begin() /
-hover_update() / end(), and each section's release handler asks
-viewport_release_target() when its drop resolves. Materials ride the
-full pipeline; the other sections keep their existing release logic
-and inherit the machinery as they migrate.
+To plug a section in: call begin() / hover_update() / end() from the
+drag widgets, and ask viewport_release_target() when the drop resolves.
 """
 
 import importlib.util
