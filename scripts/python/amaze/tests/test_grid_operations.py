@@ -232,7 +232,7 @@ class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
                     "%s does not say HOW MANY" % name)
 
     def test_COLOR_quotes_the_palette_by_NAME(self):
-        """ui-text.md is the source for every user-facing string, and
+        """the UI text register is the source for every user-facing string, and
         it gives Color the only prompt that names the thing: a palette
         is picked by its label, and the label is the whole identity a
         person has for it."""

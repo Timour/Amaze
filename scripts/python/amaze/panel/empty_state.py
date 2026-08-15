@@ -1,6 +1,6 @@
 """THE EMPTY STATE ENGINE - which blank the grid is showing.
 
-Words in `docs/architecture/ui-text.md`; a SIBLING of the two grid
+Words in the UI text register; a SIBLING of the two grid
 views and never an overlay, so `grid.apply_grid_face` owns all three
 visibilities and nothing here positions anything (devlog 480).
 """

@@ -438,18 +438,6 @@ CODE_COMMENT = re.compile(r'^\s*(?:#|"""|\'\'\'|\*)')
 #: private repo instead of here.
 SELF = "tools/git-hooks/amaze_name_scan.py"
 
-#: Documents whose CONTENT IS user-facing sentences, so the sentence
-#: ceiling would measure the product's own copy rather than my prose
-#: about it. Exempt from the COUNT only: the quotation and attribution
-#: rules still apply, and they are the ones that protect anybody.
-#:
-#: `ui-text.md` is the single source for every word the app shows. The
-#: empty-state table alone added sixteen sentences of which thirteen
-#: were the app speaking, so the cap refused the document for doing its
-#: job (2026-08-11).
-COPY_DOCUMENTS = ("docs/architecture/ui-text.md",)
-
-
 def prose_of(path, line):
     """The prose in an added line, or None when the line is not prose."""
     if path.endswith(MARKUP):
@@ -574,12 +562,6 @@ def added_text_offences():
             if spoken:
                 hits.append((path, start + offset, "a quotation",
                              spoken[:110]))
-        # THE COUNT ONLY. A copy document still gets every line above -
-        # the quotation and attribution scans - because those are what
-        # keep a person's words out of the public repo, and they are
-        # the point of this file.
-        if path in COPY_DOCUMENTS:
-            continue
         joined = countable_prose(path, lines)
         sentences = len(SENTENCE_END.findall(joined))
         if sentences > MAX_COMMENT_SENTENCES:

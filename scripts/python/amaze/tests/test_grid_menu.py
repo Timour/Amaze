@@ -1,6 +1,6 @@
 """The Grid area's MENU: one builder over a per-section entry table.
 
-Pins both halves: the table says what ui-text.md says, and the builder
+Pins both halves: the table says what the UI text register says, and the builder
 turns it into exactly the menu that shipped.
 
 THE PINNED MENUS BELOW ARE RECORDED OUTPUT of the six handlers this
@@ -127,7 +127,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                             "a row in it does nothing" % (name, entry.label))
 
     def test_DELETE_is_last_and_the_presentation_group_precedes_it(self):
-        """The menu law (ui-text.md, set 2026-07-31 on the contextual
+        """The menu law (the UI text register, set 2026-07-31 on the contextual
         menu base): the tile's presentation, Favorite, then Delete
         last of all - the same order in every grid menu. It is one
         shared tail now, so this pins the tail rather than five

@@ -1495,7 +1495,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.filter_actions = {}
         self.filter_values = {}
 
-        # View menu, in the order specified in ui-text.md:
+        # View menu, in the order specified in the UI text register:
         #   Material Library / Online Materials / --- / Show Categories /
         #   Grid View / List View
         # The .ui supplies action_show_cat ("Show Category View") + a
@@ -6378,7 +6378,7 @@ class MatLibPanel(QtWidgets.QWidget):
             section.double_click(index)
 
     #: The ONE double-click refusal, everywhere (ROADMAP - the
-    #: interaction matrix; exact copy also in ui-text.md). The drag
+    #: interaction matrix; exact copy also in the UI text register). The drag
     #: door never dialogs - it has the miss indicator.
     CANNOT_LOAD_HERE = "This content can not be loaded into this context."
 

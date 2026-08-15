@@ -124,7 +124,7 @@ Plus one *view mode*, not a section:
   > **It was called "the read-only palette library" here until
   > 2026-07-30**, which was true only while the curated palettes were
   > the whole content. They are ordinary user gradients now — the same
-  > staleness that had ui-text.md gating three Colors menu entries on a
+  > staleness that had the register gating three Colors menu entries on a
   > curated-vs-user distinction the code no longer makes.
   >
   > **It used to be the odd one out and no longer is (2026-08-09).**
@@ -158,7 +158,7 @@ Plus one *view mode*, not a section:
 | `toggle_favourite(indexes)` | Favorite, on the **Grid** selection |
 | `update_preview(indexes)` | Update Preview — offered only where `offers_preview_update` is True, i.e. where a preview is RENDERED rather than derived from the row's own content |
 | `delete_rows(indexes)` | Delete, highest row first — offered only where `deletes_rows` is True (File has no Delete: its rows are files on disk) |
-| `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in [`ui-text.md`](ui-text.md) |
+| `delete_prompt(count, name)` | what deleting costs, in this section's words — the wording lives in the UI text register |
 | `sidebar_key(index)` | what a **Sidebar** row is keyed by — a category name in three sections, a registered folder PATH in File |
 | `reorders_sidebar` + `sidebar_movable` / `move_sidebar_row` / `sidebar_order_snapshot` / `restore_sidebar_order` / `commit_sidebar_order` | the press-hold reorder (`sidebar.SidebarReorder` asks) — the base speaks the category form, File overrides in folder terms, Online answers no |
 | `sidebar_colour(name)` / `set_sidebar_colour(name, colour)` | read and write that row's colour, in whichever store this context keeps it |
@@ -179,7 +179,7 @@ sections take `:tag`, the File section has only a file name, Color also
 matches the colour names inside a palette). The Panel writes it in
 `_sync_filter_placeholder()`, called wherever the section or the view
 mode changes; the **Online Browser** supplies its own, since its search
-is a third thing again. Wording in [`ui-text.md`](ui-text.md).
+is a third thing again. Wording in the UI text register.
 
 
 > USD idea again — an opinion attached to a value rather than inferred
@@ -199,7 +199,7 @@ is a third thing again. Wording in [`ui-text.md`](ui-text.md).
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per
 entry — and `panel/grid.py` is the ONLY code that turns one into a
-QMenu. A row carries its label (from [`ui-text.md`](ui-text.md)), the
+QMenu. A row carries its label (from the UI text register), the
 NAME of the Section method that performs it, the name of the fact that
 decides whether it EXISTS (`shown`), what it needs to be LIVE
 (`needs`), and optionally the name of a method building a submenu's
@@ -1098,5 +1098,5 @@ tests/test_no_live_data.py  the gate: no test may reach the machine's own
   step).
 - To add a concept: add a row/section here so it has a name before it
   is built.
-- To reword the app's copy: edit [`ui-text.md`](ui-text.md) — every
+- To reword the app's copy: edit the UI text register — every
   user-facing string, grouped by where it appears.

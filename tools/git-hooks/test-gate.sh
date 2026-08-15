@@ -1,17 +1,12 @@
 #!/bin/bash
-# Sabotage-verify the personal-data gate, in BOTH directions.
+# Sabotage-verify the personal-data gate, in BOTH directions - a gate
+# that only refuses gets bypassed, one that only passes is decoration.
 #
-# A gate that only ever refuses gets bypassed always; one that only ever
-# passes is decoration. Both of this project's earlier gates shipped
-# broken in one of those two ways.
+# NAMES NOBODY: every probe string is derived from the private pattern
+# list at run time, so this file is safe in a public repo and a new
+# pattern gains a test for free.
 #
-# It NAMES NOBODY: every probe string is derived from the private
-# pattern list at run time, so this file is safe in a public repo and a
-# new pattern gains a test for free.
-#
-# The BYPASS section is a regression suite. Every case in it was a real
-# hole, reproduced with a real commit by an adversarial review, in one
-# of the two shell drafts that preceded the Python scanner.
+# The BYPASS section is a regression suite - every case was a real hole.
 #
 # Run after touching any hook, and on a fresh machine to prove the gate
 # is wired:  tools/git-hooks/test-gate.sh
@@ -289,7 +284,7 @@ reset_tree
 
 echo "THE SENTENCE CEILING - it measures STORY, not function"
 
-# The ceiling used to count one-line docstrings, so it scaled with the
+# One-line docstrings must NOT count, or the ceiling scales with the
 # number of functions rather than with the amount of story.
 { printf 'x = 1\n'
   for i in $(seq 1 14); do
@@ -307,24 +302,6 @@ reset_tree
 git add long_story.py
 "$here/pre-commit" >/dev/null 2>&1
 check "story UNDER the summary is still refused" 1 $?
-reset_tree
-
-# ui-text.md holds the app's own words. The count is exempt there; the
-# name and quotation scans are not.
-mkdir -p docs/architecture
-{ printf '# UI text\n\n'
-  for i in $(seq 1 20); do printf -- '- Sentence %d that the app shows a user.\n' "$i"; done
-} > docs/architecture/ui-text.md
-git add docs/architecture/ui-text.md
-"$here/pre-commit" >/dev/null 2>&1
-check "the copy document is exempt from the COUNT" 0 $?
-reset_tree
-
-mkdir -p docs/architecture
-printf '# UI text\n\n- A label %s asked for.\n' "$probe" > docs/architecture/ui-text.md
-git add docs/architecture/ui-text.md
-"$here/pre-commit" >/dev/null 2>&1
-check "the copy document is still scanned for a name" 1 $?
 reset_tree
 
 echo "END TO END - real commits, through git itself"

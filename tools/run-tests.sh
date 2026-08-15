@@ -1,24 +1,18 @@
 #!/bin/bash
 # Run the whole suite from ANY directory, against the DEV tree —
-# PROVE, THEN SHIP (2026-08-14, devlog #505).
+# PROVE, THEN SHIP.
 #
-# This script used to sync the LIVE install first and test after, so a
-# red build — and every sabotage commit mid-cycle — was live in the
-# cloud-synced install for the minutes it took to notice (#499's
-# rider). Now the suite runs against a SCRATCH install and the live
-# sync happens only after a FULL green run:
+# The suite runs against a SCRATCH install and the live sync happens
+# only after a full GREEN run, so a red build is never live. Keep that
+# order.
 #
-#   - the scratch sync reuses sync-install's own scratch mechanism,
-#     so a dirty tree can still be TESTED while the live promote
-#     keeps refusing it;
-#   - inside hython the package file OVERRIDES an exported $AMAZE
-#     (measured 2026-08-14: os.environ itself is rewritten to the
-#     package value), so the suite reaches scratch by SKIPPING the
-#     package (HOUDINI_PACKAGE_SKIPLIST) and rebuilding its two
-#     effects by hand: $AMAZE and the HOUDINI_PATH entry;
-#   - a SUBSET or module run never promotes — start_test.sh's "a
-#     subset can never BE the gate" now holds for shipping too, where
-#     the old order shipped before reading its arguments.
+#   - the scratch sync reuses sync-install's scratch mechanism, so a
+#     dirty tree can be TESTED while the live promote still refuses it;
+#   - inside hython the package file OVERRIDES an exported $AMAZE, so
+#     the suite reaches scratch by SKIPPING the package
+#     (HOUDINI_PACKAGE_SKIPLIST) and rebuilding its two effects by
+#     hand: $AMAZE and the HOUDINI_PATH entry;
+#   - a SUBSET or module run never promotes.
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/houdini-env.sh
@@ -75,11 +69,10 @@ if [ "${1:-}" = "--all-versions" ]; then
     shift
     overall=0
     found=0
-    # THE DEAD-COVER CHECK RIDES ALONG (2026-08-09). Each run records
-    # which tests it SKIPPED; afterwards they are intersected, because a
-    # test skipped on EVERY host protects nothing and still reads as
-    # coverage. Only this branch can ask it - one run cannot tell a
-    # correct skip from a dead one.
+    # THE DEAD-COVER CHECK RIDES ALONG. Each run records what it
+    # SKIPPED and the sets are intersected: a test skipped on EVERY host
+    # protects nothing while still reading as coverage. Only this branch
+    # can ask - one run cannot tell a correct skip from a dead one.
     reports_dir="$(mktemp -d "${TMPDIR:-/tmp}/amaze_skips.XXXXXX")"
     trap 'rm -rf "$reports_dir"' EXIT
     reports=""

@@ -1,24 +1,19 @@
 #!/bin/bash
-# Sync the dev tree into the live Houdini install. Runnable from ANY
-# directory: it resolves the repo from its own location and the install
-# from $AMAZE (or the Houdini package file that defines it), so a wrong
-# working directory cannot half-copy or silently no-op - which is
-# exactly how "rsync from the wrong cwd" kept wasting runs.
+# Sync the dev tree into the live Houdini install, from ANY directory:
+# the repo resolves from this file's location and the install from
+# $AMAZE, so a wrong cwd cannot half-copy or silently no-op.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# Where Houdini is, and how to mirror a tree. One resolver, because this
-# script alone had grown two copies of the lookup.
+# Where Houdini is, and how to mirror a tree. The ONE resolver.
 # shellcheck source=tools/houdini-env.sh
 . "$repo/tools/houdini-env.sh"
 
 install="${AMAZE:-}"
 if [ -z "$install" ]; then
-    # The LAST readable package file wins - amaze_package_files yields
-    # them newest-last, and on macOS there is only ever one. The path is
-    # passed as an ARGUMENT, not interpolated into the source: a Windows
-    # package path is full of backslashes, and one of them inside a
-    # Python string literal is an escape.
+    # The LAST readable package file wins. Pass the path as an ARGUMENT,
+    # never interpolated: a Windows package path is full of backslashes
+    # and one of them inside a Python literal is an escape.
     while IFS= read -r pkg; do
         [ -n "$pkg" ] || continue
         found="$("$(amaze_python || echo python3)" -c "
@@ -35,15 +30,9 @@ if [ -z "$install" ] || [ ! -d "$install" ]; then
     exit 1
 fi
 
-# A SABOTAGE GETS ITS OWN INSTALL (2026-08-09).
-#
-# A sabotage is a dirty tree by definition, so it collided head-on with
-# the committed-code rule below and every sabotage died on it. The fix
-# is not an exception to that rule - it is a different DESTINATION. The
-# rule protects the tree a live Houdini reads; a sabotage does not need
-# that tree, it needs A tree. So knowingly-broken code can now never
-# reach the real install, not even for the seconds a sabotage runs,
-# which is stronger than what a bypass would have left.
+# A SABOTAGE GETS ITS OWN INSTALL - a different DESTINATION, never an
+# exception to the committed-code rule below. Knowingly-broken code
+# must not reach the real install even for the seconds it runs.
 scratch=""
 if [ -n "${AMAZE_SCRATCH_INSTALL:-}" ]; then
     scratch="$AMAZE_SCRATCH_INSTALL"
@@ -83,27 +72,16 @@ if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 \
     echo "sync-install: wired the pre-push gate (core.hooksPath)"
 fi
 
-# THE INSTALL ONLY EVER RECEIVES COMMITTED CODE
-# (practice.md ▸ The install only ever receives committed code).
+# THE INSTALL ONLY EVER RECEIVES COMMITTED CODE - it is the one tree a
+# live Houdini reads, beside real libraries. Committed, not pushed:
+# run-tests.sh syncs before it tests.
 #
-# It is the one tree a live Houdini reads and it sits beside real
-# libraries, so code in no commit cannot be reverted, reproduced on the
-# other machine, or told apart from code that was reviewed. Committed
-# rather than pushed is deliberate: run-tests.sh syncs before it tests,
-# so a push requirement would make an uncommitted change untestable.
+# Check BY CONTENT (`diff HEAD`), never `git status` - status compares
+# stat first and once listed 208 modified files with an empty diff, so
+# it would refuse a clean repo. Untracked files are asked for
+# separately and do count.
 #
-# BY CONTENT, NOT BY STAT. `git status` listed 208 modified files here
-# with an empty diff after a line-ending rewrite, because it compares
-# stat first (practice.md ▸ GIT CAN REPORT 208 MODIFIED FILES WITH AN
-# EMPTY DIFF). A status-based check would refuse a clean repo. `diff
-# HEAD` compares content and covers staged work, which is still
-# uncommitted. Untracked files are asked for separately and do count:
-# the mirror copies scripts/ wholesale, and --exclude-standard keeps
-# __pycache__ out.
-#
-# A SCRATCH DESTINATION IS EXEMPT, and only a scratch one: the rule is
-# about what a live Houdini reads, and a scratch install is read by
-# nothing. The real path keeps the check with no bypass at all.
+# Only a SCRATCH destination is exempt; the real path has no bypass.
 if [ -z "$scratch" ] \
    && git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     dirty="$(
@@ -129,27 +107,17 @@ amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"
 cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
-# BYTECODE: purge, then rebuild HASH-VALIDATED.
+# BYTECODE: purge, then rebuild HASH-VALIDATED (PEP 552).
 #
-# The old rule was "never cache bytecode", because a synced .py can
-# arrive with a preserved or older mtime, and timestamp-validated .pyc
-# then looks current while holding the PREVIOUS version - measured, and
-# it crashed the panel with no interface. Correct diagnosis, blunt cure:
-# it made every panel open recompile ~42k lines from source, three times
-# over (the import, the reload chain, the pypanel's own reload).
+# A synced .py can arrive with a preserved or older mtime, so a
+# TIMESTAMP-validated .pyc looks current while holding the previous
+# version - it crashed the panel with no interface. Hash validation
+# checks the source's content, so a lying mtime proves nothing.
 #
-# Hash-validated .pyc (PEP 552) removes the CAUSE instead. The check is
-# the source's content hash, so an mtime that lies proves nothing and a
-# real edit still invalidates. Probed 2026-08-02 under hython: a module
-# imported with its mtime forced to 1970 loaded from cache and returned
-# the CURRENT value, and a genuine content edit under the same stale
-# mtime still re-compiled. Measured on this package: 372ms -> 115ms.
-#
-# --force matters: it overwrites any timestamp-validated .pyc left in
-# the install from before this change, which is the one file that could
-# still lie. Compiled with the SAME interpreter Houdini runs, or the
-# magic number would not match and every file would be recompiled at
-# import anyway.
+# --force overwrites any timestamp-validated .pyc left from before, the
+# one file that could still lie. Compile with the SAME interpreter
+# Houdini runs, or the magic number mismatches and every import
+# recompiles anyway.
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 _hython=""
 if [ -n "${HFS:-}" ]; then
@@ -172,10 +140,8 @@ else
     echo "sync-install: no hython found - skipping bytecode precompile" >&2
 fi
 
-# Verify the whole of scripts/, not just python/amaze: the rsync above
-# copies "$repo/scripts/", so anything added beside python/amaze would
-# ship UNVERIFIED. Latent today (scripts/ holds only python/amaze), and
-# the cheapest possible moment to close it.
+# Verify the whole of scripts/, not just python/amaze: the rsync copies
+# "$repo/scripts/", so anything added beside it would ship UNVERIFIED.
 if diff -rq "$repo/scripts" "$install/scripts" \
         --exclude=__pycache__ >/dev/null \
    && diff -rq "$repo/python_panels" "$install/python_panels" >/dev/null \
@@ -187,21 +153,15 @@ else
     exit 1
 fi
 
-# ---------------------------------------------------------------------
-# VERIFY WHAT WAS JUST SHIPPED.
+# VERIFY WHAT WAS JUST SHIPPED - this is the path that reaches a live
+# Houdini, so a broken build would sit here until someone opened the
+# panel.
 #
-# This is the path that reaches a live Houdini. The pre-push hook gates
-# `git push`, which changes nobody's working environment; THIS changes
-# the one that matters, and it had no check at all - a broken build
-# would sit in the install until someone happened to open the panel.
+# It CANNOT refuse before syncing: the suite reads $AMAZE, so the tests
+# only mean anything after. Sync, test, then say loudly what happened
+# and name the command that undoes it.
 #
-# It cannot refuse before syncing: the suite reads $AMAZE, so the tests
-# only mean anything AFTER the sync. So it syncs, then tests, then says
-# loudly what it just did - and names the one command that undoes it.
-#
-# run-tests.sh sets AMAZE_SYNC_NO_VERIFY to break the recursion (it
-# syncs first, then runs the same suite itself).
-# ---------------------------------------------------------------------
+# run-tests.sh sets AMAZE_SYNC_NO_VERIFY to break the recursion.
 if [ -n "${AMAZE_SYNC_NO_VERIFY:-}" ]; then
     exit 0
 fi
@@ -213,11 +173,10 @@ if [ -n "$scratch" ]; then
 fi
 
 if ! command -v hython >/dev/null 2>&1 && [ -z "${HFS:-}" ]; then
-    # The old form here was a bare `ls -d <glob>`, which under
-    # `set -euo pipefail` exits non-zero when nothing matches and killed
-    # this script with NO OUTPUT - on a fresh machine with no Houdini,
-    # the exact case these lines exist to handle. amaze_newest_houdini
-    # returns an empty string instead, which the check below can report.
+    # Never a bare `ls -d <glob>` here: under `set -euo pipefail` it
+    # exits non-zero when nothing matches and kills this script with NO
+    # output, on the fresh machine these lines exist for.
+    # amaze_newest_houdini returns "" instead, which is reportable.
     HFS="$(amaze_newest_houdini)"
     export HFS
 fi
@@ -228,21 +187,16 @@ if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
 fi
 
 echo "sync-install: verifying what was just shipped..."
-# set +e, not `|| true`: this runs under `set -e`, so a failing suite
-# aborts here before the check below - silently. But `|| true` also
-# THROWS AWAY the exit status, and then "no FAILED line" reads as
-# green. A licence hiccup, a crash inside the runner, or a `set -e`
-# abort all produce no FAILED line and no tests. Check all three
-# conditions the push gate checks: status, FAILED, and a log leak.
+# set +e, NOT `|| true`: under `set -e` a failing suite aborts here
+# silently, but `|| true` throws away the status and then "no FAILED
+# line" reads as green - which a licence hiccup or a crash inside the
+# runner also produces. Check all three: status, FAILED, and a leak.
 set +e
 out="$(bash "$repo/scripts/python/amaze/tests/start_test.sh" 2>&1)"
 rc=$?
 set -e
-# `|| true` on every one: grep -c EXITS 1 when the count is zero, so
-# under `set -e` a perfectly green suite kills the script right here -
-# after printing "verifying...", before printing anything else. That
-# is the third variant of this same trap today (the others: a failing
-# command substitution, and a `[ ] && echo` that returns 1).
+# `|| true` on every one: grep -c EXITS 1 when the count is zero, so a
+# green suite would kill the script here under `set -e`.
 failed="$(printf '%s\n' "$out" | grep -cE '^FAILED( \(|$)' || true)"
 leak="$(printf '%s\n' "$out" | grep -c 'LOG LEAK' || true)"
 # The NUMBER, not the number of matching lines: "Ran 0 tests" is a
@@ -254,10 +208,9 @@ if [ "$rc" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] || [ "$ran" -eq 0
     echo "=====================================================" >&2
     echo " SUITE FAILED - A BROKEN BUILD IS IN YOUR LIVE INSTALL" >&2
     echo "=====================================================" >&2
-    # `|| true`: with no matching line, grep exits 1, pipefail carries it
-    # past head, and set -e kills the script INSIDE the failure branch -
-    # losing the rollback instructions below, in exactly the failures
-    # that are hardest to diagnose. Same trap as three lines above.
+    # `|| true`: with no match grep exits 1, pipefail carries it past
+    # head, and set -e kills the script INSIDE the failure branch,
+    # losing the rollback instructions below.
     printf '%s\n' "$out" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK' | head -12 >&2 || true
     if [ "$ran" -eq 0 ]; then
         echo " The suite did not run at all (exit $rc)." >&2
@@ -273,8 +226,6 @@ if [ "$rc" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] || [ "$ran" -eq 0
     exit 1
 fi
 echo "sync-install: suite green - the install is safe to open."
-# END MARKER. Three bugs tonight made this script die partway and say
-# nothing; the caller cannot tell "finished cleanly" from "aborted at
-# line 40" by exit code alone under `set -e`. A terminal marker makes
-# a silent abort detectable regardless of what caused it.
+# END MARKER. Under `set -e` an exit code alone cannot tell "finished"
+# from "aborted partway", so keep a terminal line and check for it.
 echo "sync-install: DONE"

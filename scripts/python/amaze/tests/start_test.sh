@@ -18,20 +18,14 @@ tests_dir="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../../../../tools/houdini-env.sh
 . "$tests_dir/../../../../tools/houdini-env.sh"
 
-# ARGUMENTS ARE CHECKED FIRST, before Houdini is even looked for, so a
-# typo costs nothing instead of an interpreter start.
+# ARGUMENTS ARE CHECKED FIRST, before Houdini is looked for, so a typo
+# costs nothing instead of an interpreter start.
 #
-# NAMED MODULES RUN THROUGH THE FRONT DOOR (2026-08-05). Every argument
-# except --isolated used to fall straight through to the full MODULES
-# list, so `run-tests.sh test_grid_operations` ran all 55 and read as a
-# targeted run that passed - two wasted full runs before the script was
-# read. Refusing the argument was the first fix and it was the wrong
-# one: it sends you to a bare `hython -m unittest`, which skips the
+# NAMED MODULES RUN THROUGH THE FRONT DOOR. Do not refuse an argument
+# and send the user to a bare `hython -m unittest` - that skips the
 # sync, the isolated AMAZE_LOG_DIR, the shell lint and the log-leak
-# check. Every guard, to save two minutes.
-#
-# A NAME THAT DOES NOT EXIST IS AN ERROR, not an empty run - a subset
-# that silently shrinks is the exact shape this change is about.
+# check. And a NAME THAT DOES NOT EXIST IS AN ERROR, never an empty
+# run: a subset that silently shrinks reads as a run that passed.
 isolated=0
 if [ "${1:-}" = "--isolated" ]; then
     isolated=1
@@ -69,14 +63,9 @@ AMAZE_LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/amaze_test_log.XXXXXX")"
 export AMAZE_LOG_DIR
 trap 'rm -rf "$AMAZE_LOG_DIR"' EXIT
 
-# THE SANDBOX. Every JSON write in the package goes through
-# hostos.write_json_atomic, and with this armed it refuses any path
-# outside a temporary directory - loudly, with an exception. The suite
-# already asserts afterwards that it touched no live data
-# (test_no_live_data); this stops it BEFORE the write, which is the
-# difference between an assertion and a guard. Added 2026-08-05, after a
-# probe script wrote two files into the real synced library because it
-# pointed a Prefs at a scratch directory one line after load().
+# THE SANDBOX. Armed, hostos.write_json_atomic refuses any path outside
+# a temporary directory, loudly. test_no_live_data asserts the same
+# thing afterwards; this stops it BEFORE the write.
 export AMAZE_SANDBOX=1
 
 # Where the real log ENDS before the run. check_log_leak.py parses only
@@ -119,12 +108,9 @@ if ! command -v hython >/dev/null 2>&1; then
         exit 1
     fi
     if amaze_is_windows; then
-        # No houdini_setup is sourced here. Windows ships
-        # houdini_setup_bash, but hython.exe does not need it: with
-        # $HFS/bin on PATH it imports hou and reports its own version
-        # correctly (measured 2026-08-06 in Git Bash against 22.0.399).
-        # One fewer thing sourced is one fewer way the two platforms can
-        # end up in different environments.
+        # No houdini_setup on Windows: hython.exe does not need it with
+        # $HFS/bin on PATH, and one fewer thing sourced is one fewer way
+        # the platforms diverge.
         PATH="$HFS/bin:$PATH"
         export PATH
     else
@@ -135,27 +121,23 @@ fi
 
 cd "$tests_dir"
 
-# NAME the environment in the output. The runner picks the newest
-# installed Houdini, so updating Houdini silently MOVES the gate: on
-# 2026-07-28 an update from 21.0.780/22.0.393 to 21.0.790/22.0.394 took
-# the suite from Python 3.11 under H21 to Python 3.13 under H22 without
-# a word, and "389 tests OK" meant something different afterwards. A
-# green result has to say which host produced it - the project supports
-# two Houdini versions and its bugs have been version-specific.
+# NAME the environment in the output. The runner picks the NEWEST
+# installed Houdini, so updating Houdini silently moves the gate - and
+# the bugs here are version-specific, so a green result has to say which
+# host produced it.
 #
-# AMAZE_HOUDINI=/path/to/Resources runs the suite against a specific
-# install; tools/run-tests.sh --all-versions runs every one in turn.
+# AMAZE_HOUDINI=/path/to/Resources pins one install;
+# tools/run-tests.sh --all-versions runs every one in turn.
 hython -c 'import hou, sys; print("suite host: Houdini %s, Python %s"
           % (hou.applicationVersionString(), sys.version.split()[0]))' \
     2>/dev/null | grep "suite host:" || \
     echo "suite host: UNKNOWN - hython could not report its version"
 
 status=0
-# Lint the shell before running anything. It does NOT catch this
-# project's recurring bug (a silent `set -e` abort - measured: it sees
-# none of the three forms written on 2026-07-27), so it is a secondary
-# net for quoting and word-splitting, not the primary defence. The
-# primary defence is test_shell_gates.py plus the DONE markers.
+# Lint the shell first. shellcheck catches NO form of the silent
+# `set -e` abort, so it is a secondary net for quoting and
+# word-splitting - test_shell_gates.py and the DONE markers are the
+# real defence.
 if command -v shellcheck >/dev/null 2>&1; then
     if ! shellcheck -S warning \
             "$tests_dir/start_test.sh" \
@@ -185,39 +167,24 @@ test_prefs_and_sources test_prefs_shared test_prefs_per_user test_unbound_names 
 test_redshift_terminal test_dead_cover test_updater test_preview_boundary \
 test_empty_state test_role_numbers test_comment_budget"
 
-# The Vulkan viewport's multithreaded update/draw is switched off for
-# the suite on EVERY platform. The 2026-08-06 measurement scoped this
-# to Windows and nine panel modules; 2026-08-14 on Linux (22.0.407)
-# the same crash took ten, and the isolated stacks finally NAMED it:
-# GR_Uniforms::assignRVGlobalBlock / pushObjectUniforms inside
-# DM_VPortAgent::setupGeometry's TBB renderParallelFor, reached from
-# every fixture-panel thumbnail render (the flipbook ROP drives the
-# viewport machinery even under hython), with tcmalloc trapping a
-# realloc of a garbage pointer. Houdini's heap misuse, not any GPU's:
-# NVIDIA, AMD and SwiftShader all crashed, all pass with this off.
-# The platform split is SideFX's own doc line - threading for Vulkan
-# geometry updates is on by default on Linux and Windows - and NOT
-# macOS, which is why the Mac gate never met it. A/B on Linux: the
-# ten crash 10/10 threaded, 334 tests green single-threaded
-# (research.md > Houdini's Vulkan viewer threading, devlog #504).
-# Suite-only on purpose - a live Houdini keeps its own defaults.
+# Vulkan viewport multithreading OFF for the suite, on every platform.
+# Ten panel modules crash 10/10 with it on - Houdini's own heap misuse
+# inside DM_VPortAgent::setupGeometry, not any GPU's, since NVIDIA, AMD
+# and SwiftShader all crash and all pass with it off. macOS never met
+# it because SideFX default the threading on for Linux and Windows
+# only. Suite-only: a live Houdini keeps its own defaults.
+# ▸r/vulkan-threading
 export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
 echo "suite: viewport draw single-threaded for this run" \
      "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
 
-# ONE hython process by default. The original measurement, when this
-# was 13 modules and 203 tests: 13 separate launches cost ~110s,
-# almost all of it Houdini starting up 13 times, against ~15s in one
-# process. MODULES now holds 55 and the suite is 1537 tests at ~130s
-# (2026-08-04) - the ratio is what matters and it has only grown,
-# which is what makes it affordable to gate every sync and every push
-# on the full suite instead of on a subset.
+# ONE hython process by default - separate launches cost almost all
+# their time starting Houdini again, which is what makes it affordable
+# to gate every sync and every push on the FULL suite.
 #
-# --isolated restores the per-module run. Keep it for two cases: a
-# failure you suspect is cross-module pollution (one process shares
-# module state that separate processes do not), and anything that
-# assumes a fresh interpreter. The shared run passes today, but it is
-# strictly weaker isolation and worth re-checking before a release.
+# --isolated restores the per-module run. Keep it: the shared run is
+# strictly weaker isolation, so reach for it on a failure you suspect
+# is cross-module pollution, and re-check it before a release.
 if [ -n "$wanted_modules" ]; then
     run_modules="$wanted_modules"
     # SAY it is a subset, every time. Both gates - pre-push and
@@ -229,12 +196,10 @@ else
     run_modules="$MODULES"
 fi
 
-# run_suite.py, not `-m unittest`: same runner, same module names, but
-# it leaves via os._exit once the result is in hand. A helper wedged in
-# uninterruptible I/O used to make PySide's shutdown wait on it - three
-# runs printed OK and then sat for eleven, twenty and twenty-six
-# minutes. sys.path[0] is this directory either way, so the bare module
-# names resolve exactly as before.
+# run_suite.py, not `-m unittest`: same runner and module names, but it
+# leaves via os._exit once the result is in hand. Without that, a helper
+# wedged in uninterruptible I/O makes PySide's shutdown wait on it and
+# the run hangs for twenty minutes after printing OK.
 if [ "$isolated" = "1" ]; then
     for module in $run_modules; do
         echo "---------------------------"

@@ -262,7 +262,7 @@ class FileFolders(folders.FolderListModel):
         # ...and so do its cached thumbnails. COMMENTS AND TILE ICONS
 
         # comments and icons": re-adding the folder is a clean slate
-        # (ui-text.md ▸ File (folders) ▸ Remove). Hip captures are the
+        # (the UI text register ▸ File (folders) ▸ Remove). Hip captures are the
         # one exception, and sweep_folder_cache says why - hand-framed,
         # not regenerable. Which stores go is `survives_forget` on each
         # spec, said once and readable, rather than inferred from which

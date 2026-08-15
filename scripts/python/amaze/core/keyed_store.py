@@ -175,7 +175,7 @@ class Spec:
 
         #: CALL on 2026-08-03: "clear everything - favourites, comments
         #: and icons". Re-adding the folder gives a clean slate
-        #: (ui-text.md ▸ File (folders) ▸ Remove). The field stays
+        #: (the UI text register ▸ File (folders) ▸ Remove). The field stays
         #: although all four path stores now answer the same way - it
         #: is a product decision that has already been reversed once,
         #: and a keyspace test could not carry it even when they

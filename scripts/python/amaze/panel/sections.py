@@ -95,7 +95,7 @@ DropRule = collections.namedtuple(
 #: ONE ROW OF A GRID RIGHT-CLICK MENU - data, never a callable.
 #: `panel/grid.py` is the only reader.
 #:
-#: * `label` - the text, taken from ui-text.md. Empty means a divider;
+#: * `label` - the text, taken from the UI text register. Empty means a divider;
 #:   the builder drops leading, doubled and trailing ones, so a table
 #:   with conditional rows never places them by hand.
 #: * `verb` - the NAME of a method on this section, called as
@@ -119,11 +119,11 @@ MenuEntry = collections.namedtuple(
 )
 
 #: A divider. The label is what makes it one, so a section places it
-#: in its own table exactly where ui-text.md draws it.
+#: in its own table exactly where the UI text register draws it.
 SEPARATOR = MenuEntry("")
 
 #: THE TAIL EVERY TILE MENU ENDS WITH, in the menu law's order (set
-#: 2026-07-31 on the contextual-menu base, recorded in ui-text.md):
+#: 2026-07-31 on the contextual-menu base, recorded in the UI text register):
 #: the tile's presentation, then Favorite, then Delete last of all.
 #:
 #: It was written five times. Two of the five carried an entry the
@@ -191,7 +191,7 @@ class Section:
     #: three blanks live once in `empty_state.SHARED`. A blank verb
     #: means no button - which is right wherever the gesture belongs to
     #: the network editor rather than to this panel. The words are in
-    #: `docs/architecture/ui-text.md`.
+    #: the UI text register.
     EMPTY: dict = {}
 
     #: THE FOUR AREAS, as data. What this context binds into each one -
@@ -502,7 +502,7 @@ class Section:
         """What deleting `count` rows costs, in this section's terms.
 
         `name` is the single row's display name, for the one section
-        whose approved copy quotes it (ui-text.md is the source for
+        whose approved copy quotes it (the UI text register is the source for
         every user-facing string; Color says `Delete "<name>"?`).
 
         A STATIC method: it depends on nothing but the count, which is
@@ -2479,7 +2479,7 @@ class GradientSection(AssetSection):
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
         # The one section whose approved copy NAMES the thing
-        # (ui-text.md): a palette's name is what the user picked it by,
+        # (the UI text register): a palette's name is what the user picked it by,
         # and it is the only section where the tile label is the whole
         # identity a person has.
         if count == 1:

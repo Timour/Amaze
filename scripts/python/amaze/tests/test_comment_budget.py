@@ -17,9 +17,14 @@ for _ in range(5):
 COMMENT_LINES = 12
 DOCSTRING_LINES = 20
 
+#: Comment runs are counted in every SHIPPED file that has them, not
+#: only Python - `.sh` and `.shelf` hid whole blocks from the count.
+#: Docstrings are Python's alone.
+SCANNED = (".py", ".sh", ".shelf", ".xml")
+
 #: Blocks still over the cap (2026-08-15). LOWER it as the sweep
 #: advances; never raise it.
-BUDGET = 274
+BUDGET = 276
 
 
 def _blocks(path):
@@ -39,6 +44,8 @@ def _blocks(path):
     if run >= COMMENT_LINES:
         found.append((run, start, "comment"))
 
+    if not path.endswith(".py"):
+        return found
     try:
         tree = ast.parse(source, filename=path)
     except SyntaxError:
@@ -62,7 +69,7 @@ def over_the_cap():
     for folder, dirs, files in os.walk(_ROOT):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
         for name in sorted(files):
-            if not name.endswith(".py"):
+            if not name.endswith(SCANNED):
                 continue
             path = os.path.join(folder, name)
             for size, line, what in _blocks(path):
@@ -76,12 +83,14 @@ class TheCommentBudget(unittest.TestCase):
 
     def test_no_block_is_added_that_the_sweep_has_not_cut(self):
         found = over_the_cap()
+        verdict = ("a fat block was added - say what it DOES and what to "
+                   "watch when calling it, and put the rest in the wiki"
+                   if len(found) > BUDGET else
+                   "the sweep advanced - lower BUDGET to %d" % len(found))
         self.assertEqual(
             BUDGET, len(found),
-            "%d blocks over the cap, pinned at %d. Fewer: lower BUDGET to "
-            "%d. More: a fat block was added - say what it DOES and what "
-            "to watch when calling it, and put the rest in the wiki.\n%s"
-            % (len(found), BUDGET, len(found),
+            "%d blocks over the cap, pinned at %d: %s.\n%s"
+            % (len(found), BUDGET, verdict,
                "\n".join("  %4d  %s  %s" % row for row in found[:10])))
 
     def test_the_scan_can_find_a_block(self):

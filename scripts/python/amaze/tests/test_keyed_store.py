@@ -1057,7 +1057,7 @@ class TheKeyLifecycle(StoreCase):
         comments and icons". Removal means removal; re-adding the
         folder gives a clean slate.
 
-        This reverses the behaviour ui-text.md documented since
+        This reverses the behaviour the UI text register documented since
         2026-07-31 ("captures and favorites are kept"), which is why
         the wording moved in the same change."""
         page_store = self.store()
