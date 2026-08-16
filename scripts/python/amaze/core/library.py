@@ -860,10 +860,10 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                            for row in rows_to_remove)
             summary.append(
                 "%s kept in your library, but %s files are missing: %s.\n"
-                "Nothing was removed - the entry holds tags, notes and "
-                "favourites that are not stored anywhere else, and a file "
-                "that has not finished syncing looks the same as one that "
-                "is gone. If they really are gone, select them in Amaze "
+                "Nothing was removed - the entry's tags, notes and "
+                "favourites would go with it, and a file that has not "
+                "finished syncing looks the same as one that is gone. "
+                "If they really are gone, select them in Amaze "
                 "and use Delete Entry."
                 % (_count(len(rows_to_remove), "material"),
                    "their" if len(rows_to_remove) > 1 else "its",
