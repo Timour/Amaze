@@ -855,7 +855,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                     mat_id=str(asset.mat_id), name=asset.name,
                 )
 
-        if rows_to_remove:  # --- Pass 2: REPORTED, NEVER REMOVED - a row holds tags, notes, a favourite and a date that exist nowhere else, and nothing mutates the row set before the sweep runs ---
+        if rows_to_remove:  # --- Pass 2: REPORTED, NEVER REMOVED - a row holds tags, a description and a date that exist nowhere else (the note and the star have their own stores), and nothing mutates the row set before the sweep runs ---
             names = sorted(str(self._assets[row].name) or "(unnamed)"
                            for row in rows_to_remove)
             summary.append(
