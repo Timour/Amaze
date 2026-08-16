@@ -1,10 +1,4 @@
-"""
-Unit tests for category.py - Tests the Categories model class.
-
-This test suite uses unittest.mock to isolate external dependencies
-(PySide6, amaze.prefs, amaze.core.database) and verify the behavior
-of the Categories class.
-"""
+"""The Categories model, with PySide6, prefs and the database connector mocked out."""
 
 import unittest
 from unittest.mock import MagicMock, patch, call
@@ -12,9 +6,7 @@ from unittest.mock import MagicMock, patch, call
 import os
 import sys
 
-# THREE dirnames up = scripts/python, the directory holding the
-# `amaze` package - the DEV tree, not the install on Houdini's path.
-sys.path.insert(
+sys.path.insert(  # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path ▸p/checkout-not-install
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -27,18 +19,15 @@ class TestCategories(unittest.TestCase):
 
     def setUp(self):
         """Set up mocks before each test."""
-        # Mock PySide6.QtCore
         self.mock_qtcore = MagicMock()
         self.mock_qtcore.Qt.ItemDataRole.UserRole = 256
         self.mock_qtcore.Qt.ItemDataRole.DisplayRole = 0
         self.mock_qtcore.QAbstractListModel = MagicMock
 
-        # Mock preferences
         self.mock_prefs_instance = MagicMock()
         self.mock_prefs_instance.dir = "/mock/path"
         self.mock_prefs_class = MagicMock(return_value=self.mock_prefs_instance)
 
-        # Mock database
         self.mock_db_instance = MagicMock()
         self.mock_db_instance.load.return_value = {
             "categories": ["Cat1", "_Hidden", "Cat2"]
@@ -48,10 +37,8 @@ class TestCategories(unittest.TestCase):
         }
         self.mock_db_class = MagicMock(return_value=self.mock_db_instance)
 
-        # Mock index
         self.mock_index = MagicMock()
 
-        # Apply patches
         self.patcher_qtcore = patch("PySide6.QtCore", self.mock_qtcore)
         self.patcher_prefs = patch("amaze.prefs.prefs.Prefs", self.mock_prefs_class)
         self.patcher_db = patch(
@@ -61,9 +48,7 @@ class TestCategories(unittest.TestCase):
         self.patcher_qtcore.start()
         self.patcher_prefs.start()
         self.patcher_db.start()
-
-        # Import after patching
-        self.category_module = category
+        self.category_module = category  # bound after patching
 
     def tearDown(self):
         """Clean up patches after each test."""
@@ -241,29 +226,14 @@ class TestCategories(unittest.TestCase):
 
         model.save()
 
-        # save() writes the category COLOURS alongside the names now -
-        # they live in the same json so a colour travels with the
-        # library it belongs to.
-        self.mock_db_instance.set.assert_called_with(
+        self.mock_db_instance.set.assert_called_with(  # save() writes the COLOURS alongside the names: same json, so a colour travels with the library it belongs to
             {"categories": ["Cat1", "_Hidden", "Cat2"], "category_colors": {}}
         )
         self.mock_db_instance.save.assert_called_once()
 
 
 class NormalizeBracketsItsResetTest(unittest.TestCase):
-    """normalize_categories REPLACES the row set, so it must bracket
-    the change.
-
-    research.md: "Replacing a model's whole row set without
-    begin/endResetModel leaves attached proxies on their old row count
-    and the selection model on a current index into rows that no longer
-    exist. The next repaint reads out of range on the native side - a
-    segfault, not a catchable exception." Measured here at 9 rows -> 4
-    with the proxy still reporting 9.
-
-    And the honest observable is the SIGNAL PAIR, not the row count -
-    a model left mid-reset is invisible through a proxy.
-    """
+    """normalize_categories REPLACES the row set, so it must bracket the change - and the honest observable is the SIGNAL PAIR, never the row count, because a model left mid-reset is invisible through a proxy. ▸r/model-contracts"""
 
     def _model(self, entries):
         from amaze.core import category as category_mod
@@ -294,13 +264,7 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
         self.assertEqual([], seen, "a no-op reset the whole model")
 
     def test_the_model_stays_ALIASED_to_the_connectors_list(self):
-        """`Categories.__init__` aliases `_categories` to the
-        connector's own `_data["categories"]`, and `database`'s
-        two-writer merge APPENDS a peer machine's new categories to
-        that list IN PLACE (its comment names this exact hazard). A
-        normalize that REBINDS instead of mutating detaches the model:
-        the merge then updates a list nobody shows, and the model's
-        next save writes the document without the adopted names."""
+        """`Categories.__init__` aliases `_categories` to the connector's own `_data["categories"]`, and the two-writer merge APPENDS a peer machine's new categories to that list IN PLACE - so a normalize that REBINDS instead of mutating detaches the model, the merge updates a list nobody shows, and the next save writes the document without the adopted names."""
         from amaze.core import category as category_mod
         from amaze.core import database
         from amaze.tests import test_support
