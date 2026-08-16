@@ -864,7 +864,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 "favourites would go with it, and a file that has not "
                 "finished syncing looks the same as one that is gone. "
                 "If they really are gone, select them in Amaze "
-                "and use Delete Entry."
+                "and use Delete."
                 % (_count(len(rows_to_remove), "material"),
                    "their" if len(rows_to_remove) > 1 else "its",
                    helpers.and_list(names[:8]) + (
@@ -873,7 +873,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if missing_thumbs:
             summary.append(  # only quote a label that EXISTS - grep the package before naming a control here ▸p/quoted-strings-go-stale
                 "No thumbnail image yet for %s - select %s in Amaze and use "
-                "Render Thumbnail when convenient, since a render takes "
+                "Update Preview when convenient, since a render takes "
                 "time." % (_count(missing_thumbs, "material"),
                            "it" if missing_thumbs == 1 else "them"))
 

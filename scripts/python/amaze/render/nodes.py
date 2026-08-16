@@ -738,7 +738,7 @@ class NodeHandler:
                     False,
                     '"%s" has an unrecognised renderer (%r), so there is '
                     "no way to rebuild it. Re-save it from a material "
-                    "builder, or set its renderer in Edit Info."
+                    "builder, or set its renderer in Info."
                     % (mat.name, mat.renderer),
                 )
 
@@ -871,7 +871,7 @@ class NodeHandler:
                 + '" is a '
                 + mat.renderer
                 + " VOP material and cannot be imported into a LOP/Solaris "
-                + "context. Use Import to MAT.",
+                + "context. Use Copy To /mat instead.",
             )
 
         if world == "lop":

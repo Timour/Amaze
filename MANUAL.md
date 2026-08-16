@@ -166,14 +166,15 @@ shared settings — it governs something everyone using it relies on.
 ### Getting one back out
 
 - **Double-click** — imports into the context you are working in.
-- **Import to MAT** / **Import to LOP** — right-click, choose explicitly.
+- **Copy To ▸ /mat** / **Copy To ▸ /stage** — right-click, choose
+  explicitly.
 - **Drag it** — see [Drag and drop](#drag-and-drop). This is the good way.
 
 ### Organising
 
-Right-click a tile: **Edit Info** (name, category — one per asset —
-tags, favorite, plus License and About fields that carry credits), **Toggle Favorite**,
-**Rerender Thumbnail**, **Move to ▸**, **Delete Entry**.
+Right-click a tile: **Info** (name, category — one per asset —
+tags, favorite, plus License and About fields that carry credits),
+**Update Preview**, **Customize**, **Favorite**, **Delete**.
 
 You can also *drag* assets onto a sidebar category to file them there —
 the category glows as you hover.
@@ -220,7 +221,7 @@ Right-click a material (or a multi-selection):
 **Double-click imports to the scene**, like double-click everywhere
 else: the primary action puts the asset where you are working.
 
-Every import records its source, author, link and licence in Edit Info.
+Every import records its source, author, link and licence in Info.
 None of these sources requires attribution — but a library full of
 other people's work should be able to say whose it is.
 
@@ -317,13 +318,11 @@ a failure.
 A snippet library for VEX, OpenCL and Python, with syntax-highlighted
 previews on the tiles and a curated **Starter Toolbox** to begin with.
 
-- **New Snippet** — write one in the dialog.
-- **View / Copy Code** — read it, copy it.
-- **Apply to Selected Node** — pushes the snippet into the selected
-  node's code parameter.
-- **Edit Snippet**, **Toggle Favorite**, **Delete Entry**.
-- Right-click any node with a code parameter ▸ **Save Code to
-  Amaze**.
+- **New File** — write one in the dialog.
+- **Apply** — pushes the snippet into the selected node's code
+  parameter.
+- **Edit**, **Customize**, **Favorite**, **Delete**.
+- Right-click any node with a code parameter ▸ **Save to Amaze**.
 
 Double-click or drag a snippet onto a node to apply it.
 
@@ -406,7 +405,7 @@ Not everything has a picture. A LOP setup, a DOP network, a snippet —
 there is nothing to render, and a grid of identical fallback tiles tells
 you nothing about what is in it.
 
-Right-click any tile ▸ **Edit Icon…** and pick one of 287 Feather icons
+Right-click any tile ▸ **Customize** and pick one of 287 Feather icons
 on a background colour: four presets, or any colour you like via
 **Custom Color**. The preview shows the actual tile, because the icon
 and the colour only make sense together. **Icon Color** switches the
@@ -566,7 +565,7 @@ renders anything.
 **It moves, it does not delete.** An entry whose files are missing is
 reported and kept - deleting it would take its tags, comments and
 favourites with it, and a file mid-sync looks exactly like a file that
-is gone; you remove it yourself with Delete Entry if it really is dead.
+is gone; you remove it yourself with Delete if it really is dead.
 Files no list claims move into Amaze's own holding folder on this
 computer (outside your library, so it never syncs), are named in the
 summary, and are kept for 30 days before they are removed for good.
