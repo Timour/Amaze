@@ -150,7 +150,40 @@ is a third thing again. Wording in the UI text register.
 
 **A VALUE CARRIES ITS OWN NAME.** Several values travelling together go
 as a named tuple, never a bare tuple read by position:
-`sections.AssetStack`, `sections.CommentSubject`, `sections.FileLocation`.
+
+| named tuple | fields | what to watch |
+|---|---|---|
+| `sections.AssetStack` | `model proxy selection categories` | the four models an Asset section works through; read by NAME |
+| `sections.CommentSubject` | `key section name type category colour` | `colour` is the CATEGORY's colour, not the comment's |
+| `sections.FileLocation` | `path label colour` | the registered folder a File row came from; `label` is its custom name, else the path |
+
+**The two DECLARATIONS a section author writes.** Both are data — names
+of methods, never callables — and both fall through where a field is
+undeclared.
+
+`sections.DropRule`, the doors a row offers:
+
+| field | aimed by | the verb takes |
+|---|---|---|
+| `on_node` | DRAG, cursor over a node | `(index, node)` |
+| `on_space` | DRAG, cursor over empty network space | `(index, network, position)` |
+| `resolve` | DRAG, finds its own landing | `(index)` |
+| `outside` | DRAG, released outside the panel | `(index)` |
+| `click_on_node` | CLICK, the SELECTION | `(index, node)` |
+| `click_resolve` | CLICK, finds its own landing | `(index)` |
+| `carrier_type` | — | name of what the space door CREATES, where that is a constant, so the drag ghost draws its shape from the same declaration the creator builds from |
+
+`sections.MenuEntry`, one row of a menu table:
+
+| field | what it declares |
+|---|---|
+| `label` | the row's text, from the UI text register; an empty one is a divider, and leading, doubled and trailing ones are dropped, so a table with conditional rows never places them by hand |
+| `verb` | NAME of a method on the section, called as `verb(indexes, current, payload)` |
+| `needs` | what makes the row LIVE — `any` (the default), `one`, `always`, or the name of a fact — and it greys, never hides |
+| `shown` | the fact deciding whether the row EXISTS at all |
+| `children` | a method returning `((label, payload, swatch_colour), ...)`, the colour a hex string or empty |
+| `count_suffix` | appends ` (N)` on a multi-selection |
+| `checkable` | the fact giving the CURRENT state, making it a tick-box whose verb is handed the state the user asked for |
 
 **The Grid Menu** (2026-08-03) is the same idea for right-click. Every
 context declares `GRID_MENU` — a tuple of `MenuEntry` rows, one per

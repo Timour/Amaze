@@ -1,22 +1,14 @@
-"""
-The File section's folder browsing and its disk caches.
+"""The File section's folder browsing and its disk caches. Images and Geometry were twin sections on one ThumbnailCache before the merge folded them, with HIP, into the File section - one model, per-kind pipelines, still the same shared cache class - and the bugs pinned here are all of the twin shape: a fix applied to one pipeline and not the other, which is exactly what the merge exists to end."""
 
-Images and Geometry were twin sections on one ThumbnailCache until the
-2026-07-31 merge folded them (with HIP) into the File section - one
-model, per-kind pipelines, still the same shared cache class. The bugs
-pinned here were all of the twin shape: a fix applied to one pipeline
-and not the other, which is exactly what the merge exists to end.
-"""
-
+import ast
+import inspect
 import os
 import shutil
 import sys
 import tempfile
 import unittest
 
-# THREE dirnames up = scripts/python, the directory holding the
-# `amaze` package - the DEV tree, not the install on Houdini's path.
-sys.path.insert(
+sys.path.insert(    # THREE dirnames up = scripts/python, the directory holding the `amaze` package - the DEV tree, not the install on Houdini's path
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -26,22 +18,12 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.core import texture_library, thumbnails  # noqa: E402
+from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 
 class DeleteLocalCacheTest(unittest.TestCase):
-    """"Delete Local Cache" must not break Geometry for the session.
-
-    ThumbnailCache.clear() sweeps every texture_thumbnails_* AND
-    geo_thumbnails_* directory - correct, they would pile up otherwise -
-    but recreates only its OWN. GeoFiles._get_cache() memoises its cache
-    on (size, mode, bg), none of which change when the cache is cleared,
-    so it kept handing back an object whose directory no longer existed.
-
-    Measured before the fix: after one press, the geometry render's
-    _render_tmp.png could not be written, put() cached nothing, and it
-    repeated on every folder visit until Houdini restarted. Only a
-    print() reported it."""
+    """`Delete Local Cache` must not break Geometry for the session: ThumbnailCache.clear() sweeps every texture_thumbnails_* AND geo_thumbnails_* directory - correct, they would pile up otherwise - but recreates only its OWN, while GeoFiles._get_cache() memoises on (size, mode, bg), none of which change when the cache is cleared, so it hands back an object whose directory no longer exists. Measured before the fix: after one press the geometry render's _render_tmp.png could not be written, put() cached nothing, and it repeated on every folder visit until Houdini restarted, reported only by a print()."""
 
     def setUp(self):
         self.source = os.path.join(
@@ -74,8 +56,7 @@ class DeleteLocalCacheTest(unittest.TestCase):
             "nothing for the rest of the session")
 
     def test_the_render_scratch_file_is_writable_after_a_clear(self):
-        """GeoFiles renders to _render_tmp.png inside the cache dir
-        BEFORE the cache is asked to store anything."""
+        """GeoFiles renders to _render_tmp.png inside the cache dir BEFORE the cache is asked to store anything."""
         self.textures.clear()
         self.geometry.ensure_dir()
         scratch = os.path.join(self.geometry.cache_dir, "_render_tmp.png")
@@ -84,13 +65,9 @@ class DeleteLocalCacheTest(unittest.TestCase):
             "the geometry render could not write its scratch file")
 
     def test_a_failed_write_is_not_recorded_as_cached(self):
-        """QImage.save returns False rather than raising, so a write into
-        a missing directory used to fall through to the manifest and
-        record a cache entry for a file that was never written -
-        valid_path then found nothing and it re-rendered forever."""
+        """QImage.save returns False rather than raising, so a write into a missing directory can fall through to the manifest and record a cache entry for a file that was never written - valid_path then finds nothing and it re-renders forever."""
         shutil.rmtree(self.geometry.cache_dir, ignore_errors=True)
-        # Block recreation so the write genuinely fails.
-        open(self.geometry.cache_dir, "w").close()
+        open(self.geometry.cache_dir, "w").close()    # block recreation so the write genuinely fails
         self.addCleanup(os.remove, self.geometry.cache_dir)
 
         self.geometry.put(self.source, self.image)
@@ -100,12 +77,7 @@ class DeleteLocalCacheTest(unittest.TestCase):
 
 
 class CacheIsolationTest(unittest.TestCase):
-    """The tests above call clear(), which SWEEPS the cache root.
-
-    Against the default root that deletes the user's real texture and
-    geometry thumbnails - which happened once, while writing this file.
-    Regenerable, but geometry thumbnails are Karma renders. test_support
-    redirects the root at import; this is the tripwire."""
+    """The tests above call clear(), which SWEEPS the cache root - against the default root that deletes the user's real texture and geometry thumbnails, regenerable but the geometry ones are Karma renders. test_support redirects the root at import; this is the tripwire."""
 
     def test_the_cache_root_is_not_the_real_one(self):
         from amaze.helpers import hostos
@@ -130,35 +102,18 @@ class CacheIsolationTest(unittest.TestCase):
 
 
 class ProgressAccountingTest(unittest.TestCase):
-    """The conversion bar must be able to reach 100%.
-
-    _progress_total counted ROWS while _on_convert_attempted discards by
-    KEY, and _progress_keys deduplicates. Two rows can share a canonical
-    path - overlapping registered folders with Include Subfolders on
-    (/root and /root/sub), or a case-variant duplicate on a
-    case-insensitive volume - so the bar stopped short forever.
-
-    Worse than a cosmetic stall: the `_progress_done >= _progress_total`
-    gate is what flushes the manifest, so nothing was ever recorded and
-    the whole folder re-converted from scratch on every visit."""
+    """The conversion bar must be able to reach 100%: counting ROWS while _on_convert_attempted discards by KEY and _progress_keys deduplicates stops the bar short forever, because two rows can share a canonical path - overlapping registered folders with Include Subfolders on (/root and /root/sub), or a case-variant duplicate on a case-insensitive volume. Worse than a cosmetic stall: the `_progress_done >= _progress_total` gate is what flushes the manifest, so nothing is recorded and the whole folder re-converts from scratch on every visit."""
 
     def setUp(self):
-        # /root and /root/sub BOTH registered, recursion on: the same
-        # physical file is reached twice, which is the whole case.
-        self.root = tempfile.mkdtemp(prefix="amaze_overlap_")
+        self.root = tempfile.mkdtemp(prefix="amaze_overlap_")    # /root and /root/sub BOTH registered with recursion on: the same physical file is reached twice, which is the whole case
         self.addCleanup(shutil.rmtree, self.root, True)
         self.sub = os.path.join(self.root, "sub")
         os.makedirs(self.sub)
-        # An EXR: not natively decodable, so it takes the convert path
-        # and is counted, rather than being served from cache.
-        with open(os.path.join(self.sub, "tex.exr"), "wb") as handle:
+        with open(os.path.join(self.sub, "tex.exr"), "wb") as handle:    # an EXR is not natively decodable, so it takes the convert path and is counted rather than served from cache
             handle.write(b"\x76\x2f\x31\x01" + b"\0" * 256)
 
         self.prefs = test_support.fixture_prefs(self)
-        # Through the setter: `file_recursive_folders` is derived from
-        # the library's location store now, so extending the list it
-        # returns changes a value nothing will ever read again.
-        for folder in (self.root, self.sub):
+        for folder in (self.root, self.sub):    # through the SETTER: `file_recursive_folders` is derived from the library's location store, so extending the list it returns changes a value nothing will ever read again
             self.prefs.add_file_folder(folder)
             self.prefs.set_file_folder_recursive(folder, True)
         from amaze.core import file_library
@@ -179,8 +134,7 @@ class ProgressAccountingTest(unittest.TestCase):
             "manifest flush is gated on reaching it")
 
     def test_the_bar_can_actually_complete(self):
-        """The consequence, not the counter: every key reports once, so
-        done must be able to reach total."""
+        """The consequence, not the counter: every key reports once, so done must be able to reach total."""
         self.model._load([self.root, self.sub])
         for key in list(self.model._progress_keys):
             self.model._on_convert_attempted(key)
@@ -192,18 +146,7 @@ class ProgressAccountingTest(unittest.TestCase):
 
 
 class ReconcileIsOnePassTest(unittest.TestCase):
-    """Opening a folder must not walk the manifest once per subfolder.
-
-    reconcile() walks the whole manifest, and the callers called it once
-    per containing directory - so Include Subfolders made a folder open
-    O(subdirs x manifest). The manifest is global per resolution and
-    grows with every file ever thumbnailed, so it degraded
-    monotonically. Measured, 300 subdirs against a 40,000-entry
-    manifest: 3.37s of pure dict iteration on the main thread, against
-    0.01s for a single pass.
-
-    Counted rather than timed: a timing assertion here would be flaky,
-    and the invariant is "one pass", not "fast"."""
+    """Opening a folder must not walk the manifest once per subfolder: reconcile() walks the whole manifest, so calling it once per containing directory makes a folder open O(subdirs x manifest) against a manifest that is global per resolution and grows with every file ever thumbnailed - measured at 3.37s of main-thread dict iteration for 300 subdirs over 40,000 entries, against 0.01s for a single pass. Counted rather than timed, because a timing assertion here would be flaky and the invariant is "one pass", not "fast"."""
 
     class _CountingManifest(dict):
         def __init__(self, *args):
@@ -250,10 +193,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
             "an entry whose file is gone survived the reconcile")
 
     def test_no_caller_reconciles_in_a_loop(self):
-        """The regression that actually happens is at the CALL SITE:
-        someone reintroduces `for dir in dirs: cache.reconcile(dir, ...)`,
-        which is O(subdirs x manifest) again however fast one pass is.
-        Derived from the source, like the reload-chain test."""
+        """The regression that actually happens is at the CALL SITE - someone reintroduces `for dir in dirs: cache.reconcile(dir, ...)`, which is O(subdirs x manifest) again however fast one pass is. Derived from the source, like the reload-chain test."""
         import re
 
         package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -265,9 +205,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
             for number, line in enumerate(lines, 1):
                 if not re.search(r"\.reconcile\(", line):
                     continue
-                # Inside a for-loop body? Look back for an enclosing
-                # `for` at a shallower indent.
-                indent = len(line) - len(line.lstrip())
+                indent = len(line) - len(line.lstrip())    # inside a for-loop body? look back for an enclosing `for` at a shallower indent
                 for previous in reversed(lines[:number - 1]):
                     if not previous.strip():
                         continue
@@ -292,12 +230,7 @@ class ReconcileIsOnePassTest(unittest.TestCase):
 
 
 class SymlinkedSubfoldersTest(unittest.TestCase):
-    """Include Subfolders must not silently skip symlinked directories.
-
-    Plain os.walk skips linked DIRECTORIES while still including linked
-    FILES - inconsistent inside one folder - and the sidebar count
-    agrees with the omission, so nothing signals it. Studio texture and
-    geometry trees are routinely assembled from symlinks."""
+    """Include Subfolders must not silently skip symlinked directories: plain os.walk skips linked DIRECTORIES while still including linked FILES - inconsistent inside one folder - and the sidebar count agrees with the omission, so nothing signals it, while studio texture and geometry trees are routinely assembled from symlinks."""
 
     def setUp(self):
         from amaze.core import folders
@@ -346,12 +279,7 @@ class SymlinkedSubfoldersTest(unittest.TestCase):
 
 
 class SortOrderTest(unittest.TestCase):
-    """Images and Geometry must order a folder the same way, and a
-    folder must not reorder itself when Include Subfolders is toggled.
-
-    Images' flat branch used plain sorted() (ASCII: every uppercase
-    before any lowercase) while its own recursive branch and BOTH
-    geometry branches used key=str.lower."""
+    """Images and Geometry must order a folder the same way, and a folder must not reorder itself when Include Subfolders is toggled - a plain sorted() on any one branch puts every uppercase before any lowercase while the other branches use key=str.lower."""
 
     NAMES = ["Zebra.png", "apple.png", "Brick.png", "moss.png"]
 
@@ -383,13 +311,7 @@ class SortOrderTest(unittest.TestCase):
 
 
 class StaleRowTest(unittest.TestCase):
-    """data() must survive a row that outlived its model.
-
-    index.isValid() does NOT mean "in range" - an index built against a
-    longer list stays valid after the model shrinks. GeoFiles.data has
-    always guarded; TextureFiles.data did not, so the same stale row
-    raised IndexError out of a Qt PAINT path rather than returning None.
-    A folder emptying under a queued repaint reaches it."""
+    """data() must survive a row that outlived its model: index.isValid() does NOT mean "in range", since an index built against a longer list stays valid after the model shrinks, and an unguarded data() then raises IndexError out of a Qt PAINT path rather than returning None. A folder emptying under a queued repaint reaches it."""
 
     def _texture_model(self):
         from amaze.core import file_library
@@ -417,6 +339,96 @@ class StaleRowTest(unittest.TestCase):
         self.assertEqual(
             "b.png",
             model.data(model.index(1, 0), QtCore.Qt.ItemDataRole.DisplayRole))
+
+
+def _folder_methods():
+    """The methods of `FolderSection`, as AST - so a guard reads the shipped source. ▸p/source-derived-tests"""
+    tree = ast.parse(inspect.getsource(sections))
+    for klass in ast.walk(tree):
+        if isinstance(klass, ast.ClassDef) and klass.name == "FolderSection":
+            for scope in klass.body:
+                if isinstance(scope, ast.FunctionDef):
+                    yield scope
+
+
+class TheFilesAndProxyArePairedOnce(unittest.TestCase):
+    """`tile_models` answers the pair and `_files_and_rows` maps a selection; a door that re-derives either is how the two drift apart."""
+
+    def test_no_door_reads_both_attrs_for_itself(self):
+        found = []
+        for scope in _folder_methods():
+            if scope.name == "tile_models":
+                continue
+            names = {node.attr for node in ast.walk(scope)
+                     if isinstance(node, ast.Attribute)}
+            if {"files_attr", "files_proxy_attr"} <= names:
+                found.append(scope.name)
+        self.assertEqual(
+            [], sorted(found),
+            "the files+proxy pair is re-derived outside tile_models(): %s"
+            % ", ".join(sorted(found)))
+
+    def test_no_door_maps_a_selection_for_itself(self):
+        found = []
+        for scope in _folder_methods():
+            if scope.name in ("_files_and_rows", "comment_subject"):
+                continue
+            if any(isinstance(node, ast.Attribute)
+                   and node.attr == "mapToSource" for node in ast.walk(scope)):
+                found.append(scope.name)
+        self.assertEqual(
+            [], sorted(found),
+            "a door maps proxy indexes itself instead of asking "
+            "_files_and_rows: %s" % ", ".join(sorted(found)))
+
+    def test_an_index_the_proxy_has_dropped_is_not_carried_as_a_row(self):
+        """The guard `_files_and_rows` owns: an invalid map answers no row rather than -1, which addresses row 0 backwards."""
+        section = sections.FileSection.__new__(sections.FileSection)
+        section.tile_models = lambda: (object(), _DroppingProxy())
+        files, rows = sections.FolderSection._files_and_rows(
+            section, [QtCore.QModelIndex()])
+        self.assertEqual([], rows)
+
+    def test_each_index_is_mapped_exactly_once(self):
+        """It was mapped twice per index - once to test, once to read - so a proxy that moved between the two calls could answer a row it had just called invalid."""
+        proxy = _CountingProxy()
+        section = sections.FileSection.__new__(sections.FileSection)
+        section.tile_models = lambda: (object(), proxy)
+        sections.FolderSection._files_and_rows(
+            section, [QtCore.QModelIndex()] * 3)
+        self.assertEqual(3, proxy.calls)
+
+
+class _Source:
+    """The two answers `_files_and_rows` asks a mapped index for."""
+
+    def __init__(self, valid, row=0):
+        self._valid = valid
+        self._row = row
+
+    def isValid(self):
+        return self._valid
+
+    def row(self):
+        return self._row
+
+
+class _DroppingProxy:
+    """Every index has gone: mapToSource answers an invalid one."""
+
+    def mapToSource(self, _index):
+        return _Source(False, -1)
+
+
+class _CountingProxy:
+    """Counts the maps, and answers a valid row for each."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def mapToSource(self, _index):
+        self.calls += 1
+        return _Source(True)
 
 
 if __name__ == "__main__":

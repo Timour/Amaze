@@ -1,15 +1,7 @@
-"""Colors runs on the family model, and these pin what that must keep.
+"""Colors runs on the family model, and these pin what that must keep. GradientLibrary subclasses AssetLibrary, so the stale-write guard, the three-way merge, the adopted-row handover, the refused-save contracts and the load-failure latch are the CONNECTOR's and the BASE's - what is pinned here is that Colors actually rides them, its rows carrying `colors`/`ramp` beside the family fields, plus the rules that are Colors' own: the painted swatch key, the suppressed load date, the seed marker's honesty, and the sidebar being the shared Categories model."""
 
-`GradientLibrary` subclasses `MaterialLibrary` since the batch-1
-rebase, so the stale-write guard, the three-way merge, the adopted-row
-handover, the refused-save contracts and the load-failure latch are the
-CONNECTOR's and the BASE's - what is pinned here is that Colors
-actually rides them (its rows carry `colors`/`ramp` beside the family
-fields), plus the rules that are Colors' own: the painted swatch key,
-the suppressed load date, the seed marker's honesty, and the sidebar
-being the shared `Categories` model.
-"""
-
+import ast
+import inspect
 import json
 import os
 import shutil
@@ -30,25 +22,15 @@ from amaze.core import database                          # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
 from amaze.core import keyed_store                       # noqa: E402
 from amaze.core import tile_icons                        # noqa: E402
+from amaze.panel import sections                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
 
-#: The stamp a fixture carries so it is a CURRENT document rather than
-#: one the load path has to upgrade. Read from the module, never typed:
-#: these were written as a literal `4` and the next bump turned every
-#: one of them into a silent test of the migration instead of the
-#: behaviour it names (practice.md ▸ A TEST OF A DROP-ON-READ RULE MUST
-#: BEAT THE MIGRATION TO THE ROW).
-SCHEMA = database.SCHEMA_VERSION
+SCHEMA = database.SCHEMA_VERSION    # the stamp a fixture carries so it is a CURRENT document rather than one the load path has to upgrade; read from the module and never typed, because a literal turns every fixture into a silent test of the migration at the next bump instead of the behaviour it names
 
 
 def _fixture_prefs(testcase, directory, user="grad-fixture-uid"):
-    """A real Prefs pointed at the fixture dir - the rebased model
-    reads the whole preference surface (asset_dir, img_dir, ext,
-    thumbsize), so a bare stub no longer stands in. `.dir` keeps its
-    trailing separator because the connector concatenates, which is
-    the shape `Prefs.save()` forces on the real field. `.path` is
-    redirected so nothing ever touches the machine's settings."""
+    """A real Prefs pointed at the fixture dir - the rebased model reads the whole preference surface (asset_dir, img_dir, ext, thumbsize), so a bare stub does not stand in. `.dir` keeps its trailing separator because the connector concatenates, which is the shape Prefs.save() forces on the real field, and `.path` is redirected so nothing ever touches the machine's settings."""
     p = prefs.Prefs()
     p.dir = directory.rstrip(os.sep) + os.sep
     p.path = tempfile.mkdtemp(prefix="amaze_grad_prefs_")
@@ -68,18 +50,11 @@ def _row_named(testcase, lib, name):
 class GradientStaleWriteTest(unittest.TestCase):
 
     def setUp(self):
-        # THE CONNECTOR IS ONE INSTANCE PER FILENAME, process-wide -
-        # a fresh model built against a fresh temp dir otherwise gets
-        # the PREVIOUS test's cached document and latches.
-        test_support.reset_database_singletons()
+        test_support.reset_database_singletons()    # THE CONNECTOR IS ONE INSTANCE PER FILENAME, process-wide: without this a fresh model built against a fresh temp dir gets the PREVIOUS test's cached document and latches
         self.dir = tempfile.mkdtemp(prefix="amaze_grad_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
-        # WITH AN IDENTITY, because the product never writes a row
-        # without one and the connector keys its whole union on it
-        # (practice.md ▸ A FIXTURE MUST WRITE FILES THE WAY THE
-        # PRODUCT DOES).
-        self._write({"version": SCHEMA, "categories": ["Warm"],
+        self._write({"version": SCHEMA, "categories": ["Warm"],    # WITH AN IDENTITY, because the product never writes a row without one and the connector keys its whole union on it
                      "assets": [{"name": "ours", "id": "oursuid",
                                  "colors": []}]})
         self.lib = gradient_library.GradientLibrary(
@@ -100,15 +75,12 @@ class GradientStaleWriteTest(unittest.TestCase):
                                  "id": "theirsuid1"},
                                 {"name": "theirs2", "colors": [],
                                  "id": "theirsuid2"}]})
-        # mtime granularity: make the change unmistakable to a
-        # (mtime_ns, size) key rather than relying on timer resolution.
         stat = os.stat(self.path)
-        os.utime(self.path, ns=(stat.st_atime_ns,
+        os.utime(self.path, ns=(stat.st_atime_ns,    # mtime granularity: make the change unmistakable to a (mtime_ns, size) key rather than relying on timer resolution
                                 stat.st_mtime_ns + 5_000_000_000))
 
     def test_the_other_sessions_gradients_survive_our_save(self):
-        """The connector three-way merges, which is what the other
-        three databases have always done - both sides survive."""
+        """The connector three-way merges, which is what the other three databases have always done - both sides survive."""
         self._touch_from_another_session()
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         names = [g["name"] for g in self._read()["assets"]]
@@ -121,15 +93,13 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.assertIn("mine", names, "our own edit was dropped")
 
     def test_an_ordinary_save_still_works(self):
-        """Guards the guard. A refusal that fires always is not a
-        guard, it is an outage."""
+        """Guards the guard: a refusal that fires always is not a guard, it is an outage."""
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         names = [g["name"] for g in self._read()["assets"]]
         self.assertIn("mine", names, "an ordinary save was refused")
 
     def test_two_saves_in_a_row_work(self):
-        """The baseline must be refreshed AFTER a write, or our own
-        save looks like somebody else's edit on the very next one."""
+        """The baseline must be refreshed AFTER a write, or our own save looks like somebody else's edit on the very next one."""
         self.lib.add_user_gradient("first", "", {"values": [], "keys": []})
         self.lib.add_user_gradient("second", "", {"values": [], "keys": []})
         names = [g["name"] for g in self._read()["assets"]]
@@ -139,9 +109,7 @@ class GradientStaleWriteTest(unittest.TestCase):
             "not being refreshed")
 
     def test_a_missing_file_does_not_block_saving(self):
-        """Fails safe the other way: the file being GONE is not another
-        session's edit, and refusing there would leave the user unable
-        to save anything at all."""
+        """Fails safe the other way: the file being GONE is not another session's edit, and refusing there would leave the user unable to save anything at all."""
         os.remove(self.path)
         self.lib.add_user_gradient("recreated", "",
                                    {"values": [], "keys": []})
@@ -149,10 +117,7 @@ class GradientStaleWriteTest(unittest.TestCase):
                         "a missing file blocked the save entirely")
 
     def test_a_deleted_gradient_stays_deleted(self):
-        """The connector unions - a row the caller does not mention is
-        kept - so a delete has to be said out loud through `forget()`.
-        Without that the palette reappears on the next save, which is
-        worse than a refused delete: the user watched it go."""
+        """The connector unions - a row the caller does not mention is kept - so a delete has to be said out loud through forget(); without that the palette reappears on the next save, which is worse than a refused delete because the user watched it go."""
         row = _row_named(self, self.lib, "ours")
         self.lib.remove_user_gradient(row)
         self.lib.add_user_gradient("kept", "", {"values": [], "keys": []})
@@ -174,8 +139,7 @@ class GradientStaleWriteTest(unittest.TestCase):
 
 
 class GradientAbsenceAndShapeTest(unittest.TestCase):
-    """The guards every database inherits, exercised on this one -
-    plus the marker honesty that is Colors' own."""
+    """The guards every database inherits, exercised on this one, plus the marker honesty that is Colors' own."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -188,9 +152,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
             preferences=_fixture_prefs(self, self.dir))
 
     def test_repair_and_the_loader_agree_that_the_file_was_here(self):
-        """With the seed marker present and the file gone, the shared
-        table must say the file was here - or Repair reports a false
-        all-clear at the moment the loader has latched."""
+        """With the seed marker present and the file gone, the shared table must say the file was here - or Repair reports a false all-clear at the moment the loader has latched."""
         marker = os.path.join(self.dir, gradient_library.GradientLibrary
                               ._SEED_MARKER)
         with open(marker, "w", encoding="utf-8") as fh:
@@ -202,9 +164,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
             "here - Repair will report a false all-clear")
 
     def test_a_wrong_shaped_file_does_not_take_the_panel_down(self):
-        """Valid JSON, wrong shape. The survivable load routes it into
-        the same refusal a parse failure takes: model empty, connector
-        latched, file untouched."""
+        """Valid JSON, wrong shape: the survivable load routes it into the same refusal a parse failure takes - model empty, connector latched, file untouched."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump({"version": SCHEMA, "assets": "this is not a list"},
                       fh)
@@ -220,9 +180,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
         self.assertTrue(getattr(lib, "_load_failed", False))
 
     def test_the_sidebar_survives_the_same_file(self):
-        """The sidebar model is constructed right after the library and
-        reads the same file - surviving in one constructor and raising
-        in the next is the same panel down, one line later."""
+        """The sidebar model is constructed right after the library and reads the same file - surviving in one constructor and raising in the next is the same panel down, one line later."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(["not", "an", "object"], fh)
         self._library()
@@ -232,10 +190,7 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
                          "the refused document should hold only `_All`")
 
     def test_the_seed_marker_is_withheld_when_the_save_did_not_land(self):
-        """The marker is permanent and is the only trace this file
-        leaves. Minting it for a save that never reached disk produces
-        marker-present + file-absent, which latches the loader and
-        refuses every colour edit for the session."""
+        """The marker is permanent and is the only trace this file leaves, so minting it for a save that never reached disk produces marker-present + file-absent, which latches the loader and refuses every colour edit for the session."""
         lib = self._library()
         connector = database.DatabaseConnector(lib.DB_FILENAME)
         connector._write_blocked = True
@@ -250,17 +205,14 @@ class GradientAbsenceAndShapeTest(unittest.TestCase):
             "the seed minted its permanent marker for a refused save")
 
     def test_a_completed_save_reports_success(self):
-        """The other direction, so the guard cannot be satisfied by a
-        save that simply always says False."""
+        """The other direction, so the guard cannot be satisfied by a save that simply always says False."""
         lib = self._library()
         self.assertTrue(lib.save(), "an ordinary save reported failure")
         self.assertTrue(os.path.exists(self.path))
 
 
 class GradientRowRideTest(unittest.TestCase):
-    """A palette rides as a `Material` - and what makes that safe is
-    that `colors` and `ramp` are carried through verbatim, and that the
-    ride invents nothing."""
+    """A palette rides as a Material, and what makes that safe is that `colors` and `ramp` are carried through verbatim and the ride invents nothing."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -296,9 +248,7 @@ class GradientRowRideTest(unittest.TestCase):
         self.assertEqual(["Constant"], row.get("ramp", {}).get("bases"))
 
     def test_a_loaded_row_does_not_gain_todays_date(self):
-        """`Material` mints today's date for a blank - right for an
-        asset being born, fabricated history for palettes that predate
-        the field. The ride must suppress it."""
+        """Material mints today's date for a blank - right for an asset being born, fabricated history for palettes that predate the field, so the ride must suppress it."""
         self.assertEqual(
             "", self.lib.assets[0].date,
             "a palette with no stored date claims it was created today")
@@ -308,16 +258,13 @@ class GradientRowRideTest(unittest.TestCase):
             "the fabricated date reached disk")
 
     def test_a_freshly_saved_palette_does_get_a_birth_date(self):
-        """The suppression is for LOADED rows only - a palette saved
-        now is genuinely born now."""
+        """The suppression is for LOADED rows only - a palette saved now is genuinely born now."""
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         self.assertNotEqual("", self._on_disk_row("mine").get("date", ""),
                             "a new palette should carry its birth date")
 
     def test_a_legacy_uid_spelling_keeps_its_identity(self):
-        """`uid` was the pre-connector spelling; the value keys the
-        palette's Comments page and tile icon, so the ride maps it onto
-        `id` rather than minting a fresh identity."""
+        """`uid` was the pre-connector spelling and the value keys the palette's Comments page and tile icon, so the ride maps it onto `id` rather than minting a fresh identity."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump({"version": SCHEMA, "categories": [],
                        "assets": [{"name": "old", "uid": "legacy-value",
@@ -330,9 +277,7 @@ class GradientRowRideTest(unittest.TestCase):
                          "the legacy identity was replaced by a mint")
 
     def test_a_minted_id_is_persisted_and_stable(self):
-        """A row that arrived with no identity gets one - written back,
-        so it does not change on every launch under the notes and
-        icons keyed by it."""
+        """A row that arrived with no identity gets one, written back, so it does not change on every launch under the notes and icons keyed by it."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump({"version": SCHEMA, "categories": [],
                        "assets": [{"name": "bare", "colors": []}]}, fh)
@@ -351,11 +296,7 @@ class GradientRowRideTest(unittest.TestCase):
 
 
 class GradientTileIconTest(unittest.TestCase):
-    """Colors joined Customize 2026-07-31. A palette has no file of its
-    own, so unlike every other section NO PNG is written - the spec
-    lands in the shared store and the icon is composed in memory. These
-    are the three things that makes true: it is stored, it reaches the
-    tile, and it is reversible."""
+    """A palette has no file of its own, so unlike every other section Customize writes NO PNG - the spec lands in the shared store and the icon is composed in memory. These are the three things that makes true: it is stored, it reaches the tile, and it is reversible."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -380,8 +321,7 @@ class GradientTileIconTest(unittest.TestCase):
         self.assertEqual("layers", self.lib.tile_icon(self.row)["name"])
 
     def test_the_icon_survives_a_reload(self):
-        """It must reach the store on disk - a spec kept only in memory
-        looks identical until the panel is reopened."""
+        """It must reach the store on disk - a spec kept only in memory looks identical until the panel is reopened."""
         self.lib.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
         test_support.reset_database_singletons()
         tile_icons.forget_overrides()
@@ -391,8 +331,7 @@ class GradientTileIconTest(unittest.TestCase):
         self.assertEqual("layers", again.tile_icon(row)["name"])
 
     def test_no_png_is_written(self):
-        """The palette paints in memory; a PNG on disk would be a file
-        no cleanup pass accounts for."""
+        """The palette paints in memory; a PNG on disk would be a file no cleanup pass accounts for."""
         self.lib.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
         pngs = []
         for root, _dirs, names in os.walk(self.dir):
@@ -400,8 +339,7 @@ class GradientTileIconTest(unittest.TestCase):
         self.assertEqual([], pngs, "a palette icon wrote a PNG")
 
     def test_the_swatch_key_changes_with_the_icon(self):
-        """Same palette, different picture: without this the shared
-        image cache serves whichever was asked for first."""
+        """Same palette, different picture: without this the shared image cache serves whichever was asked for first."""
         plain = self.lib._swatch_key(self.row)
         self.lib.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
         iconed = self.lib._swatch_key(self.row)
@@ -419,10 +357,7 @@ class GradientTileIconTest(unittest.TestCase):
 
 
 class GradientCategoryColorTest(unittest.TestCase):
-    """Colours on palette categories: the sidebar model is the writer
-    (the same `Categories` machinery every section uses), the library
-    reads them per ROW for the tile band, and the rename/remove verbs
-    carry them."""
+    """Colours on palette categories: the sidebar model is the writer, on the same Categories machinery every section uses, the library reads them per ROW for the tile band, and the rename/remove verbs carry them."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -451,17 +386,12 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.assertEqual("#4af2a1", self._reload_sidebar().color_of("Warm"))
 
     def test_the_tile_reports_its_category_colour(self):
-        """What the grid paints: the colour is set on the CATEGORY and
-        read per ROW, so a tile answers for the category it is in."""
+        """What the grid paints: the colour is set on the CATEGORY and read per ROW, so a tile answers for the category it is in."""
         self.sidebar.set_color("Warm", "#4af2a1")
         self.assertEqual("#4af2a1", self.lib.category_color(self.row))
 
     def test_a_rename_carries_the_colour(self):
-        """The family flow: the sidebar model renames its row and
-        carries the colour, the asset model renames its rows, one save
-        lands both - keyed by name, so a rename that drops the colour
-        leaves an orphan key that silently reattaches if the name
-        comes back."""
+        """The family flow: the sidebar model renames its row and carries the colour, the asset model renames its rows, one save lands both - keyed by NAME, so a rename that drops the colour leaves an orphan key that silently reattaches if the name comes back."""
         self.sidebar.set_color("Warm", "#4af2a1")
         self.lib.rename_category("Warm", "Hot")
         self.sidebar.rename_category("Warm", "Hot")
@@ -479,10 +409,7 @@ class GradientCategoryColorTest(unittest.TestCase):
 
 
 class GradientNoteSweepTest(unittest.TestCase):
-    """The entry-level "note" moved to the Notes store (2026-08-01):
-    loading a library that still carries one moves the text onto the
-    palette's Comments page and consumes the field - no words lost on
-    the way out."""
+    """The entry-level "note" moved to the Notes store, so loading a library that still carries one moves the text onto the palette's Comments page and consumes the field - no words lost on the way out."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -517,10 +444,7 @@ class GradientNoteSweepTest(unittest.TestCase):
 
 
 class GradientFirstOpenWriteCountTest(unittest.TestCase):
-    """First open wrote once per swept note and once per phase. A
-    constructor is the worst place for that: every write rotates a
-    snapshot, so 39 old notes pushed the restore tier's real history
-    out with 39 copies of the same minute."""
+    """First open must not write once per swept note and once per phase: a constructor is the worst place for that, because every write rotates a snapshot, so 39 old notes push the restore tier's real history out with 39 copies of the same minute."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -528,10 +452,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
         with open(self.path, "w", encoding="utf-8") as fh:
-            # STAMPED ids and WITH "_All", so neither the id persist
-            # nor the connector's `_All` normalisation earns a write
-            # this test is not about.
-            json.dump(
+            json.dump(    # STAMPED ids and WITH "_All", so neither the id persist nor the connector's `_All` normalisation earns a write this test is not about
                 {"version": SCHEMA, "categories": ["_All"],
                  "assets": [{"name": "g%d" % i, "colors": [],
                              "id": "fixtureuid%02d" % i,
@@ -540,9 +461,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.prefs = _fixture_prefs(self, self.dir)
 
     def _counted_writes(self):
-        """Every write in the keyed-store and database engines lands in
-        hostos.write_json_atomic, so counting there counts real writes
-        rather than calls to a wrapper that might not write."""
+        """Every write in the keyed-store and database engines lands in hostos.write_json_atomic, so counting there counts real writes rather than calls to a wrapper that might not write."""
         from amaze.helpers import hostos
         seen = []
         real = hostos.write_json_atomic
@@ -565,8 +484,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
             % seen.count("notes.json"))
 
     def test_every_swept_note_still_arrives(self):
-        """Batching must not cost a page - the sweep's contract is
-        moved, never dropped."""
+        """Batching must not cost a page - the sweep's contract is moved, never dropped."""
         lib = gradient_library.GradientLibrary(preferences=self.prefs)
         from amaze.core import notes
         for i in range(12):
@@ -579,10 +497,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
                           "g%d lost its note to the batch" % i)
 
     def test_stamped_rows_cost_no_identity_write(self):
-        """Identity from birth: rows that arrive stamped give the id
-        persist nothing to do, so it must not save the whole file -
-        measured as a WRITE COUNT, because an id present afterwards
-        cannot tell born-stamped from backfilled."""
+        """Identity from birth: rows that arrive stamped give the id persist nothing to do, so it must not save the whole file - measured as a WRITE COUNT, because an id present afterwards cannot tell born-stamped from backfilled."""
         seen = self._counted_writes()
         gradient_library.GradientLibrary(preferences=self.prefs)
         self.assertLessEqual(
@@ -593,8 +508,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
 
 
 class GradientTileNameTest(unittest.TestCase):
-    """set_tile_name is the palette's rename path - inherited from the
-    family since the rebase: narrow, persisted, no-op on blank."""
+    """set_tile_name is the palette's rename path, inherited from the family: narrow, persisted, no-op on blank."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -622,9 +536,7 @@ class GradientTileNameTest(unittest.TestCase):
 
 
 class GradientRowShapeTest(unittest.TestCase):
-    """A bad ROW, not a bad container: the connector skips what it
-    cannot read, keeps the good rows, and does not latch the library
-    read-only over one junk entry."""
+    """A bad ROW, not a bad container: the connector skips what it cannot read, keeps the good rows, and does not latch the library read-only over one junk entry."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -647,8 +559,7 @@ class GradientRowShapeTest(unittest.TestCase):
                          "a junk row survived into the model")
 
     def test_the_good_rows_around_it_still_load(self):
-        """Skip the bad row, keep the library - the connector's own
-        merge policy, applied here."""
+        """Skip the bad row, keep the library - the connector's own merge policy, applied here."""
         good = {"name": "Warm", "colors": [], "id": "warmid"}
         self._write({"version": SCHEMA, "assets": [good, 42, None, "nope"],
                      "categories": []})
@@ -659,8 +570,7 @@ class GradientRowShapeTest(unittest.TestCase):
             "a file with one junk row lost its good gradients too")
 
     def test_a_survivable_file_is_not_latched_as_failed(self):
-        """Skipping rows is not a parse failure: latching here would
-        refuse every colour edit for the session over one bad row."""
+        """Skipping rows is not a parse failure: latching here would refuse every colour edit for the session over one bad row."""
         self._write({"version": SCHEMA,
                      "assets": [{"name": "Warm", "colors": [],
                                  "id": "warmid"}, 42],
@@ -672,10 +582,7 @@ class GradientRowShapeTest(unittest.TestCase):
 
 
 class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
-    """The swatch key is content-addressed on the hexes, the ramp BASES
-    and the stop POSITIONS - two palettes holding the same colours in
-    different places must not share a cache slot, or the second tile
-    paints the first one's gradient."""
+    """The swatch key is content-addressed on the hexes, the ramp BASES and the stop POSITIONS - two palettes holding the same colours in different places must not share a cache slot, or the second tile paints the first one's gradient."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -706,8 +613,7 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
             "one cache slot, so the second tile shows the first's")
 
     def test_the_same_ramp_still_answers_the_same_key(self):
-        """Content-addressed means an unchanged palette keeps its
-        image - the whole reason the key is not the row number."""
+        """Content-addressed means an unchanged palette keeps its image - the whole reason the key is not the row number."""
         lib = self._library_with([0.0, 1.0], [0.0, 1.0])
         a, b = lib._swatch_key(0), lib._swatch_key(1)
         self.assertEqual(a[1:], b[1:],
@@ -715,11 +621,7 @@ class TwoRampsWithOneSetOfColoursDoNotShareATile(unittest.TestCase):
 
 
 class TheColorsProxyIsTheFamilys(unittest.TestCase):
-    """The Colors proxy is the shared `MultiFilterProxyModel` with the
-    section's two genuinely-own dimensions on top: the palette-size
-    filter, and a name search that also reaches the colour names
-    inside a palette - the one place searching goes past the tile
-    label."""
+    """The Colors proxy is the shared MultiFilterProxyModel with the section's two genuinely-own dimensions on top: the palette-size filter, and a name search that also reaches the colour names inside a palette - the one place searching goes past the tile label."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -760,8 +662,7 @@ class TheColorsProxyIsTheFamilys(unittest.TestCase):
         self.assertEqual(["Marine", "Sunrise"], self._shown())
 
     def test_the_name_search_also_matches_a_colour_name(self):
-        """A palette is found by what is inside it - the shipped OR,
-        which a plain family name filter would lose."""
+        """A palette is found by what is inside it - the shipped OR, which a plain family name filter would lose."""
         self.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "teal")
         self.assertEqual(
             ["Marine"], self._shown(),
@@ -780,10 +681,7 @@ class TheColorsProxyIsTheFamilys(unittest.TestCase):
 
 
 class AColourStarSurvivesAReloadTest(unittest.TestCase):
-    """Colors stars go through the ONE favourites store, tagged with
-    their owner, like every section (ROADMAP line 21). The record field
-    is dead: nothing writes it, and the schema step strips what older
-    documents still carry."""
+    """Colors stars go through the ONE favourites store, tagged with their owner, like every section; the record field is dead - nothing writes it, and the schema step strips what older documents still carry."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -816,16 +714,13 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         lib.toggle_favorite(_row_named(self, lib, "warm"))
         self.assertTrue(lib.is_favorite(_row_named(self, lib, "warm")),
                         "the toggle did not light the star it just set")
-        # The SHARED record gained nothing on disk. A star that reaches
-        # gradients.json is everyone's again.
-        lib.save()
+        lib.save()    # the SHARED record must gain nothing on disk: a star that reaches gradients.json is everyone's again
         self.assertFalse(
             any("favorite" in row for row in self._disk_rows()
                 if isinstance(row, dict)),
             "the star reached gradients.json - the shared document "
             "carries per-user state again")
-        # A fresh session reads it back out of the library store.
-        test_support.reset_database_singletons()
+        test_support.reset_database_singletons()    # a fresh session reads it back out of the library store
         keyed_store.release()
         again = self._library()
         self.assertTrue(
@@ -833,10 +728,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
             "the star did not survive a reload through the store")
 
     def test_the_step_takes_a_star_off_a_version_5_document(self):
-        """Every star toggled between schema 5 and the store move
-        landed back on the shared document; the v5->v6 step takes those
-        off - without it they sit there forever, readable by nothing
-        and shared by everyone."""
+        """Every star toggled between schema 5 and the store move landed back on the shared document, and the v5->v6 step takes those off - without it they sit there forever, readable by nothing and shared by everyone."""
         self._write({"version": 5, "categories": ["Warm"],
                      "assets": [{"name": "warm", "id": "warmid",
                                  "categories": ["Warm"], "colors": [],
@@ -869,9 +761,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
 
 
 class ColorsHonourARefusedSave(unittest.TestCase):
-    """A refused write is honoured in full: the row goes back (or never
-    stays), the pending delete is taken back out of the connector, and
-    the user is told - the base model's contract, ridden by Colors."""
+    """A refused write is honoured in full: the row goes back (or never stays), the pending delete is taken back out of the connector, and the user is told - the base model's contract, ridden by Colors."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -917,17 +807,14 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             "listed it - the delete looked done and was not")
 
     def test_a_refused_delete_is_not_committed_by_the_next_save(self):
-        """`forget()` is consumed by `set()` before save() answers, so
-        a declined delete sits in the connector's document waiting for
-        ANY later write to commit it."""
+        """forget() is consumed by set() before save() answers, so a declined delete sits in the connector's document waiting for ANY later write to commit it."""
         from unittest.mock import patch
 
         row = self._row_named("doomed")
         with patch.object(database.DatabaseConnector, "save",
                           return_value=False):
             self.lib.remove_user_gradient(row)
-        # Anything at all that writes the file afterwards.
-        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})
+        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})    # anything at all that writes the file afterwards
         self.assertIn(
             "doomed", self._on_disk_names(),
             "the declined delete was committed by an unrelated save")
@@ -954,9 +841,7 @@ class ColorsHonourARefusedSave(unittest.TestCase):
 
 
 class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
-    """A row another session wrote reaches disk through the merge and
-    must reach the MODEL too - `take_adopted()` drained after every
-    save, or the next save rebuilds the list without it."""
+    """A row another session wrote reaches disk through the merge and must reach the MODEL too - take_adopted() drained after every save, or the next save rebuilds the list without it."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -997,8 +882,7 @@ class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
 
 
 class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
-    """A peer's category and its colour must survive the save AFTER
-    the merge (practice.md ▸ A PARTIAL MIGRATION IS NOT A MIGRATION)."""
+    """A peer's category and its colour must survive the save AFTER the merge."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -1054,10 +938,7 @@ class ColorsHandOverWhatTheMergeAdoptedIntoCATEGORIES(unittest.TestCase):
 
 
 class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
-    """Cop and Code get their sidebar in three lines - a subclass of
-    `category.Categories` with its own `DB_FILENAME`. Colors carried a
-    standalone list model and twelve category methods of its own, and
-    that second implementation is what erased a peer's category."""
+    """Cop and Code get their sidebar in three lines, a subclass of category.Categories with its own DB_FILENAME, and Colors must too - the standalone list model and twelve category methods it once carried are the second implementation that erased a peer's category."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -1086,11 +967,7 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
             "are a second implementation of the shared one")
 
     def test_the_library_subclasses_the_shared_model_too(self):
-        """The batch-1 target itself: the Colors MODEL is the family's
-        shared engine, so every engine guard is inherited rather than
-        hand-kept. RE-KEYED when the engine's shared half became
-        `AssetLibrary` - the contract is the ENGINE, not the Material
-        tab's own model."""
+        """The Colors MODEL is the family's shared engine, so every engine guard is inherited rather than hand-kept; the contract is the ENGINE - AssetLibrary - and not the Material tab's own model."""
         from amaze.core import library
         self.assertTrue(
             issubclass(gradient_library.GradientLibrary,
@@ -1131,13 +1008,10 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
 
 
 class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
-    """Colors answers the role numbers the shared proxy reads - since
-    the rebase, by INHERITING them (test_role_numbers holds the whole
-    family table; this pins the two Colors-specific facts left)."""
+    """Colors answers the role numbers the shared proxy reads by INHERITING them; test_role_numbers holds the whole family table, and this pins the two Colors-specific facts left."""
 
     def test_the_family_roles_are_inherited_not_redeclared(self):
-        """A redeclaration is a second table kept equal by hand - the
-        shape the rebase removed."""
+        """A redeclaration is a second table kept equal by hand - the shape the rebase removed."""
         own = vars(gradient_library.GradientLibrary)
         redeclared = [name for name in (
             "IdRole", "CategoryRole", "FavoriteRole", "RendererRole",
@@ -1149,9 +1023,7 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
             "drift, redeclared ones can" % redeclared)
 
     def test_no_two_roles_share_a_number(self):
-        """The 258 collision of 2026-08-12, held shut: data() answers
-        whichever branch it tests first, so a collision is one field
-        quietly returning another field's value."""
+        """Held shut because data() answers whichever branch it tests first, so a collision is one field quietly returning another field's value."""
         seen = {}
         for name in dir(gradient_library.GradientLibrary):
             if not name.endswith("Role"):
@@ -1166,8 +1038,7 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
             seen[number] = name
 
     def test_the_category_role_answers_a_LIST(self):
-        """257 is matched with `for elem in data`, so a bare string
-        would match per CHARACTER."""
+        """257 is matched with `for elem in data`, so a bare string would match per CHARACTER."""
         directory = tempfile.mkdtemp(prefix="amaze_grad_roles_")
         self.addCleanup(shutil.rmtree, directory, ignore_errors=True)
         test_support.reset_database_singletons()
@@ -1187,9 +1058,7 @@ class ColorsNumbersItsRolesLikeTheAssetFamily(unittest.TestCase):
 
 
 class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
-    """Derived, not listed: walk the panel layer for calls on
-    `gradient_categories_model` and check each one exists. A list of
-    one method would not have caught the second stale caller."""
+    """Derived, not listed: walk the panel layer for calls on gradient_categories_model and check each one exists, because a hand-kept list of one method does not catch the second stale caller."""
 
     def _package_root(self):
         return os.path.dirname(os.path.dirname(
@@ -1237,9 +1106,7 @@ class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
             "model does not have them: %s" % missing)
 
     def test_the_panel_calls_nothing_the_library_model_lacks(self):
-        """The same walk for the asset model - the rebase deleted
-        methods, and a caller left behind is a traceback after a real
-        gesture."""
+        """The same walk for the asset model, where a caller left behind by a deleted method is a traceback after a real gesture."""
         calls = self._calls_on("gradient_model")
         self.assertTrue(calls, "the walker stopped matching")
         missing = {
@@ -1253,10 +1120,7 @@ class EveryCallThePanelMakesOnTheColorsSidebarResolves(unittest.TestCase):
 
 
 class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
-    """`_All` stays in the stored list; the view edge filters it. A
-    save that strips it makes the next launch re-add it with a full
-    rewrite, spending the snapshot slot before the user has touched
-    anything."""
+    """`_All` stays in the stored list and the view edge filters it: a save that strips it makes the next launch re-add it with a full rewrite, spending the snapshot slot before the user has touched anything."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -1284,6 +1148,35 @@ class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
         self.assertNotIn("_All", self.lib.user_categories(),
                          "the save dialog would offer the marker as a "
                          "category")
+
+
+class TheGradientEntryIsResolvedOnce(unittest.TestCase):
+    """Every Colors door reaches its entry through `_entry_at`; a door that walks the proxy itself is how one of them keeps a guard the others lose."""
+
+    def _doors(self):
+        tree = ast.parse(inspect.getsource(sections))
+        for klass in ast.walk(tree):
+            if (isinstance(klass, ast.ClassDef)
+                    and klass.name == "GradientSection"):
+                for scope in klass.body:
+                    if isinstance(scope, ast.FunctionDef):
+                        yield scope
+
+    def test_no_door_walks_the_proxy_for_itself(self):
+        found = [scope.name for scope in self._doors()
+                 if scope.name != "_entry_at"
+                 and any(isinstance(node, ast.Attribute)
+                         and node.attr == "mapToSource"
+                         for node in ast.walk(scope))]
+        self.assertEqual(
+            [], sorted(found),
+            "a Colors door resolves its own entry instead of asking "
+            "_entry_at: %s" % ", ".join(sorted(found)))
+
+    def test_an_index_the_proxy_has_dropped_answers_no_entry(self):
+        """The guard `_entry_at` owns for every door: an unmappable index is no entry, never row -1's."""
+        section = sections.GradientSection.__new__(sections.GradientSection)
+        self.assertIsNone(sections.GradientSection._entry_at(section, None))
 
 
 if __name__ == "__main__":
