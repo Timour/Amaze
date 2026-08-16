@@ -564,9 +564,9 @@ exist, favorites pointing at missing files. One summary, and it never
 renders anything.
 
 **It moves, it does not delete.** An entry whose files are missing is
-reported and kept - the entry holds tags, comments and favourites stored
-nowhere else, and a file mid-sync looks exactly like a file that is
-gone; you remove it yourself with Delete Entry if it really is dead.
+reported and kept - deleting it would take its tags, comments and
+favourites with it, and a file mid-sync looks exactly like a file that
+is gone; you remove it yourself with Delete Entry if it really is dead.
 Files no list claims move into Amaze's own holding folder on this
 computer (outside your library, so it never syncs), are named in the
 summary, and are kept for 30 days before they are removed for good.
