@@ -694,6 +694,8 @@ class CopSection(AssetSection):
                 source_index, context_node=context
             )
         if not ok and reason:
+            debug.event("interact", "the release refused the asset",
+                        net=context.path(), reason=reason)
             hou.ui.displayMessage(reason)  # type: ignore
         if ok:
             helpers.place_nodes(created,
