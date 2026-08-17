@@ -1,25 +1,4 @@
-"""The Nodes section: saving and reloading node networks from ANY
-Houdini context, not just Copernicus.
-
-The section began as COP-only and was widened in place - which is why
-the context lives in the asset's existing `renderer` field, holding the
-literal "COP" for everything saved before. These tests pin the three
-promises that widening has to keep:
-
-  * the context is read from the network that CONTAINS the nodes, so a
-    selection and its whole network agree ("Sop" either way);
-  * an asset returns to a network of its own kind, with its nodes and
-    their connections intact;
-  * an asset REFUSES a foreign context rather than half-creating a
-    network of nodes that cannot exist there - the failure mode that
-    would leave debris in a user's scene.
-
-Plus the thumbnail routing, which is the visible half: SOP renders the
-geometry, COP renders the image, and anything else deliberately renders
-nothing so the tile falls back to the node icon.
-
-Real files, real networks, fixture library (never the live one).
-"""
+"""Node networks saved and reloaded from ANY context, on real networks and a fixture library. AmazeNotes practice.md ▸p/nodes-section"""
 
 import os
 import shutil
@@ -35,9 +14,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/. See test_roundtrip.py -
-# four lands on scripts/, where the tests import the INSTALL instead.
-sys.path.insert(
+sys.path.insert(        # THREE dirnames: tests/ -> amaze/ -> python/. Four lands on scripts/, where the tests import the INSTALL - test_roundtrip.py
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -47,8 +24,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 def _sop_network(name: str) -> hou.Node:
-    """A geo with two CONNECTED nodes - the connection is half of what
-    the round-trip has to preserve."""
+    """A geo with two CONNECTED nodes - the connection is half of what the round-trip must preserve."""
     geo = hou.node("/obj").createNode("geo", name)
     box = geo.createNode("box", "the_box")
     mountain = geo.createNode("mountain", "the_mountain")
@@ -58,8 +34,7 @@ def _sop_network(name: str) -> hou.Node:
 
 
 def _cop_node_type() -> str:
-    """Whatever this Houdini build calls a simple COP - node type names
-    moved with Copernicus, so the test asks rather than assumes."""
+    """Whatever this build calls a simple COP - type names moved with Copernicus, so ask rather than assume."""
     kinds = hou.copNodeTypeCategory().nodeTypes()
     for wanted in ("ramp", "gradient", "color", "constant", "noise"):
         if wanted in kinds:
@@ -70,9 +45,7 @@ def _cop_node_type() -> str:
 class NodesSectionTest(unittest.TestCase):
 
     def setUp(self):
-        # Connectors are cached per FILENAME, so without this every test
-        # after the first reads the previous test's cops.json.
-        test_support.reset_database_singletons()
+        test_support.reset_database_singletons()    # connectors cache per FILENAME, so without this every test after the first reads the previous test's cops.json
         self.prefs = test_support.fixture_prefs(self)
         self.prefs.render_on_import = 0
         self.model = cop_library.CopLibrary(preferences=self.prefs)
@@ -89,7 +62,6 @@ class NodesSectionTest(unittest.TestCase):
         return os.path.join(self.prefs.dir, self.prefs.img_dir,
                             str(asset.mat_id) + self.prefs.img_ext)
 
-    # -- context detection ------------------------------------------
 
     def test_context_of_reads_the_containing_network(self):
         geo = _sop_network("ctx_sop")
@@ -100,9 +72,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual("Lop", self.model.context_of(lop))
 
     def test_context_of_selection_matches_its_network(self):
-        """A selection is described by where it LIVES, not by itself -
-        node.parent() when items are given. Get this backwards and a
-        selection of SOPs reports the /obj context that holds the geo."""
+        """A selection is described by where it LIVES - node.parent() when items are given, or a SOP selection reports /obj."""
         geo = _sop_network("ctx_sel")
         items = [geo.node("the_box")]
         self.assertEqual("Sop", self.model.context_of(items[0], items))
@@ -115,13 +85,9 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual("SOP", label)
         self.assertEqual("SOP", self.model.assets[-1].renderer)
 
-    # -- round trip --------------------------------------------------
 
     def test_the_import_seam_returns_what_it_created(self):
-        """(ok, reason, created): the import hands back the nodes it
-        added, and helpers.place_nodes - the one placement rule -
-        moves them as a group to a release point. The seam every
-        drop-position behaviour rides; no caller diffs children."""
+        """(ok, reason, created): the seam every drop-position behaviour rides, so no caller diffs children."""
         from amaze.helpers import helpers
 
         geo = _sop_network("seam_src")
@@ -137,9 +103,7 @@ class NodesSectionTest(unittest.TestCase):
                         "a successful import returned no created nodes")
         spot = hou.Vector2(6.0, -4.0)
         helpers.place_nodes(created, spot)
-        # The anchor lands a half-size short: the BODY centres on the
-        # drop point, the host's own new-node convention.
-        anchor = helpers.centred_on(spot)
+        anchor = helpers.centred_on(spot)       # a half-size short: the BODY centres on the drop point, the host's own new-node convention
         xs = [n.position().x() for n in created]
         ys = [n.position().y() for n in created]
         self.assertAlmostEqual(anchor.x(), sum(xs) / len(xs),
@@ -147,23 +111,12 @@ class NodesSectionTest(unittest.TestCase):
         self.assertAlmostEqual(anchor.y(), sum(ys) / len(ys))
 
     def test_an_unsafe_id_is_refused_with_a_sentence(self):
-        """The Node door skipped both refusals the Material door
-        carries, and its own comment calls that one the single door
-        into the import.
-
-        The containment was never actually open - `payload_path` raises
-        `PathEscape` - but that is a `ValueError`, which no caller here
-        catches, so a row whose id cannot be composed into a filename
-        produced an uncaught traceback out of a double-click where the
-        same row in Materials produces a sentence."""
+        """An id that cannot be a filename gets a sentence, not a traceback - practice.md ▸p/nodes-section."""
         geo = _sop_network("unsafe_src")
         self.assertEqual("SOP", self.model.add_asset(
             geo, "", "", False, name="unsafe_sop"))
         geo.destroy()
-        # The private field, because `mat_id` is read-only by design -
-        # this is standing in for a tampered or hand-edited cops.json,
-        # which is the only way such an id reaches a row.
-        self.model.assets[0]._mat_id = "../../../Documents/x"
+        self.model.assets[0]._mat_id = "../../../Documents/x"   # the private field: mat_id is read-only by design, and a hand-edited cops.json is the only way such an id reaches a row
 
         ok, reason, _created = self.model.import_asset_to_scene(
             self.model.index(0, 0))
@@ -192,8 +145,7 @@ class NodesSectionTest(unittest.TestCase):
     def test_selection_of_one_node_returns(self):
         geo = _sop_network("sel_src")
         box = geo.node("the_box")
-        # A selection is passed as one of the SELECTED items, not the
-        # container - the network is reached through its parent.
+        # A selection is passed as one of the SELECTED items, not the container - the network is reached through its parent.
         self.assertEqual("SOP", self.model.add_asset(
             box, "", "", False, items=[box], name="sel_one"))
         geo.destroy()
@@ -204,12 +156,9 @@ class NodesSectionTest(unittest.TestCase):
         self.assertTrue(ok, reason)
         self.assertEqual(["the_box"], [n.name() for n in dest.children()])
 
-    # -- the refusal -------------------------------------------------
 
     def test_a_foreign_context_gets_a_container_where_one_exists(self):
-        """A Copernicus network CAN hold SOPs - in a sopnet - and
-        refusing there while accepting the identical nodes saved from a
-        sopnet was incoherent. So this builds one rather than refusing."""
+        """A Copernicus network CAN hold SOPs, in a sopnet - so this builds one rather than refusing."""
         geo = _sop_network("foreign_src")
         self.model.add_asset(geo, "", "", False, name="SOPwhole")
         geo.destroy()
@@ -222,9 +171,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertIn("the_box", {n.name() for n in made[0].children()})
 
     def test_it_still_refuses_where_nothing_can_hold_them(self):
-        """The refusal has to survive the widening, or the guard is
-        gone: a material network has no home for SOPs at any depth, and
-        half-creating one is worse than saying so."""
+        """The refusal must survive the widening: a matnet has no home for SOPs at any depth."""
         geo = _sop_network("refuse_src")
         self.model.add_asset(geo, "", "", False, name="SOPwhole")
         geo.destroy()
@@ -239,11 +186,9 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(before, len(dest.children()),
                          "a refused import left nodes behind")
 
-    # -- landing at object level -------------------------------------
 
     def _import_into(self, name, dest):
-        """Save-free helper: import the asset called `name` into dest,
-        returning (ok, reason, the nodes it created there)."""
+        """Save-free helper: import asset `name` into dest -> (ok, reason, the nodes it created there)."""
         row = [i for i, a in enumerate(self.model.assets) if a.name == name][0]
         before = set(dest.children())
         ok, reason, _created = self.model.import_asset_to_scene(
@@ -251,13 +196,7 @@ class NodesSectionTest(unittest.TestCase):
         return ok, reason, [c for c in dest.children() if c not in before]
 
     def test_a_network_asset_lands_at_object_level_in_its_container(self):
-        """Reported from a live session: assets saved at object level
-        could not be recreated there, while /stage worked.
-
-        /obj is not a SOP network, so an exact-context rule refuses
-        everything there - but building the container IS the answer at
-        object level, not the failure case. Every context that has a
-        home in /obj must get one."""
+        """Every context with a home in /obj must get one - building the container IS the answer there, not the failure case."""
         sources = {
             "SOPnet": _sop_network("obj_sop"),
             "COPnet": hou.node("/obj").createNode("copnet", "obj_cop"),
@@ -292,9 +231,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual({"objA", "objB"}, {n.name() for n in made})
 
     def test_object_nodes_are_refused_inside_a_sop_network(self):
-        """The trap a plain can-I-create-it test walks into: every
-        context has a `subnet`, so a SOP subnet looks like a home for
-        object-level nodes and is not one."""
+        """The trap: every context has a `subnet`, so a SOP subnet looks like a home for object-level nodes and is not one."""
         first = hou.node("/obj").createNode("geo", "trapA")
         second = hou.node("/obj").createNode("geo", "trapB")
         self.model.add_asset(first, "", "", False,
@@ -308,14 +245,9 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual([], made)
         self.assertIn("OBJECT", reason)
 
-    # -- where a network is allowed to land --------------------------
 
     def test_every_destination_and_context_pairing(self):
-        """The whole matrix, because the rule is only trustworthy if it
-        holds everywhere - and because the first version of it, which
-        asked the registry for ANY type that could hold the context,
-        answered /stage+SOP with `copytopoints` and a geo+SOP with a
-        third-party LYNX HDA."""
+        """The whole matrix - asking the registry for ANY type that fits answered /stage+SOP with `copytopoints`."""
         obj = hou.node("/obj")
         dests = {
             "/obj": obj,
@@ -332,21 +264,16 @@ class NodesSectionTest(unittest.TestCase):
             ("/obj", "Cop"): "copnet",
             ("/obj", "Lop"): "lopnet",
             ("/obj", "Object"): "subnet",
-            # Solaris hosts SOPs in a SOP Create - the node that turns
-            # geometry into USD. A bare sopnet there is invisible to
-            # the stage.
-            ("/stage", "Sop"): "sopcreate",
+            ("/stage", "Sop"): "sopcreate",     # Solaris hosts SOPs in a SOP Create, the node that turns geometry into USD; a bare sopnet there is invisible to the stage
             ("/stage", "Cop"): "copnet",
             ("/stage", "Lop"): "lopnet",
             ("/stage", "Object"): None,
             ("geo", "Cop"): "copnet",
-            # LOP nodes dropped in a SOP network get a LOP network.
-            ("geo", "Lop"): "lopnet",
+            ("geo", "Lop"): "lopnet",           # LOP nodes dropped in a SOP network get a LOP network
             ("geo", "Object"): None,
             ("copnet", "Sop"): "sopnet",
             ("lopnet", "Sop"): "sopcreate",
-            # Materials are the material section's business.
-            ("matnet", "Sop"): None,
+            ("matnet", "Sop"): None,            # materials are the material section's business
             ("matnet", "Cop"): None,
             ("matnet", "Object"): None,
         }
@@ -369,12 +296,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertEqual(1, len(made))
         self.assertEqual("sopcreate", made[0].type().name())
 
-        # The SOPs go where the HDA SAYS they go: its DiveTarget and
-        # EditableNodes both read "sopnet/create", two levels down. The
-        # first version stopped at `sopnet` - one level too high, beside
-        # the machinery - and OUT's input is `create`, so the stage got
-        # empty geometry. Reported live: "not as it should".
-        target = self.model.load_target_in(made[0], "Sop")
+        target = self.model.load_target_in(made[0], "Sop")      # DiveTarget and EditableNodes both read sopnet/create, two levels down - practice.md ▸p/nodes-section
         self.assertEqual("sopnet/create", target.path().split(
             made[0].path() + "/")[-1])
         landed = {n.name() for n in target.children()}
@@ -385,16 +307,10 @@ class NodesSectionTest(unittest.TestCase):
             target.node("the_mountain").inputs()[0].name(),
             "the connection did not survive the trip into Solaris")
 
-        # The asset must stay LOCKED. Unlocking it to write was both
-        # unnecessary (the editable node accepts writes while locked)
-        # and the reason a double-click showed sopimport/sopnet/xform
-        # instead of the user's own SOPs.
         self.assertTrue(made[0].matchesCurrentDefinition(),
                         "the SOP Create was unlocked - diving will show "
                         "its internals instead of the imported nodes")
 
-        # And the wrapper only shows what its output carries: the
-        # terminal node must be display-flagged or the stage is empty.
         flagged = [n.name() for n in target.children()
                    if n.isDisplayFlagSet()]
         self.assertEqual(["the_mountain"], flagged)
@@ -403,10 +319,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertTrue(meshes, "the stage carries no geometry")
 
     def test_an_unflagged_network_still_reaches_the_stage(self):
-        """The archive usually carries a display flag, so the fallback
-        that sets one is invisible - until a save whose nodes had none.
-        Then the SOP Create's editable subnet outputs nothing and the
-        stage is empty, which is the exact symptom this fixes."""
+        """The flag fallback is invisible until a save whose nodes had none, and then the stage is empty."""
         geo = hou.node("/obj").createNode("geo", "unflagged_src")
         box = geo.createNode("box", "the_box")
         mountain = geo.createNode("mountain", "the_mountain")
@@ -430,22 +343,10 @@ class NodesSectionTest(unittest.TestCase):
                   if p.GetTypeName() == "Mesh"]
         self.assertTrue(meshes, "the stage carries no geometry")
 
-    # -- geometry into Solaris ---------------------------------------
 
     def test_geometry_chains_onto_the_current_display_node(self):
-        """Dropping geometry into a Solaris stage should behave like
-        adding a light or a render node: wired onto the current tree,
-        and displayed. Houdini's own createOutputNode() does that - the
-        built-in its tab menu uses - rather than a hand-rolled
-        setFirstInput + flag dance.
-
-        Uses the REAL panel: the method reaches enough of it that a stub
-        only proves the stub works."""
-        # The ISOLATED panel: its own settings, library and file
-        # locations. _protect_live_settings only guarded the settings
-        # FILE - the panel still opened the machine's real library and
-        # its real registered folders.
-        panel = test_support.fixture_panel(self)
+        """Geometry chains onto the display node like a light would, through the host's own createOutputNode()."""
+        panel = test_support.fixture_panel(self)    # the ISOLATED panel: its own settings, library and locations, because _protect_live_settings guarded only the settings FILE
         try:
 
             stage = hou.node("/stage")
@@ -478,7 +379,6 @@ class NodesSectionTest(unittest.TestCase):
             except hou.OperationFailed:
                 pass
 
-    # -- thumbnail routing -------------------------------------------
 
     def test_sop_asset_renders_a_thumbnail(self):
         self.prefs.render_on_import = 1
@@ -495,14 +395,7 @@ class NodesSectionTest(unittest.TestCase):
                            "the SOP thumbnail is a blank image")
 
     def test_unrenderable_context_writes_no_thumbnail(self):
-        """LOP (and Dop, Top...) have nothing to render as a picture -
-        the tile is meant to fall back to the node icon, which only
-        happens if no image file exists.
-
-        Asserting the file is absent is not enough on its own: a
-        renderer that IS called and quietly fails leaves no file either.
-        So the renderers are watched - the promise is that neither is
-        even asked."""
+        """Neither renderer is even ASKED - an absent file alone would also be produced by one that failed quietly."""
         self.prefs.render_on_import = 1
         lop = hou.node("/obj").createNode("lopnet", "thumb_lop")
         lop.createNode("sphere")
@@ -518,9 +411,7 @@ class NodesSectionTest(unittest.TestCase):
             self.model.assets[-1])))
 
     def test_unrenderable_tile_falls_back_to_the_node_icon(self):
-        """A LOP asset's tile shows the node icon, NOT the "Missing
-        Thumbnail" graphic - nothing failed, there is simply no picture
-        to take. Two different designed SVGs, so the images differ."""
+        """A LOP tile shows the node icon, NOT `Missing Thumbnail` - two different designed SVGs."""
         lop = hou.node("/obj").createNode("lopnet", "icon_lop")
         lop.createNode("sphere")
         self.model.add_asset(lop, "", "", False, name="icon_test")
@@ -535,12 +426,9 @@ class NodesSectionTest(unittest.TestCase):
         self.assertNotEqual(node_icon, material_missing,
                             "the LOP tile is showing Missing Thumbnail")
 
-    # -- which nodes save as a whole network -------------------------
 
     def test_only_real_networks_save_their_interior(self):
-        """The rule the OPmenu label has to predict. A light carries 33
-        internal SOPs and a camera 3, so "has children" would read half
-        the objects in a scene as networks."""
+        """The rule the OPmenu label must predict - `has children` would read half a scene as networks."""
         geo = _sop_network("whole_geo")
         empty = hou.node("/obj").createNode("geo", "whole_empty")
         cop = hou.node("/obj").createNode("copnet", "whole_cop")
@@ -556,9 +444,7 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(whole(geo.node("the_box")), "a leaf is not a network")
         self.assertFalse(whole(matnet), "materials are not this section's")
 
-        # Being a DROP TARGET is the looser half of the same rule: an
-        # empty geo has no interior to save but is a fine place to land.
-        self.assertTrue(self.model.is_container(empty))
+        self.assertTrue(self.model.is_container(empty))     # a DROP TARGET is the looser half: an empty geo has no interior to save but is a fine place to land
         self.assertTrue(self.model.is_container(geo))
         self.assertFalse(self.model.is_container(light))
         self.assertFalse(self.model.is_container(matnet))
@@ -576,11 +462,7 @@ class NodesSectionTest(unittest.TestCase):
 
 
 class TheRenderDecisionHasOneHome(unittest.TestCase):
-    """The Cop-or-Sop thumbnail decision was typed twice - once at
-    save (render/nodes.py) and once at Update Preview
-    (core/cop_library.py) - the two-resolvers shape that produced the
-    wrangle double-click bug. One method decides now, and a source
-    scan keeps the deciders from growing back."""
+    """One method decides Cop-or-Sop, and a source scan keeps the deciders from growing back."""
 
     def test_the_create_verbs_are_called_only_inside_thumbs(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -597,7 +479,8 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
                 count = (source.count("create_thumb_sop(")
                          + source.count("create_thumb_cop("))
                 if count:
-                    callers.append((os.path.relpath(path, root), count))
+                    callers.append(
+                        (test_support.posix_relpath(path, root), count))
         self.assertEqual(
             ["render/thumbs.py"], [path for path, _n in callers],
             "the Cop-or-Sop decision is being made outside "
@@ -616,9 +499,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
         return outcome, sop, cop
 
     def test_both_spellings_of_each_context_reach_one_verb(self):
-        """The save side reads a category name (Sop, Cop); Update
-        Preview reads a renderer tag (SOP, COP, and empty for assets
-        saved before contexts were recorded). One normalisation."""
+        """Save reads a category name, Update Preview a renderer tag (empty for pre-context assets): one normalisation."""
         for context in ("Sop", "SOP", "sop"):
             outcome, sop, cop = self._decide(context)
             self.assertTrue(outcome, context)
@@ -640,15 +521,7 @@ class TheRenderDecisionHasOneHome(unittest.TestCase):
 
 
 class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
-    """Dropping onto a wire inserts what landed into that chain.
-
-    Reported live: the wire highlighted but nothing was inserted -
-    the splice had been wired into the CREATION door only, while a
-    node or material payload lands through its own import door. What
-    every door DOES share is the placement funnel, so the splice asks
-    that instead of diffing a network's children (the child-diff
-    version of this was withdrawn once already - practice.md ▸ DONT
-    PATCH, DONT HAND-ROLL)."""
+    """The splice asks the placement funnel, never a child diff - practice.md ▸p/nodes-section."""
 
     def setUp(self):
         self.net = hou.node("/obj").createNode("geo")
@@ -662,26 +535,15 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
         helpers.forget_placed()
         self.assertEqual([], helpers.placed_nodes(),
                          "the funnel remembered across gestures")
-        # The creation door's form...
-        helpers.place_nodes([made], hou.Vector2(1.0, 1.0))
+        helpers.place_nodes([made], hou.Vector2(1.0, 1.0))      # the creation door's form
         self.assertEqual([made], helpers.placed_nodes())
-        # ...and the no-drop-point form every import falls back to.
-        other = self.net.createNode("sphere")
+        other = self.net.createNode("sphere")       # and the no-drop-point form every import falls back to
         helpers.auto_place(other)
         self.assertEqual([other], helpers.placed_nodes(),
                          "auto placement did not report what it placed")
 
     def test_the_splice_calls_the_hosts_own_function(self):
-        """The rewiring is SideFX's, not ours: `insertItemsIntoWire`
-        reads the wire's four facts and handles chains, dots and
-        network boxes. It is GUI-only - the module touches
-        `hou.ui.colorFromName` at import, like `lop_dragdrop.py`
-        (research.md) - so this pins the CONTRACT headless: the right
-        connection, the landed nodes, and the flag that removes the
-        existing connections. The rewiring itself was proven in a
-        live session (2026-08-07): a null dropped on a wire ended up
-        between the two nodes, and the downstream one read from it.
-        """
+        """`insertItemsIntoWire` is GUI-only, so this pins its CONTRACT headless - practice.md ▸p/nodes-section."""
         import sys
         import types
         from unittest import mock
@@ -724,15 +586,7 @@ class TheWireSpliceReadsThePlacementFunnel(unittest.TestCase):
 
 
 class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
-    """Reported live: a drop rearranged the network - other nodes
-    slid away from where the artist had put them.
-
-    Measured on real nodes (2026-08-07): `moveToGoodPosition()` with
-    its defaults moved an unrelated box from y=0.0 to y=0.894 and a
-    sphere with it; the same call with `move_inputs`/`move_outputs`/
-    `move_unconnected` all False left both untouched. Houdini's own
-    tab-menu flow places the new node and rearranges nothing, so
-    Amaze places through ONE helper that carries those flags."""
+    """A drop must rearrange nothing, so placement goes through ONE helper carrying the no-move flags."""
 
     def setUp(self):
         self.net = hou.node("/obj").createNode("geo")
@@ -758,8 +612,7 @@ class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
                          "nodes the artist placed moved")
 
     def test_the_app_never_calls_the_rearranging_form(self):
-        """A raw moveToGoodPosition() carries the defaults that move
-        other nodes, so the app calls it in exactly one place."""
+        """A raw moveToGoodPosition() carries the defaults that move other nodes, so the app calls it in one place."""
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for base, _dirs, files in os.walk(root):
@@ -772,7 +625,7 @@ class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
                 with open(path, encoding="utf-8") as handle:
                     body = handle.read()
                 if ".moveToGoodPosition(" in body:
-                    offenders.append(os.path.relpath(path, root))
+                    offenders.append(test_support.posix_relpath(path, root))
         self.assertEqual(
             ["helpers/helpers.py"], offenders,
             "these call Houdini's rearranging placement directly - "
@@ -780,9 +633,7 @@ class AutoPlacementLeavesTheSceneAlone(unittest.TestCase):
 
 
 class PlaceNodesTest(unittest.TestCase):
-    """The ONE placement rule: created nodes move as a group so their
-    centroid lands at the position, relative layout preserved; no
-    position means the creator's own placement stands."""
+    """The ONE placement rule: the group's centroid lands at the position, relative layout preserved."""
 
     def test_the_group_moves_preserving_layout(self):
         from amaze.helpers import helpers
@@ -799,13 +650,7 @@ class PlaceNodesTest(unittest.TestCase):
             msg="the relative layout was not preserved")
         self.assertAlmostEqual(
             1.0, second.position().y() - first.position().y())
-        # THE GROUP CENTRES ON THE DROP POINT, so the anchor lands a
-        # half-size short of it: `setPosition` sets a node's corner,
-        # and the host subtracts the same constant when it places a
-        # new node at the mouse (nodegraphconnect: `node_pos -=
-        # getNewNodeHalfSize()`). Reported live before this: the node
-        # appeared left of the pointer while the outline sat on it.
-        half = helpers.centred_on(hou.Vector2(0.0, 0.0))
+        half = helpers.centred_on(hou.Vector2(0.0, 0.0))    # setPosition sets a node's CORNER and the host subtracts getNewNodeHalfSize() at the mouse - practice.md ▸p/nodes-section
         centroid_x = (first.position().x() + second.position().x()) / 2
         centroid_y = (first.position().y() + second.position().y()) / 2
         self.assertAlmostEqual(10.0 + half.x(), centroid_x)
