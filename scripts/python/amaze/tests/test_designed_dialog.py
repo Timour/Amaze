@@ -1,17 +1,4 @@
-"""The first dialog built from an HTML handover (2026-08-02).
-
-
-computed styles and land in DesignedDialog, which is the SHELL - the
-
-Versions. These tests hold the shell to those numbers, because a
-
-would have to re-measure the panel by eye to find out.
-
-
-Sans 3 because it matches Houdini's own UI font, so a 23px label in
-the page is a 23px label here, and the colours are literal rather than
-mapped to theme tokens (practice.md).
-"""
+"""The shell of the first dialog built from an HTML handover, held to the design's literal pixels. ▸p/designed-dialog"""
 
 import os
 import unittest
@@ -28,28 +15,12 @@ from amaze.helpers import theme, ui_helpers  # noqa: E402
 
 
 def _px(n):
-    """
-
-
-    DEVICE pixel and Qt sizes in logical pixels - two device pixels
-    each here. Asserting the raw number pinned a dialog that opened at
-
-    looking at it.
-
-    This used to be theme.ui_px, which multiplies by Houdini's UI
-    scale - so the test agreed with the dialog at any scale and said
-
-    1024px window from a 512px design; the test was green throughout.
-    A design handover test that follows the code instead of the design
-    is not a handover test."""
+    """A design pixel, converted the way the dialog converts it - NEVER through `theme.ui_px`, which would make the test agree with the code at any UI scale. ▸p/designed-dialog"""
     return ui_helpers.DesignedDialog.d(n)
 
 
 class TheIconIsNotClipped(unittest.TestCase):
-    """
-    3 beyond on every side - and a viewBox tight to the paths cut the
-
-    bottom"."""
+    """The glyph's stroke reaches 3 past its own path bounds on every side, so a viewBox tight to the paths cuts the top and bottom points off."""
 
     def test_the_viewbox_leaves_room_for_the_stroke(self):
         path = os.path.join(os.path.dirname(amaze.__file__), "ui",
@@ -72,13 +43,7 @@ class TheIconIsNotClipped(unittest.TestCase):
         self.assertGreaterEqual(h, 60 + stroke)
 
     def test_the_top_and_bottom_are_POINTS_not_flat_cuts(self):
-        """What clipping looks like, rendered.
-
-        Ink reaching the edge of the box is not clipping - a viewBox
-        bounding the stroke exactly is correct. Clipping shows as a
-
-        first and last rows are narrow points, and a clipped one has a
-        """
+        """Ink at the box edge is not clipping; clipping is a FLAT CUT - the glyph is a diamond over two chevrons, so its first and last rows are narrow points and a clipped one is a wide flat row."""
         path = os.path.join(os.path.dirname(amaze.__file__), "ui",
                             "icon_versions_dialog.svg")
         image = ui_helpers.render_svg_pixmap(path, 120).toImage()
@@ -100,10 +65,7 @@ class TheIconIsNotClipped(unittest.TestCase):
 
 
 class TheShellMatchesTheDesign(unittest.TestCase):
-    """The SHELL is the design - frame, header band, the inset column
-    and the colours. The CONTROLS inside it are Houdini's: the boxes
-
-    nothing here asserts a field's size or colour."""
+    """The SHELL is the design - frame, header band, inset column, colours - while the CONTROLS inside are Houdini's, so nothing here asserts a field's colour. ▸p/designed-dialog"""
 
 
     def _dialog(self):
@@ -129,9 +91,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         return p.x(), p.y(), widget.width(), widget.height()
 
     def test_the_buttons_are_the_designs_size_and_place(self):
-        """
-        column with a 38 gap. Left at their natural size they huddled
-        in the corner."""
+        """Houdini's LOOK at the design's geometry: 202 x 42 each, filling the 442 column with a 38 gap - at their natural size they huddle in the corner."""
         dialog, _c, _f = self._dialog()
         buttons = dialog.findChildren(QtWidgets.QPushButton)
         self.assertEqual(2, len(buttons))
@@ -143,10 +103,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                 "%s is not the design's size" % name)
         self.assertEqual(_px(35), left[0], "the pair is not at the "
                                            "column's left edge")
-        # 35 BELOW THE FIELD - read off the page: field bottom 334,
-        # buttons top 369. A stretch instead floated them to the
-        # bottom, which is a different gap at every dialog height.
-        _fx, fy, _fw, fh = self._at(dialog, _f)
+        _fx, fy, _fw, fh = self._at(dialog, _f)    # 35 BELOW THE FIELD, read off the page as field bottom 334 against buttons top 369; a stretch instead floats them to the bottom, which is a different gap at every dialog height
         self.assertAlmostEqual(
             _px(35), left[1] - (fy + fh), delta=2,
             msg="the buttons are not 35 below the name field")
@@ -162,47 +119,36 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         for name, widget in (("dropdown", combo), ("name field", field)):
             x, _y, w, h = self._at(dialog, widget)
             self.assertEqual(_px(35), x, "%s is not inset 35" % name)
-            # The column BETWEEN the insets, not d(442). At a ratio of
-            # 2 the inset 35 halves to 18 (17.5 rounded up) and the
-            # column is 220 where d(442) is 221 - a rounding, not a
-            # drift. The property is that the field spans exactly what
-            # the two insets leave.
-            self.assertEqual(
+            self.assertEqual(    # the column BETWEEN the insets, not d(442): at ratio 2 the inset 35 halves to 18 and the column is 220 where d(442) is 221, a rounding rather than a drift, so the property asserted is that the field spans exactly what the two insets leave
                 dialog.width() - 2 * _px(35), w,
                 "%s does not span the column between the insets" % name)
             self.assertEqual(_px(60), h, "%s is not 60 tall" % name)
 
     def test_the_controls_are_NOT_restyled(self):
-        """
-        the design's geometry and nothing else."""
+        """Standard Houdini controls by design: the shell gives them the design's geometry and nothing else. ▸p/designed-dialog"""
         _dialog, combo, field = self._dialog()
         for name, widget in (("dropdown", combo), ("name field", field)):
             self.assertEqual("", widget.styleSheet(),
                              "%s has been restyled" % name)
 
-    def test_the_frame_is_the_size_he_asked_for(self):
+    def test_the_frame_is_the_designs_size(self):
         """512 x 435 LITERALLY, at any Houdini UI scale."""
         dialog, _c, _f = self._dialog()
         self.assertEqual((_px(512), _px(435)),
                          (dialog.width(), dialog.height()))
-
-
-        screen = QtGui.QGuiApplication.primaryScreen()
+        screen = QtGui.QGuiApplication.primaryScreen()    # AND the PHYSICAL size holds: whatever the ratio, the window occupies 512 x 435 of the screen's own pixels
         ratio = screen.devicePixelRatio() if screen else 1.0
         self.assertAlmostEqual(512, dialog.width() * ratio, delta=2)
         self.assertAlmostEqual(435, dialog.height() * ratio, delta=2)
 
     def test_the_design_does_not_go_through_the_UI_SCALE(self):
-        """The panel's chrome scales with Houdini's UI preference; a
-
-        every number here doubled and the window opened twice the size
-        """
+        """The panel's chrome scales with Houdini's UI preference; a design given in final pixels does not - at a UI scale of 2.0 every number here doubled and a 512px design opened as a 1024px window. ▸p/designed-dialog"""
         import inspect
         body = inspect.getsource(ui_helpers.DesignedDialog)
         self.assertNotIn(
             "ui_px(", body,
-            ""
-            "512 becomes 1024 on a 2.0 UI scale")
+            "the designed dialog is scaling the design's measurements "
+            "again - 512 becomes 1024 on a 2.0 UI scale")
 
     def test_the_header_carries_the_three_lines_and_the_icon(self):
         dialog, _c, _f = self._dialog()
@@ -231,21 +177,8 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         self.assertGreater(title.pixelSize(), kind.pixelSize())
 
 
-class HisPixelsConvertOnEveryPlatformTest(unittest.TestCase):
-    """`d()` turns one DESIGN pixel into the logical pixels Qt sizes
-    with. It read the device pixel ratio and NOTHING ELSE, which is
-    only half the rule.
-
-    research.md has the other half, measured on the third machine: on
-    macOS the Retina factor rides in the dpr and Houdini's own scale
-    reads 1.0, but WINDOWS is the opposite shape - scale 1.5 with dpr
-    1.0, and that 1.5 is real. Dividing by dpr alone returns the raw
-    number there, so the dialog opens a third smaller than the chrome
-    around it, whose every pixel went through `theme.ui_px`.
-
-    `theme.UI_SCALE` already resolves which shape is in play, so this
-    is a reuse rather than a second copy of the rule.
-    """
+class ADesignPixelConvertsOnEveryPlatformTest(unittest.TestCase):
+    """`d()` turns one DESIGN pixel into the logical pixels Qt sizes with, reading BOTH the device ratio and `theme.UI_SCALE` - macOS carries Retina in the dpr at scale 1.0, Windows the opposite shape at dpr 1.0 with a real 1.5, and dividing by dpr alone opens the dialog a third small beside `ui_px` chrome. ▸r/screen-dpr"""
 
     DESIGN = ui_helpers.DesignedDialog.FRAME[0]          # 512
 
@@ -261,14 +194,11 @@ class HisPixelsConvertOnEveryPlatformTest(unittest.TestCase):
             theme.UI_SCALE = real_scale
 
     def test_retina_mac_halves_it(self):
-        """The Retina case, which already worked: the scale factor
-        merely restates the dpr, so theme resolves it to 1.0."""
+        """The Retina case: the scale factor merely restates the dpr, so theme resolves it to 1.0."""
         self.assertEqual(256, self._d(self.DESIGN, ratio=2.0, scale=1.0))
 
     def test_windows_applies_the_real_scale(self):
-        """THE ONE THAT WAS BROKEN. dpr 1.0 with a genuine 1.5 scale -
-        512 must become 768 to sit correctly beside chrome that
-        `ui_px` has already multiplied by 1.5."""
+        """dpr 1.0 with a genuine 1.5 scale: 512 must become 768 to sit beside chrome `ui_px` has already multiplied by 1.5."""
         self.assertEqual(768, self._d(self.DESIGN, ratio=1.0, scale=1.5))
 
     def test_a_plain_display_leaves_it_alone(self):
