@@ -2,9 +2,9 @@
 <!-- His Versions glyph, lifted from the design page. The viewBox is
      PADDED by half the stroke: the paths span 0..60 and the stroke is
      6 wide, so it reaches 3 beyond the box on every side and a 0 0 60
-     60 box clipped the top and bottom points off. Framer's own copy
-     carried overflow="visible", which a standalone file cannot rely
-     on. -->
+     60 box clipped the top and bottom points off. The design tool's
+     inline copy carried overflow="visible", which a standalone file
+     cannot rely on. -->
 <svg viewBox="-3 -3 66 66" xmlns="http://www.w3.org/2000/svg">
     <path d="M 30 0 L 0 15 L 30 30 L 60 15 Z M 0 45 L 30 60 L 60 45 M 0 30 L 30 45 L 60 30" fill="none" stroke-width="6" stroke="#ef8878" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
