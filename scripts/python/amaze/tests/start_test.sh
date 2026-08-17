@@ -152,7 +152,8 @@ fi
 MODULES="test_category test_library test_renders test_generator \
 test_roundtrip test_thumbnail_shutdown test_debug_flood \
 test_restore_drill test_lop_assign test_drag_gesture \
-test_drop_targets test_cop_root test_prefs_equality test_karma_batch \
+test_drop_targets test_drop_resolution test_cop_root \
+test_prefs_equality test_karma_batch \
 test_nodes_section test_tile_icons test_category_colors \
 test_shell_gates test_delegates test_folder_sections \
 test_viewport_pick test_host_engines test_log_export \

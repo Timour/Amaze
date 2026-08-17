@@ -110,7 +110,9 @@ class TheReleaseResolvesToTheNetworkUnderThePointer(_ReleaseCase):
 
     def test_a_pane_that_is_not_a_network_view_resolves_to_nothing(self):
         """A Parameter pane is a miss, and a miss is a normal drag outcome."""
-        self._patch(types.SimpleNamespace(type=lambda: hou.paneTabType.Parm))
+        self._patch(types.SimpleNamespace(
+            type=lambda: hou.paneTabType.Parm,
+            pwd=lambda: hou.node("/obj")))
         self.assertIsNone(
             self.panel._drop_context_under_cursor(self.matcher))
 
