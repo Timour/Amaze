@@ -179,21 +179,23 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
         self._patch(None)
         self.assertFalse(self.section.drop_cop_at_release(index))
 
-    def test_a_refused_context_says_so_in_the_log(self):
-        """`hou.ui` is created rather than replaced - it does not exist under hython."""
+    def test_a_refused_context_goes_to_the_status_line_with_the_network(self):
+        """A wrong context is bad AIM, so it takes the quiet door. ▸p/refusal-sink"""
         index = self._saved_cop_asset()
         dest = hou.node("/obj").createNode("matnet", "vop_dest")
         self._patch(_fake_editor(dest))
-        said = []
-        with mock.patch.object(hou, "ui", types.SimpleNamespace(
-                displayMessage=said.append), create=True), \
-                mock.patch.object(debug, "event") as logged:
+        with mock.patch.object(debug, "refuse") as refused:
             self.assertTrue(self.section.drop_cop_at_release(index))
-        self.assertTrue(said, "premise: a VOP network refuses this asset")
-        self.assertTrue(
-            any(call.args[:2] == ("interact", "the release refused the asset")
-                for call in logged.call_args_list),
-            "a refused release left no record in the debug log")
+        self.assertTrue(refused.call_args_list,
+                        "premise: a VOP network refuses this asset")
+        reason, data = (refused.call_args.args[0],
+                        refused.call_args.kwargs)
+        self.assertNotIsInstance(
+            reason, debug.Damage,
+            "a mismatched context was reported as library damage, which "
+            "opens a dialog mid-gesture")
+        self.assertEqual(dest.path(), data.get("net"),
+                         "the refusal did not record WHICH network refused")
 
 
 if __name__ == "__main__":

@@ -696,11 +696,7 @@ class CopSection(AssetSection):
                 source_index, context_node=context
             )
         if not ok and reason:
-            debug.event("interact", "the release refused the asset",
-                        net=context.path(), reason=reason)
-            ui = getattr(hou, "ui", None)  # a release is a GESTURE, so the refusal must never raise out of the handler that absorbs it ▸r/status-bar
-            if ui is not None:
-                ui.displayMessage(reason)
+            debug.refuse(reason, net=context.path())    # the door marks library damage, which is what picks the dialog over the status line ▸p/refusal-sink
         if ok:
             helpers.place_nodes(created,
                                 panel._release_position_in(context))
@@ -840,12 +836,8 @@ class CodeSection(AssetSection):
                 source_index.row(), node
             )
         if not ok:
-            ui = getattr(hou, "ui", None)    # drag-door rule: the miss indicator carries the refusal and the reason goes to the status line, never a dialog
-            if ui is not None and reason:
-                ui.setStatusMessage(
-                    "Amaze: %s" % reason,
-                    severity=hou.severityType.Warning,
-                )
+            if reason:
+                debug.refuse(reason)    # drag-door rule: the miss indicator carries the refusal and the reason goes to the status line ▸p/refusal-sink
             return False
         return True
 
@@ -1284,13 +1276,8 @@ class FileSection(FolderSection):
             return False
         parm = helpers.find_file_parm(node)
         if parm is None:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.setStatusMessage(
-                    "Amaze: %s has no file parameter to take %s"
-                    % (node.name(), os.path.basename(path)),
-                    severity=hou.severityType.Warning,
-                )
+            debug.refuse("%s has no file parameter to take %s"
+                         % (node.name(), os.path.basename(path)))
             return False
         with hou.undos.group("Amaze Set File Path"):
             parm.set(panel._scene_path(path))
@@ -1575,13 +1562,8 @@ class GradientSection(AssetSection):
             return False
         parm = helpers.find_color_ramp_parm(node)
         if parm is None:
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.setStatusMessage(
-                    "Amaze: %s has no color ramp to take the gradient"
-                    % node.name(),
-                    severity=hou.severityType.Warning,
-                )
+            debug.refuse("%s has no color ramp to take the gradient"
+                         % node.name())
             return False
         with hou.undos.group("Amaze Apply Gradient"):
             parm.set(self._entry_ramp(entry, basis))

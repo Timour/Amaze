@@ -523,6 +523,40 @@ def alert(message: str, /, key: str = "", **data) -> bool:
         return True
 
 
+class Damage(str):
+    """A refusal sentence meaning the LIBRARY is broken, which `refuse` gives a dialog where a plain str gets the status line. `%` on one answers a plain str, so wrap at the point of return with the formatting already inside. ▸p/refusal-sink"""
+
+    __slots__ = ()
+
+
+def refuse(reason: str, /, **data) -> bool:
+    """Say a gesture did not land, True when it spoke; a `Damage` reason opens a deferred dialog and any other goes to the status line. It REPEATS - the user gestured again - and it never raises, sitting inside the handlers that absorb a failed gesture. ▸p/refusal-sink"""
+    damage = isinstance(reason, Damage)
+    if _enabled and not _rotation_blocked:
+        _write({"cat": "refuse", "msg": str(reason),
+                "data": dict(data, damage=damage)})
+    try:
+        import hou
+        from PySide6 import QtCore
+
+        if not hasattr(hou, "ui"):
+            raise AttributeError("no hou.ui in this session")
+        if damage:
+            QtCore.QTimer.singleShot(0, lambda: hou.ui.displayMessage(
+                str(reason), severity=hou.severityType.Warning,  # type: ignore
+                title="Amaze",
+            ))
+        else:
+            hou.ui.setStatusMessage(    # the bar is Houdini's, so it says who is speaking ▸r/status-bar
+                "Amaze: %s" % reason,
+                severity=hou.severityType.Warning,  # type: ignore
+            )
+        return True
+    except Exception:                                    # noqa: BLE001
+        print("Amaze: " + str(reason))
+        return True
+
+
 def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
     """A full traceback for a HANDLED exception, Debug-Mode gated; an UNCAUGHT one goes through `install()` regardless."""
     if not _enabled or _rotation_blocked:

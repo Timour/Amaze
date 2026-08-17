@@ -644,9 +644,10 @@ class NodeHandler:
             debug.event("import", "refused unsafe asset id",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
             return ("",
-                    '"%s" cannot be imported: its id is not a usable file '
-                    "name, so the files it points at cannot be trusted to "
-                    "be inside your library" % mat.name)
+                    debug.Damage(
+                        '"%s" cannot be imported: its id is not a usable file '
+                        "name, so the files it points at cannot be trusted to "
+                        "be inside your library" % mat.name))
         try:
             return (material.payload_path(
                 self._preferences, mat.mat_id, self._preferences.ext), "")
@@ -654,8 +655,9 @@ class NodeHandler:
             debug.event("import", "refused escaping asset path",
                         material=mat.name, mat_id=str(mat.mat_id)[:120])
             return ("",
-                    '"%s" cannot be imported: its files resolve to '
-                    "somewhere outside your library" % mat.name)
+                    debug.Damage(
+                        '"%s" cannot be imported: its files resolve to '
+                        "somewhere outside your library" % mat.name))
 
     def import_asset_to_scene(
         self,
@@ -686,14 +688,16 @@ class NodeHandler:
             if os.path.getsize(payload) == 0:
                 self._context_override = None
                 return (False,
-                        '"%s" cannot be imported: its material file is '
-                        "empty, so the save that produced it did not "
-                        "finish (%s)" % (mat.name, payload))
+                        debug.Damage(
+                            '"%s" cannot be imported: its material file is '
+                            "empty, so the save that produced it did not "
+                            "finish (%s)" % (mat.name, payload)))
         except OSError as exc:
             self._context_override = None
             return (False,
-                    '"%s" cannot be imported: its material file could '
-                    "not be read (%s)" % (mat.name, exc))
+                    debug.Damage(
+                        '"%s" cannot be imported: its material file could '
+                        "not be read (%s)" % (mat.name, exc)))
 
         saved_type = self.get_saved_node_type(mat)
         if saved_type and not node_type_available(saved_type):
@@ -740,10 +744,11 @@ class NodeHandler:
             else:
                 return (
                     False,
-                    '"%s" has an unrecognised renderer (%r), so there is '
-                    "no way to rebuild it. Re-save it from a material "
-                    "builder, or set its renderer in Info."
-                    % (mat.name, mat.renderer),
+                    debug.Damage(
+                        '"%s" has an unrecognised renderer (%r), so there is '
+                        "no way to rebuild it. Re-save it from a material "
+                        "builder, or set its renderer in Info."
+                        % (mat.name, mat.renderer)),
                 )
 
             loaded_ok = True
@@ -1401,7 +1406,8 @@ class NodeHandler:
         if refusal:
             return (False, refusal)
         if not os.path.exists(file_name):
-            return (False, '"%s": asset file is missing on disk.' % mat.name)
+            return (False, debug.Damage(
+                '"%s": asset file is missing on disk.' % mat.name))
         from amaze.core import cop_library
         context = str(getattr(mat, "renderer", "") or "").strip().title() \
             or "Cop"
@@ -1428,8 +1434,9 @@ class NodeHandler:
                 except (OSError, hou.Error) as exc:
                     return (
                         False,
-                        '"%s": failed to load into %s (%s).'
-                        % (mat.name, dest.path(), exc),
+                        debug.Damage(
+                            '"%s": failed to load into %s (%s).'
+                            % (mat.name, dest.path(), exc)),
                     )
                 new_children = [
                     c for c in dest.children() if c not in before
@@ -1484,7 +1491,9 @@ class NodeHandler:
             container.destroy()
             return (
                 False,
-                '"%s": failed to load the saved network (%s).' % (mat.name, exc),
+                debug.Damage(
+                    '"%s": failed to load the saved network (%s).'
+                    % (mat.name, exc)),
             )
         helpers.auto_place(container)
         try:
