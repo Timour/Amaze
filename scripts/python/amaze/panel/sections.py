@@ -1269,7 +1269,7 @@ class FileSection(FolderSection):
         debug.event("hip", "scene opened", file=path)
 
     def drop_file_path_on_node(self, index, node) -> bool:
-        """A File row released on a node: the node's FIRST file parameter takes the spelled path - the same act as selecting the node and double-clicking the row, aimed by the cursor instead of the selection, and uniform across kinds with unknown files included. A node with no file parameter answers False, so the gesture shows its own refusal - the miss indicator and the tag flying home - never a dialog, and the status line carries the why."""
+        """A File row released on a node: the node's FIRST file parameter takes the spelled path - the same act as selecting the node and double-clicking the row, aimed by the cursor instead of the selection, and uniform across kinds with unknown files included. A node with no file parameter answers False, so the gesture shows its own refusal - the miss indicator - never a dialog, and the status line carries the why."""
         panel = self.panel
         path = index.data(panel.file_files_model.PathRole)
         if not path:
