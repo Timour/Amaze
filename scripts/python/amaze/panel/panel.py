@@ -58,24 +58,7 @@ from amaze.render import (
 )
 from amaze import preview
 
-# THE RELOAD CHAIN, and why it is off by default (2026-08-02).
-#
-# Houdini caches modules per session, so reopening the panel re-runs
-# panel.py but would otherwise leave an old render/nodes.py behind -
-# "new UI, old behavior". This chain re-executes every module the panel
-# owns so a reopen picks up edits everywhere.
-#
-# It costs that on every open a person ever does, and the workflow it
-# serves does not actually rely on it: the live-test loop already says
-# to FULLY QUIT and relaunch Houdini rather than reopen the panel,
-# precisely because module caching makes a reopen untrustworthy. So the
-# chain was paying for a shortcut nobody is allowed to take.
-#
-# Set AMAZE_DEV_RELOAD=1 to turn it back on for a session where you do
-# want reopen-to-refresh. Everything below stays one call per module,
-# in dependency order, so the ordering comments keep their meaning -
-# only whether they RUN changes.
-_DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))
+_DEV_RELOAD = bool(os.environ.get("AMAZE_DEV_RELOAD"))    # the reload chain below is OFF by default: it re-runs on every panel open to serve a reopen-to-refresh the live-test loop forbids anyway ▸r/module-reload
 
 
 def _reload(module):
@@ -84,82 +67,43 @@ def _reload(module):
         importlib.reload(module)
 
 
-# Before library - the models import the shared thumbnail engine.
-_reload(hostos)
+_reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(debug)
 _reload(dragengine)
 _reload(lop_assign)
 _reload(thumbnails)
 _reload(database)
-# Before library, which gates overwriting on it.
-_reload(library_policy)
+_reload(library_policy)    # before library, which gates overwriting on it
 _reload(versions)
 _reload(notes)
-# Before versions and the dialogs that show a user: both resolve a UID
-# to a name through it, so a stale one answers from the previous
-# library's people.
-_reload(users)
+_reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it, so a stale one answers from the previous library's people
 _reload(material)
-# The render stack, leaf-first. These reloads used to live at the
-# TOP of library.py/thumbs.py/nodes.py/thumbnail_scene.py - dev
-# hot-reload in production import paths, with nodes and thumbs
-# even reloading each other mid-import. ONE chain owns reloads
-# now; the modules just import each other normally.
-#
-# THE PREVIEW ENGINE RELOADS ITSELF, and has to. Reloading a PACKAGE
-# re-runs only its __init__.py, which then finds both submodules
-# already in sys.modules and hands back the cached ones - the chain
-# would look complete and refresh nothing. reload_engine() re-executes
-# them leaf-first and re-binds the names the package exports.
 if _DEV_RELOAD:
-    preview.reload_engine()
+    preview.reload_engine()    # the package RELOADS ITSELF: reloading a package re-runs only __init__.py, which hands back the cached submodules, so the chain would look complete and refresh nothing
 _reload(material_converter)
 _reload(nodes)
 _reload(thumbs)
-_reload(tile_icons)
-# Before gradient_library (tile icons for gradients) and before the
-# Node Info dialog, whose facts it reads.
-# BEFORE library and its siblings: they mix in GridColumnsMixin and
-# read the shared column order from it, so a stale grid_columns means
-# the models answer a stale set of columns while the header answers
-# the new one.
-_reload(grid_columns)
+_reload(tile_icons)    # before gradient_library and the Node Info dialog, which read its facts
+_reload(grid_columns)    # BEFORE library and its siblings: they mix in GridColumnsMixin, so a stale one has the models answering old columns while the header answers new
 _reload(library)
 _reload(category)
 _reload(repair)
 _reload(folders)
 _reload(prefs)
-# Before ui_helpers - its class bodies read theme colors.
-_reload(theme)
-# FIRST: everything below reads its constants, and a stale branding is
-# how adding APP_VERSION produced 38 unhandled AttributeErrors in a
-# live session - the dialog reloaded, branding did not.
-_reload(branding)
+_reload(theme)    # before ui_helpers, whose class bodies read theme colours
+_reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
 _reload(ui_helpers)
 _reload(helpers)
 _reload(texture_library)
 _reload(gradient_library)
-# After library/category so its subclasses bind to the freshly
-# reloaded material classes.
-_reload(cop_library)
-# After texture_library - geo_library reuses its ThumbnailCache/proxy.
-_reload(geo_library)
+_reload(cop_library)    # after library/category, so its subclasses bind to the freshly reloaded material classes
+_reload(geo_library)    # after texture_library, whose ThumbnailCache/proxy it reuses
 _reload(scene_captures)
-# After texture/geo/hip - file_library composes all three engines.
-_reload(file_library)
-# Before code_library/code_dialog - both consume its palette/tokenizer.
-_reload(vex_syntax)
-# After library/category - subclasses the material machinery.
-_reload(code_library)
+_reload(file_library)    # after texture/geo/hip: it composes all three engines
+_reload(vex_syntax)    # before code_library/code_dialog, which consume its palette and tokenizer
+_reload(code_library)    # after library/category: it subclasses the material machinery
 
-# base_dialog FIRST: it is the shared base class of every form dialog,
-# and gradient_dialog does `from amaze.dialogs.base_dialog import
-# AssetDialog` - the one from-import of a CLASS in the package - so
-# reloading gradient_dialog without reloading this first re-binds the
-# SAME stale class. Verified: AssetDialog's identity was unchanged
-# across a panel reopen, so editing base_dialog.py needed a full
-# Houdini restart.
-_reload(base_dialog)
+_reload(base_dialog)    # FIRST of the dialogs: gradient_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
 _reload(prefs_dialog)
 _reload(usd_dialog)
 _reload(icon_dialog)
@@ -167,83 +111,33 @@ _reload(gradient_dialog)
 _reload(code_dialog)
 _reload(user_dialog)
 _reload(dragdrop_widgets)
-# BEFORE sections, which imports it: the Grid area's builder and its
-# ListColumns are read by every section's menu table, so a stale grid
-# module means a panel reopen serves the old menu code while the
-# sections around it get the new - the mixed-modules state the live
-# test loop exists to avoid.
-_reload(grid)
+_reload(grid)    # BEFORE sections, which imports it: every section's menu table reads the Grid area's builder and ListColumns
 _reload(sidebar)
 _reload(sections)
-# After grid AND sections: it imports the first and reads the second's
-# EMPTY declarations.
-_reload(empty_state)
+_reload(empty_state)    # after grid AND sections: it imports the first and reads the second's EMPTY declarations
 _reload(notes_panel)
 _reload(multifilterproxy_model)
-# The online stack was never in the chain at all - a panel reopen
-# kept serving its cached pre-sync code.
-_reload(matx_sources)
+_reload(matx_sources)    # the online stack, which was never in this chain at all
 _reload(matx_translate)
 _reload(matx_icon)
 _reload(matx_import)
 _reload(matx_library)
-# Reachable from the panel (gallery_import from the Online menu,
-# generator from the material generator) and both were missing from
-# this chain, so editing either did nothing until a Houdini restart -
-# the exact bug class that produced 38 unhandled AttributeErrors when
-# branding was left out (log #285).
-_reload(gallery_import)
+_reload(gallery_import)    # reachable from the Online menu, and missing here meant editing it did nothing until a full restart
 _reload(generator)
 
 
 
-# The two item delegates (610 lines of pure painting) live in
-# panel/delegates.py. They are re-exported here because every section
-# constructs them by these names, and because the reload chain below
-# owns module reloading for the whole panel.
-from amaze.panel import delegates            # noqa: E402
+from amaze.panel import delegates            # noqa: E402 - re-exported below because every section constructs them by these names
 
 _reload(delegates)
-# Houdini caches modules per session: a delegates.py left out of this
-# chain would keep painting yesterday's tiles after a panel reopen.
 AssetItemDelegate = delegates.AssetItemDelegate
 
-#: When THIS execution of the module body began - so the reload chain
-#: above can be measured. Deliberately NOT reload-survival state: the
-#: point is to time the chain that just ran, and every panel open runs
-#: it again. Reported once, in the "panel ready" record.
-#:
-#: The debug span used to open inside the constructor and close before
-#: the widget was ever shown, so it could see neither phase a person
-#: actually waits through - the import + chain before it, and the show
-#: + first paint after it. Both are bracketed now.
-_BODY_T0 = time.perf_counter()
+_BODY_T0 = time.perf_counter()    #: when THIS module body began, so the chain above can be timed; NOT reload-survival state, every open runs it again
 
-#: The sentinel a mixed multi-selection shows in the details form;
-#: set_assetdata reads it as the instruction to leave that field
-#: alone. ONE home (material.py) - it is compared against, so a
-#: second spelling is a silent overwrite; the source scan in
-#: test_library keeps this the only one.
-MULTIPLE_VALUES = material.MULTIPLE_VALUES
+MULTIPLE_VALUES = material.MULTIPLE_VALUES    #: the mixed-multi-selection sentinel, ONE home in material.py because it is compared against and a second spelling is a silent overwrite
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
-#: THE PANEL'S WIDTH FLOOR. ONE CONSTANT, deliberately not a computed
-#: one: an earlier round grew this while Comments was open, and a floor
-#: that moves under the user is worse than a narrow grid. Text in a
-#: squeezed grid gets cut, and that is accepted.
-#:
-#: THE GRID PANE CARRIES NO MINIMUM, and that is not an oversight: a
-#: child minimum propagates into the window's own, so flooring the grid
-#: grew the floor whenever Comments opened - the same moving floor by
-#: another route.
-#:
-#: Earned by measurement (research.md ▸ WHAT A SQUEEZED PANEL ACTUALLY
-#: LEAVES THE GRID): the splitter left the grid viewport 48px wide,
-#: narrower than one tile, inside a 537px panel.
-#:
-#: Design pixels, scaled through `theme.ui_px` at the point of use like
-#: every other size in the panel.
-MIN_PANEL_WIDTH = 500
+MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use. ONE constant, never computed: a floor that moves under the user is worse than a narrow grid, and THE GRID PANE CARRIES NO MINIMUM because a child minimum propagates into the window's own ▸r/qt-windows-macos
 
 
 
@@ -253,15 +147,9 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def __init__(self) -> None:
         super(MatLibPanel, self).__init__()
-        # Stamped before any work, so "panel ready" can report the two
-        # spans separately: everything the module body did before this
-        # point, and the construction itself.
-        self._construct_t0 = time.perf_counter()
+        self._construct_t0 = time.perf_counter()    # stamped before any work, so "panel ready" can report the two spans separately: everything the module body did before this point, and the construction itself
         self._first_show_logged = False
-        # Arm the always-on crash recorder before anything else, so a
-        # failure during construction lands in the log even with Debug
-        # Mode off (see core/debug.py).
-        debug.install()
+        debug.install()    # arm the always-on crash recorder before anything else, so a failure during construction lands in the log even with Debug Mode off (see core/debug.py)
         try:
             self._build()
         except Exception as exc:
@@ -269,36 +157,19 @@ class MatLibPanel(QtWidgets.QWidget):
             raise
 
     def _build(self) -> None:
-        # Initialize
-        # The package locates its own bundled files ONE way.
-        self.script_path = amaze.PACKAGE_ROOT
+        self.script_path = amaze.PACKAGE_ROOT    # the package locates its own bundled files ONE way
         self.prefs = prefs.Prefs()
 
-        # load() returns False merely because the library DIRECTORY is
-        # missing - the preferences object is populated either way. The
-        # debug engine, the settings snapshot (the designated restore
-        # source) and the cache override must therefore run on BOTH
-        # paths: the session right after a settings loss is exactly the
-        # one whose record matters most.
-        loaded = self.prefs.load()
-        # Configured before anything else runs: a crash during
-        # setup() is precisely the case a debug log has to survive.
-        debug.configure(self.prefs.debug_mode)
+        loaded = self.prefs.load()    # False means only that there was nothing usable on disk - no settings.json, an unreadable one, or a library directory that is gone - and the preferences object is populated either way, so the debug engine, the settings snapshot (the designated restore source) and the cache override must all run on BOTH paths: the session right after a settings loss is exactly the one whose record matters most
+        debug.configure(self.prefs.debug_mode)    # configured before anything else runs: a crash during setup() is precisely the case a debug log has to survive
         debug.prefs_snapshot(self.prefs)
-        # Custom thumbnail-cache location, before any cache is
-        # touched - everything downstream resolves hostos.cache_root().
-        hostos.set_cache_override(self.prefs.cache_dir)
+        hostos.set_cache_override(self.prefs.cache_dir)    # custom thumbnail-cache location, set before any cache is touched - everything downstream resolves hostos.cache_root()
         if loaded:
             self.init_ui()
-            # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK. The
-            # narrow catch below absorbs exactly one situation - the
-            # primary index is on disk and will not parse - and offers
-            # the repair the shelf tool would run. Everything else
-            # still raises where it can be seen.
             try:
                 self.load()
                 self.setup()
-            except (ValueError, OSError) as broken:
+            except (ValueError, OSError) as broken:    # AN UNREADABLE INDEX GETS A DIALOG, NOT A TRACEBACK: this narrow catch absorbs exactly one situation - the primary index is on disk and will not parse - and offers the repair the shelf tool would run. Everything else still raises where it can be seen
                 index_path = os.path.join(self.prefs.dir or "",
                                           "library.json")
                 try:
@@ -313,17 +184,9 @@ class MatLibPanel(QtWidgets.QWidget):
                         return
                 else:
                     raise
-            # Construction-complete tripwire: written seconds after the
-            # session header through the same engine. A log whose header
-            # exists but whose 'panel ready' is missing means logging
-            # died DURING construction - see debug.probe().
-            debug.event(
+            debug.event(    # construction-complete tripwire, through the same engine as the session header: a log whose header exists but whose 'panel ready' is missing means logging died DURING construction - see debug.probe()
                 "session", "panel ready",
-                # The two spans the old record could not see. Module
-                # body = the import + the 50-module reload chain that
-                # runs before construction can start; construction =
-                # what "session start -> panel ready" always measured.
-                module_body_ms=round(
+                module_body_ms=round(    # module body = the import plus the 50-module reload chain that runs before construction can start; construction = what "session start -> panel ready" always measured
                     (self._construct_t0 - _BODY_T0) * 1000, 1),
                 construction_ms=round(
                     (time.perf_counter() - self._construct_t0) * 1000, 1),
@@ -333,32 +196,18 @@ class MatLibPanel(QtWidgets.QWidget):
             self._open_libraryless()
 
     def _open_libraryless(self) -> None:
-        """The no-library shape of the panel: every model attribute
-        present and None, so the gear (the only way to configure a
-        library) and every guard keep working."""
+        """The no-library shape of the panel: every model attribute present and None, so the gear (the only way to configure a library) and every guard keep working"""
         self.material_model = None
         self.category_model = None
-        # The same unconfigured defaults for the Cop stack -
-        # save_cop_from_node (reachable from a node right-click at
-        # any time) guards on cop_model, and without this the guard
-        # itself would raise AttributeError.
-        self.cop_model = None
+        self.cop_model = None    # the Cop stack gets the same unconfigured defaults: save_cop_from_node is reachable from a node right-click at any time and guards on cop_model, so without this the guard itself raises AttributeError
         self.cop_category_model = None
         self.code_model = None
         self.code_category_model = None
-        # The File models too: show_prefs hands file_files_model to
-        # the Preferences dialog (which takes None), and Preferences
-        # is the ONLY way to configure a library - leaving the
-        # attribute unset made the gear an AttributeError on
-        # exactly the machine that needs it most, the first run.
-        self.file_files_model = None
+        self.file_files_model = None    # the File models too: show_prefs hands file_files_model to the Preferences dialog (which takes None), and Preferences is the ONLY way to configure a library, so an unset attribute makes the gear an AttributeError on the machine that needs it most - the first run
         self.file_folders_model = None
 
     def _offer_index_repair(self, broken) -> bool:
-        """The dialog an unreadable library.json earns: Repair (the
-        newest saved copy, else the per-asset recovery stamps) or
-        open without a library. True = repaired AND reopened. No
-        success dialog - the recovered grid is the announcement."""
+        """The dialog an unreadable library.json earns - Repair (the newest saved copy, else the per-asset recovery stamps) or open without a library. True = repaired AND reopened; no success dialog, the recovered grid is the announcement"""
         debug.exception("library index unreadable at open", broken)
         ui = getattr(hou, "ui", None)
         if ui is None:
@@ -405,61 +254,31 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.event("session", "index repaired at open", how=how)
         return True
 
-    # Menu title -> icon asset, each with a baked-in corner triangle as
-    # the "opens a menu" hint. The two were swapped from the original
-    # wireframe: the EYE belongs on the Filter menu, which is what you
-    # can see, while the 3D box suits the View menu,
-    # whose items are the library and the material sources. The gear
-    # (icon_library.svg) is not here: it is a plain ACTION button
-    # straight into Preferences, and its triangle was removed from the
-    # SVG - the Library menu's items live on the Preferences Library
-    # tab now.
-    MENU_ICON_FILES = {
+    MENU_ICON_FILES = {    # menu title -> icon asset, each with a baked-in corner triangle as the "opens a menu" hint. The EYE belongs on the Filter menu, which is what you can see, and the 3D box on the View menu, whose items are the library and the material sources. The gear (icon_library.svg) is NOT here: it is a plain ACTION button straight into Preferences, its triangle removed from the SVG, and the Library menu's items live on the Preferences Library tab
         "View": "icon_renderer.svg",
         "Filter": "icon_view.svg",
     }
 
     def _ui_icon_path(self, filename: str) -> str:
-        """An icon in ui/, or "" for no filename (callers degrade).
-
-        Through `ui_asset` like the badge art: a second join here
-        answered "" with $AMAZE unset. ▸p/adoption
-        """
+        """An icon in ui/, or "" for no filename (callers degrade) - resolved through `ui_asset` like the badge art, never a path join of its own. ▸p/adoption"""
         if not filename:
             return ""
         return ui_helpers.ui_asset(filename)
 
     def _make_menu_button(self, menu: QtWidgets.QMenu) -> "ui_helpers.IconMenuButton":
-        """Stands in for a real QMenuBar item - QMainWindow reserves a
-        dedicated dock area for its menu bar that can't share a row with
-        other widgets, so the real menu bar (self.menu) stays alive and
-        owns these QMenu objects but is hidden; this opens the same
-        QMenu instance from an icon button instead (IconMenuButton in
-        ui_helpers.py - hand-painted chips, tinted icon)."""
+        """Opens `menu` from an icon button, standing in for a real QMenuBar item: QMainWindow reserves its menu bar a dock area that cannot share a row with other widgets, so the real menu bar (self.menu) stays alive and owns these QMenu objects but is hidden, and the button pops the same QMenu instance"""
         icon_path = self._ui_icon_path(
             self.MENU_ICON_FILES.get(menu.title(), "")
         )
         button = ui_helpers.IconMenuButton(menu, icon_path)
-        # A STABLE identity for this widget, independent of whether any
-        # panel attribute happens to hold it. These buttons are held by
-        # the layout alone, so a toolbar-row test could only call them
-        # all "IconMenuButton" - three interchangeable entries, and
-        # swapping Renderer and View ON SCREEN passed every layout test
-        # in the suite. Exactly the ui_snapshot failure practice.md
-        # records: unnamed siblings collapsed onto one key, so deleting
-        # one of three toolbar buttons was invisible.
-        button.setObjectName(
+        button.setObjectName(    # a STABLE identity, independent of whether any panel attribute happens to hold the button: these are held by the layout alone, so unnamed they would collapse onto ONE ui_snapshot key - interchangeable "IconMenuButton" entries, where swapping two of them on screen passes every layout test and deleting one is invisible
             "btn_menu_" + "".join(
                 c for c in menu.title().lower() if c.isalnum())
         )
         return button
 
     def setup(self):
-        # UNSORTED, all four sidebar proxies: the stored list order IS
-        # the sidebar order (manual, drag-to-reorder - 2026-08-14).
-        # The name sort put "_All" below any digit-named category; the
-        # proxy now presents source order (probed) and only filters.
-        self.category_model = category.Categories(preferences=self.prefs)
+        self.category_model = category.Categories(preferences=self.prefs)    # UNSORTED, all four sidebar proxies: the stored list order IS the sidebar order, manual and drag-to-reorder. A name sort put "_All" below any digit-named category; the proxy presents source order (probed) and only filters
         self.category_sorted_model = category.CategoriesSidebarProxy()
         self.category_sorted_model.setSourceModel(self.category_model)
         self.category_sorted_model.hide_empty = self.prefs.hide_empty_categories
@@ -481,36 +300,14 @@ class MatLibPanel(QtWidgets.QWidget):
             favorite_role=self.material_model.FavoriteRole,
             tag_role=self.material_model.TagRole,
             licence_role=self.material_model.LicenceRole,
-            # The Nodes and Code sections share this delegate (one grid
-            # view, models swapped) - and share the role NUMBER, since
-            # both models subclass MaterialLibrary. So one wiring here
-            # colours all three.
-            category_color_role=self.material_model.CategoryColorRole,
+            category_color_role=self.material_model.CategoryColorRole,    # Nodes and Code share this delegate (one grid view, models swapped) and share the role NUMBER, both models subclassing MaterialLibrary, so one wiring here colours all three
             versions_role=self.material_model.VersionsRole,
             notes_role=self.material_model.NotesRole,
             active_version_role=self.material_model.ActiveVersionRole,
         )
-        # A click on the chevrons badge opens the versions dialog; the
-        # delegate only detects the hit, the panel owns the dialog.
-        self.thumb_delegate.set_versions_click(self._open_versions_dialog)
+        self.thumb_delegate.set_versions_click(self._open_versions_dialog)    # a click on the chevrons badge opens the versions dialog: the delegate only detects the hit, the panel owns the dialog
 
-        # NODE AND CODE GET THEIR OWN, WITHOUT THE VERSION ROLES.
-        # They used to borrow thumb_delegate outright, and
-        # `grid.sync_table_columns` decides a column EXISTS from the active
-        # delegate's roles - so both painted a "Version" column reading
-        # "none" on every row, floored at the width of "Version 99",
-        # pushing Tags and License right. Worse and latent: editorEvent
-        # and _sync_versions_hover run against the same delegate there,
-        # and _open_versions_dialog maps its index through the MATERIAL
-        # proxy and indexes material_model.assets - so the moment a
-        # Node or Code asset grows a versions ledger, a badge click
-        # opens (and can switch) an unrelated MATERIAL, with row -1
-        # indexing the last asset.
-        #
-        # overview.md §2 and ListColumnHeader.COLUMNS both already say
-        # "Version is materials-only and Open is File-only, so the two
-        # are never in one row". This is what delivers it.
-        self.asset_delegate = AssetItemDelegate(
+        self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
             self.material_model.RendererLabelRole,
             self.thumblist,
             category_role=self.material_model.CategoryRole,
@@ -521,13 +318,7 @@ class MatLibPanel(QtWidgets.QWidget):
             notes_role=self.material_model.NotesRole,
         )
 
-        # The File section (the 2026-07-31 merge of Images, Geometry
-        # and HIP): one folder-pointer list (plus the synthetic "All"
-        # row) and a live, non-persisted listing of EVERY file in the
-        # selected folder, each row behaving as its kind. Filtered
-        # through TextureFilterProxyModel for the search box /
-        # favorites-only star. See core/file_library.py.
-        self.file_folders_model = file_library.FileFolders(self.prefs)
+        self.file_folders_model = file_library.FileFolders(self.prefs)    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered through TextureFilterProxyModel for the search box and favourites star; see core/file_library.py
         self.file_files_model = file_library.FileFiles(self.prefs)
         self.file_sorted_model = texture_library.TextureFilterProxyModel()
         self.file_sorted_model.setSourceModel(self.file_files_model)
@@ -544,37 +335,19 @@ class MatLibPanel(QtWidgets.QWidget):
             crop_role=self.file_files_model.CropRole,
             notes_role=self.file_files_model.NotesRole,
         )
-        # The accent sweep for the tile delegates runs at the END of
-        # setup(): tile_delegates() derives from self.sections, which
-        # do not exist yet here - a sweep at this point walks an empty
-        # tuple, which left every subtitle on the class default until
-        # Preferences was opened once.
-        # The "Type" header label follows the same accent as the type
-        # entries the delegates paint.
-        # The star preference colours the NOTES surfaces (chip lit +
-        # pane accent); the tile badges render as drawn since the
-        # unified family of 2026-08-01 and take no colour push.
-        self._sync_notes_button_pixmaps()
+        self._sync_notes_button_pixmaps()    # the star preference colours the NOTES surfaces (chip lit + pane accent); tile badges render as drawn and take no colour push. The accent sweep for the tile delegates runs at the END of setup() instead, because tile_delegates() derives from self.sections, which do not exist yet here - a sweep at this point walks an empty tuple. The "Type" header label follows the same accent as the type entries the delegates paint
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         self.file_files_model.progress_changed.connect(
             lambda done, total: self._on_folder_progress(
                 "file", done, total))
 
-        # v2: Gradients section - Sanzo Wada's color combinations as
-        # curated, read-only content (see core/gradient_library.py).
-        # Painted thumbnails, no files/workers, so the model trio is all
-        # there is to set up.
-        self.gradient_model = gradient_library.GradientLibrary(
+        self.gradient_model = gradient_library.GradientLibrary(    # the Gradients section is Sanzo Wada's colour combinations as curated, read-only content: painted thumbnails, no files and no workers, so the model trio is all there is to set up (core/gradient_library.py)
             preferences=self.prefs)
         self.gradient_categories_model = gradient_library.GradientCategories(
             preferences=self.prefs
         )
-        # The SAME proxy class as the other three sidebars, unsorted
-        # like them (2026-08-14). Color showing its model bare was the
-        # last odd-one-out pipeline; nothing hides here (no renderer
-        # filter is ever pushed), the unification is the point.
-        self.gradient_category_sorted_model = category.CategoriesSidebarProxy()
+        self.gradient_category_sorted_model = category.CategoriesSidebarProxy()    # the SAME proxy class as the other three sidebars and unsorted like them; Colors showing its model bare was the last odd-one-out pipeline. Nothing hides here - no renderer filter is ever pushed - and the unification is the point
         self.gradient_category_sorted_model.setSourceModel(
             self.gradient_categories_model)
         self.gradient_category_sorted_model.hide_empty = (
@@ -591,19 +364,9 @@ class MatLibPanel(QtWidgets.QWidget):
             category_color_role=self.gradient_model.CategoryColorRole,
             favorite_role=self.gradient_model.FavoriteRole,
             notes_role=self.gradient_model.NotesRole,
-        )
-        # (No per-delegate accent set here: the one sweep at the end of
-        # setup() covers every tile delegate - a hand-set on this one
-        # masked the dead early sweep for exactly one of five.)
+        )    # no per-delegate accent is set here: the one sweep at the end of setup() covers every tile delegate, and a hand-set on this one masked the dead early sweep for exactly one of five
 
-        # v2: Cop section - standalone COP-network assets. A second,
-        # fully independent material-style stack over its own cops.json
-        # database (see core/cop_library.py); mirrors the material
-        # model/proxy/selection construction above exactly. It uses
-        # `asset_delegate`, NOT thumb_delegate: it did borrow that one
-        # until the version roles were split out above, and this comment
-        # went on saying so for two days.
-        self.cop_model = cop_library.CopLibrary(preferences=self.prefs)
+        self.cop_model = cop_library.CopLibrary(preferences=self.prefs)    # the Cop section is standalone COP-network assets: a second, fully independent material-style stack over its own cops.json (core/cop_library.py), mirroring the material model/proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
         self.cop_category_model = cop_library.CopCategories(preferences=self.prefs)
         self.cop_category_sorted_model = category.CategoriesSidebarProxy()
         self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
@@ -616,10 +379,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cop_sorted_model.setDynamicSortFilter(False)
         self.cop_selection_model = QtCore.QItemSelectionModel(self.cop_sorted_model)
 
-        # v2: Code section - reusable snippets over its own code.json
-        # (see core/code_library.py). Same material machinery as COP,
-        # storing snippet text inline and painting a code preview.
-        self.code_model = code_library.CodeLibrary(preferences=self.prefs)
+        self.code_model = code_library.CodeLibrary(preferences=self.prefs)    # the Code section is reusable snippets over its own code.json (core/code_library.py): the same material machinery as COP, storing snippet text inline and painting a code preview
         self.code_category_model = code_library.CodeCategories(
             preferences=self.prefs
         )
@@ -633,30 +393,16 @@ class MatLibPanel(QtWidgets.QWidget):
         self.code_sorted_model.sort(0)
         self.code_sorted_model.setDynamicSortFilter(False)
         self.code_selection_model = QtCore.QItemSelectionModel(self.code_sorted_model)
-        # Seed the curated content once per library - the snippets AND
-        # the palettes, through one door that a library switch also
-        # takes, so a virgin library seeds whichever way it arrives.
-        self._seed_curated_content()
+        self._seed_curated_content()    # seeds the snippets AND the palettes once per library, through one door a library switch also takes, so a virgin library seeds whichever way it arrives
 
-        # Multi-category was removed: collapse every asset to a single
-        # category (its first). Idempotent, so this one-time migration
-        # just no-ops on every subsequent launch.
-        for _model in (self.material_model, self.cop_model, self.code_model):
+        for _model in (self.material_model, self.cop_model, self.code_model):    # multi-category was removed, so every asset collapses to its first category; idempotent, so this one-time migration no-ops on every subsequent launch
             try:
                 _model.collapse_multicategory()
             except Exception as exc:
-                # event, not note, for all four panel sites: the panel's
-                # user-facing channel here is a dialog (the geometry
-                # import below raises one), and each of these lines is an
-                # internal fallback the user cannot act on.
-                debug.event("session", "category collapse failed",
+                debug.event("session", "category collapse failed",    # event, not note, at all four panel sites: the panel's user-facing channel here is a dialog, and each of these lines is an internal fallback the user cannot act on
                             error=str(exc))
 
-        # v2: online MaterialX browser. Not a section - a VIEW MODE over
-        # the Materials grid (View menu > Online Materials). Uses the
-        # same role numbers as MaterialLibrary, so the existing delegate
-        # and filter proxy serve it unchanged.
-        self.matx_online_model = matx_library.MatxOnlineLibrary(
+        self.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser is NOT a section but a VIEW MODE over the Materials grid (View > Online Materials); it uses the same role numbers as MaterialLibrary, so the existing delegate and filter proxy serve it unchanged
             preferences=self.prefs
         )
         self.matx_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
@@ -670,48 +416,22 @@ class MatLibPanel(QtWidgets.QWidget):
         self.matx_source_model = matx_library.MatxSidebarModel(
             self.matx_online_model
         )
-        # THE ONLINE WORLD GETS ITS OWN, WITH ONLY THE ROLES ITS MODEL
-        # HAS. matx_library exposes seven roles and none of them is
-        # licence, versions, notes or category colour - so borrowing a
-        # local delegate gave the online grid columns that can never
-        # carry a value on any row, and `grid.sync_table_columns` decides a
-        # column EXISTS from the active delegate's roles. Same defect
-        # shape as Node and Code borrowing the Materials delegate, one
-        # world over.
-        self.matx_delegate = AssetItemDelegate(
+        self.matx_delegate = AssetItemDelegate(    # the online world gets its own delegate, with only the roles its model has: matx_library exposes seven and none is licence, versions, notes or category colour, so borrowing a local delegate gave the online grid columns that can never carry a value on any row. Same defect shape as Node and Code borrowing the Materials delegate, one world over
             self.matx_online_model.RendererLabelRole,
             self.thumblist,
             category_role=self.matx_online_model.CategoryRole,
             favorite_role=self.matx_online_model.FavoriteRole,
             tag_role=self.matx_online_model.TagRole,
         )
-        # Preview downloads drive the same thin bar as texture/geo thumbs.
-        self.matx_online_model.progress_changed.connect(
+        self.matx_online_model.progress_changed.connect(    # preview downloads drive the same thin bar as texture/geo thumbs
             self._on_online_preview_progress
         )
         self.online_mode = False
         self.online_source = None
-        #: The online world, as a context object with a Section's
-        #: interface. NOT in `sections` and not in `enabled_sections` -
-        #: it is a parallel world, not a section - but every area path
-        #: reaches it through `_section()` like any other.
-        self.online_context = sections.OnlineContext(self)
-
-        # THE COLUMN MEMO IS GONE, and these six connections with it.
-        # They kept a hand-built measure-and-fit fresh as filters,
-        # renames and folder changes altered what was shown - including
-        # the online grid, which was once left out and showed a few
-        # hundred names elided into a 120px floor. `ResizeToContents`
-        # on the table's own header is what does it now, per column,
-        # and Qt keeps it fresh without being told (2026-08-04).
+        self.online_context = sections.OnlineContext(self)    # the online world as a context object with a Section's interface. NOT in `sections` and not in `enabled_sections` - it is a parallel world, not a section - but every area path reaches it through `_section()` like any other
 
         self.material_selection_model.selectionChanged.connect(self.update_details_view)
-        # Keyboard selection moves reach the Notes pane too - every
-        # section's selection model, guarded inside the handler (a
-        # no-op while the pane is hidden, and it reads only the ACTIVE
-        # section's current index). Connected HERE because the models
-        # are built in setup(), after init_ui.
-        for _notes_selection in (
+        for _notes_selection in (    # keyboard selection moves reach the Notes pane too, every section's selection model, guarded inside the handler: a no-op while the pane is hidden, and it reads only the ACTIVE section's current index. Connected HERE because the models are built in setup(), after init_ui
             self.material_selection_model,
             self.cop_selection_model,
             self.code_selection_model,
@@ -721,30 +441,14 @@ class MatLibPanel(QtWidgets.QWidget):
             _notes_selection.selectionChanged.connect(
                 self._refresh_notes_subject)
 
-        # The section registry: one object per tab, each encapsulating how
-        # it drives the shared widgets (activate/filter/favourites/
-        # category-select/double-click). The shared handlers dispatch to
-        # self._section() instead of branching on current_section - a new
-        # section is a new class in panel/sections.py, not edits here.
-        self.sections = sections.build_sections(self)
+        self.sections = sections.build_sections(self)    # the section registry: one object per tab, each encapsulating how it drives the shared widgets (activate/filter/favourites/category-select/double-click). Shared handlers dispatch to self._section() instead of branching on current_section, so a new section is a new class in panel/sections.py, not edits here
 
-        # The press-hold sidebar reorder - one controller for the one
-        # sidebar list, asking whichever context is active. Parented
-        # to cat_list, so it dies with the widget.
-        self.sidebar_reorder = sidebar.SidebarReorder(self)
+        self.sidebar_reorder = sidebar.SidebarReorder(self)    # the press-hold sidebar reorder: one controller for the one sidebar list, asking whichever context is active, parented to cat_list so it dies with the widget
 
-        # Tile subtitle line follows the accent preference for EVERY
-        # tile delegate (instance attribute shadows the class default;
-        # refreshed again in show_prefs() when the accent changes).
-        # AFTER build_sections, deliberately: tile_delegates() derives
-        # from the sections, so any earlier sweep walks an empty tuple.
-        for tile_delegate in self.tile_delegates():
+        for tile_delegate in self.tile_delegates():    # the tile subtitle line follows the accent preference for EVERY tile delegate; the instance attribute shadows the class default and show_prefs() refreshes it when the accent changes. AFTER build_sections deliberately, because tile_delegates() derives from the sections and any earlier sweep walks an empty tuple
             tile_delegate.DIM = theme.accent(self.prefs.accent_color)
 
-        # Start on the first ENABLED section (usually Materials, but a
-        # user may have hidden it). Models all exist regardless of which
-        # tabs are shown.
-        first_key = next(
+        first_key = next(    # start on the first ENABLED section - usually Materials, but a user may have hidden it; the models all exist regardless of which tabs are shown
             (k for k, _ in self.ALL_SECTIONS if k in self.prefs.enabled_sections),
             "material",
         )
@@ -753,13 +457,8 @@ class MatLibPanel(QtWidgets.QWidget):
         else:
             self._on_tab_toggled(first_key, True)
         self.section_tabs.setChecked(first_key, emit=False)
-        # The Materials branch above does NOT go through _on_tab_toggled,
-        # so the toolbar sync every tab click gets never ran for the
-        # section the panel OPENS on - which is the one a user sees first.
-        self._sync_toolbar_for_mode()
-        # ...and the Filter menu belongs to the section that just
-        # opened, so it is filled here for the same reason.
-        self.build_filter_menu()
+        self._sync_toolbar_for_mode()    # the Materials branch above does NOT go through _on_tab_toggled, so the toolbar sync every tab click gets never ran for the section the panel OPENS on - the one a user sees first
+        self.build_filter_menu()    # and the Filter menu belongs to the section that just opened, so it is filled here for the same reason
         self.click_slider.setValue(grid.active_thumbsize(self))
         self.slide()
         self.apply_view_state()
@@ -774,23 +473,13 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             self.setup()
 
-        # THE SAME WALK EVERY OTHER SWITCH SITE USES. This was a
-        # hand-written copy with its own nested relayouts, and it is
-        # one of the three that between them carried seven of the
-        # eight library-backed models.
-        self.switch_all_models()
+        self.switch_all_models()    # THE SAME WALK every other switch site uses, never a copy of it
 
         debug.event("session", "library reloaded")
 
     @staticmethod
     def starter_would_overwrite(lib_dir: str) -> list:
-        """The evidence that `lib_dir` has HELD a library, or [].
-
-        One function, called by load() and by the test that proves
-        load() refuses - the first version of that test re-derived this
-        logic privately, so sabotaging the panel left it green: it was
-        testing its own copy, not the product.
-        """
+        """The evidence that `lib_dir` has HELD a library, or [] - ONE function, so load() and the test that proves load() refuses ask exactly the same question rather than two copies of it"""
         found = []
         evidence = database.absent_but_known(lib_dir, "library.json")
         if evidence:
@@ -802,36 +491,15 @@ class MatLibPanel(QtWidgets.QWidget):
         return found
 
     def load(self) -> None:
-        """Load the currently in preferences specified library
-        Copies necessary data to the target directory if not created yet"""
+        """Load the currently in preferences specified library, copying necessary data to the target directory if not created yet"""
         lib_dir = self.prefs.dir
         if not lib_dir or lib_dir == "/" or not os.path.isdir(lib_dir):
-            # No (or invalid) library directory set - the panel opens
-            # library-less and the Preferences Library tab sets one;
-            # copying the starter db against an empty dir once wrote
-            # to the filesystem root ("//library.json").
-            debug.event("session", "no library directory set",
+            debug.event("session", "no library directory set",    # no (or invalid) library directory set: the panel opens library-less and the Preferences Library tab sets one. The guard is load-bearing - copying the starter db against an empty dir once wrote to the filesystem root ("//library.json")
                         dir=lib_dir)
             return
         new_folder = False
         if not os.path.exists(self.prefs.dir + "/library.json"):
-            # ABSENT IS NOT EMPTY. This guarded on library.json alone,
-            # and any of the causes _refuse_absent exists for - a sync
-            # that has not finished arriving, a selective-sync hole, a
-            # network volume mid-mount - leaves a directory FULL of
-            # assets with a momentarily missing index. Seeding the
-            # starter over that turns a hiccup into a library whose next
-            # Clean would read every real file as unowned.
-            # database.absent_but_known is the same question the loaders
-            # ask, deliberately, so the two can never disagree.
-            #
-            # The starter seeds an EMPTY asset list. It shipped holding
-            # one blank record (id -1, no name, date -1) inherited from
-            # the fork, which meant every library ever created opened
-            # with a phantom asset that nothing removed and every save
-            # re-emitted; removed 2026-08-04, pinned by
-            # test_absent_database ▸ TheStarterSeedsNoAssetsTest.
-            held = self.starter_would_overwrite(self.prefs.dir)
+            held = self.starter_would_overwrite(self.prefs.dir)    # ABSENT IS NOT EMPTY: every cause _refuse_absent exists for - a sync that has not finished arriving, a selective-sync hole, a network volume mid-mount - leaves a directory FULL of assets with a momentarily missing index, and seeding the starter over that turns a hiccup into a library whose next Clean reads every real file as unowned. It asks database.absent_but_known, deliberately the same question the loaders ask, so the two can never disagree
             if held:
                 debug.event("session", "starter NOT seeded - the "
                             "directory has held a library",
@@ -855,20 +523,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     @staticmethod
     def ensure_library_dirs(preferences) -> bool:
-        """Make sure `img/` and `mat/` both exist. True if either was
-        created.
-
-        ASKED PER FOLDER, because they are created as a pair and were
-        guarded as one: `img/` missing beside a present `mat/` raised
-        `FileExistsError` out of the second `os.mkdir`, which `_build`
-        reads as a broken library and re-raises, so the panel refused
-        to open on a library that was fine. `mat/` missing beside a
-        present `img/` was never created at all.
-
-        `exist_ok=True` is what every other folder-creating site in
-        this package already uses; these two were the only bare
-        `os.mkdir` calls in it.
-        """
+        """Make sure `img/` and `mat/` both exist, ASKED PER FOLDER rather than guarded as a pair, and with `exist_ok=True` like every other folder-creating site in this package. True if either was created"""
         made = False
         for tail in (preferences.img_dir, preferences.asset_dir):
             folder = os.path.join(preferences.dir, tail)
@@ -878,41 +533,17 @@ class MatLibPanel(QtWidgets.QWidget):
         return made
 
     def set_library(self) -> None:
-        """
-        User Sets library via Menu Option so we have to reroute
-
-        """
-        # if not self.material_model or not self.category_model:
-        #   return
+        """User Sets library via Menu Option so we have to reroute"""
         if self.prefs.get_dir_from_user():
             self.prefs.load()
             self.load()
             if not self.material_model:
                 self.setup()
 
-            # Every library-backed model switches - leaving the Cop and
-            # Code stacks on the OLD library's data was a long-standing
-            # gap versus open()/show_prefs(), which always switched all
-            # four. Colors was the last one missing (2026-08-02): the
-            # only library-backed model in none of the three lists.
-            self.switch_all_models()
+            self.switch_all_models()    # EVERY library-backed model switches, not just the Materials pair
 
     def library_models(self) -> tuple:
-        """EVERY library-backed model that exists right now, DERIVED
-        from the sections - the way `tile_delegates()` derives.
-
-        Each section declares its own in `library_model_attrs`, so a
-        section arriving with a model of its own joins by existing.
-        There were THREE hand-written lists here instead, each naming
-        seven models where there are eight: the Colors SIDEBAR
-        (`gradient_categories_model`) was in none of them, so a
-        library switch left it showing the previous library's
-        category names beside the new library's counts - every row
-        zero, and a rename aimed at the new library carrying the old
-        label. Five siblings had been added to those same three lists
-        over time, one at a time, which is what a hand-kept list
-        costs.
-        """
+        """EVERY library-backed model that exists right now, DERIVED from the sections the way `tile_delegates()` derives - each section declares its own in `library_model_attrs`, so a section arriving with a model of its own joins by existing"""
         found = []
         for section in getattr(self, "sections", {}).values():
             for attr in getattr(section, "library_model_attrs", ()):
@@ -922,15 +553,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return tuple(found)
 
     def switch_all_models(self) -> None:
-        """Re-point every library-backed model at `prefs.dir`.
-
-        THE ONE ROUTE ONTO ANOTHER LIBRARY, and now the one route
-        that re-points models at all: `open()` and `_prefs_closed()`
-        each carried their own copy of this walk, which is how a list
-        goes short without anything failing. A switch that skipped a
-        model left it serving the previous library with every save
-        refused (measured 2026-08-08 through the Test Library toggle).
-        """
+        """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
         models = self.library_models()
         if not models:
             return
@@ -938,18 +561,10 @@ class MatLibPanel(QtWidgets.QWidget):
             for m in models:
                 m.switch_model_data()
             self.click_slider.setValue(grid.active_thumbsize(self))
-        # A switch can land on a library nobody has opened before, and
-        # a virgin library gets its curated content however it arrives
-        # - the same door construction takes, marker-guarded, so an
-        # already-seeded library costs two stat calls.
-        self._seed_curated_content()
+        self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
 
     def _seed_curated_content(self) -> None:
-        """Seed the curated starters once per library: the Code
-        section's Toolbox snippets and the Colors section's palette
-        sets. One door for construction and the library switch.
-        getattr, not attribute reads - the libraryless shape leaves
-        model attributes None or absent."""
+        """Seed the curated starters once per library - the Code section's Toolbox snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
         code_model = getattr(self, "code_model", None)
         if code_model is not None:
             code_model.seed_starter_snippets(self.code_category_model)
@@ -966,12 +581,9 @@ class MatLibPanel(QtWidgets.QWidget):
         else:
             self.cat_wrapper.setVisible(False)
             self.action_catview.setChecked(False)
-        # Remember the choice across sessions
-        self.prefs.show_categories = self.action_catview.isChecked()
+        self.prefs.show_categories = self.action_catview.isChecked()    # remembered across sessions
         self.prefs.save()
-        # The chip IS this state - keep it in step whichever side moved
-        # (the action can still be toggled from code and from tests).
-        button = getattr(self, "btn_categories", None)
+        button = getattr(self, "btn_categories", None)    # the chip IS this state, so it is kept in step whichever side moved - the action can still be toggled from code and from tests
         if button is not None and button.isChecked() != (
                 self.action_catview.isChecked()):
             was = button.blockSignals(True)
@@ -991,8 +603,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.leave_online_world()
 
     def _sync_online_button_pixmaps(self) -> None:
-        """Amber when you are in the online world, the family blue when
-        you are not - the star's treatment, through the one engine."""
+        """Amber when you are in the online world, the family blue when you are not - the star's treatment, through the one engine"""
         button = getattr(self, "btn_online", None)
         if button is None:
             return
@@ -1003,8 +614,7 @@ class MatLibPanel(QtWidgets.QWidget):
                          theme.color_hex("star")})
 
     def _sync_categories_button_pixmaps(self) -> None:
-        """The chip's four states, in the toolbar icon family's own
-        tints - as drawn at rest, lit when hovered or on."""
+        """The chip's four states, in the toolbar icon family's own tints - as drawn at rest, lit when hovered or on"""
         button = getattr(self, "btn_categories", None)
         if button is None:
             return
@@ -1012,10 +622,7 @@ class MatLibPanel(QtWidgets.QWidget):
                        lighten_on_hover=False)
 
     def edit_material_info(self) -> None:
-        """Open the material info dialog for the current selection
-        (right-click "Edit Info"). update_details_view already keeps the
-        form populated from the selection, so this just shows/raises the
-        floating dialog."""
+        """Open the material info dialog for the current selection (right-click "Edit Info") - update_details_view already keeps the form populated from the selection, so this only shows and raises the floating dialog"""
         if not self.material_model:
             return
         self.update_details_view()
@@ -1031,14 +638,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.apply_view_mode()
 
     def bind_grid_views(self, proxy, selection, delegate) -> None:
-        """Point BOTH grid views at one context's model, proxy,
-        selection model and delegate.
-
-        Two views over one selection model is Qt's own arrangement and
-        it is what keeps list mode from doubling every area binding:
-        the four `activate()` bodies bind once, and neither view can
-        drift from the other because there is nothing to keep in step.
-        """
+        """Point BOTH grid views at one context's model, proxy, selection model and delegate - two views over ONE selection model is Qt's own arrangement, so a section's `activate()` binds once and neither view can drift from the other"""
         for view in (self.thumblist, getattr(self, "thumbtable", None)):
             if view is None:
                 continue
@@ -1047,104 +647,37 @@ class MatLibPanel(QtWidgets.QWidget):
                 view.setSelectionModel(selection)
         if delegate is not None:
             self.thumblist.setItemDelegate(delegate)
-            # THE TABLE DOES NOT WEAR THE TILE DELEGATE. That delegate
-            # paints a whole TILE per index, which is right where one
-            # index is one tile and catastrophic where a row is ten of
-            # them - the first render put ten tile-height cells side by
-            # side. Qt paints every text cell itself; only the picture
-            # and the tick columns get one, and they are per COLUMN.
-            grid.bind_table_cell_delegates(self, delegate)
+            grid.bind_table_cell_delegates(self, delegate)    # THE TABLE DOES NOT WEAR THE TILE DELEGATE: that one paints a whole TILE per index, right where an index is a tile and catastrophic where a row is ten of them. Qt paints every text cell itself; only the picture and the tick columns get a delegate, and those are per COLUMN
 
-    #: AIR EITHER SIDE OF A CELL'S TEXT - asked for 2026-08-04, on the
-    #: first table build. Without it a name starts hard against the
-    #: column line and the next column's first letter sits against the
-    #: end of the last one.
-    #:
-    #: ONE HOME, in the delegate that draws the cells. It is named here
-    #: because the header strip has to start its label where the rows
-    #: start theirs, and a second literal is how the two drift apart.
-    #: Two earlier routes are gone: a `QTableView::item` stylesheet,
-    #: which hands item drawing to `QStyleSheetStyle` and takes the
-    #: font, the selection blend and the selected-text colour with it;
-    #: and a `QProxyStyle` on `PM_FocusFrameHMargin`, which `setStyle`
-    #: does not own and nothing else keeps alive.
-    CELL_PAD = theme.ui_px(5)
-    #: The strip's own two colours and height, kept so the table
-    #: matches the painted header it replaced - a `QHeaderView` picks
-    #: up none of them on its own. The LABEL colour is not here: it is
-    #: the rows' ink, read from the delegate that paints them.
-    HEADER_BG = QtGui.QColor("#2a2a2a")
+    CELL_PAD = theme.ui_px(5)    #: air either side of a cell's text; ONE home, named here only because the header must start its label where the rows start theirs. NOT a `QTableView::item` sheet (that hands item drawing to QStyleSheetStyle and takes the font and selection colours with it) and not a QProxyStyle (setStyle does not own it)
+    HEADER_BG = QtGui.QColor("#2a2a2a")    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
     HEADER_DIVIDER = QtGui.QColor("#454545")
     HEADER_HEIGHT = theme.ui_px(20)
 
     def sync_list_columns(self) -> None:
-        """Re-fit list mode's columns for the context now showing.
-
-        THE SECTIONS' entry point, called from every `activate()`.
-        Named for what it does rather than for how: it used to be
-        `_update_list_columns`, a 259-line measure-and-fit over a
-        painted strip, and it is a column-visibility sync plus Qt's
-        own starting widths now (grid.sync_table_columns).
-        """
+        """Re-fit list mode's columns for the context now showing - THE SECTIONS' entry point, called from every `activate()`."""
         return grid.sync_table_columns(self)
 
-    #: A COLUMN'S STARTING WIDTH. Nothing is measured at runtime any
-    #: more - a fit costs 0.4ms sampled and 13.5ms over every row, and
-    #: it ran again on every change of the row set, which is what made
-    #: a big category slow to open.
-    #:
-    #: Derived once instead, offscreen, from the real 549-asset library
-    #: (2026-08-04): each is the wider of its HEADING and the 90th
-    #: percentile of the values in it, capped at 300 so one long Tags
-    #: entry cannot eat the row. The p90 rather than the maximum
-    #: because a column you can DRAG does not have to fit its worst
-    #: case - Tags reaches 851px on a single asset.
-    #:
-    #: There were no earlier tuned numbers to recover, which is worth
-    #: recording: the retired `ListColumns` was
-    #: `namedtuple("ListColumns", KEYS)` - names and no values - and
-    #: the only stored widths in the old machinery were
-    #: `LIST_FALLBACKS = {"name": 200, "type": 150}`, reached only when
-    #: measuring produced nothing. Measured p90 puts Name at 176.
-    COLUMN_DEFAULT_WIDTH = {
+    COLUMN_DEFAULT_WIDTH = {    #: starting widths, derived offscreen from the real library and never measured at runtime: a fit cost 13.5ms over every row and re-ran on every row-set change, which is what made a big category slow to open. Each is the wider of its heading and the p90 of its values, capped at 300 so one long Tags entry cannot eat the row
+
         "thumb": 24, "name": 176, "type": 59, "category": 76,
         "favorite": 69, "version": 66, "open": 54, "comments": 85,
         "tags": 300, "license": 287,
     }
 
-    #: The floor for ANY column: `minimumSectionSize` is global, not
-    #: per-column (Qt docs), so it cannot be used to give License a
-    #: minimum of its own. Small enough that a tick column is not
-    #: forced wide by it.
-    COLUMN_MIN_WIDTH = 24
+    COLUMN_MIN_WIDTH = 24    #: the floor for ANY column: `minimumSectionSize` is global rather than per-column, so License cannot be given one of its own; small enough that a tick column is not forced wide
 
     def apply_view_mode(self) -> None:
         grid.apply_view_mode(self)
-        # The other view is up now, so the blank re-attaches to ITS
-        # model - the two carry the same proxy today, and this does not
-        # rely on that staying true.
-        empty_state.track(self)
+        empty_state.track(self)    # the other view is up now, so the blank re-attaches to ITS model rather than relying on the two sharing a proxy
 
     def showEvent(self, event):
-        """Close the other half of the timing gap, once.
-
-        "panel ready" fires while the widget is still unparented and
-        unpainted: Houdini then shows it, Qt polishes it under the
-        Houdini stylesheet, lays it out and paints the first page of
-        tiles. None of that was measured, and it is the part a person
-        sits and watches. Recorded on the FIRST show only - reopening
-        a tab must not look like a fresh open - and after the event
-        loop turns once, so the number includes the first paint rather
-        than stopping just before it.
-        """
+        """Record construct-to-painted on the FIRST show only - reopening a tab must not look like a fresh open - and after the event loop turns once, so the number includes the first paint: "panel ready" fires while the widget is still unparented and unpainted, before Houdini shows it and Qt polishes it under the Houdini stylesheet, lays it out and paints the first page of tiles"""
         super(MatLibPanel, self).showEvent(event)
         if self._first_show_logged:
             return
         self._first_show_logged = True
-        # After the first paint, never during construction: a modal
-        # dialog raised from a half-built panel blocks the paint it is
-        # sitting on top of.
-        QtCore.QTimer.singleShot(0, self.ensure_library_user)
+        QtCore.QTimer.singleShot(0, self.ensure_library_user)    # after the first paint, never during construction: a modal dialog raised from a half-built panel blocks the paint it is sitting on top of
         t0 = getattr(self, "_construct_t0", None)
         if t0 is None:
             return
@@ -1158,19 +691,7 @@ class MatLibPanel(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, _record)
 
     def ensure_library_user(self, chooser=None) -> str:
-        """Ask WHICH user this machine is, if the library already has
-        some and this one is not among them.
-
-        Only that case asks (`users.ASK`): a library with nobody in it
-        mints silently, and a machine whose pointer already resolves is
-        never questioned. Cancelling is allowed and leaves no user, so
-        nothing is keyed under a blank this session and the question
-        comes back next time.
-
-        `chooser` takes `{uid: name}` and answers `(uid, new_name)`,
-        both empty for a cancel; it is an argument so the decision can
-        be driven without a dialog on screen.
-        """
+        """Ask WHICH user this machine is, and ONLY where the library already has some and this one is not among them (`users.ASK`): a library with nobody in it mints silently, a machine whose pointer already resolves is never questioned, and cancelling is allowed - it leaves no user, so nothing is keyed under a blank this session and the question comes back next time. `chooser` takes `{uid: name}` and answers `(uid, new_name)`, both empty for a cancel, so the decision can be driven without a dialog on screen"""
         preferences = self.prefs
         if users.first_run_state(preferences) != users.ASK:
             return users.current(preferences) or ""
@@ -1193,18 +714,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return uid
 
     def event(self, event):
-        """Flush the Comments pane when this panel is being DESTROYED.
-
-        Measured (Qt 6.8, offscreen): hiding or closing a window sends
-        a hide event to its children, so the pane's own hideEvent
-        covers those - but DELETING a parent sends its children
-        nothing at all. That is how a Houdini pane tab goes away, and
-        it left the last 600ms of typing (the save debounce) in a
-        widget about to stop existing.
-
-        DeferredDelete arrives while every widget is still alive, which
-        is what makes the pending page serializable here.
-        """
+        """Flush the Comments pane when this panel is being DESTROYED. Measured (Qt 6.8, offscreen): hiding or closing a window sends its children a hide event, which the pane's own hideEvent covers, but DELETING a parent sends its children nothing at all - and that is how a Houdini pane tab goes away, taking the last 600ms of typing (the save debounce) with it. DeferredDelete arrives while every widget is still alive, which is what makes the pending page serializable here"""
         if event.type() == QtCore.QEvent.Type.DeferredDelete:
             pane = getattr(self, "notes_panel", None)
             if pane is not None:
@@ -1212,16 +722,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return super(MatLibPanel, self).event(event)
 
     def eventFilter(self, watched, event):
-        """Hover tracking for the grid's version marks.
-
-        It also re-applied a list-mode row size on every viewport
-        resize. That went with the painted list: THE TABLE IS LIST
-        MODE now (grid.apply_view_mode), and `thumblist` is hidden the
-        whole time list mode is up - so the branch computed a grid
-        size, compared it, and set it on a widget nobody could see.
-        The table sizes its own rows and columns, in `grid.show_table`
-        and `grid.sync_table_columns`.
-        """
+        """Hover tracking for the grid's version marks, and nothing else: `thumblist` is hidden the whole time list mode is up, and the table sizes its own rows and columns in `grid.show_table` and `grid.sync_table_columns`"""
         if (getattr(self, "thumblist", None) is not None
                 and watched is self.thumblist.viewport()
                 and hasattr(self, "thumb_delegate")):
@@ -1232,14 +733,8 @@ class MatLibPanel(QtWidgets.QWidget):
         return False
 
     def _sync_versions_hover(self, point) -> None:
-        """Light the versions badge the cursor is on, and only that
-        one. Repaints ONLY when the answer changed - this runs on
-        every mouse move across the grid."""
-        # THE ACTIVE delegate, not thumb_delegate by name: Node and
-        # Code have their own now (no version roles), and hard-coding
-        # the Materials one meant this ran the versions hit-test and
-        # hover state against a delegate that is not the one painting.
-        delegate = self.thumblist.itemDelegate()
+        """Light the versions badge the cursor is on, and only that one. Repaints ONLY when the answer changed - this runs on every mouse move across the grid"""
+        delegate = self.thumblist.itemDelegate()    # THE ACTIVE delegate, never thumb_delegate by name: Node and Code have their own (no version roles), and hard-coding the Materials one runs the versions hit-test and hover state against a delegate that is not the one painting
         if not hasattr(delegate, "versions_badge_at"):
             return
         index = QtCore.QModelIndex()
@@ -1249,10 +744,8 @@ class MatLibPanel(QtWidgets.QWidget):
                     candidate,
                     self.thumblist.visualRect(candidate),
                     point,
-                    # The WIDGET's own answer, like the delegate's -
-                    # prefs.view_mode was a third proxy for one fact.
                     self.thumblist.viewMode()
-                    != QtWidgets.QListView.ViewMode.ListMode):
+                    != QtWidgets.QListView.ViewMode.ListMode):    # the WIDGET's own answer, like the delegate's - prefs.view_mode would be a third proxy for one fact
                 index = candidate
         previous = getattr(delegate, "_versions_hover", None)
         if delegate.set_versions_hover(index):
@@ -1266,18 +759,10 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
 
-    #: List mode's ONE size (2026-08-01). A list row is a text line,
-    #: not a picture, so it does not scale and its slider is greyed:
-    #: 16px of thumbnail under a ~30px row. `thumbsize_list` is still
-    #: written for older builds on the other machine, and no longer
-    #: read here.
-    LIST_THUMB_SIZE = 16
+    LIST_THUMB_SIZE = 16    # list mode's ONE size: a list row is a text line, not a picture, so it does not scale and its slider is greyed - 16px of thumbnail under a ~30px row. `thumbsize_list` is still WRITTEN for older builds on the other machine, and no longer read here
 
     def _sync_slider_for_mode(self) -> None:
-        """The slider drives GRID only. In list it is greyed - there
-        is one list size and nothing to choose - and its value is
-        parked at the minimum so the handle does not sit somewhere
-        that implies otherwise."""
+        """The slider drives GRID only: in list it is greyed - one list size, nothing to choose - and its value parked at the minimum so the handle does not sit somewhere that implies otherwise"""
         grid = self.prefs.view_mode != "list"
         self.click_slider.setEnabled(grid)
         self.click_slider.setToolTip(ui_helpers.tooltip_text(
@@ -1293,12 +778,7 @@ class MatLibPanel(QtWidgets.QWidget):
         """Central entry: persist and apply a view mode ('grid' or 'list')."""
         self.prefs.view_mode = mode
         self.prefs.save()
-        # Jump the slider to the new mode's own remembered size. If the
-        # value actually changes this fires slide(), which re-applies
-        # sizing/icons; the explicit apply_view_mode() below covers the
-        # equal-values case (setValue emits nothing then, but the view
-        # still has to restructure for the new mode).
-        self.click_slider.setValue(grid.active_thumbsize(self))
+        self.click_slider.setValue(grid.active_thumbsize(self))    # jump the slider to the new mode's own remembered size: if the value actually changes this fires slide(), which re-applies sizing and icons, and the explicit apply_view_mode() below covers the equal-values case, where setValue emits nothing but the view still has to restructure
         self.apply_view_mode()
 
     def on_viewmode_button(self, checked: bool) -> None:
@@ -1308,50 +788,26 @@ class MatLibPanel(QtWidgets.QWidget):
         self._set_view_mode("list" if checked else "grid")
 
     def _build_slider_and_layout(self) -> None:
-        """The size slider, the filter box's icon, and the panel's own layout.
-
-        Split out of init_ui, which built the whole panel in one
-        800-line method. Called from init_ui in the same order it
-        ran in - no local variable crosses this boundary.
-        """
-        self.click_slider.setMaximumWidth(theme.ui_px(200))
-        # The design's order is [Filter box] [slider] [star] [toggle]
-        # [menus], but this block runs after the star/toggle blocks -
-        # insert at the spot remembered right after the filter box was
-        # added. Both slider-side gaps are 20 (40px rendered each -
-        # up from the design rev's 10/6).
+        """The size slider, the filter box's icon, and the panel's own layout."""
+        self.click_slider.setMaximumWidth(theme.ui_px(200))    # the slider paints its own Houdini-22-style groove and handle in ClickSlider.paintEvent: QSS sub-page/add-page styling is unreliable for it (colours land on the correct side, the declared heights do not), so it draws itself deterministically and a stylesheet is not the way to change its look
         if self.toolbar_layout is not None:
-            idx = getattr(
+            idx = getattr(    # the design's order is [Filter box] [slider] [star] [toggle] [menus] but this block runs AFTER the star/toggle blocks, so the slider goes in at the spot remembered right after the filter box was added; both slider-side gaps are 20 design px
                 self, "_after_filter_index", self.toolbar_layout.count()
             )
             self.toolbar_layout.insertSpacing(idx, theme.ui_px(20))
             self.toolbar_layout.insertWidget(idx + 1, self.click_slider)
             self.toolbar_layout.insertSpacing(idx + 2, theme.ui_px(20))
-        # Debounce for persisting the per-mode icon size: slide() fires
-        # on every pixel of a drag, and settings.json lives in the
-        # cloud-synced install folder - write once, shortly after the
-        # drag settles, instead of dozens of times per second.
-        self._thumbsize_save_timer = QtCore.QTimer(self)
+        self._thumbsize_save_timer = QtCore.QTimer(self)    # debounce for persisting the per-mode icon size: slide() fires on every pixel of a drag and settings.json lives in the cloud-synced install folder, so write once shortly after the drag settles rather than dozens of times a second
         self._thumbsize_save_timer.setSingleShot(True)
         self._thumbsize_save_timer.setInterval(500)
         self._thumbsize_save_timer.timeout.connect(self.prefs.save)
         self.click_slider.valueChanged.connect(self.slide)
-        # Houdini-22-style look (groove/handle) is painted directly by
-        # ClickSlider.paintEvent - QSS sub-page/add-page styling proved
-        # unreliable (colors landed on the correct side, but the declared
-        # heights didn't) so this widget draws itself deterministically
-        # instead of relying on the style/stylesheet system for it.
 
-        # TEST: mirror the whole toolbar row to
-        # the left. All toolbar_layout additions are complete by this
-        # point (the slider insertion above is the last one).
-        self._mirror_toolbar()
+        self._mirror_toolbar()    # mirrors the whole toolbar row to the left, so every toolbar_layout addition must already be done - the slider insertion above is the last one
 
-        # RC Menus
         self.thumblist.customContextMenuRequested.connect(self.thumblist_rc_menu)
         self.cat_list.customContextMenuRequested.connect(self.catlist_rc_menu)
 
-        # set main layout and attach to widget
         mainlayout = QtWidgets.QVBoxLayout()
         mainlayout.addWidget(self.ui)
         mainlayout.setContentsMargins(0, 0, 0, 0)  # Remove Margins
@@ -1359,58 +815,21 @@ class MatLibPanel(QtWidgets.QWidget):
         self.setLayout(mainlayout)
 
     def _build_menus(self) -> None:
-        """The View and Renderer menus, and the toolbar buttons that own them.
-
-        Split out of init_ui, which built the whole panel in one
-        800-line method. Called from init_ui in the same order it
-        ran in - no local variable crosses this boundary.
-        """
+        """The View and Renderer menus, and the toolbar buttons that own them. Called from init_ui in the order it ran in; no local variable crosses this boundary."""
         self.menu.addMenu(self.menu_filter)
         if self.toolbar_layout is not None:
-            # Icon controls at the toolbar's right end, per the
-            # "ui_wireframe 2 only menu" design - order left to right:
-            # Filter (box, menu), View (eye, menu), Preferences (gear,
-            # outermost - a PLAIN button straight into Preferences; the
-            # Library menu it used to pop dissolved into the dialog's
-            # Library tab).
-            menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")
-            # The Comments chip joins the ICON FAMILY and stays that
-
-            # blue in all states, not white while on"; the state is
-            # carried by the chip's BACKGROUND. `_sync_notes_button_
-            # pixmaps` has the whole reasoning.
-            #
-            # It is built FIRST of the toolbar chips - Online, Filter,
-            # Categories and Capture follow it below - and the row is
-            # mirrored afterwards, so build order is not display order:
-            # read overview.md §2 for where it lands.
-            #
-            # This comment used to say the chip lights in the STAR's
-            # colour and that it is built just before the Renderer
-            # button. Both were true once and neither survived: the
-            # star-yellow lighting was removed WITH the yellow art, and
-            # btn_filter is built after this, not before.
-            self.btn_notes = ui_helpers.ChipToggleButton()
+            menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")    # icon controls at the toolbar's right end, left to right: Filter (box, menu), View (eye, menu), Preferences (gear, outermost - a PLAIN button straight into Preferences, the Library menu it used to pop having dissolved into the dialog's Library tab)
+            self.btn_notes = ui_helpers.ChipToggleButton()    # the Comments chip joins the ICON FAMILY and stays blue in ALL FOUR states, the state carried by the chip's BACKGROUND - `_sync_notes_button_pixmaps` has the reasoning. Built FIRST of the toolbar chips, with Online, Filter, Categories and Capture following, and the row is mirrored afterwards, so build order is NOT display order; overview.md §2 has where it lands
             self.btn_notes.setObjectName("btn_notes")
             self.btn_notes.setToolTip(ui_helpers.tooltip_text(
                 "Comments - a page of text and to-dos for the selected "
                 "tile"))
             self._sync_notes_button_pixmaps()
             self.btn_notes.setChecked(bool(self.prefs.show_notes))
-            # Connected AFTER the initial state, so restoring a saved
-            # "open" does not re-save preferences mid-construction.
-            self.btn_notes.toggled.connect(self._on_notes_toggled)
+            self.btn_notes.toggled.connect(self._on_notes_toggled)    # connected AFTER the initial state, so restoring a saved "open" does not re-save preferences mid-construction
             self.toolbar_layout.addWidget(self.btn_notes)
-            # Online, immediately LEFT of Comments once the row is
-            # mirrored - so it is added right after it here. The AMBER
-            # is the whole signal
-
-            # indicate your in a state" - which is the favourites
-            # star's pattern exactly, so it is built the same way, by
-            # the same engine, and does not lighten on hover because
-            # the colour is what carries the state.
             self.toolbar_layout.addSpacing(theme.ui_px(2))
-            self.btn_online = ui_helpers.ChipToggleButton()
+            self.btn_online = ui_helpers.ChipToggleButton()    # Online sits immediately LEFT of Comments once the row is mirrored, so it is added right after it here. The AMBER is the whole signal that you are in the other world - the favourites star's pattern exactly, so it is built the same way by the same engine, and does not lighten on hover because the colour is what carries the state
             self.btn_online.setObjectName("btn_online")
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
                 "Browse materials online."))
@@ -1419,11 +838,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.btn_online.toggled.connect(self._on_online_button)
             self.toolbar_layout.addWidget(self.btn_online)
             self.toolbar_layout.addSpacing(theme.ui_px(2))
-            # Held on self, unlike the other two menu buttons: this one
-            # is disabled online and its tooltip is rewritten on every
-            # section change, so the layout is no longer the only thing
-            # that needs to reach it.
-            self.btn_filter = self._make_menu_button(self.menu_filter)
+            self.btn_filter = self._make_menu_button(self.menu_filter)    # held on self, unlike the other two menu buttons: this one is disabled online and its tooltip is rewritten on every section change, so the layout is no longer the only thing that needs to reach it
             self.toolbar_layout.addWidget(self.btn_filter)
             if menu_view is not None:
                 self.toolbar_layout.addSpacing(theme.ui_px(2))
@@ -1438,28 +853,12 @@ class MatLibPanel(QtWidgets.QWidget):
                 on_click=self.show_prefs,
                 fallback_label="Preferences",
             )
-            # Named for the same reason as the two menu buttons above -
-            # nothing else can tell these three apart. Deliberately NOT
-            # also stored on self: the layout owns it, and adding an
-            # attribute is what made a toolbar test report a naming
-            # refactor as a layout defect.
-            btn_prefs.setObjectName("btn_prefs")
+            btn_prefs.setObjectName("btn_prefs")    # named for the same reason as the two menu buttons above - nothing else tells these three apart. Deliberately NOT also stored on self: the layout owns it, and adding an attribute is what made a toolbar test report a naming refactor as a layout defect
             btn_prefs.setToolTip(ui_helpers.tooltip_text(
                 "Open preferences."))
             self.toolbar_layout.addWidget(btn_prefs)
-            # Show Categories, promoted out of the View menu to a button
-
-            # because the row is mirrored at the end of construction, so
-            # the last widget added is the leftmost one drawn - this
-
-            # for it.
-            #
-            # It DRIVES action_catview rather than repeating it. The
-            # action already owns the behaviour and the persistence, and
-            # two paths to one preference is how a toggle ends up
-            # disagreeing with the thing it toggles.
             self.toolbar_layout.addSpacing(theme.ui_px(2))
-            self.btn_categories = ui_helpers.ChipToggleButton()
+            self.btn_categories = ui_helpers.ChipToggleButton()    # Show Categories, promoted out of the View menu to a button of its own. Added AFTER the gear because the row is mirrored at the end of construction, so the last widget added is the leftmost drawn. It DRIVES action_catview rather than repeating it: the action owns the behaviour and the persistence, and two paths to one preference is how a toggle ends up disagreeing with the thing it toggles
             self.btn_categories.setObjectName("btn_categories")
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
                 "Show the category sidebar."))
@@ -1469,13 +868,8 @@ class MatLibPanel(QtWidgets.QWidget):
             self.btn_categories.toggled.connect(
                 self._on_categories_button)
             self.toolbar_layout.addWidget(self.btn_categories)
-            # Capture, outermost - HIP only. Same button class and the
-            # same 2px gap as the cluster to its left, so it reads as
-            # one row rather than an afterthought bolted on the end.
-            # Hidden for every other section: it acts on the open SCENE,
-            # which is meaningless where the tiles are materials.
             self.toolbar_layout.addSpacing(theme.ui_px(2))
-            self.btn_hip_capture = ui_helpers.IconMenuButton(
+            self.btn_hip_capture = ui_helpers.IconMenuButton(    # Capture, outermost and HIP only: same button class and same 2px gap as the cluster left of it, so it reads as one row rather than an afterthought. Hidden for every other section, because it acts on the open SCENE, which is meaningless where the tiles are materials
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
                 on_click=self.capture_open_scene_thumbnail,
@@ -1487,22 +881,11 @@ class MatLibPanel(QtWidgets.QWidget):
             ))
             self.btn_hip_capture.setVisible(False)
             self.toolbar_layout.addWidget(self.btn_hip_capture)
-        # The Filter menu is NOT built here: its entries belong to
-        # whichever section is showing, and no section exists yet at
-        # this point in construction. build_filter_menu fills it, and
-        # runs again on every section change.
-        self.filter_action_group = None
+        self.filter_action_group = None    # the Filter menu is NOT built here: its entries belong to whichever section is showing and no section exists yet at this point in construction. build_filter_menu fills it, and runs again on every section change
         self.filter_actions = {}
         self.filter_values = {}
 
-        # View menu, in the order specified in the UI text register:
-        #   Material Library / Online Materials / --- / Show Categories /
-        #   Grid View / List View
-        # The .ui supplies action_show_cat ("Show Category View") + a
-        # trailing separator at the top; drop that separator, relabel the
-        # action to "Show Categories", and insert the material-source items
-        # above it.
-        self.view_actions = {}
+        self.view_actions = {}    # the View menu follows the UI text register's order; the .ui supplies action_show_cat with a trailing separator, so that separator is dropped, the action relabelled "Show Categories", and the material-source items inserted above it. NO Grid/List rows - the toolbar's grid-list chip is the control, and a menu pair beside it would be a second way to one preference. This dict stays EMPTY: grid.sync_view_mode_controls pushes the current mode into whatever is in it, so empty means "nothing else to keep in step" without a branch
         menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")
         if menu_view is not None:
             for a in list(menu_view.actions()):
@@ -1510,130 +893,66 @@ class MatLibPanel(QtWidgets.QWidget):
                     menu_view.removeAction(a)
             anchor = self.action_catview        # = action_show_cat
             self.action_catview.setText("Show Categories")
-            # Render "Show Categories" with a radio-style CIRCLE indicator
-            # to match the other View items, not a checkmark. A
-            # standalone checkable action draws a checkmark; an action in
-            # an exclusive group draws a circle. ExclusiveOptional keeps it
-            # a free on/off toggle (a lone member can be unchecked) while
-            # still rendering as a circle.
-            self.show_cat_group = QtGui.QActionGroup(self)
+            self.show_cat_group = QtGui.QActionGroup(self)    # renders "Show Categories" with a radio-style CIRCLE to match the other View items: a standalone checkable action draws a checkmark, one in an exclusive group draws a circle, and ExclusiveOptional keeps it a free on/off toggle since a lone member can be unchecked
             self.show_cat_group.setExclusionPolicy(
                 QtGui.QActionGroup.ExclusionPolicy.ExclusiveOptional
             )
             self.show_cat_group.addAction(self.action_catview)
 
-            # Material Library (the local library) and each online source
-            # form ONE exclusive group - exactly one is active, so picking
-            # a source unchecks Material Library and vice versa. Material
-            # Library is the default (local view). Browsing online is a
-            # VIEW MODE over the Materials tab, which is why it lives in the
-            # View menu rather than the Renderer menu.
-            self.online_source_group = QtGui.QActionGroup(self)
+            self.online_source_group = QtGui.QActionGroup(self)    # Material Library and each online source form ONE exclusive group, so picking a source unchecks Material Library and vice versa, with Material Library the default. Browsing online is a VIEW MODE over the Materials tab, which is why it lives in the View menu rather than the Renderer menu
             self.online_source_group.setExclusive(True)
             self.action_material_library = QtGui.QAction(
                 "Material Library", self
             )
             self.action_material_library.setCheckable(True)
             self.action_material_library.setChecked(True)
-            self.online_source_group.addAction(self.action_material_library)
-            # NOT IN THE MENU. Its one job was leaving the online
-            # browser, and the toolbar's Online button does that now.
-            # The action itself stays: it is what _on_online_source
-            # recognises as "the local library", and it is the group's
-            # default checked member.
+            self.online_source_group.addAction(self.action_material_library)    # action_material_library is NOT in the menu: its one job was leaving the online browser and the toolbar's Online button does that. The action stays because _on_online_source recognises it as "the local library" and it is the group's default checked member
 
-            # "Import Materials": the online SOURCES (view modes over
-            # the Materials tab) first, then - below a divider - the
-            # one-shot importers that pull materials in from elsewhere.
-            # NO SUBMENU. Two entries do not earn one, now that the
-            # sources have left for the tab strip - they are added
-            # straight to the View menu below.
-            self.online_menu = menu_view
-            # THE SOURCES ARE NOT IN THIS MENU. They are the online
-            # world's tab strip now, reached by the toolbar button, so
-            # a menu row for each would be a second way to the same
-            # place. What stays here is the one-shot importers below.
-            #
-            # The dict stays and stays EMPTY: open_online_source looks
-            # a name up in it to tick the matching row, and an empty
-            # dict answers "no row to tick" without a special case.
-            self.online_source_actions = {}
+            self.online_menu = menu_view    # no submenu: the online SOURCES live in the online world's tab strip, reached by the toolbar button, so a menu row each would be a second way to one place. What stays here is the one-shot importers below, and two entries do not earn a submenu
+            self.online_source_actions = {}    # stays, and stays EMPTY: open_online_source looks a name up here to tick the matching row, and an empty dict answers "no row to tick" without a special case
             self.action_gallery_import = self.online_menu.addAction(
                 "Gallery Import (.gal)"
             )
             self.action_gallery_import.triggered.connect(
                 self.import_galleries
             )
-            # Generating is a third way to get a material into the
-            # scene, next to browsing online sources and importing a
-            # gallery - its own group below them.
-            self.online_menu.addSeparator()
+            self.online_menu.addSeparator()    # generating is a third way to get a material into the scene, beside browsing online sources and importing a gallery, so it gets its own group below them
             self.action_generate_material = self.online_menu.addAction(
                 "Generate Material"
             )
             self.action_generate_material.triggered.connect(
                 self.generate_random_material
             )
-            # OUT OF THE MENU. "Show Categories" is a toolbar button
-            # now, so the menu entry would be a second control for one
-            # preference. The ACTION stays - it owns the behaviour and
-            # the button drives it - only its menu row goes.
-            menu_view.removeAction(self.action_catview)
+            menu_view.removeAction(self.action_catview)    # "Show Categories" is a toolbar button, so a menu entry would be a second control for one preference. The ACTION stays - it owns the behaviour and the button drives it - and only its menu row goes
             self.online_source_group.triggered.connect(self._on_online_source)
 
-            # NO Grid / List ROWS. The toolbar's grid-list chip is the
-            # control, and a menu pair beside it is a second way to one
-            # preference - the same duplication Show Categories and the
-            # online sources were just taken out of.
-            #
-            # view_actions stays and stays EMPTY: grid.sync_view_mode_controls
-            # pushes the current mode into whatever is in it, so an empty
-            # dict is "nothing else to keep in step" without a branch.
 
     def _build_view_toggles(self) -> None:
-        """The favorites chip and the grid/list toggle.
-
-        Split out of init_ui, which built the whole panel in one
-        800-line method. Called from init_ui in the same order it
-        ran in - no local variable crosses this boundary.
-        """
+        """The favorites chip and the grid/list toggle."""
         self.cb_favsonly = ui_helpers.ChipToggleButton()
         self.cb_favsonly.setObjectName("cb_favsonly")
         self.cb_favsonly.setToolTip(ui_helpers.tooltip_text(
             "Show favorites."))
         try:
-            # The amber fill IS the on/off signal here, so hover must
-            # not whiten it - the two states would be
-            # indistinguishable mid-hover. That is what
-            # lighten_on_hover=False means.
             self.cb_favsonly.set_art(
                 self._ui_icon_path("star.svg"),
                 self._ui_icon_path("star_on.svg"),
-                lighten_on_hover=False,
+                lighten_on_hover=False,    # the amber fill IS the on/off signal here, so hover must not whiten it: the two states would be indistinguishable mid-hover
             )
         except (TypeError, AttributeError):
             pass
         self.cb_favsonly.toggled.connect(self.filter_favs)
         if self.toolbar_layout is not None:
             self.toolbar_layout.addWidget(self.cb_favsonly)
-            # Tight 2px gaps through the right-hand icon cluster - the
-            # design's ~21px rendered icon-to-icon spacing is mostly
-            # provided by each button's own internal padding already.
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(2))    # tight 2px gaps through the right-hand icon cluster: the design's ~21px rendered icon-to-icon spacing is mostly each button's own internal padding already
 
-        # Grid/List view-mode toggle: same hand-painted ChipToggleButton
-        # treatment as the star. Unchecked = grid (icon mode), checked =
-        # list mode; the icon shows the CURRENT mode, both hover
-        # variants whiten to the shared light color.
         self.ui.cb_ViewMode.setVisible(False)  # type: ignore
-        self.cb_viewmode = ui_helpers.ChipToggleButton()
+        self.cb_viewmode = ui_helpers.ChipToggleButton()    # the Grid/List view-mode toggle, the same hand-painted chip treatment as the star: unchecked = grid (icon mode), checked = list mode, and the icon shows the CURRENT mode
         self.cb_viewmode.setObjectName("cb_viewmode")
         self.cb_viewmode.setToolTip(ui_helpers.tooltip_text(
             "Switch between the thumbnail grid and the detail list."))
         try:
-            # Grid and list are different SHAPES, so lightening on
-            # hover cannot be mistaken for a change of state.
-            self.cb_viewmode.set_art(
+            self.cb_viewmode.set_art(    # both hover variants whiten to the shared light colour, which is safe here because grid and list are different SHAPES - the lightening cannot be mistaken for a change of state
                 self._ui_icon_path("grid.svg"),
                 self._ui_icon_path("list.svg"),
             )
@@ -1641,81 +960,25 @@ class MatLibPanel(QtWidgets.QWidget):
             pass
 
     def _build_splitter_and_sidebar(self) -> None:
-        """The splitter proportions and the category sidebar's palette.
-
-        Split out of init_ui; no local crosses this boundary.
-        """
-        # Per-section view memory: sidebar choice + grid scroll,
-        # captured on every tab switch so returning to a section lands
-        # exactly where it was left (losing your place in a big
-        # database and having to find the material again on every
-        # switch is very annoying). In-memory only - Textures
-        # additionally persist their folder across sessions via prefs,
-        # which stays as is.
-        self._section_view_state = {}
+        """The splitter proportions and the category sidebar's palette."""
+        self._section_view_state = {}    # per-section view memory: sidebar choice + grid scroll, captured on every tab switch so returning to a section lands where it was left. In-memory only - Textures additionally persist their folder across sessions via prefs
         splitter = self.cat_list.parentWidget()
         cat_index = -1
         if isinstance(splitter, QtWidgets.QSplitter):
             cat_index = splitter.indexOf(self.cat_list)
-            # The Notes panel docks as the splitter's rightmost pane
-            # (the 2026-08-01 design): sidebar | grid | notes. Hidden
-            # until its toolbar button shows it; visibility persists.
-            self.notes_panel = notes_panel.NotesPanel(self.prefs)
+            self.notes_panel = notes_panel.NotesPanel(self.prefs)    # the Notes panel docks as the splitter's RIGHTMOST pane: sidebar | grid | notes. Hidden until its toolbar button shows it, and that visibility persists
             splitter.addWidget(self.notes_panel)
             self.notes_panel.adopt_look(self.cat_list)
             splitter.splitterMoved.connect(self._on_splitter_moved)
             self.notes_panel.changed.connect(self._on_note_saved)
             self.notes_panel.setVisible(bool(self.prefs.show_notes))
             self.notes_panel.set_note_accent(theme.color_hex("star"))
-            # Width set explicitly, painting left fully native otherwise
-            # (no color, no hand-painted grip dots/hover). A prior round
-            # tried a full custom paint (color + hand-painted grip dots +
-            # hover) via an event filter, which strayed too far from
-            # Houdini's own native look (read as too hand-painted) -
-            # reverted that entirely, keeping only the explicit width
-            # from before that revert (6, matching what was actually in
-            # code at the time). setHandleWidth() alone doesn't touch
-            # how the handle is painted, just how much room native
-            # painting has to work with, so this keeps the native grip
-            # dots/hover intact.
-            splitter.setHandleWidth(theme.ui_px(6))
-        # catview's own <maximumSize width="220"> in amaze.ui is what
-        # kept the category pane narrow in the splitter - that property
-        # stays on catview itself after reparenting below, but the
-        # splitter now sees cat_wrapper (unconstrained by default) as its
-        # pane widget, not catview, so it no longer has any width limit
-        # to respect. An earlier attempt at this fix tried to capture and
-        # reapply splitter.sizes() around the reparent instead - that
-        # backfired badly (a capture taken before the panel is ever shown
-        # can be [0, 0, 0], not real pixel widths, and reapplying it
-        # collapsed the grid pane to nothing) and has been dropped in
-        # favor of just propagating the same real constraint catview
-        # already had.
-        # The sidebar OWNS its width like the notes pane does (the
-        # remembered drag, or the 220 design width) - before HeldPane
-        # it asked the splitter for nothing and launched at whatever
-        # cat_list's bare hint happened to be.
-        self.cat_wrapper = ui_helpers.HeldPane(
+            splitter.setHandleWidth(theme.ui_px(6))    # WIDTH only, painting left fully native: setHandleWidth changes how much room native painting has, never how the handle is drawn, so Houdini's own grip dots and hover survive
+        self.cat_wrapper = ui_helpers.HeldPane(    # the sidebar OWNS its width like the notes pane does: the remembered drag, or the 220 design width, asked of the splitter rather than left to cat_list's bare size hint
             self.prefs, "sidebar_width", theme.ui_px(220))
-        self.cat_wrapper.setMaximumWidth(theme.ui_px(220))
-        # catview carries its own maximumSize width=220 in amaze.ui.
-        # At UI scale 1.0 that matches the wrapper cap exactly, but on a
-        # scaled display (Windows/Linux) the wrapper grows while the
-        # list inside stays 220, leaving a dead band of wrapper backdrop
-        # between the list and the grid (first seen on Windows at 1.5x).
-        # Runtime override, .ui untouched - the standing practice.
-        self.cat_list.setMaximumWidth(theme.ui_px(220))
-        # Backdrop fill for the whole category section (tab row's own
-        # margins, any space the list doesn't cover) - deliberately
-        # darker than BG1 (#2d2d2d, still on cat_list/line_tags) so the
-        # section reads as one frame with the list as a distinct surface
-        # inside it. Set via QPalette, not setStyleSheet()/WA_StyledBackground
-        # - a stylesheet on this ancestor would push cat_list onto Qt's CSS
-        # rendering path for parts it doesn't style itself (its scrollbar),
-        # knocking it off Houdini's native look, the same class of bug
-        # documented elsewhere in this file for the details panel. Palette
-        # changes don't cascade that way.
-        self.cat_wrapper.setAutoFillBackground(True)
+        self.cat_wrapper.setMaximumWidth(theme.ui_px(220))    # the splitter's pane widget is cat_wrapper, and catview's own <maximumSize width="220"> in amaze.ui constrains catview alone, so the cap is re-declared here or the category pane has no width limit at all
+        self.cat_list.setMaximumWidth(theme.ui_px(220))    # and again on the list, this time AT UI SCALE: catview's own maximumSize in amaze.ui is a flat 220, so without this override a scaled display (Windows/Linux at 1.5x) would grow the wrapper while the list stayed at 220 and open a dead band of wrapper backdrop between list and grid. Runtime override, .ui untouched - the standing practice
+        self.cat_wrapper.setAutoFillBackground(True)    # backdrop fill for the whole category section - the tab row's margins and any space the list does not cover - darker than the list's own BG1 so the section reads as one frame. Via QPalette, NEVER setStyleSheet/WA_StyledBackground on this ancestor: a stylesheet here pushes cat_list onto Qt's CSS rendering path for the parts it does not style itself (its scrollbar) and off Houdini's native look, where a palette change does not cascade
         cat_wrapper_palette = self.cat_wrapper.palette()
         cat_wrapper_palette.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_low"))
         self.cat_wrapper.setPalette(cat_wrapper_palette)
@@ -1725,132 +988,59 @@ class MatLibPanel(QtWidgets.QWidget):
 
         cat_wrapper_layout.addWidget(self.cat_list)
         if splitter is not None and cat_index >= 0:
-            splitter.insertWidget(cat_index, self.cat_wrapper)
-            # ONE construction for the three panes (the 2026-08-01
-            # unification): the sidebar and the notes pane HOLD their
-            # width, the grid is the splitter's only flexible pane -
-            # so every redistribution Qt performs (the notes toggle's
-            # tax and refund, window resizes) lands on the grid alone.
-            # Probed: stretch 0/1/0 leaves the sidebar untouched
-            # through hide/show/resize, and Qt reopens the notes pane
-            # at its last width from the grid by itself. This replaces
-            # a hand-rolled capture-and-restore of the sidebar width,
-            # which fought the same redistribution it should have
-            # turned off.
+            splitter.insertWidget(cat_index, self.cat_wrapper)    # ONE arrangement for the three panes: the sidebar and the notes pane HOLD their width, the grid is the splitter's only flexible pane (the stretch 0/1/0 below), so every redistribution Qt performs - the notes toggle's tax and refund, a window resize - lands on the grid alone. Probed: that leaves the sidebar untouched through hide/show/resize, and Qt reopens the notes pane at its last width out of the grid by itself
             held = (self.cat_wrapper, getattr(self, "notes_panel", None))
             for i in range(splitter.count()):
                 flexible = splitter.widget(i) not in held
                 splitter.setStretchFactor(i, 1 if flexible else 0)
 
     def _build_sidebar_palette(self) -> None:
-        """The category list's palette and selection colours.
-
-        Split out of init_ui; no local crosses this boundary.
-        """
-        # Category UI
+        """The category list's palette and selection colours."""
         self.cat_list = self.ui.catview  # type: ignore
-        # Palette, not setStyleSheet() - a stylesheet on cat_list itself
-        # (not just an ancestor) also pushes Qt onto the CSS rendering
-        # path for parts this stylesheet doesn't cover, namely its own
-        # scrollbar, which is the most likely reason its scrollbar still
-        # doesn't match the grid's (thumbview never got a stylesheet at
-        # all) even after moving the *ancestor* (cat_wrapper) background
-        # to a palette. QListView paints its viewport from Base/Text.
-        cat_list_palette = self.cat_list.palette()
+        cat_list_palette = self.cat_list.palette()    # PALETTE, not setStyleSheet(): QListView paints its viewport from Base/Text, and a sheet on cat_list itself puts Qt on the CSS path for the parts that sheet does not cover, its own scrollbar first
         cat_list_palette.setColor(
             QtGui.QPalette.ColorRole.Base, theme.color("surface_low")
         )
         cat_list_palette.setColor(
             QtGui.QPalette.ColorRole.Text, AssetItemDelegate.TEXT_COLOR
         )
-        # NO SELECTION COLOURS HERE (2026-08-04). The sidebar wears
-        # Houdini's own, the same as the Grid table: this panel applies
-        # `hou.qt.styleSheet()` to its root and every child inherits
-        # it, so `QAbstractItemView::item:selected` already paints the
-        # band and answers `HighlightedText` for the ink. Setting
-        # Highlight and HighlightedText here bought nothing - the sheet
-        # outranks a palette at paint time, which is exactly why
-        # `SidebarItemDelegate` had grown a hand-painted band on top.
-        self.cat_list.setPalette(cat_list_palette)
-        # It paints the NAME, the count and the colour bar; the cell
-        # under them - band, hover, alternating colour - is the style's
-        # (see SidebarItemDelegate's docstring).
-        self.sidebar_delegate = SidebarItemDelegate(self.cat_list)
-        # Only the ASSET sidebars carry colours; the folder and palette
-        # sidebars answer nothing for this role, so the bar never draws
-        # there without needing a second delegate.
-        self.sidebar_delegate.color_role = category.SIDEBAR_COLOR_ROLE
+        self.cat_list.setPalette(cat_list_palette)    # NO selection colours in it: the sidebar wears Houdini's own like the Grid table does, because hou.qt.styleSheet() on the panel root makes QAbstractItemView::item:selected paint the band and answer HighlightedText - and a sheet outranks a palette at paint time, so setting Highlight here achieves nothing
+        self.sidebar_delegate = SidebarItemDelegate(self.cat_list)    # paints the NAME, the count and the colour bar only; the cell under them - band, hover, alternating colour - is the style's (see SidebarItemDelegate's docstring)
+        self.sidebar_delegate.color_role = category.SIDEBAR_COLOR_ROLE    # only the ASSET sidebars answer this role, so the bar simply never draws in the folder and palette sidebars and no second delegate is needed
 
     def init_ui(self) -> None:
         """Creates the panel-view on load"""
-        # Load UI from ui.file
         loader = QtUiTools.QUiLoader()
         file = QtCore.QFile(self.script_path + "/ui/amaze.ui")
-        # Override Widgets for Drag and Drop Support
-        loader.registerCustomWidget(dragdrop_widgets.DragDropCentralWidget)
+        loader.registerCustomWidget(dragdrop_widgets.DragDropCentralWidget)    # the .ui names these, so they must be registered before load
         loader.registerCustomWidget(dragdrop_widgets.DragDropListView)
 
         file.open(QtCore.QFile.ReadOnly)  # type: ignore
         self.ui = loader.load(file)
         file.close()
 
-        # Apply Houdini's own Qt stylesheet so standard widgets (combo
-        # boxes, scrollbars, etc.) render like native Houdini UI instead
-        # of the OS-default Qt style. hou.qt.styleSheet() is SideFX's
-        # documented mechanism for this in custom PySide panels. The
-        # toolbar's own controls are all hand-painted widgets and ignore
-        # it entirely.
         try:
-            self.ui.setStyleSheet(hou.qt.styleSheet())
+            self.ui.setStyleSheet(hou.qt.styleSheet())    # SideFX's documented way to make standard widgets render as native Houdini; the toolbar's own controls are hand-painted and ignore it
         except AttributeError:
             pass
-        # A WIDTH FLOOR, AND ONLY WIDTH. This used to drop the .ui's
-        # 420x400 minimum entirely so the pane could shrink to nothing
-        # and clip like Houdini's own panes; measured live, that left
-        # the grid viewport 48px wide, narrower than one tile. Height
-        # stays free, because a short grid reads fine (research.md >
-        # WHAT A SQUEEZED PANEL ACTUALLY LEAVES THE GRID).
-        self.ui.setMinimumSize(theme.ui_px(MIN_PANEL_WIDTH), 0)
-        # Vertical stays Ignored so the pane still shrinks and clips
-        # downward like its neighbours; horizontal must be able to
-        # honour the minimum, and Ignored ignores it.
-        self.ui.setSizePolicy(
+        self.ui.setMinimumSize(theme.ui_px(MIN_PANEL_WIDTH), 0)    # WIDTH ONLY: dropping the .ui minimum entirely left the grid viewport 48px, narrower than one tile, while a short grid reads fine
+        self.ui.setSizePolicy(    # vertical stays Ignored so the pane clips downward like its neighbours; horizontal must honour the minimum, which Ignored would not
             QtWidgets.QSizePolicy.Policy.Minimum,
             QtWidgets.QSizePolicy.Policy.Ignored,
         )
 
-        # Match Houdini's UI font and track the user's Global UI Size
-        # preference. THE FLOOR IS THEME'S, not this method's: it used to
-        # be a bare 12.0 here while the tile sub-line carried a second,
-        # independent floor of its own, and two floors that agree only
-        # where the view inherits this font is the whole Windows defect.
-        # One rule, one place - and scaled, the way the host scales its
-        # own chrome (helpers/theme.py ▸ THE ONE FONT TABLE).
-        #
-        # `hou.qt` does not exist under hython, so this whole stamp is a
-        # GUI-session thing; the except is what makes the headless suite
-        # possible at all.
         try:
-            self.ui.setFont(theme.ui_font(hou.qt.mainWindow().font()))
+            self.ui.setFont(theme.ui_font(hou.qt.mainWindow().font()))    # THE FLOOR IS THEME'S, never a second one here: two floors agreeing only where the view inherits this font is the Windows defect. `hou.qt` is absent under hython, which is what the except buys
         except AttributeError:
             pass
 
-        # Load Ui Element so self
-        self.menu = self.ui.findChild(QtWidgets.QMenuBar, "menubar")
-        # No background/border styling here: the real menu bar is
-        # permanently hidden further down (self.menu.setVisible(False)),
-        # once its items move into the merged toolbar row - a stylesheet
-        # on a hidden widget has no visual effect at all, so one was
-        # never worth keeping around once that move happened.
+        self.menu = self.ui.findChild(QtWidgets.QMenuBar, "menubar")    # styled nowhere: it is hidden below once its items move into the toolbar row, and a sheet on a hidden widget paints nothing
         self.action_prefs = self.ui.action_prefs  # type: ignore
         self.action_prefs.triggered.connect(self.show_prefs)
 
         self.action_catview = self.ui.action_show_cat  # type: ignore
         self.action_catview.triggered.connect(self.toggle_catview)
 
-        # Details is a dialog now (Edit Info); the old docked-panel
-        # View-menu toggle (action_show_details) was removed from the
-        # .ui in the 2026-07-21 Designer clean-up.
         self.action_cleanup_db = self.ui.action_cleanup_db  # type: ignore
         self.action_cleanup_db.triggered.connect(self.cleanup_db)
 
@@ -1863,221 +1053,84 @@ class MatLibPanel(QtWidgets.QWidget):
         self.action_set_library = self.ui.action_set_library  # type: ignore
         self.action_set_library.triggered.connect(self.set_library)
 
-        # MatLib v1 import dropped entirely; its action_import_lib_v1 was
-        # removed from the .ui in the 2026-07-21 Designer clean-up.
-
-        # Overwrite the widgets for Drag and Drop in dragdrop_widgets.py
         self.centralwidget = self.ui.centralwidget  # type: ignore
 
-        # An ATTRIBUTE, not a local: everything in the panel's middle
-        # section is built into this layout, so as a local it pinned
-        # ~280 lines of init_ui together and nothing in that stretch
-        # could be split out. As an attribute the same code cuts into
-        # builders freely (largest block 278 -> 62 lines).
-        #
-        # It is the attribute the panel ALREADY had - the section-tab
-        # insert (see _rebuild_section_tabs) has always used
-        # self._central_layout. Promoting the local under a second
-        # name would have left two attributes pointing at one layout.
-        self._central_layout = self.centralwidget.layout()
+        self._central_layout = self.centralwidget.layout()    # an ATTRIBUTE, and the one the panel already had: as a local it pinned ~280 lines of init_ui together and nothing in that stretch could be split out
         self.toolbar_layout = None
         if self._central_layout is not None:
-            # Merge the menu bar and the filter row into one strip
-            # (reference: Houdini's own pane toolbars put menu
-            # items and icon controls on a single row, not stacked).
-            # QMainWindow reserves a dedicated dock area for its menu bar
-            # that can't share a row with arbitrary other widgets, so the
-            # real QMenuBar (self.menu) is hidden - its QMenus/QActions
-            # stay alive and fully wired, just opened from flat buttons
-            # instead (see _make_menu_button). horizontalLayout (the old
-            # filter row) is a bare nested <layout> with no widget of its
-            # own to paint a background on - same issue documented
-            # elsewhere in this file - so its contents move into a new
-            # QWidget wrapper that can be colored to match the menu bar.
-            if self.menu is not None:
+            if self.menu is not None:    # the real QMenuBar is HIDDEN, its QMenus and QActions still alive and opened from flat buttons: QMainWindow reserves a menu-bar dock area that cannot share a row, and the merged strip is what the host's own pane toolbars do
                 self.menu.setVisible(False)
             filter_row = self.ui.findChild(QtWidgets.QHBoxLayout, "horizontalLayout")
             self.toolbar_row = QtWidgets.QWidget()
             self.toolbar_row.setAttribute(
                 QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
             )
-            # border: none first clears whatever Houdini's own base
-            # stylesheet (applied panel-wide, self.ui.setStyleSheet(...))
-            # might otherwise contribute now that WA_StyledBackground puts
-            # this widget on the CSS rendering path - that's what was
-            # producing a border on all sides instead of just the bottom
-            # one actually being set here.
-            # QSS border-width renders as literal screen pixels, not
-            # scaled by the ~2x factor widget geometry (setFixedHeight
-            # etc.) goes through - confirmed live: "1px" renders
-            # as an actual 1px, not 2. Divider color #434343 per
-            # the "ui_wireframe 2 only menu" design (was #414141).
-            self.toolbar_row.setStyleSheet(
+            self.toolbar_row.setStyleSheet(    # `border: none` FIRST, or Houdini's panel-wide sheet contributes a border on all sides once WA_StyledBackground puts this widget on the CSS path. QSS border-width is literal screen px, unscaled by the factor widget geometry goes through
                 "background-color: " + theme.color_hex("surface")
                 + "; border: none;"
                 + " border-bottom: 1px solid "
                 + theme.color_hex("field") + ";"
             )
-            # 30 code px = the design's 60px bar (down from the old 80px
-            # row that MenuBarButton's height used to drive).
-            self.toolbar_row.setFixedHeight(theme.ui_px(30))
+            self.toolbar_row.setFixedHeight(theme.ui_px(30))    # 30 code px = the design's 60px bar
             self.toolbar_layout = QtWidgets.QHBoxLayout(self.toolbar_row)
-            # Design rev 2026-07-19 ("moved down 1px, spaces cleaned
-            # up"): content is now dead-centered vertically (the earlier
-            # rev floated everything 1-3px above center; it was nudged
-            # back down), so no top/bottom bias. Right margin 2 -> the
-            # design's ~12px rendered edge inset, most of which the last
-            # icon button's own internal padding already provides.
-            self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(2), 0)
+            self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(2), 0)    # no top/bottom bias, content dead-centred; the right margin is the design's edge inset, most of which the last icon button's own padding provides
             self.toolbar_layout.setSpacing(0)
 
-            # No menu buttons on the left anymore - the design moves all
-            # three menus (Renderer/View/Library) to the toolbar's right
-            # end as icon buttons, appended at the end of setup once the
-            # Renderer menu exists. The leading stretch pushes the whole
-            # content cluster (Filter/slider/toggles/menus) to the right,
-            # matching the design's empty left region (reserved for
-            # a planned section-tab integration).
-            self.toolbar_layout.addStretch()
+            self.toolbar_layout.addStretch()    # the three menus (Renderer/View/Library) are icon buttons at the toolbar's RIGHT end, appended at the end of setup once the Renderer menu exists; this leading stretch pushes the whole cluster right and leaves the design's empty left region
 
             if filter_row is not None:
                 self._central_layout.removeItem(filter_row)
             self._central_layout.insertWidget(0, self.toolbar_row)
 
         self.thumblist = self.ui.thumbview  # type: ignore
-        # Per-PIXEL scrolling, not Qt's default per-ITEM mode - one
-        # "item" is a whole tile row in grid mode, so per-item wheel
-        # steps jumped enormous distances (and interacted erratically
-        # with trackpad deltas: sometimes turbo, sometimes crawling).
-        self.thumblist.setVerticalScrollMode(
+        self.thumblist.setVerticalScrollMode(    # per-PIXEL, not Qt's default per-ITEM: one "item" is a whole tile row in grid mode, so a per-item wheel step jumps enormous distances and reads erratically against trackpad deltas
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel
         )
-        # BOTH AXES. Only the vertical mode was ever set, so sideways
-        # scrolling - which nothing could do until list rows became
-        # wider than the panel - was still on Qt's per-ITEM default,
-        # where one step is a whole row and the movement reads as
-        # wildly accelerated. Same mode, same reasoning, other axis.
-        self.thumblist.setHorizontalScrollMode(
+        self.thumblist.setHorizontalScrollMode(    # BOTH AXES, same mode and same reasoning: sideways scrolling stayed on the per-ITEM default until list rows grew wider than the panel and anything could reach it
             QtWidgets.QAbstractItemView.ScrollMode.ScrollPerPixel
         )
-        # Every row/tile has the same geometry, so Qt can lay out by
-        # arithmetic instead of asking the delegate per item - a real
-        # saving at 500+ materials, and it keeps list rows uniform
-        # while the viewport resizes.
-        self.thumblist.setUniformItemSizes(True)
-        # SINGLE-PASS layout, overriding the .ui's Batched: a batched
-        # layout publishes a scrollbar range covering only the batches
-        # laid out so far (batchSize 100), so any repaint that restarts
-        # the layout - a thumbnail arriving mid-scroll - collapses the
-        # range to ~100 rows and then snaps it back. Live that reads as
-        # a flickering list that never scrolls to the end; measured in
-        # the debug log as range_max alternating 16062 <-> 2772 on a
-        # 543-row library. Uniform item sizes make single-pass cheap:
-        # positions are arithmetic, not per-item queries.
-        self.thumblist.setLayoutMode(
+        self.thumblist.setUniformItemSizes(True)    # same geometry every row/tile, so Qt lays out by arithmetic instead of asking the delegate per item - a real saving at 500+ materials, and list rows stay uniform while the viewport resizes
+        self.thumblist.setLayoutMode(    # SINGLE-PASS, overriding the .ui's Batched: a batched layout publishes a scrollbar range covering only the batches laid out so far (batchSize 100), so a repaint that restarts it - a thumbnail arriving mid-scroll - collapses the range and snaps it back; measured in the debug log as range_max alternating 16062 <-> 2772 on a 543-row library. Uniform item sizes make single-pass cheap
             QtWidgets.QListView.LayoutMode.SinglePass
         )
-        # Three .ui leftovers from upstream, wrong for a view that is
-        # a pure drag SOURCE of a fixed grid (overridden here rather
-        # than in the .ui, which is the Designer source):
-        #  * AdjustToContents makes the scroll area's size HINT follow
-        #    its content, so the grid renegotiates space with its
-        #    neighbours whenever the content geometry changes - a grid
-        #    that nudges itself is never what a browser wants.
-        #  * Snap movement treats tiles as individually placed items
-        #    that re-snap to the grid on interaction; the tiles here are
-        #    laid out by the view and never rearranged by the user, and
-        #    Static is also the mode where uniform-size arithmetic
-        #    layout applies.
-        #  * DragDrop/dragDropOverwriteMode on a view with
-        #    acceptDrops=false: it only ever drags OUT (to Houdini's
-        #    network and viewports), so DragOnly states that exactly.
-        self.thumblist.setSizeAdjustPolicy(
+        self.thumblist.setSizeAdjustPolicy(    # .ui leftover 1 of 3: AdjustToContents makes the scroll area's size HINT follow its content, so the grid renegotiates space with its neighbours whenever the content geometry changes
             QtWidgets.QAbstractScrollArea.SizeAdjustPolicy.AdjustIgnored
         )
-        self.thumblist.setMovement(QtWidgets.QListView.Movement.Static)
-        self.thumblist.setDragDropMode(
+        self.thumblist.setMovement(QtWidgets.QListView.Movement.Static)    # leftover 2 of 3: Snap treats tiles as individually placed items that re-snap on interaction, where these are laid out by the view and never rearranged by the user; Static is also where uniform-size arithmetic layout applies
+        self.thumblist.setDragDropMode(    # leftover 3 of 3: DragDrop on a view with acceptDrops=false, when it only ever drags OUT to Houdini's network and viewports
             QtWidgets.QAbstractItemView.DragDropMode.DragOnly
         )
         self.thumblist.setDragDropOverwriteMode(False)
-        # Selecting a tile must never move the grid: Qt's autoScroll
-        # re-scrolls on EVERY currentChanged - a click on a half-cut
-        # tile included, which read as the grid jumping under the
-        # cursor. Off is off for keyboard navigation too, deliberately:
-        # the grid is a mouse surface. Explicit calls (scrollToTop on
-        # section switch) are not gated by this property.
-        self.thumblist.setAutoScroll(False)
-
-        # List rows span the viewport, so they must re-fit when it
-        # resizes; the versions badge lights under the cursor, which
-        # needs button-free mouse moves - a viewport does NOT track
-        # the mouse by default (measured). Both live in eventFilter.
-        self.thumblist.viewport().setMouseTracking(True)
+        self.thumblist.setAutoScroll(False)    # selecting a tile must never move the grid: Qt's autoScroll re-scrolls on EVERY currentChanged, a click on a half-cut tile included, which reads as the grid jumping under the cursor. Off for keyboard navigation too, deliberately - the grid is a mouse surface; explicit scrollToTop calls are not gated by this
+        self.thumblist.viewport().setMouseTracking(True)    # list rows span the viewport and must re-fit when it resizes; the versions badge lights under the cursor, which needs button-free mouse moves, and a viewport does NOT track the mouse by default (measured). Both live in eventFilter
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
-        # update_details_view is NOT connected here: the material
-        # selection model's selectionChanged already fires for every
-        # click that changes what is selected, and a click that changes
-        # nothing leaves the details already correct. Wired to both,
-        # every click rebuilt the form twice - six role reads per
-        # selected asset each time, so select-all-then-click paid it
-        # over the whole library. Refresh-after-edit has its own
-        # explicit calls (edit_material_info, user_update_asset).
-        # _refresh_notes_subject stays: it is idempotent (set_subject
-        # returns immediately when the key has not changed).
-        self.thumblist.clicked.connect(self._refresh_notes_subject)
-        # Grid and details panel had two different, unstyled/native
-        # backgrounds - unified to #313131 via QPalette (Base role, same
-        # role QListView paints its viewport from) rather than
-        # setStyleSheet(), consistent with the cat_list fix above.
-        thumblist_palette = self.thumblist.palette()
+        self.thumblist.clicked.connect(self._refresh_notes_subject)    # update_details_view is deliberately NOT wired here: selectionChanged already fires for every click that changes the selection, and a click that changes nothing leaves the details correct - wired to both, each click rebuilt the form twice. Refresh-after-edit calls it explicitly (edit_material_info, user_update_asset); _refresh_notes_subject stays because it is idempotent
+        thumblist_palette = self.thumblist.palette()    # grid and details unify on the `surface_high` token via QPalette (Base, the role QListView paints its viewport from) rather than setStyleSheet(), consistent with the cat_list fix above
         thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_high"))
         self.thumblist.setPalette(thumblist_palette)
 
-        # v2: thin progress bar for texture thumbnail generation, docked
-        # above thumbview in its own layout (verticalLayout_7 in amaze.ui
-        # wraps only thumbview, isolated from catview/details in the
-        # splitter) - added in code, not the .ui file, same as the other
-        # v2 widgets. Hidden until a folder with actual work to do is
-        # selected; see _on_texture_progress().
-        self.texture_progress = ui_helpers.ThinProgressBar()
+        self.texture_progress = ui_helpers.ThinProgressBar()    # thin bar for texture thumbnail generation, docked above thumbview in verticalLayout_7 - which wraps thumbview ALONE, isolated from catview/details in the splitter. Built in code rather than the .ui; hidden until a folder with work to do is selected (see _on_texture_progress)
         self.texture_progress.set_accent_color(theme.accent(self.prefs.accent_color))
         self.texture_progress.setVisible(False)
         thumb_layout = self.ui.findChild(QtWidgets.QVBoxLayout, "verticalLayout_7")
         if thumb_layout is not None:
             thumb_layout.insertWidget(0, self.texture_progress)
 
-        # LIST MODE AS A REAL TABLE (step 2 of the QTableView
-        # migration). A second VIEW, not a second area: it shares the
-        # model, the proxy and the SELECTION MODEL with the grid, so
-        # selecting in one is selecting in the other and every area
-        # binding stays single. Only one is ever visible.
-        self.thumbtable = dragdrop_widgets.DragDropTableView()
+        self.thumbtable = dragdrop_widgets.DragDropTableView()    # list mode is a real table: a second VIEW, not a second area, sharing the model, the proxy and the SELECTION MODEL with the grid, so selecting in one is selecting in the other and every area binding stays single. Only one is ever visible
         self.thumbtable.setObjectName("thumbtable")
-        # The header goes in BEFORE it is styled: `grid.style_table_header`
-        # sets the sort indicator, and this is the header that decides
-        # what the indicator costs the columns that do not have it.
-        self.thumbtable.setHorizontalHeader(
+        self.thumbtable.setHorizontalHeader(    # the header goes in BEFORE it is styled: `grid.style_table_header` sets the sort indicator, and this is the header that decides what that indicator costs the columns without one
             ui_helpers.GridHeaderView(
                 QtCore.Qt.Orientation.Horizontal, self.thumbtable))
         self.thumbtable.setVisible(False)
         if thumb_layout is not None:
             thumb_layout.addWidget(self.thumbtable)
         grid.style_table_header(self)
-        # The table IS the grid while list mode shows: same menu, same
-        # primary action. thumblist takes its CustomContextMenu policy
-        # from the .ui; this view is built in code, so it takes both
-        # wirings here - without them right-click and double-click are
-        # dead in one of the two view modes.
-        self.thumbtable.setContextMenuPolicy(
+        self.thumbtable.setContextMenuPolicy(    # the table IS the grid while list mode shows, so it takes the same menu and the same primary action; thumblist gets CustomContextMenu from the .ui, this view is built in code and takes both wirings here or right-click and double-click are dead in one of the two modes
             QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.thumbtable.customContextMenuRequested.connect(
             self.thumblist_rc_menu)
-        self.thumbtable.doubleClicked.connect(self.import_asset_auto)
-        # NO SCROLL-OFFSET WIRING. The painted strip sat ABOVE the view
-        # and had to be told when the rows scrolled sideways, or its
-        # labels named whichever column had slid underneath them. A
-        # QHeaderView IS the view's header and scrolls with it.
+        self.thumbtable.doubleClicked.connect(self.import_asset_auto)    # and NO scroll-offset wiring is owed: a QHeaderView IS the view's header and scrolls with it, where the painted strip it replaced sat above the view and had to be told when rows scrolled sideways
 
         self._build_sidebar_palette()
         self.sidebar_delegate.set_drag_color(
@@ -2085,66 +1138,29 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self.cat_list.setItemDelegate(self.sidebar_delegate)
         self.cat_list.clicked.connect(self.update_selected_cat)
-        # Make the sidebar a real DROP TARGET: drag assets from the grid
-        # onto a category to recategorise them. The filter also
-        # keeps such a drop from falling through to the central widget's
-        # save-node handler ("... already exists in the library").
-        self._cat_drop_filter = dragdrop_widgets.CategoryDropFilter(
+        self._cat_drop_filter = dragdrop_widgets.CategoryDropFilter(    # makes the sidebar a drop target for recategorising grid assets, and keeps such a drop from falling through to the central widget's save-node handler
             self.cat_list, self
         )
 
         self.line_filter = self.ui.line_filter  # type: ignore
         self.line_filter.textEdited.connect(self.filter_thumb_view)
-        # The box is EMPTY by decree (2026-08-01): the "Search" label
-        # and the magnifier already name the control, and the per-
-        # section placeholder texts were noise beside them. The
-        # search_hint machinery stays (a section may one day need a
-        # word again), but every hint is "" and the box's tooltip is
-        # where :tag gets taught. The .ui file is maintained externally
-        # in Qt Designer and is never edited from code.
-        self.line_filter.setPlaceholderText(sections.Section.search_hint)
+        self.line_filter.setPlaceholderText(sections.Section.search_hint)    # the box is EMPTY by decree (2026-08-01): the "Search" label and the magnifier already name the control. The search_hint machinery stays for the day a section needs a word again, but every hint is "" and the tooltip is where :tag gets taught
         self.line_filter.setToolTip(ui_helpers.tooltip_text(
             "Search for objects, a leading colon searches tags "
             "instead: :metal finds everything tagged metal."))
-        # Per the "ui_wireframe 2 only menu" design: borderless box,
-        # #434343 fill, magnifier icon inside the left edge. Stylesheet
-        # set directly on the widget itself, not an ancestor (same "avoid
-        # the details-panel regression class of bug" reasoning used
-        # everywhere else in this file). padding-left reserves room so
-        # typed text doesn't start underneath the icon.
-        self.line_filter.setStyleSheet(
+        self.line_filter.setStyleSheet(    # borderless box on the `field` token with the magnifier inside the left edge; the sheet goes on the widget ITSELF, never an ancestor, which is the rule the whole file follows to avoid the details-panel regression class. padding-left reserves room so typed text does not start under the icon
             "QLineEdit { border: none; background-color: "
             + theme.color_hex("field")
             + "; padding-left: %dpx; }" % theme.ui_px(20)
         )
-        # 20 code px = the design's 40px rendered box. The old height was
-        # 22 to compensate for a 1px QSS border eating into the fill
-        # (rendered = (code - 2) * 2, see git history) - borderless now,
-        # so the plain 2x relationship applies again.
-        self.line_filter.setFixedHeight(theme.ui_px(20))
-        # Sizing rule: 300px rendered max, 75px min (the .ui's
-        # own 80 minimum is overridden here - setMinimumWidth wins over
-        # the .ui value at runtime).
-        self.line_filter.setMinimumWidth(theme.ui_px(38))
-        # Max raised 150 -> 200 (300R -> 400R),
-        # together with the slider's.
-        self.line_filter.setMaximumWidth(theme.ui_px(200))
-        # Magnifier icon (replaces the old funnel) pinned to the LEFT
-        # edge - a real overlay QLabel + SideIconPinner (ui_helpers.py),
-        # not a QLineEdit addAction() icon, since that API doesn't expose
-        # control over the exact margin and this project has consistently
-        # favored precise hand-positioning over accepting Qt's own
-        # default spacing wherever an exact pixel value was asked for.
-        try:
+        self.line_filter.setFixedHeight(theme.ui_px(20))    # 20 code px = the design's 40px rendered box; the plain 2x relationship holds because the box is borderless, where a 1px QSS border would eat into the fill
+        self.line_filter.setMinimumWidth(theme.ui_px(38))    # overrides the .ui's own 80 minimum - setMinimumWidth wins at runtime
+        self.line_filter.setMaximumWidth(theme.ui_px(200))    # 400px rendered, raised with the slider's to match
+        try:    # the magnifier is an overlay QLabel + SideIconPinner, NOT a QLineEdit addAction() icon: that API does not expose the exact margin, and this design asks for one
             filter_icon_path = self._ui_icon_path("icon_search.svg")
             if filter_icon_path and os.path.exists(filter_icon_path):
-                # Design: ~25px rendered magnifier, ~9px in from the box
-                # edge -> 13 code px icon at a 4px pin margin.
-                icon_size = theme.ui_px(13)
-                # render_svg_pixmap = QSvgRenderer straight onto a
-                # transparent pixmap; QIcon's own SVG engine produced an
-                # opaque black background here (see git history).
-                pixmap = ui_helpers.render_svg_pixmap(
+                icon_size = theme.ui_px(13)    # ~25px rendered magnifier, ~9px in from the box edge, at a 4px pin margin
+                pixmap = ui_helpers.render_svg_pixmap(    # QSvgRenderer straight onto a transparent pixmap - QIcon's own SVG engine produced an opaque black background here
                     filter_icon_path, icon_size
                 )
                 self.filter_icon_label = QtWidgets.QLabel(self.line_filter)
@@ -2153,18 +1169,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 self.filter_icon_label.setAttribute(
                     QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents
                 )
-                # The dark square was the label WIDGET's own background,
-                # not the pixmap's alpha (the QSvgRenderer switch fixed
-                # the pixmap; a clean, label-sized square pointed
-                # elsewhere) - almost certainly Houdini's panel-wide
-                # stylesheet (self.ui.setStyleSheet(hou.qt.styleSheet()))
-                # defining a default QLabel background that this label
-                # inherited since nothing had told it not to. Both belt
-                # and suspenders here since it's cheap: the attribute
-                # stops Qt from auto-filling the widget's background, the
-                # stylesheet explicitly overrides whatever panel-wide rule
-                # would otherwise apply to a plain QLabel.
-                self.filter_icon_label.setAttribute(
+                self.filter_icon_label.setAttribute(    # belt AND suspenders, deliberately: the attribute stops Qt auto-filling the widget background, the sheet below overrides whatever panel-wide QLabel rule Houdini's own stylesheet contributes. A dark square here was the LABEL's background, not the pixmap's alpha
                     QtCore.Qt.WidgetAttribute.WA_TranslucentBackground
                 )
                 self.filter_icon_label.setStyleSheet("background: transparent;")
@@ -2175,11 +1180,7 @@ class MatLibPanel(QtWidgets.QWidget):
         except (TypeError, AttributeError):
             pass
         if self.toolbar_layout is not None:
-            # "Search" label (was "Filter" until 2026-08-01 - the box
-            # searches, so the label says so) to the left of the box -
-            # a real QLabel, not placeholder text inside line_filter
-            # itself. Font stays the panel-wide Houdini font stamp.
-            self.filter_label = QtWidgets.QLabel("Search")
+            self.filter_label = QtWidgets.QLabel("Search")    # a real QLabel left of the box, not placeholder text inside line_filter; font stays the panel-wide Houdini stamp
             self.filter_label.setObjectName("filter_label")
             self.filter_label.setStyleSheet(
                 "color: " + theme.color_hex("text_bright") + ";"
@@ -2187,72 +1188,28 @@ class MatLibPanel(QtWidgets.QWidget):
             self.toolbar_layout.addWidget(self.filter_label)
             self.toolbar_layout.addSpacing(theme.ui_px(12))
             self.toolbar_layout.addWidget(self.line_filter)
-            # The size slider is built much later in this method but sits
-            # between the box and the star in the design - remember this
-            # spot so its block can insert itself here.
-            self._after_filter_index = self.toolbar_layout.count()
+            self._after_filter_index = self.toolbar_layout.count()    # the size slider is built much later in this method but sits between the box and the star, so its block inserts itself back at this remembered spot
 
-        # v2: section tabs - restructured 2026-07-19 per the
-        # "ui_wireframe 2 only menu" design: a full-width strip BELOW
-        # the toolbar (no longer inside the category sidebar), holding a
-        # rounded-top tray of full-word text tabs (Materials / Textures
-        # / Colors / Cop / Geometry). Hand-built (SectionTabBar in
-        # ui_helpers.py) for the same reasons as its SegmentedControl
-        # predecessor. Only Materials/Textures/Colors have real content
-        # behind them so far; see _on_tab_toggled. catview has no
-        # wrapper of its own in amaze.ui (it's a direct QSplitter
-        # pane), so it's reparented into a new wrapper widget, then that
-        # wrapper takes catview's old place in the splitter.
         self.current_section = "material"
-        self._build_splitter_and_sidebar()
-
-        # The tab strip itself lives OUTSIDE the sidebar now: full panel
-        # width, directly under the toolbar row (self._central_layout index 1,
-        # toolbar_row sits at 0). Tab order, labels and chip styling per
-        # the design; "Colors" is the Gradients section's user-facing
-        # name (internal key stays "gradient"), Cop and Geometry are
-        # placeholders. Chip colors are fixed design constants, not
-        # accent-derived, so there's no set_accent_color here.
+        self._build_splitter_and_sidebar()    # catview has no wrapper of its own in amaze.ui (it is a direct QSplitter pane), so it is reparented into a new wrapper which then takes catview's old place
         self.section_tabs = None
-        # Built from the enabled_sections pref (rebuildable when that
-        # pref changes in Preferences) - see _build_section_tabs.
-        self._build_section_tabs()
-
-        # Favorites toggle: hand-painted ChipToggleButton with the exact
-        # same grey hover chip and icon-whitening as the icon menu
-        # buttons (hover must match across favorites/grid-list/
-        # menus). The .ui's own cb_FavsOnly is unused and hidden - left
-        # unparented it could paint stray in the panel.
-        self.ui.cb_FavsOnly.setVisible(False)  # type: ignore
+        self._build_section_tabs()    # a full-width strip BELOW the toolbar, outside the sidebar, at _central_layout index 1 with toolbar_row at 0; built from the enabled_sections pref and rebuilt when that pref changes. "Colors" is the Gradients section's user-facing name, internal key still "gradient". Chip colours are fixed design constants, not accent-derived, so no set_accent_color here
+        self.ui.cb_FavsOnly.setVisible(False)  # type: ignore  -- the .ui's own favourites box is unused and hidden; left unparented it can paint stray in the panel. The real toggle is a hand-painted ChipToggleButton built below, sharing its hover chip and icon-whitening with the icon menu buttons
         self._build_view_toggles()
         self.cb_viewmode.toggled.connect(self.on_viewmode_button)
         if self.toolbar_layout is not None:
             self.toolbar_layout.addWidget(self.cb_viewmode)
-            # Fixed gap to the icon-menu cluster appended right after -
-            # the design right-anchors everything from the star outward.
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(2))    # fixed gap to the icon-menu cluster appended right after; the design right-anchors everything from the star outward
 
-        # Updated Details UI
         self.details = self.ui.details_widget  # type: ignore
-        # Match the grid's #313131 (see thumblist above). QPalette +
-        # setAutoFillBackground(), not setStyleSheet() - a stylesheet
-        # here previously knocked the Name/Category/Tags fields off
-        # their own native box rendering entirely (see the "details-panel
-        # color pass" entry earlier in this file); palette changes don't
-        # cascade onto descendants the way a stylesheet does.
-        self.details.setAutoFillBackground(True)
+        self.details.setAutoFillBackground(True)    # matches the grid on `surface_high` via QPalette, NOT setStyleSheet: a sheet here knocked the Name/Category/Tags fields off their native box rendering, because palette changes do not cascade onto descendants the way a sheet does
         details_palette = self.details.palette()
         details_palette.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_high"))
         self.details.setPalette(details_palette)
         self.line_name = self.ui.line_name  # type: ignore
         self.line_cat = self.ui.line_cat  # type: ignore
 
-        # Every asset has exactly ONE category now - the multi-category
-        # feature was removed (a hazard that made sorting harder).
-        # The single-category dropdown is the only category input; the old
-        # "Multi-category material" tick box and its comma-separated
-        # textbox are hidden (kept in the .ui, never shown).
-        self.cat_combo = self.ui.cat_combo  # type: ignore
+        self.cat_combo = self.ui.cat_combo  # type: ignore  -- every asset has exactly ONE category, so this dropdown is the only category input; the multi-category tick box and its comma-separated textbox stay in the .ui and are never shown
         self.box_multicat = self.ui.box_multicat  # type: ignore
         self.cat_combo.setEnabled(True)
         try:
@@ -2282,21 +1239,13 @@ class MatLibPanel(QtWidgets.QWidget):
             "QLineEdit:disabled { background-color: #333333; }"
         )
 
-        # Greyed renderer row inserted directly under Name (e.g. "USD
-        # Redshift" / "Redshift" / "Karma"). Inserted in code so we don't have
-        # to renumber the whole form; disabled so it reads as metadata.
-        self.line_renderer = QtWidgets.QLineEdit()
+        self.line_renderer = QtWidgets.QLineEdit()    # greyed renderer row under Name ("USD Redshift" / "Redshift" / "Karma"), inserted in code so the whole form need not be renumbered, and disabled so it reads as metadata
         self.line_renderer.setReadOnly(True)
         self.line_renderer.setDisabled(True)
         self.line_renderer.setStyleSheet(
             "QLineEdit:disabled { background-color: #333333; }"
         )
-        # Provenance rows for downloaded online materials (empty for local
-        # ones): the License in its own field, and a multi-line About /
-        # credit block at the very bottom to pay homage to the creators
-        # (source, author, link). Both editable, saved with the rest of
-        # the Material Info form.
-        self.line_license = QtWidgets.QLineEdit()
+        self.line_license = QtWidgets.QLineEdit()    # provenance for downloaded online materials and empty for local ones: License in its own field, and a multi-line About/credit block at the bottom naming source, author and link. Both editable, both saved with the rest of the Material Info form
         self.text_about = QtWidgets.QPlainTextEdit()
         self.text_about.setFixedHeight(theme.ui_px(84))   # ~4 lines
         try:
@@ -2305,8 +1254,7 @@ class MatLibPanel(QtWidgets.QWidget):
             )
             name_row, _ = details_form.getWidgetPosition(self.line_name)
             details_form.insertRow(name_row + 1, "Type", self.line_renderer)
-            # Appended, so they sit at the bottom of the form.
-            details_form.addRow("License", self.line_license)
+            details_form.addRow("License", self.line_license)    # appended, so the provenance rows sit at the bottom of the form
             details_form.addRow("About", self.text_about)
         except Exception:
             pass
@@ -2315,19 +1263,10 @@ class MatLibPanel(QtWidgets.QWidget):
         self.box_fav.clicked.connect(self.box_fav_clicktoggle)
 
         self.btn_update = self.ui.btn_update  # type: ignore
-        # The .ui text "Update Material" now collides with the real
-        # content-update in the save flow - this button only saves
-        # name/category/tags/favorite. Property change at runtime, not a
-        # .ui edit (standing practice).
-        self.btn_update.setText("Update Info")
+        self.btn_update.setText("Update Info")    # the .ui's own "Update Material" collides with the real content-update in the save flow; this button saves name/category/tags/favourite alone. Changed as a runtime property, never a .ui edit, which is standing practice here
         self.btn_update.clicked.connect(self.user_update_asset)
 
-        # Material metadata now lives in a FLOATING DIALOG, not a docked
-        # panel (the panel ate grid width and only materials
-        # used it). Reparenting details_widget into a QDialog removes it
-        # from the splitter, so the grid gets the freed space; the edit
-        # form (update_details_view / user_update_asset) is unchanged.
-        self.details_dialog = QtWidgets.QDialog(self)
+        self.details_dialog = QtWidgets.QDialog(self)    # material metadata is a FLOATING dialog, not a docked panel - the panel ate grid width and only materials used it. Reparenting details_widget into a QDialog takes it out of the splitter so the grid gets the space; the edit form itself is unchanged
         self.details_dialog.setWindowTitle("Material Info")
         _dlg_layout = QtWidgets.QVBoxLayout(self.details_dialog)
         _m = theme.ui_px(8)
@@ -2336,52 +1275,24 @@ class MatLibPanel(QtWidgets.QWidget):
         self.details.setVisible(True)
         self.details.setMinimumWidth(theme.ui_px(360))
 
-        # The Filter menu lives in the hidden menubar and is opened from
-        # a toolbar button (moved out of the details view). It held the
-        # renderers alone until 2026-08-02; every section fills it with
-        # its own entries now, from panel/sections.py.
-        self.menu_filter = QtWidgets.QMenu("Filter", self.menu)
+        self.menu_filter = QtWidgets.QMenu("Filter", self.menu)    # lives in the hidden menubar and opens from a toolbar button; every section fills it with its own entries from panel/sections.py
         self._build_menus()
 
-        # The .ui's original icon-size slider is superseded by ClickSlider
-        # below; keep it hidden rather than removing it from the .ui file
-        # (the .ui file is maintained externally in Qt Designer, and
-        # edited versions of it are sometimes handed over).
-        self.ui.slide_iconSize.setVisible(False)  # type: ignore
+        self.ui.slide_iconSize.setVisible(False)  # type: ignore  -- the .ui's own icon-size slider is superseded by the ClickSlider below, and stays hidden rather than deleted because the .ui is maintained externally in Qt Designer and edited versions of it are sometimes handed over
 
-        # Set Up Clickable Slider
         self.click_slider = ui_helpers.ClickSlider()
-        # No tooltip here: _sync_slider_for_mode() owns it, because the
-        # text differs by view mode (grid says "Tile size.", list
-        # explains why it is greyed). A construction-time one is dead
-        # the moment apply_view_mode runs - and the one that used to
-        # sit here said "independent for grid and list", contradicting
-        # the mode-aware text that overwrote it.
-        self.click_slider.setObjectName("click_slider")
+        self.click_slider.setObjectName("click_slider")    # NO tooltip here - _sync_slider_for_mode owns it, because the text differs by view mode and a construction-time one is dead the moment apply_view_mode runs
         self.click_slider.setOrientation(QtCore.Qt.Horizontal)  # type: ignore
-        # 64 is the floor (2026-08-01): below it a grid tile is
-        # smaller than the badges it carries. LIST does not use
-        # this range at all - it sits at LIST_THUMB_SIZE with the
-        # slider disabled, because a list row is a text line.
-        self.click_slider.setRange(64, 512)
+        self.click_slider.setRange(64, 512)    # 64 is the floor: below it a grid tile is smaller than the badges it carries. LIST does not use this range at all - it sits at LIST_THUMB_SIZE with the slider disabled, because a list row is a text line
         self.click_slider.setValue(ui_helpers.ClickSlider.DEFAULT_VALUE)
         self.click_slider.setSingleStep(50)
         self.click_slider.setPageStep(50)
         self.click_slider.set_accent_color(theme.accent(self.prefs.accent_color))
-        # Sizing rule, same as the filter box: 400px rendered
-        # max (raised from 300), 75px min.
-        self.click_slider.setMinimumWidth(theme.ui_px(38))
+        self.click_slider.setMinimumWidth(theme.ui_px(38))    # same sizing rule as the filter box: 400px rendered max, 75px min
         self._build_slider_and_layout()
 
     def _mirror_toolbar(self) -> None:
-        """TEST: mirror the toolbar row - every
-        item flows from the LEFT edge in the reverse of the designed
-        order (Library/View/Renderer icons first, then grid-list toggle,
-        star, slider, filter box, "Filter" label, with the stretch
-        landing at the far right). The layout is still BUILT in its
-        designed right-aligned order everywhere above, then reversed
-        here in one pass - so ending the test is just deleting this
-        method and its call, nothing else moves."""
+        """TEST, NOT THE DESIGNED LAYOUT: mirror the toolbar row so every item flows from the LEFT edge in the reverse of the designed order. Everything above still BUILDS right-aligned, so ending the test is deleting this method and its call - nothing else moves."""
         if self.toolbar_layout is None:
             return
         items = []
@@ -2389,49 +1300,21 @@ class MatLibPanel(QtWidgets.QWidget):
             items.append(self.toolbar_layout.takeAt(0))
         for item in reversed(items):
             self.toolbar_layout.addItem(item)
-        # Exception to the literal mirror: the "Filter" label
-        # still reads left-to-right, so it stays on the LEFT of its box.
-        # A plain reversal lands it on the box's right as
-        # [box][12-gap][label] - swap the label (and re-seat the gap)
-        # back to [label][12-gap][box]. Strict about the expected
-        # adjacency so a future construction change can't silently
-        # shuffle the wrong items.
         i_box = self.toolbar_layout.indexOf(self.line_filter)
         i_label = self.toolbar_layout.indexOf(self.filter_label)
-        if i_box >= 0 and i_label == i_box + 2:
+        if i_box >= 0 and i_label == i_box + 2:    # exception to the literal mirror: the "Filter" label still reads left-to-right, so the label and its gap go back to [label][12-gap][box]. Strict adjacency, so a construction change cannot silently shuffle the wrong items
             label_item = self.toolbar_layout.takeAt(i_label)
             gap_item = self.toolbar_layout.takeAt(i_label - 1)
             self.toolbar_layout.insertItem(i_box, gap_item)
             self.toolbar_layout.insertItem(i_box, label_item)
-        # Second exception: the capture button is the OUTERMOST control
-        # in both orders. A literal mirror makes "outermost right" into
-        # "outermost left", which is where it actually landed - so it is
-        # moved back to the end here, along with the 2px gap that
-        # precedes it in build order and therefore follows it after the
-        # reversal.
-        #
-        # Doing it here rather than by building it at index 0 keeps this
-        # method's promise intact: the designed order above still has it
-        # outermost-right, so deleting the mirror leaves it where it
-        # belongs and nothing else moves.
-        # Capture, then the gear, in that order - so the row ends
-        # ... stretch, Capture, gear, with Capture immediately to the
+        self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))    # second exception: the capture button is the OUTERMOST control in both orders, and the mirror would leave it outermost-LEFT
+        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # capture first, then the gear, so the row ends ... stretch, Capture, gear
 
-        # call). The gear moved out of the cluster it used to lead.
-        self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))
-        self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))
-
-        # The designed row insets its RIGHT edge by 2 (outside the
-        # outermost icon button); mirrored, the icon cluster gains a
-        # left edge - and with the capture button moved back to the end
-        # above, BOTH edges now hold a control, so both are inset.
-        self.toolbar_layout.setContentsMargins(
+        self.toolbar_layout.setContentsMargins(    # both edges hold a control once the capture button is back at the end, so both are inset by 2
             theme.ui_px(2), 0, theme.ui_px(2), 0)
 
     def _toolbar_widget(self, name: str):
-        """A toolbar item by objectName. The gear is deliberately not
-        kept on self (an attribute for it once made a naming refactor
-        read as a layout defect), so the row is where to look."""
+        """A toolbar item by objectName - the gear is deliberately not kept on self, so the row is where to look for it."""
         for i in range(self.toolbar_layout.count()):
             item = self.toolbar_layout.itemAt(i)
             widget = item.widget() if item is not None else None
@@ -2440,19 +1323,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return None
 
     def _move_to_toolbar_end(self, widget) -> None:
-        """Move one control (and the 2px gap that travels with it) to
-        the end of the mirrored row.
-
-        The mirror reverses everything, which turns "outermost right"
-        into "outermost left". Two controls need putting back, so this
-        is the one routine both use rather than the second being a copy
-        of the first.
-
-        Doing it HERE rather than by building at index 0 keeps the
-        mirror's promise: the designed order above still reads as the
-        row does, so deleting the mirror leaves everything where it
-        belongs.
-        """
+        """Move one control (and the 2px gap that travels with it) to the end of the mirrored row - the mirror turns "outermost right" into "outermost left", and two controls need putting back."""
         if widget is None:
             return
         index = self.toolbar_layout.indexOf(widget)
@@ -2460,10 +1331,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         item = self.toolbar_layout.takeAt(index)
         gap_item = None
-        # The gap sat immediately BEFORE it in build order, so it
-        # follows it after the reversal. Strict adjacency, so a
-        # construction change cannot silently move the wrong item.
-        if index < self.toolbar_layout.count():
+        if index < self.toolbar_layout.count():    # the gap sat immediately BEFORE the widget in build order, so it FOLLOWS it after the reversal. Strict adjacency, so a construction change cannot silently move the wrong item
             probe = self.toolbar_layout.itemAt(index)
             if probe is not None and probe.widget() is None:
                 gap_item = self.toolbar_layout.takeAt(index)
@@ -2473,17 +1341,11 @@ class MatLibPanel(QtWidgets.QWidget):
 
     @staticmethod
     def _category_names_from(model) -> list[str]:
-        """ALL category names from a Categories model (empty ones
-        included), excluding the 'All' pseudo-category. Reads the SOURCE
-        model, not the sidebar proxy - the sidebar hides empty
-        categories, but every ASSIGNMENT surface (the save dialog, the
-        Edit Info dialog's Category dropdown) must still offer the
-        complete list. The one implementation behind all three
-        sections' getters."""
+        """ALL category names from a Categories model, empty ones included, excluding the 'All' pseudo-category - the one implementation behind all three sections' getters."""
         names = []
         if not model:
             return names
-        for elem in range(model.rowCount()):
+        for elem in range(model.rowCount()):    # pass the SOURCE model, never the sidebar proxy: the proxy hides empty categories, and every ASSIGNMENT surface (the save dialog, the Edit Info dialog's Category dropdown) must still offer the complete list
             cidx = model.index(elem, 0)
             name = model.data(cidx, QtCore.Qt.ItemDataRole.DisplayRole)
             if name and name != "All":
@@ -2494,12 +1356,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return self._category_names_from(self.category_model)
 
     def assign_category_active(self, category: str) -> None:
-        """Set (replace) the category of the ACTIVE section's selected
-        assets. The path behind dragging assets onto a sidebar
-        category, for every section with real categories: Materials /
-        Cop / Code (the curated-library stack) and Colors (user
-        gradients). A single category per asset now - the
-        multi-category feature was removed."""
+        """Set (replace) the category of the ACTIVE section's selected assets - one category per asset. The path behind dragging assets onto a sidebar category, for every section with real categories: Materials / Cop / Code and Colors."""
         category = (category or "").strip()
         if not category:
             return
@@ -2513,29 +1370,20 @@ class MatLibPanel(QtWidgets.QWidget):
         indexes = grid_columns.selected_rows(selmodel)
         if not indexes:
             return
-        # OUTSIDE the wrapper: check_add_category announces itself with
-        # begin/endInsertRows, and pairing the two segfaults H21
-        # (research.md, measured 2026-08-04). The row edits below are
-        # data changes, which is what the wrapper is for.
-        catmodel.check_add_category(category)
+        catmodel.check_add_category(category)    # OUTSIDE the relayout wrapper: this announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md). The row edits below are data changes, which is what the wrapper is for
         with ui_helpers.relayout(model):
             for index in indexes:
                 idx = model.index(proxy.mapToSource(index).row(), 0)
                 asset = model.assets[idx.row()]
-                # fav=None: a recategorise edits the record, never the
-                # star - the star is per-user and lives in settings.
-                # save=False: one index write for the whole selection,
-                # not one per row.
                 model.set_assetdata(
                     idx, asset.name, category, ", ".join(asset.tags),
-                    None, save=False
+                    None, save=False    # fav=None: a recategorise edits the record, never the star, which is per-user and lives in settings. save=False: one index write for the whole selection, not one per row
                 )
             model.save()
         self._refresh_sidebar_categories()
 
     def _assign_gradient_category(self, category: str) -> None:
-        """Move the selected gradients to a category - every gradient is a
-        normal editable entry now (the seeded palettes included)."""
+        """Move the selected gradients to a category - the seeded palettes included, since every gradient is a normal editable entry."""
         rows = [
             self.gradient_sorted_model.mapToSource(i).row()
             for i in grid_columns.selected_rows(self.gradient_selection_model)
@@ -2545,8 +1393,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self._refresh_sidebar_categories()
 
     def _grid_geometry(self) -> dict:
-        """The numbers that would have to change for the grid to appear
-        to move - viewport, scroll range, grid step, size hint."""
+        """The numbers that would have to change for the grid to appear to move - viewport, scroll range, grid step, size hint."""
         view = self.thumblist
         bar = view.verticalScrollBar()
         return {
@@ -2560,10 +1407,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def thumblist_rc_menu(self) -> None:
         """Grid right-click - the active section builds its own menu."""
-        # A right-click must not move the grid. When it does, the
-        # before/after pair names which number moved (debug only - this
-        # measures four widget geometries, so it stays off the hot path).
-        watch = self._grid_geometry() if debug.is_on() else None
+        watch = self._grid_geometry() if debug.is_on() else None    # a right-click must not move the grid; when it does, the before/after pair names which number moved. Debug only - it interrogates the view's geometry, so it stays off the hot path
         try:
             self._thumblist_rc_menu()
         finally:
@@ -2574,28 +1418,14 @@ class MatLibPanel(QtWidgets.QWidget):
                                 before=watch, after=after)
 
     def _thumblist_rc_menu(self) -> None:
-        """The menu itself - the active CONTEXT builds its own, from
-        its own entry table (`Section.GRID_MENU`, rendered by
-        panel/grid.py).
-
-        No online branch: `_section()` answers with the online world
-        while it shows, and the online world has a GRID_MENU like every
-        other context. That branch was the last place a grid path had
-        to know which world it was in.
-        """
-        context = self._section()
+        """The menu itself - the active CONTEXT builds its own from its own entry table (`Section.GRID_MENU`, rendered by panel/grid.py)."""
+        context = self._section()    # answers with the ONLINE world while that shows, and it has a GRID_MENU like every other context, so no world test belongs here
         if context is not None:
             context.rc_menu()
 
     def _open_versions_dialog(self, index) -> None:
-        """The versions dialog: a dropdown of the versions, a field to
-        rename the selected one, Cancel / Apply. Browses, switches and
-        names - never creates (creation is automatic on save).
-
-        `index` arrives from the DELEGATE, so it belongs to the proxy
-        the view shows; the model methods want source rows.
-        """
-        source = self.material_sorted_model.mapToSource(index)
+        """The versions dialog: a dropdown of the versions, a field to rename the selected one, Cancel / Apply. Browses, switches and names - never creates (creation is automatic on save)."""
+        source = self.material_sorted_model.mapToSource(index)    # `index` arrives from the DELEGATE, so it belongs to the proxy the view shows; the model methods want source rows
         row = source.row()
         model = self.material_model
         mat = model.assets[row]
@@ -2650,14 +1480,6 @@ class MatLibPanel(QtWidgets.QWidget):
 
         dialog.add_buttons("cancel", "Apply")
 
-        # DELETED ON BOTH EXITS, and only after its fields are read.
-        # It is parented to the panel, which outlives it, so dropping
-        # the Python name frees nothing - the cost `edit_tile_icon`
-        # records measuring at ~6.5MB per open. NOT WA_DeleteOnClose:
-        # the values below come out of the dialog's own children after
-        # exec() returns, and that attribute schedules them for
-        # destruction, so the read would depend on when the event loop
-        # happens to dispatch DeferredDelete.
         try:
             if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
                 return
@@ -2666,7 +1488,7 @@ class MatLibPanel(QtWidgets.QWidget):
             typed = name_field.text().strip()
             combo_row = picker.currentIndex()  # not a proxy
         finally:
-            dialog.deleteLater()
+            dialog.deleteLater()    # deleted on BOTH exits and only after its fields are read: it is parented to the panel, so dropping the Python name frees nothing (~6.5MB per open). NOT WA_DeleteOnClose - the values above are read out of its own children after exec() returns, and that attribute would schedule them for destruction first
 
         if typed and typed != (listed[combo_row].get("name") or ""):
             model.rename_version(row, chosen, typed)
@@ -2676,19 +1498,12 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
     def _scene_path(self, path: str) -> str:
-        """Every path Amaze WRITES INTO THE SCENE goes through here,
-        spelled per Preferences - Write Paths As. The function-sheet
-        decision covers Copy Path and every path handed to the user
-        after it; loads and existence checks stay on the raw path,
-        which is a location, not a spelling."""
-        return file_library.houdini_path(
+        """Every path Amaze WRITES INTO THE SCENE goes through here, spelled per Preferences - Write Paths As."""
+        return file_library.houdini_path(    # NOT for loads or existence checks: those keep the raw path, which is a location and not a spelling
             path, getattr(self.prefs, "path_style", "home"))
 
     def copy_file_paths(self, proxy_indexes) -> None:
-        """Copy the selection's paths to the clipboard, one per line,
-        written as Houdini paths ($HIP/... $JOB/... $HOME/...) - the
-        function-sheet decision, and the ONLY action an unrecognised
-        file has. No dialog: the clipboard changing IS the report."""
+        """Copy the selection's paths to the clipboard, one per line, written as Houdini paths ($HIP/... $JOB/... $HOME/...) - and the ONLY action an unrecognised file has."""
         paths = []
         for proxy_index in proxy_indexes:
             path = proxy_index.data(self.file_files_model.PathRole) or ""
@@ -2697,27 +1512,18 @@ class MatLibPanel(QtWidgets.QWidget):
                     path, getattr(self.prefs, "path_style", "home")))
         if not paths:
             return
-        QtWidgets.QApplication.clipboard().setText("\n".join(paths))
+        QtWidgets.QApplication.clipboard().setText("\n".join(paths))    # no dialog - the clipboard changing IS the report
         debug.event("file", "paths copied", count=len(paths))
 
     def catlist_rc_menu(self) -> None:
-        """Sidebar right-click - the active context builds its own menu.
-
-        The online world declares no SIDEBAR_MENU and the builder
-        returns on an empty table, so no world test belongs here.
-        """
-        section = self._section()
+        """Sidebar right-click - the active context builds its own menu."""
+        section = self._section()    # the online world declares no SIDEBAR_MENU and the builder returns on an empty table, so no world test belongs here
         if section is not None:
             section.catlist_menu()
 
 
     def _locate_folder_user(self, folders_model) -> None:
-        """Sidebar "Locate Folder...": re-point the selected registered
-        folder at a new location - for a folder that moved on disk, or
-        (cross-machine) one whose path only exists on the other
-        computer. Shared by the Textures and Geometry sidebars; the
-        model rewrites its favorites onto the new path so they survive
-        the move."""
+        """Sidebar "Locate Folder...": re-point the selected registered folder at a new location - a folder that moved on disk, or one whose path only exists on the other machine. Shared by the Textures and Geometry sidebars."""
         indexes = self.cat_list.selectedIndexes()
         row = indexes[0].row() if indexes else -1
         if row <= 0:
@@ -2729,7 +1535,7 @@ class MatLibPanel(QtWidgets.QWidget):
         path = hou.ui.selectFile(file_type=hou.fileType.Directory)  # type: ignore
         if not path:
             return
-        rewritten = folders_model.relocate_folder(row, hou.expandString(path))
+        rewritten = folders_model.relocate_folder(row, hou.expandString(path))    # the model rewrites its favorites onto the new path so they survive the move; a negative answer means the location is not a folder
         if rewritten < 0:
             hou.ui.displayMessage(  # type: ignore
                 "That location doesn't exist as a folder - nothing "
@@ -2738,35 +1544,15 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         if rewritten:
             debug.event("folders", "relocated", favorites=rewritten)
-        # Rescan under the new path.
-        self.update_selected_cat()
+        self.update_selected_cat()    # rescan under the new path
 
-
-    # ------------------------------------- scene capture (hip rows)
 
     def capture_open_scene_thumbnail(self) -> None:
-        """Toolbar button: capture the scene currently open.
-
-        Works off the OPEN scene rather than the grid selection - the
-        capture photographs the viewport, so the only scene it can
-        honestly be filed against is the one the viewport is showing.
-        """
-        # No second copy of the policy. This button used to carry its
-        # own opened_path/amaze_opened_current_scene gate and its own
-        # wording, so the SAME refusal had two phrasings that could
-        # drift - the duplication the shared path was introduced to
-        # remove, left behind by the first pass.
-        # "" = whatever is open. That is what this button has always
-        # claimed to do ("the only scene it can honestly be filed
-        # against is the one the viewport is showing"); the old gate
-        # additionally required AMAZE to have opened it, a stricter rule
-        # the shelf tool does not share and cannot be made to.
-        self._capture_and_report()
+        """Toolbar button: capture the scene currently OPEN, not the grid selection - the capture photographs the viewport, so the only scene it can honestly be filed against is the one the viewport is showing."""
+        self._capture_and_report()    # "" = whatever is open, and no gate of its own: the refusal wording lives one layer down so this button, the tile menu and the shelf tool cannot drift apart
 
     def _hip_path_for(self, index):
-        """The scene path behind a File-grid index, or '' - '' also for
-        a row that is not a scene, so every hip-only path stays inert
-        on other kinds."""
+        """The scene path behind a File-grid index, or '' - also '' for a row that is not a scene, so every hip-only path stays inert on other kinds."""
         if index is None or not index.isValid():
             return ""
         if index.data(self.file_files_model.KindRole) != \
@@ -2775,149 +1561,60 @@ class MatLibPanel(QtWidgets.QWidget):
         return index.data(self.file_files_model.PathRole) or ""
 
     def _capture_and_report(self, target: str = "") -> None:
-        """Run the shared capture and SAY WHY if it refuses.
-
-        Both entry points end here, and every check lives one layer
-        down in scene_captures.capture_open_scene - so the tile menu, the
-        toolbar button and the shelf tool cannot grow three wordings of
-        the same refusal, which is what they had.
-
-        An empty target means "whatever is open".
-        """
+        """Run the shared capture and SAY WHY if it refuses - both entry points end here, and an empty target means whatever scene is open."""
         try:
-            scene_captures.capture_open_scene(target)
-        except scene_captures.CaptureRefused as exc:
-            # A capture that silently does nothing teaches the user that
-            # the feature is broken.
+            scene_captures.capture_open_scene(target)    # every check lives one layer down, so the tile menu, the toolbar button and the shelf tool cannot grow three wordings of the same refusal
+        except scene_captures.CaptureRefused as exc:    # a capture that silently does nothing teaches the user the feature is broken
             debug.event("hip", "capture refused", file=target,
                         reason=str(exc))
             hou.ui.displayMessage(str(exc))  # type: ignore
 
     def capture_hip_thumbnail(self, index, path: str = "") -> None:
-        """Capture the current scene view as this scene's thumbnail.
-
-        ONLY ever called from the right-click menu. There is no
-        automatic version and there must not be one: the capture runs a
-        flipbook, a flipbook forces the scene to COOK, and the cost of
-        cooking an arbitrary scene is unbounded.
-
-        Measured 2026-07-29, from the debug log of the attempt that had
-        one: a capture scheduled 1.2s after opening a cloth-sim scene
-        blocked for 22 SECONDS on the first file, and on the second it
-        never returned - Houdini filled 86GB of RAM and crashed. No
-        delay fixes that, because the problem is not that the scene had
-        not finished loading; it is that forcing a render of someone
-        else's scene is work of unknown size. The user presses the
-        button when the scene is up and looks right, which is the same
-        judgement they were already making by hand.
-        """
-        target = path or self._hip_path_for(index)
+        """Capture the current scene view as this scene's thumbnail - ONLY ever from the right-click menu, and there must never be an automatic version."""
+        target = path or self._hip_path_for(index)    # why never automatic: the capture runs a flipbook, a flipbook forces the scene to COOK, and cooking an arbitrary scene is work of unknown size - measured 2026-07-29, an auto-capture 1.2s after opening a cloth-sim scene blocked 22 SECONDS on one file and on the next filled 86GB of RAM and crashed Houdini. No delay fixes it; the user pressing the button when the scene looks right is the judgement
         if not target:
             return
-        self._capture_and_report(target)
-        # No refresh here: scene_captures announces a landed capture and
-        # every live model repaints itself. Doing it again discarded the
-        # cached image and emitted dataChanged a second time, and it hid
-        # which layer actually owns the refresh.
+        self._capture_and_report(target)    # and NO refresh after it: scene_captures announces a landed capture and every live model repaints itself. Doing it again discarded the cached image, emitted dataChanged a second time, and hid which layer owns the refresh
 
     def _raw_category_name(self, index) -> str:
-        """The STORED name behind a sidebar row, not the displayed one.
-
-        `Categories.data` returns `elem[1:]` for DisplayRole when the
-        stored name starts with "_" - the mechanism that makes the
-        stored "_All" sort first and read as "All". Every action that
-        acts on a category has to key off the stored form or it acts on
-        a name that does not exist:
-
-          * Rename "_WIP" -> "Done" matched no asset and no entry, so
-            nothing changed and nothing said so;
-          * Remove returned early on its own `cat not in self._categories`
-            guard and the row stayed;
-          * dragging a tile onto that row called check_add_category
-            with "WIP", creating a SECOND category beside "_WIP" and
-            filing the asset under it - so the tile vanished from the
-            row it was dropped on.
-
-        The colour gesture already did this and said why; three
-        sibling sites read DisplayRole. One helper now, so a fourth
-        cannot get it wrong - and `sidebar_set_colour` reads every
-        sidebar's selection through it, not just the asset one.
-
-        "All" stays in its displayed form on purpose: callers compare
-        against it to skip the view row.
-        """
+        """The STORED name behind a sidebar row, not the displayed one - every action on a category must key off this, or it acts on a name nothing has."""
         if index is None or not index.isValid():
             return ""
         model = self.cat_list.model() if self.cat_list is not None else None
         if model is not None and hasattr(model, "sourceModel"):
-            raw = index.data(model.sourceModel().CatSortRole)
+            raw = index.data(model.sourceModel().CatSortRole)    # `Categories.data` strips a leading "_" for DisplayRole - the mechanism that makes the stored "_All" sort first and read as "All" - so for such a row DisplayRole answers a name no store holds
             if raw:
                 return str(raw)
-        return str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
+        return str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")    # fallback only for a model with no sourceModel to ask; it answers the DISPLAYED name, so a caller reaching it is on the degraded path
 
     def _selected_category_name(self) -> str:
-        """The category the sidebar is standing in, blank for All.
-
-        Three copies of this answered it for the save dialogs and they
-        already disagreed: one fell back to `live_current_index` when
-        the selection model was empty and two returned "", one gated on
-        the section and the others did not, and all three read the
-        DISPLAYED name. The fallback is the RIGHT behaviour - the panel
-        reaches "current but not selected" through
-        _restore_section_state's setCurrentIndex - so it is the one
-        kept here, and the section gate stays with the callers, since
-        only some of them want it.
-        """
+        """The category the sidebar is standing in, blank for All - selection first, then the live current index. NO section gate: that belongs to the caller, since only some want it."""
         if self.cat_list is None:
             return ""
         indexes = self.cat_list.selectedIndexes()
-        index = indexes[0] if indexes else ui_helpers.live_current_index(
+        index = indexes[0] if indexes else ui_helpers.live_current_index(    # the fallback is deliberate: _restore_section_state's setCurrentIndex leaves the sidebar "current but not selected", and returning "" there would answer All
             self.cat_list)
         name = self._raw_category_name(index)
         return "" if name in ("All", "_All") else name
 
-    #: The picker's starting colour when a row has none. One place.
-    DEFAULT_SIDEBAR_COLOUR = "#4af2a1"
+    DEFAULT_SIDEBAR_COLOUR = "#4af2a1"    # the picker's starting colour when a row has none; one place
 
     def ask_category_name(self, title: str):
-        """The category-name dialog, once - so a caller never unpacks
-        CategoryDialog's two-field answer (`canceled` plus `name`),
-        which three sidebar menus each did in their own way.
-
-        NONE means CANCELLED and "" means the user cleared the field,
-        and the two are not the same thing: File's Label uses an empty
-        name to clear a location's custom label back to the path, so
-        collapsing them would make Cancel wipe the label."""
+        """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""
         dialog = gradient_dialog.CategoryDialog(title)
         dialog.exec_()
         if dialog.canceled:
             return None
-        return dialog.name or ""
+        return dialog.name or ""    # "" is a real answer: File's Label clears a location's custom label back to the path with it, so folding it into Cancel would make Cancel wipe the label
 
     def sidebar_set_colour(self, pick: bool) -> None:
-        """Set Color / Clear Color on the sidebar selection.
-
-        ONE gesture for all three sidebars: read the selection's STORED
-        names, ask the context what colour the first one has, open the
-        picker once, hand the answer back to the context. What a colour
-        IS - which store, which models repaint - is the context's
-        (`Section.set_sidebar_colour`).
-
-        It was written three times, once per sidebar menu, and only the
-        asset copy read the stored name: the sidebar DISPLAYS "_WIP" as
-        "WIP", and a colour written under the displayed name is one
-        nothing ever reads. "All" is skipped everywhere - it is a view,
-        not a category, and colouring it would mean colouring
-        everything.
-        """
+        """Set Color / Clear Color on the sidebar selection - the panel's ONE gesture for every sidebar: read the selection's keys, ask the context the first one's colour, open the picker once, hand the answer back."""
         context = self._section()
         if context is None or self.cat_list is None:
             return
-        # ASK THE CONTEXT what a row is keyed by: a category name in
-        # three sections, a registered folder PATH in File.
-        names = [context.sidebar_key(index)
+        names = [context.sidebar_key(index)    # ASK THE CONTEXT what a row is keyed by: a category's STORED name in three sections, a registered folder PATH in File. A colour written under the DISPLAYED name ("_WIP" shows as "WIP") is one nothing ever reads
                  for index in self.cat_list.selectedIndexes()]
-        names = [name for name in names
+        names = [name for name in names    # All is skipped: it is a view, not a category, and colouring it would mean colouring everything
                  if name and name not in ("All", "_All")]
         if not names:
             return
@@ -2933,30 +1630,19 @@ class MatLibPanel(QtWidgets.QWidget):
             colour = chosen.name()
 
         for name in names:
-            context.set_sidebar_colour(name, colour)
+            context.set_sidebar_colour(name, colour)    # what a colour IS - which store, which models repaint - is the context's (Section.set_sidebar_colour)
 
 
     def grid_toggle_favourite(self, indexes) -> None:
-        """Flip the star on the grid's selection - one entry point for
-        every section's menu.
-
-        It was five, one per right-click handler, each naming its own
-        model method and its own proxy; three also emitted a layout
-        change to force the grid to re-map, and the two that did not
-        left an un-favourited tile sitting in a favourites-only grid.
-        The re-map is the proxy's own invariant now (grid_proxy.py) and
-        the flip is the context's own verb, so what is left here is
-        which selection to act on and refreshing the details form.
-        """
+        """Flip the star on the grid's selection - one entry point for every section's menu, and all it decides is which selection to act on and to refresh the details form."""
         context = self._section()
         if context is None:
             return
-        context.toggle_favourite(list(indexes))
+        context.toggle_favourite(list(indexes))    # the flip is the context's own verb, and re-mapping a favourites-only grid after it is the proxy's own invariant (grid_proxy.py) - nothing to force from here
         self.update_details_view()
 
     def _selection_has_redshift(self) -> bool:
-        """Whether any currently-selected material is Redshift - gates
-        showing "Convert to Karma" in the right-click menu."""
+        """Whether any currently-selected material is Redshift - gates showing `Convert to Karma` in the right-click menu."""
         if not self.material_model:
             return False
         for index in grid_columns.selected_rows(
@@ -2968,21 +1654,13 @@ class MatLibPanel(QtWidgets.QWidget):
         return False
 
     def convert_selected_to_karma(self) -> None:
-        """Right-click "Convert to Karma": node-graph conversion of
-        selected Redshift materials to Karma/MaterialX (see
-        core/library.py's convert_redshift_to_karma() and
-        render/material_converter.py for what is and isn't handled).
-        Non-Redshift items in a mixed selection are silently skipped, not
-        errored on. Everything - success and skips alike - lands in one
-        summary dialog, since a "successful" conversion can still have
-        approximated or skipped inputs worth reviewing; nothing here is
-        claimed to be a faithful reproduction."""
+        """Right-click `Convert to Karma`: node-graph conversion of the selected Redshift materials to Karma/MaterialX, silently skipping non-Redshift items in a mixed selection."""
         if not self.material_model:
             return
         indexes = grid_columns.selected_rows(self.material_selection_model)
         if not indexes:
             return
-        all_lines = []
+        all_lines = []    # ONE summary dialog for successes and skips alike: a "successful" conversion can still have approximated or skipped inputs worth reviewing, and no result is claimed to be a faithful reproduction
         converted_count = 0
         redshift_count = 0
         with ui_helpers.relayout(self.material_model):
@@ -2994,13 +1672,8 @@ class MatLibPanel(QtWidgets.QWidget):
                 redshift_count += 1
                 try:
                     ok, report = (
-                        self.material_model.convert_redshift_to_karma(idx))
-                except Exception as exc:
-                    # An exception here previously aborted the whole
-                    # batch silently (no summary dialog ever reached,
-                    # and any earlier successes in the same selection
-                    # were never reported either) - one bad material
-                    # must not take the rest of the selection down.
+                        self.material_model.convert_redshift_to_karma(idx))    # what is and isn't handled: core/library.py's convert_redshift_to_karma() and render/material_converter.py
+                except Exception as exc:    # one bad material must not take the rest of the selection down, nor the summary the others earned - it becomes a line in that summary instead
                     all_lines.append(f'"{mat.name}": crashed - {exc}')
                     continue
                 if ok:
@@ -3012,18 +1685,8 @@ class MatLibPanel(QtWidgets.QWidget):
         )
 
     def show_prefs(self) -> None:
-        """Show the Preferences Dialog - NON-MODAL, floating above the
-        main window. Opens WITHOUT a library too - with the Library
-        menu gone, the dialog's Library tab is the only way to set
-        one. Modality mattered: the operations Preferences launches
-        (cleanup, set library) open native confirmation/summary
-        dialogs, and those landed UNDER a modal prefs dialog -
-        invisible, and once fatal (wiki: Qt facts). A second open
-        while the window exists just fronts it."""
-        # Flush any pending debounced thumbsize save first - prefs.load()
-        # at close re-reads settings.json, and a still-pending write
-        # would silently revert the newest slider value.
-        if self._thumbsize_save_timer.isActive():
+        """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
+        if self._thumbsize_save_timer.isActive():    # flush a pending debounced thumbsize save first: prefs.load() at close re-reads settings.json, and a still-pending write would silently revert the newest slider value
             self._thumbsize_save_timer.stop()
             self.prefs.save()
         existing = getattr(self, "_prefs_dialog", None)
@@ -3040,21 +1703,15 @@ class MatLibPanel(QtWidgets.QWidget):
             self.prefs, panel=self,
             file_files_model=self.file_files_model,
         )
-        # Parented to the main window with plain Dialog flags: floats
-        # on top of Houdini without blocking it. DeleteOnClose keeps
-        # repeated opens from accumulating hidden instances.
         try:
-            dlg.setParent(
+            dlg.setParent(    # plain Dialog flags on the main window: floats over Houdini without blocking it. Keep it non-modal - the native confirmation/summary dialogs Preferences launches (cleanup, set library) land UNDER a modal one, invisible and once fatal (wiki: Qt facts)
                 hou.qt.mainWindow(), QtCore.Qt.WindowType.Dialog
             )
         except AttributeError:
             pass
-        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)
+        dlg.setAttribute(QtCore.Qt.WidgetAttribute.WA_DeleteOnClose, True)    # or repeated opens accumulate hidden instances
         self._prefs_dialog = dlg
-        # finished on every close path (the dialog's closeEvent calls
-        # done()), destroyed as DeleteOnClose insurance - idempotent,
-        # so double delivery applies once.
-        applied = {"done": False}
+        applied = {"done": False}    # `finished` fires on every close path (closeEvent calls done()) and `destroyed` is DeleteOnClose insurance, so this makes double delivery apply once
 
         def _closed(*_a, od=old_dir):
             if applied["done"]:
@@ -3064,125 +1721,62 @@ class MatLibPanel(QtWidgets.QWidget):
 
         dlg.finished.connect(_closed)
         dlg.destroyed.connect(_closed)
-        # The dialog must not outlive the panel it applies to.
-        self.destroyed.connect(dlg.close)
+        self.destroyed.connect(dlg.close)    # the dialog must not outlive the panel it applies to
         dlg.show()
 
     def _prefs_dialog_closed(self, old_dir) -> None:
-        """Everything Preferences used to apply when the modal exec_()
-        returned, now driven by the non-modal dialog's finished
-        signal. A non-modal dialog can outlive its panel (closing the
-        pane tab with Preferences open), so the first thing this does
-        is confirm the panel still exists on the C++ side."""
+        """Apply everything Preferences changed, once the non-modal dialog reports it closed."""
         try:
-            self.isVisible()
+            self.isVisible()    # a non-modal dialog can outlive its panel (the pane tab closed with Preferences open), so confirm the C++ side is still there before touching anything
         except RuntimeError:
             return
         self._prefs_dialog = None
 
-        if not self.material_model or not self.category_model:
-            # Still no library after the dialog - nothing below applies.
+        if not self.material_model or not self.category_model:    # still no library after the dialog - nothing below applies
             return
 
-        # Update Thumblist Grid (mode-aware, respects grid/list)
-        self.apply_view_mode()
+        self.apply_view_mode()    # mode-aware: respects grid vs list
         self.update_renderer_toggles()
         self.prefs.load()
         debug.configure(self.prefs.debug_mode)
         hostos.set_cache_override(self.prefs.cache_dir)
-        # Only a changed library DIRECTORY needs the models rebuilt.
-        # The old unconditional reload re-read the json, rebuilt every
-        # Material, dropped the per-id usd/shader caches (re-derived by
-        # reading two files per material on the next paint) and
-        # re-loaded every thumbnail PNG - well over a thousand file
-        # reads on every single Preferences close, for nothing.
-        if self.prefs.dir != old_dir:
+        if self.prefs.dir != old_dir:    # only a changed library DIRECTORY needs the models rebuilt: rebuilding unconditionally re-reads the json, drops the per-id usd/shader caches and re-loads every thumbnail PNG, well over a thousand file reads per Preferences close
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
         self.texture_progress.set_accent_color(accent)
-        # Tile subtitle line ("Redshift:Standard", "HDR", ...) tracks
-        # the accent too.
         for tile_delegate in self.tile_delegates():
-            tile_delegate.DIM = accent
+            tile_delegate.DIM = accent    # the tile subtitle line ("Redshift:Standard", "HDR", ...) tracks the accent too
         self._sync_notes_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
-        # Empty-category hiding toggled in Preferences: push the flag
-        # into EVERY sidebar proxy and re-evaluate. If turning it ON
-        # just hid the category the user was standing in, fall back to
-        # All like a filter switch does.
-        #
-        # Through sidebar_proxies(), which names the three in one
-        # place. This loop listed Material and Node and not Code - the
-        # same three that setup() and _refresh_sidebar_categories both
-        # enumerate completely - so Code kept whatever value it was
-        # constructed with for the rest of the run. It was invisible
-        # only because nothing set a filter on the Code category model
-        # at all, which is the defect above; fixing that made this one
-        # live, which is why they ship together.
-        for _sidebar_proxy in self.sidebar_proxies():
+        for _sidebar_proxy in self.sidebar_proxies():    # EVERY sidebar proxy, and via sidebar_proxies() rather than a hand-written list: one left out keeps its construction-time hide_empty for the rest of the run
             _sidebar_proxy.hide_empty = self.prefs.hide_empty_categories
         self._refresh_sidebar_categories()
-        self._ensure_sidebar_selection(self.current_section)
+        self._ensure_sidebar_selection(self.current_section)    # if hiding empties just hid the category the user was standing in, fall back to All the way a filter switch does
         self.cat_list.viewport().update()
         grid.visible_view(self).viewport().update()
-        # Geometry look prefs (shading mode / background) may have
-        # changed: the cache key covers them, but nothing re-runs the
-        # folder scan while the section is showing - re-run the current
-        # selection so the new look renders without re-clicking the
-        # folder.
         section = self._section()
         if section is not None:
-            section.prefs_changed()
-        # Safe point to (re)start image thumbnail generation - back in
-        # the plain main event loop, no longer nested inside the modal
-        # Preferences dialog. See the clear_cache() docstrings.
-        #
-        # ONLY while the File section is showing. The merged model's
-        # refresh can start the BLOCKING geometry render pass, and
-        # before the merge that pass was only reachable from the
-        # section whose tiles it renders - a Delete Local Cache from
-        # the Material tab must not freeze Houdini rendering geometry
-        # nobody is looking at. Not deferred-and-lost: FolderSection.
-        # activate() re-runs the folder scan on every File activation,
-        # so the next visit rescans anyway.
-        if self.current_section == "file":
+            section.prefs_changed()    # geometry look prefs (shading mode / background) are in the cache key, but nothing re-runs the folder scan while the section shows, so the current selection is re-run here
+        if self.current_section == "file":    # ONLY while File shows: this refresh can start the BLOCKING geometry render pass, and a Delete Local Cache from another tab must not freeze Houdini rendering tiles nobody is looking at. Nothing is lost - FolderSection.activate() rescans on every File activation
             self.file_files_model.refresh_current_folder()
-        # Visible section tabs may have changed in Preferences.
-        self._apply_enabled_sections()
+        self._apply_enabled_sections()    # visible section tabs may have changed in Preferences
 
     def update_renderer_toggles(self):
-        """A renderer was enabled or disabled - in Preferences, or by
-        saving a material of a new one - so the Filter menu may offer
-        something different now.
-
-        It used to show and hide pre-built renderer actions here, and
-        hand-check the "the checked one just vanished" case. Rebuilding
-        covers both: MaterialSection.filter_entries reads the same prefs
-        flags, and build_filter_menu falls back to All for any section
-        whose remembered choice is no longer on offer. Kept under its
-        own name because its three callers mean this event, not "redraw
-        the menu"."""
+        """A renderer was enabled or disabled - in Preferences, or by saving a material of a new one - so the Filter menu is rebuilt whole: MaterialSection.filter_entries re-reads the same prefs flags, and build_filter_menu falls back to All for any section whose remembered choice is no longer on offer. Under its own name because its three callers mean that event, not merely a menu redraw."""
         if getattr(self, "menu_filter", None) is None:
             return
         self.build_filter_menu()
 
     def import_galleries(self) -> None:
-        """Gallery Import: every material preset in Houdini's galleries
-        becomes a library material, through the same save funnel a
-        hand-saved material takes. Thumbnails are skipped during the
-        run (hundreds of renders would take hours) - the summary says
-        how to render them afterwards."""
+        """Gallery Import: every material preset in a .gal file becomes a library material through the same save funnel a hand-saved one takes. Thumbnails are NOT rendered during the run - the summary says how to render them afterwards."""
         if not self.material_model:
             hou.ui.displayMessage("Please set a library first.")  # type: ignore
             return
-        # Pick the .gal file: nobody remembers where Houdini keeps
-        # them, so the dialog opens in the user gallery directory and
-        # any file elsewhere works just as well.
         picked = hou.ui.selectFile(  # type: ignore
-            start_directory=gallery_import.default_gallery_dir(),
+            start_directory=gallery_import.default_gallery_dir(),    # opens where Houdini keeps its galleries; a .gal picked anywhere else works just as well
             title="Import Gallery (.gal)",
             file_type=hou.fileType.Any,
             pattern="*.gal",
@@ -3208,7 +1802,7 @@ class MatLibPanel(QtWidgets.QWidget):
         choice = hou.ui.displayMessage(  # type: ignore
             "Import %d material presets from\n%s\n\n%s\n\n"
             "Thumbnails are NOT rendered during the import - select the "
-            "new materials afterwards and use Rerender Thumbnail."
+            "new materials afterwards and use Update Preview."
             % (len(entries), os.path.basename(picked), listing),
             buttons=("Import", "Cancel"),
             default_choice=0, close_choice=1,
@@ -3241,37 +1835,25 @@ class MatLibPanel(QtWidgets.QWidget):
         hou.ui.displayMessage(  # type: ignore
             "Gallery import finished.\n\n"
             "Imported: %d\nSkipped: %d\nFailed: %d\n\n"
-            "Select the new materials and use Rerender Thumbnail to "
+            "Select the new materials and use Update Preview to "
             "generate their previews."
             % (summary.get("imported", 0), summary.get("skipped", 0),
                summary.get("failed", 0))
         )
 
     def cleanup_db(self) -> None:
-        """Cleans the WHOLE v2 estate in one pass, one combined report:
-        the material library, the COP library (same integrity passes
-        over cops.json), registered texture/geometry folder pointers
-        whose directory no longer exists, and favorites pointing at
-        files (or curated gradient entries) that are gone."""
+        """Cleans the WHOLE v2 estate in one pass, one combined report: the material library, the COP library (the same integrity passes over cops.json), registered folder pointers whose directory is gone, and favorites pointing at files that are gone."""
         if not self.material_model:
             hou.ui.displayMessage("Please open a library first")  # type: ignore
             return
 
-        # CONFIRM BEFORE, because this DELETES. The rule is "dialogs
-        # confirm an action before it happens - never announce that one
-        # finished", and this had it exactly inverted: no gate, and two
-        # completion dialogs. What runs unguarded is not cosmetic - it
-        # unlinks .mat/.interface/.png files and drops registered folder
-        # pointers and favourites - and two one-click entry points reach
-        # it, the View menu and a Preferences button sitting directly
-        # above "Reload Library".
         if hou.ui.displayMessage(  # type: ignore
             "Clean Library?",
             help="Removes index rows whose files are gone, deletes "
                  "orphaned files that no library references, and drops "
                  "folder pointers and favourites that no longer exist.\n\n"
                  "Files are deleted from disk. This cannot be undone.",
-            buttons=("Clean Library", "Cancel"),
+            buttons=("Clean Library", "Cancel"),    # confirm BEFORE, because this DELETES: it unlinks .mat/.interface/.png files and drops folder pointers and favourites, and two one-click entry points reach it
             default_choice=1, close_choice=1,
             severity=hou.severityType.Warning,
             title="Amaze",
@@ -3309,33 +1891,15 @@ class MatLibPanel(QtWidgets.QWidget):
             sections.append("Folders and favorites:\n- " + "\n- ".join(browser_lines))
 
         if sections:
-            # The one completion dialog that earns its OK-click. "Never
-            # announce that one finished" exists because "the refreshed
-            # grid IS the report" - and here it is not: files were
-            # unlinked and folder pointers dropped, none of which the
-            # grid can show. This is the RECORD of an irreversible act,
-            # not a notification that work ended.
             hou.ui.displayMessage(  # type: ignore
-                "Library cleanup removed:\n\n" + "\n\n".join(sections)
+                "Library cleanup removed:\n\n" + "\n\n".join(sections)    # the RECORD of an irreversible act, not a notification that work ended: the grid cannot show an unlinked file or a dropped pointer
             )
         else:
-            # "Nothing to clean" IS just an announcement - the estate is
-            # unchanged and the grid already shows that. Dropped; the
-            # log keeps the record.
-            debug.event("cleanup", "nothing to clean")
+            debug.event("cleanup", "nothing to clean")    # no dialog - nothing changed, and the log keeps the record
 
     @staticmethod
     def _volume_unreachable(path: str) -> bool:
-        """The path's VOLUME is not mounted - as opposed to the path
-        being gone from a volume that is right here.
-
-        An unmounted NAS share answers os.path.isdir exactly like a
-        deleted folder, and pruning on that answer deletes the user's
-        folder list every time the network hiccups - to be rebuilt by
-        hand when the share comes back. A path under an absent
-        /Volumes/<name> root is unreachable, not gone; the same holds
-        for a bare drive letter on Windows.
-        """
+        """The path's VOLUME is not mounted - unreachable, as opposed to the path being gone from a volume that is right here, which os.path.isdir cannot tell apart. A path under an absent /Volumes/<name> root, or on an absent Windows drive letter, is unreachable."""
         path = os.path.abspath(path)
         if hostos.is_windows():
             drive = os.path.splitdrive(path)[0]
@@ -3347,53 +1911,26 @@ class MatLibPanel(QtWidgets.QWidget):
         return False
 
     def _cleanup_browser_prefs(self) -> list:
-        """The File section's cleanup: drops registered folder pointers
-        whose directory no longer exists and favorites whose file is
-        gone. Only pointers and prefs entries are touched - never
-        anything on disk.
-
-        Only the LIVE file_* keys are pruned. The dormant pre-merge
-        quartets (texture_*/geometry_*/hip_*) are deliberately left
-        untouched: they are what an older build on another machine
-        still reads, and pruning data this build no longer uses would
-        be all risk and no benefit."""
+        """The File section's cleanup: drops registered folder pointers whose directory no longer exists and favorites whose file is gone. Only pointers and prefs entries are touched - never anything on disk."""
         lines = []
 
         removed_folders = []
         skipped_unmounted = 0
-        # HIGHEST ROW FIRST, so removing one never shifts the row of
-        # another not yet examined - the rule cleanup_db already
-        # follows for assets.
-        folders = list(self.prefs.file_folders)
-        for index in range(len(folders) - 1, -1, -1):
+        folders = list(self.prefs.file_folders)    # the LIVE file_* keys only: the dormant pre-merge texture_*/geometry_*/hip_* quartets are left alone, because they are what an older build on another machine still reads
+        for index in range(len(folders) - 1, -1, -1):    # highest row first, so removing one never shifts the row of another not yet examined
             path = folders[index]
             if os.path.isdir(path):
                 continue
-            # UNREACHABLE IS NOT GONE. An unmounted share answers
-            # isdir exactly like a deleted folder; pruning on that
-            # deletes the user's folder list every time the network
-            # blinks, to be rebuilt by hand when the share returns.
-            if self._volume_unreachable(path):
+            if self._volume_unreachable(path):    # unreachable is not gone: an unmounted share answers isdir exactly like a deleted folder, and pruning on that deletes the user's folder list every time the network blinks
                 skipped_unmounted += 1
                 debug.event("cleanup", "folder pointer kept - its volume "
                             "is not mounted", path=path)
                 continue
             debug.event("cleanup", "folder pointer removed", path=path)
-            # THROUGH THE MODEL, not through prefs. FolderListModel
-            # reads its rows straight out of prefs, so writing there
-            # changed the row COUNT with nothing announcing it, and
-            # the bare layoutChanged that used to follow was the wrong
-            # signal for a changed count (category.normalize_categories
-            # says why) as well as a native H21 segfault (research.md).
-            # remove_folder wraps the same prefs write in
-            # beginRemoveRows and drops the count cache with it.
-            # Row 0 is the synthetic "All" entry.
-            self.file_folders_model.remove_folder(index + 1)
+            self.file_folders_model.remove_folder(index + 1)    # through the MODEL, never through prefs: remove_folder wraps the same prefs write in beginRemoveRows and drops the count cache with it. Row 0 is the synthetic "All" entry, hence +1
             removed_folders.append(path)
         if removed_folders:
-            # NAMES, not a count: "3 folder pointers were removed" is a
-            # sentence nobody can check.
-            lines.append(
+            lines.append(    # NAMES, not a count - a count is a sentence nobody can check
                 "These folders no longer exist, so their entries were "
                 "removed:\n  " + "\n  ".join(sorted(removed_folders)))
         if skipped_unmounted:
@@ -3431,58 +1968,29 @@ class MatLibPanel(QtWidgets.QWidget):
         hostos.open_path(lib_dir)
 
     def add_file_folder_user(self) -> None:
-        """Register a new folder pointer for the File section. Only
-        stores the path - never scans or copies anything until the
-        folder is actually selected in the list."""
+        """Register a new folder pointer for the File section. Only stores the path - never scans or copies anything until the folder is actually selected in the list."""
         path = hou.ui.selectFile(file_type=hou.fileType.Directory)  # type: ignore
         if not path:
             return
         self.file_folders_model.add_folder(hou.expandString(path))
 
     def remove_file_folder_user(self) -> None:
-        """Unregister the selected folder pointer(s). Only removes the
-        pointer from the list - never touches anything on disk."""
+        """Unregister the selected folder pointer(s). Only removes the pointer from the list - never touches anything on disk."""
         rows = sorted(
             (i.row() for i in self.cat_list.selectedIndexes()), reverse=True
         )
         for row in rows:
             self.file_folders_model.remove_folder(row)
 
-    #: Fixed section order + DISPLAY labels; the enabled_sections pref
-    #: chooses which of these actually appear (let a user show only the
-    #: sections they use, e.g. Materials + Code).
-    #:
-    #: The KEYS are storage, not display: "cop" and "gradient" are what
-    #: enabled_sections and the per-section state remember, so they
-    #: stay put while the labels change (plural -> singular 2026-07-31,
-    #: Textures/Geometry/HIP -> File the same day) - renaming them
-    #: would silently reset which sections a user has enabled.
-    #: Delegates to sections.all_sections() - the sections own their own
-    #: labels now. Three copies of this list existed and two of them
-    #: silently disagreed.
-    ALL_SECTIONS = sections.all_sections()
+    ALL_SECTIONS = sections.all_sections()    # fixed section order + DISPLAY labels, of which the enabled_sections pref chooses which appear. The KEYS are STORAGE, not display: "cop" and "gradient" are what enabled_sections and the per-section state remember, so they stay put while labels change, and renaming one would silently reset which sections a user has enabled. Delegates to sections.all_sections() because the sections own their own labels - three copies of this list once existed and two silently disagreed
 
     def _online_segments(self) -> list:
-        """The ONLINE strip: one tab per source, in source order.
-
-        A parallel world, not a filtered version of the local one. The
-        local sections have nothing to do with it - no File tab, and
-        the enabled_sections preference does not apply, because these
-        are not sections. Built from matx_sources.all_sources(), which
-        is already the one list of them, so a new source is one entry
-        there and appears here on its own.
-        """
-        return [(source.name, source.name)
+        """The ONLINE strip: one tab per source, in source order. A parallel world, not a filtered version of the local one - no File tab, and the enabled_sections preference does not apply, because a source is not a section."""
+        return [(source.name, source.name)    # all_sources() is already the one list of them, so a new source is one entry there and appears here on its own
                 for source in matx_sources.all_sources()]
 
     def _build_section_tabs(self) -> None:
-        """(Re)build the tab strip - the local sections, or the online
-        sources while the online browser is showing.
-
-        ONE strip, two lists. The rebuild path already existed for the
-        enabled_sections preference, so switching worlds reuses it
-        rather than adding a second strip to keep in sync.
-        """
+        """(Re)build the tab strip: ONE strip over two lists - the enabled local sections, or the online sources while the online browser is showing. Switching worlds reuses this path rather than keeping a second strip in sync."""
         if self._is_online():
             segments = self._online_segments()
         else:
@@ -3491,9 +1999,7 @@ class MatLibPanel(QtWidgets.QWidget):
                         if k in enabled]
         if not segments:
             segments = [("material", "Material")]
-        # Replace any existing strip in the layout (index 1, under the
-        # toolbar row).
-        if getattr(self, "section_tabs", None) is not None:
+        if getattr(self, "section_tabs", None) is not None:    # replace any existing strip; it lives at layout index 1, under the toolbar row
             if self._central_layout is not None:
                 self._central_layout.removeWidget(self.section_tabs)
             self.section_tabs.deleteLater()
@@ -3503,65 +2009,37 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         if self._central_layout is not None:
             self._central_layout.insertWidget(1, self.section_tabs)
-        # Keep the current section checked if it survived; else the
-        # first available. emit=False: setup() activates the section
-        # explicitly (and the models may not exist yet at construction).
         keys = [k for k, _ in segments]
         current = (getattr(self, "online_source", None) if self._is_online()
                    else getattr(self, "current_section", "material"))
         self.section_tabs.setChecked(
-            current if current in keys else keys[0], emit=False
+            current if current in keys else keys[0], emit=False    # keep the current tab checked if it survived, else the first available; emit=False because setup() activates explicitly, and the models may not exist yet at construction
         )
 
 
     def _apply_enabled_sections(self) -> None:
-        """After Preferences may have changed enabled_sections: rebuild
-        the strip, and if the section that was showing got hidden,
-        switch to the first still-enabled one."""
+        """After Preferences may have changed enabled_sections: rebuild the strip, and if the section that was showing got hidden, switch to the first still-enabled one."""
         enabled = self.prefs.enabled_sections
         self._build_section_tabs()
         if self.current_section not in enabled and self.material_model:
             keys = [k for k, _ in self.ALL_SECTIONS if k in enabled] or [
                 "material"
             ]
-            # A SECTION KEY IS NOT A SOURCE NAME. `_on_tab_toggled`
-            # forwards whatever it is given to `open_online_source`
-            # while the online world is showing, so hiding a section in
-            # Preferences from inside that world filtered the catalogue
-            # to a source called "gradient": empty grid, `online_source`
-            # left holding it, and no source tab highlighted because no
-            # chip matches. The tab strip already rebuilt above; the
-            # section behind the online world is switched when it is
-            # actually shown again.
             if self._is_online():
-                self._section_before_online = keys[0]
+                self._section_before_online = keys[0]    # a SECTION KEY IS NOT A SOURCE NAME: `_on_tab_toggled` would forward it to `open_online_source`, so the section behind the online world is only re-pointed here and switched when it is actually shown again
             else:
                 self._on_tab_toggled(keys[0], True)
 
     def _on_tab_toggled(self, key: str, checked: bool) -> None:
-        """Section-tab click (Materials / Textures / Colors / Cop /
-        Geometry). Geometry is still a placeholder - its content is not
-        built yet, so the view underneath simply doesn't change when
-        it's clicked."""
+        """A tab in the strip was clicked. In the online world a tab is a SOURCE; otherwise it switches the local section, and a key whose section is not built yet leaves the view underneath unchanged."""
         if not checked:
             return
         if self._is_online():
-            # In the online world a tab is a SOURCE, not a section.
-            self.open_online_source(key)
+            self.open_online_source(key)    # in the online world a tab is a SOURCE, not a section
             return
-        if self.material_model is None:
-            # setup() (which creates category_sorted_model,
-            # file_folders_model, material_selection_model, etc.)
-            # never ran - no library is configured yet. init_ui() builds
-            # and enables the tab strip unconditionally, so this is
-            # reachable by just clicking a tab before that - same class
-            # of crash as the emit=False fix above, different
-            # precondition. Same guard pattern used everywhere else in
-            # this file for "library not set up yet".
+        if self.material_model is None:    # setup() never ran - no library configured yet - and init_ui() builds and enables the tab strip regardless, so a click can land here first
             return
-        # Snapshot the OUTGOING section's view state before anything
-        # changes - current_section still names it here.
-        self._capture_section_state()
+        self._capture_section_state()    # the OUTGOING section's view state, before anything changes: current_section still names it here
         self.current_section = key
         debug.event("section", "switched", to=key, online=self._is_online())
         section = self.sections.get(key)
@@ -3572,86 +2050,40 @@ class MatLibPanel(QtWidgets.QWidget):
         self._apply_context(section, key)
 
     def _apply_context(self, context, key: str) -> None:
-        """Activate a context and do everything that MUST follow it.
-
-        Entering the online world used to call its activation directly
-        and skip all of this, which is why three separate things drifted
-        there: the Capture button kept the state the section you left
-        had given it, the search box kept text that filters nothing in
-        this world, and the Comments pane went on pointing at the local
-        asset you had selected. One path, and none of that is something
-        anyone has to remember.
-        """
+        """Activate a context and do everything that MUST follow it - the ONE path every section takes, and the online world with it, so the toolbar, the filter widgets, the restored view state and the Comments subject cannot drift from what is showing."""
         context.activate()
-        # EVERY toolbar control, from the one table - including Capture,
-        # whose rule used to be `key == "file"` right here, five sync
-        # methods away from the three chips that follow the same kind
-        # of fact.
-        self._sync_toolbar(context)
+        self._sync_toolbar(context)    # EVERY toolbar control, from the one table - Capture included
         self._sync_filters_to_section(context)
         self._restore_section_state(key)
         self._refresh_notes_subject()
-        # A section switch swaps the MODEL under a view that has not
-        # changed, so the blank has to re-attach here or it keeps
-        # watching the section you left.
-        empty_state.track(self)
+        empty_state.track(self)    # a switch swaps the MODEL under a view that has not changed, so the blank has to re-attach here or it keeps watching the context you left
 
     def _sync_filters_to_section(self, section) -> None:
-        """Push the SHARED filter widgets into the incoming section.
-
-        line_filter and cb_favsonly are one pair of widgets serving every
-        section, but each section's filter lives on its own proxy and was
-        only ever written from a textEdited/toggled signal. So the two
-        drifted the moment you switched tabs: filter Images to "brick"
-        with favourites-only on, click Geometry (which shows everything,
-        while the box still reads "brick" and the star is still lit),
-        clear both there, come back to Images - and Images is STILL
-        filtered to nothing, with an empty search box and an unlit star.
-        An empty grid with no visible cause, and the only way out is to
-        retype the filter and clear it again inside that tab.
-
-        Syncing on entry makes the visible widgets always describe the
-        visible grid."""
+        """Push the SHARED filter widgets into the incoming section: line_filter and cb_favsonly are one pair serving every section while each section filters on its own proxy, so syncing on entry is what makes the visible widgets always describe the visible grid."""
         text = self.line_filter.text() if self.line_filter else ""
         favourites = bool(self.cb_favsonly and self.cb_favsonly.isChecked())
         section.filter_text(text)
         section.filter_favorites(favourites)
-        # The Filter menu is the third shared control, and the one that
-        # does NOT carry its setting across: each section keeps its own
-        # (a renderer means nothing to Colors), so entering a section
-        # rebuilds the menu from what that section offers and re-applies
-        # what it was left on. build_filter_menu ends by applying it.
-        self.build_filter_menu()
+        self.build_filter_menu()    # the third shared control, and the one that does NOT carry its setting across: each section keeps its own (a renderer means nothing to Colors), so this rebuilds the menu from what the section offers and ends by applying what it was left on
 
     def _capture_section_state(self) -> None:
-        """Remember the current section's sidebar choice and grid scroll
-        position (keyed by section) for _restore_section_state."""
+        """Remember the current section's sidebar choice and grid scroll position (keyed by section) for _restore_section_state."""
         state = {}
-        # THE 2026-07-29 00:13 CRASH. This read `.data()` on the stored
-        # currentIndex, which for the sidebar is a proxy index: signal 11
-        # inside proxy_to_source, no log record, nothing catchable. See
-        # ui_helpers.live_current_index for why isValid() is not a guard.
-        current = ui_helpers.live_current_index(self.cat_list)
+        current = ui_helpers.live_current_index(self.cat_list)    # a FRESH index from the live model, so `.data()` below is safe: the sidebar's stored currentIndex is a PROXY index, and see ui_helpers.live_current_index for why isValid() is no guard on one
         if current is not None:
             state["cat_text"] = current.data()
         state["scroll"] = grid.visible_view(self).verticalScrollBar().value()
         self._section_view_state[self.current_section] = state
 
     def _restore_section_state(self, key: str) -> None:
-        """Re-select the sidebar entry the section had when last left
-        (overriding the activation method's default) and bring the grid
-        scroll back. Matching is by display TEXT, so category renames
-        or reordering between visits degrade gracefully to the default
-        instead of selecting the wrong row. Textures skip the sidebar
-        part - their folder restore (prefs-based, survives relaunches)
-        already ran in FolderSection.activate()."""
+        """Re-select the sidebar entry the section had when last left (overriding the activation method's default) and bring the grid scroll back. Matching is by display TEXT, so a category rename or reordering between visits degrades to the default instead of selecting the wrong row."""
         state = self._section_view_state.get(key)
         if not state:
             return
         cat_text = state.get("cat_text")
         if (
             cat_text
-            and key not in ("file",)
+            and key not in ("file",)    # the File section skips the sidebar part: its folder restore is prefs-based, survives relaunches, and already ran in FolderSection.activate()
             and self.cat_list is not None
         ):
             model = self.cat_list.model()
@@ -3665,38 +2097,17 @@ class MatLibPanel(QtWidgets.QWidget):
                             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect,
                         )
                         self.cat_list.setCurrentIndex(idx)
-                        # Re-applies the right filter for whichever
-                        # section this is - same handler a real click
-                        # runs.
-                        self.update_selected_cat()
+                        self.update_selected_cat()    # the same handler a real click runs, so the right filter re-applies for whichever section this is
                         break
         scroll = state.get("scroll")
         if scroll:
-            # Deferred one event-loop turn: the view has just swapped
-            # models and relaid itself out - an immediate setValue gets
-            # clamped/overridden by that layout pass.
-            QtCore.QTimer.singleShot(
+            QtCore.QTimer.singleShot(    # deferred one event-loop turn: the view has just swapped models and relaid itself out, and an immediate setValue is clamped or overridden by that layout pass
                 0,
                 lambda: grid.visible_view(self)
                 .verticalScrollBar().setValue(scroll),
             )
 
-    # ------------------------------------------------------------------
-    # Online MaterialX browser (View menu > Online Materials)
-    # ------------------------------------------------------------------
-
-    #: THE TOOLBAR, AS DATA: which control follows which fact about the
-    #: context showing, and whether that fact governs enabled-ness or
-    #: visibility.
-    #:
-    #: This was five sync methods that could disagree, because each
-    #: carried its own idea of which context it was in - three chips
-    #: disabled by asking `_is_online()` twice in one method, and the
-    #: Capture button governed from inside the activation path by
-    #: `key == "file"`. A control's rule is one row here now, and the
-    #: context answers it. A disabled chip paints at half opacity, so
-    #: it reads as switched off rather than broken.
-    TOOLBAR_CONTROLS = (
+    TOOLBAR_CONTROLS = (    # THE TOOLBAR, AS DATA: which control follows which fact about the context showing, and whether that fact governs enabled-ness or visibility. This was five sync methods that could disagree, each carrying its own idea of which context it was in - three chips disabled by asking `_is_online()` twice in one method, and the Capture button governed from inside the activation path by `key == "file"`. A control's rule is one row here and the context answers it; a disabled chip paints at half opacity, so it reads as switched off rather than broken
         ("cb_favsonly", "takes_favourites", "enabled"),
         ("btn_notes", "takes_comments", "enabled"),
         ("btn_filter", "takes_filter_menu", "enabled"),
@@ -3704,9 +2115,7 @@ class MatLibPanel(QtWidgets.QWidget):
     )
 
     def _sync_toolbar(self, context) -> None:
-        """Walk the table. No toolbar path asks which WORLD it is in -
-        the online world is a context like any other since batch 5, and
-        what it does not offer it declares."""
+        """Walk the table. No toolbar path asks which WORLD it is in - the online world is a context like any other, and what a context does not offer it declares."""
         for name, fact, verb in self.TOOLBAR_CONTROLS:
             control = getattr(self, name, None)
             if control is None:
@@ -3719,26 +2128,13 @@ class MatLibPanel(QtWidgets.QWidget):
         self._sync_filter_placeholder()
 
     def _sync_toolbar_for_mode(self) -> None:
-        """The old entry point, kept because two call sites reach the
-        toolbar without a context in hand."""
+        """The old entry point, kept because two call sites reach the toolbar without a context in hand."""
         context = self._section()
         if context is not None:
             self._sync_toolbar(context)
 
     def _sync_filter_placeholder(self) -> None:
-        """Say what the Filter Box searches in the section it is serving.
-
-        One box serves seven tabs and the online browser, and what it
-        matches is not the same in any two archetypes: the Asset sections
-        take a name or ":tag", the Folder sections have only a file name,
-        Colors also matches the color names inside a palette, and the
-        online browser matches name, category and tag with no prefix at
-        all. So the text cannot be set once at construction - it is set
-        from here, which _sync_toolbar_for_mode already documents as the
-        place that runs on every section AND mode change.
-
-        The online browser is not a branch: it declares the empty hint
-        like any other context, for the reason its own line gives."""
+        """Set the Filter Box's placeholder from the ACTIVE context's own search_hint - one box serves every tab and the online browser, so it is set from here, which runs on every section AND mode change. The online browser is not a branch: it declares a hint like any other context."""
         if self.line_filter is None:
             return
         self.line_filter.setPlaceholderText(
@@ -3746,96 +2142,42 @@ class MatLibPanel(QtWidgets.QWidget):
                     sections.Section.search_hint))
 
     def _section(self):
-        """The active CONTEXT - a Section, or the online world.
-
-        The online world is not in `sections` and never appears in
-        `enabled_sections`, because it is not a section. But it drives
-        the same four areas, so every area path asks for it the same
-        way and stops needing to know which world it is in - which is
-        what takes `_is_online()` out of those paths.
-        """
+        """The active CONTEXT - a Section, or the online world, which is NOT a section: it is not in `sections` and never appears in `enabled_sections`. It drives the same four areas, so every area path asks for it the same way and never has to know which world it is in."""
         if getattr(self, "online_mode", False):
             return getattr(self, "online_context", None)
         return getattr(self, "sections", {}).get(self.current_section)
 
     def tile_delegates(self) -> tuple:
-        """EVERY tile delegate, once, walked by every site that has to
-        reach all of them.
-
-        There were THREE hand-written lists of these and the fourth
-        delegate was in NONE of them. `asset_delegate` was added
-        deliberately - to fix another bug, so Node and Code would stop
-        painting a Version column reading "none" on every row - and
-        joining it to the accent sweep and to `set_list_columns` was
-
-        reported as "the type column started under category and continues to halfway to
-        comments": Node and Code rows were laid out with column widths
-        the panel had never told that delegate about.
-
-        Built from the SECTIONS, not written out here, so a section
-        that arrives with a delegate of its own joins by existing. The
-        online delegate is included by name because the online world is
-        not a section yet - batch 5 is where that stops being true.
-        """
+        """EVERY tile delegate, once, for the sites that have to reach all of them - the accent sweep and the column widths among them. Built from the SECTIONS rather than written out here, so a section that arrives with a delegate of its own joins by existing."""
         found = []
         for section in getattr(self, "sections", {}).values():
             name = getattr(section, "delegate_attr", "")
             delegate = getattr(self, name, None) if name else None
             if delegate is not None and delegate not in found:
                 found.append(delegate)
-        # The online world's grid uses the Materials delegate today, so
-        # this adds nothing while that is true - and adds it the moment
-        # it stops being true.
-        online = getattr(self, "matx_delegate", None)
+        online = getattr(self, "matx_delegate", None)    # by name, because the online world is not a section and so is not in `sections` for the loop above to find - its delegate is its own, carrying only the roles matx_library has
         if online is not None and online not in found:
             found.append(online)
         return tuple(found)
 
     def _is_online(self) -> bool:
-        """Is the online world showing?
-
-        It used to read `online_mode AND current_section == "material"`,
-        because online was a VIEW MODE over the Materials section and
-        could not be true anywhere else. Online is its own world now,
-        with its own tab strip of sources, so the section it is layered
-        over is no longer a thing - the mode alone is the answer.
-
-        current_section keeps naming the LOCAL section underneath,
-        untouched while you are away, which is what leaving puts you
-        back on.
-
-        Still one predicate, for the reason it was one before: four
-        handlers knew about online mode and six did not."""
-        return bool(getattr(self, "online_mode", False))
+        """Is the online world showing? The mode alone answers it - the online world is its own world with its own tab strip of sources, not a view mode over one section, so no section key is part of the question. ONE predicate, so no handler works it out for itself."""
+        return bool(getattr(self, "online_mode", False))    # current_section goes on naming the LOCAL section underneath, untouched while you are away, and that is what leaving puts you back on
 
     def _on_online_source(self, action) -> None:
-        """A View menu material-source entry was clicked. Material Library
-        returns to the local library; an online source enters its browser.
-        They share one exclusive group, so Qt keeps exactly one checked."""
+        """A View menu material-source entry was clicked. Material Library returns to the local library; an online source enters its browser."""
         if action is self.action_material_library:
             self.leave_online_world()
             if self.current_section != "material":
                 self.section_tabs.setChecked("material")
-        elif action.isChecked():
+        elif action.isChecked():    # the entries share one exclusive group, so Qt keeps exactly one checked
             self.open_online_source(action.text())
 
     def enter_online_world(self) -> None:
-        """Switch to the online world: its own tab strip, one tab per
-        source, nothing to do with the local sections.
-
-        Where you came FROM is remembered, because leaving puts you
-        back there - you dipped into the online browser, you did not
-        change what you were working on.
-        """
+        """Switch to the online world: its own tab strip, one tab per source, nothing to do with the local sections. Where you came FROM is remembered, because leaving puts you back there - you dipped into the online browser, you did not change what you were working on."""
         if self._is_online():
             return
-        # WHAT YOU WERE LOOKING AT, not what you were looking at the
-        # last time you switched tabs. Leaving routes through
-        # `_apply_context` -> `_restore_section_state`, and nothing on
-        # the way IN ever captured - so coming back put you on the
-        # category stored at the last TAB SWITCH, or on All when there
-        # had been none.
-        self._capture_section_state()
+        self._capture_section_state()    # capture on the way IN as well, or leaving (through `_apply_context` -> `_restore_section_state`) puts you back on the category stored at the last TAB SWITCH rather than what you were looking at
         self._section_before_online = self.current_section
         self.online_mode = True
         first = self._online_segments()[0][0]
@@ -3852,51 +2194,26 @@ class MatLibPanel(QtWidgets.QWidget):
         self._build_section_tabs()
         if back in dict(self.ALL_SECTIONS):
             self.section_tabs.setChecked(back)
-        # ENTERING repoints every shared widget at the online models, so
-        # LEAVING has to repoint them back - and nothing else will.
-        # setChecked cannot do it: `back` is the section we never left
-        # (entering the online world does not change current_section),
-        # and SectionTabBar.setChecked emits only on a real change, so
-        # no _on_tab_toggled and no activate() ever ran. Leaving from
-        # Node, Code, Color or File therefore kept the online model in
-        # the grid, and the next double-click mapped an ONLINE proxy
-        # index through a LOCAL proxy.
-        section = self._section()
+        section = self._section()    # entering repointed every shared widget at the online models, so leaving has to repoint them back, and nothing else will: `back` is a section we never left (entering does not change current_section), and setChecked emits only on a real change, so no _on_tab_toggled and no activate() follows it
         if section is not None:
-            # THE ONE PATH, as entering already takes. Calling
-            # `activate()` alone left the toolbar to a standalone
-            # `_sync_toolbar_for_mode()` further up - which is the
-            # duplicate this batch exists to remove, and it only looked
-            # correct because the two happened to agree.
-            self._apply_context(section, section.key)
+            self._apply_context(section, section.key)    # THE ONE PATH, as entering already takes - `activate()` alone would leave the toolbar to a separate call
 
     def open_online_source(self, source_name: str) -> None:
-        """Show one source in the online world. A tab click, now that
-        the strip IS the sources."""
+        """Show one source in the online world - a tab click, now that the strip IS the sources."""
         self.online_mode = True
         self.online_source = source_name
         act = self.online_source_actions.get(source_name)
         if act is not None and not act.isChecked():
             act.setChecked(True)
         debug.event("online", "source opened", source=source_name)
-        # NO TAB FORCING. Online used to be a view mode over the
-        # Materials widgets, so opening a source switched you there.
-        # Online is its own world now with its own strip, and the tab
-        # you want is the source you just picked.
-        if self.section_tabs is not None:
+        if self.section_tabs is not None:    # NO TAB FORCING: the strip IS the sources in this world, so the tab to check is the source just picked - never a local section
             self.section_tabs.setChecked(source_name, emit=False)
         self.matx_online_model.set_source(source_name)
         self.enter_online()
-        # Picking a source starts you on "All" - not a stale category from
-        # a previous source and not an unhighlighted sidebar. Done here (on
-        # the explicit source-pick) rather than in _activate_online_
-        # materials(), so switching tabs away and back doesn't reset the
-        # category you were browsing.
-        self._select_online_all()
+        self._select_online_all()    # an explicit source-pick starts you on "All", never a stale category from the previous source; kept here rather than in the activation path so switching tabs away and back does not reset the category you were browsing
 
     def _select_online_all(self) -> None:
-        """Select the online sidebar's "All" row (row 0) and clear any
-        category filter, so the grid shows the whole source."""
+        """Select the online sidebar's "All" row (row 0) and clear any category filter, so the grid shows the whole source."""
         if not self.cat_list or self.matx_source_model.rowCount() == 0:
             return
         idx = self.matx_source_model.index(0, 0)
@@ -3909,73 +2226,26 @@ class MatLibPanel(QtWidgets.QWidget):
         self.update_selected_cat()
 
     def exit_online_materials(self) -> None:
-        """Leave the online browser, back to the local library (Material
-        Library)."""
+        """Leave the online browser, back to the local library (Material Library)."""
         self.online_mode = False
         if getattr(self, "action_material_library", None) is not None:
-            # Exclusive group: checking this unchecks any source.
-            self.action_material_library.setChecked(True)
-        debug.event("online", "exited")
-        # WHERE YOU LAND is the caller's business: the button remembers
-        # the section you left from, and the Material Library menu
-        # entry means the material library. This used to force the
-        # Materials tab from in here, which is the same coupling the
-        # online world was just taken out of - and it kept a
-        # Material-shaped remnant of that coupling until 2026-08-02:
-        # re-activating ONLY the material section, which left the grid
-        # pointed at the online model for the other four.
+            self.action_material_library.setChecked(True)    # exclusive group, so checking this unchecks any source
+        debug.event("online", "exited")    # WHERE YOU LAND is the caller's business: the toolbar button remembers the section you left from, and the Material Library menu entry means the material library. Forcing a tab from in here is the coupling the online world was taken out of
 
     def enter_online(self) -> None:
-        """Enter the online world through the SAME path a section takes.
-
-        The body that used to be here - four setModel calls and a
-        reload - is `OnlineContext.activate()` now, and this routes it
-        through `_apply_context` so the Capture button, the search box
-        and the Comments subject follow it the way they follow every
-        section. They did not, before, and that was three defects with
-        one cause.
-
-        Named for what it DOES rather than `_activate_online_materials`.
-        Every other `_activate_*` moved onto its own section; this one
-        cannot, because the online world is deliberately not a Section
-        and never appears in `enabled_sections`. A ban test keeps the
-        old shape from coming back.
-        """
-        self._apply_context(self.online_context, self.online_context.key)
+        """Enter the online world through the SAME path a section takes: `OnlineContext.activate()`, and then everything `_apply_context` must do after it - the Capture button, the search box and the Comments subject follow the online world the way they follow every section."""
+        self._apply_context(self.online_context, self.online_context.key)    # not an `_activate_*` method on a section, because the online world is deliberately not a Section and never appears in `enabled_sections`; a ban test keeps the old shape from coming back
 
 
-    #: Sub-steps per material for the download bar - a smooth 0..N*SCALE
-    #: range folds each material's own 0..1 download fraction into the
-    #: overall multi-import progress.
-    _IMPORT_PROGRESS_SCALE = 1000
+    _IMPORT_PROGRESS_SCALE = 1000    # sub-steps per material for the download bar: a smooth 0..N*SCALE range folds each material's own 0..1 download fraction into the overall multi-import progress
 
     @contextlib.contextmanager
     def _download_bar(self, records):
-        """The download bar, for the length of a multi-record import.
-
-        Yields `progress_for(i)` - the per-record 0..1 callback for
-        record `i` of the batch, folded into the overall 0..N*SCALE
-        range. The bar is shown only when something actually has to be
-        downloaded, and is always taken down again.
-
-        ONE frame for both online importers. `_import_online_records`
-        and `_import_online_records_to_scene` each carried this setup,
-        this teardown and a byte-identical `on_progress` closure - the
-        one literal clone the duplicate scan found in `panel.py`.
-
-        The download is synchronous (it blocks the UI thread), so the
-        byte callback pumps events per 64KB chunk with
-        ExcludeUserInputEvents - the bar animates without a second
-        click re-entering mid-import. Same pattern as the geometry
-        thumbnail pass.
-        """
+        """The download bar, for the length of a multi-record import, and ONE frame for both online importers. Yields `progress_for(i)` - the per-record 0..1 callback for record `i` of the batch, folded into the overall 0..N*SCALE range. The bar is shown only when something actually has to be downloaded, and is always taken down again."""
         total = len(records)
         scale = self._IMPORT_PROGRESS_SCALE
-        pump = QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
-        # The event pumping can deliver a late preview-worker signal;
-        # this flag keeps that from repainting the bar with preview
-        # counts while the download owns it.
-        self._online_download_active = True
+        pump = QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents    # the download is synchronous and blocks the UI thread, so the byte callback pumps events per chunk; excluding user input is what stops a second click re-entering mid-import (the geometry thumbnail pass does the same)
+        self._online_download_active = True    # the event pumping can deliver a late preview-worker signal, and this flag keeps that from repainting the bar with preview counts while the download owns it
         show_bar = self._needs_download(records)
         if show_bar:
             self.texture_progress.setVisible(True)
@@ -4009,18 +2279,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with self._download_bar(records) as progress_for:
             for i, rec in enumerate(records):
                 on_progress = progress_for(i)
-                # ONE BAD RECORD MUST NOT ABANDON THE BATCH, which is
-                # what the to-scene copy of this loop already says and
-                # does. matx_import.import_record has only try/finally,
-                # so build_karma_material and library.add_asset raise
-                # straight through it: a hou.Error or an OSError on the
-                # second of five records aborted the loop, records 3-5
-                # were never imported, and the "%d of %d could not be
-                # imported" dialog that `failures` exists for never
-                # appeared - the user got a traceback in the log and
-                # three silently missing materials. The identical batch
-                # sent to /mat carried on and reported it.
-                try:
+                try:    # ONE BAD RECORD MUST NOT ABANDON THE BATCH: matx_import.import_record has only try/finally, so build_karma_material and library.add_asset raise straight through it, and without this the remaining records go unimported and `failures` never reaches its dialog
                     ok, reason = self.import_online_material(
                         rec, on_progress=on_progress
                     )
@@ -4029,21 +2288,14 @@ class MatLibPanel(QtWidgets.QWidget):
                     ok, reason = False, str(exc)
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
-        # ONE dialog for the batch: a five-material selection that
-        # fails five times used to pop five modal dialogs in a row.
-        if failures:
+        if failures:    # ONE dialog for the batch, never one per record
             hou.ui.displayMessage(  # type: ignore
                 "Amaze: %d of %d could not be imported:\n\n%s"
                 % (len(failures), total, "\n".join(failures[:10]))
             )
 
     def import_online_material(self, record, on_progress=None):
-        """Download (if needed) and register one online material as a
-        normal library material with renderer Karma. on_progress(frac)
-        is called with a 0..1 fraction during the download when given.
-
-        Returns (ok, reason). The CALLER reports - reporting per record
-        turned one five-material selection into five modal dialogs."""
+        """Download (if needed) and register one online material as a normal library material with renderer Karma; on_progress(frac) is called with a 0..1 fraction during the download when given. Returns (ok, reason) - the CALLER reports, never this."""
         if record is None or not self.material_model:
             return (False, "No library to import into.")
         source, resolution, error = self._online_source_for(record)
@@ -4058,37 +2310,12 @@ class MatLibPanel(QtWidgets.QWidget):
             )
         if not ok:
             return (False, reason or "Import failed.")
-        # check_add_category() writes and saves SILENTLY - no model
-        # signal - so the sidebar never learned about the new row. The
-        # data was always correct; only the view was stale.
-        # No layout wrapper: check_add_category announces itself with
-        # begin/endInsertRows, and pairing the two segfaults H21
-        # (research.md, measured 2026-08-04).
-        self.category_model.check_add_category(record.category)
+        self.category_model.check_add_category(record.category)    # no relayout wrapper here: check_add_category announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md)
         self._refresh_sidebar_categories()
         return (True, "")
 
     def _needs_download(self, records) -> bool:
-        """True when importing these records will actually fetch bytes.
-
-        The progress bar sits ABOVE the grid in the layout, so showing
-        it shifts every tile down by its height and hiding it shifts
-        them back. Value sources (RGL, PhysicallyBased) carry their
-        numbers in the catalogue and download nothing, so the bar would
-        appear and vanish within one frame - the grid visibly jumping
-        for no work at all.
-        """
-        # The source is looked up DIRECTLY rather than through
-        # _online_source_for, which also resolves the download
-        # RESOLUTION - and that costs one HTTP GET per package, on the
-        # main thread, before the progress bar is even shown. Measured
-        # live: 254 of GPUOpen's 454 materials carry 6 packages and 170
-        # carry 4, so a ten-material selection blocked Houdini on ~50
-        # serial requests, each able to stall for TIMEOUT (30s).
-        #
-        # needs_download never looks at the resolution: package sources
-        # answer `kind != "values"` and RGL checks its shipped table.
-        # Nothing here needs the network at all.
+        """True when importing these records will actually fetch bytes, answered WITHOUT touching the network - the source is looked up DIRECTLY here, never through _online_source_for, which also resolves the download RESOLUTION at one main-thread HTTP GET per package. Asked because the progress bar sits ABOVE the grid, so showing it for a value source (RGL, PhysicallyBased) that carries its numbers in the catalogue and downloads nothing shifts every tile down and back for no work at all."""
         for record in records:
             source = next(
                 (s for s in self.matx_online_model.sources
@@ -4105,8 +2332,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return False
 
     def _online_source_for(self, record):
-        """The Source object a record came from, and the resolution to
-        fetch it at: (source, resolution, error)."""
+        """The Source object a record came from, and the resolution to fetch it at: (source, resolution, error)."""
         source = next(
             (s for s in self.matx_online_model.sources
              if s.name == record.source),
@@ -4114,13 +2340,7 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         if source is None:
             return (None, None, "Unknown source %s" % record.source)
-        # ASK THE SOURCE, never re-spell its answer. This read
-        # `record.kind == "values"`, which is the BASE class's answer -
-        # and RGL overrides it, because a uid the shipped table has
-        # never seen still costs a measurement download. A values
-        # source needs no resolution either way; what was wrong was
-        # the claim beside it that nothing would be fetched.
-        if not source.needs_download(record):
+        if not source.needs_download(record):    # ASK THE SOURCE, never re-spell its answer as `record.kind == "values"`: that is the BASE class's answer and RGL overrides it, because a uid its shipped table has never seen still costs a measurement download
             return (source, None, "")     # nothing to download
         if record.kind == "values":
             return (source, None, "")     # downloads, but picks no package
@@ -4133,20 +2353,13 @@ class MatLibPanel(QtWidgets.QWidget):
         return (source, resolution, "")
 
     def _import_online_records_to_scene(self, records) -> None:
-        """Build online records straight into the scene - the current LOP
-        material library (or /mat) - without adding them to the library.
-
-        The whole gesture is ONE undo step INCLUDING the destination
-        resolution, which may itself create a material library: a
-        material moved into a library that an undo then removes would
-        have nothing coherent to undo to.
-        """
+        """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library."""
         total = len(records)
         if not total:
             return
         built, failures, last = [], [], None
         with self._download_bar(records) as progress_for:
-            with hou.undos.group("Amaze Import to Scene"):
+            with hou.undos.group("Amaze Import to Scene"):    # ONE undo step INCLUDING the destination resolution, which may itself create a material library: a material moved into a library that an undo then removes would have nothing coherent to undo to
                 destination = nodes.karma_destination(self.prefs)
                 if destination is None:
                     hou.ui.displayMessage(  # type: ignore
@@ -4167,21 +2380,16 @@ class MatLibPanel(QtWidgets.QWidget):
                             progress=on_progress,
                         )
                     except Exception as exc:           # noqa: BLE001
-                        # One bad record must not abandon the batch:
-                        # only DOWNLOAD failures come back as a reason,
-                        # anything else raises.
                         debug.exception("import to scene", exc,
                                         title=rec.title)
-                        builder, reason = None, str(exc)
+                        builder, reason = None, str(exc)    # one bad record must not abandon the batch; only DOWNLOAD failures come back as a `reason`, anything else raises
                     if builder is None:
                         failures.append("%s: %s" % (rec.title, reason))
                         continue
                     built.append(builder.name())
                     last = builder
                 if last is not None:
-                    # Front the new material like any hand-created node
-                    # (a menu action IS the user asking for it).
-                    last.setCurrent(True, True)
+                    last.setCurrent(True, True)    # front the new material like any hand-created node - a menu action IS the user asking for it
         debug.event("import", "to scene finished", built=len(built),
                     failed=len(failures))
         if failures:
@@ -4197,27 +2405,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
 
     def _select_default_sidebar_row(self, sidebar_proxy):
-        """Select the sidebar's first row and return its RAW name.
-
-        `cat_list` has no persistent selection model of its own (unlike
-        thumblist), so `setModel()` in an activate always leaves it
-        with nothing selected - which is why three of the four
-        sidebar-bearing activates each ended with their own copy of
-        this. The programmatic select does not fire clicked(), so the
-        caller applies the filter explicitly, and it applies it FROM
-        the row that actually got selected rather than from an
-        assumption about what sorts first (a blanket "" while row 0 was
-        a real category produced an "Abstract highlighted but
-        everything shown" mismatch on pre-migration data).
-
-        Materials was the one activate without it, and
-        _restore_section_state only compensates while the remembered
-        category TEXT is still a row: when it is not - renamed,
-        removed, or hidden by the sidebar proxy while the user was in
-        another tab - the material proxy kept its old CategoryRole
-        filter while the sidebar highlighted nothing, so the grid was
-        short or empty with no row to click to clear it.
-        """
+        """Select the sidebar's first row and return its RAW name - the caller must then apply the filter itself, FROM that name rather than from an assumption about what sorts first, because a programmatic select fires no clicked()."""
         if self.cat_list is None or sidebar_proxy is None:
             return None
         if sidebar_proxy.rowCount() <= 0:
@@ -4226,33 +2414,16 @@ class MatLibPanel(QtWidgets.QWidget):
         if selection_model is None:
             return None
         target = sidebar_proxy.index(0, 0)
-        selection_model.select(
+        selection_model.select(    # `cat_list` has no persistent selection model of its own the way thumblist does, so a `setModel()` in an activate leaves it with nothing selected
             target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
         self.cat_list.setCurrentIndex(target)
         return self._raw_category_name(target)
 
     def edit_tile_icon(self, model, proxy, proxy_indexes) -> None:
-        """"Edit Icon" on any tile, in any section that has tiles.
-
-        One handler for all of them: a library asset stores the choice
-        on its record and a file row stores it in the library's
-        icons.json, but both models answer tile_icon()/set_tile_icon(),
-        so the panel does not need to know which kind it is holding.
-
-        Applies to the WHOLE selection - picking one icon for twelve
-        LOP setups is the case this exists for."""
+        """"Edit Icon" on any tile, in any section that has tiles - one handler for all of them, needing only tile_icon()/set_tile_icon() from the model, and applying to the WHOLE selection (one icon for twelve LOP setups is the case it exists for)."""
         if model is None or not proxy_indexes:
             return
-        # IDENTITY, not row numbers and not Qt indexes. This dialog is
-        # non-modal (see below), so the library can move while it is
-        # open: a save appends, a delete shifts every row after it, and
-        # a RELOAD renumbers the lot. A captured row number then names
-        # a different asset - and a QPersistentModelIndex does no
-        # better, because endResetModel() invalidates every one of them
-        # even when nothing moved (measured), and an ordinary
-        # Preferences close resets the File model twice. So the tile is
-        # held by the key its own model files it under.
-        held = []
+        held = []    # IDENTITY, not row numbers and not Qt indexes: this dialog is non-modal, so the library can move while it is open - a save appends, a delete shifts every row after it, a RELOAD renumbers the lot - and a QPersistentModelIndex is no better, because endResetModel() invalidates every one of them even when nothing moved
         rows = []
         for proxy_index in proxy_indexes:
             source = proxy.mapToSource(proxy_index) if proxy is not None \
@@ -4266,11 +2437,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not held:
             return
 
-        # NON-modal, so the Custom Color button can open Houdini's own
-        # picker (a native modal lands UNDER a Qt exec loop - recorded).
-        # One instance at a time: a second Edit Icon while one is open
-        # fronts the existing dialog instead of stacking another.
-        existing = getattr(self, "_icon_dialog", None)
+        existing = getattr(self, "_icon_dialog", None)    # NON-modal, so the Custom Color button can open Houdini's own picker (a native modal lands UNDER a Qt exec loop); one instance at a time, a second Edit Icon fronting the open dialog instead of stacking another
         if existing is not None:
             try:
                 existing.raise_()
@@ -4278,11 +2445,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 return
             except RuntimeError:
                 pass                      # already deleted underneath
-        # The Name field rides along (2026-08-01): sections whose
-        # model can rename get one, greyed on a multi-selection per
-        # the selection law. File has no rename - a file's name is the
-        # file on disk - so its dialog shows no field at all.
-        single = len(rows) == 1
+        single = len(rows) == 1    # the Name field rides along only where the model can rename, and is greyed on a multi-selection per the selection law - File has no rename, a file's name being the file on disk, so its dialog shows no field at all
         tile_name = None
         if hasattr(model, "set_tile_name"):
             tile_name = model.tile_name(rows[0]) if single else ""
@@ -4300,11 +2463,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self._icon_dialog = None
             try:
                 if not dialog.canceled:
-                    # Resolved HERE, not at open: where the held tiles
-                    # are NOW. One scan of the model, once, on OK. A
-                    # tile that went away during the dialog simply is
-                    # not found.
-                    rows = [row for row in range(model.rowCount())
+                    rows = [row for row in range(model.rowCount())    # resolved HERE and not at open: where the held tiles are NOW, in one scan of the model on OK. A tile that went away during the dialog simply is not found
                             if model.tile_key(row) in held]
                     if not rows:
                         return
@@ -4314,10 +2473,7 @@ class MatLibPanel(QtWidgets.QWidget):
                             hasattr(model, "set_tile_name"):
                         model.set_tile_name(rows[0], new_name)
             finally:
-                # The panel is its C++ parent and outlives every
-                # dialog, so dropping the Python name frees nothing:
-                # 287 buttons and ~6.5MB stay alive per open otherwise.
-                dialog.deleteLater()
+                dialog.deleteLater()    # the panel is its C++ parent and outlives every dialog, so dropping the Python name frees nothing - 287 buttons and ~6.5MB stay alive per open otherwise
 
         dialog.finished.connect(_finished)
         dialog.show()
@@ -4325,35 +2481,23 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _apply_icon_spec(self, model, rows, spec) -> None:
 
-        # ONE save for the whole selection. set_tile_icon saves the
-        # index per call, and the case this exists for is "twelve LOP
-        # setups at once" - twelve full database writes of a
-        # cloud-synced file, ~10ms each, and Ctrl-A over 546 materials
-        # would freeze the panel for five seconds.
         failed = 0
         for row in rows:
             if not model.set_tile_icon(row, spec, save=False):
                 failed += 1
-        model.commit_tile_icons(rows)
+        model.commit_tile_icons(rows)    # ONE save for the whole selection: set_tile_icon saves the index per call, so Ctrl-A over 546 materials would be 546 full database writes of a cloud-synced file at ~10ms each, freezing the panel for five seconds
         if failed:
-            # A real plural, not "icon(s)". This one is a MODAL the user
-            # cannot look away from, so the fake plural was the most
-            # visible instance of it in the product.
             hou.ui.displayMessage(  # type: ignore
                 "%d tile icon%s could not be saved - check that the "
                 "library folder is writable."
-                % (failed, "" if failed == 1 else "s")
+                % (failed, "" if failed == 1 else "s")    # a real plural, never "icon(s)" - this one is a MODAL the user cannot look away from
             )
 
 
     def import_cop_assets(self) -> None:
-        """Import every selected Nodes-section asset, reporting failures
-        in one summary dialog (same shape as the material importer)."""
+        """Import every selected Nodes-section asset, reporting failures in one summary dialog (same shape as the material importer)."""
         failures = []
-        # One user action, one undo - the drag path already groups; this
-        # one built a container and loaded into it as separate entries,
-        # so a single Ctrl+Z left the empty container behind.
-        with hou.undos.group("Amaze Import Nodes Asset"):
+        with hou.undos.group("Amaze Import Nodes Asset"):    # one user action, one undo: the container and whatever is loaded into it must revert as a single step, never as separate entries
             for index in grid_columns.selected_rows(
                     self.thumblist.selectionModel()):
                 source_index = self.cop_sorted_model.mapToSource(index)
@@ -4375,16 +2519,12 @@ class MatLibPanel(QtWidgets.QWidget):
                 + "\n".join(failures)
             )
 
-    # ------------------------------------------------------------------
-    # Code section
-    # ------------------------------------------------------------------
 
     def get_code_category_names(self) -> list[str]:
         return self._category_names_from(self.code_category_model)
 
     def _current_code_category(self) -> str:
-        """The category selected in the sidebar when the Code section is
-        showing, "" for All - the save/new dialog's default category."""
+        """The category selected in the sidebar when the Code section is showing, "" for All - the save/new dialog's default category."""
         if self.current_section != "code":
             return ""
         return self._selected_category_name()
@@ -4392,8 +2532,7 @@ class MatLibPanel(QtWidgets.QWidget):
     def _add_code_snippet(
         self, code: str, language: str, default_name: str
     ) -> None:
-        """Shared save flow for both Save-from-Node and New Snippet:
-        open the Code dialog prefilled, then register the snippet."""
+        """Shared save flow for both Save-from-Node and New Snippet: open the Code dialog prefilled, then register the snippet."""
         if not self.code_model:
             hou.ui.displayMessage(  # type: ignore
                 "Please set a library first. Use the %s panel - "
@@ -4412,9 +2551,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         if dialog.category:
             self.code_category_model.check_add_category(dialog.category)
-        # No layout wrapper: add_asset announces itself with
-        # begin/endInsertRows, and pairing the two segfaults H21.
-        self.code_model.add_asset(
+        self.code_model.add_asset(    # no layout wrapper: add_asset announces itself with begin/endInsertRows, and pairing the two segfaults H21
             dialog.code,
             dialog.name,
             dialog.language,
@@ -4426,8 +2563,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
 
     def save_code_from_node(self, node: hou.Node | None = None) -> None:
-        """Node right-click "Save Code to <app>": grab the node's
-        code/snippet parm and open the save dialog prefilled."""
+        """Node right-click `Save Code to <app>`: grab the node's code/snippet parm and open the save dialog prefilled."""
         if node is None:
             sel = hou.selectedNodes()
             node = sel[0] if len(sel) == 1 else None
@@ -4453,86 +2589,33 @@ class MatLibPanel(QtWidgets.QWidget):
         """Create a snippet by typing/pasting into an empty editor."""
         self._add_code_snippet("", "VEX", "")
 
-    # ---- THE CLICK WALKER --------------------------------------
-    #
-    # The second half of the interaction engine (ROADMAP - the matrix;
-    # sections.DropRule carries the declarations). It replaced FIVE
-    # hand-written double-click handlers that answered one question
-    # five ways: three carried a selection VETO (a selected node that
-    # could not take the payload refused instead of creating) and two
-    # never consulted the selection at all. The drag walker has read
-    # these same declarations since the behaviour table shipped; this
-    # is the aiming method it was always missing.
-
-    def click_on_row(self, section, index, payload=None) -> None:
-        """A click door on `index` in `section` - aimed by the
-        SELECTION, executed from the section's own declaration.
-
-        BOTH DOORS COME THROUGH HERE: the double-click, and the menu
-        entry labelled with the same verb. They used to be two
-        implementations of one policy and they disagreed - the menu
-        side treated a selection as a VETO, which is the bug the
-        precedence below was written to remove, so the same tile with
-        the same selection created a node on double-click and showed
-        a modal refusal from the menu.
-
-        `payload` is the menu's extra word where an entry carries one
-        (Color's Apply as names a ramp basis); it reaches only the
-        verbs that declare they take it.
-        """
+    def click_on_row(self, section, index, payload=None) -> None:    # THE CLICK WALKER: the second half of the interaction engine, with sections.DropRule carrying the declarations. It replaced FIVE hand-written double-click handlers that answered one question five ways - three carried a selection VETO, where a selected node that could not take the payload refused instead of creating, and two never consulted the selection at all. The drag walker has read these same declarations since the behaviour table shipped; this is the aiming method it was missing
+        """A click door on `index` in `section` - aimed by the SELECTION, executed from the section's own declaration. BOTH DOORS COME THROUGH HERE: the double-click, and the menu entry labelled with the same verb."""
         if index is None or not index.isValid():
             return
-        # THE DRAG WALKER'S READER, not a second one. These four lines
-        # were written here and again in `dragdrop_widgets._drop_rule`,
-        # so the two doors read one declaration twice - the shape this
-        # walker exists to end.
-        rule = sections.drop_rule(section, self, index)
+        rule = sections.drop_rule(section, self, index)    # THE DRAG WALKER'S READER, not a second one - both doors read the one declaration through it
         if rule is None:
             self._cannot_load_here()
             return
         try:
             with helpers.preserving_selection_and_current():
                 landed = self._apply_click_rule(section, rule, index,
-                                                payload)
-        except hou.PermissionError as refusal:
-            # HOUDINI REFUSING IS NOT A BUG - the same absorption the
-            # drag dispatch carries (dragdrop_widgets, drop refused):
-            # a click into a locked network gets Houdini's own
-            # sentence in the status bar, a log record, and no slot
-            # crash. Only this class; a genuine defect still raises.
+                                                payload)    # `payload` is the menu's extra word where an entry carries one (Color's Apply as names a ramp basis); it reaches only the verbs that declare they take it
+        except hou.PermissionError as refusal:    # ONLY this class, the same absorption the drag door carries: a click into a locked network is the app being told no, where any other exception is a defect that must still raise
             debug.exception("click refused", refusal,
                             section=getattr(section, "key", ""))
-            ui = getattr(hou, "ui", None)
-            if ui is not None:
-                ui.setStatusMessage(
-                    "Amaze: %s" % refusal,
-                    severity=hou.severityType.Warning,
-                )
+            debug.refuse(str(refusal),    # ▸p/refusal-sink
+                         section=getattr(section, "key", ""))
             return
         if not landed:
             self._cannot_load_here()
 
     def _apply_click_rule(self, section, rule, index, payload=None) -> bool:
-        """ONE precedence for every section's click door.
-
-        THE SELECTION IS A HINT, NOT A VETO. A single visible selected
-        node is offered the payload first, and a node that cannot take
-        it FALLS THROUGH to the creation walk - the host's own rule
-        (the manual's tab-menu flow: a selection never blocks a
-        creation; wiring to the current node is a separate, explicit
-        gesture). The veto is what made a double-click refuse whenever
-        anything happened to be selected, which in Houdini is almost
-        always.
-
-        The verbs a rule names resolve on the SECTION
-        (sections.drop_verb) - the panel fallback is gone, line 24 B3.
-        """
-        # The menu's extra word, handed on ONLY when there is one, so
-        # no verb ever sees a keyword it does not declare.
-        extra = {"basis": payload} if payload else {}
+        """ONE precedence for every section's click door. THE SELECTION IS A HINT, NOT A VETO: a single visible selected node is offered the payload first, and a node that cannot take it FALLS THROUGH to the creation walk - the host's own rule, where a selection never blocks a creation and wiring to the current node is a separate, explicit gesture."""
+        extra = {"basis": payload} if payload else {}    # the menu's extra word, handed on ONLY when there is one, so no verb ever sees a keyword it does not declare
         sel = self._visible_selected_nodes()
         if rule.click_on_node and len(sel) == 1:
-            hint = sections.drop_verb(section, rule.click_on_node)
+            hint = sections.drop_verb(section, rule.click_on_node)    # the verbs a rule names resolve on the SECTION, never on the panel
             if bool(hint(index, sel[0], **extra)):
                 return True
             debug.event("interact", "click hint declined - falling "
@@ -4552,11 +2635,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return self._category_names_from(self.cop_category_model)
 
     def save_cop_from_node(self, node: hou.Node | None = None) -> None:
-        """Node right-click "Save Network/Selection to <app>"
-        (rc_calls.save_cop passes the clicked node through). Works in
-        any context the Nodes section supports - SOP, COP, LOP and the
-        rest; the asset records which one.
-        v1 keeps standard-new semantics only - no Overwrite flow yet."""
+        """Node right-click `Save Network/Selection to <app>` (rc_calls.save_cop passes the clicked node through). Works in any context the Nodes section supports - SOP, COP, LOP and the rest; the asset records which one."""
         if not self.cop_model:
             hou.ui.displayMessage(  # type: ignore
                 "Please set a library first. Use the %s panel - "
@@ -4571,27 +2650,18 @@ class MatLibPanel(QtWidgets.QWidget):
                 "Right-click the network - or the nodes - you want to save."
             )
             return
-        # Container vs selection. Right-clicking a network container on
-        # its own (a geo, a copnet, a lopnet, a subnet) saves the WHOLE
-        # network; anything else saves the selection inside the network
-        # that holds it, named after the clicked node.
-        #
-        # A multi-selection wins over the container reading: two geos
-        # selected means those two nodes, not one of their interiors.
         net = node.parent()
         items = [i for i in hou.selectedItems() if i.parent() == net]
         if not any(i == node for i in items):
             items.append(node)
-        if len(items) == 1 and self.cop_model.saves_whole_network(node):
+        if len(items) == 1 and self.cop_model.saves_whole_network(node):    # container vs selection: a network container right-clicked ON ITS OWN (a geo, a copnet, a lopnet, a subnet) saves the WHOLE network, anything else saves the selection inside the network that holds it and is named after the clicked node - and a multi-selection wins over the container reading, two geos selected meaning those two nodes rather than one of their interiors
             items = None
 
-        # Pre-select the category active in the panel when the Cop
-        # section is showing (mirrors the material save dialog).
-        current_cat = ""
+        current_cat = ""    # pre-select the category active in the panel when the Cop section is showing (mirrors the material save dialog)
         if self.current_section == "cop":
             current_cat = self._selected_category_name()
 
-        dialog = usd_dialog.UsdDialog(
+        dialog = usd_dialog.UsdDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
             self.get_cop_category_names(), current_cat, name=node.name()
         )
         r = dialog.exec_()
@@ -4603,13 +2673,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.cop_model.check_add_tags(dialog.tags)
 
         result = None
-        save_error = None
-        # NO LAYOUT WRAPPER. add_asset announces itself with
-        # begin/endInsertRows, and pairing the two segfaults H21
-        # (research.md, measured 2026-08-04) - which is also why the
-        # hand-written `finally` this carried is gone rather than
-        # becoming a context manager: there is no longer a pair to
-        # close.
+        save_error = None    # NO LAYOUT WRAPPER around the add_asset below: it announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md, measured 2026-08-04)
         try:
             result = self.cop_model.add_asset(
                 node,
@@ -4633,10 +2697,7 @@ class MatLibPanel(QtWidgets.QWidget):
             )
 
     def _active_network_pwd(self) -> hou.Node | None:
-        """The network the user is most likely looking at: the visible
-        (current-tab) network editor's pwd, falling back to any open
-        editor - the same preference get_active_network_editor uses on
-        the material side."""
+        """The network the user is most likely looking at: the visible (current-tab) network editor's pwd, falling back to any open editor - the same preference get_active_network_editor uses on the material side."""
         editors = [
             pt
             for pt in hou.ui.paneTabs()  # type: ignore
@@ -4652,9 +2713,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     @staticmethod
     def _is_sop_container(node: hou.Node) -> bool:
-        """True for anything whose children are SOPs - a geo object, a
-        SOP Create LOP, a plain sopnet - i.e. a valid drop-INTO target
-        for a geometry file."""
+        """True for anything whose children are SOPs - a geo object, a SOP Create LOP, a plain sopnet - i.e. a valid drop-INTO target for a geometry file."""
         try:
             category = node.childTypeCategory()
         except (AttributeError, hou.OperationFailed):
@@ -4663,14 +2722,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     @staticmethod
     def _create_loader_inside(container: hou.Node, loader_type: str):
-        """Create the loader in the DEEPEST SOP network in/under the
-        container, falling outward on failure. A SOP Create LOP is a
-        locked HDA whose EDITABLE network sits at sopcreate/sopnet/
-        create - picking the first SOP-children network found landed on
-        the locked middle level and raised hou.PermissionError
-        ("Cannot create a node inside a locked asset", from a live log),
-        so depth-first-preference plus try-per-candidate is the robust
-        form: whichever level actually accepts the node wins."""
+        """Create the loader in the DEEPEST SOP network in/under the container, falling outward on failure - whichever level actually accepts the node wins."""
         candidates = []
 
         def walk(node, depth):
@@ -4686,7 +2738,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
         walk(container, 0)
         last_error = None
-        for _depth, net in sorted(candidates, key=lambda c: -c[0]):
+        for _depth, net in sorted(candidates, key=lambda c: -c[0]):    # deepest first, then try-per-candidate: a SOP Create LOP is a locked HDA whose EDITABLE network sits at sopcreate/sopnet/create, so a shallower SOP-children network can refuse with hou.PermissionError ("Cannot create a node inside a locked asset")
             try:
                 return net.createNode(loader_type)
             except hou.Error as exc:
@@ -4694,24 +2746,11 @@ class MatLibPanel(QtWidgets.QWidget):
         raise last_error or hou.OperationFailed("no SOP network found")
 
     def import_geo_asset(self, index: QtCore.QModelIndex) -> None:
-        """Double-click/right-click import for a geometry file -
-        CONTEXT-AWARE (per spec): in an OBJ network, a new geo
-        named after the file with the right loader SOP inside; already
-        inside a SOP network (a geo node's innards, a SOP Create's), a
-        new loader SOP in place; in a LOP network, a new SOP Create
-        holding the loader - geometry lives directly in the stage,
-        never as stray /obj exports. The drag imports the same way at
-        the release point (drop_geo_at_release)."""
+        """Double-click/right-click import for a geometry file, CONTEXT-AWARE per network (the branches of _import_geo_in_context spell out which). The drag imports the same way at the release point (drop_geo_at_release)."""
         path = index.data(self.file_files_model.PathRole)
         if not path:
             return
-        # WRAPPED HERE, not at each caller. Every other scene-importing
-        # verb preserves what it disturbed and this one did not, so a
-        # menu Import moved the artist's current node and display flag
-        # with no way back. Putting it on the verb rather than on the
-        # menu entry means the door, the drag and any later caller
-        # inherit it instead of having to remember.
-        with helpers.preserving_selection_and_current():
+        with helpers.preserving_selection_and_current():    # WRAPPED HERE and not at each caller, so the door, the drag and any later caller inherit it instead of having to remember - like every other scene-importing verb, this one leaves the artist's current node and display flag as it found them
             self._import_geo_in_context(path, self._active_network_pwd())
 
     def _import_geo_in_context(
@@ -4731,40 +2770,29 @@ class MatLibPanel(QtWidgets.QWidget):
 
         container = None  # created here; cleaned up if the import fails
         try:
-            if category == "Sop":
+            if category == "Sop":    # already inside a SOP network (a geo node's innards, a SOP Create's) - a new loader SOP in place
                 loader = dest.createNode(loader_type)
-            elif category == "Lop":
-                # Chain it onto the current tree, the way Houdini's own
-                # tab menu does when you add a light or a render node:
-                # createOutputNode() is that built-in, wiring the new
-                # node to the display node's output. Falls back to a
-                # loose node in an empty stage.
+            elif category == "Lop":    # a LOP network gets a new SOP Create holding the loader, so geometry lives directly in the stage and never as a stray /obj export
                 anchor = None
                 try:
                     anchor = dest.displayNode()
                 except (AttributeError, hou.OperationFailed):
                     anchor = None
                 if anchor is not None:
-                    container = anchor.createOutputNode("sopcreate", name)
+                    container = anchor.createOutputNode("sopcreate", name)    # chained onto the current tree the way Houdini's own tab menu chains a light or a render node - createOutputNode() is that built-in, wiring the new node to the display node's output; the else below is the loose node an empty stage gets
                 else:
                     container = dest.createNode("sopcreate", name)
                 loader = self._create_loader_inside(container, loader_type)
-            elif category == "Object":
+            elif category == "Object":    # an OBJ network gets a new geo named after the file, with the right loader SOP inside
                 container = dest.createNode("geo", name)
                 loader = container.createNode(loader_type)
-            else:
-                # Not a network that can hold geometry (mat/cop/...):
-                # fall back to a fresh geo at /obj, the old behavior.
+            else:    # not a network that can hold geometry (mat/cop/...) - fall back to a fresh geo at /obj
                 obj = hou.node("/obj")
                 if obj is None:
                     raise hou.OperationFailed("no /obj network")
                 container = obj.createNode("geo", name)
                 loader = container.createNode(loader_type)
-        # hou.Error, NOT just OperationFailed: the locked-asset case
-        # raises hou.PermissionError (a SIBLING class) - catching too
-        # narrowly turned the failure into a silent traceback with a
-        # dead sopcreate left in the scene.
-        except hou.Error as exc:
+        except hou.Error as exc:    # hou.Error, NOT just OperationFailed: the locked-asset case raises hou.PermissionError, a SIBLING class, and catching too narrowly leaves a dead sopcreate in the scene behind a silent traceback
             if container is not None:
                 try:
                     container.destroy()
@@ -4799,40 +2827,16 @@ class MatLibPanel(QtWidgets.QWidget):
         helpers.auto_place(loader)
         if container is not None:
             helpers.auto_place(container)
-            # What you just added is what you want to see. createOutput
-            # Node wires but does not flag, so a Solaris import would
-            # otherwise land downstream of the display node and show
-            # nothing.
             try:
-                container.setDisplayFlag(True)
+                container.setDisplayFlag(True)    # what you just added is what you want to see: createOutputNode wires but does not flag, so a Solaris import would otherwise land downstream of the display node and show nothing
             except (AttributeError, hou.Error):
                 pass
-        # The import seam: the caller receives what was created - the
-        # container when one was built, else the loader itself.
-        return container or loader
+        return container or loader    # the import seam: the caller receives what was created - the container when one was built, else the loader itself
 
     def _drop_context_under_cursor(
-        self, matcher, include_viewports: bool = False
+        self, matcher, include_viewports: bool = False    # matcher = a type-name substring like "materiallibrary"/"copnet", or a callable(node) -> bool such as geometry's SOP-container test
     ) -> hou.Node | None:
-        """Resolve where a drag was RELEASED, for drops Houdini's native
-        handling ignores: network editors (the canvas takes no native
-        node drops - DRAGTEST log, 2026-07-19). Returns the node to
-        import against - the node under the cursor when it matches
-        (matcher = a type-name substring like "materiallibrary"/
-        "copnet", or a callable(node) -> bool, e.g. geometry's
-        SOP-container test), else the editor's own pwd (which is itself
-        the target when the user is working inside one).
-
-        include_viewports (geometry drops): a release over a Scene
-        Viewer resolves to the network the VIEWPORT is showing (its
-        pwd - /obj for the object view, /stage for the Solaris view, a
-        geo node's innards at SOP level), so the same context rules
-        apply as everywhere else. Materials deliberately keep this off:
-        their viewport releases are the Drag Engine's own
-        (viewport_release_target picks the actual prim/node under the
-        cursor), so resolving a network here would double-handle them.
-
-        None = the release wasn't over anything import-worthy."""
+        """Resolve where a drag was RELEASED, for drops Houdini's native handling ignores. Returns the node to import against - the node under the cursor when it matches, else the editor's own pwd (which is itself the target when the user is working inside one) - and None when the release wasn't over anything import-worthy."""
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None:
             return None
@@ -4841,14 +2845,14 @@ class MatLibPanel(QtWidgets.QWidget):
         except AttributeError:
             return None
         if (
-            include_viewports
+            include_viewports    # geometry drops: a release over a Scene Viewer resolves to the network the VIEWPORT is showing (its pwd - /obj for the object view, /stage for the Solaris view, a geo node's innards at SOP level), so the same context rules apply as everywhere else. Materials deliberately keep this off: their viewport releases are the Drag Engine's own (viewport_release_target picks the actual prim/node under the cursor), so resolving a network here would double-handle them
             and pane_type == hou.paneTabType.SceneViewer
         ):
             try:
                 return pane_tab.pwd()
             except AttributeError:
                 return None
-        if pane_type != hou.paneTabType.NetworkEditor:
+        if pane_type != hou.paneTabType.NetworkEditor:    # the network canvas takes no native node drops (DRAGTEST log, 2026-07-19), which is the whole reason this resolution exists
             return None
         node = None
         for item in self._network_items_at_cursor(pane_tab):
@@ -4875,9 +2879,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
 
     def _import_material_builder(self, asset_id, target, context_node=None):
-        """One import shape for every release bridge: import a library
-        material by id, report failures, return the builder VOP or
-        None. Creation happens at the drop, nowhere before."""
+        """One import shape for every release bridge: import a library material by id, report failures, return the builder VOP or None. Creation happens at the drop, nowhere before."""
         if not self.material_model:
             return None
         row = self.material_model.find_asset_row_by_id(str(asset_id))
@@ -4889,10 +2891,7 @@ class MatLibPanel(QtWidgets.QWidget):
             mat, target, context_node=context_node
         )
         if not ok:
-            # Every failed import leaves a NAMED reason in the log -
-            # an "imported: 0" with nothing beside it once cost a
-            # debugging round.
-            debug.event("import", "import failed",
+            debug.event("import", "import failed",    # every failed import leaves a NAMED reason in the log, never a bare "imported: 0"
                         material=mat.name, target=target,
                         reason=reason or "(no reason reported)")
             if reason:
@@ -4907,9 +2906,7 @@ class MatLibPanel(QtWidgets.QWidget):
         )
 
     def assign_material_to_obj(self, asset_ids, obj_node) -> bool:
-        """OBJ-viewport release: import to /mat - the OBJ world's
-        home - and assign the FIRST material to the picked object;
-        extra selected materials import beside it unassigned."""
+        """OBJ-viewport release: import to /mat - the OBJ world's home - and assign the FIRST material to the picked object; extra selected materials import beside it unassigned."""
         if not self.material_model or not asset_ids:
             return False
         builder = None
@@ -4931,16 +2928,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _selected_material_ids(self, index) -> list:
         """Asset ids of the selection, the pressed tile first."""
-        # isValid() does NOT catch a stale row: a proxy index built when
-        # the model was longer still reports valid, and mapToSource then
-        # returns row -1 - which indexes assets[] from the END and hands
-        # back the WRONG material silently, or raises IndexError on an
-        # empty library, inside a release slot. drop_cop_at_release
-        # already guards this; the material path did not. (Reachable
-        # mainly through a gesture that outlived a refresh or a section
-        # switch - which is why this and the press-state leak compose so
-        # badly.)
-        row = self.material_sorted_model.mapToSource(index).row()
+        row = self.material_sorted_model.mapToSource(index).row()    # isValid() does NOT catch a stale row: a proxy index built when the model was longer still reports valid, and mapToSource then returns -1, which indexes assets[] from the END and hands back the WRONG material silently, or raises IndexError on an empty library, inside a release slot
         if not 0 <= row < len(self.material_model.assets):
             return []
         pressed_id = self.material_model.assets[row].mat_id
@@ -4959,9 +2947,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return ids
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
-        """LOP-viewport release: our ancestor-prim menu, then import
-        into a materiallibrary resolved by Houdini's STOCK helper and
-        assign with its stock assignMat - SideFX semantics, Amaze law."""
+        """LOP-viewport release: our ancestor-prim menu, then import into a materiallibrary resolved by Houdini's STOCK helper and assign with its stock assignMat - SideFX semantics, Amaze law."""
         stock = dragengine.stock_lop()
         if stock is None:
             hou.ui.displayMessage(  # type: ignore
@@ -4979,11 +2965,7 @@ class MatLibPanel(QtWidgets.QWidget):
             target_lop = children[-1] if children else None
 
         stage = target_lop.stage() if target_lop is not None else None
-        # WHAT to offer is USD reasoning and lives in core/lop_assign;
-        # this only renders it. No "Import only" entry: a drop aimed at
-        # a specific object always means assign - network drops are the
-        # import-only path.
-        choices = lop_assign.drop_choices(stage, primpath)
+        choices = lop_assign.drop_choices(stage, primpath)    # WHAT to offer is USD reasoning and lives in core/lop_assign; this only renders it. No "Import only" entry, because a drop aimed at a specific object always means assign - network drops are the import-only path
         if not choices:
             return False
         cmenu = QtWidgets.QMenu(self)
@@ -4995,57 +2977,22 @@ class MatLibPanel(QtWidgets.QWidget):
             actions[cmenu.addAction(label)] = (kind, payload)
             previous_kind = kind
         chosen = cmenu.exec_(QtGui.QCursor.pos())
-        # A QMenu parented to the panel outlives the gesture, and the
-        # panel outlives the session - the same measured leak
-        # `grid._open` pays a `deleteLater()` for (twenty right-clicks,
-        # forty live menus). Read the choice out FIRST: the dict is
-        # keyed by the menu's own QActions.
-        cmenu.deleteLater()
+        cmenu.deleteLater()    # a QMenu parented to the panel outlives the gesture and the panel outlives the session - the same measured leak `grid._open` pays a deleteLater() for. The choice is read out FIRST because the dict is keyed by the menu's own QActions
         if chosen is None:
-            # Menu dismissed - nothing happens. No outcome icon either
-            # way: the dispatcher reports "menu" for this whole path
-            # (the menu itself was the feedback).
-            return False
+            return False    # menu dismissed, so nothing happens and no outcome icon either way: the dispatcher reports "menu" for this whole path, the menu itself having been the feedback
         kind, payload = actions[chosen]
         assign_path = payload if kind == "assign" else None
         swap_targets = payload if kind == "swap" else None
-        # The undo group opens HERE, before the container policy -
-        # not just around the import. Creating the materiallibrary,
-        # wiring it, moving it and moving the display flag all ran
-        # OUTSIDE the group, so one Ctrl+Z undid the assignment and
-        # the VOP and left an EMPTY materiallibrary wired into the
-        # display chain, with the display flag still moved. Verified
-        # through hou.undos.undoLabels(): a second entry labelled
-        # "hou.Node.createNode" sat behind ours in the Edit menu, and
-        # that orphan library is what the container policy then picks
-        # up for every later drop in the network.
-        undo_label = (
+        undo_label = (    # the undo group opens BEFORE the container policy, not just around the import: creating the materiallibrary, wiring it, moving it and moving the display flag all ran OUTSIDE the group, so one Ctrl+Z undid the assignment and the VOP and left an EMPTY library wired into the display chain with the flag still moved. Verified through hou.undos.undoLabels(); that orphan library is what the container policy then picks up for every later drop
             "Amaze Swap Material" if swap_targets is not None
             else "Amaze Assign Material"
         )
         with hou.undos.group(undo_label), dragengine.keep_editor_focus():
-            # CONTAINER POLICY (the anti-clutter rule): the network's FIRST
-            # existing materiallibrary takes every drop; only a library-less
-            # network gets a new one. Assignments reuse the network's first
-            # existing assignmaterial the same way - repeated drops converge
-            # on ONE library and ONE assign node instead of scattering pairs.
-            # Viewport drops prefer a library IN THE DISPLAY CHAIN (an
-            # assignment into a disconnected one silently does not
-            # display), then any first, then create WIRED into the chain -
-            # the placement law: viewport-created libraries join the
-            # display; network-created ones stay unwired.
-            liblop = dragengine.first_materiallibrary(
+            liblop = dragengine.first_materiallibrary(    # CONTAINER POLICY, the anti-clutter rule: the network's FIRST existing materiallibrary takes every drop and only a library-less network gets a new one, assignments reusing the first existing assignmaterial the same way, so repeated drops converge on ONE library and ONE assign node. Viewport drops prefer a library IN THE DISPLAY CHAIN, because an assignment into a disconnected one silently does not display, then any first, then create WIRED into the chain - the placement law being that viewport-created libraries join the display and network-created ones stay unwired
                 lopnet, connected_to=target_lop
             )
             if liblop is None and not (assign_path or swap_targets):
-                # The unconditional fallback is only safe when nothing
-                # is going to be ASSIGNED. With an assignment pending,
-                # an unwired leftover library silently does not display
-                # - the comment above says so - and taking it means the
-                # material imports, the binding is written, and the
-                # viewport does not change. Better to create one wired
-                # into the chain (below).
-                liblop = dragengine.first_materiallibrary(lopnet)
+                liblop = dragengine.first_materiallibrary(lopnet)    # the unconditional fallback is only safe when nothing will be ASSIGNED: with an assignment pending, an unwired leftover library silently does not display, so the material imports, the binding is written and the viewport does not change. Better to create one wired into the chain below
             created = False
             if liblop is None:
                 try:
@@ -5055,16 +3002,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     helpers.auto_place(liblop)
                     liblop.setDisplayFlag(True)
                     created = True
-                except hou.Error as refusal:
-                    # hou.Error, NOT hou.OperationFailed: a locked
-                    # digital asset answers `Cannot create a node
-                    # inside a locked asset` as hou.PermissionError,
-                    # which is a SIBLING of OperationFailed and went
-                    # straight past this handler - 12 tracebacks in the
-                    # real log, over two days and one code move, with
-                    # this message sitting one line away unreachable.
-                    # The network-drop path already catches it this way
-                    # (research.md > hou.PermissionError is a SIBLING).
+                except hou.Error as refusal:    # hou.Error, NOT hou.OperationFailed: a locked digital asset answers `Cannot create a node inside a locked asset` as hou.PermissionError, a SIBLING of OperationFailed, which went straight past this handler - 12 tracebacks in the real log with this message one line away and unreachable. The network-drop path already catches it this way (research.md > hou.PermissionError is a SIBLING)
                     debug.event("drag", "the network refused a material "
                                 "library", dest=lopnet.path(),
                                 error=str(refusal))
@@ -5074,39 +3012,19 @@ class MatLibPanel(QtWidgets.QWidget):
                         % (lopnet.name(), refusal)
                     )
                     return False
-            # Prefer one in the display chain, exactly as the library lookup
-            # above does. Unfiltered, this took the first assignmaterial in
-            # CREATION order, so a leftover disconnected one won over the
-            # live node: the material imported and the binding was written
-            # where nothing displays it, silently.
-            assign_node = dragengine.find_assignmaterial(
+            assign_node = dragengine.find_assignmaterial(    # prefers one in the display chain, exactly as the library lookup above does: unfiltered this took the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding was written where nothing displays it, silently
                 lopnet, connected_to=target_lop
             ) or dragengine.find_assignmaterial(lopnet)
-            # stock.assignMat REUSES an assignmaterial passed as the node
-            # (multiparm dedupe); anything else makes it create a fresh one
-            # chained onto what we pass. That anchor must sit AT OR BELOW
-            # the library: chaining onto the old display node when the
-            # library was JUST created put the assign in a parallel branch
-            # UPSTREAM of its own material (live bug report).
-            if assign_node is not None:
+            if assign_node is not None:    # stock.assignMat REUSES an assignmaterial passed as the node (multiparm dedupe) and otherwise creates a fresh one chained onto what we pass, so that anchor must sit AT OR BELOW the library - chaining onto the old display node when the library was JUST created put the assign in a parallel branch UPSTREAM of its own material
                 node2 = assign_node
             elif created:
                 node2 = liblop
             else:
                 node2 = target_lop if target_lop is not None else liblop
             if swap_targets is not None:
-                # A swap replaces ONE material - importing the rest of a
-                # multi-selection would recreate the dead-material pile the
-                # swap exists to prevent.
-                ids = list(ids)[:1]
+                ids = list(ids)[:1]    # a swap replaces ONE material; importing the rest of a multi-selection would recreate the dead-material pile the swap exists to prevent
             vops = []
-            # PAIRED with their asset id: vops[0] was assumed to be the
-            # pressed tile, but the list only collects SUCCESSFUL
-            # imports - so if the pressed material failed (a missing
-            # plugin or node type, a real reported class), vops[0] was a
-            # DIFFERENT material and that is what got assigned, with no
-            # warning.
-            imported = []
+            imported = []    # PAIRED with their asset id: vops[0] was assumed to be the pressed tile, but the list only collects SUCCESSFUL imports, so a pressed material that failed - a missing plugin or node type, a real reported class - made vops[0] a DIFFERENT material, and that is what got assigned, with no warning
             for aid in ids:
                 vop = self.import_material_into_container(aid, liblop)
                 if vop is not None:
@@ -5125,9 +3043,7 @@ class MatLibPanel(QtWidgets.QWidget):
                         amaze=liblop.path(), assign=str(assign_path),
                         swap=bool(swap_targets))
             if pressed_vop is not None and swap_targets is not None:
-                # The module does the USD and REPORTS; the panel owns
-                # the dialog (it is the half with a screen).
-                reason = lop_assign.swap_assignments(
+                reason = lop_assign.swap_assignments(    # the module does the USD and REPORTS; the panel owns the dialog, being the half with a screen
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
@@ -5157,12 +3073,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _import_materials_into_context(self, context, ids,
                                        position=None) -> None:
-        """Network-release import for the material section. One undo
-        group: the whole multi-drop reverts as one step. Placement
-        rides the import seam - the import RETURNS what it created
-        and `helpers.place_nodes` is the one placement rule - so a
-        position lands each copy at the release point, a multi-drop
-        cascading from it."""
+        """Network-release import for the material section, in ONE undo group so the whole multi-drop reverts as one step. Placement rides the import seam - the import RETURNS what it created and `helpers.place_nodes` is the one placement rule - so a position lands each copy at the release point, a multi-drop cascading from it."""
         with hou.undos.group("Amaze Import Materials"):
             self._import_materials_into_context_grouped(
                 context, ids, position)
@@ -5178,30 +3089,18 @@ class MatLibPanel(QtWidgets.QWidget):
                 idx, "auto", context_node=context
             )
             if not ok and reason:
-                # Guarded: hou.ui is absent in a headless session, and
-                # the refusal must surface, not crash.
-                ui = getattr(hou, "ui", None)
-                if ui is not None:
-                    ui.displayMessage(reason)  # type: ignore
-                debug.event("import", "network import refused",
-                            reason=str(reason))
-                break
+                debug.refuse(reason, net=context.path())    # the door marks library damage, which picks the dialog ▸p/refusal-sink
+                break    # ONE refusal per multi-drop, never one per asset ▸p/dialogs-are-a-bill
             if position is not None:
                 helpers.place_nodes(created, hou.Vector2(
                     position.x() + offset * 0.6,
                     position.y() - offset * 0.9))
 
-    #: Sections whose sidebar holds real, assignable categories. The
-    #: File section is excluded on purpose - deliberately partial: its
-    #: sidebar is a list of filesystem FOLDERS, so a drop there would
-    #: mean moving files on disk, a different and dangerous operation,
-    #: not a metadata change.
     def _category_under_cursor(self):
         return sidebar.category_under_cursor(self)
 
     def _set_drag_hover_row(self, row: int) -> None:
-        """Highlight (row) or clear (row=-1) the sidebar row being
-        dragged over. Logic in panel/sidebar.py."""
+        """Highlight (row) or clear (row=-1) the sidebar row being dragged over. Logic in panel/sidebar.py."""
         sidebar.set_hover_row(self, row)
 
     def _update_category_drag_hover(self, pos) -> None:
@@ -5217,14 +3116,9 @@ class MatLibPanel(QtWidgets.QWidget):
         return sidebar.handle_drop(self, event)
 
     def _network_items_at_cursor(self, editor):
-        """Droppable items under the cursor in a network editor, via
-        the editor's OWN coordinate chain (cursorPosition -> posToScreen
-        -> networkItemsInBox; all documented in the same screen space -
-        wiki: Node graph). isUnderCursor() gates out the pane's chrome
-        (toolbars/controls), where the old pane-rect math silently
-        produced out-of-view points. Hits arrive as (item, ...) tuples."""
+        """Droppable items under the cursor in a network editor, arriving as (item, ...) tuples - via the editor's OWN coordinate chain (cursorPosition -> posToScreen -> networkItemsInBox, all documented in the same screen space; wiki: Node graph)."""
         try:
-            if not editor.isUnderCursor():
+            if not editor.isUnderCursor():    # isUnderCursor() gates out the pane's chrome (toolbars/controls)
                 return ()
             p = editor.posToScreen(editor.cursorPosition())
             r = theme.ui_px(2)
@@ -5237,12 +3131,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return ()
 
     def _node_under_cursor(self) -> hou.Node | None:
-        """The scene node the cursor is over. In a network editor: the
-        node under the mouse (native cursor chain, see
-        _network_items_at_cursor). Over a Parameter Editor: the node
-        whose parameters that pane is showing - dropping a gradient on
-        the parm pane you are already looking at beats hunting the
-        node, especially for ramps."""
+        """The scene node the cursor is over: in a network editor the node under the mouse (native cursor chain, see _network_items_at_cursor), over a Parameter Editor the node whose parameters that pane is showing."""
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None:
             return None
@@ -5250,7 +3139,7 @@ class MatLibPanel(QtWidgets.QWidget):
             pane_type = pane_tab.type()
         except AttributeError:
             return None
-        if pane_type == hou.paneTabType.Parm:
+        if pane_type == hou.paneTabType.Parm:    # dropping a gradient on the parm pane you are already looking at beats hunting the node, especially for ramps
             try:
                 return pane_tab.currentNode()
             except (AttributeError, hou.OperationFailed):
@@ -5267,12 +3156,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return None
 
     def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
-        """"Save Gradient to <app>" (node right-click, or any caller
-        with a ramp-bearing node): serializes the node's first color
-        ramp and registers it as a user gradient in the Gradients
-        section, in a category chosen (or created) in the save dialog.
-        Follows the material save flow's conventions - selection-based
-        fallback, specific error messages instead of silent no-ops."""
+        """`Save Gradient to <app>` (node right-click, or any caller with a ramp-bearing node): serializes the node's first color ramp and registers it as a user gradient in the Gradients section, in a category chosen (or created) in the save dialog. With no node it falls back to the single selected one, as the material save flow does."""
         if not self.material_model:
             hou.ui.displayMessage(  # type: ignore
                 "Please set a library first. Use the %s panel - "
@@ -5304,18 +3188,12 @@ class MatLibPanel(QtWidgets.QWidget):
         self.gradient_model.add_user_gradient(
             dialog.name, dialog.category, ramp_data
         )
-        # The shared verb, which brackets its own insert - not
-        # switch_model_data(), which belongs to a library switch and
-        # only ever runs through switch_all_models().
         if dialog.category:
-            self.gradient_categories_model.check_add_category(
+            self.gradient_categories_model.check_add_category(    # the shared verb, which brackets its own insert - not switch_model_data(), which belongs to a library switch and only ever runs through switch_all_models()
                 dialog.category)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
-        """Any splitter drag records BOTH side panes' widths; the
-        debounced save timer writes them (the slider's own pattern,
-        reused). The construction's law - side panes hold their width
-        - only works if each side pane KNOWS its width."""
+        """Any splitter drag records BOTH side panes' widths; the debounced save timer writes them. The construction's law - side panes hold their width - only works if each side pane KNOWS its width."""
         pane = getattr(self, "notes_panel", None)
         if pane is None:
             return
@@ -5337,16 +3215,13 @@ class MatLibPanel(QtWidgets.QWidget):
             self._thumbsize_save_timer.start()
 
     def toggle_notes_panel(self) -> None:
-        """Flip the Notes pane via its toolbar button, so the chip's
-        lit state can never disagree with the pane."""
+        """Flip the Notes pane via its toolbar button, so the chip's lit state can never disagree with the pane."""
         button = getattr(self, "btn_notes", None)
         if button is not None:
             button.setChecked(not button.isChecked())
 
     def _on_notes_toggled(self, checked: bool) -> None:
-        """Show or hide the pane, nothing more: the one-flexible-pane
-        construction (see _build_splitter_and_sidebar) makes the grid
-        absorb the change on its own - no width bookkeeping here."""
+        """Show or hide the pane, nothing more: the one-flexible-pane construction (see _build_splitter_and_sidebar) makes the grid absorb the change on its own - no width bookkeeping here."""
         panel = getattr(self, "notes_panel", None)
         if panel is None:
             return
@@ -5357,75 +3232,32 @@ class MatLibPanel(QtWidgets.QWidget):
             self._refresh_notes_subject()
 
     def _sync_notes_button_pixmaps(self) -> None:
-        """The chip's four states, in the TOOLBAR's own colours.
-
-
-        and its to-dos, not to this button - "change the color on the
-        toolbar to the default color for the toolbar icons". So the
-        chip wears the icon family's own blue, IDLE_BODY, in ALL FOUR
-        states - "keep it blue in all states, not white while on". It
-        used to light in the star yellow, which said "notes are
-        yellow", a thing that stopped being true when Comments took
-        its own colour; lighting it to LIT_BODY instead just made it
-        go white. The state is carried by the chip's BACKGROUND, which
-        is what a chip is for; the glyph does not need to change
-        colour to say it too.
-
-        The tint map keys on the ART's colour. That is not decoration:
-        the map replaces a literal, so when the icon changed from the
-        old yellow-keyed drawing to this one, a map still keyed on
-        "#fffc66" silently matched NOTHING and the chip rendered its
-        own blue in all four states - the bug this replaces.
-        """
+        """The chip's four states, in the TOOLBAR's own colours: the glyph wears the icon family's own blue, IDLE_BODY, in ALL FOUR of them, the state being carried by the chip's BACKGROUND, which is what a chip is for."""
         button = getattr(self, "btn_notes", None)
         if button is None:
             return
-        # The glyph is the section's blue as drawn; on the TOOLBAR it
-        # wears the icon family's blue like every other chip, and it
-        # does not whiten when on.
         button.set_art(
             self._ui_icon_path("icon_comments.svg"),
-            lighten_on_hover=False,
-            recolour={notes_panel.COMMENT_INK:
+            lighten_on_hover=False,    # the glyph is the section's blue as drawn, and it does not whiten when on
+            recolour={notes_panel.COMMENT_INK:    # the tint map keys on the ART's colour, replacing a literal - so a map left keyed on a colour the drawing no longer contains matches NOTHING and the untinted art shows through in all four states instead
                       ui_helpers.IconMenuButton.IDLE_BODY})
 
     def _on_note_saved(self, _key: str) -> None:
-        """A page was written - repaint the grid so the tile's note
-        badge appears or clears with it.
-
-        THE VISIBLE view: `NotesRole` is answered live from the store
-        with no `dataChanged`, so this repaint is the whole signal - and
-        naming `thumblist` meant list mode got none of it. The tick
-        column stayed blank until something unrelated repainted."""
-        grid.visible_view(self).viewport().update()
+        """A page was written - repaint the grid so the tile's note badge appears or clears with it."""
+        grid.visible_view(self).viewport().update()    # THE VISIBLE view, whichever mode is up: `NotesRole` is answered live from the store with no `dataChanged`, so this repaint is the whole signal
 
     def _notes_subject(self):
-        """What the Comments pane points at, or None.
-
-        Two things happen here and nothing else: find the LIVE current
-        index - never a stored proxy index, the one selection source
-        every handler uses - and ask the context what that index means.
-
-        The three per-section mappings that used to follow are on the
-        contexts now (`Section.comment_subject`), so a section that
-        arrives with tiles of its own gets a Comments pane by writing
-        one method rather than by being remembered here.
-        """
-        index = ui_helpers.live_current_index(self.thumblist)
+        """What the Comments pane points at, or None. Two things happen here and nothing else: find the live current index, and ask the section context what that index means - so a section that arrives with tiles of its own gets a Comments pane by writing `Section.comment_subject`, not by being remembered here."""
+        index = ui_helpers.live_current_index(self.thumblist)    # the LIVE current index, never a stored proxy index - the one selection source every handler uses
         if index is None or not index.isValid():
             return None
         context = self._section()
-        # ASK THE CONTEXT, do not test which world this is. The online
-        # world answers no because an online record is not a library
-        # asset - a fact that belongs on it, not in a branch here.
-        if context is None or not context.takes_comments:
+        if context is None or not context.takes_comments:    # ASK THE CONTEXT, do not test which world this is: the online world answers no because an online record is not a library asset, a fact that belongs on it rather than in a branch here
             return None
         return context.comment_subject(index)
 
     def _refresh_notes_subject(self, *_args) -> None:
-        """Point the Notes pane at the current selection. Cheap when
-        the pane is hidden (returns immediately), called from every
-        selection change and tab switch."""
+        """Point the Notes pane at the current selection. Cheap when the pane is hidden (returns immediately), called from every selection change and tab switch."""
         panel = getattr(self, "notes_panel", None)
         if panel is None or panel.isHidden():
             return
@@ -5436,38 +3268,13 @@ class MatLibPanel(QtWidgets.QWidget):
             panel.set_subject(subject)
 
     def _on_folder_progress(self, section: str, done: int, total: int) -> None:
-        """The conversion bar, but only while its OWN section is showing.
-
-        One handler served both folder sections with no guard, and the
-        bar sits ABOVE the grid - so a batch finishing (or starting)
-        while you were somewhere else drew a progress bar over that
-        section and shifted every tile down. Easy to trigger: changing
-        any preference calls refresh_current_folder() unconditionally,
-        and a RenderSize change or Delete Local Cache turns the whole
-        texture folder into a cache miss, so the Images bar appeared
-        over Materials, Nodes or Code and stayed until the batch ended.
-
-        _on_online_preview_progress already had this guard, and its
-        docstring gives the same reason.
-
-        AND THE ONLINE HALF OF IT, which was missing: `current_section`
-        deliberately keeps naming the LOCAL section while the online
-        world is showing (see _is_online), so the section test alone
-        cannot see that the user has left. Browse a File folder that
-        starts a conversion batch, press the Online chip, and the bar
-        drew itself over the ONLINE grid - shifting every tile down and
-        back up as it appeared and finished, which is the exact symptom
-        the section guard was added for, one world over.
-        """
-        if self._is_online() or self.current_section != section:
+        """The conversion bar, but only while its OWN section is showing and the local world is up: the bar sits ABOVE the grid, so drawing it for a batch whose section you have left shifts every tile of whatever is on screen down and back up again."""
+        if self._is_online() or self.current_section != section:    # `current_section` deliberately keeps naming the LOCAL section while the online world is showing (see _is_online), so the section test alone cannot see that the user has left
             return
         self._on_texture_progress(done, total)
 
     def _on_texture_progress(self, done: int, total: int) -> None:
-        """Shows/updates the thin progress bar above the thumbnail grid
-        while texture thumbnails are generating for the selected folder.
-        Hidden when there's nothing to do (fully cached / empty folder)
-        or once generation completes."""
+        """Shows/updates the thin progress bar above the thumbnail grid while texture thumbnails are generating for the selected folder. Hidden when there's nothing to do (fully cached / empty folder) or once generation completes."""
         if total <= 0 or done >= total:
             self.texture_progress.setVisible(False)
             return
@@ -5475,10 +3282,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.texture_progress.set_progress(done, total)
 
     def _on_online_preview_progress(self, done: int, total: int) -> None:
-        """Same bar, for the online preview pool - but only while the
-        online browser is actually showing. Previews load lazily, so a
-        worker finishing after you've switched away must not flash the bar
-        over another section."""
+        """Same bar, for the online preview pool - but only while the online browser is actually showing. Previews load lazily, so a worker finishing after you've switched away must not flash the bar over another section."""
         if not self._is_online():
             return
         if getattr(self, "_online_download_active", False):
@@ -5486,60 +3290,28 @@ class MatLibPanel(QtWidgets.QWidget):
         self._on_texture_progress(done, total)
 
     def _active_asset_stack(self):
-        """(model, proxy, selection model, category model) of whichever
-        curated-library section is showing (Materials / Cop / Code), or
-        None for a folder/gradient section or before setup. The section
-        object owns this now - see panel/sections.py AssetSection.stack."""
+        """(model, proxy, selection model, category model) of whichever curated-library section is showing (Materials / Cop / Code), or None for a folder/gradient section or before setup. The section object owns this - see panel/sections.py AssetSection.stack."""
         section = self._section()
         return section.stack() if section is not None else None
 
     def filter_thumb_view(self) -> None:
-        """Search box changed - the active context applies it.
-
-        Online browsing searches the SOURCE's API rather than a local
-        model, because the whole catalogue is never resident - that is
-        `OnlineContext.filter_text`, which this path reaches like any
-        other section's."""
+        """Search box changed - the active context applies it."""
         section = self._section()
         if section is not None:
-            section.filter_text(self.line_filter.text())
+            section.filter_text(self.line_filter.text())    # online browsing searches the SOURCE's API rather than a local model, the whole catalogue never being resident - that is `OnlineContext.filter_text`, reached through this one path like any other section's
 
     def filter_favs(self) -> None:
-        """Favourites star toggled - the active context applies it.
-
-        A stale checked state still cannot filter the material proxy
-        while the online grid shows: the star is disabled there, and
-        `OnlineContext.filter_favorites` is a no-op by declaration, so
-        the belt-and-braces branch that used to live here is the
-        context's answer now."""
+        """Favourites star toggled - the active context applies it: a stale checked state cannot filter the material proxy while the online grid shows, the star being disabled there and `OnlineContext.filter_favorites` a no-op by declaration."""
         section = self._section()
         if section is not None:
             section.filter_favorites(self.cb_favsonly.isChecked())
 
     def build_filter_menu(self) -> None:
-        """Fill the Filter menu with the ACTIVE section's entries.
-
-        One menu and one button serve every tab, exactly as the Search
-        box and the favourites star do - so like them, the contents
-        cannot be decided once at construction. The section says what
-        it offers (sections.py ▸ filter_entries) and what an entry
-        MEANS (apply_filter); this only carries the choice between
-        them, and never looks inside a value.
-
-        Runs on every section change, and again whenever Preferences
-        may have changed what is on offer - Materials drops a renderer
-        that has been switched off. A remembered choice that is no
-        longer offered falls back to the everything-entry, which is
-        what stopped "the checked renderer just got hidden" from
-        needing a special case of its own.
-        """
+        """Fill the Filter menu with the ACTIVE section's entries - one menu and one button serve every tab, so the section says what it offers (sections.py ▸ filter_entries) and what an entry MEANS (apply_filter); this never looks inside a value. Runs on every section change, and again whenever Preferences may have changed what is on offer."""
         section = self._section()
         entries = tuple(section.filter_entries()) if section is not None else ()
         self.menu_filter.clear()
-        # A QActionGroup owns its actions: dropping the old group with
-        # the old menu is what keeps a stale action from staying
-        # checked and answering for a section that is no longer showing.
-        self.filter_action_group = QtGui.QActionGroup(self.menu_filter)
+        self.filter_action_group = QtGui.QActionGroup(self.menu_filter)    # a QActionGroup owns its actions, so a fresh group with the fresh menu is what keeps a stale action from staying checked and answering for a section that is no longer showing
         self.filter_action_group.setExclusive(True)
         self.filter_actions = {}
         self.filter_values = {}
@@ -5547,17 +3319,9 @@ class MatLibPanel(QtWidgets.QWidget):
         if button is not None:
             if (section is not None
                     and not getattr(section, "takes_filter_menu", True)):
-                # Offered-but-off belongs to the toolbar table, which
-                # DISABLES the button (half opacity, like Favourites
-                # and Comments beside it). Hiding it here was a second
-                # owner for the same control: the eye VANISHED in the
-                # online world, whose context always has no entries.
-                button.setVisible(True)
+                button.setVisible(True)    # offered-but-off is the toolbar table's business, and it DISABLES the button (half opacity, like Favourites and Comments beside it) rather than hiding it - one owner for the control
             else:
-                # No entries, no menu: a button that opens an empty popup
-                # is worse than no button. Nothing shipped hits this - all
-                # five sections filter - but a new section gets it free.
-                button.setVisible(bool(entries))
+                button.setVisible(bool(entries))    # no entries, no menu: a button that opens an empty popup is worse than no button (nothing shipped hits this - all five sections filter - but a new section gets it free)
             if section is not None:
                 button.setToolTip(ui_helpers.tooltip_text(
                     section.filter_tooltip))
@@ -5571,7 +3335,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.filter_values[label] = value
         remembered = self.prefs.section_filter(self.current_section)
         act = self.filter_actions.get(remembered) or self.filter_actions[
-            entries[0][0]]
+            entries[0][0]]    # a remembered choice that is no longer offered falls back to entries[0], the everything-entry (sections.py puts it first), so a renderer switched off in Preferences needs no case of its own
         act.setChecked(True)
         self.filter_action_group.triggered.connect(self.filter_menu_changed)
         self.apply_section_filter()
@@ -5583,12 +3347,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.prefs.save()
 
     def apply_section_filter(self) -> None:
-        """Push the menu's checked entry into the active section.
-
-        Separate from filter_menu_changed because the same push has to
-        happen with nobody clicking anything: entering a section,
-        rebuilding the menu, or opening the panel.
-        """
+        """Push the menu's checked entry into the active section - separate from filter_menu_changed because the same push has to happen with nobody clicking anything: entering a section, rebuilding the menu, or opening the panel."""
         section = self._section()
         if section is None or not self.filter_actions:
             return
@@ -5605,11 +3364,7 @@ class MatLibPanel(QtWidgets.QWidget):
         )
 
     def _refresh_sidebar_categories(self) -> None:
-        """Re-evaluate empty-category hiding and counts after anything
-        that changed which materials/COPs exist, what they belong to,
-        or which renderer filter is active. Flows that already emit
-        category_model.layoutChanged refilter automatically - this is
-        for the ones that don't (deletes, overwrite, renderer switch)."""
+        """Re-evaluate empty-category hiding and counts after anything that changed which materials/COPs exist, what they belong to, or which renderer filter is active. For the flows that do NOT emit category_model.layoutChanged themselves (deletes, overwrite, renderer switch); the ones that do refilter automatically."""
         for cats_model in (
             getattr(self, "category_model", None),
             getattr(self, "cop_category_model", None),
@@ -5623,18 +3378,11 @@ class MatLibPanel(QtWidgets.QWidget):
         if self.cat_list is not None:
             self.cat_list.viewport().update()
 
-    #: The sidebar proxy each asset section's categories are shown
-    #: through. Named once: the three were enumerated correctly in
-    #: setup() and in _refresh_sidebar_categories, and INCOMPLETELY in
-    #: the Preferences push (Code was missing) and in the
-    #: filter-to-sidebar path (only Material had one at all).
-    SIDEBAR_PROXY_ATTRS = {
+    SIDEBAR_PROXY_ATTRS = {    # the sidebar proxy each asset section's categories are shown through, named ONCE: they were enumerated correctly in setup() and _refresh_sidebar_categories, and INCOMPLETELY in the Preferences push (Code missing) and the filter-to-sidebar path (only Material had one at all)
         "material": "category_sorted_model",
         "cop": "cop_category_sorted_model",
         "code": "code_category_sorted_model",
-        # Color joined the shared proxy 2026-08-14 (unsorted like the
-        # rest; nothing ever hides - no renderer filter is pushed).
-        "gradient": "gradient_category_sorted_model",
+        "gradient": "gradient_category_sorted_model",    # Colors is on the shared proxy too, unsorted like the rest; nothing ever hides here because no renderer filter is pushed
     }
 
     def sidebar_proxies(self) -> tuple:
@@ -5647,15 +3395,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return tuple(found)
 
     def _ensure_sidebar_selection(self, section_key: str) -> None:
-        """If the filter just hid the sidebar category the user was
-        standing in, fall back to All and refilter the grid - the
-        sidebar must never sit with an empty/hidden selection.
-
-        Takes the section KEY because all three asset sections run this
-        now: it was Material-gated while only Material pushed a filter
-        into its category model, and Node and Code reach it through the
-        shared AssetSection.apply_filter.
-        """
+        """If the filter just hid the sidebar category the user was standing in, fall back to All and refilter the grid - the sidebar must never sit with an empty/hidden selection. Takes the section KEY because all three asset sections that push a renderer filter run it, through the shared AssetSection.apply_filter."""
         if self.current_section != section_key:
             return
         proxy = getattr(
@@ -5669,18 +3409,11 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         indexes = self.cat_list.selectedIndexes()
         if indexes and indexes[0].isValid():
-            # The selected category survived the refilter (proxy
-            # selections track items, not row numbers).
-            return
+            return    # the selected category survived the refilter - proxy selections track items, not row numbers
         self._stand_on_all_category()
 
     def _stand_on_all_category(self) -> None:
-        """Point the sidebar at All and refilter.
-
-        One owner: the fallback above and the empty state's Show All
-        button both need it, and a second copy of the row walk would be
-        the third reader this codebase keeps growing.
-        """
+        """Point the sidebar at All and refilter - one owner for the row walk, shared by the hidden-category fallback above and the empty state's Show All button."""
         view = getattr(self, "cat_list", None)
         proxy = view.model() if view is not None else None
         if proxy is None:
@@ -5704,60 +3437,36 @@ class MatLibPanel(QtWidgets.QWidget):
         self._stand_on_all_category()
 
     def clear_filter_box(self) -> None:
-        """The empty state's Clear Search button.
-
-        The refilter is called BY HAND and is not redundant: the box is
-        wired on `textEdited`, which Qt does not emit for a
-        programmatic change. Qt's own clear button emits it explicitly
-        for this exact reason.
-        """
+        """The empty state's Clear Search button."""
         box = getattr(self, "line_filter", None)
         if box is None or not box.text():
             return
         box.clear()
-        self.filter_thumb_view()
+        self.filter_thumb_view()    # BY HAND and not redundant: the box is wired on `textEdited`, which Qt does not emit for a programmatic change (Qt's own clear button emits it explicitly for the same reason)
 
     def user_update_asset(self) -> None:
         """User modifies an assete in the detailview"""
         if not self.material_model or not self.category_model:
             return
         indexes = grid_columns.selected_rows(self.material_selection_model)
-        # About/license are per-material provenance - only save them for a
-        # single selection, so editing a multi-selection can't overwrite
-        # everyone's credits with one material's text (None = keep).
-        single = len(indexes) == 1
+        single = len(indexes) == 1    # about/license are per-material provenance, so a multi-selection passes None for both (set_assetdata reads None as leave-alone) rather than stamping one material's credits over everyone's
         about = self.text_about.toPlainText() if single else None
         license_ = self.line_license.text() if single else None
         name = self.line_name.text()
         tags = self.line_tags.text()
         cats = self.cat_combo.currentText()
-        # THE TRI-STATE, READ AS THREE. `isChecked()` is True for
-        # PartiallyChecked, which is the state update_details_view sets
-        # when the selected rows disagree - so editing only the Tags
-        # field of a mixed selection starred every one of them.
-        # `set_assetdata`
-        # already honours None as leave-alone; this was the one call
-        # site that never passed it, while name, tags and category are
-        # protected by the MULTIPLE_VALUES sentinel.
-        state = self.box_fav.checkState()
+        state = self.box_fav.checkState()    # THE TRI-STATE, READ AS THREE: `isChecked()` is True for PartiallyChecked, the state update_details_view sets when the selected rows disagree, so a mixed selection must pass fav=None and set_assetdata reads that as leave-alone
         fav = (None if state == QtCore.Qt.CheckState.PartiallyChecked
                else state == QtCore.Qt.CheckState.Checked)
-        # OUTSIDE the layout wrapper, and hoisted out of the loop with
-        # the other four: every value here is read from a widget, so it
-        # was the same on each pass anyway. check_add_category
-        # announces itself with begin/endInsertRows, and pairing the
-        # two segfaults H21 (research.md, measured 2026-08-04).
-        self.category_model.check_add_category(cats)
+        self.category_model.check_add_category(cats)    # OUTSIDE the relayout wrapper: this announces itself with begin/endInsertRows and pairing the two segfaults H21 (research.md, measured 2026-08-04). Hoisted out of the loop with the other widget reads, which are the same on every pass
         with ui_helpers.relayout(self.material_model):
             for index in indexes:
                 idx = self.material_model.index(
                     self.material_sorted_model.mapToSource(index).row(), 0
                 )
-                # save=False: one index write after the loop, not one
-                # per selected row.
                 self.material_model.set_assetdata(
                     idx, name, cats, tags, fav, about=about,
-                    license=license_, save=False
+                    license=license_, save=False    # one index write after the loop, not one per selected row
                 )
             self.material_model.save()
 
@@ -5807,7 +3516,6 @@ class MatLibPanel(QtWidgets.QWidget):
 
             for cat in curr_asset.data(self.material_model.CategoryRole):
                 sel_cats.append(cat)
-                # for tag in curr_asset.data(self.material_model.TagRole):
             sel_tags.append(curr_asset.data(self.material_model.TagRole))
 
             fav.append(curr_asset.data(self.material_model.FavoriteRole))
@@ -5841,16 +3549,8 @@ class MatLibPanel(QtWidgets.QWidget):
         self.box_fav.setCheckState(msg)
 
         self._refresh_cat_combo()
-        # Single category per asset now. Show it in the dropdown; a mixed
-        # multi-selection just shows the first item's category as the
-        # editable value (updating applies it to all selected).
         cats_clean = [str(c).strip() for c in sel_cats if c and str(c).strip()]
-        # A MIXED selection must say so. Name and tags already use this
-        # sentinel and set_assetdata already honours it - categories did
-        # not, so pressing Update after editing a tag on a selection
-        # spanning twelve categories refiled every one of them into the
-        # first asset's category, with no undo.
-        mixed = len(set(cats_clean)) > 1 or (
+        mixed = len(set(cats_clean)) > 1 or (    # a MIXED selection must SAY so, through the MULTIPLE_VALUES sentinel that name and tags use too and set_assetdata reads as leave-alone; otherwise pressing Update refiles every selected asset into the first one's category, with no undo
             len(indexes) > 1 and len(cats_clean) != len(indexes)
         )
         if mixed:
@@ -5864,14 +3564,10 @@ class MatLibPanel(QtWidgets.QWidget):
             if i >= 0:
                 self.cat_combo.setCurrentIndex(i)
             else:
-                # No stale text: leaving the PREVIOUS asset's category
-                # showing is how a single asset gets silently refiled.
-                self.cat_combo.setCurrentIndex(-1)
+                self.cat_combo.setCurrentIndex(-1)    # no stale text: the PREVIOUS asset's category left showing is how a single asset gets silently refiled
 
         if sel_tags:
-            # dict.fromkeys dedupes while preserving order; a plain set()
-            # here made displayed tag order reshuffle unpredictably.
-            msg = ", ".join(dict.fromkeys(filter(None, sel_tags[0])))
+            msg = ", ".join(dict.fromkeys(filter(None, sel_tags[0])))    # dict.fromkeys dedupes and KEEPS order, where a plain set() reshuffles the displayed tags
             if len(sel_tags) > 1:
                 for elem in sel_tags:
                     if elem != sel_tags[0]:
@@ -5880,10 +3576,7 @@ class MatLibPanel(QtWidgets.QWidget):
         else:
             self.line_tags.setText("")
 
-        # Provenance (per-material) - only meaningful for a single
-        # selection; blanked for a multi-selection so nothing is shown as
-        # shared that isn't (and user_update_asset won't overwrite it).
-        if len(indexes) == 1:
+        if len(indexes) == 1:    # provenance is per-material: shown for a single selection and blanked for many, so nothing reads as shared that isn't, and user_update_asset leaves it alone
             src_row = self.material_sorted_model.mapToSource(indexes[0]).row()
             asset = self.material_model.assets[src_row]
             self.line_license.setText(asset.license)
@@ -5892,24 +3585,10 @@ class MatLibPanel(QtWidgets.QWidget):
             self.line_license.setText("")
             self.text_about.setPlainText("")
 
-    # Update the Views when selection changes
     def update_selected_cat(self) -> None:
-        """Update thumb view on change of category (Materials) or browse
-        the selected folder's images (Textures)."""
-        # A ctrl-click on the already-selected row DEselects it, leaving
-        # the grid showing contents with nothing highlighted - makes no
-        # sense for a category/folder list, so it is removed. Qt has
-        # no "single selection but never empty" mode, so an emptied
-        # selection is simply re-selected in place; the active category
-        # never actually changed, so nothing else needs to run.
-        #
-        # THE ONLINE WORLD TAKES THAT RULE TOO NOW. It used to return
-        # from its own branch above this, so a ctrl-click emptied the
-        # online sidebar and left the catalogue unfiltered with no row
-        # highlighted - the same nonsense one world over, kept only
-        # because the branch sat above the guard rather than below it.
+        """Update thumb view on change of category (Materials) or browse the selected folder's images (Textures)."""
         indexes = self.cat_list.selectedIndexes()
-        if not indexes:
+        if not indexes:    # a ctrl-click DEselecting the current row is re-selected in place, in every world including online: Qt has no "single selection but never empty" mode, and the active category never changed, so nothing else runs
             current = ui_helpers.live_current_index(self.cat_list)
             selection_model = self.cat_list.selectionModel()
             if current is not None and selection_model is not None:
@@ -5923,43 +3602,15 @@ class MatLibPanel(QtWidgets.QWidget):
         if section is not None:
             section.select_category(indexes[0])
 
-    # Library Stuffs
     def grid_update_preview(self, indexes) -> None:
-        """Re-render the grid selection's thumbnails - one entry point
-        for every section's menu.
-
-        It was three, and a fourth section (Code) had the capability
-        and no way to reach it. No layout-change pair here any more:
-        the models emit their own dataChanged and the proxy re-tests on
-        it (grid_proxy.py), so the hand-forced re-map - which had to
-        sit in a `finally` because a corrupt asset raising between the
-        two signals left every attached view believing a layout change
-        was still running - is gone with the thing it was working
-        around.
-
-        No "updated" dialog: the fresh thumbnail on screen is the
-        confirmation.
-        """
+        """Re-render the grid selection's thumbnails - one entry point for every section's menu. No layout-change pair is needed: the models emit their own dataChanged and the proxy re-tests on it (grid_proxy.py). No "updated" dialog either - the fresh thumbnail on screen is the confirmation."""
         context = self._section()
         if context is None:
             return
         context.update_preview(list(indexes))
 
     def grid_delete(self, indexes) -> None:
-        """Delete the grid selection - one entry point for every
-        section's menu.
-
-        It was written four times, and every copy had the same shape:
-        count the DISTINCT source rows, ask with a sentence that says
-        what goes and how many, remove highest row first, refresh the
-        sidebar. Only the SENTENCE is per-section, and it is the
-        context's (`Section.delete_prompt`); the removal is the
-        context's too, because what a row IS differs (an asset record,
-        a palette entry).
-
-        A cancelled dialog leaves everything alone - and so does a
-        section with no Delete: File's rows are files on disk.
-        """
+        """Delete the grid selection - one entry point for every section's menu: it counts the DISTINCT source rows and asks, while the SENTENCE (`Section.delete_prompt`) and the removal (`delete_rows`) are both the context's, because what a row IS differs. A cancelled dialog leaves everything alone, and so does a section whose `deletes_rows` is False - File's rows are files on disk."""
         context = self._section()
         if context is None or not context.deletes_rows:
             return
@@ -5973,9 +3624,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 sources.append(source)
         if not sources:
             return
-        # The single row's NAME rides along for the one section whose
-        # approved wording quotes it; the others ignore it.
-        name = sources[0].data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
+        name = sources[0].data(QtCore.Qt.ItemDataRole.DisplayRole) or ""    # the first row's NAME rides along for the one section whose approved wording quotes it; the others ignore it
         if hou.ui.displayMessage(  # type: ignore
             context.delete_prompt(len(sources), name),
             buttons=("Delete", "Cancel"),
@@ -5985,26 +3634,10 @@ class MatLibPanel(QtWidgets.QWidget):
         context.delete_rows(sources)
 
     def generate_random_material(self) -> None:
-        """The Generator Engine's first output: one random plausible
-        material, built INTO THE SCENE where the user is working -
-        the current LOP material library (or one created per the drop
-        placement law) when the context is LOP, else /mat. Generated
-        materials are scene nodes, not library entries: keeping one is
-        a deliberate "Save to Amaze", exactly like any other material
-        the user builds by hand.
-
-        Built in /obj staging and moved in ONE step (structure changes
-        inside a live library retranslate the whole thing - wiki).
-        v1 is random; the SPEC it runs on is the interface a
-        parametric generator will drive later."""
+        """The Generator Engine's first output: one random plausible material, built INTO THE SCENE where the user is working - the current LOP material library (or one created per the drop placement law) when the context is LOP, else /mat. A generated material is a scene node, not a library entry: keeping one is a deliberate `Save to <app>`, exactly like any other material the user builds by hand."""
         builder = None
         destination = None
-        # The whole gesture is ONE undo step: staging AND the
-        # destination resolution, which may itself create a material
-        # library - a move whose source parent was destroyed outside
-        # the group has nothing coherent to undo to, and a library
-        # created outside it would survive the undo as an orphan.
-        with hou.undos.group("Amaze Generate Material"):
+        with hou.undos.group("Amaze Generate Material"):    # the whole gesture is ONE undo step, staging AND the destination resolution that may itself create a material library: a move whose source parent was destroyed outside the group has nothing coherent to undo to, and a library created outside it survives the undo as an orphan
             destination = nodes.karma_destination(self.prefs)
             if destination is None:
                 hou.ui.displayMessage(  # type: ignore
@@ -6012,7 +3645,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     "LOP or /mat network first."
                 )
                 return
-            staging = hou.node("/obj").createNode("matnet")
+            staging = hou.node("/obj").createNode("matnet")    # built in /obj staging and moved in ONE step, because structure changes inside a live material library retranslate the whole thing (wiki)
             try:
                 builder, spec = generator.generate_random_material(staging)
                 if builder is None:
@@ -6032,18 +3665,12 @@ class MatLibPanel(QtWidgets.QWidget):
                     return
                 builder = moved[0]
                 helpers.auto_place(builder)
-                # Registered the same way an import is: a library whose
-                # wildcard was narrowed or disabled would otherwise
-                # take the material as a node that renders nowhere.
                 registered = True
-                if destination.type().name() == "materiallibrary":
+                if destination.type().name() == "materiallibrary":    # registered the way an import is: in a library whose wildcard was narrowed or disabled the material would otherwise sit there as a node that renders nowhere
                     registered = nodes.register_in_materiallibrary(
                         destination, builder
                     )
-                # Front the new material like any hand-created node
-                # (a menu action IS the user asking for it - unlike
-                # a drop, where keep_editor_focus applies).
-                builder.setCurrent(True, True)
+                builder.setCurrent(True, True)    # fronted like any hand-created node: a menu action IS the user asking for it, unlike a drop, where keep_editor_focus applies
                 debug.event("generate", "random material",
                             name=builder.name(),
                             destination=destination.path(),
@@ -6076,18 +3703,9 @@ class MatLibPanel(QtWidgets.QWidget):
             )
 
     def save_asset(self) -> None:
-        """Saves the selected nodes (Network Editor) to the Library.
-
-        Standard file-save semantics (by design): if the selected
-        node matches an EXISTING library material - via the id stamp a
-        previous save/import left on it, or a unique name match - offer
-        Update Existing / Save as New / Cancel; otherwise go straight to
-        the normal new-material dialog. Multi-selections always save new
-        materials, as before."""
-        # Get Selected from Network View
+        """Saves the selected nodes (Network Editor) to the Library, with standard file-save semantics at ANY selection size: nodes matching an EXISTING library material - by the id stamp a previous save/import left on them, or by a unique name match - raise one save-over / Save New / Cancel choice for the whole selection, with the save-over button offered only where the library allows it; anything else goes straight to the normal new-material dialog."""
         sel = hou.selectedNodes()
         debug.event("save", "save_asset entry", selected=len(sel))
-        # Check selection
         if not sel:
             hou.ui.displayMessage("No material selected")  # type: ignore
             return
@@ -6097,11 +3715,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 "Library/Open Dialog." % branding.APP_NAME  # type: ignore
             )
             return
-        # Standard file-save semantics for ANY selection size (the old
-        # single-node-only check let a re-dropped BATCH silently save 16
-        # duplicates): find which dropped nodes already exist, offer
-        # Overwrite / Save as New / Cancel once for the whole drop.
-        existing = []
+        existing = []    # which of the dropped nodes already exist, so the choice is offered ONCE for the whole drop rather than per node or not at all
         new_nodes = []
         for node in sel:
             row = self._find_existing_asset_row(node)
@@ -6123,17 +3737,8 @@ class MatLibPanel(QtWidgets.QWidget):
                     "%d of %d dropped materials already exist in the "
                     "library." % (len(existing), len(sel))
                 )
-            # The LIBRARY decides, not this machine's preferences - a
-            # switch only one machine can see protects nobody. The
-            # stored key is still allow_overwrite (keys are
-            # identifiers, never names); the UI calls it Material
-            # Versions since 2026-08-01, because that is what saying
-            # yes DOES now: a save-over archives a version first and
-            # destroys nothing. When it is off the button is not
-            # offered at all: an option that always fails is worse
-            # than an option that is not there.
             may_overwrite = library_policy.allow_overwrite(
-                self.material_model.preferences.dir)
+                self.material_model.preferences.dir)    # the LIBRARY decides, not this machine's preferences - a switch only one machine can see protects nobody. The stored key stays allow_overwrite (keys are identifiers, never names) while the UI calls it Material Versions, because that is what saying yes DOES: a save-over archives a version first and destroys nothing
             if may_overwrite:
                 buttons = ("Save Version", "Save New", "Cancel")
                 cancel_at, overwrite_at = 2, 0
@@ -6143,7 +3748,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     "so the existing material stays as it is. Saving "
                     "will add a new material."
                 )
-                buttons = ("Save New", "Cancel")
+                buttons = ("Save New", "Cancel")    # with Material Versions off the save-over button is not offered at all: an option that always fails is worse than an option that is not there
                 cancel_at, overwrite_at = 1, -1
             choice = hou.ui.displayMessage(  # type: ignore
                 message,
@@ -6155,22 +3760,16 @@ class MatLibPanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                # Overwrites neither insert nor remove rows, so the
-                # collected row indexes stay valid through the loop.
-                for row, node in existing:
+                for row, node in existing:    # an overwrite neither inserts nor removes rows, so the collected row indexes stay valid through the loop
                     self._update_existing_asset(row, node)
                     QtWidgets.QApplication.processEvents()
                 if new_nodes:
                     self.get_material_info_user(new_nodes)
                 return
-            # Save as New falls through with the FULL selection.
-        self.get_material_info_user(sel)
+        self.get_material_info_user(sel)    # Save as New falls through to here with the FULL selection
 
     def _find_existing_asset_row(self, node: hou.Node) -> int:
-        """Source-model row of the library material this node came from,
-        or -1. The id stamp (setUserData on save/import) is authoritative;
-        a UNIQUE name match is the fallback for nodes imported before
-        stamping existed."""
+        """Source-model row of the library material this node came from, or -1. The id stamp (setUserData on save/import) is authoritative; a UNIQUE name match is the fallback for nodes carrying no stamp."""
         mat_id = node.userData("assetlib_id")
         if mat_id:
             row = self.material_model.find_asset_row_by_id(mat_id)
@@ -6179,13 +3778,10 @@ class MatLibPanel(QtWidgets.QWidget):
         return self.material_model.find_asset_row_by_name(node.name())
 
     def _update_existing_asset(self, row: int, node: hou.Node) -> None:
-        """Overwrite an existing library entry's content from the scene
-        node: same entry/metadata, new node files + thumbnail + type."""
+        """Overwrite an existing library entry's content from the scene node: same entry/metadata, new node files + thumbnail + type."""
         with ui_helpers.relayout(self.material_model):
             renderer = self.material_model.update_asset_content(row, node)
-        # Overwrite can re-detect a different renderer - counts and
-        # renderer-aware hiding may shift.
-        self._refresh_sidebar_categories()
+        self._refresh_sidebar_categories()    # an overwrite can re-detect a different renderer, so counts and renderer-aware hiding may shift
         if not renderer:
             hou.ui.displayMessage(
                 "Update failed - the library material was not changed."  # type: ignore
@@ -6199,12 +3795,8 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model or not self.category_model:
             return
         """Query user for input upon material-save"""
-        # Get Stuff from User
         self.usd_dialog_category_model = QtCore.QSortFilterProxyModel()
-        # Source model, NOT the sidebar proxy: the sidebar hides empty
-        # categories, but the save dialog must offer every category
-        # (this proxy sorts and All-filters on its own regardless).
-        self.usd_dialog_category_model.setSourceModel(self.category_model)
+        self.usd_dialog_category_model.setSourceModel(self.category_model)    # the SOURCE model, never the sidebar proxy: the sidebar hides empty categories and the save dialog must offer every one of them (this proxy does its own sorting and All-filtering regardless)
         usd_filter = "^(?!All).*$"
         self.usd_dialog_category_model.setFilterRegularExpression(usd_filter)
         self.usd_dialog_category_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
@@ -6215,15 +3807,7 @@ class MatLibPanel(QtWidgets.QWidget):
             idx = self.usd_dialog_category_model.index(elem, 0)
             cats.append(self.usd_dialog_category_model.data(idx))
 
-        # Default the dialog to the category currently selected in the
-        # panel (skip the "All" pseudo-category and empty selections).
-        # One helper for all three save dialogs. They were three
-        # copies that already disagreed - only this one fell back to
-        # live_current_index, which is the state _restore_section_state
-        # reaches through setCurrentIndex without a select, so the Node
-        # dialog silently defaulted to Uncategorized where this one
-        # pre-selected the category.
-        current_cat = self._selected_category_name()
+        current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 
         dialog = usd_dialog.UsdDialog(cats, current_cat)
         r = dialog.exec_()
@@ -6236,7 +3820,6 @@ class MatLibPanel(QtWidgets.QWidget):
         if dialog.canceled or not r:
             return
 
-        # Check if Category or Tags already exist
         if dialog.categories:
             self.category_model.check_add_category(dialog.categories)
         if dialog.tags:
@@ -6245,14 +3828,7 @@ class MatLibPanel(QtWidgets.QWidget):
         renderers = []
         failures = []
         for asset in sel:
-            try:
-                # The whole save chain had NO exception handling: a
-                # read-only or unreachable library directory produced a
-                # raw traceback in Houdini (verified: IsADirectoryError
-                # on the .interface). debug.guarded logs and RE-RAISES,
-                # so it does not cover this. The import side has
-                # reported per-material failures for a long time; the
-                # save side now matches it.
+            try:    # a read-only or unreachable library directory raises out of the save chain (IsADirectoryError on the .interface, verified), and debug.guarded LOGS AND RE-RAISES rather than absorbing it, so the per-material failure report needs this catch of its own
                 renderer = self.material_model.add_asset(
                     asset, dialog.categories, dialog.tags, dialog.fav
                 )
@@ -6260,21 +3836,12 @@ class MatLibPanel(QtWidgets.QWidget):
                 debug.exception("save_asset", exc, node=asset.path())
                 failures.append('"%s": %s' % (asset.name(), exc))
                 continue
-            if not renderer:
-                # A refused save answers "" now, and a refused save is
-                # exactly what this dialog exists to report. Two of the
-                # three causes have already shown their own dialog
-                # naming the reason, so this line only has to say WHICH
-                # material out of the batch never made it.
+            if not renderer:    # add_asset answers "" for a refused save, and two of the three causes have already shown their own dialog naming the reason, so this line only has to say WHICH material of the batch never made it
                 failures.append('"%s": the save did not complete'
                                 % asset.name())
                 continue
             renderers.append(renderer)
-            # Let the fresh tile PAINT before the next material's
-            # blocking render starts - add_asset emits real row-insert
-            # signals now, and this flush is what makes saved materials
-            # appear one by one through a long multi-save batch.
-            QtWidgets.QApplication.processEvents()
+            QtWidgets.QApplication.processEvents()    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
 
         if failures:
             hou.ui.displayMessage(  # type: ignore
@@ -6288,16 +3855,8 @@ class MatLibPanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
 
     def enable_renderer_on_add(self, renderer: str) -> None:
-        """Switch a renderer's Filter entry on when its first material
-        is saved, so the thing the user just saved is visible in the
-        tab they saved it from.
-
-        Walks the ONE renderer table rather than repeating it as a
-        third if/elif chain. Karma keeps its own first test because
-        `is_karma_renderer` covers the legacy stored labels (MaterialX,
-        MtlX) that no substring match would.
-        """
-        if material.is_karma_renderer(renderer):
+        """Switch a renderer's Filter entry on when its first material is saved, so the thing the user just saved is visible in the tab they saved it from. Walks the ONE renderer table (sections.renderer_prefs) rather than repeating it as another if/elif chain."""
+        if material.is_karma_renderer(renderer):    # Karma is asked by name and FIRST: is_karma_renderer covers the legacy stored labels (MaterialX, MtlX) that no substring match against the table would
             self.prefs.renderer_matx_enabled = True
         else:
             for label, attr in sections.renderer_prefs():
@@ -6307,26 +3866,11 @@ class MatLibPanel(QtWidgets.QWidget):
         self.prefs.save()
 
     def import_asset(self, target: str = "auto"):
-        """Import the selected materials.
-
-        target: "auto" lets MatLib decide from the active network editor
-        (double-click); "mat" forces /mat; "lop" forces a LOP
-        materiallibrary. Materials that cannot live in the requested context
-        are skipped and collected into a single summary dialog."""
+        """Import the selected materials. target: "auto" lets MatLib decide from the active network editor (double-click); "mat" forces /mat; "lop" forces a LOP materiallibrary. Materials that cannot live in the requested context are skipped and collected into a single summary dialog."""
         if not self.material_model or not self.category_model:
             return
         failures = []
-        # ONE undo entry for the whole import. This was the only import
-        # entry point not grouped - the online import, the Nodes-section
-        # import, the COP drag, the material network drop and the
-        # viewport assign all group. So a double-click created the
-        # destination container, a staging matnet, the builder, the move
-        # and the materiallibrary entry as SEPARATE undo entries: one
-        # Ctrl+Z reverted the last of them and left a stray
-        # matnet/materiallibrary and a half-imported builder behind.
-        # (Exactly the bug the comment at the Nodes-section import says
-        # was fixed there.)
-        with hou.undos.group("Amaze Import Materials"):
+        with hou.undos.group("Amaze Import Materials"):    # ONE undo entry for the whole import, as at every other import entry point: ungrouped, the destination container, the staging matnet, the builder, the move and the materiallibrary entry are separate entries, so one Ctrl+Z leaves a stray matnet and a half-imported builder behind
             self._import_selected_materials(target, failures)
         if failures:
             hou.ui.displayMessage(  # type: ignore
@@ -6342,12 +3886,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 ok, reason, _created = self.material_model.import_asset_to_scene(
                     source_index, target
                 )
-            except Exception as e:
-                # An unexpected failure (corrupt .interface file, unusual
-                # node structure) previously surfaced as a raw traceback
-                # instead of joining the normal per-material failure
-                # report; catch it here so the rest of the selection still
-                # gets a chance to import.
+            except Exception as e:    # an unexpected failure (corrupt .interface file, unusual node structure) joins the normal per-material failure report instead of surfacing as a raw traceback, so the rest of the selection still gets its chance
                 try:
                     name = self.material_model.assets[source_index.row()].name
                 except Exception:
@@ -6358,29 +3897,14 @@ class MatLibPanel(QtWidgets.QWidget):
                 failures.append(reason)
 
     def import_asset_auto(self, index: QtCore.QModelIndex | None = None):
-        """Double-click handler, shared across sections since thumblist is
-        reused for all of them. Materials: context-aware import (the model
-        index isn't used here - it never reaches the "auto"/"mat"/"lop"
-        target argument that import_asset() expects a string for).
-        Textures: push the double-clicked file's path onto a selected
-        texture node's image parm - here the index *is* what's needed, to
-        know which file was double-clicked. The online world answers
-        this like any other context (OnlineContext.double_click), which
-        is what stopped it falling through to Materials."""
+        """Double-click handler, shared across sections since thumblist is reused for all of them, and answered by the section itself (Section.double_click): Materials import context-aware, with the index never reaching the "auto"/"mat"/"lop" target argument import_asset() expects a string for; Textures push the double-clicked file's path onto a selected texture node's image parm, and there the index IS what says which file was clicked."""
         if index is not None and index.isValid():
-            # THE ROW, not the clicked cell: in list mode the double-
-            # click lands on a visible column >= 1, where the models
-            # answer roles with None (research.md > Row selection over
-            # a table view).
-            index = index.siblingAtColumn(0)
+            index = index.siblingAtColumn(0)    # THE ROW, not the clicked cell: in list mode the double-click lands on a visible column >= 1, where the models answer roles with None (research.md > Row selection over a table view)
         section = self._section()
         if section is not None:
             section.double_click(index)
 
-    #: The ONE double-click refusal, everywhere (ROADMAP - the
-    #: interaction matrix; exact copy also in the UI text register). The drag
-    #: door never dialogs - it has the miss indicator.
-    CANNOT_LOAD_HERE = "This content can not be loaded into this context."
+    CANNOT_LOAD_HERE = "This content can not be loaded into this context."    # the ONE double-click refusal, everywhere; an exact copy lives in the UI text register. The drag door never dialogs - it has the miss indicator
 
     def _cannot_load_here(self) -> None:
         ui = getattr(hou, "ui", None)
@@ -6388,18 +3912,11 @@ class MatLibPanel(QtWidgets.QWidget):
             ui.displayMessage(self.CANNOT_LOAD_HERE)  # type: ignore
 
     def _network_under_release(self) -> hou.Node | None:
-        """The network a no-node release happened INSIDE - the editor
-        under the cursor answers with its pwd. None off any editor."""
+        """The network a no-node release happened INSIDE - the editor under the cursor answers with its pwd. None off any editor."""
         return self._drop_context_under_cursor(lambda _node: False)
 
     def _release_position_in(self, net):
-        """The release position, ONLY when the editor under the cursor
-        is showing `net` itself. A release over a container node
-        resolves INSIDE it while the cursor's coordinates stay in the
-        OUTER editor's plane - stage coordinates applied inside a
-        material library put the node anywhere but the cursor (the
-        live find). Cross-space answers None and the carrier
-        auto-places, exactly like the import seam's gate."""
+        """The release position, ONLY when the editor under the cursor is showing `net` itself - a cross-space release answers None and the carrier auto-places, exactly like the import seam's gate."""
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None or net is None:
             debug.event("interact", "no drop point - no editor under "
@@ -6408,11 +3925,7 @@ class MatLibPanel(QtWidgets.QWidget):
         try:
             if pane_tab.type() != hou.paneTabType.NetworkEditor:
                 return None
-            if pane_tab.pwd() != net:
-                # The cross-space case: the release resolved INTO a
-                # container while the cursor's coordinates belong to
-                # the outer editor. Named, because it is the honest
-                # reason a drop auto-places instead of landing.
+            if pane_tab.pwd() != net:    # the cross-space case: a release over a container resolves INSIDE it while the cursor's coordinates stay in the OUTER editor's plane, and stage coordinates applied inside a material library put the node anywhere but the cursor
                 debug.event("interact", "no drop point - the editor "
                             "shows another network",
                             showing=pane_tab.pwd().path(),
@@ -6427,14 +3940,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
 
     def _visible_selected_nodes(self) -> list:
-        """The double-click doors' idea of THE SELECTION: only nodes
-        the user can SEE - children of a visible editor's network.
-        Houdini tags imported nodes selected (research.md -
-        moveNodesTo), so the global hou.selectedNodes() carries
-        invisible leftovers of the previous import, and the doors
-        applied to a node the user was not looking at and refused,
-        every time - the live find. Menu verbs keep the global read:
-        their sentences name the selection explicitly."""
+        """The double-click doors' idea of THE SELECTION: only nodes the user can SEE - children of a visible editor's network. Houdini tags imported nodes selected (research.md - moveNodesTo), so the global hou.selectedNodes() carries invisible leftovers of the previous import. Menu verbs keep the global read: their sentences name the selection explicitly."""
         networks = self._view_create_networks()
         every = hou.selectedNodes()
         sel = [node for node in every if node.parent() in networks]
@@ -6444,12 +3950,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return sel
 
     def _view_create_networks(self) -> list:
-        """The click doors' aim when nothing is selected: every
-        visible network editor's pwd, current tabs first. The caller
-        creates in the FIRST network that can hold the carrier - one
-        resolver for every door, and a payload finds the network that
-        supports it instead of failing on whichever editor happened to
-        be listed first."""
+        """The click doors' aim when nothing is selected: every visible network editor's pwd, current tabs first. The caller creates in the FIRST network that can hold the carrier - one resolver for every door, so a payload finds the network that supports it instead of failing on whichever editor happens to be listed first."""
         ui = getattr(hou, "ui", None)
         if ui is None:
             return []
@@ -6471,12 +3972,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _create_carrier(self, dest, type_name: str, name: str,
                         position=None):
-        """Create `type_name` inside `dest` when that network can hold
-        one - the type existing in the network's child category IS the
-        capability test - or answer None. The carrier half of the
-        matrix's creation rule; the caller loads the payload and owns
-        the undo group. A position places the node where the release
-        happened; without one it auto-places."""
+        """Create `type_name` inside `dest` when that network can hold one - the type existing in the network's child category IS the capability test - or answer None. The carrier half of the matrix's creation rule; the caller loads the payload and owns the undo group. A position places the node where the release happened; without one it auto-places."""
         if dest is None:
             return None
         try:
@@ -6489,21 +3985,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return None
         try:
             node = dest.createNode(type_name)
-        except hou.Error as refusal:
-            # HOUDINI IS THE AUTHORITY ON WHETHER A NETWORK CAN TAKE A
-            # NODE, and it answers in one sentence - a locked digital
-            # asset says `Cannot create a node inside a locked asset`,
-            # and only the nodes an asset MARKS editable are exempt (a
-            # SOP Create's `create` subnet is, its sopnet is not).
-            # Asking hou.isLockedHDA/isEditableInsideLockedHDA here
-            # FIRST was tried and deleted the same hour: a second
-            # answerer for a question the host already answers, and a
-            # sabotage of it changed nothing. What was missing was
-            # never the predicate - it was this line, which used to
-            # swallow the reason and cost two wrong diagnoses. The
-            # walk moves on to a network that can take it; unlocking
-            # the user's asset (allowEditingOfContents) is never ours
-            # to do.
+        except hou.Error as refusal:    # HOUDINI IS THE AUTHORITY on whether a network can take a node and it answers in one sentence - a locked digital asset says `Cannot create a node inside a locked asset`, and only the nodes an asset MARKS editable are exempt (a SOP Create's `create` subnet is, its sopnet is not) - so the reason is LOGGED, never re-derived here, the walk moves on to a network that can take it, and unlocking the user's asset (allowEditingOfContents) is never ours to do
             debug.event("interact", "the network refused the carrier",
                         carrier=type_name, dest=dest.path(),
                         error=str(refusal))
@@ -6513,11 +3995,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 node.setName(name, unique_name=True)
             except hou.OperationFailed:
                 pass
-        # A given position IS the placement. Auto-place is only the
-        # no-position fallback: moveToGoodPosition may shove
-        # unconnected siblings aside to make room, which read live as
-        # every other node moving away from the drop.
-        if position is None:
+        if position is None:    # a given position IS the placement, and auto-place is the no-position fallback only: moveToGoodPosition may shove unconnected siblings aside to make room, which reads on screen as every other node moving away from the drop
             helpers.auto_place(node)
         else:
             helpers.place_nodes([node], position)
@@ -6534,26 +4012,18 @@ class MatLibPanel(QtWidgets.QWidget):
         self.import_asset("lop")
 
     def slide(self) -> None:
-        """Set IconSize via Slider - writes to the ACTIVE view mode's own
-        persisted size (grid and list are independent)."""
+        """Set IconSize via Slider - writes to the ACTIVE view mode's own persisted size (grid and list are independent)."""
         if not self.material_model or not self.category_model:
             return
         if self.prefs.view_mode == "list":
-            # List has one size and a greyed slider; a stray value
-            # change must not become a stored size.
-            return
+            return    # list has one size and a greyed slider, so a stray value change must not become a stored size
         value = self.click_slider.value()
         self.prefs.thumbsize = value
-        # Persist debounced (500ms after the last slider tick) - saving
-        # settings.json on every pixel of a drag would thrash a file
-        # that lives in the cloud-synced install folder.
-        self._thumbsize_save_timer.start()
+        self._thumbsize_save_timer.start()    # persisted debounced (500ms after the last slider tick): writing settings.json on every pixel of a drag would thrash a file that lives in the cloud-synced install folder
         self.material_model.thumbsize = value
 
-        # Apply sizing for the active mode (grid grows icons, list grows rows).
-        self.apply_view_mode()
-        # Also need to resize the images!
-        self.material_model.set_custom_iconsize(QtCore.QSize(value, value))
+        self.apply_view_mode()    # sizing for the active mode - grid grows icons, list grows rows
+        self.material_model.set_custom_iconsize(QtCore.QSize(value, value))    # and the images themselves
 
     def box_fav_clicktoggle(self):
         if self.box_fav.checkState() == QtCore.Qt.CheckState.PartiallyChecked:

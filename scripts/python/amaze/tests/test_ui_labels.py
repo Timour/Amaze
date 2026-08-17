@@ -25,9 +25,7 @@ RETIRED = {    # retired label -> what the app calls it now, which the failure m
     "Import to LOP": "Copy To /stage",
 }
 
-DEFERRED = {    # (module, label) owed by ROADMAP line 30 ▸ A11: panel.py costs 2506 comment lines to open at all, so these two ride with that sweep - keyed on the MODULE, never a line number ▸p/line-keyed-register
-    ("panel/panel.py", "Rerender Thumbnail"),
-}
+DEFERRED = set()    # (module, label) waived while its file is too expensive to open; empty since A11 stage C paid panel.py's sweep ▸p/line-keyed-register
 
 
 def _literals(path):

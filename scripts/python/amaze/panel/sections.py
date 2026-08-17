@@ -223,7 +223,7 @@ class Section:
     def menu_clear_colour(self, indexes, current, payload=None) -> None:
         self.panel.sidebar_set_colour(False)
 
-    takes_category_drops = False  # a tile dropped on a row RECATEGORISES it
+    takes_category_drops = False  # a tile dropped on a row RECATEGORISES it. Only AssetSection sets it True: the File family keeps this default deliberately, because its sidebar lists filesystem FOLDERS, so a drop there would mean moving files on disk rather than changing metadata
 
     def accepts_category_drop(self, index, name: str) -> bool:
         """Is THIS row a legal drop target, beyond being a category? Asked after the shared rules (a real row, not "All")."""
