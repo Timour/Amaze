@@ -1,27 +1,4 @@
-"""Pick a tile icon and its background colour.
-
-Not a form, so not an AssetDialog: the thing being chosen is a picture,
-and the only honest way to choose a picture is to look at it. The
-dialog is a searchable grid of the 287 Feather icons, four preset
-colours plus a custom one, and a live preview of the actual composed
-tile - the same `tile_icons.compose()` the grid will use, so what is
-previewed is what lands.
-
-The preview is the point. Colour and icon interact (a light symbol
-disappears on a light background), and nobody can hold that in their
-head from two separate pickers.
-
-    dlg = IconDialog(current={"name": "box", "bg": "#ef8878"})
-    dlg.finished.connect(on_finished)   # then read dlg.canceled/.spec
-    dlg.show()                          # NON-modal, deliberately
-
-NON-MODAL like Preferences, and for the same recorded reason: the
-Custom Color button opens Houdini's own picker, which is a NATIVE
-modal - raised while a Qt modal exec loop is active it lands UNDER the
-dialog, invisible, and the nested cross-toolkit loops crashed Houdini
-once. A dialog that wants the Houdini picker must not hold an exec
-loop of its own.
-"""
+"""Pick a tile icon and its background colour. SHOW it, never exec: Custom Color opens Houdini's native picker, which lands under a Qt exec loop. ▸r/houdini-colour-picker"""
 
 from __future__ import annotations
 
@@ -30,31 +7,20 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from amaze.core import tile_icons
 from amaze.helpers import theme, ui_helpers
 
-#: Size of one icon button in the chooser grid.
-CELL = 34
-#: How wide the grid runs before wrapping.
-COLUMNS = 10
-#: The right-hand column's width - preview, swatches and buttons all
-#: measure exactly this, so the side of the dialog reads as one block.
-SIDE_WIDTH = 150
+CELL = 34            # one icon button in the chooser grid
+COLUMNS = 10         # how wide the grid runs before wrapping
+SIDE_WIDTH = 150     # preview, swatches and buttons all measure this, so the side reads as one block
 
 
 class IconDialog(QtWidgets.QDialog):
-    """Modal icon + colour picker. `spec` is the result; `canceled`
-    follows the house convention (True until the user accepts, so Esc
-    and the title-bar X read as cancel)."""
+    """NON-MODAL icon + colour picker; `spec` is the result and `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel."""
 
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True) -> None:
         super().__init__(parent)
         self.canceled = True
-        # The Name field (2026-08-01): Customize is the one rename
-        # path every section shares. None = the section has no rename
-        # (File - those names are the files on disk); "" with
-        # tile_name_enabled False = a multi-selection, where the field
-        # greys out like any single-item action.
-        self._tile_name = tile_name
+        self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
         self.new_tile_name = None
         self._stroke = stroke_units or tile_icons.STROKE_UNITS
@@ -75,7 +41,6 @@ class IconDialog(QtWidgets.QDialog):
         root.addWidget(self._build_side(gap), 0)
         self._refresh_preview()
 
-    # -- construction -------------------------------------------------
 
     def _build_chooser(self, gap: int):
         column = QtWidgets.QVBoxLayout()
@@ -88,12 +53,7 @@ class IconDialog(QtWidgets.QDialog):
         self.search.textChanged.connect(self._apply_filter)
         column.addWidget(self.search)
 
-        # The chooser wears the dialog's own colours: the backdrop is
-        # the dialog's window colour (whatever Houdini painted the rest
-        # of this dialog), and the icons are re-inked in the palette's
-        # lightest grey - text_bright, the same grey the dialog's own
-        # labels read in. The grid used to be a light island instead.
-        chooser_bg = self.palette().color(
+        chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a light island in it
             QtGui.QPalette.ColorRole.Window).name()
         icon_ink = theme.color_hex("text_bright")
 
@@ -104,10 +64,6 @@ class IconDialog(QtWidgets.QDialog):
         holder = QtWidgets.QWidget()
         holder.setStyleSheet(
             "QWidget { background: %s; }"
-            # Transparent by default so the backdrop shows through;
-            # the checked one has to be unmistakable, since it is the
-            # only indication of what the preview is showing - on the
-            # dark backdrop that is a lifted fill plus a bright ring.
             " QToolButton { background: transparent; border: none;"
             " border-radius: 3px; }"
             " QToolButton:hover { background: rgba(255, 255, 255, 28); }"
@@ -119,32 +75,24 @@ class IconDialog(QtWidgets.QDialog):
         self._grid.setSpacing(2)
         self._grid.setContentsMargins(0, 0, 0, 0)
 
-        # The icon set is fixed, so every button is built once and only
-        # SHOWN or HIDDEN by the filter - rebuilding 287 buttons on each
-        # keystroke is the version of this that feels broken.
-        group = QtWidgets.QButtonGroup(self)
+        group = QtWidgets.QButtonGroup(self)   # every button is built ONCE and only shown/hidden by the filter; rebuilding 287 per keystroke feels broken
         group.setExclusive(True)
-        # Feather icons carry stroke="currentColor" and QSvgRenderer
-        # does not resolve it (recorded) - straight QIcon(path) draws
-        # them BLACK, invisible on the dark backdrop. The shared helper
-        # substitutes the ink first, rendered at devicePixelRatio like
-        # every pixmap.
-        app = QtWidgets.QApplication.instance()
-        dpr = app.devicePixelRatio() if app else 1.0
         icon_px = theme.ui_px(CELL - 14)
+        self._icon_px = icon_px
+        self._icon_ink = icon_ink
+        self._icon_dpr = None                             # the ratio the icons currently carry; None until the first ink ▸r/screen-dpr
         for name in tile_icons.icon_names():
             button = QtWidgets.QToolButton()
             button.setCheckable(True)
             button.setAutoRaise(True)
             button.setToolTip(name)
             button.setFixedSize(theme.ui_px(CELL), theme.ui_px(CELL))
-            button.setIcon(QtGui.QIcon(
-                self._chooser_icon(name, icon_px, dpr, icon_ink)))
             button.setIconSize(QtCore.QSize(icon_px, icon_px))
             button.clicked.connect(
                 lambda _checked=False, chosen=name: self._choose(chosen))
             group.addButton(button)
             self._buttons_by_name[name] = button
+        self._ink_for_screen()      # again on show, when the window finally has a screen to ask ▸r/screen-dpr
         self._relayout(tile_icons.icon_names())
 
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
@@ -156,23 +104,16 @@ class IconDialog(QtWidgets.QDialog):
         return column
 
     def _build_side(self, gap: int):
-        # ONE width for the whole column: the preview, the swatch row,
-        # Custom Color and the two buttons all measure the same, which
-        # is only true if something fixes it. The panel width is that
-        # something - everything inside then fills it.
+        """The right-hand column: name, preview, swatches, buttons."""
         side = theme.ui_px(SIDE_WIDTH)
         panel = QtWidgets.QWidget()
-        panel.setFixedWidth(side)
+        panel.setFixedWidth(side)         # the ONE width preview, swatches and buttons all fill, so the column reads as a block
         column = QtWidgets.QVBoxLayout(panel)
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(gap // 2)
 
         if self._tile_name is not None:
-            # NO "Name" label (2026-08-01): the column is one width
-            # and the field takes all of it, like the preview and the
-            # buttons below. A label would cost the field the space
-            # and say what the field's own content already says.
-            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
+            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)   # no "Name" label: the field fills the column and its own content says what it is
             self.tile_name_edit.setEnabled(self._tile_name_enabled)
             self.tile_name_edit.setPlaceholderText("Name")
             self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
@@ -193,11 +134,7 @@ class IconDialog(QtWidgets.QDialog):
         column.addWidget(self.chosen_label)
         column.addSpacing(gap)
 
-        # The swatch row spans the same width as the preview above it
-        # and the buttons below: fixed-size boxes with a trailing
-        # stretch left the column visibly ragged. Expanding widths and
-        # NO stretch means the four share exactly the column.
-        swatches = QtWidgets.QHBoxLayout()
+        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the four share exactly the column width
         swatches.setSpacing(4)
         self._swatches = []
         for label, colour in tile_icons.PRESETS:
@@ -222,10 +159,7 @@ class IconDialog(QtWidgets.QDialog):
         self.custom_button.clicked.connect(self._pick_custom)
         column.addWidget(self.custom_button)
 
-        # Ink lives here, next to the background it has to work
-        # against: dark on a dark tile is an invisible icon, and the
-        # preview above is the only place that is obvious.
-        ink_row = QtWidgets.QHBoxLayout()
+        ink_row = QtWidgets.QHBoxLayout()   # ink sits next to the background it must work against; dark on dark is an invisible icon
         ink_row.setSpacing(6)
         ink_row.addWidget(QtWidgets.QLabel("Icon Color"))
         self.ink_combo = QtWidgets.QComboBox()
@@ -238,13 +172,7 @@ class IconDialog(QtWidgets.QDialog):
         column.addLayout(ink_row)
         column.addStretch(1)
 
-        # Two buttons, no Cancel - closing the window IS cancelling,
-        # and `canceled` stays True until one of these is pressed, so
-        # Esc and the title-bar X leave the tile exactly as it was.
-        #
-        # "Remove" is the way back: an icon must never be a one-way
-        # door, and the render underneath was never overwritten.
-        actions = QtWidgets.QHBoxLayout()
+        actions = QtWidgets.QHBoxLayout()   # two buttons, no Cancel: closing IS cancelling, and Remove is the way back so an icon is never a one-way door
         actions.setSpacing(6)
         self.clear_button = QtWidgets.QPushButton("Remove")
         self.clear_button.setToolTip(
@@ -259,14 +187,25 @@ class IconDialog(QtWidgets.QDialog):
         column.addLayout(actions)
         return panel
 
-    # -- behaviour ----------------------------------------------------
+
+    def showEvent(self, event) -> None:
+        """Ink the grid for the screen the dialog actually opened on; an unrealised widget answers with the primary ratio. ▸r/screen-dpr"""
+        super().showEvent(event)
+        self._ink_for_screen()
+
+    def _ink_for_screen(self) -> None:
+        """Redraw the chooser icons when this window's ratio differs from the one they carry; a no-op when it does not."""
+        dpr = float(self.devicePixelRatioF())
+        if dpr == self._icon_dpr:
+            return
+        self._icon_dpr = dpr
+        for name, button in self._buttons_by_name.items():
+            button.setIcon(QtGui.QIcon(self._chooser_icon(
+                name, self._icon_px, dpr, self._icon_ink)))
 
     @staticmethod
     def _chooser_icon(name: str, icon_px, dpr: float, ink: str):
-        """One chooser icon: the Feather SVG re-inked (currentColor is
-        never resolved by QSvgRenderer - recorded) and rendered at
-        device pixels with the ratio stamped, the contract every badge
-        pixmap follows."""
+        """One chooser icon: the Feather SVG re-inked, rendered at device pixels with the ratio stamped, the contract every badge pixmap follows."""
         pixmap = ui_helpers.render_svg_pixmap(
             tile_icons.icon_path(name),
             max(1, int(round(icon_px * dpr))),
@@ -282,14 +221,7 @@ class IconDialog(QtWidgets.QDialog):
                                  position // COLUMNS, position % COLUMNS)
 
     def _apply_filter(self, text: str) -> None:
-        """Show the icons whose name contains `text`.
-
-        The visibility test asks a SET, not the list: it runs once per
-        button against a result that is the same length, so on the 287
-        shipped icons an unfiltered keystroke was 287 x 287 list scans.
-        The list itself stays - `_relayout` places them in order, and
-        order is what a grid is.
-        """
+        """Show the icons whose name contains `text`; the visibility test asks a SET, since on 287 icons a list test made an unfiltered keystroke 287 x 287 scans."""
         text = (text or "").strip().lower()
         matching = [n for n in tile_icons.icon_names() if text in n] \
             if text else list(tile_icons.icon_names())
@@ -314,15 +246,7 @@ class IconDialog(QtWidgets.QDialog):
             self._refresh_preview()
 
     def _pick_custom(self) -> None:
-        """Houdini's colour picker, like everywhere else in Amaze.
-
-        Possible ONLY because this dialog is non-modal: the shared
-        helper takes the native picker when no Qt modal loop is active,
-        which is now true here by construction. The brief detour
-        through a typed hex field (one commit, 2026-07-31) mistook
-        "no OS picker" for "no picker" - the modal exec loop was the
-        actual obstacle, and it is the thing that changed.
-        """
+        """Houdini's colour picker, reachable ONLY because this dialog holds no exec loop. ▸r/houdini-colour-picker"""
         from amaze.helpers import ui_helpers
         chosen = ui_helpers.pick_color(self._bg, self, "Tile Background")
         if chosen is not None:
@@ -349,8 +273,7 @@ class IconDialog(QtWidgets.QDialog):
         self.accept()
 
     def _harvest_tile_name(self) -> None:
-        """On any accepting close: the new name, or None when the field
-        is absent, greyed, blank or unchanged."""
+        """On any accepting close: the new name, or None when the field is absent, greyed, blank or unchanged."""
         if self.tile_name_edit is None or \
                 not self.tile_name_edit.isEnabled():
             return
