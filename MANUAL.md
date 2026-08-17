@@ -231,7 +231,9 @@ other people's work should be able to say whose it is.
 gallery file — including the Material Palette's own — and turns every
 material preset in it into a library material. Thumbnails are
 deliberately *not* rendered during a bulk import (hundreds of renders
-would take hours); render a selection afterwards when it suits you.
+would take hours); select the new materials afterwards and use
+**Update Preview** when it suits you, which is what both import
+dialogs tell you.
 
 ---
 
