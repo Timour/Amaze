@@ -149,6 +149,20 @@ def builder_sidecar_path(preferences, mat_id: str) -> str:
     return material.payload_path(preferences, mat_id, BUILDER_SUFFIX)
 
 
+def ensure_asset_folder(preferences, path: str) -> None:
+    """Make `path`'s folder if it is inside the library; refuse if it is not. ▸p/library-creation-doors"""
+    folder = os.path.dirname(path)
+    if not folder:
+        return
+    root = preferences.dir
+    try:
+        inside = os.path.relpath(folder, root)
+    except ValueError:  # a different drive on Windows - relpath cannot answer, and nothing off the library's drive is ours to create
+        raise hostos.PathEscape("%r does not stay inside %r" % (folder, root))
+    hostos.contained_join(root, inside)  # realpath-based and tolerant of a missing base, so it answers for a library folder that is not there yet
+    os.makedirs(folder, exist_ok=True)
+
+
 def capture_builder(node) -> str:
     """Type, interface, non-default values as JSON. ▸p/structure-signature"""
     values = {}
@@ -462,6 +476,10 @@ class NodeHandler:
 
         tmp_interface = tmp_mat = tmp_builder = ""
         try:
+            preferences = getattr(self, "_preferences", None)  # getattr, because a NodeHandler built through __new__ is a SANCTIONED fixture shape at six sites in test_atomic_write; with no library root there is no containment to prove, so nothing is created
+            for destination in (interface_path, mat_path, builder_path):
+                if destination and preferences is not None:  # a creation door that never reached ensure_library_dirs leaves no mat/, and mkstemp then raises FileNotFoundError with nothing on screen
+                    ensure_asset_folder(preferences, destination)
             tmp_interface = hostos.unique_scratch(interface_path)
             tmp_mat = hostos.unique_scratch(mat_path)
             if builder_path:
@@ -1192,6 +1210,7 @@ class NodeHandler:
                 for orig, copy in zip(items, copies):
                     if isinstance(orig, hou.Node):
                         rename_map[orig.path()] = copy.name()
+            ensure_asset_folder(self._preferences, file_name)  # the companion is staged BEFORE save_asset_pair runs, so it reaches mkstemp first ▸p/asset-write-unit
             scratch = hostos.unique_scratch(file_name)
             self._pending_cop_promote = (scratch, file_name)
             try:
