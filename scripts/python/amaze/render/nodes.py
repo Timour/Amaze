@@ -157,7 +157,7 @@ def ensure_asset_folder(preferences, path: str) -> None:
     root = preferences.dir
     try:
         inside = os.path.relpath(folder, root)
-    except ValueError:  # a different drive on Windows - relpath cannot answer, and nothing off the library's drive is ours to create
+    except ValueError:  # a different drive, a UNC share, or an empty path - every case relpath refuses is one that could not be inside the root anyway ▸r/relpath-valueerror
         raise hostos.PathEscape("%r does not stay inside %r" % (folder, root))
     hostos.contained_join(root, inside)  # realpath-based and tolerant of a missing base, so it answers for a library folder that is not there yet
     os.makedirs(folder, exist_ok=True)
