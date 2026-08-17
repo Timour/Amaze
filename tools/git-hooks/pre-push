@@ -43,7 +43,11 @@ if ! command -v hython >/dev/null 2>&1 && [ ! -d "${HFS:-}" ]; then
     exit 1
 fi
 
-echo "pre-push: running the suite (about 130s)..."
+# The figure is here so a long wait does not read as a hang, and it is
+# DATED because it tracks the test count and nothing updates it: 130s was
+# true at roughly half this many tests and understated the wait by 2x by
+# the time anybody noticed. Re-measure when it misleads, and move the date.
+echo "pre-push: running the suite (about 5 min at 2269 tests, measured 2026-08-18)..."
 output="$("$repo/tools/run-tests.sh" 2>&1)"
 status=$?
 
