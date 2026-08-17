@@ -823,5 +823,90 @@ class StructureSignatureTest(unittest.TestCase):
                          "a raising loader stranded the staging network")
 
 
+class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
+    """`load_items_strict` ABSORBS the unreadable file and returns a reason, so its callers' `except OSError` cannot fire - and the dialog inside one would be an AttributeError with no screen to raise it on. ▸r/status-bar"""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.staging.destroy)
+
+    def test_a_missing_payload_comes_back_as_a_reason_not_an_OSError(self):
+        """The contract the callers are written against: a reason string, never a raise."""
+        missing = os.path.join(self.prefs.dir, "no-such-asset.mat")
+        self.assertFalse(os.path.exists(missing))
+        problem = nodes.load_items_strict(self.staging, missing)
+        self.assertTrue(problem, "an unreadable payload reported nothing, so "
+                                 "the caller cannot tell it apart from a "
+                                 "clean load")
+        self.assertIn("could not be read", problem)
+
+    def test_a_directory_in_the_payload_slot_refuses_as_a_hou_error(self):
+        """`getsize` ANSWERS for a directory rather than raising, so this one reaches `loadItemsFromFile` and comes back as hou's own refusal - still never an OSError, and still never a screen."""
+        as_dir = os.path.join(self.prefs.dir, "payload-is-a-directory.mat")
+        os.makedirs(as_dir, exist_ok=True)
+        self.addCleanup(os.rmdir, as_dir)
+        try:
+            problem = nodes.load_items_strict(self.staging, as_dir)
+        except OSError:
+            self.fail("an OSError escaped the strict load, which is the one "
+                      "exception its callers wrap it against")
+        except hou.Error:
+            return
+        self.assertTrue(problem, "a directory in the payload slot loaded as "
+                                 "if it were a material")
+
+    def test_the_import_refuses_through_hou_error_with_no_ui_present(self):
+        """The whole point: headless, a missing payload must arrive as a reason-carrying hou.Error and never as the AttributeError a dialog would raise."""
+        self.assertFalse(hasattr(hou, "ui"),
+                         "this test needs a headless hou to mean anything")
+        handler = nodes.NodeHandler(self.prefs)
+        handler._builder_node = self.staging
+        mat = material.Material(name="gone", mat_id="no-such-asset-id")
+        with self.assertRaises(hou.Error) as caught:
+            handler.load_items_file(mat)
+        self.assertIn("could not be read", str(caught.exception))
+
+    def test_the_karma_import_refuses_the_same_way(self):
+        """The second caller wrote the same `except OSError` around the same call, so it is pinned from the same side."""
+        self.assertFalse(hasattr(hou, "ui"))
+        handler = nodes.NodeHandler(self.prefs)
+        handler._builder_node = self.staging
+        mat = material.Material(name="gone", mat_id="no-such-asset-id")
+        with self.assertRaises(hou.Error) as caught:
+            handler.load_items_file_mtlx(mat)
+        self.assertIn("could not be read", str(caught.exception))
+
+    def _an_oserror_reaches_no_screen(self, method: str):
+        """Force the OSError the callers guard against and let it arrive: whatever handles it must not be a dialog, because there is no screen to raise one on."""
+        handler = nodes.NodeHandler(self.prefs)
+        handler._builder_node = self.staging
+        mat = material.Material(name="gone", mat_id="no-such-asset-id")
+
+        from unittest.mock import patch
+
+        def unreadable(_node, _file_name):
+            raise OSError(5, "Input/output error")
+
+        with patch.object(nodes, "load_items_strict", unreadable):
+            try:
+                getattr(handler, method)(mat)
+            except AttributeError as crash:
+                self.fail("the refusal reached hou.ui and became a crash: %s"
+                          % crash)
+            except (OSError, hou.Error):
+                return
+        self.fail("%s swallowed a real read failure and reported nothing"
+                  % method)
+
+    def test_a_read_failure_never_becomes_a_crash_on_the_usd_import(self):
+        """▸r/status-bar - hou.ui does not exist headless."""
+        self._an_oserror_reaches_no_screen("load_items_file")
+
+    def test_a_read_failure_never_becomes_a_crash_on_the_karma_import(self):
+        """The same, from the second caller."""
+        self._an_oserror_reaches_no_screen("load_items_file_mtlx")
+
+
 if __name__ == "__main__":
     unittest.main()

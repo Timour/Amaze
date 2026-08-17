@@ -807,8 +807,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 "If this library lives in a synced folder, let the sync "
                 "finish and try again." % assets_dir)
             self.last_cleanup_summary = [message]
-            if show_dialog:
-                hou.ui.displayMessage(message)  # type: ignore
+            ui = getattr(hou, "ui", None)  # show_dialog defaults TRUE, so the headless spelling of this call is the bare one ▸r/status-bar
+            if show_dialog and ui is not None:
+                ui.displayMessage(message)
             return 0
 
         summary.extend(database.DatabaseConnector.take_integrity_notes())  # load-time findings go BEFORE the sweep's own numbers: a list that shrank past half since its newest snapshot reads exactly like a healthy one unless somebody says both numbers out loud
@@ -1015,16 +1016,16 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
         self.last_cleanup_summary = list(summary)
 
-        if show_dialog:  # --- one summary dialog for the whole run ---
+        closing = getattr(hou, "ui", None)
+        if show_dialog and closing is not None:  # --- one summary dialog for the whole run ---
             if summary:
                 header = ("Clean Library stopped before deleting any files:"  # THE HEADER SAYS WHICH OF THE TWO HAPPENED: one header for both had a refusal opening with "cleanup finished"
                           if unreadable_abort
                           else "Library cleanup finished:")
-                hou.ui.displayMessage(
-                    header + "\n\n- " + "\n- ".join(summary)  # type: ignore
-                )
+                closing.displayMessage(header + "\n\n- " + "\n- ".join(summary))
             else:
-                hou.ui.displayMessage("Library cleanup finished: nothing to clean.")  # type: ignore
+                closing.displayMessage(
+                    "Library cleanup finished: nothing to clean.")
 
         return mark_rescued
 

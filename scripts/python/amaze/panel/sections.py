@@ -121,11 +121,13 @@ class Section:
 
     def save_node(self, node) -> None:
         """A scene node was handed in while this section is active; each section routes to its own save flow so the right dialog opens."""
-        hou.ui.displayMessage(  # type: ignore
-            "This section browses files on disk - a scene node can't "
-            "be saved into it. Switch to Material, Color, Node or "
-            "Code first."
-        )
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(
+                "This section browses files on disk - a scene node can't "
+                "be saved into it. Switch to Material, Color, Node or "
+                "Code first."
+            )
 
     def stack(self):
         """The AssetStack for the curated machinery, or None for sections that do not use it."""
@@ -696,7 +698,9 @@ class CopSection(AssetSection):
         if not ok and reason:
             debug.event("interact", "the release refused the asset",
                         net=context.path(), reason=reason)
-            hou.ui.displayMessage(reason)  # type: ignore
+            ui = getattr(hou, "ui", None)  # a release is a GESTURE, so the refusal must never raise out of the handler that absorbs it ▸r/status-bar
+            if ui is not None:
+                ui.displayMessage(reason)
         if ok:
             helpers.place_nodes(created,
                                 panel._release_position_in(context))
@@ -1250,9 +1254,11 @@ class FileSection(FolderSection):
         if not path:
             return
         if not os.path.isfile(path):
-            hou.ui.displayMessage(  # type: ignore
-                "That scene file is no longer there:\n%s" % path,
-                severity=hou.severityType.Warning)
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    "That scene file is no longer there:\n%s" % path,
+                    severity=hou.severityType.Warning)
             debug.event("hip", "scene missing", file=path)
             return
         try:
@@ -1631,9 +1637,11 @@ class GradientSection(AssetSection):
         clipboard.setText(hex_code)
         debug.event("gradient", "colour copied",
                     name=color.get("name"), hex=hex_code)
-        hou.ui.setStatusMessage(  # type: ignore
-            "Amaze: copied %s (%s)" % (hex_code, color.get("name", ""))
-        )
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.setStatusMessage(
+                "Amaze: copied %s (%s)" % (hex_code, color.get("name", ""))
+            )
 
     carrier_type = "hmtlxrampc"  # the MaterialX colour ramp
 
