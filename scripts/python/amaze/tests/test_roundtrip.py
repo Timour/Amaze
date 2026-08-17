@@ -841,20 +841,18 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
                                  "clean load")
         self.assertIn("could not be read", problem)
 
-    def test_a_directory_in_the_payload_slot_refuses_as_a_hou_error(self):
-        """`getsize` ANSWERS for a directory rather than raising, so this one reaches `loadItemsFromFile` and comes back as hou's own refusal - still never an OSError, and still never a screen."""
+    def test_a_directory_in_the_payload_slot_is_named_in_the_reason(self):
+        """`getsize` ANSWERS for a directory rather than raising, so this shape reaches `loadItemsFromFile` - and its refusal must still say WHICH file, where Houdini's own sentence says only that something failed."""
         as_dir = os.path.join(self.prefs.dir, "payload-is-a-directory.mat")
         os.makedirs(as_dir, exist_ok=True)
         self.addCleanup(os.rmdir, as_dir)
-        try:
-            problem = nodes.load_items_strict(self.staging, as_dir)
-        except OSError:
-            self.fail("an OSError escaped the strict load, which is the one "
-                      "exception its callers wrap it against")
-        except hou.Error:
-            return
+        problem = nodes.load_items_strict(self.staging, as_dir)
         self.assertTrue(problem, "a directory in the payload slot loaded as "
                                  "if it were a material")
+        self.assertIn(
+            os.path.basename(as_dir), problem,
+            "the refusal does not name the file, so the reader is left with "
+            "Houdini's bare sentence: %r" % problem)
 
     def test_the_import_refuses_through_hou_error_with_no_ui_present(self):
         """The whole point: headless, a missing payload must arrive as a reason-carrying hou.Error and never as the AttributeError a dialog would raise."""

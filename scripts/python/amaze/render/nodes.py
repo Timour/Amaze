@@ -301,12 +301,16 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return "its material file could not be read (%s)" % exc
     try:
         node.loadItemsFromFile(file_name)
-    except hou.LoadWarning as warning:
+    except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and the broad handler would swallow the recoverable case
         text = str(warning)
         if "Bad node type" in text:
             return text.strip().splitlines()[-1].strip()
         debug.event("import", "load warning (non-fatal)",
                     file=file_name, warning=text[:300])
+    except hou.Error as failure:
+        return ("its material file could not be loaded (%s) - %s"
+                % (file_name, str(failure).strip()
+                   or "Houdini gave no reason"))
     return ""
 
 
