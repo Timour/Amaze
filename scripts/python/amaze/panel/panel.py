@@ -1076,7 +1076,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(2), 0)    # no top/bottom bias, content dead-centred; the right margin is the design's edge inset, most of which the last icon button's own padding provides
             self.toolbar_layout.setSpacing(0)
 
-            self.toolbar_layout.addStretch()    # the three menus (Renderer/View/Library) are icon buttons at the toolbar's RIGHT end, appended at the end of setup once the Renderer menu exists; this leading stretch pushes the whole cluster right and leaves the design's empty left region
+            self.toolbar_layout.addStretch()    # the three icon controls at the toolbar's RIGHT end are Filter, View and Preferences (`_build_menus` names them, and the gear is a plain button rather than a menu); this leading stretch pushes the cluster right and leaves the design's empty left region
 
             if filter_row is not None:
                 self._central_layout.removeItem(filter_row)
@@ -2194,7 +2194,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._build_section_tabs()
         if back in dict(self.ALL_SECTIONS):
             self.section_tabs.setChecked(back)
-        section = self._section()    # entering repointed every shared widget at the online models, so leaving has to repoint them back, and nothing else will: `back` is a section we never left (entering does not change current_section), and setChecked emits only on a real change, so no _on_tab_toggled and no activate() follows it
+        section = self._section()    # entering repointed every shared widget at the online models, so leaving has to repoint them back, and nothing else will: on the plain path `back` is a section we never left, so setChecked emits nothing and no _on_tab_toggled or activate() follows. WATCH: `_apply_enabled_sections` re-points `_section_before_online` while online, and on THAT path back != current_section and setChecked does emit - this repoint has to be correct either way
         if section is not None:
             self._apply_context(section, section.key)    # THE ONE PATH, as entering already takes - `activate()` alone would leave the toolbar to a separate call
 
