@@ -105,26 +105,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     DB_FILENAME = ""  # which json file in the library dir backs this model; every subclass names its own, and "" breaks loudly rather than binding a nameless model to somebody's database
 
-    def __init__(
-        self,
-        parent: QtCore.QObject | None = None,
-        preferences: prefs.Prefs | None = None,
-    ) -> None:
+    def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-
-        # A Prefs passed POSITIONALLY lands in `parent` and leaves `preferences` None, so the model would silently bind to the LIVE library instead of the caller's. Duck-typed, not isinstance: the category tests patch prefs.Prefs with a mock
-        if parent is not None and hasattr(parent, "asset_dir") \
-                and hasattr(parent, "dir"):
-            raise TypeError(
-                "%s: pass preferences by KEYWORD (preferences=...) - a "
-                "positional Prefs binds the model to the live library."
-                % type(self).__name__
-            )
-
-        if preferences is None:  # share the panel's Prefs when given: per-model instances each re-read settings.json and drift from each other after any save
-            preferences = prefs.Prefs()
-            preferences.load()
-        self.preferences = preferences
+        self.preferences = preferences  # REQUIRED, and SHARED with the panel: per-model instances each re-read settings.json and drift after any save ▸p/duplication-third-verb
         self._thumbsize = self.preferences.thumbsize
 
         db = database.DatabaseConnector(self.DB_FILENAME)
@@ -1179,8 +1162,8 @@ class MaterialLibrary(AssetLibrary):
 
     DB_FILENAME = "library.json"
 
-    def __init__(self, parent=None, preferences=None) -> None:
-        super().__init__(parent, preferences=preferences)
+    def __init__(self, preferences) -> None:
+        super().__init__(preferences)
         self._usd_cache = {}  # both are derived by READING the saved files, so they are cached per material id rather than paid on every repaint
         self._shader_type_cache = {}
 

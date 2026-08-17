@@ -70,8 +70,8 @@ class GradientLibrary(library.AssetLibrary):
 
     CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # list mode's Category column, the display string; CategoryRole answers a LIST for the proxy. test_role_numbers holds the gap
 
-    def __init__(self, parent=None, preferences=None) -> None:
-        super().__init__(parent, preferences=preferences)
+    def __init__(self, preferences) -> None:
+        super().__init__(preferences)
         self._persist_minted_ids_once()
         self._sweep_notes_to_store_once()
 

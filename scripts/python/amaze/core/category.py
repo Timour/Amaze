@@ -15,26 +15,9 @@ class Categories(QtCore.QAbstractListModel):
 
     DB_FILENAME = "library.json"  # subclassed by the COP section over its own cops.json
 
-    def __init__(
-        self,
-        parent: QtCore.QObject | None = None,
-        preferences: prefs.Prefs | None = None,
-    ) -> None:
+    def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
-
-        # A positional Prefs lands in `parent` and binds the model to the LIVE library. Duck-typed: the tests patch prefs.Prefs with a mock, so isinstance() would raise.
-        if parent is not None and hasattr(parent, "asset_dir") \
-                and hasattr(parent, "dir"):
-            raise TypeError(
-                "%s: pass preferences by KEYWORD (preferences=...) - a "
-                "positional Prefs binds the model to the live library."
-                % type(self).__name__
-            )
-
-        if preferences is None:  # share the panel's Prefs when given
-            preferences = prefs.Prefs()
-            preferences.load()
-        self.preferences = preferences
+        self.preferences = preferences  # REQUIRED: a model that can default binds to whatever library the machine's settings name ▸p/duplication-third-verb
         db = database.DatabaseConnector(self.DB_FILENAME)
         self._data = database.load_survivable(db, self.preferences.dir)  # survivable: a sidecar that will not read must not take the panel down from here
         self._categories = self._data["categories"]

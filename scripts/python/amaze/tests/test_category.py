@@ -57,23 +57,24 @@ class TestCategories(unittest.TestCase):
         self.patcher_db.stop()
 
     def test_init_loads_preferences_and_categories(self):
-        """Test that __init__ loads preferences and categories from database."""
-        model = self.category_module.Categories()
+        """Test that __init__ takes the given preferences and loads categories from database."""
+        model = self.category_module.Categories(self.mock_prefs_instance)
 
-        self.mock_prefs_instance.load.assert_called_once()
+        self.assertIs(self.mock_prefs_instance, model.preferences)
+        self.mock_prefs_instance.load.assert_not_called()  # the model shares the panel's Prefs OBJECT, so a load() here would re-read settings.json under the panel and revert its unsaved edits; switch_model_data reloads deliberately, construction must not
         self.mock_db_instance.load.assert_called_once_with("/mock/path")
         self.assertEqual(model._categories, ["Cat1", "_Hidden", "Cat2"])
         self.assertEqual(model.CatSortRole, 256)
 
     def test_row_count(self):
         """Test that rowCount returns the correct number of categories."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
 
         self.assertEqual(model.rowCount(), 3)
 
     def test_data_with_cat_sort_role(self):
         """Test data method with CatSortRole returns raw category."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         self.mock_index.row.return_value = 1
 
         result = model.data(self.mock_index, role=256)
@@ -82,7 +83,7 @@ class TestCategories(unittest.TestCase):
 
     def test_data_with_display_role_strips_underscore(self):
         """Test data method with DisplayRole strips leading underscore."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         self.mock_index.row.return_value = 1
 
         result = model.data(self.mock_index, role=0)
@@ -91,7 +92,7 @@ class TestCategories(unittest.TestCase):
 
     def test_data_with_display_role_no_underscore(self):
         """Test data method with DisplayRole for category without underscore."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         self.mock_index.row.return_value = 0
 
         result = model.data(self.mock_index, role=0)
@@ -100,7 +101,7 @@ class TestCategories(unittest.TestCase):
 
     def test_reload(self):
         """Test reload method reloads categories from database."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         self.mock_db_instance.load.reset_mock()
         self.mock_db_instance.load.return_value = {
             "categories": ["Reloaded1", "Reloaded2"]
@@ -113,7 +114,7 @@ class TestCategories(unittest.TestCase):
 
     def test_switch_model_data(self):
         """Test switch_model_data reloads preferences and uses reload_with_path."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         self.mock_prefs_instance.load.reset_mock()
 
         model.switch_model_data()
@@ -124,7 +125,7 @@ class TestCategories(unittest.TestCase):
 
     def test_remove_category(self):
         """Test remove_category removes category and saves."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
 
         model.remove_category("Cat1")
@@ -135,7 +136,7 @@ class TestCategories(unittest.TestCase):
 
     def test_rename_category(self):
         """Test rename_category renames all instances and saves."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model._categories = ["OldName", "Cat2", "OldName"]
         model.save = MagicMock()
 
@@ -146,7 +147,7 @@ class TestCategories(unittest.TestCase):
 
     def test_rename_category_no_match(self):
         """Test rename_category when category doesn't exist still calls save."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
         original_categories = model._categories.copy()
 
@@ -157,7 +158,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_ignores_multiple_values(self):
         """Test check_add_category ignores 'Multiple Values...' string."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
         original_categories = model._categories.copy()
 
@@ -168,7 +169,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_adds_new_category(self):
         """Test check_add_category adds new category."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
 
         model.check_add_category("NewCat")
@@ -178,7 +179,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_ignores_existing(self):
         """Test check_add_category doesn't add existing category."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
         original_count = len(model._categories)
 
@@ -189,7 +190,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_handles_comma_separated(self):
         """Test check_add_category handles comma-separated values."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
 
         model.check_add_category("NewCat1, NewCat2, NewCat3")
@@ -201,7 +202,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_strips_spaces(self):
         """Test check_add_category strips spaces from category names."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
 
         model.check_add_category("  SpacedCat  ")
@@ -211,7 +212,7 @@ class TestCategories(unittest.TestCase):
 
     def test_check_add_category_ignores_empty_strings(self):
         """Test check_add_category ignores empty strings."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
         model.save = MagicMock()
         original_categories = model._categories.copy()
 
@@ -222,7 +223,7 @@ class TestCategories(unittest.TestCase):
 
     def test_save(self):
         """Test save method writes categories to database."""
-        model = self.category_module.Categories()
+        model = self.category_module.Categories(self.mock_prefs_instance)
 
         model.save()
 

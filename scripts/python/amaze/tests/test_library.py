@@ -98,7 +98,7 @@ class TestMaterialLibrary(unittest.TestCase):
 
         from amaze.core import library  # imported after the patches are live
 
-        self.library = library.MaterialLibrary()
+        self.library = library.MaterialLibrary(self.mock_prefs)
 
     def tearDown(self):
         """Clean up patches"""
@@ -110,6 +110,27 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual(len(self.library._assets), 1)
         self.assertEqual(self.library._tags, ["test", "sample"])
         self.assertEqual(self.library._thumbsize, 256)
+
+    def test_a_positional_prefs_is_the_preferences(self):
+        """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""
+        from amaze.core import library
+
+        self.mock_prefs_cls.return_value = Mock()  # a DIFFERENT object than the one passed in: setUp wires Prefs() to return self.mock_prefs, which would leave this assertion comparing the mock to itself and passing under the very revert it names
+
+        model = library.MaterialLibrary(self.mock_prefs)
+
+        self.assertIs(
+            self.mock_prefs, model.preferences,
+            "the model did not take the Prefs it was GIVEN - a positional "
+            "argument no longer resolves to `preferences`")
+
+    def test_omitting_preferences_raises_instead_of_reading_the_machine(self):
+        """Omitting it must raise, never default to the machine's own library."""
+        from amaze.core import library
+
+        with patch("amaze.core.library.prefs.Prefs"):  # a restored fallback is caught here as a MOCK, so a FAILING run cannot reach the machine's own settings.json
+            with self.assertRaises(TypeError):
+                library.MaterialLibrary()
 
     def test_row_count(self):
         """Test rowCount returns correct number of assets"""
@@ -1360,6 +1381,59 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
                 name, vars(library.MaterialLibrary),
                 "%s left MaterialLibrary - if it was retired, retire "
                 "it from this list in the same commit" % name)
+
+
+class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
+    """Every ASSET model below takes `preferences` first and without a default, so none of them can reach the machine's own library by being called carelessly. Covers the five that inherit the constructor as well as the four that declare one. ▸p/duplication-third-verb"""
+
+    MODELS = (  # the AssetLibrary/Categories family ONLY. `MatxOnlineLibrary` keeps `(parent=None, preferences=None)` and forwards parent to Qt, which refuses a non-QObject ▸r/model-parent; `FileFiles`/`FolderListModel` are already `(preferences, parent=None)` and NOTHING asserts that, so they are uncovered rather than exempt
+        ("Categories", "amaze.core.category"),
+        ("AssetLibrary", "amaze.core.library"),
+        ("MaterialLibrary", "amaze.core.library"),
+        ("GradientLibrary", "amaze.core.gradient_library"),
+        ("GradientCategories", "amaze.core.gradient_library"),
+        ("CodeLibrary", "amaze.core.code_library"),
+        ("CodeCategories", "amaze.core.code_library"),
+        ("CopLibrary", "amaze.core.cop_library"),
+        ("CopCategories", "amaze.core.cop_library"),
+    )
+
+    def test_preferences_is_first_and_has_no_default(self):
+        """The contract, read off the signature rather than by constructing - a construction would need each model's whole fixture."""
+        import importlib
+        import inspect
+
+        wrong = {}
+        for name, module in self.MODELS:
+            model = getattr(importlib.import_module(module), name)
+            found = list(inspect.signature(model).parameters.values())
+            if not found or found[0].name != "preferences":
+                wrong[name] = ("takes %r first"
+                               % ([p.name for p in found] or None))
+            elif found[0].default is not inspect.Parameter.empty:
+                wrong[name] = "preferences defaults to %r" % (found[0].default,)
+
+        self.assertEqual(
+            {}, wrong,
+            "these models can be built without being told which library "
+            "they are for, so they would read the machine's own: %s" % wrong)
+
+    def test_no_model_still_accepts_a_parent(self):
+        """`parent` is deleted, not merely reordered - it was never forwarded to Qt, so a caller passing one was silently building an unparented model anyway."""
+        import importlib
+        import inspect
+
+        keeps = {}
+        for name, module in self.MODELS:
+            model = getattr(importlib.import_module(module), name)
+            if "parent" in inspect.signature(model).parameters:
+                keeps[name] = str(inspect.signature(model))
+
+        self.assertEqual(
+            {}, keeps,
+            "these models still take a `parent` that never reaches Qt, "
+            "which is the slot a positional Prefs used to land in: %s"
+            % keeps)
 
 
 if __name__ == "__main__":
