@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 SQUARE = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
           '<rect width="10" height="10" fill="currentColor"/></svg>')
 
-PENDING = ("panel/delegates.py:_badge_pixmap",)   # the one site still hand-rolling: adopting it opens delegates.py, whose 584-line comment cut cannot be banded and is hand work. Empty this tuple when it lands - the assertion is exact, so a stale entry reddens too. ROADMAP R30.7
+PENDING = ()   # every site draws through the helper; the assertion is EXACT both ways, so a new hand-rolled site reddens and so does a stale entry here
 
 
 def _svg(testcase):

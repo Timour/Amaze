@@ -4,6 +4,7 @@ import os
 import json
 import hou
 
+import amaze
 from amaze import branding
 from amaze.core import database
 from amaze.core import debug
@@ -37,6 +38,25 @@ def _normalised_dir(path: str) -> str:
     return out
 
 
+def write_fresh_index(path: str, document: dict) -> None:
+    """Write a library index BORN at the current schema. Every creation door writes its index through here, so the two stamps cannot be half-applied by one of them. ▸p/library-creation-doors"""
+    born = dict(document)
+    born["version"] = database.SCHEMA_VERSION
+    born["format"] = branding.LIBRARY_FORMAT
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(born, handle)
+
+
+def seed_starter_index(lib_dir: str) -> None:
+    """Seed `lib_dir` from the SHIPPED starter, stamped on the way in. Adds nothing if an index is already there. Raises OSError or ValueError if the starter itself cannot be read. ▸p/library-creation-doors"""
+    index = os.path.join(lib_dir, "library.json")
+    if os.path.exists(index):
+        return
+    with open(amaze.package_file("res", "def", "library.json"),
+              encoding="utf-8") as handle:
+        write_fresh_index(index, json.load(handle))
+
+
 def seed_test_folder(folder: str) -> tuple:
     """Make `folder` usable as a test library - a WHOLE one, index and both asset folders. Returns (ok, what), and only ever adds what is missing. ▸p/library-creation-doors"""
     if not folder:
@@ -54,10 +74,8 @@ def seed_test_folder(folder: str) -> tuple:
             os.makedirs(folder_path, exist_ok=True)
         index = os.path.join(folder, TEST_LIB_SUBDIR, "library.json")
         if not os.path.exists(index):
-            with open(index, "w", encoding="utf-8") as handle:
-                json.dump({"categories": ["_All"], "tags": [], "assets": [],
-                           "version": database.SCHEMA_VERSION,
-                           "format": branding.LIBRARY_FORMAT}, handle)
+            write_fresh_index(index, {"categories": ["_All"], "tags": [],
+                                      "assets": []})
             made.append("library.json")
     except OSError as exc:
         debug.event("prefs", "test folder could not be seeded",
