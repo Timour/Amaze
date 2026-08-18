@@ -52,14 +52,12 @@ class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
         prefs_mod.seed_test_folder(self.folder)
         self.assertEqual(branding.LIBRARY_FORMAT, self._index().get("format"))
 
-    def test_the_stamp_is_derived_and_never_a_literal(self):
-        """Source-derived: a hardcoded 6 is a second source of truth that goes stale on the next bump."""
+    def test_it_writes_its_index_through_the_shared_writer(self):
+        """One writer owns both stamps, so no door can half-apply them or forget one."""
         import inspect
-        source = inspect.getsource(prefs_mod.seed_test_folder)
-        self.assertIn("SCHEMA_VERSION", source,
-                      "the version stamp is not derived from SCHEMA_VERSION")
-        self.assertIn("LIBRARY_FORMAT", source,
-                      "the format stamp is not derived from LIBRARY_FORMAT")
+        self.assertIn("write_fresh_index",
+                      inspect.getsource(prefs_mod.seed_test_folder),
+                      "this door stamps its index by hand again")
 
     def test_the_chain_is_complete_so_a_save_cannot_re_assert_one(self):
         """The compounding half: while the chain is incomplete save() holds the stamp back forever."""
@@ -93,6 +91,87 @@ class TheStarterCarriesNoPhantomAsset(unittest.TestCase):
             starter = json.load(handle)
         self.assertEqual([], starter.get("assets"),
                          "the starter still ships a placeholder asset")
+
+
+class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
+    """`panel.load()`'s door: the shipped starter carries no `version` key, so it is stamped on the way in rather than copied verbatim. ▸p/library-creation-doors"""
+
+    def setUp(self):
+        self.lib = tempfile.mkdtemp(prefix="amaze_fresh_starter_")
+        self.addCleanup(shutil.rmtree, self.lib, ignore_errors=True)
+
+    def _born(self):
+        prefs_mod.seed_starter_index(self.lib)
+        with open(os.path.join(self.lib, "library.json"),
+                  encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_it_is_born_at_the_current_schema(self):
+        """A versionless index reads as legacy 1, and _MIGRATIONS has no step below 4 to climb."""
+        self.assertEqual(database.SCHEMA_VERSION, self._born().get("version"))
+
+    def test_it_carries_the_current_format(self):
+        """The format stamp is the connector's other contract, and save() writes both together."""
+        self.assertEqual(branding.LIBRARY_FORMAT, self._born().get("format"))
+
+    def test_the_starter_index_is_not_born_in_a_migration_gap(self):
+        """While the chain is incomplete save() holds the stamp back on every write."""
+        version = int(self._born().get("version", 1))
+        self.assertFalse(
+            version < database.SCHEMA_VERSION
+            and database._MIGRATIONS.get(version) is None,
+            "the index is born in a gap in the migration chain, so save() "
+            "will re-assert that version on every write")
+
+    def test_it_keeps_everything_the_starter_ships(self):
+        """The stamp is added to the shipped defaults, never written instead of them."""
+        with open(amaze.package_file("res", "def", "library.json"),
+                  encoding="utf-8") as handle:
+            starter = json.load(handle)
+        born = self._born()
+        for key in starter:
+            self.assertEqual(starter[key], born.get(key),
+                             "the starter's '%s' did not survive the seed" % key)
+
+    def test_it_adds_only_what_is_missing(self):
+        """An index already in place is never rewritten - the seeding door's standing promise."""
+        self._born()
+        index = os.path.join(self.lib, "library.json")
+        with open(index, "rb") as handle:
+            before = handle.read()
+        prefs_mod.seed_starter_index(self.lib)
+        with open(index, "rb") as handle:
+            self.assertEqual(before, handle.read(), "the index was rewritten")
+
+    def test_the_stamp_is_derived_and_never_a_literal(self):
+        """Source-derived: a hardcoded 6 is a second source of truth that goes stale on the next bump."""
+        import inspect
+        source = inspect.getsource(prefs_mod.write_fresh_index)
+        self.assertIn("SCHEMA_VERSION", source,
+                      "the version stamp is not derived from SCHEMA_VERSION")
+        self.assertIn("LIBRARY_FORMAT", source,
+                      "the format stamp is not derived from LIBRARY_FORMAT")
+
+    def test_the_shipped_starter_still_carries_no_version_of_its_own(self):
+        """The shipped file stays versionless on purpose - the stamp belongs to the door."""
+        with open(amaze.package_file("res", "def", "library.json"),
+                  encoding="utf-8") as handle:
+            self.assertNotIn("version", json.load(handle),
+                             "the starter now carries a literal version - a "
+                             "second source of truth that goes stale at the "
+                             "next bump")
+
+    def test_panel_load_seeds_through_this_door(self):
+        """Pinned from SOURCE because load() needs a panel; a bare shutil.copy of the starter must go red."""
+        import inspect
+        from amaze.panel.panel import MatLibPanel
+        source = inspect.getsource(MatLibPanel.load)
+        self.assertIn("seed_starter_index", source,
+                      "panel.load() no longer seeds through the stamping "
+                      "door, so a fresh library is born unstamped again")
+        self.assertNotIn("shutil.copy", source,
+                         "panel.load() copies the starter verbatim again - "
+                         "that copy is bug B")
 
 
 class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):

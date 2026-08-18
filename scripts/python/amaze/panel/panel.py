@@ -1,7 +1,6 @@
 """Constructs the Python panel Widget for the MatLib and provides Views to the Models"""
 
 import os
-import shutil
 import importlib
 import time
 import contextlib
@@ -513,8 +512,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     "Repair Library from the Amaze shelf to rebuild it.",
                     key="starter-refused")
                 return
-            oldpath = amaze.package_file("res", "def", "library.json")
-            shutil.copy(oldpath, self.prefs.dir + "/library.json")
+            prefs.seed_starter_index(self.prefs.dir)    # the shipped starter carries no version key, so it is STAMPED on the way in rather than copied verbatim ▸p/library-creation-doors
             new_folder = True
         if self.ensure_library_dirs(self.prefs):
             new_folder = True
