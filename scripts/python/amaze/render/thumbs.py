@@ -20,74 +20,28 @@ class ThumbNailRenderer:
         self, preferences: prefs.Prefs, mat: material.Material | None = None
     ) -> None:
         self._mat = mat
-        self._preferences = preferences
+        self._preferences = preferences  # the caller's own Prefs, the authoritative in-memory copy, deliberately NOT reloaded here: a load() would discard unsaved edits and re-point the library at whatever settings.json names, which sends a test fixture's library back at the real one
         self._builder = None
-        # Deliberately NO load() here. Every caller passes the panel's
-        # own Prefs, which IS the authoritative in-memory copy; re-reading
-        # settings.json on each thumbnail would discard unsaved edits,
-        # re-run the install migration, and - as it did - silently
-        # redirect a test fixture's library back at the real one.
 
     @staticmethod
     @contextlib.contextmanager
     def karma_batch(preferences):
-        """One Karma scaffold for a whole batch, or None.
-
-        The scaffold is a full USD stage composition - the expensive
-        part of a Karma thumbnail, and identical for every material.
-        `build_karma_scaffold` and `render_karma_into` were written to
-        be reused across a batch and had no caller doing it: every
-        render built its own and destroyed it, so re-rendering N
-        materials paid the stage load N times.
-
-        Yields the scaffold to pass into `create_thumbnail`, or None
-        when there is no Scene Viewer to take OCIO display/view from -
-        in which case every render falls back to building its own and
-        the batch simply costs what it always did.
-
-        Destroyed off the undo stack, both ends, for the reason
-        `create_thumb_mtlx` gives: a bare destroy is the half that
-        resurrects the whole scaffold on one Ctrl+Z.
-        """
-        scaffold = preview.build_karma_scaffold(preferences)
+        """Yield one Karma scaffold for a whole batch to share, or None when no Scene Viewer is open to take the OCIO display/view from - on a None every render in the batch simply builds and destroys its own. Pass what it yields to `create_thumbnail`."""
+        scaffold = preview.build_karma_scaffold(preferences)  # the scaffold is a full USD stage composition - the expensive part of a Karma thumbnail, and identical for every material, so a batch pays the stage load once instead of N times
         try:
             yield scaffold
         finally:
             if scaffold is not None:
-                with hou.undos.disabler():
+                with hou.undos.disabler():  # the create is already disabled inside build_karma_scaffold, and a bare destroy is the half that resurrects the whole scaffold on one Ctrl+Z
                     scaffold["net"].destroy()
 
     def create_thumbnail(self, scaffold=None) -> None:
-        """Render this material's thumbnail.
-
-        `scaffold` is a Karma scaffold from `karma_batch` when this
-        render is one of a batch; None builds and destroys its own,
-        which is what a single render does.
-        """
+        """Render this material's thumbnail; pass the scaffold from `karma_batch` when this render is one of a batch, or leave it None for a single render that builds and destroys its own."""
         node_handler = nodes.NodeHandler(self._preferences)
         if self._mat:
-            # target="mat", NOT "auto". With "auto" the destination is
-            # the user's ACTIVE editor, so rerendering a thumbnail while
-            # a LOP network was in front imported into their
-            # materiallibrary - and register_in_materiallibrary appends
-            # an explicit entry when the builder is not already covered
-            # by the wildcard. cleanup() destroys the node and nothing
-            # removes the entry: reproduced, the entry survives and
-            # names a node that no longer exists, which is the
-            # "Ignoring missing explicit primitive" error this file
-            # already names at line 249, on every cook from then on.
-            #
-            # A thumbnail has no business in the user's LOP context in
-            # the first place - the Karma path builds its own lopnet
-            # scaffold and the other three reference the material by
-            # path - and forcing /mat also stops each rerender
-            # retranslating their whole material library.
             ok, reason, _created = node_handler.import_asset_to_scene(
-                self._mat, target="mat")
-            if not ok:
-                # No builder was created (e.g. a classic VOP material
-                # while the active editor is a LOP context) - rendering
-                # would proceed against a stale/absent node.
+                self._mat, target="mat")  # target="mat", NOT "auto": "auto" resolves to whichever editor is ACTIVE, so a rerender with a LOP network in front imports into the user's materiallibrary, where register_in_materiallibrary appends an explicit entry that nothing removes when cleanup() destroys the node - leaving an entry naming a node that no longer exists, which is the `Ignoring missing explicit primitive` error on every cook from then on
+            if not ok:  # the import refused - a missing, empty or unreadable material file, or a node type this session does not have - so there is no builder node and the render must not proceed
                 if reason:
                     hou.ui.displayMessage(reason)  # type: ignore
                 return
@@ -98,9 +52,7 @@ class ThumbNailRenderer:
             ):
                 if material.is_karma_renderer(self._mat.renderer):
                     if scaffold is not None:
-                        # The batch's scaffold: rendered into, never
-                        # destroyed here - karma_batch owns both ends.
-                        preview.render_karma_into(
+                        preview.render_karma_into(  # the batch's scaffold is rendered into, never destroyed here - karma_batch owns both ends
                             scaffold, node_handler.builder_node,
                             self._mat.mat_id,
                             tile_icons.thumbnail_path(
@@ -116,15 +68,10 @@ class ThumbNailRenderer:
                 else:
                     pass
         finally:
-            # Runs even if the user interrupts the render (ESC) so the
-            # imported material copy never lingers in /mat.
-            node_handler.cleanup()
+            node_handler.cleanup()  # in the finally, so an interrupted render (ESC) never leaves the imported material copy lingering in /mat
 
     def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
-        """Single Karma thumbnail: build a throwaway scaffold, render
-        one material into it, destroy it. Render All uses the scaffold
-        across the whole batch instead (build_karma_scaffold +
-        render_karma_into)."""
+        """Single Karma thumbnail: build a throwaway scaffold, render one material into it, destroy it; False when no scaffold could be built. A whole batch shares ONE scaffold through `karma_batch` instead."""
         scaffold = preview.build_karma_scaffold(self._preferences)
         if scaffold is None:
             return False
@@ -133,54 +80,22 @@ class ThumbNailRenderer:
                 scaffold, node, asset_id,
                 tile_icons.thumbnail_path(self._preferences, asset_id))
         finally:
-            # Runs even if the render is interrupted so no orphaned
-            # lopnet (with live ROP) stays in /obj. Off the stack: the
-            # create is disabled in build_karma_scaffold, and a bare
-            # destroy is the half that resurrects the whole scaffold
-            # on one Ctrl+Z (the BOTH-ends rule below).
-            with hou.undos.disabler():
-                scaffold["net"].destroy()
+            with hou.undos.disabler():  # the create is disabled inside build_karma_scaffold, and a bare destroy is the half that resurrects the whole scaffold on one Ctrl+Z (the BOTH-ends rule below)
+                scaffold["net"].destroy()  # in the finally, so an interrupted render leaves no orphaned lopnet with a live ROP in /obj
 
     @contextlib.contextmanager
     def _thumb_scene(self, renderer: str):
-        """Yield (scene, thumb) and destroy the scene on every exit.
-
-        The finally used to be written out three times with the same
-        comment, and the boundary had already drifted: ONE of the three
-        set its material parm BEFORE its try, so a missing `mat` parm
-        or a deleted node raised where nothing cleaned up and left a
-        Thumbnail_* subnet in the user's scene - which is then saved
-        into their hip file. Reproduced against a scene whose `mat`
-        parm is absent: that one leaked, its two copies did not. (The
-        drifted copy was the renderer dropped 2026-08-14; the lesson is
-        why this is a contextmanager and outlives it.)
-
-        Inside a `hou.undos.disabler()` for the reason create_thumb_sop
-        already documents and research.md ▸ Undo names thumbnails for
-        explicitly: without it the user's next Ctrl+Z resurrects the
-        throwaway scene instead of undoing what they actually did.
-        Measured: a createNode/destroy pair on the live stack comes
-        back on one undo; the same pair inside a disabler does not.
-        """
-        with hou.undos.disabler():
+        """Yield (scene, thumb) and destroy the scene on every exit, the raising ones included - so set every parm INSIDE the `with`: anything that raises before it leaves a Thumbnail_* subnet behind in the user's scene, which is then saved into the hip file."""
+        with hou.undos.disabler():  # research.md ▸ Undo names thumbnails explicitly; measured, a createNode/destroy pair on the live stack comes back on one Ctrl+Z and the same pair inside a disabler does not, so without this the next undo resurrects the throwaway scene
             sc = preview.ThumbNailScene(renderer)
             thumb = sc.get_node()
             try:
                 yield sc, thumb
             finally:
-                # Runs even if the render is interrupted so no orphaned
-                # thumbnail scene (with live ROP) stays in /obj.
-                thumb.destroy()
+                thumb.destroy()  # in the finally, so an interrupted render leaves no orphaned thumbnail scene with a live ROP in /obj
 
     def _setup_thumb_rop(self, thumb, node: hou.Node, out_path: str) -> None:
-        """The material/path/exclusion/light/resolution block the three
-        renderer paths each carried their own copy of.
-
-        Through safe_set, like the ROP parms in the preview engine: a
-        renamed parm on a new renderer build is what safe_set exists to
-        absorb, and setting these raw made it an AttributeError that
-        aborts the render.
-        """
+        """Set the shared material/path/exclusion/light/resolution parms on a thumbnail ROP, every one through `safe_set`, so a parm a given renderer build does not expose is skipped instead of raising."""
         preview.safe_set(thumb, "mat", node.path())
         preview.safe_set(thumb, "path", out_path)
         preview.safe_set(thumb, "obj_exclude", "* ^" + thumb.name())
@@ -190,64 +105,25 @@ class ThumbNailRenderer:
 
     def _rendered(self, png_path: str, renderer: str, asset_id: str,
                   errors=None) -> bool:
-        """Did the render actually write the image?
-
-        The Karma path has always checked; the other renderer paths
-        ended with a bare `return True` after pressing the button, so
-        every caller's failure branch in nodes.py was unreachable and a
-        render that produced nothing reported success. Per practice.md
-        #364 a failed render keeps the OLD thumbnail, so the tile shows
-        the previous image and nothing anywhere says the new one never
-        happened.
-        """
+        """Did the render write png_path? False also logs it - callers must pass `errors` they gathered while the thumb scene was still alive, and must actually branch on the result (per practice.md #364 a failed render keeps the OLD thumbnail, so this log line is the only trace)."""
         if os.path.exists(png_path):
             return True
-        # ALREADY GATHERED, by the caller, while the scene was still
-        # alive. This used to take the ROP and read its errors HERE -
-        # and every caller invokes this AFTER its `with self._thumb_scene`
-        # block, which destroys the scene the ROP is a grandchild of. So
-        # `node_errors` swallowed hou.ObjectWasDeleted into {} and the
-        # one field that explains a failed render was empty by
-        # construction, in the function whose docstring says capturing
-        # it is the point.
         debug.event("thumb", "render produced no image",
                     renderer=renderer, asset_id=str(asset_id),
-                    path=png_path, errors=errors or "")
+                    path=png_path, errors=errors or "")  # gathered by the caller, not here: every caller reaches this AFTER its `with self._thumb_scene` block, which destroys the scene the ROP is a grandchild of, so reading them here raised hou.ObjectWasDeleted and node_errors swallowed it into {}
         return False
 
     @staticmethod
     def _pick_cop_thumb_source(temp: hou.Node) -> hou.Node | None:
-        """FALLBACK-ONLY picker for assets saved before the source-node
-        name was recorded at save time (which is the reliable path -
-        see create_thumb_cop). Shares the exact logic of the live pick
-        via helpers.pick_cop_display_child so the two can't drift."""
+        """FALLBACK-ONLY picker for assets saved before the source-node name was recorded at save time (that is the reliable path - see create_thumb_cop); shares the live pick's logic via helpers.pick_cop_display_child so the two cannot drift."""
         return helpers.pick_cop_display_child(temp)
 
     def create_thumb_geo_file(
         self, file_path: str, out_path: str, size: int
     ) -> bool:
-        """Thumbnail for a geometry FILE (the v2 Geometry section):
-        temp geo + the right loader SOP for the extension, orthographic
-        camera fitted on the (container-rotated) bounding box, env
-        light, rendered through the FLIPBOOK ROP (Vulkan viewport
-        renderer; Karma CPU fallback) with the retina-quadrant
-        compensation - the verified end state of an eleven-round
-        debugging saga. Everything is destroyed in finally. Returns
-        False (with an Amaze-prefixed console reason) on any failure
-        - callers treat that as "no thumbnail", never an error."""
-        # The ONE extension->loader mapping lives in geo_library
-        # (imported lazily: geo_library imports this module at top
-        # level, so the import direction only works this way around).
-        from amaze.core import geo_library
+        """Thumbnail for a geometry FILE: temp geo + the loader SOP for the extension, ortho camera fitted on the container-rotated bounding box, env light, rendered through the flipbook ROP (Karma CPU fallback) with the quadrant compensation; everything is destroyed in finally, and any failure returns False with an Amaze-prefixed console reason that callers must treat as "no thumbnail", never an error."""
+        from amaze.core import geo_library  # lazy: geo_library imports this module at top level, so the import only works this way around; it owns the ONE extension->loader mapping
         loader_type = geo_library.loader_sop_for(file_path)
-
-        def _set(node, name, value):
-            parm = node.parm(name)
-            if parm is not None:
-                try:
-                    parm.set(value)
-                except hou.OperationFailed:
-                    pass
 
         base = os.path.basename(file_path)
         geo = None
@@ -287,43 +163,15 @@ class ThumbNailRenderer:
                 debug.event("geo", "thumb failed", file=base,
                             reason="no cookable geometry")
                 return False
-            # THE step-back fix after the "still not centered" round:
-            # the fit numbers and resolution were verified correct in
-            # a live console capture, leaving exactly one suspect -
-            # the hand-built lookat rotation matrix, the only hand math
-            # left in the chain. It is now GONE ENTIRELY: the camera
-            # keeps its DEFAULT orientation (identity looks down -Z, by
-            # Houdini's own definition) and just gets translated to
-            # straight in front of the geometry. The 3/4 view comes
-            # from rotating the GEO CONTAINER instead, via plain rotate
-            # parms, and the bbox corners are transformed by
-            # hou.hmath.buildRotate - Houdini's own matrix builder,
-            # Houdini's own conventions, nothing hand-rolled anywhere.
-            _set(geo, "rx", -20.0)
-            _set(geo, "ry", 35.0)
-            rot = hou.hmath.buildRotate(hou.Vector3(-20.0, 35.0, 0.0))
+            preview.safe_set(geo, "rx", -20.0)  # the 3/4 view comes from rotating the GEO CONTAINER, never the camera: the camera keeps its default orientation, which by Houdini's definition looks down -Z, and is only translated
+            preview.safe_set(geo, "ry", 35.0)
+            rot = hou.hmath.buildRotate(hou.Vector3(-20.0, 35.0, 0.0))  # the same rotation as the two container parms above, built by Houdini's own matrix builder, so the bbox corners below land where the geometry actually does
 
             with hou.undos.disabler():
                 cam = hou.node("/obj").createNode("cam")
-            _set(cam, "resx", size)
-            _set(cam, "resy", size)
-            # ORTHOGRAPHIC framing (the "zoom out and find it" round):
-            # perspective framing under the Vulkan rasterizer was too
-            # tight by a large factor even though the IDENTICAL fit
-            # math framed perfectly under Karma - meaning the two
-            # renderers interpret the camera's perspective attributes
-            # (aperture/focal/aspect/res-override crop semantics)
-            # differently, and that interpretation isn't pinned down
-            # anywhere scriptable. Ortho removes the entire question:
-            # the visible width IS one number (orthowidth), no focal,
-            # no aperture, no fov derivation - and it's the classic
-            # product-shot look for asset thumbnails anyway. Fit: the
-            # largest per-axis extent of any bbox corner projected onto
-            # the camera's own x/y axes, plus margin.
-            # Transform the LOCAL bbox corners into world space with
-            # Houdini's own rotation matrix, then fit axis-aligned - the
-            # camera has no rotation, so world x/y ARE the image axes.
-            min_vec = bbox.minvec()
+            preview.safe_set(cam, "resx", size)
+            preview.safe_set(cam, "resy", size)
+            min_vec = bbox.minvec()  # fit is axis-aligned in world space: the camera carries no rotation, so world x/y ARE the image axes
             max_vec = bbox.maxvec()
             world_min = None
             world_max = None
@@ -342,107 +190,41 @@ class ThumbNailRenderer:
             half_x = (world_max[0] - world_min[0]) * 0.5
             half_y = (world_max[1] - world_min[1]) * 0.5
             half_z = (world_max[2] - world_min[2]) * 0.5
-            ortho_width = max(half_x, half_y, 0.0005) * 2.0 * 1.1
+            ortho_width = max(half_x, half_y, 0.0005) * 2.0 * 1.1  # fit: the larger world-space half-extent of the rotated bbox (floored, so a bbox flat in x and y cannot give a zero width), doubled to a full span, plus a 10% margin
             distance = half_z * 2.0 + ortho_width
 
-            # Straight down +Z in front of the rotated geometry -
-            # translation only, orientation stays identity.
-            _set(cam, "tx", world_center[0])
-            _set(cam, "ty", world_center[1])
-            _set(cam, "tz", world_center[2] + distance)
-            _set(cam, "projection", "ortho")
-            _set(cam, "orthowidth", ortho_width)
-            # The Vulkan rasterizer honors near/far clip planes strictly
-            # (raytracers effectively don't) - scale them to the fitted
-            # distance so no model scale can clip.
-            _set(cam, "near", max(distance * 0.001, 0.00001))
-            _set(cam, "far", distance + half_z * 4.0 + ortho_width)
+            preview.safe_set(cam, "tx", world_center[0])
+            preview.safe_set(cam, "ty", world_center[1])
+            preview.safe_set(cam, "tz", world_center[2] + distance)  # placed straight in front of the rotated geometry on +Z - translation only, orientation stays identity
+            preview.safe_set(cam, "projection", "ortho")  # ortho, not perspective: the identical fit math framed perfectly under Karma but far too tight under the Vulkan rasterizer, so the two read the perspective attributes (aperture/focal/aspect/res-override crop semantics) differently and that is not pinned down anywhere scriptable - ortho reduces framing to one number, orthowidth
+            preview.safe_set(cam, "orthowidth", ortho_width)
+            preview.safe_set(cam, "near", max(distance * 0.001, 0.00001))  # the Vulkan rasterizer honors near/far clip planes strictly where raytracers effectively do not, so both are scaled off the fitted distance and no model scale can clip
+            preview.safe_set(cam, "far", distance + half_z * 4.0 + ortho_width)
             with hou.undos.disabler():
                 light = hou.node("/obj").createNode("envlight")
 
-            # Renderer: the FLIPBOOK ROP, per the H22 manual (standing
-            # project rule) - opengl is "scheduled to be deleted",
-            # flipbook is its designated replacement and has been
-            # accepted by the strict camera check in an earlier round.
-            # Its documented pages don't enumerate parms, so the node
-            # ANNOUNCES its own relevant parm names once per session
-            # (the "flipbook ROP parms" console line) - future
-            # adjustments get made from that ground truth, not doc
-            # archaeology. Karma CPU (a previously proven material
-            # combination) is the fallback if flipbook is missing or
-            # camera-less. NOTE: flipbook renders with the VIEWPORT's
-            # configured renderer - with the viewport on the plain
-            # Vulkan rasterizer it's fast; a viewport parked on a Karma
-            # delegate makes every thumbnail a viewport-quality Karma
-            # render (the earlier ~5min/file round).
             rop = None
             renderer_used = ""
             try:
                 with hou.undos.disabler():
-                    candidate = hou.node("/out").createNode("flipbook")
-                if candidate.parm("camera") is not None:
+                    candidate = hou.node("/out").createNode("flipbook")  # flipbook, not opengl: per the H22 manual opengl is scheduled to be deleted and flipbook is its designated replacement - and flipbook renders with the VIEWPORT's configured renderer, so a viewport parked on a Karma delegate makes every thumbnail a viewport-quality Karma render
+                if candidate.parm("camera") is not None:  # a flipbook with no camera parm is unusable here, so it is destroyed below and the Karma CPU fallback takes over
                     rop = candidate
                     renderer_used = "flipbook ROP (viewport renderer)"
-                    # EMPIRICAL RETINA-QUADRANT COMPENSATION. A full
-                    # parm dump + screenshots decoded to: the
-                    # flipbook's output is the LOWER-LEFT QUADRANT of a
-                    # double-size framebuffer (visible span = exactly
-                    # half the set orthowidth, subject displaced up-
-                    # right by a quarter frame). This was originally
-                    # attributed to the 2x Retina backing store; that
-                    # was WRONG, and the correction matters because it
-                    # inverts what the code should do. MEASURED
-                    # 2026-07-28: 255 thumbnails through this same ROP
-                    # on Windows at device_pixel_ratio 1.0 come out
-                    # correct WITH the compensation applied. The
-                    # doubling belongs to the flipbook capture, not to
-                    # the display, so this must stay UNCONDITIONAL - a
-                    # review proposed gating it on device scale, which
-                    # would have halved and displaced every Windows
-                    # thumbnail. Compensate:
-                    # double the orthowidth and shift the camera center
-                    # up-right by half the INTENDED span, so the
-                    # captured quadrant IS the intended frame. Flipbook
-                    # branch only - the Karma fallback renders the
-                    # camera faithfully and must stay uncompensated. If
-                    # SideFX fixes the capture this overcorrects in the
-                    # exact opposite signature - subject at half size,
-                    # displaced down-left - which is instantly
-                    # recognizable and worth a bug report either way.
-                    _set(cam, "orthowidth", ortho_width * 2.0)
-                    _set(cam, "tx", world_center[0] + ortho_width * 0.5)
-                    _set(cam, "ty", world_center[1] + ortho_width * 0.5)
-                    # Scope the render to OUR nodes - the dump showed
-                    # vobjects=* / alights=*, which pulls the user's
-                    # whole /obj scene (and its lights) into every
-                    # thumbnail.
-                    _set(rop, "vobjects", geo.path())
-                    _set(rop, "alights", light.path())
-                    # Shading mode from Preferences (default: wire over
-                    # shaded; plain shaded reads too flat).
-                    # Set by menu token, verified by reading it back.
-                    # Runs BEFORE the background block deliberately.
-                    shading = rop.parm("shadingmode")
+                    preview.safe_set(cam, "orthowidth", ortho_width * 2.0)  # UNCONDITIONAL quadrant compensation, flipbook branch only: the capture is the LOWER-LEFT QUADRANT of a double-size framebuffer (visible span exactly half the set orthowidth, subject displaced up-right by a quarter frame), so doubling the width and shifting the centre up-right by half the INTENDED span makes the captured quadrant the intended frame - the doubling belongs to the capture, not to any Retina backing store (measured 2026-07-28: 255 thumbnails correct WITH it on Windows at device_pixel_ratio 1.0), so never gate it on device scale, and the Karma fallback renders the camera faithfully and must stay uncompensated
+                    preview.safe_set(cam, "tx", world_center[0] + ortho_width * 0.5)  # half the INTENDED span, not the doubled one; if SideFX ever fixes the capture this overcorrects in the mirror signature - subject at half size, displaced down-left
+                    preview.safe_set(cam, "ty", world_center[1] + ortho_width * 0.5)
+                    preview.safe_set(rop, "vobjects", geo.path())  # scoped to OUR nodes: the flipbook ships vobjects=* / alights=*, which pulls the user's whole /obj scene and its lights into every thumbnail
+                    preview.safe_set(rop, "alights", light.path())
+                    shading = rop.parm("shadingmode")  # shading mode comes from Preferences (default: wire over shaded, plain shaded reads too flat), is set by menu token, and deliberately runs BEFORE the background block
                     wanted = getattr(
                         self._preferences,
                         "geometry_shading_mode",
                         "smoothwireshaded",
                     )
                     if shading is not None:
-                        # Resolve against the parm's OWN menu instead of
-                        # guessing token spellings: live testing showed
-                        # 'smoothwireshaded' rejected with the default
-                        # landing on 'smooth' - the real tokens are the
-                        # short forms ('smooth'/'smoothwire'/...). The
-                        # pref keeps its long descriptive value; this
-                        # maps it onto whatever this build actually
-                        # offers. (Historical note: the round where
-                        # wires WORKED did so via a set(9) index
-                        # fallback that a later edit replaced with the
-                        # same broken string token - that, not
-                        # lighting, is when wires died.)
                         try:
-                            menu_items = shading.parmTemplate().menuItems()
+                            menu_items = shading.parmTemplate().menuItems()  # resolve against the parm's OWN menu rather than guessing spellings: live testing had 'smoothwireshaded' rejected with the default landing on 'smooth', the real tokens being short forms ('smooth'/'smoothwire'/...), so the pref keeps its long descriptive value and this maps it onto whatever this build offers
                         except hou.Error:
                             menu_items = ()
                         resolved = wanted if wanted in menu_items else None
@@ -477,36 +259,21 @@ class ThumbNailRenderer:
                             debug.note("geometry thumbnail - no shading "
                                 "menu token matches '" + wanted + "'; this "
                                 "build offers: " + ", ".join(menu_items))
-                    # Full-strength wires: the flipbook default is
-                    # wireblend=0.5 (wires half-faded toward the geo
-                    # color). That read fine against the bright grey-sky
-                    # renders, but killing the sky for the solid
-                    # background also removed its LIGHT - the mesh
-                    # renders darker/flatter and half-blended wires
-                    # disappear into it ("wireframe not respected").
-                    _set(rop, "wireblend", 1.0)
-                    _set(rop, "wirewidth", 1.0)
-                    # Background from Preferences: the flipbook's own
-                    # backdrop is its procedural sky (the washed grey =
-                    # skyground 0.2 in the parm dump); a solid bgimage
-                    # replaces it deterministically for contrast.
-                    bg_mode = getattr(
+                    preview.safe_set(rop, "wireblend", 1.0)  # full strength: the flipbook default wireblend=0.5 half-fades wires toward the geo colour, which read fine against the bright grey-sky renders but disappears once the solid background removes the sky and its LIGHT
+                    preview.safe_set(rop, "wirewidth", 1.0)
+                    bg_mode = getattr(  # background from Preferences: the flipbook's own backdrop is its procedural sky (the washed grey = skyground 0.2 in the parm dump), and a solid bgimage replaces it deterministically for contrast
                         self._preferences, "geometry_bg", "black"
                     )
                     if bg_mode in ("black", "white"):
                         bg_file = amaze.package_file(
                             "res", "img", "geo_bg_%s.png" % bg_mode)
                         if os.path.exists(bg_file):
-                            _set(rop, "bgimage", bg_file)
-                            _set(rop, "skyusesky", 0)
+                            preview.safe_set(rop, "bgimage", bg_file)
+                            preview.safe_set(rop, "skyusesky", 0)
                         else:
                             debug.note("geometry thumbnail - bg image "
                                 "missing at " + bg_file)
-                    # Positive in-effect report - re-announces whenever
-                    # the LOOK changes (a mid-session Preferences flip
-                    # of mode/bg included), so the console always names
-                    # what the newest renders used.
-                    look_key = (wanted, bg_mode)
+                    look_key = (wanted, bg_mode)  # re-announces whenever the LOOK changes, a mid-session Preferences flip of mode/bg included, so the debug log always names what the newest renders used (debug.event only, so nothing is printed and nothing is recorded with Debug Mode off)
                     if look_key != getattr(
                         ThumbNailRenderer, "_geo_look_announced", None
                     ):
@@ -535,17 +302,13 @@ class ThumbNailRenderer:
                     debug.note("geometry thumbnail - neither flipbook "
                         "nor karma ROP available, skipped")
                     return False
-                _set(rop, "engine", "cpu")
-                _set(rop, "samplesperpixel", 9)
+                preview.safe_set(rop, "engine", "cpu")
+                preview.safe_set(rop, "samplesperpixel", 9)
             if renderer_used != getattr(
                 ThumbNailRenderer, "_geo_rop_announced", None
             ):
                 ThumbNailRenderer._geo_rop_announced = renderer_used
-                # Ground truth: renderer + the COMPLETE parm list with
-                # current values, once per session, in the debug log -
-                # closes every which-parm question without touching the
-                # console.
-                parms = {}
+                parms = {}  # ground truth once per session: the renderer plus the COMPLETE parm list with current values, into the debug log rather than the console
                 for p in rop.parms():
                     try:
                         parms[p.name()] = str(p.eval())
@@ -553,16 +316,13 @@ class ThumbNailRenderer:
                         parms[p.name()] = "?"
                 debug.event("geo", "rop in effect", rop=renderer_used,
                             rop_type=rop.type().name(), parms=parms)
-            # Square resolution override, tried across the common parm
-            # namings - whichever exists on this build wins; the parm
-            # list printed above shows which landed.
-            _set(rop, "tres", 1)
-            _set(rop, "res1", size)
-            _set(rop, "res2", size)
-            _set(rop, "res_overridex", size)
-            _set(rop, "res_overridey", size)
-            _set(rop, "aspect", 1.0)
-            _set(rop, "trange", 0)
+            preview.safe_set(rop, "tres", 1)  # square resolution override tried across the common parm namings, whichever exists on this build wins; the dump above names the parms this ROP has, but it runs BEFORE these sets so its values are the pre-override ones
+            preview.safe_set(rop, "res1", size)
+            preview.safe_set(rop, "res2", size)
+            preview.safe_set(rop, "res_overridex", size)
+            preview.safe_set(rop, "res_overridey", size)
+            preview.safe_set(rop, "aspect", 1.0)
+            preview.safe_set(rop, "trange", 0)
             cam_parm = rop.parm("camera")
             if cam_parm is None:
                 debug.note("geometry thumbnail - ROP has no camera "
@@ -576,24 +336,13 @@ class ThumbNailRenderer:
                 return False
             picture_parm.set(out_path)
             rop.render()
-            if not os.path.exists(out_path):
-                # NOT "finished": an ESC lands here too. The flipbook
-                # returns without raising when interrupted mid-render,
-                # so a big file whose render was escaped is
-                # indistinguishable from a renderer that declined -
-                # and the old sentence claimed the first was the
-                # second, which cost a chase (2026-08-08, a 233MB STL
-                # escaped 7s in, logged as wrote-no-image while the
-                # very next line said the pass was interrupted).
+            if not os.path.exists(out_path):  # an ESC lands here too: the flipbook returns without raising when interrupted mid-render, so an escaped render is indistinguishable from a renderer that declined the file
                 debug.note("geometry thumbnail - render ended without "
                     "an image for " + base + " (interrupted mid-"
                     "render, or the renderer declined the file)")
                 return False
             return True
-        finally:
-            # BOTH ends off the undo stack, like create_thumb_sop: a
-            # destroy left on the stack is itself undoable, which is
-            # how a thumbnail's scaffold comes back on Ctrl+Z.
+        finally:  # BOTH ends off the undo stack, like create_thumb_sop: a destroy left on the stack is itself undoable, which is how a thumbnail's scaffold comes back on Ctrl+Z
             with hou.undos.disabler():
                 for node in (rop, light, cam, geo):
                     if node is not None:
@@ -604,51 +353,20 @@ class ThumbNailRenderer:
 
     def render_network_thumbnail(self, context, asset_id: str,
                                  thumb_node: str = "") -> bool | None:
-        """THE Cop-or-Sop decision, made once for both of its doors -
-        the save side (render/nodes.py, which reads a child category
-        name like Sop or Cop) and Update Preview (core/cop_library.py,
-        which reads a renderer tag like SOP, COP or empty for assets
-        saved before contexts were recorded). It was typed at both
-        doors and they could drift apart - the two-resolvers shape; a
-        source scan in test_nodes_section keeps the verbs below
-        callable only from here.
-
-        Returns None when this context has no picture to render (Lop,
-        Dop... - the caller owns what that means at its door), else
-        whether the render succeeded. The interrupt shell lives here
-        too, so ESC behaves the same at both doors.
-        """
+        """The single Cop-or-Sop resolver for both doors - the save side (render/nodes.py) passes a child category name like Sop or Cop, Update Preview (core/cop_library.py) passes a renderer tag like SOP, COP or empty for assets saved before contexts were recorded - and the ESC interrupt shell lives here so both doors behave the same; returns None when the context has no picture to render (Lop, Dop... - the caller owns what that means at its door), else whether the render succeeded. A source scan in test_nodes_section keeps create_thumb_sop and create_thumb_cop callable only from here."""
         ctx = str(context or "").strip().lower()
         if ctx not in ("sop", "cop", ""):
             return None
         with hou.InterruptableOperation(
             "Rendering", "Performing Tasks", open_interrupt_dialog=True
         ):
-            if ctx == "sop":
+            if ctx == "sop":  # an empty ctx falls through to the COP renderer below - assets saved before the section knew about contexts are all Copernicus
                 return bool(self.create_thumb_sop(str(asset_id)))
-            # Empty covers assets saved before the section knew about
-            # contexts - they are all Copernicus.
             return bool(self.create_thumb_cop(str(asset_id),
                                               str(thumb_node)))
 
     def create_thumb_sop(self, asset_id: str) -> bool:
-        """Thumbnail for a saved SOP-network asset (the Nodes section).
-
-        Rendered from the ARCHIVE, never the scene: the saved items are
-        loaded into a throwaway /obj container, its terminal node is
-        cooked to a temporary .bgeo, and that file goes through the
-        SAME geometry renderer the Geometry section uses - the camera
-        fit and flipbook path whose behaviour is already settled. Going
-        via a file rather than refactoring that renderer keeps this
-        change away from code that took a long time to get right.
-
-        Rendering from the archive also means a re-render works long
-        after the original nodes are gone.
-
-        Every failure prints an Amaze-prefixed reason and returns
-        False; the caller treats that as "saved without a thumbnail",
-        never as a save failure.
-        """
+        """Thumbnail for a saved SOP-network asset (the Nodes section), rendered from the ARCHIVE and never the scene: the saved items load into a throwaway /obj container, its terminal SOP is written to a temporary scratch geometry file, and that file goes through create_thumb_geo_file - the same camera-fit-and-flipbook renderer the Geometry section uses - so a re-render still works long after the original nodes are gone. Every failure prints an Amaze-prefixed reason and returns False, which the caller must read as saved-without-a-thumbnail, never as a save failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id)
         file_name = material.payload_path(
             self._preferences, str(asset_id), self._preferences.ext
@@ -659,11 +377,7 @@ class ThumbNailRenderer:
         temp = None
         tmp_geo = ""
         try:
-            # OFF the undo stack. This container is an implementation
-            # detail of taking a picture; on the stack, the user's next
-            # Ctrl+Z resurrects a stray /obj/geo full of the asset's
-            # nodes instead of undoing what they actually did.
-            with hou.undos.disabler():
+            with hou.undos.disabler():  # off the undo stack: this container is an implementation detail of taking a picture, and on the live stack the user's next Ctrl+Z resurrects a stray /obj/geo full of the asset's nodes instead of undoing what they actually did (research.md ▸ Undo)
                 temp = hou.node("/obj").createNode("geo")
                 for child in temp.children():
                     child.destroy()      # the default file SOP
@@ -678,20 +392,11 @@ class ThumbNailRenderer:
             if not children:
                 debug.note("SOP thumbnail - no SOP nodes in the asset")
                 return False
-            # The display node if the archive kept one, else a terminal
-            # (nothing consumes its output), else simply the last.
-            target = next((c for c in children if c.isDisplayFlagSet()), None)
+            target = next((c for c in children if c.isDisplayFlagSet()), None)  # the display node if the archive kept one
             if target is None:
-                terminals = [c for c in children if not c.outputs()]
-                target = terminals[-1] if terminals else children[-1]
-            # UNIQUE, not a fixed name in a directory every Houdini
-            # process on this machine shares. Two sessions pressing
-            # Update Preview on the same asset wrote one buffer: the
-            # second cooked a half-written .bgeo and reported no
-            # cookable geometry, and the first deleted the file from
-            # under it. The `.mat`/`.interface` pair beside this
-            # already goes through unique_scratch.
-            tmp_geo = hostos.unique_scratch(
+                terminals = [c for c in children if not c.outputs()]  # else a terminal - nothing consumes its output
+                target = terminals[-1] if terminals else children[-1]  # else simply the last
+            tmp_geo = hostos.unique_scratch(  # UNIQUE, not a fixed name in a directory every Houdini process on this machine shares: two sessions pressing Update Preview on the same asset wrote one buffer, the second cooking a half-written file while the first deleted it from under it
                 os.path.join(hostos.cache_root(),
                              "sop_thumb_%s.bgeo" % asset_id),
                 suffix=".geo", create=False)
@@ -701,12 +406,8 @@ class ThumbNailRenderer:
                 debug.note("SOP thumbnail - %s produced no geometry "
                     "(%s)" % (target.name(), exc))
                 return False
-            # rendersize, NOT thumbsize: thumbsize is the grid's size
-            # SLIDER, so baking it into the file would freeze whatever
-            # the slider happened to read at save time. Every other
-            # renderer here, Geometry included, uses rendersize.
             return self.create_thumb_geo_file(
-                tmp_geo, out_path, int(self._preferences.rendersize)
+                tmp_geo, out_path, int(self._preferences.rendersize)  # rendersize, NOT thumbsize: thumbsize is the grid's size SLIDER, so baking it into the file would freeze whatever the slider happened to read at save time
             )
         except Exception as exc:                        # noqa: BLE001
             debug.note("SOP thumbnail failed (%s)" % exc)
@@ -725,55 +426,32 @@ class ThumbNailRenderer:
                     pass
 
     def create_thumb_cop(self, asset_id: str, source_name: str = "") -> bool:
-        """Thumbnail for a standalone COP-network asset (the v2 Cop
-        section): the network's own display/output image IS the
-        thumbnail - no shaderball/lights/camera. Works on a temporary
-        copy loaded from the just-saved asset file (never the scene
-        node), writes the image via a rop_image COP created inside it,
-        and always destroys the copy. Every failure path prints an
-        Amaze-prefixed reason - callers treat False as
-        "registered without a thumbnail", never as a save failure."""
+        """Thumbnail for a standalone COP-network asset (the v2 Cop section): the network's own display/output image IS the thumbnail - no shaderball, lights or camera - rendered from a temporary copy loaded from the just-saved asset file (never the scene node) through a rop_image created inside that copy, which is always destroyed. Every failure path prints an Amaze-prefixed reason; callers treat False as registered-without-a-thumbnail, never as a save failure."""
         out_path = tile_icons.thumbnail_path(self._preferences, asset_id)
         file_name = material.payload_path(
             self._preferences, str(asset_id), self._preferences.ext
         )
         temp = None
         try:
-            # OFF the undo stack, like create_thumb_sop's container
-            # and for the reason research.md ▸ Undo names
-            # thumbnails for explicitly: this is an implementation
-            # detail of taking a picture, and on the stack the
-            # user's next Ctrl+Z resurrects it instead of undoing
-            # what they actually did.
-            with hou.undos.disabler():
+            with hou.undos.disabler():  # off the undo stack, like create_thumb_sop's container and for the reason research.md ▸ Undo names thumbnails for explicitly: on the stack the user's next Ctrl+Z resurrects this copy instead of undoing what they actually did
                 temp = hou.node("/obj").createNode("copnet")
             temp.loadItemsFromFile(file_name, ignore_load_warnings=True)
 
-            # The node whose image gets written. The RECORDED name wins:
-            # save_node_cop reads the display flag off the LIVE network
-            # at save time and persists the chosen node's name, because
-            # flag state doesn't reliably survive the items-file
-            # round-trip - two live tests picked wrong nodes in opposite
-            # directions when heuristics ran on the loaded copy. The
-            # heuristic chain below is only the fallback for assets
-            # saved before the name was recorded.
             out = None
-            if source_name:
+            if source_name:  # the RECORDED name wins: save_node_cop picks the display node off the LIVE network at save time and persists its name, because flag state does not reliably survive the items-file round-trip
                 out = temp.node(source_name)
                 if out is None:
                     debug.note("COP thumbnail - recorded source node '"
                         + source_name
                         + "' not found in the loaded copy, falling back")
             if out is None:
-                out = self._pick_cop_thumb_source(temp)
+                out = self._pick_cop_thumb_source(temp)  # the heuristic chain, fallback only, for assets saved before the source name was recorded
             if out is None:
                 debug.note("COP thumbnail - network is empty, skipped")
                 return False
 
             rop = temp.createNode("rop_image")
-            # Multi-output nodes (sim blocks etc.): prefer the output
-            # actually named like a color image over a blind index 0.
-            out_index = 0
+            out_index = 0  # multi-output nodes (sim blocks etc.): prefer the output actually named like a color image over a blind index 0
             out_name = ""
             try:
                 names = list(out.outputNames())
@@ -795,20 +473,14 @@ class ThumbNailRenderer:
                 debug.note("COP thumbnail - rop_image would not accept "
                     "the output node as input, skipped")
                 return False
-            # The output-picture parm found generically (FileReference
-            # string parm) rather than by a hardcoded name - same
-            # mechanism as texture load-to-node (helpers.find_file_parm).
-            picture_parm = helpers.find_file_parm(rop)
+            picture_parm = helpers.find_file_parm(rop)  # found generically as the first FileReference string parm rather than by a hardcoded name - the same helper texture load-to-node uses
             if picture_parm is None:
                 debug.note("COP thumbnail - no file parm found on "
                     "rop_image, skipped")
                 return False
             picture_parm.set(out_path)
 
-            # Render the single current frame: rop_image is ROP-like, so
-            # prefer the real render() call, falling back to pressing
-            # its execute button if it isn't a hou.RopNode here.
-            if isinstance(rop, hou.RopNode):
+            if isinstance(rop, hou.RopNode):  # rop_image is ROP-like, so prefer the real render() call and fall back to pressing its execute button when it is not a hou.RopNode here
                 rop.render()
             else:
                 execute_parm = rop.parm("execute")
@@ -825,24 +497,14 @@ class ThumbNailRenderer:
             return True
         finally:
             if temp is not None:
-                # Off the stack at BOTH ends, like create_thumb_sop.
-                with hou.undos.disabler():
+                with hou.undos.disabler():  # off the stack at BOTH ends, like create_thumb_sop
                     temp.destroy()
 
     def create_thumb_redshift(self, node: hou.Node, asset_id: str) -> bool:
         path = tile_icons.thumbnail_path(self._preferences, asset_id)
         with self._thumb_scene("Redshift") as (sc, thumb):
             self._setup_thumb_rop(thumb, node, path)
-            # Sampling quality from the Redshift-specific pref. This ROP
-            # previously set no sampling parms at all (rendered on ROP
-            # defaults) - prefs.rendersamples' only consumer used to be
-            # the Karma path, which now has its own karma_rendersamples,
-            # so this pref is the Redshift dial now. Max only: the min
-            # stays at the ROP default so Redshift's adaptive sampling
-            # still decides how much of the budget each pixel needs.
-            # AFTER the shared call, because it is a real difference
-            # between the three and not a copy.
-            preview.safe_set(
+            preview.safe_set(  # rendersamples is the Redshift dial (Karma has its own karma_rendersamples); MAX only - the min stays at the ROP default so Redshift's adaptive sampling still decides how much of the budget each pixel needs
                 sc.rop, "UnifiedMaxSamples", self._preferences.rendersamples
             )
             thumb.parm("render").pressButton()
