@@ -14,6 +14,7 @@ APP_WIDE = ("devicePixelRatio", "primaryScreen")   # both answer for the app, ne
 EXEMPT = {
     ("helpers/ui_helpers.py", "_screen_dpr"),      # a tooltip is built before anyone knows which monitor it pops on
     ("core/debug.py", "_write_session_header"),    # records the value in the log, draws nothing
+    ("helpers/theme.py", "screen_ratio"),          # THE shared reader: primary is its documented no-widget fallback
 }
 
 IN_SCOPE = (
@@ -28,7 +29,6 @@ REMAINING = {                                     # roadmap line 30's A7, one fi
     ("panel/notes_panel.py", "_feather_icon"),
     ("panel/notes_panel.py", "_paint_accents"),
     ("dialogs/prefs_dialog.py", "_logo_image"),
-    ("helpers/theme.py", "_read_ui_scale"),
     ("helpers/ui_helpers.py", "_device_ratio"),
 }
 
