@@ -1,17 +1,4 @@
-"""
-Preferences Dialog attached to the MatLibPanel.
-
-Five tabs (Library / Render / Show/Hide / Look / About) built entirely
-in code - no .ui file. Library management (set/reload/cleanup/open
-folder) lives on the Library tab now that the toolbar's gear opens
-Preferences directly instead of a menu; About and Debug share the last
-tab, replacing the old separate About dialog.
-
-Apply semantics are unchanged from the single-column era: every control
-writes into the prefs object immediately, the dialog persists on close
-(the close button and Esc alike - there is no Cancel), and the panel
-re-propagates after close (see MatLibPanel.show_prefs).
-"""
+"""Five tabs built in code, no .ui file: every control writes into the prefs object IMMEDIATELY, the dialog persists on close, and there is no Cancel."""
 
 import os
 import shutil
@@ -32,32 +19,15 @@ from amaze.panel import sections as sections_module
 from amaze.prefs import prefs as prefs_mod
 
 
-#: Links in the About tab: a step darker than the body text, so they
-#: read as secondary rather than as Qt's default blue - the one colour
-#: in this panel that belongs to no palette here.
-LINK_COLOR = "#8e8a85"
+LINK_COLOR = "#8e8a85"   # About-tab links, a step darker than body text so they read as secondary
 
-#: Rendered once and reused - a QTextDocument resource, so the About
-#: page can reference it as <img src="amaze_logo">.
-_logo_cache = None
+_logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 
 
-def _logo_image():
-    """The Amaze wordmark, cropped to its ink.
-
-    The artboard is 1024x512 and the drawing occupies about a third of
-    it, so rendering the viewBox as-is would place a small logo inside
-    a large transparent block and push the text down the page. Crop to
-    the alpha bounds, then scale to a height that sits with the text.
-    """
+def _logo_image(widget=None):
+    """The Amaze wordmark cropped to its ink, since the artboard is mostly transparent; pass the WIDGET it will be drawn into. ▸r/screen-dpr"""
     global _logo_cache
-    # Keyed by DPR: rendered for one screen density, reused on another,
-    # is exactly the half-resolution look this function existed to
-    # avoid. A retina display draws a DPR-less image at one device
-    # pixel per TWO the panel has - "at half resolution", which
-    # is precisely what it was.
-    app = QtWidgets.QApplication.instance()
-    dpr = app.devicePixelRatio() if app else 1.0
+    dpr = theme.screen_ratio(widget)   # keyed by DPR: rendered for one density and reused on another draws at half resolution
     if isinstance(_logo_cache, dict) and _logo_cache.get("dpr") == dpr:
         return _logo_cache["image"] or None
 
@@ -83,35 +53,25 @@ def _logo_image():
                 QtGui.QBitmap.fromImage(full.createAlphaMask())
             ).boundingRect()
             if not box.isEmpty():
-                # DEVICE pixels tall, with the ratio stamped on the
-                # image so the text document draws it back at logical
-                # size - the same contract every badge pixmap follows.
-                image = full.copy(box).scaledToHeight(
+                image = full.copy(box).scaledToHeight(   # DEVICE pixels tall with the ratio stamped, so the document draws it back at logical size
                     max(1, round(theme.ui_px(34) * dpr)),
                     QtCore.Qt.TransformationMode.SmoothTransformation,
                 )
                 image.setDevicePixelRatio(dpr)
     except Exception as exc:                                # noqa: BLE001
-        # note vs event for this file: the About logo is cosmetic, so
-        # event. Clearing the log is something the user just asked for,
-        # so that failure stays visible as a note.
-        debug.event("prefs", "About logo not loaded", error=str(exc))
+        debug.event("prefs", "About logo not loaded", error=str(exc))   # event, not note: the About logo is cosmetic
     _logo_cache = {"dpr": dpr, "image": image if image is not None
                    else False}
     return image
 
 
 class PrefsDialog(QtWidgets.QDialog):
-    """
-    Preferences Dialog attached to the MatLibPanel
-    """
+    """Preferences, attached to the MatLibPanel."""
 
     def __init__(self, prefs, panel=None, file_files_model=None) -> None:
         super(PrefsDialog, self).__init__()
         self._prefs = prefs
-        # The panel provides the library operations (set/reload/cleanup/
-        # open folder) - the dialog only forwards to its existing
-        # handlers. None in tests keeps the other tabs constructable.
+        # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model
 
@@ -131,33 +91,17 @@ class PrefsDialog(QtWidgets.QDialog):
         mainlayout.addWidget(tabs)
         self.setLayout(mainlayout)
 
-        # Combos never TAKE focus: Houdini's stylesheet paints a
-        # focused combo navy with a blue ring, so whichever dropdown
-        # was last clicked (or auto-focused on a tab switch) looked
-        # permanently different from its siblings. Clicking still opens
-        # the popup; this also stops stray wheel-scrolls over the page
-        # from changing a combo's value.
-        # MUST run after setLayout: findChildren walks the dialog's own
-        # tree, and `tabs` only joins it on addWidget/setLayout above -
-        # placed earlier, this loop matched nothing and every combo
-        # kept focus, which is exactly the live report it exists to
-        # prevent.
-        for combo in self.findChildren(QtWidgets.QComboBox):
+        for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.setMinimumWidth(theme.ui_px(480))
-        # Natural content height plus 100 rendered px of headroom
-        # (2x rule: code halves end-pixel values).
-        self.resize(
+        self.resize(   # natural content height plus 100 rendered px of headroom
             theme.ui_px(480),
             self.sizeHint().height() + theme.ui_px(50),
         )
 
-    # ------------------------------------------------------------ tabs
 
     def _tab_page(self):
-        """(page widget, its form layout) - every tab is one form with
-        the shared right-aligned label column, top-aligned so short tabs
-        don't stretch their rows apart."""
+        """(page widget, its form layout): every tab is one form with the shared right-aligned label column, top-aligned so short tabs keep their row spacing."""
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
         _m = theme.ui_px(8)
@@ -168,15 +112,7 @@ class PrefsDialog(QtWidgets.QDialog):
         return page, form
 
     def _reload_library_users(self) -> None:
-        """Fill the picker and select the current user.
-
-        UNDER `blockSignals`, and that is not defensive: the FIRST
-        `addItem` on an empty combo emits `currentIndexChanged(0)` and
-        `clear()` emits `(-1)`, so a plain repopulate would run the
-        handler twice and store whoever sorts first - building the
-        dialog would silently switch the user (research.md ▸ Qt widgets,
-        measured).
-        """
+        """Fill the picker and select the current user, UNDER `blockSignals`: the first `addItem` emits `currentIndexChanged(0)`, so a plain repopulate would silently switch the user."""
         combo = self.cbb_library_user
         uid = users.current(self._prefs)
         combo.blockSignals(True)
@@ -191,17 +127,14 @@ class PrefsDialog(QtWidgets.QDialog):
         self._btn_edit_user.setEnabled(bool(uid))
 
     def _pick_library_user(self, index: int) -> None:
-        """Switch this machine to the chosen user - what the second
-        machine does instead of becoming a stranger."""
+        """Switch this machine to the chosen user, which is what a second machine does instead of becoming a stranger."""
         uid = self.cbb_library_user.itemData(index)
         if uid:
             users.adopt(self._prefs, uid)
             self._btn_edit_user.setEnabled(True)
 
     def rename_library_user(self, name: str) -> None:
-        """Relink the current user's NAME. The UID is untouched, so
-        everything already tagged stays tagged - one field write, not a
-        migration."""
+        """Relink the current user's NAME; the UID is untouched so everything already tagged stays tagged - one field write, not a migration."""
         uid = users.current(self._prefs)
         if uid and users.rename(self._prefs, uid, name):
             self._reload_library_users()
@@ -217,13 +150,7 @@ class PrefsDialog(QtWidgets.QDialog):
             self.rename_library_user(dialog.name)
 
     def set_allow_overwrite(self, checked: bool) -> None:
-        """Write the library's overwrite policy - to the LIBRARY.
-
-        Confirmed when being turned OFF is not the risk; turning it ON
-        is, because that is the direction that exposes other people's
-        work. The dialog names the consequence rather than asking
-        "are you sure", which answers nothing.
-        """
+        """Write the overwrite policy to the LIBRARY; turning it ON is the direction that exposes other people's work, so that is the direction confirmed."""
         library_dir = self._prefs.dir
         if checked and not library_policy.allow_overwrite(library_dir):
             answer = hou.ui.displayMessage(  # type: ignore
@@ -283,12 +210,7 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""), open_btn)
 
         self._add_divider(form)
-        # THIS SETTING IS NOT A PREFERENCE. It is stored in the library
-        # (policy.json, beside library.json), because a switch that
-        # protects a SHARED thing has to travel with the thing - one
-        # kept in the OS preferences directory is per-user and
-        # per-machine, so it would protect its owner and nobody else
-        # while looking like protection.
+        # NOT A PREFERENCE: it lives in the library's own policy.json, because a switch protecting a SHARED thing must travel with the thing
         self._cbx_allow_overwrite = ui_helpers.ToggleSwitch(
             "Material Versions")
         self._cbx_allow_overwrite.setChecked(
@@ -306,10 +228,7 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
-        # Shows the NAME, never the UID: the UID is what everything is
-        # tagged with, and a person should no more read it than they
-        # read an IP address.
-        self.cbb_library_user = QtWidgets.QComboBox()
+        self.cbb_library_user = QtWidgets.QComboBox()   # shows the NAME, never the UID that everything is tagged with
         self.cbb_library_user.setToolTip(ui_helpers.tooltip_text(
             "Who you are in this library. Your favorites and your "
             "folders are saved under you, so the same user on another "
@@ -356,21 +275,12 @@ class PrefsDialog(QtWidgets.QDialog):
             "browse, the library is untouched."))
         form.addRow(self._label(""), clear_cache_btn)
 
-        # The LIBRARY row is inert while the switch is on - it would be
-        # showing the test path and writing the real field, which is the
-        # one combination that could lose a library. Same treatment the
-        # accent rows get under a theme.
-        #
-        # The CACHE rows stay live: Test Mode does not move the cache
-        # (prefs.py ▸ cache_dir), so they still describe and set the one
-        # cache there is.
-        self._real_path_widgets = (self.line_workdir, browse_lib)
+        self._real_path_widgets = (self.line_workdir, browse_lib)   # inert under Test Mode: showing the test path while writing the real field could lose a library. CACHE rows stay live, Test Mode does not move the cache
         self._sync_test_mode_rows()
         return page
 
     def _sync_test_mode_rows(self) -> None:
-        """Show where the library actually points, and freeze the
-        library row while the test switch is on."""
+        """Show where the library actually points, freezing the library row while the test switch is on."""
         on = bool(self._prefs.test_mode and self._prefs.test_dir)
         for widget in getattr(self, "_real_path_widgets", ()):
             widget.setEnabled(not on)
@@ -380,8 +290,7 @@ class PrefsDialog(QtWidgets.QDialog):
         page, form = self._tab_page()
 
         self.line_rendersize = QtWidgets.QSpinBox()
-        # Range BEFORE value: a fresh QSpinBox clamps to Qt's default
-        # 0-99, so setValue(256) landed as 99 (and then persisted).
+        # range BEFORE value: a fresh QSpinBox clamps to Qt's default 0-99, so setValue(256) landed as 99 and persisted
         self.line_rendersize.setRange(64, 1024)
         self.line_rendersize.setValue(self._prefs.rendersize)
         self.line_rendersize.valueChanged.connect(self.set_rendersize)
@@ -390,10 +299,7 @@ class PrefsDialog(QtWidgets.QDialog):
             "and slower."))
         form.addRow(self._label("RenderSize"), self._field_slider_row(self.line_rendersize, 64, 1024)
         )
-        # rendersamples is the Redshift thumbnail dial (the Redshift
-        # ROP's UnifiedMaxSamples); Karma renders on the CPU engine and
-        # needs its own, far smaller scale (9 = Karma's own default).
-        self.line_rendersamples = QtWidgets.QSpinBox()
+        self.line_rendersamples = QtWidgets.QSpinBox()   # the Redshift dial (its ROP's UnifiedMaxSamples); Karma is CPU and needs its own far smaller scale
         self.line_rendersamples.setRange(1, 1024)
         self.line_rendersamples.setValue(self._prefs.rendersamples)
         self.line_rendersamples.valueChanged.connect(self.set_rendersamples)
@@ -422,9 +328,7 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label("RAM Cache (MB)"),
             self._field_slider_row(self.spin_ram_cache, 64, 4096),
         )
-        # Geometry thumbnail look. Takes effect on newly rendered
-        # thumbnails; each mode/bg combination keeps its own disk cache.
-        self._combo_geo_shading = self._data_combo((
+        self._combo_geo_shading = self._data_combo((   # geometry look, on NEWLY rendered thumbnails; each mode/bg combination keeps its own disk cache
             ("Hidden Line Ghost", "hiddenlineghost"),
             ("Smooth Wire Shaded", "smoothwireshaded"),
             ("Smooth Shaded", "smoothshaded"),
@@ -463,20 +367,8 @@ class PrefsDialog(QtWidgets.QDialog):
             self._label("Conversion Threads"),
             self._field_slider_row(self.spin_parallel, 1, 8),
         )
-        # Range BEFORE value (the rule stated at the top of this form):
-        # a fresh QSpinBox clamps to Qt's default 0-99, and this was the
-        # one row setting its value first. Connect after both, so the
-        # initial set does not write the preference back to itself.
-        self.spin_parallel.setValue(self._prefs.texture_parallel_conversions)
+        self.spin_parallel.setValue(self._prefs.texture_parallel_conversions)   # range BEFORE value, then connect, so the initial set does not write the preference back to itself
         self.spin_parallel.valueChanged.connect(self.set_texture_parallel)
-        # "Force iconvert only" stood here until 2026-08-03. It was the
-        # MANUAL WORKAROUND for a converter that returned a wrong
-        # picture and said it had succeeded - and the Conversion Engine
-        # now catches that itself, tries the next decoder and says so in
-        # the log. A control whose job an engine has taken over is a
-        # question the user should not be asked; it also never did what
-        # its label said, since Houdini's converter cannot resize and so
-        # could not serve an oversized image at all.
 
         self._add_divider(form)
         self.cbb_matx_res = QtWidgets.QComboBox()
@@ -509,8 +401,7 @@ class PrefsDialog(QtWidgets.QDialog):
         page, form = self._tab_page()
 
         self._renderer_boxes = {}
-        # The ONE table, like the section list below it. This was a
-        # literal copy of MaterialSection.RENDERER_PREFS.
+        # the ONE table, like the section list below it
         for label, attr in sections_module.renderer_prefs():
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
@@ -525,10 +416,7 @@ class PrefsDialog(QtWidgets.QDialog):
 
         self._add_divider(form)
         self._section_boxes = {}
-        # From the sections themselves. This used to be a hardcoded
-        # six-entry copy that never learned about "hip", so the HIP tab
-        # had no switch here AND was deleted by toggling any other one.
-        for key, label in sections_module.all_sections():
+        for key, label in sections_module.all_sections():   # from the sections THEMSELVES; a hardcoded copy never learned about "hip", so that tab had no switch and was deleted by toggling any other
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
                 "Which sections the panel shows. A hidden section "
@@ -611,31 +499,23 @@ class PrefsDialog(QtWidgets.QDialog):
         _m = theme.ui_px(8)
         outer.setContentsMargins(_m, _m, _m, _m)
 
-        # QTextBrowser, not QTextEdit: it renders <a href> AND opens it.
-        browser = QtWidgets.QTextBrowser()
+        browser = QtWidgets.QTextBrowser()   # not QTextEdit: it renders <a href> AND opens it
         browser.setOpenExternalLinks(True)
         browser.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        # No viewport box of its own - the text sits directly on the
-        # dialog's background. Palette-level transparency, not a
-        # stylesheet (the documented CSS-rendering-path trap).
-        browser.viewport().setAutoFillBackground(False)
+        browser.viewport().setAutoFillBackground(False)   # palette-level transparency, NOT a stylesheet, so the text sits on the dialog's background
         pal = browser.palette()
         pal.setColor(
             QtGui.QPalette.ColorRole.Base,
             QtGui.QColor(0, 0, 0, 0),
         )
         browser.setPalette(pal)
-        # Links in a slightly darker grey than the body text. Qt's
-        # default link blue is the one colour in this panel that
-        # belongs to no palette here, and it pulls the eye to the
-        # credits rather than to what the page says.
-        logo = _logo_image()
+        logo = _logo_image(self)
         if logo is not None:
             browser.document().addResource(
                 QtGui.QTextDocument.ResourceType.ImageResource,
                 QtCore.QUrl("amaze_logo"), logo,
             )
-        browser.document().setDefaultStyleSheet(
+        browser.document().setDefaultStyleSheet(   # links a step darker than body text; Qt's default blue pulls the eye to the credits rather than the page
             "a { color: %s; text-decoration: underline; }" % LINK_COLOR
         )
         browser.setHtml(
@@ -652,13 +532,7 @@ class PrefsDialog(QtWidgets.QDialog):
             "<p>Code and assets released under GPLv3 - free to use, "
             "modify, embed and redistribute under the license's "
             "terms.</p>"
-            # Credit, not obligation: every online source ships under
-            # CC0 or MIT public domain, so none of them REQUIRE
-            # attribution. They are named because a library full of
-            # imported materials should say where they came from, and
-            # each imported material additionally records its own
-            # source and licence.
-            "<p><b>Modules and libraries from other projects</b><br>"
+            "<p><b>Modules and libraries from other projects</b><br>"   # credit, not obligation: every online source is CC0 or MIT, and each import records its own licence
             "Amaze uses the egMatLib preview engine for material "
             "thumbnails &mdash; egMatLib by Elmar Glaubauf "
             "<a href='https://github.com/eglaubauf/egMatLib'>"
@@ -686,28 +560,18 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addWidget(browser, 1)
 
         form = self._make_form()
-        # ON REQUEST ONLY - nothing consults the release feed at launch,
-        # so this button is the whole trigger from the panel.
-        self._btn_update = QtWidgets.QPushButton("Check for Updates")
+        self._btn_update = QtWidgets.QPushButton("Check for Updates")   # ON REQUEST ONLY: nothing consults the release feed at launch
         self._btn_update.setToolTip(ui_helpers.tooltip_text(
             "Ask whether a newer Amaze has been released. Nothing is "
             "downloaded or changed by asking."
         ))
         self._btn_update.clicked.connect(self.check_for_updates)
         form.addRow("", self._btn_update)
-        # THE ANSWER GOES HERE, not in a popup. Preferences is
-        # deliberately non-modal because a native dialog lands UNDER a
-        # Qt modal loop (research.md), and a one-line result is not
-        # worth a window either way.
-        self._lbl_update = QtWidgets.QLabel("")
+        self._lbl_update = QtWidgets.QLabel("")   # THE ANSWER GOES HERE, not a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
         self._lbl_update.setWordWrap(True)
         self._lbl_update.setVisible(False)
         form.addRow("", self._lbl_update)
-        # THE SECOND HALF, and it appears only when there is something
-        # to install. The check and the install are two presses on
-        # purpose: the first changes nothing and is safe to press out of
-        # curiosity, and the second replaces the install, so it asks.
-        self._btn_install = QtWidgets.QPushButton("Install Update")
+        self._btn_install = QtWidgets.QPushButton("Install Update")   # shown only when there IS something to install; two presses on purpose, the first changing nothing
         self._btn_install.setToolTip(ui_helpers.tooltip_text(
             "Download the new release and put it in place. Your library "
             "and your settings are not touched, and Houdini must be "
@@ -724,10 +588,7 @@ class PrefsDialog(QtWidgets.QDialog):
             "Off by default."
         ))
         self._cbx_debug.toggled.connect(self.set_debug_mode)
-        # Toggle and its two buttons on ONE row: they are one subject
-        # (the debug log), and three stacked full-width rows read as
-        # three unrelated settings.
-        debug_row = QtWidgets.QWidget()
+        debug_row = QtWidgets.QWidget()   # toggle and its two buttons on ONE row: three stacked rows read as three unrelated settings
         row = QtWidgets.QHBoxLayout(debug_row)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.ui_px(8))
@@ -756,16 +617,7 @@ class PrefsDialog(QtWidgets.QDialog):
         form.addRow(self._label(""), debug_row)
 
         self._add_divider(form)
-        # TEST LIBRARY, under Debug Mode because both are developer
-        # switches - but NOT attached to it. Verbose logging exists to
-        # diagnose the REAL library, so swapping the library out with
-        # it would remove the one thing it is for.
-        #
-        # Library and cache both move; neither real path is written
-        # while it is on (prefs.dir and prefs.cache_dir are overlays),
-        # and locations stay isolated in both directions
-        # (core/locations.py ▸ isolated).
-        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")
+        self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")   # under Debug Mode but NOT attached to it; both paths are overlays and locations stay isolated both ways
         self._cbx_test_mode.setChecked(self._prefs.test_mode)
         self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
             "Work against a throwaway library instead of the real one. "
@@ -790,16 +642,7 @@ class PrefsDialog(QtWidgets.QDialog):
         outer.addLayout(form)
         return page
 
-    # ------------------------------------------- shared row machinery
-
-    #: ONE label-column width for every row on every tab, FIXED - not
-    #: sized to the longest label. Houdini's own parameter panes put
-    #: the label right edge ~280 rendered px into the window (2x rule:
-    #: 140 code px; minus the window/tab margins = this width) and CLIP
-    #: a label that does not fit, rather than widening the column.
-    #: Checkbox rows use an empty label of the same width so the boxes
-    #: indent to the field column too.
-    LABEL_COL = 120
+    LABEL_COL = 120   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
 
     def _label(self, text: str) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text)
@@ -811,9 +654,7 @@ class PrefsDialog(QtWidgets.QDialog):
         return lbl
 
     def _data_combo(self, items, attr) -> QtWidgets.QComboBox:
-        """Combo whose entries carry a token in itemData; selecting one
-        writes self._prefs.<attr> = token and saves. Shared by the
-        geometry-shading/background and star-mode rows."""
+        """Combo whose entries carry a token in itemData; selecting one writes `self._prefs.<attr>` and saves."""
         combo = QtWidgets.QComboBox()
         for label, token in items:
             combo.addItem(label, token)
@@ -830,8 +671,7 @@ class PrefsDialog(QtWidgets.QDialog):
         return combo
 
     def _path_row(self, line_edit, browse_btn, *extra) -> QtWidgets.QWidget:
-        """A path field, its browse button, and any button after it -
-        the cache row carries a Default beside the browse."""
+        """A path field, its browse button, and any button after it; the cache row carries a Default beside the browse."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
@@ -843,16 +683,14 @@ class PrefsDialog(QtWidgets.QDialog):
         return row
 
     def _panel_call(self, method_name: str):
-        """A click handler forwarding to a panel method, guarded for the
-        panel-less (test) construction."""
+        """A click handler forwarding to a panel method, guarded for the panel-less test construction."""
         def _call():
             if self._panel is not None:
                 getattr(self._panel, method_name)()
         return _call
 
     def _add_divider(self, form: QtWidgets.QFormLayout) -> None:
-        """A 1px group divider as a spanning row - groups carry no
-        title text, exactly like Houdini's own parameter panes."""
+        """A 1px group divider as a spanning row; groups carry no title text, like Houdini's own parameter panes."""
         box = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(box)
         v.setContentsMargins(0, theme.ui_px(8), 0, theme.ui_px(6))
@@ -868,11 +706,7 @@ class PrefsDialog(QtWidgets.QDialog):
     def _field_slider_row(
         self, spinbox: QtWidgets.QSpinBox, lo: int, hi: int
     ) -> QtWidgets.QWidget:
-        """Houdini-style numeric parameter row: narrow number field +
-        slider, kept in sync both ways (the mutual setValue connections
-        terminate because setValue with an unchanged value emits
-        nothing). The slider is the project's own ClickSlider so it
-        matches the toolbar's size slider exactly."""
+        """Houdini-style numeric row: number field + ClickSlider kept in sync both ways, terminating because setValue with an unchanged value emits nothing."""
         spinbox.setRange(lo, hi)
         spinbox.setFixedWidth(theme.ui_px(64))
         spinbox.setButtonSymbols(
@@ -880,9 +714,7 @@ class PrefsDialog(QtWidgets.QDialog):
         )
         slider = ui_helpers.ClickSlider()
         slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        # No tick dots / snap magnets here - those belong to
-        # the toolbar's thumbnail-size slider only.
-        slider.snap_marks = ()
+        slider.snap_marks = ()   # no tick dots or snap magnets here; those belong to the toolbar's size slider only
         slider.setRange(lo, hi)
         slider.setValue(spinbox.value())
         slider.set_accent_color(theme.accent(self._prefs.accent_color))
@@ -898,9 +730,7 @@ class PrefsDialog(QtWidgets.QDialog):
 
     @staticmethod
     def _make_form() -> QtWidgets.QFormLayout:
-        """A QFormLayout configured exactly like the main panel's details
-        view - right-aligned label column, fields grow to fill the rest -
-        so every group in this dialog reads as the same kind of row."""
+        """A QFormLayout configured like the panel's details view, so every group in this dialog reads as the same kind of row."""
         form = QtWidgets.QFormLayout()
         form.setLabelAlignment(
             QtCore.Qt.AlignmentFlag.AlignRight
@@ -910,28 +740,20 @@ class PrefsDialog(QtWidgets.QDialog):
         form.setFieldGrowthPolicy(
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
         )
-        # Explicit spacings: styles compute label<->field spacing PER
-        # WIDGET-TYPE PAIR, which drifted the shared field column a few
-        # px between tabs (line edits vs spinboxes vs checkboxes).
-        form.setHorizontalSpacing(theme.ui_px(8))
+        form.setHorizontalSpacing(theme.ui_px(8))   # EXPLICIT: a style computes label-to-field spacing per widget-type pair, drifting the shared column between tabs
         form.setVerticalSpacing(theme.ui_px(6))
         return form
 
-    # ------------------------------------------------- library actions
 
     def change_library_path(self) -> None:
-        """Browse for a new library directory - the panel's own
-        set_library flow (validation, seed copy, model switching)."""
+        """Browse for a new library directory, through the panel's own set_library flow: validation, seed copy, model switching."""
         if self._panel is None:
             return
         self._panel.set_library()
         self.line_workdir.setText(self._prefs.dir)
 
     def change_cache_path(self) -> None:
-        """Pick a custom thumbnail-cache location; empty selection keeps
-        the current one. The override lands in hostos.cache_root() when
-        the dialog closes (the panel pushes it), and existing caches
-        regenerate at the new location on demand."""
+        """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
         start = self._prefs.cache_dir or hostos.cache_root()
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -944,30 +766,14 @@ class PrefsDialog(QtWidgets.QDialog):
         self.line_cache.setText(self._prefs.cache_dir)
 
     def reset_cache_path(self) -> None:
-        """Put the cache back to this machine's own location.
-
-        An empty `cache_dir` IS the default - `hostos.cache_root()`
-        falls through to the per-OS convention when no override is
-        set - so this clears the preference rather than writing the
-        current default as a literal path, which would freeze it
-        against a future OS or a different machine.
-
-        Nothing is deleted. Previews at the old location stay there
-        and remake themselves at the new one on demand, which is what
-        Delete Local Cache is for if they are not wanted.
-        """
+        """Put the cache back to this machine's own location by CLEARING the preference, never by writing today's default as a literal path; nothing is deleted."""
         self._prefs.cache_dir = ""
         self._prefs.save()
         hostos.set_cache_override("")
         self.line_cache.setText(hostos.cache_root())
 
     def change_test_path(self) -> None:
-        """Pick the folder holding the test lib and cache.
-
-        Seeded on the way in, not on first use: a library directory
-        with no index does not load, so choosing an empty folder and
-        switching on would otherwise answer with a traceback.
-        """
+        """Pick the folder holding the test lib and cache, SEEDED on the way in: a directory with no index does not load, so an empty folder would answer with a traceback."""
         start = self._prefs.test_dir or self._prefs.dir
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
@@ -986,20 +792,13 @@ class PrefsDialog(QtWidgets.QDialog):
         self._apply_test_mode()
 
     def set_test_mode(self, on: bool) -> None:
-        """Switch the library and cache onto the test folder, or back.
-
-        Turning it on with no folder chosen asks for one first, rather
-        than half-applying: the overlay ignores a blank folder, so the
-        switch would otherwise read ON while nothing had moved.
-        """
+        """Switch the library and cache onto the test folder, or back; turning it on with no folder asks for one first, since the overlay ignores a blank one."""
         self._prefs.test_mode = bool(on)
         if on and not self._prefs.test_dir:
             self._prefs.save()
             self.change_test_path()
             if not self._prefs.test_dir:
-                # Still nothing chosen - the switch cannot mean
-                # anything, so put it back rather than leave it lying.
-                self._prefs.test_mode = False
+                self._prefs.test_mode = False   # still nothing chosen, so put the switch back rather than leave it lying
                 self._cbx_test_mode.setChecked(False)
                 self._prefs.save()
             return
@@ -1009,28 +808,16 @@ class PrefsDialog(QtWidgets.QDialog):
         self._apply_test_mode()
 
     def _apply_test_mode(self) -> None:
-        """Point the running session at whichever library now applies.
-
-        The cache is not touched: it does not move with the library
-        (prefs.py ▸ cache_dir), so the thumbnails already generated
-        stay valid and the switch costs nothing.
-        """
+        """Point the running session at whichever library now applies; the cache is NOT touched, so thumbnails already generated stay valid."""
         self._sync_test_mode_rows()
         debug.event("prefs", "test library switched",
                     on=self._prefs.test_mode, folder=self._prefs.test_dir,
                     library=self._prefs.dir)
         if self._panel is not None:
-            # switch_all_models, not open(): open() reloads the library
-            # already bound, so the connectors kept serving the previous
-            # one and every save was refused.
-            self._panel.switch_all_models()
+            self._panel.switch_all_models()   # NOT open(): that reloads the library already bound, so the connectors keep serving the previous one and every save is refused
 
     def clear_texture_cache(self) -> None:
-        """Delete all cached image+geometry thumbnails from disk (every
-        resolution and look - see ThumbnailCache.clear()). They
-        regenerate automatically next time each folder is browsed.
-        Scene CAPTURES are not touched: hand-framed, not regenerable,
-        and stored under config_root for exactly that reason."""
+        """Delete every cached image and geometry thumbnail; they regenerate on the next browse. Scene CAPTURES are untouched - hand-framed, not regenerable, and stored under config_root for that reason."""
         if not hou.ui.displayConfirmation(
             "This deletes all cached image and geometry thumbnails "
             "from disk. They will regenerate automatically next time "
@@ -1042,7 +829,6 @@ class PrefsDialog(QtWidgets.QDialog):
         else:
             texture_library.ThumbnailCache(self._prefs.rendersize).clear()
 
-    # -------------------------------------------------------- setters
 
     def set_texture_parallel(self, value: int) -> None:
         self._prefs.texture_parallel_conversions = value
@@ -1051,26 +837,17 @@ class PrefsDialog(QtWidgets.QDialog):
         self._prefs.matx_resolution = label
 
     def set_matx_parallel_downloads(self, value: int) -> None:
-        """Read fresh on every dispatch, so it applies to the next batch
-        without a restart - same as the texture conversion count."""
+        """Read fresh on every dispatch, so it applies to the next batch without a restart."""
         self._prefs.matx_parallel_downloads = value
 
     @debug.guarded("prefs.check_for_updates")
     def check_for_updates(self) -> None:
-        """Ask the release feed, and say the answer in the tab.
-
-        BLOCKS while it asks, which is why the wait is short and the
-        button says so: this is a one-line JSON GET the user pressed a
-        button for, and a worker thread for it would be more machinery
-        than the wait it saves.
-        """
+        """Ask the release feed and say the answer in the tab; it BLOCKS, which is why the button says so - a worker thread would be more machinery than the wait it saves."""
         from amaze.core import updater
 
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Checking...")
         self._lbl_update.setVisible(False)
-        # Repaint BEFORE the blocking call, or the button never shows
-        # the state it was just given.
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
@@ -1080,30 +857,11 @@ class PrefsDialog(QtWidgets.QDialog):
             self._btn_update.setText("Check for Updates")
         self._lbl_update.setText(result.sentence)
         self._lbl_update.setVisible(True)
-        # THE INSTALL BUTTON APPEARS ONLY WITH SOMETHING TO INSTALL, and
-        # only when the release actually named a file to fetch - a
-        # release with no archive is offered nowhere rather than offered
-        # and then failing (research.md ▸ GitHub's release feed: assets
-        # is empty on plenty of real releases).
         self._last_update = result
-        self._btn_install.setVisible(bool(result) and bool(result.url))
+        self._btn_install.setVisible(bool(result) and bool(result.url))   # only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
 
     def install_update(self) -> None:
-        """Fetch the release the last check found and put it in place.
-
-        NO CONFIRMATION AND NO POPUP. The user pressed Check, read a
-        sentence, and then pressed a button whose label IS the outcome;
-        a third interruption would let them avoid nothing
-        (practice.md ▸ *Dialogs are a bill you send the user*). The
-        answer goes in the same label the check writes to, which is
-        where they are already looking - the pattern this tab's own
-        comment sets.
-
-        The install is replaced, never the library and never the
-        settings: both live outside it. The previous install is kept
-        beside the new one, so a bad release is undone by moving it
-        back.
-        """
+        """Fetch the release the last check found, with NO confirmation and no popup - the button's label IS the outcome. Only the install is replaced, and the previous one is kept beside it."""
         from amaze.core import updater
 
         result = getattr(self, "_last_update", None)
@@ -1125,10 +883,7 @@ class PrefsDialog(QtWidgets.QDialog):
             staged = updater.fetch_and_stage(result.url, workspace)
             backup = updater.apply_update(staged, install)
         except OSError as exc:
-            # The updater raises with a finished sentence, ending in
-            # what did or did not change - shown as-is rather than
-            # wrapped in a second one.
-            self._lbl_update.setText(str(exc))
+            self._lbl_update.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one
             return
         except Exception as exc:                              # noqa: BLE001
             debug.exception("update install", exc)
@@ -1150,17 +905,14 @@ class PrefsDialog(QtWidgets.QDialog):
             % (result.version, backup))
 
     def set_debug_mode(self, checked: bool) -> None:
-        """Takes effect immediately - the engine is reconfigured here as
-        well as when the dialog closes, so a session can be captured
-        without restarting Houdini."""
+        """Takes effect IMMEDIATELY: the engine is reconfigured here as well as on close, so a session can be captured without restarting Houdini."""
         self._prefs.debug_mode = checked
         debug.configure(checked)
         if checked:
             debug.prefs_snapshot(self._prefs)
 
     def reveal_debug_log(self) -> None:
-        """Open the log FILE itself (there is no path text in the
-        dialog anymore); an empty log opens its folder instead."""
+        """Open the log FILE itself; an empty log opens its folder instead."""
         path = debug.log_path()
         folder = os.path.dirname(path)
         try:
@@ -1169,31 +921,15 @@ class PrefsDialog(QtWidgets.QDialog):
                 try:
                     hostos.open_path(path)
                 except OSError:
-                    # No application is associated with .jsonl on a
-                    # stock Windows install; show the file selected in
-                    # its folder instead.
-                    hostos.reveal_path(path)
+                    hostos.reveal_path(path)   # nothing is associated with .jsonl on a stock Windows install, so show the file selected in its folder
             else:
                 hostos.open_path(folder)
         except Exception as exc:
             debug.event("prefs", "could not open log", error=str(exc))
 
     def save_debug_log(self) -> None:
-        """Export the log to a folder the user picks.
-
-        A deliberate act, every time. There is no setting that leaves
-        this on, because the exported file carries the author's file
-        paths and asset names - a log is a manifest of what someone is
-        working on, and that is not something to mirror in the
-        background.
-        """
-        # `.dir` - the attribute Prefs actually has, and the one every
-        # other reader in this dialog uses. `library_path` has never
-        # existed, so this raised AttributeError before the folder
-        # chooser could open and PySide swallowed it: the one control
-        # whose whole job is producing a bug report did nothing, said
-        # nothing, and logged nothing.
-        start = self._prefs.dir or os.path.expanduser("~")
+        """Export the log to a folder the user picks - a DELIBERATE act every time, never a setting, because the file carries their paths and asset names."""
+        start = self._prefs.dir or os.path.expanduser("~")   # `.dir` is the attribute Prefs actually has; a wrong name raises inside a Qt slot, which PySide swallows
         folder = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Save Amaze log to folder", start)
         if not folder:
@@ -1201,9 +937,7 @@ class PrefsDialog(QtWidgets.QDialog):
         try:
             target = debug.export_log(folder)
         except debug.ExportRefused as exc:
-            # SAY WHY. "Nothing happened" is the one outcome that
-            # teaches the user nothing.
-            QtWidgets.QMessageBox.information(
+            QtWidgets.QMessageBox.information(   # SAY WHY: nothing-happened is the one outcome that teaches nothing
                 self, "Amaze - log not saved", str(exc))
             debug.event("prefs", "log export refused", reason=str(exc))
             return
@@ -1230,10 +964,7 @@ class PrefsDialog(QtWidgets.QDialog):
                             error=str(exc))
 
     def clear_debug_log(self) -> None:
-        # Through the ENGINE, not os.remove behind its back: it owns
-        # the session header and the flood counters, and a cleared log
-        # that keeps either is not the clean capture the user asked
-        # for. See debug.clear_log().
+        # through the ENGINE, not os.remove behind its back: it owns the session header and the flood counters
         ok, reason = debug.clear_log()
         if not ok:
             debug.note(
@@ -1241,8 +972,7 @@ class PrefsDialog(QtWidgets.QDialog):
                 "there, and Debug Mode keeps writing to it." % reason)
 
     def set_rendersize(self):
-        """RenderSize is also the resolution texture/geometry thumbnails
-        generate at (their caches are keyed by it)."""
+        """RenderSize is ALSO the resolution texture and geometry thumbnails generate at; their caches are keyed by it."""
         self._prefs.rendersize = self.line_rendersize.value()
 
     def set_rendersamples(self):
@@ -1252,43 +982,17 @@ class PrefsDialog(QtWidgets.QDialog):
         self._prefs.scroll_speed = value / 100.0
 
     def set_ram_cache_mb(self, value: int) -> None:
-        """NO save() here - closeEvent persists it, like every other
-        numeric row in this dialog.
-
-        This was the one setter that saved per tick, and the row is a
-        slider: ClickSlider fires valueChanged on every mouseMoveEvent,
-        so one drag from 64 to 4096 rewrote and FSYNCED settings.json
-        dozens to hundreds of times, each write also re-reading and
-        re-parsing the file for the history snapshot and re-stat'ing
-        the config directory. set_rendersize, set_rendersamples,
-        set_karma_rendersamples, set_texture_parallel and
-        set_scroll_speed all already leave persistence to closeEvent -
-        and the toolbar's own size slider debounces by 500ms for
-        exactly this reason (panel.py:1487).
-
-        The live engine budget still updates immediately; it is only
-        the WRITE that waits.
-        """
+        """NO save() here, closeEvent persists it: a slider fires valueChanged per mouseMoveEvent, so one drag fsynced settings.json hundreds of times. The live budget still updates immediately."""
         self._prefs.ram_cache_mb = value
 
     def _recompose_tile_icons(self, _index=None) -> None:
-        """Line weight changed - redraw every tile icon that exists.
-
-        The composed PNGs are baked, so without this the setting would
-        only show up on icons chosen AFTER the change, which reads as
-        the preference not working."""
-        # self._panel, NOT parent(): this dialog is reparented to
-        # Houdini's main window when it opens, so parent() is the
-        # application window and every model lookup below silently
-        # returns None - the preference would appear to do nothing.
-        panel = self._panel
+        """Line weight changed, so redraw every tile icon that exists; the composed PNGs are baked, and without this the setting only shows on icons chosen afterwards."""
+        panel = self._panel   # NOT parent(): the dialog is reparented to Houdini's main window, so parent() is the application window and every lookup returns None
         for attr in ("material_model", "cop_model", "code_model"):
             model = getattr(panel, attr, None)
             if model is not None and hasattr(model, "rerender_tile_icons"):
                 model.rerender_tile_icons()
-        # The File section composes in memory, so it only needs a
-        # repaint - and a cleared cache, or it redraws the old weight.
-        tile_icons.forget_composed()
+        tile_icons.forget_composed()   # the File section composes in memory, so it needs a repaint AND a cleared cache or it redraws the old weight
         for attr in ("file_files_model",):
             model = getattr(panel, attr, None)
             if model is None:
@@ -1309,16 +1013,7 @@ class PrefsDialog(QtWidgets.QDialog):
         self._prefs.save()
 
     def _on_section_toggled(self, _checked: bool) -> None:
-        """Rebuild enabled_sections from the checked boxes, in the fixed
-        ALL_SECTIONS order. Never leave zero enabled - if the user
-        unticks the last one, Materials is forced back on.
-
-        Keys this build does NOT register are carried over untouched:
-        an older build on the other machine still lists its tabs from
-        this same shared setting ('texture'/'geometry'/'hip'), and a
-        rebuild that drops what it does not recognise deletes that
-        machine's tabs by side effect - the exact shape of the
-        recorded toggle-deleted-HIP bug, recreated across builds."""
+        """Rebuild enabled_sections in ALL_SECTIONS order, never leaving zero enabled; keys THIS build does not register are carried over untouched, or another build's tabs are deleted by side effect."""
         order = [k for k, _lbl in sections_module.all_sections()]
         enabled = [k for k in order
                    if k in self._section_boxes
@@ -1345,21 +1040,13 @@ class PrefsDialog(QtWidgets.QDialog):
     def set_render_on_import(self):
         self._prefs.render_on_import = int(self.cbx_render_on_import.isChecked())
 
-    # --------------------------------------------------- close = save
 
     def closeEvent(self, arg__1: QCloseEvent) -> None:
-        """Save Preferences on ANY close path, then finish() the
-        dialog: done() emits finished(int), the non-modal owner's
-        apply hook - a plain close only HIDES a QDialog and skips
-        that signal entirely."""
+        """Save on ANY close path, then finish() the dialog: a plain close only HIDES a QDialog and skips `finished(int)`, which is the non-modal owner's apply hook."""
         self._prefs.save()
         arg__1.accept()
         self.done(0)
 
     def reject(self) -> None:
-        """Esc must behave exactly like the window's close button: this
-        dialog applies edits live and persists on close (there is no
-        Cancel). QDialog's default reject() hides the window WITHOUT a
-        close event, so Esc used to skip the save and the panel's
-        prefs.load() then reverted every change made in the session."""
+        """Esc behaves exactly like the close button: QDialog's reject() hides the window WITHOUT a close event, so Esc would skip the save and the panel's load() would revert the session."""
         self.close()
