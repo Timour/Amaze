@@ -734,11 +734,14 @@ then held at 1 by every subsequent save — it cannot climb out, and it
 cannot adopt a peer's stamp either. So every creation door stamps at
 creation, deriving the number from `SCHEMA_VERSION` and
 `branding.LIBRARY_FORMAT` rather than writing a literal. The doors are
-`DatabaseConnector`'s absent-sibling seed (which stamps by going through
-`save()`), `prefs.seed_test_folder`, and `panel.load()`'s copy of
-`res/def/library.json` — that last one is the shipped starter and is
-**still unstamped**, so a library created by pointing Amaze at an empty
-folder is born at 1 until it is fixed.
+`DatabaseConnector`'s absent-sibling seed, which stamps by going through
+`save()`, and `prefs.write_fresh_index`, which the other two both call —
+`prefs.seed_test_folder` for the Test Library, and
+`prefs.seed_starter_index` for `panel.load()`'s seed from
+`res/def/library.json`. **The shipped starter itself carries no
+`version` key on purpose**: a literal there would be a second source of
+truth that goes stale at the next bump, so the stamp belongs to the door
+and one writer applies it. `tests/test_fresh_library.py` pins both.
 
 A PEER's document is migrated before it is merged (`_migrate_peer` —
 shape only). **Absence is not a delete**: `set()` unions by id, so a
