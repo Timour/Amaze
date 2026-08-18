@@ -335,6 +335,30 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual([{"id": "mat_001"}], kept["assets"],
                          "re-seeding erased the test library's content")
 
+    def test_a_test_library_loads_where_no_real_one_was_ever_configured(self):
+        """load() has to ask `dir`, not the raw field behind it: on a machine that has never had a real library the two disagree completely."""
+        folder = tempfile.mkdtemp(prefix="amaze_testlib_load_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        settings = tempfile.mkdtemp(prefix="amaze_testlib_settings_")
+        self.addCleanup(shutil.rmtree, settings, True)
+        prefs_mod.seed_test_folder(folder)
+
+        p = prefs_mod.Prefs()
+        p.path = settings
+        p.test_dir = folder
+        p.test_mode = True
+        p.save()
+
+        fresh = prefs_mod.Prefs()
+        fresh.path = settings
+        self.assertTrue(
+            fresh.load(),
+            "a seeded test library did not load on a machine with no "
+            "real library, so the panel opens libraryless over it")
+        self.assertEqual(prefs_mod.test_library_dir(folder), fresh.dir,
+                         "the switch is on but the overlay is not what "
+                         "the library reads")
+
 
 class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
     """A key this build no longer reads survives a rewrite: dropping a preference is a code change, never a data change."""

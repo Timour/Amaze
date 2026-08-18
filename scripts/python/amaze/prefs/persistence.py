@@ -452,6 +452,7 @@ class _Persistence:
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
             self._directory = ""
         self._adopt_shared()  # a pure READ: no migration runs here, so no caller of load() writes the library - the product surfaces run those instead
-        if self._directory and os.path.exists(self._directory):
+        library = self.dir  # the overlay-aware property, never the raw field: with Test Mode on they name different folders, and on a fresh machine the raw one is empty
+        if library and os.path.exists(library):
             return True
         return False
