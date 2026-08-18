@@ -5,7 +5,6 @@ import inspect
 import os
 import unittest
 
-from amaze.helpers import ui_helpers
 
 _SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -41,12 +40,9 @@ def _scope_of(tree, line):
     return best[0]
 
 
-def _app_wide_reads(relative):
-    """[(scope, line, attr)] for every app-wide ratio read in one file, EXEMPT removed."""
-    path = os.path.join(_SRC, relative)
-    with open(path, encoding="utf-8") as handle:
-        source = handle.read()
-    tree = ast.parse(source, filename=path)
+def _reads_in(source, relative):
+    """[(scope, line, attr)] for every app-wide ratio read in `source`, EXEMPT removed; split out so the scanner can be pointed at a SYNTHETIC read and proved able to see one."""
+    tree = ast.parse(source, filename=relative)
     found = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Attribute) and node.attr in APP_WIDE:
@@ -55,6 +51,13 @@ def _app_wide_reads(relative):
                 continue
             found.append((scope, node.lineno, node.attr))
     return sorted(found)
+
+
+def _app_wide_reads(relative):
+    """[(scope, line, attr)] for every app-wide ratio read in one file, EXEMPT removed."""
+    path = os.path.join(_SRC, relative)
+    with open(path, encoding="utf-8") as handle:
+        return _reads_in(handle.read(), relative)
 
 
 class TheRatioFollowsTheWindow(unittest.TestCase):
@@ -79,12 +82,24 @@ class TheRatioFollowsTheWindow(unittest.TestCase):
             "ratchet cannot slip back: %s" % fixed)
 
     def test_the_scan_can_find_a_read(self):
-        """A guard that matches nothing passes forever."""
-        self.assertTrue(
-            _app_wide_reads("core/debug.py") or
-            ui_helpers.__file__,
-            "the scan found no app-wide read anywhere, so it cannot fail "
-            "when one is added - the guard is broken, not the tree clean")
+        """A guard that matches nothing passes forever - so feed the scanner a read it MUST see, rather than asking the clean tree for one it no longer has."""
+        planted = ("class Widget:\n"
+                   "    def paintEvent(self):\n"
+                   "        r = QtGui.QGuiApplication.primaryScreen()\n")
+        self.assertEqual(
+            [("paintEvent", 3, "primaryScreen")],
+            _reads_in(planted, "panel/planted.py"),
+            "the scanner cannot see an app-wide read that is right in "
+            "front of it, so its silence about the tree means nothing")
+
+    def test_the_scan_honours_EXEMPT(self):
+        """The other half: a read the scanner CAN see must still be droppable by name, or EXEMPT would be silently doing nothing."""
+        planted = ("def screen_ratio():\n"
+                   "    return QtGui.QGuiApplication.primaryScreen()\n")
+        self.assertEqual(
+            [], _reads_in(planted, "helpers/theme.py"),
+            "EXEMPT did not drop a read it names, so the exemptions are "
+            "not what is keeping this guard green")
 
 
 class TheRatioIsReadAtPaintTime(unittest.TestCase):
