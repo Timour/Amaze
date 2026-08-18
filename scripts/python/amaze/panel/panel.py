@@ -2837,12 +2837,8 @@ class MatLibPanel(QtWidgets.QWidget):
         self, matcher, include_viewports: bool = False    # matcher = a type-name substring like "materiallibrary"/"copnet", or a callable(node) -> bool such as geometry's SOP-container test
     ) -> hou.Node | None:
         """Resolve where a drag was RELEASED, for drops Houdini's native handling ignores. Returns the node to import against - the node under the cursor when it matches, else the editor's own pwd (which is itself the target when the user is working inside one) - and None when the release wasn't over anything import-worthy."""
-        pane_tab = dragengine.pane_tab_under_cursor()
+        pane_tab, pane_type = self._pane_and_kind_under_cursor()
         if pane_tab is None:
-            return None
-        try:
-            pane_type = pane_tab.type()
-        except AttributeError:
             return None
         if (
             include_viewports    # geometry drops: a release over a Scene Viewer resolves to the network the VIEWPORT is showing (its pwd - /obj for the object view, /stage for the Solaris view, a geo node's innards at SOP level), so the same context rules apply as everywhere else. Materials deliberately keep this off: their viewport releases are the Drag Engine's own (viewport_release_target picks the actual prim/node under the cursor), so resolving a network here would double-handle them
@@ -3130,14 +3126,20 @@ class MatLibPanel(QtWidgets.QWidget):
         except (AttributeError, TypeError, hou.OperationFailed):
             return ()
 
-    def _node_under_cursor(self) -> hou.Node | None:
-        """The scene node the cursor is over: in a network editor the node under the mouse (native cursor chain, see _network_items_at_cursor), over a Parameter Editor the node whose parameters that pane is showing."""
+    def _pane_and_kind_under_cursor(self):
+        """The pane tab under the cursor and its type, or (None, None) - compare the type at the CALL SITE, never here."""
         pane_tab = dragengine.pane_tab_under_cursor()
         if pane_tab is None:
-            return None
+            return None, None
         try:
-            pane_type = pane_tab.type()
+            return pane_tab, pane_tab.type()
         except AttributeError:
+            return None, None
+
+    def _node_under_cursor(self) -> hou.Node | None:
+        """The scene node the cursor is over: in a network editor the node under the mouse (native cursor chain, see _network_items_at_cursor), over a Parameter Editor the node whose parameters that pane is showing."""
+        pane_tab, pane_type = self._pane_and_kind_under_cursor()
+        if pane_tab is None:
             return None
         if pane_type == hou.paneTabType.Parm:    # dropping a gradient on the parm pane you are already looking at beats hunting the node, especially for ramps
             try:

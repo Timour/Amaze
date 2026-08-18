@@ -385,9 +385,9 @@ class GridGestureMixin:
             dragengine.ghost_clear()
             return
         try:
-            pane_tab = dragengine.pane_tab_under_cursor()
+            pane_tab, pane_type = panel._pane_and_kind_under_cursor()
             if (pane_tab is None
-                    or pane_tab.type() != hou.paneTabType.NetworkEditor):
+                    or pane_type != hou.paneTabType.NetworkEditor):
                 dragengine.ghost_clear()
                 return
             if rule.on_node and panel._node_under_cursor() is not None:
