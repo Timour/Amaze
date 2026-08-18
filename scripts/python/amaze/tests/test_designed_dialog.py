@@ -2,6 +2,7 @@
 
 import os
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -14,9 +15,20 @@ import amaze  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 
 
-def _px(n):
+def _px(dialog, n):
     """A design pixel, converted the way the dialog converts it - NEVER through `theme.ui_px`, which would make the test agree with the code at any UI scale. ▸p/designed-dialog"""
-    return ui_helpers.DesignedDialog.d(n)
+    return dialog.d(n)
+
+
+class _ScreenAt(QtWidgets.QWidget):
+    """A parent that STATES the ratio of the screen it sits on; offscreen Qt invents ONE screen at 1.0, so a real widget cannot pose the question. ▸r/screen-dpr"""
+
+    def __init__(self, ratio) -> None:
+        super().__init__()
+        self._ratio = ratio
+
+    def devicePixelRatioF(self):   # Qt declares it non-virtual, so a Python override answers PYTHON callers only - which is every reader on the drawing path; probed on both majors, ▸r/screen-dpr
+        return self._ratio
 
 
 class TheIconIsNotClipped(unittest.TestCase):
@@ -99,30 +111,30 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             (self._at(dialog, b) for b in buttons), key=lambda g: g[0])
         for name, geom in (("cancel", left), ("Apply", right)):
             self.assertEqual(
-                (_px(202), _px(42)), (geom[2], geom[3]),
+                (_px(dialog, 202), _px(dialog, 42)), (geom[2], geom[3]),
                 "%s is not the design's size" % name)
-        self.assertEqual(_px(35), left[0], "the pair is not at the "
-                                           "column's left edge")
+        self.assertEqual(_px(dialog, 35), left[0], "the pair is not at "
+                                                   "the column's left edge")
         _fx, fy, _fw, fh = self._at(dialog, _f)    # 35 BELOW THE FIELD, read off the page as field bottom 334 against buttons top 369; a stretch instead floats them to the bottom, which is a different gap at every dialog height
         self.assertAlmostEqual(
-            _px(35), left[1] - (fy + fh), delta=2,
+            _px(dialog, 35), left[1] - (fy + fh), delta=2,
             msg="the buttons are not 35 below the name field")
         self.assertEqual(
-            _px(38), right[0] - (left[0] + left[2]),
+            _px(dialog, 38), right[0] - (left[0] + left[2]),
             "the gap between the buttons is not the design's 38")
         self.assertAlmostEqual(
-            _px(477), right[0] + right[2], delta=2,
+            _px(dialog, 477), right[0] + right[2], delta=2,
             msg="the pair does not end at the column's right edge")
 
     def test_a_field_fills_the_column_at_the_designs_height(self):
         dialog, combo, field = self._dialog()
         for name, widget in (("dropdown", combo), ("name field", field)):
             x, _y, w, h = self._at(dialog, widget)
-            self.assertEqual(_px(35), x, "%s is not inset 35" % name)
+            self.assertEqual(_px(dialog, 35), x, "%s is not inset 35" % name)
             self.assertEqual(    # the column BETWEEN the insets, not d(442): at ratio 2 the inset 35 halves to 18 and the column is 220 where d(442) is 221, a rounding rather than a drift, so the property asserted is that the field spans exactly what the two insets leave
-                dialog.width() - 2 * _px(35), w,
+                dialog.width() - 2 * _px(dialog, 35), w,
                 "%s does not span the column between the insets" % name)
-            self.assertEqual(_px(60), h, "%s is not 60 tall" % name)
+            self.assertEqual(_px(dialog, 60), h, "%s is not 60 tall" % name)
 
     def test_the_controls_are_NOT_restyled(self):
         """Standard Houdini controls by design: the shell gives them the design's geometry and nothing else. ▸p/designed-dialog"""
@@ -134,7 +146,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
     def test_the_frame_is_the_designs_size(self):
         """512 x 435 LITERALLY, at any Houdini UI scale."""
         dialog, _c, _f = self._dialog()
-        self.assertEqual((_px(512), _px(435)),
+        self.assertEqual((_px(dialog, 512), _px(dialog, 435)),
                          (dialog.width(), dialog.height()))
         screen = QtGui.QGuiApplication.primaryScreen()    # AND the PHYSICAL size holds: whatever the ratio, the window occupies 512 x 435 of the screen's own pixels
         ratio = screen.devicePixelRatio() if screen else 1.0
@@ -162,7 +174,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             glyphs,
             "the header icon is not a live vector - it must not be "
             "rasterised to a pixmap")
-        self.assertEqual((_px(60), _px(60)),
+        self.assertEqual((_px(dialog, 60), _px(dialog, 60)),
                          (glyphs[0].width(), glyphs[0].height()))
 
     def test_the_title_is_bigger_and_bolder_than_its_neighbours(self):
@@ -182,16 +194,33 @@ class ADesignPixelConvertsOnEveryPlatformTest(unittest.TestCase):
 
     DESIGN = ui_helpers.DesignedDialog.FRAME[0]          # 512
 
+    def _on(self, ratio):
+        """A dialog whose PARENT states the ratio - which is the source under test, so nothing here patches the reader itself."""
+        parent = _ScreenAt(ratio)
+        dialog = ui_helpers.DesignedDialog(parent)
+        self.addCleanup(parent.deleteLater)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
     def _d(self, value, ratio, scale):
-        real_ratio = ui_helpers.DesignedDialog._device_ratio
         real_scale = theme.UI_SCALE
-        ui_helpers.DesignedDialog._device_ratio = staticmethod(lambda: ratio)
         theme.UI_SCALE = scale
         try:
-            return ui_helpers.DesignedDialog.d(value)
+            return self._on(ratio).d(value)
         finally:
-            ui_helpers.DesignedDialog._device_ratio = real_ratio
             theme.UI_SCALE = real_scale
+
+    def test_the_ratio_is_the_parents_screen_not_the_primarys(self):
+        """THE SOURCE, which no suite figure can otherwise reach: offscreen Qt's one invented screen answers 1.0, so a parent stating 2.0 discriminates - reading the parent halves 512, reading the primary leaves it whole. ▸r/screen-dpr"""
+        self.assertEqual(256, self._d(self.DESIGN, ratio=2.0, scale=1.0))
+
+    def test_a_parent_at_1_is_not_overruled_by_a_primary_at_2(self):
+        """The INVERSION, and the half that catches a silent fallback - an unrealised widget answers with the primary ratio, so a read that merely LOOKS widget-aware passes the case above and fails this one. ▸r/screen-dpr"""
+        screen = mock.Mock()
+        screen.devicePixelRatio.return_value = 2.0
+        with mock.patch.object(QtGui.QGuiApplication, "primaryScreen",
+                               staticmethod(lambda: screen)):
+            self.assertEqual(512, self._d(self.DESIGN, ratio=1.0, scale=1.0))
 
     def test_retina_mac_halves_it(self):
         """The Retina case: the scale factor merely restates the dpr, so theme resolves it to 1.0."""

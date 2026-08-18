@@ -25,9 +25,7 @@ IN_SCOPE = (
     "helpers/ui_helpers.py",
 )
 
-REMAINING = {                                     # roadmap line 30's A7, one file per commit; this may only SHRINK
-    ("helpers/ui_helpers.py", "_device_ratio"),
-}
+REMAINING = set()                                 # roadmap line 30's A7, one file per commit; this may only SHRINK - and it is EMPTY since `_device_ratio` was deleted rather than made widget-aware
 
 
 def _scope_of(tree, line):
