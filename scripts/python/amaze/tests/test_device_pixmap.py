@@ -90,7 +90,8 @@ class TheFourSitesDrawThroughIt(unittest.TestCase):
                     if ("render_svg_pixmap(" in body
                             and "setDevicePixelRatio" in body):
                         offenders.append("%s:%s" % (
-                            os.path.relpath(path, root), scope.name))
+                            test_support.posix_relpath(path, root),
+                            scope.name))
         self.assertEqual(
             sorted(PENDING), sorted(offenders),
             "the hand-rolled set moved: a NEW site rasterises and stamps "
