@@ -358,6 +358,10 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual(prefs_mod.test_library_dir(folder), fresh.dir,
                          "the switch is on but the overlay is not what "
                          "the library reads")
+        self.assertEqual(
+            "", fresh.real_dir,
+            "the fixture stopped proving the bug - it now configures a "
+            "REAL library, and that case passed before the fix too")
 
 
 class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
