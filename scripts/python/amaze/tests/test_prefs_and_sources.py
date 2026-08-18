@@ -1,25 +1,4 @@
-"""Prefs, online sources, and the long tail.
-
-BATCH 4, the last of the 65. Its shape is a THIRD thing again: most of
-these are a rule the codebase already wrote down, applied everywhere
-except one place.
-
-  * `hostos.py`'s docstring forbids hardcoding an OS path convention
-    anywhere else - and prefs.py carried three OSes' home layouts in a
-    regex;
-  * `_category_map` documents caching-only-on-success by name - and the
-    resolution cache eighty lines below it cached failures;
-  * `contained_join` is the containment helper, pinned both ways - and
-    the download paths hand-rolled it twice and skipped it once;
-  * load()'s own comment says values go through their validating
-    SETTERS - and six keys did not;
-  * research.md #278 says staging containers go in a disabler - and the
-    online library import did not.
-
-Several read the SOURCE, and by AST rather than by text: three checks
-in this round passed on a DOCSTRING that mentioned the very thing the
-code had stopped doing.
-"""
+"""Prefs, online sources, and the long tail - several of these read the SOURCE, and by AST rather than by text."""
 
 import ast
 import os
@@ -53,12 +32,7 @@ def source_of(relative):
 
 
 def calls(relative, func_name, callee) -> bool:
-    """Does `func_name` CALL `callee`? By AST, never by text.
-
-    Three checks in this batch passed on prose: a docstring reading "NO
-    save() here", a comment naming the helper it had stopped calling,
-    and a module docstring still listing a function in the wrong tier.
-    """
+    """Does `func_name` CALL `callee`? By AST, never by text - prose naming a helper is not a call to it."""
     tree = ast.parse(source_of(relative))
     for node in ast.walk(tree):
         if not (isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
@@ -74,10 +48,7 @@ def calls(relative, func_name, callee) -> bool:
 
 
 class TheRendererTableIsWrittenOnce(unittest.TestCase):
-    """Three copies: the Filter menu's, the Preferences switches', and
-    enable_renderer_on_add's if/elif chain. The SECTION list twelve
-    lines from the second was already converted to all_sections() after
-    a hardcoded copy left the HIP tab with no switch."""
+    """ONE renderer table, read by the Filter menu, the Preferences switches and `enable_renderer_on_add` alike."""
 
     def test_sections_exports_it(self):
         table = sections.renderer_prefs()
@@ -126,10 +97,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
 class RendererDefaultsAgree(unittest.TestCase):
 
     def test_an_empty_directory_loads_the_documented_defaults(self):
-        """load() returns at its FileNotFoundError branch before
-        reaching the .get() defaults, so __init__'s values are what a
-        new machine keeps - and refresh_data writes them out on the
-        first save. They were all False against True/False/True/True."""
+        """load() returns before its `.get()` defaults on a machine with no settings file, so __init__'s values are what that machine keeps."""
         empty = tempfile.mkdtemp(prefix="amaze_prefs_defaults_")
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
@@ -144,9 +112,7 @@ class RendererDefaultsAgree(unittest.TestCase):
                 "permanently" % attr)
 
     def test_the_filter_menu_offers_renderers_on_a_new_machine(self):
-        """The user-visible half: all-off meant the Materials Filter
-        menu offered only 'All' over a library full of Karma and
-        Redshift."""
+        """The user-visible half: all-off left the Materials Filter menu offering `All` over a library full of renderers."""
         empty = tempfile.mkdtemp(prefix="amaze_prefs_menu_")
         self.addCleanup(shutil.rmtree, empty, True)
         p = prefs_mod.Prefs()
@@ -160,10 +126,7 @@ class RendererDefaultsAgree(unittest.TestCase):
 
 class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
-    #: Every key that has a validating setter, with a value that would
-    #: break it. `null` is the shape a hand edit or a future build's
-    #: type change produces, and it is what killed the gear button.
-    POISON = {
+    POISON = {  # every key with a validating setter, against the value that breaks it; `null` is the shape a hand edit or a future build's type change produces
         "scroll_speed": None,
         "ram_cache_mb": None,
         "texture_parallel_conversions": "eight",
@@ -184,11 +147,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         p.path = folder
         p.load()          # must not raise: panel._build re-raises
 
-        # And every value has to be USABLE, because Preferences does
-        # arithmetic on them inside a slot where PySide swallows the
-        # error - which is how the gear button silently stopped
-        # opening Preferences at all.
-        self.assertIsInstance(p.scroll_speed, float)
+        self.assertIsInstance(p.scroll_speed, float)  # and USABLE: Preferences does arithmetic on these inside a slot where PySide swallows the error
         round(p.scroll_speed * 100)
         self.assertIsInstance(p.ram_cache_mb, int)
         self.assertIsInstance(p.texture_parallel_conversions, int)
@@ -197,15 +156,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         self.assertTrue(p.accent_color)
 
     def test_load_assigns_through_the_setters(self):
-        """Source pin: the values are clamped in the setters, and a
-        raw assignment bypasses every one of them.
-
-        Reads `prefs/persistence.py`, where `load()` has lived since
-        2026-08-09. A source pin follows its SUBJECT, never a
-        filename: left on `prefs.py` it would assert about a file that
-        no longer holds the method, and would then pass or fail for
-        reasons unconnected to the invariant it is named for.
-        """
+        """Source pin on the file holding load(): the values are clamped in the setters, and a raw assignment bypasses every one."""
         body = ast.dump(ast.parse(source_of("prefs/persistence.py")))
         self.assertIn(
             "_through_setter", body,
@@ -213,10 +164,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
 
 
 class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
-    """The users dimension of settings.json (ROADMAP line 22): per-UID
-    blocks, carried empty until the flip commits move keys into them.
-    Pinned now because the merge shape must exist BEFORE the first key
-    moves - two panes of one session both write this file."""
+    """The users dimension of settings.json: per-UID blocks, and the merge two panes of one session put them through."""
 
     def _prefs_at(self, folder):
         p = prefs_mod.Prefs()
@@ -254,9 +202,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
                          raw["bb22"])
 
     def test_junk_shapes_load_without_raising_and_die_on_save(self):
-        """load() may not raise, and refresh_data() rewrites the key
-        from the attribute - so junk cannot ride the unknown-key
-        courtesy back to disk forever."""
+        """load() may not raise, and refresh_data() rewrites the key from the attribute, so junk cannot ride the unknown-key courtesy forever."""
         for junk in (5, "x", [1], {"a-uid": "not-a-dict"},
                      {"a-uid": None}):
             with self.subTest(users=junk):
@@ -299,14 +245,7 @@ class ThePerUserBlocksRoundTripAndMerge(unittest.TestCase):
 
 
 class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
-    """One switch, one folder: on, and the library reads
-    `<folder>/lib/` and the cache `<folder>/cache/`.
-
-    THE CONTRACT THAT MATTERS IS THE WAY BACK. The real library path
-    and the real cache path must be untouched the whole time the
-    switch is on, because they are the only route to the real library
-    - a switch that wrote over them would be a one-way door.
-    """
+    """One switch, one folder - and the contract that matters is the way BACK: the real library and cache paths stay untouched while it is on."""
 
     REAL_LIB = "/Users/someone/Cloud/3D/Library/"
     REAL_CACHE = "/Users/someone/Library/Caches/Amaze"
@@ -330,12 +269,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
 
     def test_the_cache_does_not_move_with_the_library(self):
-        """The File section's thumbnails are keyed by file path on
-        disk, so they say nothing about which library is open. Moving
-        them threw away 2496 texture and 503 geometry thumbnails on
-        every switch and regenerated them, and protected nothing - a
-        test session only adds images that are correct and reusable.
-        """
+        """The File section's thumbnails are keyed by file path on disk, so they say nothing about which library is open."""
         p = self._prefs()
         p.test_dir = "/tmp/amaze_probe"
         p.test_mode = True
@@ -351,17 +285,14 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         self.assertEqual(self.REAL_CACHE, p.cache_dir)
 
     def test_on_with_no_folder_chosen_changes_nothing(self):
-        """Half-configured is the state between ticking the box and
-        picking a folder. Answering `/lib/` there would point the
-        library at the filesystem root."""
+        """Half-configured, between ticking the box and picking a folder: answering `/lib/` would point the library at the filesystem root."""
         p = self._prefs()
         p.test_mode = True
         self.assertEqual(self.REAL_LIB, p.dir)
         self.assertEqual(self.REAL_CACHE, p.cache_dir)
 
     def test_the_library_path_keeps_its_trailing_separator(self):
-        """The connectors build `self._path + self._filename`, so a
-        missing separator silently reads `libATlibrary.json`."""
+        """The connectors build `self._path + self._filename`, so a missing separator silently reads the wrong file."""
         p = self._prefs()
         p.test_dir = "/tmp/amaze_probe"
         p.test_mode = True
@@ -386,8 +317,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
             self.assertEqual(["_All"], json.load(handle)["categories"])
 
     def test_seeding_never_overwrites_what_is_already_there(self):
-        """Run twice, or run on a folder holding real saved test
-        materials: the second pass must add nothing."""
+        """Run twice, or run on a folder already holding saved test materials: the second pass must add nothing."""
         import json
         folder = tempfile.mkdtemp(prefix="amaze_testlib_reseed_")
         self.addCleanup(shutil.rmtree, folder, True)
@@ -407,16 +337,7 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
 
 
 class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
-    """`texture_force_iconvert` was removed from this build on
-    2026-08-03 - the Conversion Engine catches by itself the failure
-    that toggle was the manual workaround for.
-
-    The KEY stays in an existing settings.json. Two machines share
-    these files, they are not versioned, and an older build reading
-    one still wants its value - the same reason the retired section
-    keys `texture`/`geometry`/`hip` are left alone. load() keeps every
-    key it read and refresh_data only overwrites the ones this build
-    owns, so a removal is a code change and never a data change."""
+    """A key this build no longer reads survives a rewrite: dropping a preference is a code change, never a data change."""
 
     def test_an_unknown_key_survives_a_load_and_save(self):
         import json
@@ -431,15 +352,7 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
         p = prefs_mod.Prefs()
         p.path = folder
         p.load()
-        # CHANGE SOMETHING THIS BUILD OWNS, so the file on disk must
-        # actually have been REWRITTEN for the assertions below to
-        # hold. Without this the test wrote a fixture, read it back
-        # unchanged, and could not tell "the retired key survived a
-        # rewrite" from "no rewrite ever happened" - proved 2026-08-03
-        # by putting `return` at the top of save() and watching it stay
-        # green. The lever was `ram_cache_mb` until that key moved to
-        # the library's shared store and stopped being written flat.
-        p.sidebar_counts = False
+        p.sidebar_counts = False  # change something this build OWNS, or a fixture read back unchanged cannot tell a preserving rewrite from no rewrite at all
         p.save()
 
         with open(settings, encoding="utf-8") as handle:
@@ -460,21 +373,7 @@ class ARetiredKeyIsNotSTRIPPED(unittest.TestCase):
 class TheHomeLayoutsLiveInHostos(unittest.TestCase):
 
     def test_prefs_carries_no_os_path_convention(self):
-        """hostos.py's docstring: 'Nothing else in the codebase may
-        test sys.platform or hardcode an OS path convention; a new
-        platform quirk gets a function here, not a branch at a call
-        site.' prefs.py carried macOS, Linux and Windows home layouts
-        in one regex.
-
-        WALKS THE WHOLE `prefs/` PACKAGE, not one filename. The subject
-        is the preferences LAYER; the package held exactly one file
-        until 2026-08-09, so "no OS layout in prefs.py" and "no OS
-        layout in the preferences layer" were the same sentence by
-        accident rather than by design. `persistence.py` is the moment
-        they stop being the same - and it is the half that carries the
-        path encoding, so it is where a home-directory layout would
-        actually be written.
-        """
+        """No hardcoded OS path convention anywhere in the `prefs/` package - hostos owns those, and the subject is the LAYER, so this walks every file in it."""
         checked = []
         for name in sorted(os.listdir(os.path.join(PACKAGE, "prefs"))):
             if not name.endswith(".py"):
@@ -485,9 +384,7 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
                 "prefs/%s hardcodes the home-directory layouts again - "
                 "they belong in hostos, which is where a fourth one "
                 "gets added" % name)
-        # A walk that finds nothing passes silently, which is how a
-        # guard becomes decoration: name the files it MUST have seen.
-        self.assertIn("prefs.py", checked)
+        self.assertIn("prefs.py", checked)  # a walk that finds nothing passes silently, so name the files it MUST have seen
         self.assertIn("persistence.py", checked)
 
     def test_rehome_only_answers_when_the_result_exists(self):
@@ -513,18 +410,12 @@ class TheHomeLayoutsLiveInHostos(unittest.TestCase):
 class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
     def test_no_hand_rolled_containment_is_left(self):
-        """contained_join resolves REALPATHS, so a symlink planted
-        under matX/<package>/ cannot be the hop out - which a normpath
-        comparison cannot see. There were two copies and they had
-        already drifted from each other."""
+        """`contained_join` resolves REALPATHS, so a planted symlink cannot be the hop out - which a normpath comparison cannot see."""
         body = source_of("core/matx_sources.py")
         self.assertNotIn(
             "os.path.normpath(os.path.join(dest_dir", body,
             "a download path is checked by normpath again")
-        # BY AST, per target - counting occurrences passed with one
-        # removed, because the file has six and the threshold was
-        # three. The RGL one is the target that had no check at all.
-        tree = ast.parse(body)
+        tree = ast.parse(body)  # by AST, per target: counting occurrences stayed green with one check removed
         rgl_checked = False
         for node in ast.walk(tree):
             if not (isinstance(node, ast.Call)
@@ -539,10 +430,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "catalogue, so `../x` writes outside the cache root")
 
     def test_a_failed_package_lookup_is_not_cached(self):
-        """_packages swallows every per-package error and returns [],
-        and an empty list is a PRESENT key - so one network blip made
-        every later import report 'has no downloadable package'
-        instantly, blaming the material rather than the network."""
+        """`_packages` swallows every per-package error and returns [], and an empty list is a PRESENT key - so a cached failure would outlive the network blip."""
         from amaze.core import matx_sources
 
         class Record:
@@ -592,10 +480,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
                          "a successful lookup is no longer cached")
 
     def test_the_archive_is_discarded_in_a_finally(self):
-        """A BadZipFile - which a captive portal's HTML body with a
-        correct Content-Length produces - skipped the removal, and
-        matx_import then read the non-empty folder as 'already
-        downloaded' and refused every later import of that material."""
+        """A failed extract must not leave the archive behind: `matx_import` reads a non-empty package folder as already downloaded."""
         tree = ast.parse(source_of("core/matx_sources.py"))
         found = False
         for node in ast.walk(tree):
@@ -611,14 +496,7 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
 
 
 class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
-    """Six converters accept `target_input` and re-forward it to the
-    texture samplers nested behind them - but the dispatcher passed it
-    only to convert_texture_sampler ITSELF, so a base_color texture
-    behind an RSColorCorrection, RSColorLayer, Fresnel, RSMathRange or
-    RSRamp converted with role "data" and a Raw colour space: a colour
-    map read as linear floats, silently desaturated, with a success
-    report. The dispatcher hands the hint to every converter whose
-    signature takes it."""
+    """The dispatcher hands `target_input` to every converter whose signature takes it, so a texture nested behind one still converts with its role."""
 
     def test_a_converter_that_accepts_it_receives_it(self):
         from amaze.render import material_converter as mc
@@ -670,13 +548,7 @@ class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
 
 
 class AHalfFetchedPackageIsNotReused(unittest.TestCase):
-    """`source.fetch` used to write straight into matX/<package>, so a
-    fetch dying part-way left a non-empty directory - and the reuse
-    check reads a non-empty directory as "already downloaded": torn
-    textures reused forever, or an import refused forever when the
-    .mtlx never arrived. The fetch lands in a scratch sibling and is
-    renamed over only on success, so an occupied destination IS a
-    complete package."""
+    """The fetch lands in a scratch sibling and is renamed over only on success, so an occupied destination IS a complete package."""
 
     def _record(self):
         class Record:
@@ -717,15 +589,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
             "import will reuse the torn package")
 
     def test_a_download_with_no_mtlx_leaves_no_destination(self):
-        """A fetch that SUCCEEDS and carries no .mtlx - a repackaged
-        archive, or one whose only .mtlx sat at a member path the
-        extractor refused.
-
-        The rename is what makes an occupied destination MEAN a
-        complete package, and it ran BEFORE the .mtlx check - so this
-        took the destination anyway, and the reuse check at the top of
-        the import then refused this record permanently, until the
-        folder was deleted by hand."""
+        """A fetch that SUCCEEDS and carries no .mtlx must not take the destination either, or the reuse check refuses that record for good."""
         from amaze.core import matx_import
         from amaze.tests import test_support
 
@@ -788,11 +652,7 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
 
 
 class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
-    """`next(iter({}.values()))` raises StopIteration, whose str() is
-    EMPTY - so an asset shipping no .mtlx variant at all reported
-    "Download failed: " with nothing after the colon, exactly the
-    two-meanings-of-an-empty-message shape the surrounding comments
-    were written to end."""
+    """`StopIteration`'s str() is EMPTY, so an asset shipping no .mtlx variant has to name itself in the refusal or the message says nothing."""
 
     def test_fetch_with_no_variants_names_the_asset(self):
         from amaze.core import matx_sources
@@ -813,29 +673,9 @@ class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
 
 
 class StagingLeavesNoUndoEntry(unittest.TestCase):
-    """createNode and destroy BOTH land on the live stack, and one
-    performUndo resurrects the node WITH its children (research.md ▸
-    Undo; the mechanism is measured in test_thumbnail_paths) - so a
-    single Ctrl+Z after a save, a gallery import or a Redshift
-    conversion brought back a container holding a duplicate of the
-    material just handled.
+    """A container is STAGING when one function creates it and destroys it in a `finally`, and both halves must then sit inside `hou.undos.disabler()`. ▸r/undo-groups"""
 
-    The rule, read structurally: a container is STAGING when the same
-    function creates it and destroys it in a `finally` - destroyed on
-    EVERY path - and then both halves sit inside
-    `hou.undos.disabler()`. A container destroyed only on a FAILURE
-    branch (the restored COP companion, an import's fallback
-    destination, /obj/Amaze's own setName rollback) is a RESULT with a
-    rollback: the user may undo the result, so its create stays on the
-    stack and this scan deliberately does not match it."""
-
-    #: render/thumbs.py joined 2026-08-08 and was the blind spot that
-    #: mattered: it holds more scene scaffolding than any file here,
-    #: and an unguarded `net.createNode("copnet")` sat against a
-    #: guarded destroy in the same function's finally - the exact pair
-    #: this scan exists to catch, in the one staging-heavy file it did
-    #: not read.
-    FILES = ("core/matx_import.py", "core/gallery_import.py",
+    FILES = ("core/matx_import.py", "core/gallery_import.py",  # every file that scaffolds a scene; `render/thumbs.py` holds more of it than any other
              "render/nodes.py", "render/material_converter.py",
              "core/library.py", "render/thumbs.py")
 
@@ -845,10 +685,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
         for rel in self.FILES:
             body = source_of(rel)
             tree = ast.parse(body)
-            # A disabler guards its LEXICAL block (staged_asset wraps
-            # its whole body in one), so this reads scope, never a
-            # line window.
-            guarded_ranges = [
+            guarded_ranges = [  # a disabler guards its LEXICAL block, so this reads scope and never a line window
                 (node.lineno, node.end_lineno)
                 for node in ast.walk(tree)
                 if isinstance(node, ast.With)
@@ -861,15 +698,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
             for func in ast.walk(tree):
                 if not isinstance(func, ast.FunctionDef):
                     continue
-                # EVERY create for a name, not the last one. One
-                # variable assigned in two branches - `copnet` is
-                # created as a `copnet` on H22 and a `cop2net` before
-                # it - kept a single lineno, and ast.walk is
-                # breadth-first, so which branch survived was not even
-                # source order. A guarded sibling then vouched for an
-                # unguarded create: measured 2026-08-08, sabotaging the
-                # legacy branch left this scan green.
-                creates = {}
+                creates = {}  # EVERY create for a name, not the last: one variable assigned in two branches let a guarded sibling vouch for an unguarded create
                 for node in ast.walk(func):
                     if (isinstance(node, ast.Assign)
                             and len(node.targets) == 1
@@ -919,10 +748,7 @@ class StagingLeavesNoUndoEntry(unittest.TestCase):
 class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 
     def test_a_failed_reinstall_puts_it_back(self):
-        """The function removes the gallery first to make the append
-        position deterministic. When the reinstall then fails, the
-        early return skipped the restoring finally - and that finally
-        only covers the case where it ADDED one."""
+        """The function removes the user's gallery first, so every failure path has to put it back or they lose it for the session."""
         body = source_of("core/gallery_import.py")
         tree = ast.parse(body)
         lines = body.splitlines()
@@ -946,10 +772,7 @@ class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 class OneTooltipEngine(unittest.TestCase):
 
     def test_the_old_engine_delegates(self):
-        """Two engines solved the same problem by two rules, and the
-        measured device-pixel fix landed in only one - so a tooltip
-        wide in PIXELS but short in characters still crossed the
-        screen through the other door."""
+        """One tooltip engine: the older door delegates, so the measured device-pixel rule cannot be bypassed through it."""
         self.assertFalse(
             calls("helpers/helpers.py", "tooltip_html", "escape"),
             "tooltip_html builds its own HTML again instead of "
@@ -975,10 +798,7 @@ class OneTooltipEngine(unittest.TestCase):
 class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
 
     def test_the_ram_slider_leaves_persistence_to_close(self):
-        """ClickSlider fires valueChanged on every mouseMoveEvent, so
-        one drag rewrote and FSYNCED settings.json dozens of times,
-        each write also re-reading the file for the history snapshot.
-        Every other numeric row in the dialog leaves it to closeEvent."""
+        """`ClickSlider` fires valueChanged on every mouseMoveEvent, so a numeric row that saved per tick would fsync settings.json through the whole drag."""
         self.assertFalse(
             calls("dialogs/prefs_dialog.py", "set_ram_cache_mb", "save"),
             "the RAM Cache setter saves on every tick again")
@@ -992,10 +812,7 @@ class SettingsAreNotWrittenPerMouseMove(unittest.TestCase):
 class TheDebugSessionSurvivesAPathChange(unittest.TestCase):
 
     def test_a_new_path_gets_a_new_session(self):
-        """configure() clears _session on a path change deliberately -
-        and then only re-established it on the off->on edge, so every
-        record in the new file carried an empty session id and
-        log-check.py reported the file as having zero sessions."""
+        """configure() clears the session on a path change, so it has to establish a new one or `log-check.py` reads the new file as having none."""
         from amaze.core import debug
 
         folder = tempfile.mkdtemp(prefix="amaze_debug_session_")
@@ -1027,11 +844,7 @@ class TheDebugSessionSurvivesAPathChange(unittest.TestCase):
 class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
 
     def test_matches_delegates_to_the_per_location_rule(self):
-        """FileFolders.matches() was unreachable AND carried the global
-        Show Unknown Files preference that the per-location override
-        replaced - so the next consumer of the documented contract
-        would have got the pre-2026-08-01 answer, and the sidebar
-        number would disagree with the tiles."""
+        """One rule for what belongs in a folder: the flat door delegates, so it cannot answer without the per-location override."""
         self.assertTrue(
             calls("core/file_library.py", "matches", "matches_in"),
             "FileFolders.matches carries a second body again")
@@ -1054,18 +867,10 @@ class OneRuleForWhatBelongsInAFolder(unittest.TestCase):
 class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
 
     def test_it_re_arms_on_a_frame_not_immediately(self):
-        """A zero-delay timer re-ran the handler on every event-loop
-        turn - rebuilding the whole queue list each time - while the
-        thing it waits for is a loader FINISHING, several seconds away
-        on a network mount."""
+        """The queue waits for a loader to FINISH, so a zero-delay re-arm spins the handler at full event-loop rate on the thread that paints."""
         body = source_of("core/thumbnails.py")
         tree = ast.parse(body)
-        # The RE-ARM only. The other singleShot(0, _dispatch_files) is
-        # the initial schedule, which is correct at zero: it means
-        # "dispatch on the next turn", and there is nothing to wait
-        # for. My first version counted both and demanded the initial
-        # schedule be delayed too.
-        delays = []
+        delays = []  # the RE-ARM only: the initial schedule is correct at zero, because it has nothing to wait for
         for node in ast.walk(tree):
             if not (isinstance(node, ast.FunctionDef)
                     and node.name == "_dispatch_files"):
