@@ -97,6 +97,12 @@ if [ -z "$scratch" ] \
         echo "  Commit them, then run this again. A push is NOT needed." >&2
         exit 1
     fi
+elif [ -n "$scratch" ]; then
+    # The scratch exemption above, said out loud. This fires on EVERY
+    # suite run, and it used to print the zip-download line below -
+    # naming a reason that is false inside a git repo, which is where
+    # the suite always runs.
+    echo "sync-install: scratch install, so the commit check does not apply" >&2
 else
     # A zip download has no .git. Say so rather than claiming a check
     # that did not happen - silence here would read as a clean tree.
