@@ -26,8 +26,6 @@ IN_SCOPE = (
 )
 
 REMAINING = {                                     # roadmap line 30's A7, one file per commit; this may only SHRINK
-    ("panel/notes_panel.py", "_feather_icon"),
-    ("panel/notes_panel.py", "_paint_accents"),
     ("dialogs/prefs_dialog.py", "_logo_image"),
     ("helpers/ui_helpers.py", "_device_ratio"),
 }
