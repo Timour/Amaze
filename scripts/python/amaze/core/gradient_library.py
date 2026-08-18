@@ -257,9 +257,6 @@ class GradientLibrary(library.AssetLibrary):
         return locations.is_favourite(
             self.preferences, self._assets[row].mat_id)
 
-    def toggle_favorite(self, row: int) -> None:
-        self.toggle_fav(self.index(row, 0))
-
     def note_uid(self, row: int) -> str:
         """A palette's identity - its record id, the same key its Comments page and tile icon use."""
         if not 0 <= row < len(self._assets):
@@ -471,12 +468,11 @@ class GradientLibrary(library.AssetLibrary):
         painter.fillRect(0, 0, THUMB_SIZE, THUMB_SIZE,
                          QtGui.QBrush(gradient))
 
-    def render_thumbnail(self, index) -> None:
+    def render_thumbnail(self, row) -> None:
         """No render - the preview is drawn from the palette's own ramp; repaint it from current content."""
-        if 0 <= index.row() < len(self._assets):
-            thumbnails.engine.discard(self._swatch_key(index.row()))
-            self.row_changed(index.row(),
-                             [QtCore.Qt.ItemDataRole.DecorationRole])
+        if 0 <= row < len(self._assets):
+            thumbnails.engine.discard(self._swatch_key(row))
+            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def data(self, index, role: int = 0):
         if index.column() > 0:  # later columns are the table's, not the row's; column 0 falls through so grid mode cannot tell

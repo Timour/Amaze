@@ -711,7 +711,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
     def test_a_star_lands_in_the_store_and_survives_a_reload(self):
         self._one_warm_palette()
         lib = self._library()
-        lib.toggle_favorite(_row_named(self, lib, "warm"))
+        lib.toggle_fav(_row_named(self, lib, "warm"))
         self.assertTrue(lib.is_favorite(_row_named(self, lib, "warm")),
                         "the toggle did not light the star it just set")
         lib.save()    # the SHARED record must gain nothing on disk: a star that reaches gradients.json is everyone's again
@@ -749,7 +749,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
     def test_no_user_picked_means_no_star_and_no_write(self):
         self._one_warm_palette()
         lib = self._library(user="")
-        lib.toggle_favorite(_row_named(self, lib, "warm"))
+        lib.toggle_fav(_row_named(self, lib, "warm"))
         self.assertFalse(
             lib.is_favorite(_row_named(self, lib, "warm")),
             "a machine with nobody picked lit a star - the store filed "

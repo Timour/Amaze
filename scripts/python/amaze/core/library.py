@@ -179,10 +179,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             self._thumb_key(row): row for row in range(self.rowCount())
         }
 
-    def _add_thumb_paths(self, index: QtCore.QModelIndex):
+    def _add_thumb_paths(self, row: int):
         """Refresh one row's thumbnail: forget the key so the repaint re-requests the (re)written PNG, and clear a sticky "missing" so a fresh render gets its retry. Serves add_asset, render_thumbnail and update_asset_content alike."""
         self.rebuild_thumbs()
-        row = index.row()
         if 0 <= row < self.rowCount():
             versions.record_render(self.preferences,  # every path that declares this row's PNG fresh comes through here, so the ACTIVE version's archive slot follows the base picture; identical bytes are skipped inside
                                    self._assets[row].mat_id)
@@ -288,7 +287,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             )
         else:
             tile_icons.clear_for(self.preferences, asset.mat_id)
-        self._add_thumb_paths(self.index(row, 0))
+        self._add_thumb_paths(row)
         if save:
             self.save()
         return written
@@ -306,7 +305,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 continue
             if tile_icons.render_for(self.preferences, asset.mat_id, spec):
                 made += 1
-            self._add_thumb_paths(self.index(row, 0))
+            self._add_thumb_paths(row)
         return made
 
     def _decoration_image(self, index: QtCore.QModelIndex):
@@ -719,9 +718,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._drop_content_label_caches(mat.mat_id)
         self._version_count_cache.pop(str(mat.mat_id), None)
         self._active_version_cache.pop(str(mat.mat_id), None)
-        model_index = self.index(row, 0)
-        self._add_thumb_paths(model_index)
-        self.row_changed(model_index.row(), [self.VersionsRole, self.ActiveVersionRole, QtCore.Qt.ItemDataRole.DecorationRole])
+        self._add_thumb_paths(row)
+        self.row_changed(row, [self.VersionsRole, self.ActiveVersionRole, QtCore.Qt.ItemDataRole.DecorationRole])
         return True
 
     def rename_version(self, row: int, number: int, name: str) -> bool:
@@ -1138,22 +1136,23 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         held_back_by=list(unreadable))
         return ids, unreadable, absent_traces, empty_sections
 
-    def toggle_fav(self, index: QtCore.QModelIndex) -> None:
-        """Flip this row's star. Goes to the library's favourites store under its owner, never onto the shared record, so one user's stars cannot collide with another's - and with no user picked it refuses silently."""
-        mat_id = self._assets[index.row()].mat_id
+    def toggle_fav(self, row: int) -> None:
+        """Flip this row's star. Goes to the library's favourites store under its owner, never onto the shared record, so one user's stars cannot collide with another's - and with no user picked it refuses silently. A row outside the model writes nothing: -1 is what an invalid index answers and it would otherwise star the LAST asset."""
+        if not 0 <= row < self.rowCount():
+            return
+        mat_id = self._assets[row].mat_id
         locations.set_favourite(
             self.preferences, mat_id,
             not locations.is_favourite(self.preferences, mat_id))
-        model_index = self.index(index.row(), 0)
-        self.row_changed(model_index.row(), [self.FavoriteRole])
+        self.row_changed(row, [self.FavoriteRole])
 
-    def render_thumbnail(self, index) -> None:
+    def render_thumbnail(self, row) -> None:
         """Re-render one row's preview. The base has nothing to render; the sections that do override this."""
 
-    def render_thumbnails(self, indexes) -> None:
-        for index in indexes:  # one row at a time through each section's own `render_thumbnail`; MaterialLibrary overrides with the shared-scaffold Karma batch, which must NOT be routed to other sections - it would shaderball node setups and code snippets
-            if index.isValid():
-                self.render_thumbnail(index)
+    def render_thumbnails(self, rows) -> None:
+        for row in rows:  # one row at a time through each section's own `render_thumbnail`; MaterialLibrary overrides with the shared-scaffold Karma batch, which must NOT be routed to other sections - it would shaderball node setups and code snippets
+            if 0 <= row < self.rowCount():
+                self.render_thumbnail(row)
 
 
 class MaterialLibrary(AssetLibrary):
@@ -1246,7 +1245,7 @@ class MaterialLibrary(AssetLibrary):
             self.beginInsertRows(QtCore.QModelIndex(), row, row)
             self._assets.append(new_mat)
             self.endInsertRows()
-            self._add_thumb_paths(self.index(row, 0))
+            self._add_thumb_paths(row)
             if not hasattr(self, "_content_state"):
                 self._content_state = {}
             self._content_state[str(new_mat.mat_id)] = self._content_stat(
@@ -1352,7 +1351,7 @@ class MaterialLibrary(AssetLibrary):
                         file=cop_path,
                         error=str(exc),
                     )
-        self._add_thumb_paths(self.index(row, 0))  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
+        self._add_thumb_paths(row)  # the engine discard inside is what makes the repaint fetch the freshly rendered PNG
         self.save()
         try:
             node.setUserData("assetlib_id", str(mat.mat_id))
@@ -1360,20 +1359,20 @@ class MaterialLibrary(AssetLibrary):
             pass
         return renderer
 
-    def render_thumbnail(self, index: QtCore.QModelIndex) -> None:
-        self.render_thumbnails([index])  # a batch of one, down the same path
+    def render_thumbnail(self, row: int) -> None:
+        self.render_thumbnails([row])  # a batch of one, down the same path
 
-    def render_thumbnails(self, indexes) -> None:
-        """Re-render every index, building ONE Karma scaffold for the whole batch. The scaffold is a full USD stage composition and is identical for every material, so building it per row pays the stage load per row."""
-        rows = [i for i in indexes if i.isValid()]
+    def render_thumbnails(self, rows) -> None:
+        """Re-render every row, building ONE Karma scaffold for the whole batch. The scaffold is a full USD stage composition and is identical for every material, so building it per row pays the stage load per row. A row outside the model is dropped: `isValid()` cannot answer this, a plain index is not invalidated when the rows behind it go away."""
+        rows = [row for row in rows if 0 <= row < self.rowCount()]
         if not rows:
             return
         with thumbs.ThumbNailRenderer.karma_batch(self.preferences) as scaffold:
-            for index in rows:
+            for row in rows:
                 renderer = thumbs.ThumbNailRenderer(
-                    self.preferences, self._assets[index.row()])
+                    self.preferences, self._assets[row])
                 renderer.create_thumbnail(scaffold)
-                self._add_thumb_paths(index)
+                self._add_thumb_paths(row)
 
     def import_asset_to_scene(
         self,

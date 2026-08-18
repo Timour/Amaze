@@ -399,7 +399,7 @@ class AssetSection(Section):
         for index in indexes:
             source = st.proxy.mapToSource(index)
             if source.isValid():
-                st.model.toggle_fav(source)
+                st.model.toggle_fav(source.row())
 
     deletes_rows = True
 
@@ -437,16 +437,11 @@ class AssetSection(Section):
         st = self.stack()    # Materials and Nodes re-render, the UI blocking for it, while Code repaints from content - all three reach it the same way, which is what stops Code being the one that forgot
         if st is None:
             return
-        sources = [st.proxy.mapToSource(i) for i in indexes]
-        sources = [s for s in sources if s.isValid()]
-        if not sources:
+        sources = (st.proxy.mapToSource(i) for i in indexes)
+        rows = [source.row() for source in sources if source.isValid()]
+        if not rows:
             return
-        batch = getattr(st.model, "render_thumbnails", None)
-        if batch is None:
-            for source in sources:    # Code repaints from content and has no batch to share
-                st.model.render_thumbnail(source)
-            return
-        batch(sources)    # ONE Karma scaffold for the whole selection: the stage composition is identical per material, so a per-row call pays it again for every tile (core/library.py > render_thumbnails)
+        st.model.render_thumbnails(rows)    # ONE Karma scaffold for the whole selection: the stage composition is identical per material, so a per-row call pays it again for every tile (core/library.py > render_thumbnails)
 
     def comment_subject(self, index):
         st = self.stack()

@@ -252,7 +252,7 @@ class TestMaterialLibrary(unittest.TestCase):
                           return_value=False), \
                 patch.object(library_mod.locations,
                              "set_favourite") as wrote:
-            self.library.toggle_fav(index)
+            self.library.toggle_fav(index.row())
         wrote.assert_called_once_with(self.mock_prefs, mat_id, True)
 
     def test_toggle_fav_true_to_false(self):
@@ -264,7 +264,7 @@ class TestMaterialLibrary(unittest.TestCase):
                           return_value=True), \
                 patch.object(library_mod.locations,
                              "set_favourite") as wrote:
-            self.library.toggle_fav(index)
+            self.library.toggle_fav(index.row())
         wrote.assert_called_once_with(self.mock_prefs, mat_id, False)
 
     def test_toggle_fav_does_not_write_the_library(self):
@@ -274,7 +274,7 @@ class TestMaterialLibrary(unittest.TestCase):
                           return_value=False), \
                 patch.object(library_mod.locations, "set_favourite"), \
                 patch.object(self.library, "save") as mock_save:
-            self.library.toggle_fav(self.library.index(0, 0))
+            self.library.toggle_fav(0)
         mock_save.assert_not_called()
 
     def test_set_assetdata_normal_values(self):
@@ -402,7 +402,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_thumbs_cls.return_value = mock_renderer
 
         index = self.library.index(0, 0)
-        self.library.render_thumbnail(index)
+        self.library.render_thumbnail(index.row())
 
         mock_renderer.create_thumbnail.assert_called_once()
 
@@ -798,7 +798,7 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
         self.assertFalse(model.data(index, model.FavoriteRole),
                          "premise: the fixture starts unstarred")
 
-        model.toggle_fav(index)
+        model.toggle_fav(index.row())
         self.assertTrue(
             model.data(index, model.FavoriteRole),
             "the toggle did not light the star through the store")
@@ -827,7 +827,7 @@ class AMaterialStarLivesInTheLibraryStoreTest(unittest.TestCase):
         model = self.library_mod.MaterialLibrary(preferences=self.prefs)
         self.assertTrue(model.assets, "premise: the fixture rows loaded")
         index = model.index(0, 0)
-        model.toggle_fav(index)
+        model.toggle_fav(index.row())
         self.assertFalse(
             model.data(index, model.FavoriteRole),
             "a machine with nobody picked lit a star - the store filed "
@@ -1016,7 +1016,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         data = self._disk()
         data["something_a_newer_build_wrote"] = {"keep": "me"}
         self._write_disk(data)
-        self.model.toggle_fav(self.model.index(0, 0))
+        self.model.toggle_fav(0)
         self.assertEqual(
             {"keep": "me"},
             self._disk().get("something_a_newer_build_wrote"),
@@ -1043,7 +1043,7 @@ class TwoMachineMergeTest(unittest.TestCase):
         data["assets"].append("this is not a row")
         self._write_disk(data)
         try:
-            self.model.toggle_fav(self.model.index(0, 0))
+            self.model.toggle_fav(0)
         except Exception as exc:                       # noqa: BLE001
             self.fail("a malformed adopted row aborted the save: %s" % exc)
 
@@ -1340,7 +1340,7 @@ class FavouritesArePerUserTest(unittest.TestCase):
         index_path = os.path.join(self.prefs.dir, "library.json")
         with open(index_path, "rb") as fh:
             before = fh.read()
-        model.toggle_fav(model.index(0, 0))
+        model.toggle_fav(0)
         with open(index_path, "rb") as fh:
             after = fh.read()
         self.assertEqual(before, after,

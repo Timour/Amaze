@@ -1,6 +1,4 @@
-"""The version store: the base files stay the truth, the archive is a
-copy of it, and losing versions/ entirely costs nothing but history.
-"""
+"""The version store: the base files stay the truth, the archive is a copy of it, and losing versions/ entirely costs nothing but history."""
 
 import json
 import os
@@ -47,14 +45,7 @@ class _Case(unittest.TestCase):
 
 
 class PreEditHoldsTheRightFilesTest(_Case):
-    """The first Update on an asset archives the PRE-EDIT state as
-    Version 1, from a held-aside copy of the asset's files. The held
-    set is keyed by `versions.SOURCE_KINDS`: keying by filename suffix
-    collided `<id>_cop.mat` with `<id>.mat` (both ".mat", and the
-    companion is listed after the material, so it won the dict) and
-    archived the COP companion as Version 1's material - switching
-    back then promoted the companion over the material itself. Same
-    shape for `<id>_icon.png` standing in for the render."""
+    """The first Update on an asset archives the PRE-EDIT state as Version 1, from a held-aside copy of the asset's files, keyed by `versions.SOURCE_KINDS` and never by filename suffix."""
 
     def test_the_material_wins_over_its_companions(self):
         from amaze.core import library as library_mod
@@ -97,12 +88,7 @@ class PreEditHoldsTheRightFilesTest(_Case):
 
 
 class SwitchRollsBackOnALedgerRefusal(_Case):
-    """switch_active promotes the archive over the base and THEN writes
-    the ledger; a refused ledger write left the base holding version N
-    while the ledger still named the old one - the exact base/ledger
-    disagreement _copy_set's two-phase design exists to prevent, one
-    layer up. The previous active's archive is still complete, so the
-    rollback is one more promote."""
+    """switch_active promotes the archive over the base and THEN writes the ledger, so a refused ledger write must roll the promotion back rather than leave the base holding a version the ledger does not name."""
 
     def test_the_base_returns_when_the_ledger_will_not_write(self):
         from unittest import mock
@@ -124,13 +110,7 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
 
 
 class TheArchiveIsEachVersionsDurableThumbnail(_Case):
-    """A version is minted at SAVE time, before that save's render
-    lands, so a fresh archive slot starts holding the previous
-    version's picture - measured on the real library, where both of a
-    material's versions carried byte-identical PNGs. record_render
-    runs wherever a row's PNG is declared fresh and copies it into the
-    ACTIVE slot, so each version keeps its own picture until the
-    version goes."""
+    """A version is minted at SAVE time, before that save's render lands, so a fresh archive slot starts holding the previous version's picture; record_render runs wherever a row's PNG is declared fresh and copies it into the ACTIVE slot, so each version keeps its own picture until the version goes."""
 
     def _png_paths(self):
         img_dir = os.path.join(self.prefs.dir, self.prefs.img_dir)
@@ -146,8 +126,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         versions.create_version(self.prefs, self.mat_id)          # V1
         self._rewrite_base(b"EDITED-STATE")
         versions.create_version(self.prefs, self.mat_id)          # V2
-        # The mint archived V1's picture into V2's slot - the render
-        # that will replace it has not landed yet. Now it lands:
+        # The mint archived V1's picture into V2's slot; the replacing render lands only now.
         with open(base, "wb") as fh:
             fh.write(b"V2-RENDER-FRESH")
         self.assertTrue(versions.record_render(self.prefs, self.mat_id))
@@ -191,8 +170,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
     def test_a_missing_base_png_records_nothing(self):
         base, _folder = self._png_paths()
         versions.create_version(self.prefs, self.mat_id)
-        # The fixture asset ships a render; the case under test is the
-        # asset that has none.
+        # The fixture asset ships a render; the case under test is the asset that has none.
         if os.path.exists(base):
             os.remove(base)
         self.assertFalse(
@@ -212,7 +190,7 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) == self.mat_id)
-        model._add_thumb_paths(model.index(row, 0))
+        model._add_thumb_paths(row)
         stem = versions.list_versions(self.prefs, self.mat_id)[0]["file"]
         with open(os.path.join(folder, stem + ".png"), "rb") as fh:
             self.assertEqual(
@@ -300,24 +278,11 @@ class StoreTest(_Case):
             self.prefs, self.mat_id)[0]["author"])
 
     def test_no_user_mints_one_on_a_colour_name_never_harvested(self):
-        """A library with nobody in it mints its first user from the
-        colour pool and signs with that name - never the OS user, never
-        the machine name.
-
-        THE MINT'S UNIT CHANGED AND THIS TEST WITH IT. It used to be per
-        MACHINE, so two untouched installs signed different filenames;
-        it is now once per LIBRARY for its first user, because an
-        identity that keys one person's things across their machines
-        needs the opposite. The identity ban did not change, and the
-        second create still pins that it resolves ONCE.
-        """
+        """A library with nobody in it mints its first user once per LIBRARY from the colour pool and signs with that name - never the OS user, never the machine name - and resolves it ONCE, not per save."""
         import getpass
         import platform
         from amaze.core import users
-        # NOBODY, said out loud - the mint only runs on an empty
-        # pointer, and the shared fixture carries one so that tagged
-        # stores can key at all.
-        self.prefs.library_user = ""
+        self.prefs.library_user = ""  # NOBODY, said out loud: the mint only runs on an empty pointer, and the shared fixture carries one so tagged stores can key at all
         versions.create_version(self.prefs, self.mat_id)
         author = versions.list_versions(self.prefs, self.mat_id)[0]["author"]
         self.assertIn(author, users.PLACEHOLDER_NAMES)
@@ -336,15 +301,7 @@ class StoreTest(_Case):
 
 
 class VersionFilesCarryTheirWriterTest(_Case):
-    """The archive stem is <writer>-<n>, the writer is `library_user`,
-    and the ledger row records the stem it wrote.
-
-    NOT "two machines can never mint the same file", which this said
-    until 2026-08-12 and which was never true for one artist on two
-    machines - they share the identity by design now. What actually
-    keeps two writers apart is stepping past a stem already on disk,
-    which `test_two_writers_same_number_never_collide` is the pin for.
-    """
+    """The archive stem is <writer>-<n>, the writer is `library_user`, and the ledger row records the stem it wrote; what keeps two writers apart is stepping past a stem already on disk."""
 
     def test_the_stem_carries_the_writer(self):
         self.prefs.library_user ="Crimson"
@@ -356,9 +313,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
             os.path.exists(os.path.join(folder, "Crimson-1.mat")))
 
     def test_two_writers_same_number_never_collide(self):
-        """TWO DIFFERENT PEOPLE, which under the UID scheme means two
-        real user records - the second writer is not a machine that
-        retyped a name, it is somebody the library knows about."""
+        """TWO DIFFERENT PEOPLE, which under the UID scheme means two real user records - the second writer is not a machine that retyped a name, it is somebody the library knows about."""
         from amaze.core import users
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
@@ -370,9 +325,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
         self._rewrite_base(b"MACHINE B EDIT")
         self.prefs.library_user = users.create(self.prefs, "Cobalt")
         versions.create_version(self.prefs, self.mat_id)
-        # The other machine never saw B's ledger write - put A's back,
-        # exactly what a sync's last-write-wins does.
-        with open(ledger_path, "w", encoding="utf-8") as fh:
+        with open(ledger_path, "w", encoding="utf-8") as fh:  # the other machine never saw B's ledger write: put A's back, exactly what a sync's last-write-wins does
             fh.write(frozen)
         folder = versions.versions_dir(self.prefs, self.mat_id)
         self.assertTrue(
@@ -382,9 +335,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
             "the second writer's file survived the ledger overwrite")
 
     def test_a_stray_archive_is_adopted_on_read(self):
-        """The sync-survival half: a version file the ledger does not
-        know (the row lost to last-write-wins) comes back as a row on
-        the next read, writer parsed from its stem."""
+        """The sync-survival half: a version file the ledger does not know - the row lost to last-write-wins - comes back as a row on the next read, writer parsed from its stem."""
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -403,8 +354,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
                          self._base_bytes())
 
     def test_legacy_bare_numbers_still_switch(self):
-        """The shape every pre-signing library holds today: 1.mat,
-        2.mat, rows with no stem. Readers accept it forever."""
+        """The shape every pre-signing library holds today - 1.mat, 2.mat, rows with no stem - which readers accept forever."""
         self.prefs.library_user ="Crimson"
         versions.create_version(self.prefs, self.mat_id)
         folder = versions.versions_dir(self.prefs, self.mat_id)
@@ -430,11 +380,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
                             self._base_bytes())
 
     def test_one_listdir_seeds_the_tile_caches(self):
-        """First paint used to stat mat/versions/<id>/versions.json
-        once per visible tile. One listdir at model build now answers
-        for every asset WITHOUT a versions folder - the overwhelming
-        case - so asking both version roles across the whole model
-        reads the ledger only for assets that really have one."""
+        """One listdir at model build answers for every asset WITHOUT a versions folder - the overwhelming case - so asking both version roles across the whole model reads the ledger only for assets that really have one."""
         from unittest import mock
         from amaze.core import library as library_mod
 
@@ -474,9 +420,7 @@ class VersionFilesCarryTheirWriterTest(_Case):
 
 
 class TheWholeLoopThroughTheModelTest(unittest.TestCase):
-    """Parameter-only save -> versions appear; switch -> the base holds
-    the old bytes and the next Update Existing is not refused; the
-    badge role counts. The chain, not the links."""
+    """Parameter-only save -> versions appear; switch -> the base holds the old bytes and the next Update Existing is not refused; the badge role counts."""
 
     def setUp(self):
         from amaze.core import library as library_mod
@@ -499,8 +443,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                         self.model.assets[r].renderer))
 
     def test_parameter_only_update_creates_versions(self):
-        # A REAL parameter-only edit: import the asset, tweak one float,
-        # update. Building a fresh network would be structural.
+        # A REAL parameter-only edit - import, tweak one float, update; a fresh network would be structural.
         row = self._karma_row()
         mat = self.model.assets[row]
         ok, reason, _created = self.model.import_asset_to_scene(
@@ -547,9 +490,7 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
                                 "switching to Version 1 left the edited "
                                 "bytes on the base")
 
-        # THE GUARD MUST READ OUR OWN SWITCH AS OURS. Without the
-        # baseline refresh inside switch_version, the next update reads
-        # the switch as another session's write and refuses.
+        # THE GUARD MUST READ OUR OWN SWITCH AS OURS - without the baseline refresh inside switch_version the next update reads the switch as another session's write and refuses.
         known = self.model._content_state.get(str(mat.mat_id))
         current = self.model._content_stat(mat.mat_id)
         self.assertEqual(known, current,
