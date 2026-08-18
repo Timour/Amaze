@@ -206,12 +206,8 @@ class IconDialog(QtWidgets.QDialog):
     @staticmethod
     def _chooser_icon(name: str, icon_px, dpr: float, ink: str):
         """One chooser icon: the Feather SVG re-inked, rendered at device pixels with the ratio stamped, the contract every badge pixmap follows."""
-        pixmap = ui_helpers.render_svg_pixmap(
-            tile_icons.icon_path(name),
-            max(1, int(round(icon_px * dpr))),
-            {"currentColor": ink})
-        pixmap.setDevicePixelRatio(dpr)
-        return pixmap
+        return ui_helpers.device_pixmap(
+            tile_icons.icon_path(name), icon_px, dpr, {"currentColor": ink})
 
     def _relayout(self, names) -> None:
         while self._grid.count():

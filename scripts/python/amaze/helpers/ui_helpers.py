@@ -165,6 +165,14 @@ def render_svg_pixmap(path, size, color_replacements=None):
     return pixmap.copy()
 
 
+def device_pixmap(path, side, dpr, color_replacements=None):
+    """One SVG rasterised at DEVICE resolution with the ratio stamped, so it draws `side` logical pixels wide and stays sharp on a Retina screen. Pass the ratio of the widget being painted, never the primary's. ROUND, do not truncate: `QPixmap` truncates a float size, which loses a device pixel at every fractional ratio. ▸r/screen-dpr"""
+    pixmap = render_svg_pixmap(
+        path, max(1, int(round(side * dpr))), color_replacements)
+    pixmap.setDevicePixelRatio(dpr)
+    return pixmap
+
+
 class DesignedDialog(QtWidgets.QDialog):
     """A dialog in the shape the HTML designs describe: a dark header band carrying icon, subtitle, title and kind line, over a body column inset equally both sides, ending in two buttons that fill it - the constants below ARE the design, and they go straight across rather than through `theme.ui_px`. ▸p/designed-dialog"""
 

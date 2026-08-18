@@ -46,9 +46,7 @@ def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
         return cached
     path = os.path.join(
         os.path.dirname(amaze.__file__), "ui", "feather", name + ".svg")
-    pixmap = ui_helpers.render_svg_pixmap(
-        path, max(1, int(round(side * dpr))), {"currentColor": ink})
-    pixmap.setDevicePixelRatio(dpr)
+    pixmap = ui_helpers.device_pixmap(path, side, dpr, {"currentColor": ink})
     _glyph_cache[key] = pixmap
     return pixmap
 
@@ -410,11 +408,10 @@ class NotesPanel(ui_helpers.HeldPane):
         dpr = theme.screen_ratio(self)
         side = theme.ui_px(39)
         # AS DRAWN, no tint map: the art carries its own colour and the toolbar chip is the one site that genuinely recolours this glyph
-        pixmap = ui_helpers.render_svg_pixmap(
+        pixmap = ui_helpers.device_pixmap(
             os.path.join(os.path.dirname(amaze.__file__),
                          "ui", "icon_comments.svg"),
-            max(1, int(round(side * dpr))))
-        pixmap.setDevicePixelRatio(dpr)
+            side, dpr)
         self._icon_label.setPixmap(pixmap)
         plus_side = theme.ui_px(18)
         plus_ink = PAGE_BG if getattr(self, "_ghost", False) \
