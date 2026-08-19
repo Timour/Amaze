@@ -1,21 +1,4 @@
-"""A badge that is not DRAWN cannot be CLICKED.
-
-BATCH 6 of the four-areas restructure. List mode stopped pretending to
-be a grid on 2026-08-01: at list size a badge is 12px and its art
-rasterises to a dark smudge, so the four badge facts became COLUMNS
-there and the badges are painted in grid mode only.
-
-The versions badge is the one interactive spot on a tile, and its
-click and tooltip kept hit-testing in both modes - because they asked a
-DIFFERENT question than the paint did. Paint asks the view's
-`viewMode()`; the hit-tests asked `option.decorationPosition`, which is
-a proxy for the same thing that nothing keeps in step. So in list mode
-a click in the thumbnail's lower-left corner opened the Versions
-dialog, over a badge that was never there, and hovering it claimed
-"Click to select version".
-
-One question, one answer: `_is_list(option)`.
-"""
+"""A badge that is not DRAWN cannot be CLICKED - list mode paints no badges."""
 
 import os
 import sys
@@ -70,12 +53,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
         self.addCleanup(self.view.deleteLater)
 
     def _option(self, list_mode, decoration=None):
-        """`decoration` is a PARAMETER because it must not matter. The
-        hit-tests used to read `option.decorationPosition` as a proxy
-        for the view mode; a fixture that sets the two to agree cannot
-        tell a delegate that reads the wrong one (the sabotage round
-        said exactly that), so the list-mode tests below run it both
-        ways."""
+        """`decoration` must not matter - the list tests run it both ways."""
         self.view.setViewMode(
             QtWidgets.QListView.ViewMode.ListMode if list_mode
             else QtWidgets.QListView.ViewMode.IconMode)
@@ -88,8 +66,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
         return option
 
     def _release_on_the_badge(self, option):
-        """A left-button release at the centre of where the badge sits
-        (or would sit) - the same maths the delegate hit-tests with."""
+        """A left-button release at the centre of the badge's rect."""
         rect = self.delegate._versions_badge_rect(
             option.rect,
             option.decorationPosition
@@ -102,8 +79,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
             QtCore.Qt.KeyboardModifier.NoModifier)
 
     def test_a_click_on_the_badge_opens_versions_in_GRID_mode(self):
-        """The half that must keep working - a test for the list case
-        alone would pass with the badge dead everywhere."""
+        """The half that must keep working - list-only coverage passes dead."""
         option = self._option(list_mode=False)
         index = self.model.index(0, 0)
         handled = self.delegate.editorEvent(
@@ -132,13 +108,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
                     "opened the Versions dialog")
 
     def test_the_TOOLTIP_stays_quiet_in_list_mode(self):
-        """It claimed 'Click to select version' over a badge that is not
-        there - the same hit-test, so the same fix has to cover it.
-
-        Through helpEvent, the real entry point: calling
-        `versions_badge_at` with `mode_grid=False` by hand would only
-        prove that False refuses, not that the tooltip path works out
-        False for a list row."""
+        """Through helpEvent, the real entry point - a hand call proves less."""
         Position = QtWidgets.QStyleOptionViewItem.Position
         for decoration in (Position.Left, Position.Top):
             with self.subTest(decorationPosition=decoration.name):
@@ -154,8 +124,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
                     "badge is")
 
     def test_one_question_decides_it(self):
-        """Paint asks the view's viewMode; so must the hit-tests. Two
-        proxies for one fact is how they came apart."""
+        """Paint asks the view's viewMode; the hit-tests must ask the same."""
         for list_mode in (True, False):
             with self.subTest(list_mode=list_mode):
                 self.assertEqual(
