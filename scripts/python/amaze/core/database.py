@@ -17,13 +17,11 @@ _MIGRATIONS = {}
 
 
 def _migration_v4(data: dict) -> None:
-    """v4 to v5: strips `favorite` and `icon` from every asset row; both keys must also stay in the record class retired-key set (`Material._KNOWN_KEYS`), else the unknown-key courtesy carries them and the next save re-emits them."""
+    """v4 to v5: strips `favorite` and `icon` from every asset row; both keys must also stay in the record's retired-key set, else the unknown-key courtesy carries them and the next save re-emits them."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
     for row in rows:
-
-
         if not isinstance(row, dict):
             continue
         row.pop("favorite", None)
@@ -39,8 +37,6 @@ def _migration_v5(data: dict) -> None:
     if not isinstance(rows, list):
         return
     for row in rows:
-
-
         if not isinstance(row, dict):
             continue
         row.pop("favorite", None)
@@ -300,12 +296,10 @@ class DatabaseConnector:
             inst._disk_stat = None
             inst._loaded_ids = set()
 
-
             inst._adopted = []
 
             # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
             inst._forgotten = set()
-
 
             inst._loaded_version = SCHEMA_VERSION
             inst._migration_incomplete = False
