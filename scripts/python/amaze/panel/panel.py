@@ -1522,23 +1522,26 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _locate_folder_user(self, folders_model) -> None:
         """Sidebar "Locate Folder...": re-point the selected registered folder at a new location - a folder that moved on disk, or one whose path only exists on the other machine. Shared by the Textures and Geometry sidebars."""
+        ui = getattr(hou, "ui", None)
         indexes = self.cat_list.selectedIndexes()
         row = indexes[0].row() if indexes else -1
         if row <= 0:
-            hou.ui.displayMessage(  # type: ignore
-                "Select the registered folder to re-point first "
-                '("All" is not a real folder).'
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Select the registered folder to re-point first "
+                    '("All" is not a real folder).'
+                )
             return
-        path = hou.ui.selectFile(file_type=hou.fileType.Directory)  # type: ignore
+        path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
         if not path:
             return
         rewritten = folders_model.relocate_folder(row, hou.expandString(path))    # the model rewrites its favorites onto the new path so they survive the move; a negative answer means the location is not a folder
         if rewritten < 0:
-            hou.ui.displayMessage(  # type: ignore
-                "That location doesn't exist as a folder - nothing "
-                "was changed."
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "That location doesn't exist as a folder - nothing "
+                    "was changed."
+                )
             return
         if rewritten:
             debug.event("folders", "relocated", favorites=rewritten)
@@ -1565,7 +1568,9 @@ class MatLibPanel(QtWidgets.QWidget):
         except scene_captures.CaptureRefused as exc:    # a capture that silently does nothing teaches the user the feature is broken
             debug.event("hip", "capture refused", file=target,
                         reason=str(exc))
-            hou.ui.displayMessage(str(exc))  # type: ignore
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(str(exc))
 
     def capture_hip_thumbnail(self, index, path: str = "") -> None:
         """Capture the current scene view as this scene's thumbnail - ONLY ever from the right-click menu, and there must never be an automatic version."""
@@ -1677,10 +1682,12 @@ class MatLibPanel(QtWidgets.QWidget):
                 if ok:
                     converted_count += 1
                 all_lines.extend(report.summary_lines())
-        hou.ui.displayMessage(  # type: ignore
-            f"Converted {converted_count} of {redshift_count} Redshift "
-            "material(s) to Karma.\n\n" + "\n".join(all_lines)
-        )
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(
+                f"Converted {converted_count} of {redshift_count} Redshift "
+                "material(s) to Karma.\n\n" + "\n".join(all_lines)
+            )
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
@@ -1770,25 +1777,28 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def import_galleries(self) -> None:
         """Gallery Import: every material preset in a .gal file becomes a library material through the same save funnel a hand-saved one takes. Thumbnails are NOT rendered during the run - the summary says how to render them afterwards."""
+        ui = getattr(hou, "ui", None)
         if not self.material_model:
-            hou.ui.displayMessage("Please set a library first.")  # type: ignore
+            if ui is not None:
+                ui.displayMessage("Please set a library first.")
             return
-        picked = hou.ui.selectFile(  # type: ignore
+        picked = ui.selectFile(
             start_directory=gallery_import.default_gallery_dir(),    # opens where Houdini keeps its galleries; a .gal picked anywhere else works just as well
             title="Import Gallery (.gal)",
             file_type=hou.fileType.Any,
             pattern="*.gal",
             chooser_mode=hou.fileChooserMode.Read,
-        )
+        ) if ui is not None else ""
         picked = (picked or "").strip()
         if not picked:
             return
         picked = hou.text.expandString(picked)
         entries = gallery_import.entries_from_file(picked)
         if not entries:
-            hou.ui.displayMessage(  # type: ignore
-                "No material presets found in:\n%s" % picked
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "No material presets found in:\n%s" % picked
+                )
             return
         types = {}
         for _entry, type_name, _cat in entries:
@@ -1797,14 +1807,14 @@ class MatLibPanel(QtWidgets.QWidget):
             "  %d x %s" % (count, name)
             for name, count in sorted(types.items(), key=lambda x: -x[1])
         )
-        choice = hou.ui.displayMessage(  # type: ignore
+        choice = ui.displayMessage(
             "Import %d material presets from\n%s\n\n%s\n\n"
             "Thumbnails are NOT rendered during the import - select the "
             "new materials afterwards and use Update Preview."
             % (len(entries), os.path.basename(picked), listing),
             buttons=("Import", "Cancel"),
             default_choice=0, close_choice=1,
-        )
+        ) if ui is not None else 1    # no screen to ask, so the answer is the close_choice - Cancel
         if choice != 0:
             return
         render_pref = self.prefs.render_on_import
@@ -1830,22 +1840,25 @@ class MatLibPanel(QtWidgets.QWidget):
         for name in sorted(summary.get("categories", {})):
             self.category_model.check_add_category(name)
         self._refresh_sidebar_categories()
-        hou.ui.displayMessage(  # type: ignore
-            "Gallery import finished.\n\n"
-            "Imported: %d\nSkipped: %d\nFailed: %d\n\n"
-            "Select the new materials and use Update Preview to "
-            "generate their previews."
-            % (summary.get("imported", 0), summary.get("skipped", 0),
-               summary.get("failed", 0))
-        )
+        if ui is not None:
+            ui.displayMessage(
+                "Gallery import finished.\n\n"
+                "Imported: %d\nSkipped: %d\nFailed: %d\n\n"
+                "Select the new materials and use Update Preview to "
+                "generate their previews."
+                % (summary.get("imported", 0), summary.get("skipped", 0),
+                   summary.get("failed", 0))
+            )
 
     def cleanup_db(self) -> None:
         """Cleans the WHOLE v2 estate in one pass, one combined report: the material library, the COP library (the same integrity passes over cops.json), registered folder pointers whose directory is gone, and favorites pointing at files that are gone."""
+        ui = getattr(hou, "ui", None)
         if not self.material_model:
-            hou.ui.displayMessage("Please open a library first")  # type: ignore
+            if ui is not None:
+                ui.displayMessage("Please open a library first")
             return
 
-        if hou.ui.displayMessage(  # type: ignore
+        if ui is None or ui.displayMessage(
             "Clean Library?",
             help="Removes index rows whose files are gone, deletes "
                  "orphaned files that no library references, and drops "
@@ -1889,9 +1902,10 @@ class MatLibPanel(QtWidgets.QWidget):
             sections.append("Folders and favorites:\n- " + "\n- ".join(browser_lines))
 
         if sections:
-            hou.ui.displayMessage(  # type: ignore
-                "Library cleanup removed:\n\n" + "\n\n".join(sections)    # the RECORD of an irreversible act, not a notification that work ended: the grid cannot show an unlinked file or a dropped pointer
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Library cleanup removed:\n\n" + "\n\n".join(sections)    # the RECORD of an irreversible act, not a notification that work ended: the grid cannot show an unlinked file or a dropped pointer
+                )
         else:
             debug.event("cleanup", "nothing to clean")    # no dialog - nothing changed, and the log keeps the record
 
@@ -1960,14 +1974,17 @@ class MatLibPanel(QtWidgets.QWidget):
     def open_usdlib_folder(self) -> None:
         """Open the Library Folder in the System explorer"""
         if not self.material_model:
-            hou.ui.displayMessage("Please open a library first")  # type: ignore
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage("Please open a library first")
             return
         lib_dir = self.prefs.dir
         hostos.open_path(lib_dir)
 
     def add_file_folder_user(self) -> None:
         """Register a new folder pointer for the File section. Only stores the path - never scans or copies anything until the folder is actually selected in the list."""
-        path = hou.ui.selectFile(file_type=hou.fileType.Directory)  # type: ignore
+        ui = getattr(hou, "ui", None)
+        path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
         if not path:
             return
         self.file_folders_model.add_folder(hou.expandString(path))
@@ -2290,8 +2307,9 @@ class MatLibPanel(QtWidgets.QWidget):
                     ok, reason = False, str(exc)
                 if not ok:
                     failures.append("%s: %s" % (rec.title, reason))
-        if failures:    # ONE dialog for the batch, never one per record
-            hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if failures and ui is not None:    # ONE dialog for the batch, never one per record
+            ui.displayMessage(
                 "Amaze: %d of %d could not be imported:\n\n%s"
                 % (len(failures), total, "\n".join(failures[:10]))
             )
@@ -2360,14 +2378,16 @@ class MatLibPanel(QtWidgets.QWidget):
         if not total:
             return
         built, failures, last = [], [], None
+        ui = getattr(hou, "ui", None)
         with self._download_bar(records) as progress_for:
             with hou.undos.group("Amaze Import to Scene"):    # ONE undo step INCLUDING the destination resolution, which may itself create a material library: a material moved into a library that an undo then removes would have nothing coherent to undo to
                 destination = nodes.karma_destination(self.prefs)
                 if destination is None:
-                    hou.ui.displayMessage(  # type: ignore
-                        "Amaze: no place to create the material - open a "
-                        "LOP or /mat network first."
-                    )
+                    if ui is not None:
+                        ui.displayMessage(
+                            "Amaze: no place to create the material - open a "
+                            "LOP or /mat network first."
+                        )
                     return
                 for i, rec in enumerate(records):
                     source, resolution, error = self._online_source_for(rec)
@@ -2394,13 +2414,15 @@ class MatLibPanel(QtWidgets.QWidget):
                     last.setCurrent(True, True)    # front the new material like any hand-created node - a menu action IS the user asking for it
         debug.event("import", "to scene finished", built=len(built),
                     failed=len(failures))
+        if ui is None:
+            return
         if failures:
-            hou.ui.displayMessage(  # type: ignore
+            ui.displayMessage(
                 "Amaze: %d of %d could not be built:\n\n%s"
                 % (len(failures), total, "\n".join(failures[:10]))
             )
         elif last is not None:
-            hou.ui.setStatusMessage(  # type: ignore
+            ui.setStatusMessage(
                 "Amaze: %s in %s" % (", ".join(built[:3]),
                                      last.parent().path())
             )
@@ -2488,8 +2510,9 @@ class MatLibPanel(QtWidgets.QWidget):
             if not model.set_tile_icon(row, spec, save=False):
                 failed += 1
         model.commit_tile_icons(rows)    # ONE save for the whole selection: set_tile_icon saves the index per call, so Ctrl-A over 546 materials would be 546 full database writes of a cloud-synced file at ~10ms each, freezing the panel for five seconds
-        if failed:
-            hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if failed and ui is not None:
+            ui.displayMessage(
                 "%d tile icon%s could not be saved - check that the "
                 "library folder is writable."
                 % (failed, "" if failed == 1 else "s")    # a real plural, never "icon(s)" - this one is a MODAL the user cannot look away from
@@ -2515,8 +2538,9 @@ class MatLibPanel(QtWidgets.QWidget):
                     continue
                 if not ok and reason:
                     failures.append(reason)
-        if failures:
-            hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if failures and ui is not None:
+            ui.displayMessage(
                 "Some node assets could not be imported:\n\n"
                 + "\n".join(failures)
             )
@@ -2536,10 +2560,12 @@ class MatLibPanel(QtWidgets.QWidget):
     ) -> None:
         """Shared save flow for both Save-from-Node and New Snippet: open the Code dialog prefilled, then register the snippet."""
         if not self.code_model:
-            hou.ui.displayMessage(  # type: ignore
-                "Please set a library first. Use the %s panel - "
-                "Library/Open Dialog." % branding.APP_NAME
-            )
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    "Please set a library first. Use the %s panel - "
+                    "Library/Open Dialog." % branding.APP_NAME
+                )
             return
         dialog = code_dialog.CodeDialog(
             self.get_code_category_names(),
@@ -2569,17 +2595,20 @@ class MatLibPanel(QtWidgets.QWidget):
         if node is None:
             sel = hou.selectedNodes()
             node = sel[0] if len(sel) == 1 else None
+        ui = getattr(hou, "ui", None)
         if node is None:
-            hou.ui.displayMessage(  # type: ignore
-                "Right-click a wrangle (or other node with a code "
-                "parameter) to save its snippet."
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Right-click a wrangle (or other node with a code "
+                    "parameter) to save its snippet."
+                )
             return
         parm = helpers.find_code_parm(node)
         if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                '"%s" has no code/snippet parameter.' % node.name()
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    '"%s" has no code/snippet parameter.' % node.name()
+                )
             return
         self._add_code_snippet(
             parm.eval(),
@@ -2638,19 +2667,22 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def save_cop_from_node(self, node: hou.Node | None = None) -> None:
         """Node right-click `Save Network/Selection to <app>` (rc_calls.save_cop passes the clicked node through). Works in any context the Nodes section supports - SOP, COP, LOP and the rest; the asset records which one."""
+        ui = getattr(hou, "ui", None)
         if not self.cop_model:
-            hou.ui.displayMessage(  # type: ignore
-                "Please set a library first. Use the %s panel - "
-                "Library/Open Dialog." % branding.APP_NAME
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Please set a library first. Use the %s panel - "
+                    "Library/Open Dialog." % branding.APP_NAME
+                )
             return
         if node is None:
             sel = hou.selectedNodes()
             node = sel[0] if len(sel) == 1 else None
         if node is None:
-            hou.ui.displayMessage(  # type: ignore
-                "Right-click the network - or the nodes - you want to save."
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Right-click the network - or the nodes - you want to save."
+                )
             return
         net = node.parent()
         items = [i for i in hou.selectedItems() if i.parent() == net]
@@ -2689,20 +2721,24 @@ class MatLibPanel(QtWidgets.QWidget):
             debug.exception("save_cop_from_node", exc, node=node.path())
             save_error = str(exc)
         if save_error is not None:
-            hou.ui.displayMessage(  # type: ignore
-                '"%s" could not be saved: %s' % (node.name(), save_error)
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    '"%s" could not be saved: %s' % (node.name(), save_error)
+                )
             return
-        if not result:
-            hou.ui.displayMessage(  # type: ignore
+        if not result and ui is not None:
+            ui.displayMessage(
                 '"%s" could not be saved.' % node.name()
             )
 
     def _active_network_pwd(self) -> hou.Node | None:
         """The network the user is most likely looking at: the visible (current-tab) network editor's pwd, falling back to any open editor - the same preference get_active_network_editor uses on the material side."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return None
         editors = [
             pt
-            for pt in hou.ui.paneTabs()  # type: ignore
+            for pt in ui.paneTabs()
             if pt.type() == hou.paneTabType.NetworkEditor
         ]
         if not editors:
@@ -2758,6 +2794,7 @@ class MatLibPanel(QtWidgets.QWidget):
     def _import_geo_in_context(
         self, path: str, dest: hou.Node | None
     ) -> hou.Node | None:
+        ui = getattr(hou, "ui", None)
         base = os.path.basename(path)
         name = helpers.sanitize_usd_path(os.path.splitext(base)[0]) or "geo"
         loader_type = geo_library.loader_sop_for(path)
@@ -2802,9 +2839,10 @@ class MatLibPanel(QtWidgets.QWidget):
                     pass
             debug.event("import", "geometry import failed",
                         file=base, error=str(exc))
-            hou.ui.displayMessage(  # type: ignore
-                f"Could not import {base}: {exc}"
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    f"Could not import {base}: {exc}"
+                )
             return
         parm = helpers.find_file_parm(loader)
         if parm is None:
@@ -2812,9 +2850,10 @@ class MatLibPanel(QtWidgets.QWidget):
                 (container or loader).destroy()
             except (hou.OperationFailed, hou.ObjectWasDeleted):
                 pass
-            hou.ui.displayMessage(  # type: ignore
-                f'The "{loader_type}" SOP has no file parameter to set.'
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    f'The "{loader_type}" SOP has no file parameter to set.'
+                )
             return
         parm.set(self._scene_path(path))
         try:
@@ -2892,8 +2931,9 @@ class MatLibPanel(QtWidgets.QWidget):
             debug.event("import", "import failed",    # every failed import leaves a NAMED reason in the log, never a bare "imported: 0"
                         material=mat.name, target=target,
                         reason=reason or "(no reason reported)")
-            if reason:
-                hou.ui.displayMessage(reason)  # type: ignore
+            ui = getattr(hou, "ui", None)
+            if reason and ui is not None:
+                ui.displayMessage(reason)
             return None
         return handler.builder_node
 
@@ -2916,10 +2956,12 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         parm = obj_node.parm("shop_materialpath")
         if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                "'%s' has no material parameter - imported to /mat "
-                "without assigning." % obj_node.name()
-            )
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    "'%s' has no material parameter - imported to /mat "
+                    "without assigning." % obj_node.name()
+                )
             return False
         parm.set(builder.path())
         return True
@@ -2946,12 +2988,14 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _material_lop_viewport_drop(self, ids, viewer, primpath) -> bool:
         """LOP-viewport release: our ancestor-prim menu, then import into a materiallibrary resolved by Houdini's STOCK helper and assign with its stock assignMat - SideFX semantics, Amaze law."""
+        ui = getattr(hou, "ui", None)
         stock = dragengine.stock_lop()
         if stock is None:
-            hou.ui.displayMessage(  # type: ignore
-                "Amaze: could not load Houdini's material-assignment "
-                "helpers - material not imported."
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Amaze: could not load Houdini's material-assignment "
+                    "helpers - material not imported."
+                )
             return False
         try:
             lopnet = viewer.pwd()
@@ -3004,11 +3048,12 @@ class MatLibPanel(QtWidgets.QWidget):
                     debug.event("drag", "the network refused a material "
                                 "library", dest=lopnet.path(),
                                 error=str(refusal))
-                    hou.ui.displayMessage(  # type: ignore
-                        "Amaze: %s cannot take a Material Library, so "
-                        "the material was not imported.\n\n%s"
-                        % (lopnet.name(), refusal)
-                    )
+                    if ui is not None:
+                        ui.displayMessage(
+                            "Amaze: %s cannot take a Material Library, so "
+                            "the material was not imported.\n\n%s"
+                            % (lopnet.name(), refusal)
+                        )
                     return False
             assign_node = dragengine.find_assignmaterial(    # prefers one in the display chain, exactly as the library lookup above does: unfiltered this took the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding was written where nothing displays it, silently
                 lopnet, connected_to=target_lop
@@ -3031,8 +3076,8 @@ class MatLibPanel(QtWidgets.QWidget):
             pressed_vop = None
             if imported and ids and imported[0][0] == ids[0]:
                 pressed_vop = imported[0][1]
-            elif imported:
-                hou.ui.displayMessage(  # type: ignore
+            elif imported and ui is not None:
+                ui.displayMessage(
                     "The material you dropped could not be imported, so "
                     "nothing was assigned. The others in the selection "
                     "were still added to the library."
@@ -3045,8 +3090,8 @@ class MatLibPanel(QtWidgets.QWidget):
                     stock, lopnet, liblop, node2, swap_targets,
                     pressed_vop
                 )
-                if reason:
-                    hou.ui.displayMessage("Amaze: " + reason)  # type: ignore
+                if reason and ui is not None:
+                    ui.displayMessage("Amaze: " + reason)
             elif assign_path and pressed_vop is not None:
                 try:
                     matpath = stock.getMaterialPrimPathForNode(
@@ -3060,9 +3105,10 @@ class MatLibPanel(QtWidgets.QWidget):
                     lop_assign.name_new_assign(lopnet, before, assign_path)
                 except Exception as exc:
                     debug.event("drag", "lop assign failed", error=str(exc))
-                    hou.ui.displayMessage(  # type: ignore
-                        "Amaze: imported, but assigning failed: %s" % exc
-                    )
+                    if ui is not None:
+                        ui.displayMessage(
+                            "Amaze: imported, but assigning failed: %s" % exc
+                        )
         return bool(vops)
 
 
@@ -3161,26 +3207,30 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
         """`Save Gradient to <app>` (node right-click, or any caller with a ramp-bearing node): serializes the node's first color ramp and registers it as a user gradient in the Gradients section, in a category chosen (or created) in the save dialog. With no node it falls back to the single selected one, as the material save flow does."""
+        ui = getattr(hou, "ui", None)
         if not self.material_model:
-            hou.ui.displayMessage(  # type: ignore
-                "Please set a library first. Use the %s panel - "
-                "Library/Open Dialog." % branding.APP_NAME
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Please set a library first. Use the %s panel - "
+                    "Library/Open Dialog." % branding.APP_NAME
+                )
             return
         if node is None:
             sel = hou.selectedNodes()
             if len(sel) != 1:
-                hou.ui.displayMessage(  # type: ignore
-                    "Select a single node with a color ramp first."
-                )
+                if ui is not None:
+                    ui.displayMessage(
+                        "Select a single node with a color ramp first."
+                    )
                 return
             node = sel[0]
         parm = helpers.find_color_ramp_parm(node)
         if parm is None:
-            hou.ui.displayMessage(  # type: ignore
-                f'"{node.name()}" ({node.type().name()}) has no color '
-                "ramp parameter to save."
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    f'"{node.name()}" ({node.type().name()}) has no color '
+                    "ramp parameter to save."
+                )
             return
         ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
         dialog = gradient_dialog.GradientDialog(
@@ -3642,7 +3692,8 @@ class MatLibPanel(QtWidgets.QWidget):
         if not sources:
             return
         name = sources[0].data(QtCore.Qt.ItemDataRole.DisplayRole) or ""    # the first row's NAME rides along for the one section whose approved wording quotes it; the others ignore it
-        if hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if ui is None or ui.displayMessage(
             context.delete_prompt(len(sources), name),
             buttons=("Delete", "Cancel"),
             default_choice=1, close_choice=1,
@@ -3654,31 +3705,35 @@ class MatLibPanel(QtWidgets.QWidget):
         """The Generator Engine's first output: one random plausible material, built INTO THE SCENE where the user is working - the current LOP material library (or one created per the drop placement law) when the context is LOP, else /mat. A generated material is a scene node, not a library entry: keeping one is a deliberate `Save to <app>`, exactly like any other material the user builds by hand."""
         builder = None
         destination = None
+        ui = getattr(hou, "ui", None)
         with hou.undos.group("Amaze Generate Material"):    # the whole gesture is ONE undo step, staging AND the destination resolution that may itself create a material library: a move whose source parent was destroyed outside the group has nothing coherent to undo to, and a library created outside it survives the undo as an orphan
             destination = nodes.karma_destination(self.prefs)
             if destination is None:
-                hou.ui.displayMessage(  # type: ignore
-                    "Amaze: no place to create the material - open a "
-                    "LOP or /mat network first."
-                )
+                if ui is not None:
+                    ui.displayMessage(
+                        "Amaze: no place to create the material - open a "
+                        "LOP or /mat network first."
+                    )
                 return
             staging = hou.node("/obj").createNode("matnet")    # built in /obj staging and moved in ONE step, because structure changes inside a live material library retranslate the whole thing (wiki)
             try:
                 builder, spec = generator.generate_random_material(staging)
                 if builder is None:
-                    hou.ui.displayMessage(  # type: ignore
-                        "Generation failed - see the debug log."
-                    )
+                    if ui is not None:
+                        ui.displayMessage(
+                            "Generation failed - see the debug log."
+                        )
                     return
                 moved = hou.moveNodesTo((builder,), destination)
                 if not moved:
                     builder = None
                     debug.event("generate", "move failed",
                                 destination=destination.path())
-                    hou.ui.displayMessage(  # type: ignore
-                        "Amaze: the generated material could not be "
-                        "moved into %s." % destination.path()
-                    )
+                    if ui is not None:
+                        ui.displayMessage(
+                            "Amaze: the generated material could not be "
+                            "moved into %s." % destination.path()
+                        )
                     return
                 builder = moved[0]
                 helpers.auto_place(builder)
@@ -3699,8 +3754,8 @@ class MatLibPanel(QtWidgets.QWidget):
                                 for k, v in spec.items()
                             },
                             provenance=builder.comment())
-                if not registered:
-                    hou.ui.displayMessage(  # type: ignore
+                if not registered and ui is not None:
+                    ui.displayMessage(
                         '"%s" was created in %s but no material entry '
                         "covers it - check the library node's material "
                         "list." % (builder.name(), destination.path())
@@ -3708,29 +3763,33 @@ class MatLibPanel(QtWidgets.QWidget):
             except hou.Error as exc:
                 builder = None
                 debug.event("generate", "failed", error=str(exc))
-                hou.ui.displayMessage(  # type: ignore
-                    "Amaze: generation failed (%s)." % exc
-                )
+                if ui is not None:
+                    ui.displayMessage(
+                        "Amaze: generation failed (%s)." % exc
+                    )
             finally:
                 staging.destroy()
-        if builder is not None:
-            hou.ui.setStatusMessage(  # type: ignore
+        if builder is not None and ui is not None:
+            ui.setStatusMessage(
                 "Amaze: generated %s in %s"
                 % (builder.name(), destination.path())
             )
 
     def save_asset(self) -> None:
         """Saves the selected nodes (Network Editor) to the Library, with standard file-save semantics at ANY selection size: nodes matching an EXISTING library material - by the id stamp a previous save/import left on them, or by a unique name match - raise one save-over / Save New / Cancel choice for the whole selection, with the save-over button offered only where the library allows it; anything else goes straight to the normal new-material dialog."""
+        ui = getattr(hou, "ui", None)
         sel = hou.selectedNodes()
         debug.event("save", "save_asset entry", selected=len(sel))
         if not sel:
-            hou.ui.displayMessage("No material selected")  # type: ignore
+            if ui is not None:
+                ui.displayMessage("No material selected")
             return
         if not self.material_model:
-            hou.ui.displayMessage(
-                "Please set a library first. Use the %s panel - "
-                "Library/Open Dialog." % branding.APP_NAME  # type: ignore
-            )
+            if ui is not None:
+                ui.displayMessage(
+                    "Please set a library first. Use the %s panel - "
+                    "Library/Open Dialog." % branding.APP_NAME
+                )
             return
         existing = []    # which of the dropped nodes already exist, so the choice is offered ONCE for the whole drop rather than per node or not at all
         new_nodes = []
@@ -3767,13 +3826,13 @@ class MatLibPanel(QtWidgets.QWidget):
                 )
                 buttons = ("Save New", "Cancel")    # with Material Versions off the save-over button is not offered at all: an option that always fails is worse than an option that is not there
                 cancel_at, overwrite_at = 1, -1
-            choice = hou.ui.displayMessage(  # type: ignore
+            choice = ui.displayMessage(
                 message,
                 buttons=buttons,
                 default_choice=0,
                 close_choice=cancel_at,
                 title="Save to " + branding.APP_NAME,
-            )
+            ) if ui is not None else cancel_at    # no screen to ask, so the answer is the close_choice - Cancel
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
@@ -3800,9 +3859,11 @@ class MatLibPanel(QtWidgets.QWidget):
             renderer = self.material_model.update_asset_content(row, node)
         self._refresh_sidebar_categories()    # an overwrite can re-detect a different renderer, so counts and renderer-aware hiding may shift
         if not renderer:
-            hou.ui.displayMessage(
-                "Update failed - the library material was not changed."  # type: ignore
-            )
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(
+                    "Update failed - the library material was not changed."
+                )
             return
         self.enable_renderer_on_add(renderer)
         self.prefs.save()
@@ -3860,8 +3921,9 @@ class MatLibPanel(QtWidgets.QWidget):
             renderers.append(renderer)
             QtWidgets.QApplication.processEvents()    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
 
-        if failures:
-            hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if failures and ui is not None:
+            ui.displayMessage(
                 "Some materials could not be saved:\n\n"
                 + "\n".join(failures)
             )
@@ -3889,8 +3951,9 @@ class MatLibPanel(QtWidgets.QWidget):
         failures = []
         with hou.undos.group("Amaze Import Materials"):    # ONE undo entry for the whole import, as at every other import entry point: ungrouped, the destination container, the staging matnet, the builder, the move and the materiallibrary entry are separate entries, so one Ctrl+Z leaves a stray matnet and a half-imported builder behind
             self._import_selected_materials(target, failures)
-        if failures:
-            hou.ui.displayMessage(  # type: ignore
+        ui = getattr(hou, "ui", None)
+        if failures and ui is not None:
+            ui.displayMessage(
                 "Some materials could not be imported:\n\n" + "\n".join(failures)
             )
 

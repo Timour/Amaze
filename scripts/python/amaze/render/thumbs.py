@@ -42,8 +42,9 @@ class ThumbNailRenderer:
             ok, reason, _created = node_handler.import_asset_to_scene(
                 self._mat, target="mat")  # target="mat", NOT "auto": "auto" resolves to whichever editor is ACTIVE, so a rerender with a LOP network in front imports into the user's materiallibrary, where register_in_materiallibrary appends an explicit entry that nothing removes when cleanup() destroys the node - leaving an entry naming a node that no longer exists, which is the `Ignoring missing explicit primitive` error on every cook from then on
             if not ok:  # the import refused - a missing, empty or unreadable material file, or a node type this session does not have - so there is no builder node and the render must not proceed
-                if reason:
-                    hou.ui.displayMessage(reason)  # type: ignore
+                ui = getattr(hou, "ui", None)
+                if reason and ui is not None:
+                    ui.displayMessage(reason)
                 return
 
         try:
