@@ -765,20 +765,18 @@ class GradientNotesTest(unittest.TestCase):
                         "the badge cannot see a gradient's note")
 
     def test_an_unstamped_gradient_reads_no_note_without_saving(self):
-        """data() is a paint path - no stamping, and no id means no note."""
-        self.skipTest("mechanism stale since gradients moved onto the "
-                      "family model - strips the entry dict where "
-                      "identity now lives on the record")
+        """data() is a paint path: no note for an identity-less record, and no stamping - a stamp is a save, and a save per repaint is a write storm."""
         row = self.model.rowCount() - 1
-        entry = self.model.entry(row)
-        entry.pop("uid", None)
-        entry.pop("id", None)
+        self.model._assets[row]._mat_id = ""  # no public door makes this state (birth mints, load backfills) - which is the design being pinned
         index = self.model.index(row, 0)
-        self.assertFalse(self.model.data(index, self.model.NotesRole))
-        for field in ("id", "uid"):
-            self.assertNotIn(field, entry,
-                             "a paint-path read stamped an identity - "
-                             "identity work belongs to load and birth")
+        self.assertFalse(
+            self.model.data(index, self.model.NotesRole),
+            "an identity-less palette reads a note - no id can own "
+            "that page")
+        self.assertEqual(
+            "", self.model.note_uid(row),
+            "a paint-path read stamped an identity - identity work "
+            "belongs to load and birth")
 
 
 class PanelWiringTest(unittest.TestCase):
