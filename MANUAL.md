@@ -341,7 +341,10 @@ them. Each file behaves as its kind:
   node's image parameter; drag one onto any parameter field like a
   file from Finder or Explorer. Formats Qt cannot read are converted in
   the background — the number of parallel conversions is in
-  Preferences ▸ Render.
+  Preferences ▸ Render. While the conversion bar is showing, a
+  **Cancel** button sits at the right end of the tab row and stops the
+  batch; thumbnails already made are kept, and revisiting the folder
+  simply picks up where it left off.
 - **Geometry** (`.bgeo`, `.obj`, `.fbx`, `.abc`, `.usd`, …) gets
   viewport-rendered thumbnails, wire over shaded. **Double-click** or
   drag into a network to import in context; the import puts your
