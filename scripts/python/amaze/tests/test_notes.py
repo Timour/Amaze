@@ -309,7 +309,7 @@ class PanelWidgetTest(unittest.TestCase):
             "a checkbox was lost somewhere in the chain")
 
     def test_text_flows_below_the_second_todo_too(self):
-        """Writing underneath must work below EVERY to-do, not the first."""
+        """Writing underneath must work below every to-do, not only the first."""
         key = self._subject("17")
         notes.set_note(self.prefs, key, [
             {"t": "todo", "label": "first", "done": False},
@@ -469,7 +469,7 @@ class PanelWidgetTest(unittest.TestCase):
         self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 100)
-        edit.document().setTextWidth(280)  # force layout: the painter guards un-laid-out blocks (lineAt on one crashes hython natively - ▸r/qt-text-checklists)
+        edit.document().setTextWidth(280)  # force layout: the painter guards un-laid-out blocks (lineAt on one crashes hython natively - research.md ▸ Qt styling & splitters)
         image = G.QImage(300, 100, G.QImage.Format.Format_ARGB32)
         image.fill(G.QColor("#2b2c34"))
         painter = G.QPainter(image)
@@ -573,7 +573,7 @@ class PanelWidgetTest(unittest.TestCase):
                         "selecting again did not wake the page")
 
     def test_the_header_reads_section_slash_category(self):
-        """A category joins the section line, coloured and bold when set."""
+        """A category joins the section line; a COLOURED one renders bold."""
         self.widget.set_subject(sections.CommentSubject(
             notes.note_key("material", "c1"), "material", "X", "Karma",
             category="Metal", colour=""))
@@ -685,7 +685,7 @@ class ModelRoleTest(unittest.TestCase):
                         "note badge as drawn")
 
     def test_the_star_preference_has_no_path_into_the_badge(self):
-        """set_star_color stays deleted - the pref colours the pane only."""
+        """set_star_color stays deleted - no colour push may reach the badges."""
         from amaze.panel import delegates
         self.assertFalse(
             hasattr(delegates.AssetItemDelegate, "set_star_color"),
@@ -1061,7 +1061,7 @@ class PanelWiringTest(unittest.TestCase):
 class VersionsBadgeHoverTest(unittest.TestCase):
     """The versions badge is the tile's one BUTTON - it answers hover."""
 
-    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate, never read source - the icon_side lesson (practice.md, 2026-07-29)
+    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate rather than reading panel.py - the icon_side lesson (practice.md, 2026-07-29)
 
     def _delegate(self):
         from amaze.panel import delegates
@@ -1112,7 +1112,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         return canvas.toImage()
 
     def test_hover_swaps_the_art_the_PAINTER_lays_down(self):
-        """Compare what is PAINTED - toggling the flag passed a dead painter."""
+        """Compare what is PAINTED - the flag test stayed green while the painter kept the base art."""
         delegate = self._delegate()
         index = self._index(3)
 
