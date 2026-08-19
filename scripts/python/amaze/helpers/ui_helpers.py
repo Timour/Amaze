@@ -562,8 +562,7 @@ class SectionTabBar(QtWidgets.QWidget):
         if not self._cancel_visible:
             return None
         metrics = self.fontMetrics()
-        tray_top = self.height() - self.TRAY_HEIGHT
-        chip_y = tray_top + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
+        chip_y = (self.height() - self.CHIP_HEIGHT) / 2.0   # the STRIP's full height, not the tray's: the chip floats outside the tray, so the row is its visual reference - tray-centered it reads low
         width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
             + 2 * self.CHIP_PAD_X
         x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width

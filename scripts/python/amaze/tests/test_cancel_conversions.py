@@ -126,6 +126,15 @@ class TheCancelChip(unittest.TestCase):
             self.tabs, _press(rect.center()))
         self.assertEqual([], self.fired)
 
+    def test_the_chip_centers_on_the_strip_not_the_tray(self):
+        """The chip floats OUTSIDE the tray, so the row's full height is its visual reference - tray-centered it sits 2.5px low against the strip."""
+        self.tabs.set_cancel_visible(True)
+        rect = self.tabs._cancel_rect()
+        self.assertIsNotNone(rect)
+        self.assertEqual(
+            self.tabs.height() / 2.0, rect.center().y(),
+            "the chip is not centered on the strip's full height")
+
     def test_a_press_on_a_tab_still_selects_it(self):
         self.tabs.setChecked("material", emit=False)
         self.tabs.set_cancel_visible(True)
