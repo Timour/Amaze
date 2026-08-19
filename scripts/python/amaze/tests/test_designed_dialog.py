@@ -1,11 +1,12 @@
-"""The shell of the first dialog built from an HTML handover, held to the design's literal pixels. ▸p/designed-dialog"""
+"""The shell of the first dialog built from an HTML handover, held to the design's measurements at the chrome's density. ▸p/designed-dialog"""
 
+import contextlib
+import inspect
 import os
 import unittest
-from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -15,9 +16,9 @@ import amaze  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
 
 
-def _px(dialog, n):
-    """A design pixel, converted the way the dialog converts it - NEVER through `theme.ui_px`, which would make the test agree with the code at any UI scale. ▸p/designed-dialog"""
-    return dialog.d(n)
+def _px(n):
+    """One DESIGN pixel in the logical pixels Qt sizes with, computed HERE from the design's own density and Houdini's scale - never by calling the code under test, which would agree with itself at any scale. The pages are drawn at 2x, so a design number is halved and then scaled, which is the 2x rule the chrome has always followed (overview.md §8). ▸p/designed-dialog"""
+    return int(round(n / 2 * theme.UI_SCALE))
 
 
 class _ScreenAt(QtWidgets.QWidget):
@@ -111,30 +112,30 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             (self._at(dialog, b) for b in buttons), key=lambda g: g[0])
         for name, geom in (("cancel", left), ("Apply", right)):
             self.assertEqual(
-                (_px(dialog, 202), _px(dialog, 42)), (geom[2], geom[3]),
+                (_px(202), _px(42)), (geom[2], geom[3]),
                 "%s is not the design's size" % name)
-        self.assertEqual(_px(dialog, 35), left[0], "the pair is not at "
+        self.assertEqual(_px(35), left[0], "the pair is not at "
                                                    "the column's left edge")
         _fx, fy, _fw, fh = self._at(dialog, _f)    # 35 BELOW THE FIELD, read off the page as field bottom 334 against buttons top 369; a stretch instead floats them to the bottom, which is a different gap at every dialog height
         self.assertAlmostEqual(
-            _px(dialog, 35), left[1] - (fy + fh), delta=2,
+            _px(35), left[1] - (fy + fh), delta=2,
             msg="the buttons are not 35 below the name field")
         self.assertEqual(
-            _px(dialog, 38), right[0] - (left[0] + left[2]),
+            _px(38), right[0] - (left[0] + left[2]),
             "the gap between the buttons is not the design's 38")
         self.assertAlmostEqual(
-            _px(dialog, 477), right[0] + right[2], delta=2,
+            _px(477), right[0] + right[2], delta=2,
             msg="the pair does not end at the column's right edge")
 
     def test_a_field_fills_the_column_at_the_designs_height(self):
         dialog, combo, field = self._dialog()
         for name, widget in (("dropdown", combo), ("name field", field)):
             x, _y, w, h = self._at(dialog, widget)
-            self.assertEqual(_px(dialog, 35), x, "%s is not inset 35" % name)
+            self.assertEqual(_px(35), x, "%s is not inset 35" % name)
             self.assertEqual(    # the column BETWEEN the insets, not d(442): at ratio 2 the inset 35 halves to 18 and the column is 220 where d(442) is 221, a rounding rather than a drift, so the property asserted is that the field spans exactly what the two insets leave
-                dialog.width() - 2 * _px(dialog, 35), w,
+                dialog.width() - 2 * _px(35), w,
                 "%s does not span the column between the insets" % name)
-            self.assertEqual(_px(dialog, 60), h, "%s is not 60 tall" % name)
+            self.assertEqual(_px(60), h, "%s is not 60 tall" % name)
 
     def test_the_controls_are_NOT_restyled(self):
         """Standard Houdini controls by design: the shell gives them the design's geometry and nothing else. ▸p/designed-dialog"""
@@ -144,23 +145,17 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                              "%s has been restyled" % name)
 
     def test_the_frame_is_the_designs_size(self):
-        """512 x 435 LITERALLY, at any Houdini UI scale."""
+        """512 x 435 of the design, in the logical pixels Qt sizes with, at whatever Houdini's UI scale is."""
         dialog, _c, _f = self._dialog()
-        self.assertEqual((_px(dialog, 512), _px(dialog, 435)),
+        self.assertEqual((_px(512), _px(435)),
                          (dialog.width(), dialog.height()))
-        screen = QtGui.QGuiApplication.primaryScreen()    # AND the PHYSICAL size holds: whatever the ratio, the window occupies 512 x 435 of the screen's own pixels
-        ratio = screen.devicePixelRatio() if screen else 1.0
-        self.assertAlmostEqual(512, dialog.width() * ratio, delta=2)
-        self.assertAlmostEqual(435, dialog.height() * ratio, delta=2)
 
-    def test_the_design_does_not_go_through_the_UI_SCALE(self):
-        """The panel's chrome scales with Houdini's UI preference; a design given in final pixels does not - at a UI scale of 2.0 every number here doubled and a 512px design opened as a 1024px window. ▸p/designed-dialog"""
-        import inspect
-        body = inspect.getsource(ui_helpers.DesignedDialog)
-        self.assertNotIn(
-            "ui_px(", body,
-            "the designed dialog is scaling the design's measurements "
-            "again - 512 becomes 1024 on a 2.0 UI scale")
+    def test_the_constants_are_stored_at_the_CHROME_density(self):
+        """A design number is HALVED at source, then scaled - the 2x rule every chrome constant follows (overview.md §8). Storing the raw 512 is what once opened it as a 1024 window. ▸p/designed-dialog"""
+        self.assertEqual(
+            (256, 218), ui_helpers.DesignedDialog.FRAME,
+            "the frame is back at the design's raw pixels - halve it at "
+            "source, the way every chrome constant is halved")
 
     def test_the_header_carries_the_three_lines_and_the_icon(self):
         dialog, _c, _f = self._dialog()
@@ -174,7 +169,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             glyphs,
             "the header icon is not a live vector - it must not be "
             "rasterised to a pixmap")
-        self.assertEqual((_px(dialog, 60), _px(dialog, 60)),
+        self.assertEqual((_px(60), _px(60)),
                          (glyphs[0].width(), glyphs[0].height()))
 
     def test_the_title_is_bigger_and_bolder_than_its_neighbours(self):
@@ -189,50 +184,94 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         self.assertGreater(title.pixelSize(), kind.pixelSize())
 
 
-class ADesignPixelConvertsOnEveryPlatformTest(unittest.TestCase):
-    """`d()` turns one DESIGN pixel into the logical pixels Qt sizes with, reading BOTH the device ratio and `theme.UI_SCALE` - macOS carries Retina in the dpr at scale 1.0, Windows the opposite shape at dpr 1.0 with a real 1.5, and dividing by dpr alone opens the dialog a third small beside `ui_px` chrome. ▸r/screen-dpr"""
+class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):
+    """One logical size per Houdini UI scale, on every machine; no screen enters the arithmetic. `PROFILES` is (machine, device ratio, UI scale, frame width) with the widths WRITTEN OUT, never derived from the code under test. ▸r/houdini-ui-scale, ▸p/designed-dialog"""
 
-    DESIGN = ui_helpers.DesignedDialog.FRAME[0]          # 512
+    PROFILES = (
+        ("retina mac",       2.0, 1.0, 256),
+        ("plain linux",      1.0, 1.0, 256),
+        ("windows at 1.5",   1.0, 1.5, 384),
+        ("a 2.0 UI scale",   1.0, 2.0, 512),
+    )
 
-    def _on(self, ratio):
-        """A dialog whose PARENT states the ratio - which is the source under test, so nothing here patches the reader itself."""
+    @contextlib.contextmanager
+    def _at(self, scale):
+        real = theme.UI_SCALE
+        theme.UI_SCALE = scale
+        try:
+            yield
+        finally:
+            theme.UI_SCALE = real
+
+    def _frame_on(self, ratio, scale):
+        """A dialog whose PARENT states its screen's ratio - the reader the old code used, kept here so the test can prove the ratio no longer reaches anything."""
         parent = _ScreenAt(ratio)
-        dialog = ui_helpers.DesignedDialog(parent)
+        with self._at(scale):
+            dialog = ui_helpers.DesignedDialog(parent)
         self.addCleanup(parent.deleteLater)
         self.addCleanup(dialog.deleteLater)
         return dialog
 
-    def _d(self, value, ratio, scale):
-        real_scale = theme.UI_SCALE
-        theme.UI_SCALE = scale
-        try:
-            return self._on(ratio).d(value)
-        finally:
-            theme.UI_SCALE = real_scale
+    def test_the_frame_is_one_size_per_UI_SCALE_on_every_machine(self):
+        for machine, ratio, scale, expected in self.PROFILES:
+            with self.subTest(machine=machine):
+                self.assertEqual(
+                    expected, self._frame_on(ratio, scale).width(),
+                    "%s: the dialog is not the size Houdini's own scale "
+                    "gives it" % machine)
 
-    def test_the_ratio_is_the_parents_screen_not_the_primarys(self):
-        """THE SOURCE, which no suite figure can otherwise reach: offscreen Qt's one invented screen answers 1.0, so a parent stating 2.0 discriminates - reading the parent halves 512, reading the primary leaves it whole. ▸r/screen-dpr"""
-        self.assertEqual(256, self._d(self.DESIGN, ratio=2.0, scale=1.0))
+    def test_two_monitors_one_session_one_dialog_size(self):
+        """THE BUG IN ONE ASSERTION. Same Houdini, same scale, two screens: Houdini cannot rescale mid-session, so neither may a panel of its own accord."""
+        retina, plain = _ScreenAt(2.0), _ScreenAt(1.0)   # HELD: a parent that falls out of scope takes its dialog's C++ object with it
+        with self._at(1.0):
+            on_retina = ui_helpers.DesignedDialog(retina)
+            on_plain = ui_helpers.DesignedDialog(plain)
+        for widget in (retina, plain, on_retina, on_plain):
+            self.addCleanup(widget.deleteLater)
+        self.assertEqual(
+            on_retina.width(), on_plain.width(),
+            "the dialog changes size with the monitor - which is the one "
+            "thing Houdini's own UI scale never does")
 
-    def test_a_parent_at_1_is_not_overruled_by_a_primary_at_2(self):
-        """The INVERSION, and the half that catches a silent fallback - an unrealised widget answers with the primary ratio, so a read that merely LOOKS widget-aware passes the case above and fails this one. ▸r/screen-dpr"""
-        screen = mock.Mock()
-        screen.devicePixelRatio.return_value = 2.0
-        with mock.patch.object(QtGui.QGuiApplication, "primaryScreen",
-                               staticmethod(lambda: screen)):
-            self.assertEqual(512, self._d(self.DESIGN, ratio=1.0, scale=1.0))
+    def test_a_design_measurement_lands_the_same_through_EITHER_path(self):
+        """60 design px is the toolbar bar in `panel.py` (`ui_px(30)`) and the dialog's `FIELD_H`; both sides are computed here. ▸p/designed-dialog"""
+        for machine, ratio, scale, _w in self.PROFILES:
+            with self.subTest(machine=machine):
+                parent = _ScreenAt(ratio)
+                with self._at(scale):
+                    dialog = ui_helpers.DesignedDialog(parent)
+                    field = QtWidgets.QLineEdit(dialog)
+                    dialog.add_field(field)
+                    chrome = theme.ui_px(30)
+                self.addCleanup(parent.deleteLater)
+                self.addCleanup(dialog.deleteLater)
+                self.assertEqual(
+                    chrome, field.height(),
+                    "%s: the same 60 design px is %d in the dialog and %d "
+                    "in the chrome beside it"
+                    % (machine, field.height(), chrome))
 
-    def test_retina_mac_halves_it(self):
-        """The Retina case: the scale factor merely restates the dpr, so theme resolves it to 1.0."""
-        self.assertEqual(256, self._d(self.DESIGN, ratio=2.0, scale=1.0))
 
-    def test_windows_applies_the_real_scale(self):
-        """dpr 1.0 with a genuine 1.5 scale: 512 must become 768 to sit beside chrome `ui_px` has already multiplied by 1.5."""
-        self.assertEqual(768, self._d(self.DESIGN, ratio=1.0, scale=1.5))
+class NothingThatSizesReadsTheScreen(unittest.TestCase):
+    """No sizing path in the dialog shell reads a device ratio; a re-added one passes every number above on the machine it is written on. ▸r/houdini-ui-scale"""
 
-    def test_a_plain_display_leaves_it_alone(self):
-        self.assertEqual(512, self._d(self.DESIGN, ratio=1.0, scale=1.0))
+    SIZING_READS = ("screen_ratio", "devicePixelRatio", "devicePixelRatioF")
 
-    def test_ints_stay_ints_and_floats_stay_floats(self):
-        self.assertIsInstance(self._d(60, ratio=2.0, scale=1.0), int)
-        self.assertIsInstance(self._d(60.0, ratio=2.0, scale=1.0), float)
+    def test_the_dialog_shell_holds_no_screen_read_at_all(self):
+        body = inspect.getsource(ui_helpers.DesignedDialog)
+        for spelling in self.SIZING_READS:
+            self.assertNotIn(
+                spelling, body,
+                "the designed dialog is sizing from the screen again - "
+                "Houdini's scale is one number, fixed at startup, and a "
+                "dialog that divides by a live ratio renders at 2x the "
+                "chrome on every dpr-1.0 display")
+
+    def test_the_scanner_can_see_a_read_it_should_refuse(self):
+        """THE ANTI-VACUOUS HALF: a `not in` over a source string passes just as happily when the source is empty or the spelling has changed. ▸p/vacuous-register"""
+        planted = ("class Fake:\n"
+                   "    def d(self, v):\n"
+                   "        return v / theme.screen_ratio(self)\n")
+        for spelling in self.SIZING_READS[:1]:
+            self.assertIn(spelling, planted,
+                          "the spelling this test greps for has moved")

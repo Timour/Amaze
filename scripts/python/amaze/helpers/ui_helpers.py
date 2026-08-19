@@ -174,34 +174,28 @@ def device_pixmap(path, side, dpr, color_replacements=None):
 
 
 class DesignedDialog(QtWidgets.QDialog):
-    """A dialog in the shape the HTML designs describe: a dark header band carrying icon, subtitle, title and kind line, over a body column inset equally both sides, ending in two buttons that fill it - the constants below ARE the design, and they go straight across rather than through `theme.ui_px`. ▸p/designed-dialog"""
+    """A dialog in the shape the HTML designs describe: a dark header band carrying icon, subtitle, title and kind line, over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
 
-    FRAME = (512, 435)      # a design given in final pixels is FINAL; scaling this by Houdini's UI factor is what once opened a 512 window at 1024
-    HEADER_H = 132
-    INSET = 35              # both sides, leaving a 442-wide body column
+    FRAME = (256, 218)      # the design's 512 x 435
+    HEADER_H = 66           # 132
+    INSET = 18              # 35, both sides, leaving a 220-wide body column
+    TEXT_X = 66             # 131, where the header's three lines start
+    FIRST_FIELD_Y = 82      # 163, the first field's top
     HEADER_BG = theme.color_hex("surface_low")   # the two SURFACES follow Houdini's theme, because a value kept equal to another value by hand is a value that drifts
     BODY_BG = theme.color_hex("surface")
     LABEL_INK = "#93b9e7"   # the INK stays literal: this and TITLE_INK are not theme colours but the design's own answer
     TITLE_INK = "#dddcdd"
-    FIELD_H = 60
-    BUTTON = (202, 42)
-    BUTTON_GAP = 38
-    RADIUS = 10
-    SUBTITLE_PX, TITLE_PX, KIND_PX, LABEL_PX, BUTTON_PX = 23, 32, 23, 20, 23
-
-    def d(self, value):
-        """One design pixel in the logical pixels Qt sizes with, for the screen THIS dialog's parent is on; NOT `theme.ui_px`, which is the chrome's question. ▸r/screen-dpr"""
-        ratio = theme.screen_ratio(self.parentWidget() or self)   # the parent, because a dialog is unrealised while __init__ runs and an unrealised widget answers with the PRIMARY ratio ▸r/screen-dpr
-        factor = theme.UI_SCALE / max(ratio, 1.0)   # AND the host's own scale: macOS carries Retina in the dpr at scale 1.0, Windows the opposite shape at dpr 1.0 with a real 1.5, and `theme.UI_SCALE` already holds that verdict ▸r/qt-windows-macos
-        if factor == 1.0:
-            return value
-        scaled = value * factor
-        return scaled if isinstance(value, float) else int(round(scaled))
+    FIELD_H = 30            # 60
+    BUTTON = (101, 21)      # 202 x 42
+    BUTTON_GAP = 19         # 38
+    RADIUS = 5              # 10
+    SUBTITLE_PX, TITLE_PX, KIND_PX, LABEL_PX, BUTTON_PX = 12, 16, 12, 10, 12
 
     def __init__(self, parent=None, title="", subtitle="", kind="",
                  icon="") -> None:
         super().__init__(parent)
-        self.setFixedSize(self.d(self.FRAME[0]), self.d(self.FRAME[1]))
+        self.setFixedSize(theme.ui_px(self.FRAME[0]),
+                          theme.ui_px(self.FRAME[1]))
         self.setStyleSheet("QDialog { background: %s; }" % self.BODY_BG)
 
         outer = QtWidgets.QVBoxLayout(self)
@@ -209,70 +203,71 @@ class DesignedDialog(QtWidgets.QDialog):
         outer.setSpacing(0)
 
         header = QtWidgets.QWidget(self)
-        header.setFixedHeight(self.d(self.HEADER_H))
+        header.setFixedHeight(theme.ui_px(self.HEADER_H))
         header.setStyleSheet("background: %s;" % self.HEADER_BG)
         outer.addWidget(header)
 
         if icon and os.path.exists(icon):   # ABSOLUTE placement through the header, because the design gives absolute positions and a layout would only approximate them; the body below is a layout, where the design gives a column
             glyph = QtSvgWidgets.QSvgWidget(icon, header)   # a LIVE VECTOR, never a pixmap: QSvgWidget re-renders the file at whatever size and device resolution it is handed, so there is no raster step to get wrong on a 2.0 display
             glyph.setStyleSheet("background: transparent;")
-            glyph.setGeometry(self.d(33), self.d(36), self.d(60), self.d(60))
+            glyph.setGeometry(theme.ui_px(16), theme.ui_px(18),
+                              theme.ui_px(30), theme.ui_px(30))
 
-        for text, top, px, ink, bold in (
-            (subtitle, 15, self.SUBTITLE_PX, self.LABEL_INK, False),
-            (title, 47, self.TITLE_PX, self.TITLE_INK, True),
-            (kind, 88, self.KIND_PX, self.LABEL_INK, False),
+        for text, top, px, ink, bold in (   # the tops are the design's 15, 47 and 88
+            (subtitle, 8, self.SUBTITLE_PX, self.LABEL_INK, False),
+            (title, 24, self.TITLE_PX, self.TITLE_INK, True),
+            (kind, 44, self.KIND_PX, self.LABEL_INK, False),
         ):
             if not text:
                 continue
             label = QtWidgets.QLabel(str(text), header)
             font = QtGui.QFont(label.font())
-            font.setPixelSize(self.d(px))
+            font.setPixelSize(theme.ui_px(px))
             font.setBold(bold)
             label.setFont(font)
             label.setStyleSheet("color: %s; background: transparent;" % ink)
             label.setGeometry(
-                self.d(131), self.d(top),
-                self.d(self.FRAME[0] - 131 - self.INSET),
-                self.d(px + 8))
+                theme.ui_px(self.TEXT_X), theme.ui_px(top),
+                theme.ui_px(self.FRAME[0] - self.TEXT_X - self.INSET),
+                theme.ui_px(px + 4))
 
         body = QtWidgets.QWidget(self)
         outer.addWidget(body, 1)
         self.body_layout = QtWidgets.QVBoxLayout(body)
-        inset = self.d(self.INSET)
+        inset = theme.ui_px(self.INSET)
         self.body_layout.setContentsMargins(
-            inset, self.d(163 - self.HEADER_H), inset, 0)   # 163 is the first field's top and the header ends at 132
+            inset, theme.ui_px(self.FIRST_FIELD_Y - self.HEADER_H), inset, 0)
         self.body_layout.setSpacing(0)   # ZERO: `add_field` places the design's own gaps, which differ above and below a label
 
     def add_field(self, widget, label: str = "") -> None:
         """A standard Houdini control at the design's size and place - STANDARD is its LOOK only, since the grey boxes in the page are placeholders for real controls; the geometry is still the design's, and the uneven gaps live here."""
         if label:
             if self.body_layout.count():
-                self.body_layout.addSpacing(self.d(18))
+                self.body_layout.addSpacing(theme.ui_px(9))
             text = QtWidgets.QLabel(label, self)
             font = QtGui.QFont(text.font())
-            font.setPixelSize(self.d(self.LABEL_PX))
+            font.setPixelSize(theme.ui_px(self.LABEL_PX))
             text.setFont(font)
             text.setStyleSheet(
                 "color: %s; background: transparent;" % self.LABEL_INK)
             self.body_layout.addWidget(text)
-            self.body_layout.addSpacing(self.d(9))
-        widget.setFixedHeight(self.d(self.FIELD_H))
+            self.body_layout.addSpacing(theme.ui_px(4))
+        widget.setFixedHeight(theme.ui_px(self.FIELD_H))
         self.body_layout.addWidget(widget)
 
     def add_buttons(self, reject_text: str, accept_text: str) -> None:
         """The design's two buttons - 202 x 42 each, filling the 442 column with a 38 gap: standard Houdini buttons with no stylesheet, but the design's geometry, since at their natural size they huddle in the corner."""
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(self.d(self.BUTTON_GAP))
+        row.setSpacing(theme.ui_px(self.BUTTON_GAP))
         for text, slot in ((reject_text, self.reject),
                            (accept_text, self.accept)):
             button = QtWidgets.QPushButton(text, self)
-            button.setFixedSize(self.d(self.BUTTON[0]),
-                                self.d(self.BUTTON[1]))
+            button.setFixedSize(theme.ui_px(self.BUTTON[0]),
+                                theme.ui_px(self.BUTTON[1]))
             button.clicked.connect(slot)
             row.addWidget(button)
-        self.body_layout.addSpacing(self.d(35))   # 35 BELOW THE FIELD, read off the page, and the same 35 as the side padding; NOT a stretch, which floats them to the body's bottom and puts a different gap above them at every dialog height
+        self.body_layout.addSpacing(theme.ui_px(self.INSET))   # the design's 35 BELOW THE FIELD, the same as the side padding; NOT a stretch, which floats them to the body's bottom and puts a different gap above them at every dialog height
         self.body_layout.addLayout(row)
         self.body_layout.addStretch(1)
 
