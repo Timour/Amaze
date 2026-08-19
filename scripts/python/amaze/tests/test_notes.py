@@ -1,19 +1,4 @@
-"""The Notes feature (2026-08-01 design): the store, the page, the
-wiring.
-
-Three layers, tested at their own altitude:
-
-* **core/notes.py** - the guard set it copied from icons.json must
-  actually guard: an unreadable file latches writes off, another
-  session's keys are adopted rather than clobbered, every write leaves
-  a restore tier behind, and an empty page deletes its key.
-* **NotesPanel** - the widget drives the store: debounced saves flush
-  on demand, the + button adds a focused row, a toggled item flips and
-  persists, a blank label is not content.
-* **The panel** - the toolbar button toggles a pane that follows the
-  selection, and the tile models answer NotesRole so the badge can
-  paint.
-"""
+"""Comments at three altitudes: store guards, the NotesPanel editor, and the panel + NotesRole badge wiring."""
 
 import glob
 import json
@@ -56,8 +41,7 @@ class StoreTest(unittest.TestCase):
         return os.path.join(self.prefs.dir, notes.NOTES_FILE)
 
     def test_a_page_roundtrips_in_order(self):
-        """The page is a FLOW: text above, between and below to-dos,
-        in the order written (the live-pass correction)."""
+        """The page is a FLOW - text and to-dos in the order written."""
         key = notes.note_key("material", "42")
         flow = [
             {"t": "text", "text": "check the roughness"},
@@ -74,9 +58,7 @@ class StoreTest(unittest.TestCase):
         self.assertTrue(notes.has_note(self.prefs, key))
 
     def test_the_first_builds_shape_converts_on_read(self):
-        """notes.json written by the first build ({text, todos}) reads
-        as text-then-todos in the flow - nothing anyone wrote is
-        lost."""
+        """The first build's {text, todos} shape reads as a flow, lossless."""
         with open(self._path(), "w", encoding="utf-8") as handle:
             json.dump({"notes": {"material:1": {
                 "text": "old words",
@@ -112,9 +94,7 @@ class StoreTest(unittest.TestCase):
                            "done": False}], page["items"])
 
     def test_an_unreadable_file_latches_writes_off(self):
-        """The icons.json lesson: an empty table is indistinguishable
-        from 'no notes yet', so the next save would erase every note
-        in the library. Refuse for the session instead."""
+        """Unreadable file = writes latch off, or a save erases every note."""
         with open(self._path(), "w", encoding="utf-8") as handle:
             handle.write("{corrupt")
         self.assertEqual({}, notes.note_for(self.prefs, "material:1"))
@@ -127,13 +107,11 @@ class StoreTest(unittest.TestCase):
                              "the unreadable file was overwritten")
 
     def test_another_sessions_keys_are_adopted_not_clobbered(self):
-        """Two machines, one library: the other session's note must
-        survive this session's next save."""
+        """Two machines, one library: the peer's note survives my save."""
         mine = notes.note_key("material", "1")
         notes.set_note(self.prefs, mine,
                        [{"t": "text", "text": "mine"}])
-        # The other session writes a DIFFERENT key underneath us.
-        with open(self._path(), encoding="utf-8") as handle:
+        with open(self._path(), encoding="utf-8") as handle:  # the other session writes a DIFFERENT key underneath us
             on_disk = json.load(handle)
         on_disk["notes"]["material:2"] = {
             "items": [{"t": "text", "text": "theirs"}]}
@@ -159,9 +137,7 @@ class StoreTest(unittest.TestCase):
 
 
 class PanelWidgetTest(unittest.TestCase):
-    """The flowing document: text and framed to-dos interleave in one
-    editor, in the order written - the live-pass correction of the
-    first build's two competing stacks."""
+    """One flowing editor: text and framed to-dos interleave in order."""
 
     def setUp(self):
         notes.forget_notes()
@@ -251,9 +227,7 @@ class PanelWidgetTest(unittest.TestCase):
             "Enter inside a frame does not stack another frame")
 
     def test_backspace_unwraps_a_frame(self):
-        """The deletion path: Backspace at a frame's start turns it
-        back into text (the mirror of Enter-on-empty); the label
-        survives as plain words the next Backspace can eat."""
+        """Backspace at a frame's start unwraps it back into plain text."""
         key = self._subject("15")
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "doomed", "done": False}])
@@ -272,17 +246,9 @@ class PanelWidgetTest(unittest.TestCase):
                          "Backspace did not unwrap the frame")
 
     def test_backspacing_a_line_into_a_frame_keeps_its_checkbox(self):
-        """THE screenshot bug: backspacing an emptied line UP into the
-        to-do above it. Qt's separator removal stamps the merged block
-        with the FOLLOWING block's userState (probed - research.md ▸
-        Qt text checklists), so the frame above silently lost its
-        checkbox while its struck text stayed. The merge now hands the
-        survivor its own state back."""
+        """A backspace-merge hands the surviving to-do its state back."""
         key = self._subject("40")
-        # The line below the frame carries one character - the store
-        # prunes EMPTY text items at load, so the walk must do what
-        # the user did: backspace the line empty, then once more.
-        notes.set_note(self.prefs, key,
+        notes.set_note(self.prefs, key,  # one char below the frame: the store prunes EMPTY text at load, so walk it like the user did
                        [{"t": "todo", "label": "keepme", "done": True},
                         {"t": "text", "text": "x"}])
         self.widget.clear_subject()
@@ -291,7 +257,7 @@ class PanelWidgetTest(unittest.TestCase):
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
         edit.setTextCursor(cursor)
-        for _ in range(2):                    # eat "x", then merge
+        for _ in range(2):                    # eat "x", then merge - Qt stamps the merged block with the NEXT block's userState (▸r/qt-text-checklists)
             event = QtGui.QKeyEvent(
                 QtCore.QEvent.Type.KeyPress,
                 QtCore.Qt.Key.Key_Backspace,
@@ -303,9 +269,7 @@ class PanelWidgetTest(unittest.TestCase):
             "the merge stripped the frame above of its checkbox")
 
     def test_forward_delete_at_a_frames_end_keeps_its_checkbox(self):
-        """The unreported mirror the probe caught: Delete at a frame's
-        end pulls the next line in and unmade the frame the same way.
-        The joined words become part of the frame's label."""
+        """Delete at a frame's end joins the next line into the label."""
         key = self._subject("41")
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "top", "done": False},
@@ -327,9 +291,7 @@ class PanelWidgetTest(unittest.TestCase):
             "the forward merge stripped the frame of its checkbox")
 
     def test_an_enter_chain_keeps_every_checkbox(self):
-        """THE live-pass bug: Return created the next to-do but the
-        previous one's checkbox vanished. Three in a chain - every
-        block must still BE a to-do when the typing stops."""
+        """Return chains to-dos; every previous checkbox must survive."""
         self._subject("16")
         edit = self.widget.text_edit
         edit.insert_todo()
@@ -347,8 +309,7 @@ class PanelWidgetTest(unittest.TestCase):
             "a checkbox was lost somewhere in the chain")
 
     def test_text_flows_below_the_second_todo_too(self):
-        """The other live-pass bug: writing underneath only worked for
-        the FIRST to-do."""
+        """Writing underneath must work below EVERY to-do, not the first."""
         key = self._subject("17")
         notes.set_note(self.prefs, key, [
             {"t": "todo", "label": "first", "done": False},
@@ -371,13 +332,10 @@ class PanelWidgetTest(unittest.TestCase):
             "text cannot flow below the second frame")
 
     def test_the_broken_qt_apis_stay_out(self):
-        """Source pin on two probed facts: Qt's task-list markers
-        inherit unpredictably, and QTextObjectInterface.registerHandler
-        never registers in Houdini's PySide6 6.8.3. Neither API may
-        return to this file."""
+        """Source ban: the two Qt APIs that failed live may not return."""
         import inspect
         from amaze.panel import notes_panel as module
-        source = inspect.getsource(module)
+        source = inspect.getsource(module)  # markers inherit unpredictably; registerHandler never registers here (▸r/qt-text-checklists)
         for banned in ("registerHandler", "QTextObjectInterface",
                        "MarkerType", "createList"):
             self.assertNotIn(banned, source,
@@ -385,9 +343,7 @@ class PanelWidgetTest(unittest.TestCase):
                              "failed live, twice" % banned)
 
     def test_todo_separation_is_padding_not_background(self):
-        """The 2026-08-01 call: a to-do is page-coloured - no
-        background of its own - and stands apart by 10px of padding
-        above and below."""
+        """A to-do is page-coloured; 10px of padding is the separation."""
         from amaze.helpers import theme
         self._subject("21")
         edit = self.widget.text_edit
@@ -407,23 +363,17 @@ class PanelWidgetTest(unittest.TestCase):
             "page-coloured with padding only")
 
     def test_no_stylesheet_anywhere_in_the_pane(self):
-        """A stylesheet on ANY ancestor hands the whole subtree to
-        Qt's stylesheet engine, whose primitive scrollbars replace
-        Houdini's - and headless the suite CANNOT see the difference
-        (probed: offscreen style() reports QCommonStyle either way),
-        so the guard is a SOURCE ban. Backgrounds go through palettes
-        (_fill/_dim), the panel's own pattern."""
+        """Source ban on setStyleSheet - it swaps in Qt's own scrollbars."""
         import inspect
         from amaze.panel import notes_panel as module
-        source = inspect.getsource(module)
+        source = inspect.getsource(module)  # headless style() reports QCommonStyle either way, so only a SOURCE ban can guard this
         self.assertNotIn("setStyleSheet", source,
                          "a stylesheet is back somewhere in the pane "
                          "- the IRIX scrollbar returns with it, and "
                          "only the live pass would ever see it")
 
     def test_the_designed_colours_ride_the_palettes(self):
-        """The colours survive the stylesheet purge: header and page
-        backgrounds live in widget palettes with autofill on."""
+        """Header and page colours ride widget palettes, autofill on."""
         from amaze.panel import notes_panel as module
         header = self.widget.header_widget
         self.assertTrue(header.autoFillBackground())
@@ -439,11 +389,7 @@ class PanelWidgetTest(unittest.TestCase):
                 QtGui.QPalette.ColorRole.Window).name())
 
     def test_the_glyph_sits_on_its_text_line(self):
-        """The live report: checkmarks below the text. The glyph must
-        paint inside its to-do's own first-line band - the truth comes
-        from the block's laid-out line, which absorbs the padding
-        blockBoundingRect already contains (double-counting it was
-        the bug, measured at one padding of error)."""
+        """The glyph paints inside its to-do's own laid-out first line."""
         from PySide6 import QtGui as G
         key = self._subject("22")
         notes.set_note(self.prefs, key,
@@ -460,7 +406,7 @@ class PanelWidgetTest(unittest.TestCase):
         tlayout = block.layout()
         self.assertGreater(tlayout.lineCount(), 0)
         line = tlayout.lineAt(0)
-        band_top = tlayout.position().y() + line.y()
+        band_top = tlayout.position().y() + line.y()  # the laid-out line already absorbs the padding - counting it again was the bug
         band_bottom = band_top + line.height()
         image = G.QImage(300, 160, G.QImage.Format.Format_ARGB32)
         image.fill(G.QColor("#2b2c34"))
@@ -479,8 +425,7 @@ class PanelWidgetTest(unittest.TestCase):
                              "padding is double-counted again")
 
     def test_the_cursor_says_button_over_the_checkbox(self):
-        """The checkbox is clickable and the pointer should say so: a
-        pointing hand over the glyph zone, the I-beam over text."""
+        """Pointing hand over the glyph zone, I-beam over the text."""
         from PySide6 import QtGui as G
         key = self._subject("23")
         notes.set_note(self.prefs, key,
@@ -515,9 +460,7 @@ class PanelWidgetTest(unittest.TestCase):
                          "the pointer stays a hand over plain text")
 
     def test_the_glyphs_actually_paint(self):
-        """THE invisible-checkbox lesson: serialization can be perfect
-        while nothing draws. Paint the glyph pass onto an image and
-        demand bright pixels where the checkbox belongs."""
+        """Serialization can be perfect while nothing draws - demand pixels."""
         from PySide6 import QtGui as G
         key = self._subject("20")
         notes.set_note(self.prefs, key,
@@ -526,10 +469,7 @@ class PanelWidgetTest(unittest.TestCase):
         self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 100)
-        # Force the layout pass: the painter GUARDS un-laid-out blocks
-        # (lineAt on one crashes hython natively - research.md), so an
-        # unlaid document legitimately paints nothing.
-        edit.document().setTextWidth(280)
+        edit.document().setTextWidth(280)  # force layout: the painter guards un-laid-out blocks (lineAt on one crashes hython natively - ▸r/qt-text-checklists)
         image = G.QImage(300, 100, G.QImage.Format.Format_ARGB32)
         image.fill(G.QColor("#2b2c34"))
         painter = G.QPainter(image)
@@ -545,9 +485,7 @@ class PanelWidgetTest(unittest.TestCase):
                            "painted nothing (the live + bug's shape)")
 
     def test_no_block_rides_a_qt_list(self):
-        """The indent pile-up came from QTextList inheritance; the
-        editor now owns its checkboxes, so NO block may be a list
-        item - if one is, the machinery regressed."""
+        """No block may be a QTextList item - the indent pile-up returns."""
         key = self._subject("18")
         notes.set_note(self.prefs, key, [
             {"t": "text", "text": "words"},
@@ -562,8 +500,7 @@ class PanelWidgetTest(unittest.TestCase):
             block = block.next()
 
     def test_a_toggled_todo_keeps_its_checkbox(self):
-        """Crossed-out text with no tickmark was the symptom: the flip
-        must change the STATE of the box, never remove it."""
+        """A flip changes the box's STATE, never removes the box."""
         key = self._subject("19")
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "flip me",
@@ -620,9 +557,7 @@ class PanelWidgetTest(unittest.TestCase):
             "switching subjects lost the pending edit")
 
     def test_clear_subject_shows_the_ghost_page(self):
-        """No selection = the SAME window as a ghost: placeholder
-        labels, dead page-coloured +, disabled editor - never a
-        different layout."""
+        """No selection = the same window as a ghost, never a new layout."""
         self._subject("13")
         self.assertTrue(self.widget.add_button.isEnabled())
         self.widget.clear_subject()
@@ -638,8 +573,7 @@ class PanelWidgetTest(unittest.TestCase):
                         "selecting again did not wake the page")
 
     def test_the_header_reads_section_slash_category(self):
-        """A category joins the section line; a COLOURED category
-        renders in its colour and bold."""
+        """A category joins the section line, coloured and bold when set."""
         self.widget.set_subject(sections.CommentSubject(
             notes.note_key("material", "c1"), "material", "X", "Karma",
             category="Metal", colour=""))
@@ -654,9 +588,7 @@ class PanelWidgetTest(unittest.TestCase):
         self.assertIn("Metal", text)
 
     def test_the_inset_scrolls_with_the_text(self):
-        """The 12px under the header is DOCUMENT margin, not chrome:
-        unscrolled text starts 12px down, scrolled text passes through
-        that zone to the border."""
+        """The 12px under the header is document margin, not chrome."""
         from amaze.helpers import theme
         edit = self.widget.text_edit
         self.assertEqual(theme.ui_px(12),
@@ -735,15 +667,7 @@ class ModelRoleTest(unittest.TestCase):
         self.assertTrue(model.data(index, model.NotesRole))
 
     def test_the_badge_renders_the_family_art_as_drawn(self):
-        """AS DRAWN: what reaches the tile is the ARTWORK, with no
-        colour substitution in code (the star-colour re-tint that used
-        to sit here is gone, and must not come back).
-
-        Proven against the file rather than against named colours: the
-        rendered badge must paint in colours the SVG itself declares.
-        That holds through every redraw - and a re-tint, which paints
-        colours the file never mentions, still fails.
-        """
+        """The tile gets the ARTWORK's own colours - no re-tint in code."""
         from amaze.panel import delegates
         declared = test_support.art_colours("badge_comment")
         pixmap = delegates.AssetItemDelegate._badge_pixmap(
@@ -753,10 +677,7 @@ class ModelRoleTest(unittest.TestCase):
         for x in range(image.width()):
             for y in range(image.height()):
                 colour = image.pixelColor(x, y)
-                # Edge pixels are blends of the art and the
-                # transparent ground; only fully-covered pixels say
-                # what the art's own colours are.
-                if colour.alpha() > 250:
+                if colour.alpha() > 250:  # edge pixels blend with the ground; only full coverage names the art's own colours
                     painted.add(colour.name())
         found = bool(painted & declared)
         self.assertTrue(found,
@@ -764,10 +685,7 @@ class ModelRoleTest(unittest.TestCase):
                         "note badge as drawn")
 
     def test_the_star_preference_has_no_path_into_the_badge(self):
-        """As drawn was the design call - declining the per-badge
-        colour option. The old colour push (set_star_color) must stay
-        deleted so the preference cannot quietly re-tint a corner; it
-        colours only the notes button and pane now."""
+        """set_star_color stays deleted - the pref colours the pane only."""
         from amaze.panel import delegates
         self.assertFalse(
             hasattr(delegates.AssetItemDelegate, "set_star_color"),
@@ -775,18 +693,7 @@ class ModelRoleTest(unittest.TestCase):
             "the tile badges again")
 
     def test_every_tile_delegate_carries_the_role(self):
-        """Source pin: the badge paints only where notes_role is wired
-        - EVERY delegate, because EVERY section takes notes now (Color
-        is not special).
-
-        Re-keyed 2026-08-02 from 3 to 4: Node and Code stopped
-        borrowing the Materials delegate and got their own, without the
-        version roles (they were painting a Version column reading
-        "none" on every row, and a badge click there mapped through the
-        MATERIAL model). The new one still wires notes_role, which is
-        the whole point of this pin - so the number moves and the
-        assertion stays.
-        """
+        """Source pin: all four delegates wire notes_role - every section takes notes."""
         import inspect
         from amaze.panel import panel as panel_mod
         source = inspect.getsource(panel_mod)
@@ -797,10 +704,7 @@ class ModelRoleTest(unittest.TestCase):
 
 
 class GradientNotesTest(unittest.TestCase):
-    """Color is NOT special: notes reach gradients like every section.
-    Identity is solved, not dodged - a uid stamped on the entry the
-    first time a note is opened, synced in gradients.json beside the
-    icon that already lives there."""
+    """Notes reach gradients like every section, keyed gradient:<id>."""
 
     def setUp(self):
         notes.forget_notes()
@@ -810,16 +714,7 @@ class GradientNotesTest(unittest.TestCase):
         from amaze.core import gradient_library
         self.model = gradient_library.GradientLibrary(
             preferences=self.prefs)
-        # SEED, don't skip. The curated palettes are not a file in the
-        # fixture library - they are seeded when the PANEL opens, and
-        # these tests build the model on its own, so nothing seeded
-        # them and all four skipped on every host from the day they
-        # were written. That is dead cover on the identity rule
-        # gradients most need: a palette that loses its id duplicates
-        # itself on every launch and takes its comments with it, which
-        # has happened once already. One call, the same one
-        # test_gradient_guard and test_absent_database already make.
-        self.model.seed_curated_palettes(
+        self.model.seed_curated_palettes(  # SEED, don't skip: the PANEL seeds these, a bare model has none - every test here skipped as dead cover before
             gradient_library.GradientCategories(preferences=self.prefs))
         self.assertTrue(
             self.model.rowCount(),
@@ -828,9 +723,7 @@ class GradientNotesTest(unittest.TestCase):
             "is what hid them before")
 
     def test_every_gradient_is_born_with_identity(self):
-        """Identity from load, not from a feature: after construction
-        EVERY entry carries a uid (the backfill pass), and a reload
-        reads the same ones back - no stamping on demand anywhere."""
+        """After construction every entry has a uid and a reload keeps it."""
         uids = [self.model.note_uid(row)
                 for row in range(self.model.rowCount())]
         self.assertTrue(all(uids),
@@ -856,10 +749,7 @@ class GradientNotesTest(unittest.TestCase):
         self.assertTrue(self.model.note_uid(row),
                         "a freshly saved gradient has no identity - "
                         "birth is where every section stamps it")
-        # ONE mint across the app: the full uuid4 hex the asset family
-        # stamps (core/material.py). Early libraries carry 12-char
-        # uids - those stay valid keys, but every NEW birth is 32.
-        self.assertEqual(32, len(self.model.note_uid(row)),
+        self.assertEqual(32, len(self.model.note_uid(row)),  # one mint app-wide: the family's full uuid4 hex; legacy 12-char keys stay valid
                          "the gradient mint is not the asset family's "
                          "full uuid4 hex")
 
@@ -875,20 +765,7 @@ class GradientNotesTest(unittest.TestCase):
                         "the badge cannot see a gradient's note")
 
     def test_an_unstamped_gradient_reads_no_note_without_saving(self):
-        """data() is a paint path - it must never stamp uids (a save
-        per repaint) and an identity-less entry simply has no note."""
-        # ⚑ STALE SINCE THE COLORS REBASE, and only visible now that
-        # this class seeds instead of skipping. `NotesRole` reads
-        # `notes.has_note(... self._assets[row].mat_id)` - the identity
-        # on the RECORD - while the lines below strip it from the entry
-        # DICT, which was the identity before gradients moved onto the
-        # family model. So the row is no longer identity-less and the
-        # assertion below fails against real curated palettes.
-        #
-        # The rule it guards is still worth guarding: a paint-path read
-        # must not stamp a uid. Rewriting it means making the RECORD
-        # identity-less, which is a different mechanism than popping a
-        # key, so it is its own small piece of work rather than a guess.
+        """data() is a paint path - no stamping, and no id means no note."""
         self.skipTest("mechanism stale since gradients moved onto the "
                       "family model - strips the entry dict where "
                       "identity now lives on the record")
@@ -927,11 +804,7 @@ class PanelWiringTest(unittest.TestCase):
         self.assertFalse(panel.prefs.show_notes)
 
     def test_the_chip_and_pane_agree_and_the_lit_colour_is_COMMENT_INK(self):
-        """The button IS the pane's state, and its lit tint is the
-        theme's own star token - FIXED since the star-colour rows left
-        Preferences (2026-08-01): the tile star renders as drawn, so a
-        colour preference had nothing left to colour, and the old
-        _effective_star_color plumbing went with it."""
+        """The button IS the pane's state, and its lit tint stays blue."""
         panel = self.panel
         self.assertFalse(
             hasattr(type(panel), "_effective_star_color"),
@@ -960,26 +833,16 @@ class PanelWiringTest(unittest.TestCase):
         self.assertNotIn(
             QtGui.QColor(uih.IconMenuButton.LIT_BODY).name(), seen,
             "the checked chip went white; blue in all four states")
-        # AND NOT its own blue. The tint map replaces a literal, so a
-        # map keyed on a colour the art no longer contains matches
-        # nothing and the chip renders raw - which is exactly how it
-        # shipped blue in all four states.
-        self.assertNotIn(
+        self.assertNotIn(  # and NOT the pane's own blue: a tint map keyed on a colour the art lacks does nothing - how it shipped blue in all four states
             art_name, seen,
             "the chip is painting the Comments blue - the tint map is "
             "keyed on a colour this art does not contain, so it is "
             "doing nothing")
 
     def test_the_pane_wears_the_category_lists_look(self):
-        """The reuse directive, pinned: font and text colour are CLONED
-        from the category list - identical by construction, and the
-        measured sizes prove it."""
+        """Font and text colour are CLONED from the category list."""
         panel = self.panel
-        # DRIVE the clone, don't observe a coincidence: headless, the
-        # default fonts already agree, so a skipped clone would pass a
-        # bare equality check (the vacuous-test lesson). A distinctive
-        # size proves the pane actually FOLLOWS the category list.
-        original = QtGui.QFont(panel.cat_list.font())
+        original = QtGui.QFont(panel.cat_list.font())  # drive the clone with a distinctive size - defaults agree headless, so bare equality is vacuous
         self.addCleanup(panel.cat_list.setFont, original)
         distinctive = QtGui.QFont(original)
         distinctive.setPointSizeF(17.5)
@@ -1000,12 +863,9 @@ class PanelWiringTest(unittest.TestCase):
             "the pane's text colour is not the category list's")
 
     def test_the_pane_launches_at_450(self):
-        """A launch width, deliberately NOT a maximum: sizeHint drives
-        the splitter's first layout, dragging stays free."""
+        """450 is the launch width sizeHint asks for, never a maximum."""
         from amaze.helpers import theme
-        # The hint prefers a REMEMBERED width; 450 is the never-dragged
-        # default, so pin it against a clean pref.
-        self.addCleanup(
+        self.addCleanup(  # the hint prefers a REMEMBERED width; pin the never-dragged default against a clean pref
             setattr, self.panel.prefs, "notes_panel_width",
             self.panel.prefs.notes_panel_width)
         self.panel.prefs.notes_panel_width = 0
@@ -1016,12 +876,7 @@ class PanelWiringTest(unittest.TestCase):
             "a maximum width crept in - 450 is the LAUNCH width only")
 
     def test_the_accent_push_is_harmless_now_that_it_does_nothing(self):
-        """Comments has its OWN colour from 2026-08-01, so there is no
-        accent for the sync to push. The method stays as a no-op
-        because the panel still calls it on every accent change and on
-        rebuild, and a missing method there is an AttributeError
-        inside a signal handler - a crash where there should be
-        nothing at all. This pins that it survives the call."""
+        """set_note_accent stays a callable no-op - the panel still calls it."""
         panel = self.panel
         panel.notes_panel.set_note_accent("#123456")
         panel._sync_notes_button_pixmaps()
@@ -1031,30 +886,17 @@ class PanelWiringTest(unittest.TestCase):
             "fixed colour, and two sources for it will drift")
 
     def test_a_drag_remembers_and_the_pane_asks_for_it_back(self):
-        """The width preference: a splitter drag records the pane's
-        width, and the pane ASKS for that width from then on.
-
-        The asking is a sizeHint now, the same one the sidebar has
-        always used (ui_helpers.HeldPane) - it used to be a `shown`
-        signal into fifty lines of splitter arithmetic on the panel,
-        which measured identical to doing nothing. That the width
-        actually lands when the pane opens is pinned end-to-end in
-        test_comments_area."""
+        """A splitter drag records the width; the sizeHint asks it back (landing end-to-end is test_comments_area's pin)."""
         panel = self.panel
         panel.toggle_notes_panel()
         self.addCleanup(panel.toggle_notes_panel)
-        # The pref is shared fixture state - leave it as found, or the
-        # launch-width test reads this test's leftovers.
-        self.addCleanup(
+        self.addCleanup(  # shared fixture pref - leave it as found, or the launch-width test reads this test's leftovers
             setattr, panel.prefs, "notes_panel_width",
             panel.prefs.notes_panel_width)
         pane = panel.notes_panel
         splitter = pane.parentWidget()
         index = splitter.indexOf(pane)
-        # Headless the splitter never laid out - give it real
-        # geometry, or this pin silently skips (a skipped pin is how
-        # the accent wiring died unnoticed).
-        splitter.resize(1200, 500)
+        splitter.resize(1200, 500)  # headless never laid out; no geometry = a pin that pins nothing (how the accent wiring died unnoticed)
         seed = [200] * splitter.count()
         seed[index] = 400
         splitter.setSizes(seed)
@@ -1065,20 +907,14 @@ class PanelWiringTest(unittest.TestCase):
         panel._on_splitter_moved(0, 0)
         self.assertEqual(sizes[index], panel.prefs.notes_panel_width,
                          "the drag was not recorded")
-        # And the pane asks for it back - what a stretch-0 splitter
-        # pane is given is exactly what its sizeHint requests.
-        panel.prefs.notes_panel_width = 333
+        panel.prefs.notes_panel_width = 333  # a stretch-0 pane is given exactly what its sizeHint requests
         self.assertEqual(333, pane.sizeHint().width(),
                          "the pane does not ask for the width it was "
                          "dragged to, so opening it lands somewhere "
                          "else")
 
     def test_the_sidebar_launches_at_its_design_width(self):
-        """The other half of the one-flexible-pane construction: a
-        stretch-0 pane gets exactly its sizeHint at launch, so each
-        side pane must ASK for its width. The notes pane always did;
-        the sidebar asked for nothing and launched at whatever
-        cat_list's bare hint happened to be - the live report."""
+        """A stretch-0 side pane must ASK for its width; the sidebar didn't."""
         from amaze.helpers import theme
         panel = self.panel
         self.addCleanup(
@@ -1095,9 +931,7 @@ class PanelWiringTest(unittest.TestCase):
                          "sidebar's launch width")
 
     def test_a_drag_remembers_the_sidebar_too(self):
-        """_on_splitter_moved records BOTH side panes now - the
-        sidebar's width was unrecorded, so there was nothing to
-        remember across sessions."""
+        """_on_splitter_moved records BOTH side panes now."""
         panel = self.panel
         splitter = panel.notes_panel.parentWidget()
         splitter.resize(1200, 500)
@@ -1120,13 +954,7 @@ class PanelWiringTest(unittest.TestCase):
                          "the sidebar drag was not recorded")
 
     def test_one_flexible_pane_is_the_construction(self):
-        """The unified rule for the three sections (2026-08-01): the
-        sidebar and the notes pane HOLD their width, the grid is the
-        splitter's ONLY flexible pane - so every redistribution Qt
-        performs (the notes toggle, window resizes) lands on the grid
-        alone. This replaced a hand-rolled sidebar capture-and-restore
-        that fought the redistribution instead of turning it off, and
-        lost live (the width walked on every toggle)."""
+        """One flexible pane - the grid; both side panes hold (0/1/0)."""
         panel = self.panel
         splitter = panel.notes_panel.parentWidget()
         stretches = [
@@ -1144,12 +972,7 @@ class PanelWiringTest(unittest.TestCase):
                          "must absorb every width change")
 
     def test_the_construction_holds_the_sidebar_through_toggles(self):
-        """The mechanism, proven end to end on a top-level replica
-        built to the SAME rule (stretch 0/1/0, capped side pane):
-        Qt's own redistribution leaves the held pane untouched
-        through hide, reshow and a window resize. Together with the
-        construction pin above this closes the chain the old
-        machinery never could."""
+        """A top-level 0/1/0 replica: Qt leaves the held pane untouched."""
         split = QtWidgets.QSplitter()
         side, grid, notes = (QtWidgets.QWidget() for _ in range(3))
         for w in (side, grid, notes):
@@ -1189,9 +1012,7 @@ class PanelWiringTest(unittest.TestCase):
                          "a window resize grew the held pane")
 
     def test_the_hand_rolled_restore_stays_deleted(self):
-        """Source ban: the capture-and-restore machinery must not
-        return - it patched the symptom of the wrong construction and
-        lost to Qt's own deferred relayout live."""
+        """Source ban: capture-and-restore lost to Qt's deferred relayout."""
         import inspect
         from amaze.panel import panel as panel_mod
         source = inspect.getsource(panel_mod)
@@ -1203,8 +1024,7 @@ class PanelWiringTest(unittest.TestCase):
                              % banned)
 
     def test_the_gradient_section_reaches_the_pane(self):
-        """The carve-out must never return: a selected gradient yields
-        a real subject - gradient:<uid> key, section line, name."""
+        """A selected gradient yields a real gradient:<uid> subject."""
         panel = self.panel
         model = panel.gradient_sorted_model
         if not model.rowCount():
@@ -1241,18 +1061,9 @@ class PanelWiringTest(unittest.TestCase):
 
 
 class VersionsBadgeHoverTest(unittest.TestCase):
-    """The versions badge is the one BUTTON on a tile, so it alone
-    answers the pointer: a lighter disc under the cursor and a
-    tooltip naming what a click does (2026-08-01).
+    """The versions badge is the tile's one BUTTON - it answers hover."""
 
-    These DRIVE the delegate rather than reading panel.py. A previous
-    badge test asserted that a method body mentioned `icon_side` and
-    stayed green through a sabotage that deleted the clamp using it
-    (practice.md, 2026-07-29); the property here is a DECISION - is
-    this point on the badge, which art comes back - so the test makes
-    the decision happen and records what it decided."""
-
-    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77
+    ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate, never read source - the icon_side lesson (practice.md, 2026-07-29)
 
     def _delegate(self):
         from amaze.panel import delegates
@@ -1282,8 +1093,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
             "the badge answers for a point in the opposite corner")
 
     def test_a_single_version_asset_has_no_badge_to_hover(self):
-        """No badge is painted under two versions, so nothing there
-        may claim the pointer - a tooltip over empty pixels is a lie."""
+        """One version paints no badge, so nothing there takes the pointer."""
         delegate = self._delegate()
         index = self._index(1)
         rect = QtCore.QRect(0, 0, 120, 140)
@@ -1304,13 +1114,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         return canvas.toImage()
 
     def test_hover_swaps_the_art_the_PAINTER_lays_down(self):
-        """Drive the paint, not the flag.
-
-        The first version of this test compared the two SVG pixmaps
-        and toggled the hover state, and a sabotage that made the
-        painter always pick the base art left it green - it never
-        asked what got painted. Same shape as the icon_side lesson in
-        practice.md, caught the same way: by sabotage."""
+        """Compare what is PAINTED - toggling the flag passed a dead painter."""
         delegate = self._delegate()
         index = self._index(3)
 
@@ -1343,9 +1147,7 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         import inspect
         body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
         self.assertIn("Click to select version", body)
-        # It must go through the shared cap, not raw setToolTip: a
-        # plain-text tooltip renders as one endless line (research.md).
-        self.assertIn("ui_helpers.tooltip_text", body)
+        self.assertIn("ui_helpers.tooltip_text", body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
         self.assertTrue(
             ui_helpers.tooltip_text("Click to select version"),
             "the shared tooltip helper returned nothing")
