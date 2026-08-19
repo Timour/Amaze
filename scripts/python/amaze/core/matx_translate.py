@@ -1,20 +1,4 @@
-"""Clean .mtlx -> VOP translator, built on Houdini's MaterialX Python API.
-
-Replaces the old editmaterial approach, which was the wrong tool: it
-EDITS a material, so it promotes every input to the subnet interface and
-turns `file` from a node input into a promoted parameter - producing
-collapsed, all-promoted nodes whose file inputs were dropped from the USD
-export (the black-material bug), nothing like a hand-built material.
-
-This parses the .mtlx directly (MaterialX 1.39 ships with Houdini) and
-builds fresh `mtlx*` VOP nodes - real `file` inputs, an `out` output,
-nothing promoted - FLATTENED into the builder (no nested nodegraph),
-matching this studio's house style and the KARMA_REF reference. Same
-shape as the Redshift converter: an adapter that produces a clean shader
-network for the one Karma material engine.
-
-Returns (shader, displacement) or (None, None) with a printed reason.
-"""
+"""Clean .mtlx -> VOP translator on Houdini's MaterialX Python API: parses the document and builds fresh FLATTENED `mtlx*` VOP nodes (real `file` inputs, nothing promoted, no nested nodegraph) - the old editmaterial approach promoted every input and dropped file inputs from the USD export, the black-material bug. Returns (shader, displacement) or (None, None) with a printed reason."""
 
 from __future__ import annotations
 
@@ -26,16 +10,11 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 
-#: MaterialX node categories whose VOP type isn't simply "mtlx<category>".
-#: Everything else maps by the mtlx<category> rule with a ::2.0 fallback.
-_TYPE_OVERRIDES = {
+_TYPE_OVERRIDES = {  # categories whose VOP type isn't simply mtlx<category>; everything else maps by that rule with a ::2.0 fallback
     "surfacematerial": None,       # the material prim - the builder IS this
 }
 
-#: MaterialX node `type` -> mtlximage `signature` value. This is the
-#: per-map colour-space rule at its source: a color3 image reads sRGB, a
-#: float/vector3 image reads raw. The .mtlx's own type is authoritative.
-_TYPE_TO_SIGNATURE = {
+_TYPE_TO_SIGNATURE = {  # mtlx `type` -> mtlximage `signature`: the per-map colour-space rule at its source - a color3 image reads sRGB, a float/vector3 image reads raw; the .mtlx's own type is authoritative
     "color3": "color3",
     "color4": "color4",
     "float": "default",
@@ -59,22 +38,7 @@ def _vop_type_for(category: str, parent: hou.Node) -> str | None:
 
 
 def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
-    """A .mtlx file value is relative to the document (plus any active
-    fileprefix). Resolve to an absolute path that exists where possible.
-
-    CONTAINED IN THE PACKAGE. `value` comes out of a DOWNLOADED
-    document, and this is the one place in the online path where such a
-    string becomes a filesystem path - the three write paths beside it
-    all go through `hostos.contained_join`. An absolute value used to be
-    returned verbatim and a `..` walk was normalised away, so a document
-    could point a texture parm at any readable file on the machine and
-    the material would then render, and ship, carrying that path.
-
-    Nothing is overwritten either way - this is a READ - so an
-    uncontainable value is answered with "" and logged rather than
-    raised: a texture that does not load is the safe end of a bad
-    reference, and one bad input must not cost the whole material.
-    """
+    """Resolve a .mtlx file value (document-relative, plus any active fileprefix) to an absolute path - CONTAINED IN THE PACKAGE: `value` comes out of a DOWNLOADED document and this is the one place in the online path where such a string becomes a filesystem path, so an uncontainable value answers an empty path and is logged, never raised; a texture that does not load is the safe end of a bad reference."""
     if not value:
         return value
     candidates = [os.path.join(mtlx_dir, prefix, value) if prefix else None,
@@ -125,9 +89,7 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
             p = node.parm(parm_name)
             if p is not None:
                 p.set(value_str)
-        elif mtlx_type == "boolean":
-            # Not scalar-parseable: float("true") raises, and the except
-            # below would silently drop the input at its default.
+        elif mtlx_type == "boolean":  # not scalar-parseable: float of a word raises, and the except below would silently drop the input at its default
             p = node.parm(parm_name)
             if p is not None:
                 p.set(1 if value_str.strip().lower() in ("true", "1") else 0)
@@ -135,27 +97,15 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
             p = node.parm(parm_name)
             if p is not None:
                 p.set(float(value_str))
-    except (hou.Error, ValueError) as exc:
-        # NOT silent. An input the .mtlx expresses in an unexpected form
-        # (wrong component count, a non-numeric scalar) leaves the parm
-        # at its DEFAULT, so the material builds, reports success, and
-        # renders wrong - with nothing to look at. Collected here and
-        # summarised by the caller, the way unresolved textures already
-        # are.
+    except (hou.Error, ValueError) as exc:  # NOT silent: a wrong-shaped input leaves the parm at its DEFAULT and the material renders wrong with nothing to look at - collected and summarised by the caller, like unresolved textures
         _DROPPED.append("%s.%s (%s)" % (node.name(), parm_name, exc))
 
 
-#: Inputs dropped by _set_value during the current build - drained and
-#: reported by build_material.
-_DROPPED: list = []
+_DROPPED: list = []  # inputs _set_value dropped during the current build; build_material drains and reports them
 
 
 def _named_few(items, limit: int = 6) -> str:
-    """The first few names, then an honest count of the rest.
-
-    A bare `items[:6]` under a total of nine reads as a list that lost
-    its end, and the reader cannot tell whether the sentence was cut or
-    the data was."""
+    """The first few names, then an honest count of the rest - a bare truncation reads as a list that lost its end."""
     names = [str(item) for item in items]
     shown = ", ".join(names[:limit])
     if len(names) <= limit:
@@ -164,12 +114,8 @@ def _named_few(items, limit: int = 6) -> str:
 
 
 def build_material(mtlx_path: str, builder: hou.Node, name: str):
-    """Translate a .mtlx into clean VOP nodes inside `builder`.
-
-    Returns (surface_shader, displacement_shader); either may be None."""
-    # Per build: an early return below (no MaterialX API, unreadable
-    # document) must not carry entries into the next material's report.
-    _DROPPED.clear()
+    """Translate a .mtlx into clean VOP nodes inside `builder`; returns (surface_shader, displacement_shader), either may be None."""
+    _DROPPED.clear()  # an early return below must not carry entries into the next material's report
     try:
         import MaterialX as mx
     except ImportError as exc:
@@ -183,9 +129,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
     try:
         mx.readFromXmlFile(doc, mtlx_path)
     except Exception as exc:
-        # The path goes in the DATA, not the sentence: it is a file
-        # inside the download folder that the user has never opened.
-        debug.note(
+        debug.note(  # the path goes in the DATA, not the sentence: a file inside the download folder the user has never opened
             "the downloaded MaterialX file for this material could "
             "not be read (%s), so nothing was built. Your scene is "
             "unchanged." % exc, path=mtlx_path)
@@ -193,18 +137,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
 
     mtlx_dir = os.path.dirname(mtlx_path)
 
-    # Every node we'll build, FLATTENED: top-level nodes (minus the
-    # surfacematerial prim) plus every node inside every nodegraph. The
-    # nodegraph wrapper is dropped - its outputs are resolved to the
-    # internal node feeding them, so the shader wires straight to the
-    # image, exactly like a hand-built flat material.
-    #
-    # KEYED BY NAME PATH, NOT BY NAME. A MaterialX name is unique inside
-    # its nodegraph, so two graphs may each hold an `image1` and the
-    # bare name keeps only the last (research.md > a MaterialX node name
-    # is scoped to its nodegraph). `getNamePath()` is the library's own
-    # identity for a node.
-    all_mtlx_nodes = []            # (mtlx_node, active_file_prefix)
+    all_mtlx_nodes = []  # (mtlx_node, active_file_prefix), FLATTENED: top-level nodes plus every nodegraph's nodes, wrappers dropped with outputs resolved to the feeding node; keyed by getNamePath() everywhere, because a bare name is unique only inside its nodegraph (research.md - a MaterialX node name is scoped to its nodegraph)
 
     for node in doc.getNodes():
         if node.getCategory() == "surfacematerial":
@@ -215,10 +148,9 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
         for node in graph.getNodes():
             all_mtlx_nodes.append((node, node.getActiveFilePrefix()))
 
-    # Pass 1: create a VOP node for each, set constant values + signature.
     vop_by_path = {}               # mtlx name path -> VOP node
-    skipped = []                   # "name (category)" with no VOP type here
-    for mnode, prefix in all_mtlx_nodes:
+    skipped = []                   # name (category) pairs with no VOP type here
+    for mnode, prefix in all_mtlx_nodes:  # pass 1: create a VOP node for each, set constant values + signature
         vtype = _vop_type_for(mnode.getCategory(), builder)
         if vtype is None:
             continue
@@ -234,8 +166,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             pass
         vop_by_path[mnode.getNamePath()] = vnode
 
-        # Signature from the node's declared type (images especially).
-        sig = _TYPE_TO_SIGNATURE.get(mnode.getType())
+        sig = _TYPE_TO_SIGNATURE.get(mnode.getType())  # signature from the node's declared type (images especially)
         sig_parm = vnode.parm("signature")
         if sig is not None and sig_parm is not None:
             try:
@@ -255,14 +186,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
                     fp.set(resolved)
                 cs = inp.getAttribute("colorspace")
                 csp = vnode.parm("filecolorspace")
-                if not cs:
-                    # No colorspace attribute (SideFX's own data maps
-                    # ship none): leaving "automatic" hands the choice
-                    # to Houdini's OCIO FILE RULES, which read every
-                    # png/jpg as sRGB - degamma'ing roughness/normal
-                    # DATA maps (wiki: materials research). The node's
-                    # declared type decides instead: non-color
-                    # signatures are data and read Raw.
+                if not cs:  # no colorspace attribute (SideFX's own data maps ship none): leaving `automatic` hands the choice to Houdini's OCIO FILE RULES, which read every png/jpg as sRGB and degamma roughness/normal DATA maps (research/material-creation.md) - the node's declared type decides instead, non-color signatures read Raw
                     if mnode.getType() in (
                         "float", "vector2", "vector3", "vector4"
                     ):
@@ -283,13 +207,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             "Everything else in the material was built."
             % (len(skipped), "" if len(skipped) == 1 else "s",
                _named_few(skipped)))
-    if _DROPPED:
-        # Same treatment as skipped nodes: debug.event is gated on Debug
-        # Mode, which is off by default, so a partially-translated
-        # material would otherwise report success and render wrong with
-        # nothing on screen. note() is the visible half: it prints with
-        # Debug Mode off, and on Windows its log record is the whole
-        # channel, because any print pops the Houdini Console.
+    if _DROPPED:  # debug.event is gated on Debug Mode (off by default), so note() is the visible half - it prints with Debug Mode off, and on Windows its log record is the whole channel because any print pops the Houdini Console
         debug.event("import", "mtlx inputs dropped", inputs=list(_DROPPED))
         debug.note(
             "left %d MaterialX input%s at the default value: %s. The "
@@ -299,14 +217,8 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
                            _named_few(_DROPPED)))
         _DROPPED.clear()
 
-    # Pass 2: wire connections (now that every node exists).
     def _source_node(mnode, inp):
-        """The mtlx node feeding this input, RESOLVED IN ITS OWN SCOPE.
-
-        A `nodename` names a sibling inside the same parent, and a
-        `nodegraph`/`output` pair names a node inside that graph. Both
-        are resolved through MaterialX's own lookups rather than by
-        joining strings, so the scoping rule stays the library's."""
+        """The mtlx node feeding this input, RESOLVED IN ITS OWN SCOPE through MaterialX's own lookups, never by joining strings: a `nodename` names a sibling inside the same parent, a `nodegraph`/`output` pair names a node inside that graph."""
         direct = inp.getNodeName()
         if direct:
             parent = mnode.getParent()
@@ -341,11 +253,10 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
                             node=mnode.getNamePath(), input=inp.getName(),
                             source=src_node.getNamePath())
 
-    for mnode, _prefix in all_mtlx_nodes:
+    for mnode, _prefix in all_mtlx_nodes:  # pass 2: wire connections, now that every node exists
         _wire_from(mnode)
 
-    # Find the surface shader and displacement to hand back to the engine.
-    shader = displacement = None
+    shader = displacement = None  # find the surface shader and displacement to hand back to the engine
     for mnode, _prefix in all_mtlx_nodes:
         cat = mnode.getCategory()
         vnode = vop_by_path.get(mnode.getNamePath())
