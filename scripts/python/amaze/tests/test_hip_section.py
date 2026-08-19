@@ -1,19 +1,4 @@
-"""The HIP (Beta) section: scene files, and captured thumbnails.
-
-This section breaks two rules every other section follows, and both are
-pinned here because both are easy to "fix" back into being wrong.
-
-**Thumbnails are captured, never rendered.** Every other section can
-regenerate a missing thumbnail from the file. A scene file cannot be:
-re-rendering one means reconstructing the whole scene, and the first
-real scene tried (2026-07-28) could not be cooked at all because a
-sublayer .usdc had been renamed out from under it. So a row without a
-capture simply has no thumbnail, and opening a folder must never start a
-render pass.
-
-**The store is not mtime-invalidated.** A captured view is a hand-framed
-artifact, not a derived cache. Re-saving the scene must not erase it.
-"""
+"""The HIP section: scene files, and captured thumbnails. Two rules every other section follows are broken here, both pinned because both are easy to fix back into being wrong. Thumbnails are CAPTURED, never rendered: a scene cannot regenerate its thumbnail - re-rendering means reconstructing the whole scene, and the first real scene tried could not be cooked at all - so a row without a capture simply has no thumbnail and opening a folder must never start a render pass. And the store is NOT mtime-invalidated: a captured view is a hand-framed artifact, not a derived cache, and re-saving the scene must not erase it."""
 
 import os
 import re
@@ -38,25 +23,19 @@ from amaze.tests import test_support  # noqa: E402,F401
 
 
 class _Prefs:
-    """Only what the File model's scene rows actually read (hip rows
-    live in FileFiles since the merge)."""
+    """Only what the File model's scene rows actually read (hip rows live in FileFiles since the merge)."""
 
     def __init__(self, folders=(), favorites=(), subfolders=False,
                  dir=""):
-        # tile_icons reads .dir to find the library's icons.json.
-        self.dir = dir or tempfile.mkdtemp(prefix="amaze_hip_prefs_")
+        self.dir = dir or tempfile.mkdtemp(prefix="amaze_hip_prefs_")  # tile_icons reads .dir to find the library's icons.json
         self.file_folders = list(folders)
         self.file_favorites = list(favorites)
-        # Recursion is per LOCATION since 2026-07-31: the stub's
-        # subfolders flag marks every registered folder recursive.
-        self.file_recursive_folders = list(folders) if subfolders else []
+        self.file_recursive_folders = list(folders) if subfolders else []  # recursion is per LOCATION: the stub's flag marks every registered folder recursive
         self.file_folder_names = {}
         self.last_file_folder = ""
         self.rendersize = 256
         self.icon_line_weight = "template"
-        # The image/geo pipelines' knobs, read at _load even when the
-        # folder holds only scenes.
-        self.texture_parallel_conversions = 1
+        self.texture_parallel_conversions = 1  # the image/geo pipelines' knobs, read at _load even when the folder holds only scenes
         self.geometry_shading_mode = "hiddenlineghost"
         self.geometry_bg = "black"
 
@@ -75,11 +54,7 @@ class _Tmp:
 
 
 def _real_scene(testcase, name="open.hiplc"):
-    """A scene file that actually EXISTS.
-
-    capture_open_scene refuses a target that is not on disk (an unsaved
-    scene has a path but no file). Tests that used a fictional path were
-    asserting against a situation that cannot occur."""
+    """A scene file that actually EXISTS - capture_open_scene refuses a target that is not on disk (an unsaved scene has a path but no file), so tests using a fictional path asserted against a situation that cannot occur."""
     folder = tempfile.mkdtemp(prefix="amaze_scene_")
     testcase.addCleanup(shutil.rmtree, folder, ignore_errors=True)
     path = os.path.join(folder, name)
@@ -89,8 +64,7 @@ def _real_scene(testcase, name="open.hiplc"):
 
 
 class ExtensionsAreOneTypeTest(unittest.TestCase):
-    """A library holding your .hiplc beside someone else's .hip must
-    show both. Nothing may treat the licence flavour as a category."""
+    """A library holding your .hiplc beside someone else's .hip must show both - nothing may treat the licence flavour as a category."""
 
     def test_every_houdini_scene_extension_is_recognised(self):
         for name in ("a.hip", "b.hiplc", "c.hipnc",
@@ -105,9 +79,7 @@ class ExtensionsAreOneTypeTest(unittest.TestCase):
                              "%s was wrongly taken for a scene file" % name)
 
     def test_the_listing_shows_all_three_flavours(self):
-        """All three scene extensions are ONE kind - and since the
-        merge the listing shows every file, so the geometry decoy is a
-        row too, just not a scene row."""
+        """All three scene extensions are ONE kind - and since the merge the listing shows every file, so the geometry decoy is a row too, just not a scene row."""
         tmp = _Tmp(self)
         for name in ("one.hip", "two.hiplc", "three.hipnc", "skip.bgeo"):
             tmp.touch(name)
@@ -125,8 +97,7 @@ class ExtensionsAreOneTypeTest(unittest.TestCase):
 class FormatLabelTest(unittest.TestCase):
 
     def test_the_format_column_is_title_case(self):
-        """Hiplc, not HIPLC - a scene extension reads as a word, unlike
-        the .OBJ/.EXR acronyms the other sections shout."""
+        """Hiplc, not HIPLC - a scene extension reads as a word, unlike the .OBJ/.EXR acronyms the other sections shout."""
         tmp = _Tmp(self)
         for name in ("a.hip", "b.hiplc", "c.hipnc"):
             tmp.touch(name)
@@ -150,8 +121,7 @@ class ThumbnailStoreTest(unittest.TestCase):
         scene_captures.thumb_dir = lambda: self.store
 
     def test_the_slot_is_a_hash_of_the_path(self):
-        """An external reader - Anchorpoint, say - has to be able to go
-        from a scene path to its image without reading our code."""
+        """An external reader - Anchorpoint, say - has to be able to go from a scene path to its image without reading our code."""
         import hashlib
         from amaze.helpers import hostos
         expected = hashlib.sha1(
@@ -179,9 +149,7 @@ class ThumbnailStoreTest(unittest.TestCase):
                          "a zero-byte file was reported as a thumbnail")
 
     def test_the_thumbnail_survives_the_scene_being_re_saved(self):
-        """The rule that separates this from every other section. A
-        ThumbnailCache would drop the entry here, silently destroying a
-        capture the user framed by hand."""
+        """The rule that separates this from every other section: a ThumbnailCache would drop the entry here, silently destroying a capture the user framed by hand."""
         os.makedirs(self.store, exist_ok=True)
         with open(scene_captures.thumb_path(self.scene), "wb") as fh:
             fh.write(b"\x89PNG\r\n\x1a\n")
@@ -194,8 +162,7 @@ class ThumbnailStoreTest(unittest.TestCase):
 
 
 class CaptureRefusesOutLoudTest(unittest.TestCase):
-    """Headless has no viewport, so the capture cannot succeed here -
-    which makes this the right place to pin that it FAILS LOUDLY."""
+    """Headless has no viewport, so the capture cannot succeed here - which makes this the right place to pin that it FAILS LOUDLY."""
 
     def test_no_path_is_refused(self):
         with self.assertRaises(scene_captures.CaptureRefused):
@@ -255,18 +222,7 @@ def _two_tone_png_bytes():
 
 
 class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
-    """The scratch file must keep the REAL extension.
-
-    Houdini picks the image format from the extension, not from any
-    argument. `<hash>.png.new` has extension `.new`, which Houdini does
-    not know, so it writes its native PIC2 instead of a PNG - probed on
-    22.0.394. Nothing downstream can recover from that: QImage cannot
-    read PIC2, so _looks_blank calls the frame blank and the user is
-    told their viewport was "a single flat colour".
-
-    Pinned because `out + ".new"` is the obvious way to write this and
-    it was in fact how it shipped for four hours on 2026-07-29.
-    """
+    """The scratch file must keep the REAL extension: Houdini picks the image format from the extension, not from any argument, and an extension it does not know makes it write native PIC2 instead of PNG - QImage cannot read PIC2, so _looks_blank calls the frame blank and the user is told their viewport was one flat colour. Pinned because appending a suffix to the output name is the obvious way to write this, and it shipped that way for four hours."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -285,9 +241,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
 
         def record(sceneviewer=None, output="", croptocamera=True,
                    res=(256, 256)):
-            # Write the bytes whatever the name, so the assertion is
-            # about the NAME and not about a save that failed for it.
-            self.asked_for.append(output)
+            self.asked_for.append(output)  # write the bytes whatever the name, so the assertion is about the NAME and not about a save that failed for it
             with open(output, "wb") as fh:
                 fh.write(self.png)
 
@@ -320,10 +274,7 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
 
 
 class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
-    """The capture photographs the CURRENT viewport, so it must only be
-    filed against the scene that viewport is showing. Getting this wrong
-    files a picture under another scene's name - silently, and the
-    result looks entirely plausible."""
+    """The capture photographs the CURRENT viewport, so it must only be filed against the scene that viewport is showing - getting this wrong files a picture under another scene's name, silently, and the result looks entirely plausible."""
 
     def setUp(self):
         self.addCleanup(scene_captures.note_opened, "")
@@ -346,8 +297,7 @@ class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
         self.assertTrue(scene_captures.amaze_opened_current_scene())
 
     def test_the_check_is_a_comparison_not_a_flag(self):
-        """Guards the guard: if it ever becomes 'did Amaze open
-        anything', these tests pass while the protection is gone."""
+        """Guards the guard: if it ever becomes did-Amaze-open-anything, these tests pass while the protection is gone."""
         real = scene_captures.current_scene_path
         self.addCleanup(setattr, scene_captures, "current_scene_path", real)
         scene_captures.note_opened("/tmp/a.hiplc")
@@ -358,8 +308,7 @@ class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
             "would now authorise a capture")
 
     def test_the_opened_path_survives_a_module_reload(self):
-        """The panel reloads modules in place; a plain assignment would
-        forget which scene was opened on every reload."""
+        """The panel reloads modules in place; a plain assignment would forget which scene was opened on every reload."""
         import importlib
         scene_captures.note_opened("/tmp/kept.hiplc")
         importlib.reload(scene_captures)
@@ -368,18 +317,7 @@ class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
 
 
 class NoAutomaticCaptureTest(unittest.TestCase):
-    """A capture must never happen on its own. Pinned in the SOURCE
-    because the failure cannot be reproduced in a test: it needs a GUI,
-    a heavy scene, and it ends with Houdini dead.
-
-    2026-07-29, from the debug log: a capture scheduled 1.2s after
-    opening a cloth-sim scene blocked for 22 SECONDS on the first file,
-    and on the second it never returned - 86GB of RAM consumed and
-    Houdini crashed. The capture runs a flipbook; a flipbook forces the
-    scene to COOK; cooking someone else's scene is work of unbounded
-    size. No delay fixes that, so there is no delay - and no automatic
-    capture at all.
-    """
+    """A capture must never happen on its own - pinned in the SOURCE because the failure cannot be reproduced in a test: it needs a GUI, a heavy scene, and it ends with Houdini dead. A capture scheduled 1.2s after opening a cloth-sim scene blocked 22 SECONDS on the first file and never returned on the second - 86GB of RAM consumed, Houdini crashed. A capture runs a flipbook, a flipbook forces the scene to COOK, and cooking someone else's scene is work of unbounded size; no delay fixes that, so there is no delay and no automatic capture at all."""
 
     def _stripped_source(self, filename):
         import tokenize
@@ -395,10 +333,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
             rows.setdefault(tok.start[0], []).append(tok.string)
         out = []
         for _, pieces in sorted(rows.items()):
-            # A space between two word-ish tokens, or "def foo" becomes
-            # "deffoo" and every search below silently matches nothing -
-            # the same trap test_host_engines hit on 2026-07-28.
-            line = ""
+            line = ""  # a space between two word-ish tokens, or a def and its name fuse and every search below silently matches nothing
             for piece in pieces:
                 if line and (line[-1].isalnum() or line[-1] == "_") and \
                         (piece[0].isalnum() or piece[0] == "_"):
@@ -411,15 +346,11 @@ class NoAutomaticCaptureTest(unittest.TestCase):
         return self._stripped_source("panel.py")
 
     def _sections_source(self):
-        """open_hip_scene lives on FileSection (ROADMAP line 24), so
-        the scans that aim at it read sections.py."""
+        """open_hip_scene lives on FileSection, so the scans that aim at it read sections.py."""
         return self._stripped_source("sections.py")
 
     def test_nothing_schedules_a_capture(self):
-        """Comments and docstrings are stripped first - the explanation
-        of why this must not exist would otherwise trip the check.
-        Both files: the capture machinery is the panel's, the verbs
-        that could reach it are the sections'."""
+        """Comments and docstrings are stripped first - the explanation of why this must not exist would otherwise trip the check. Both files: the capture machinery is the panel's, the verbs that could reach it are the sections'."""
         code = self._panel_source() + "\n" + self._sections_source()
         for row in code.splitlines():
             if "capture_hip_thumbnail" in row:
@@ -442,13 +373,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
                                       "test is not exercising anything")
         end = code.find("def ", start + 10)
         body = code[start:end if end > 0 else len(code)]
-        # THE CALLS, not the word. A bare substring scan for "capture"
-        # read the module name in `scene_captures.note_opened(path)` -
-        # which is the recording this method is SUPPOSED to do - and
-        # called it a capture. Naming the entry points keeps the test
-        # aimed at the 86GB behaviour it was written for; a new one
-        # joins this tuple.
-        for verb in ("capture_thumbnail(", "capture_open_scene(",
+        for verb in ("capture_thumbnail(", "capture_open_scene(",  # THE CALLS, not the word: a bare substring scan read the module name in scene_captures.note_opened - the recording this method is SUPPOSED to do - and called it a capture; a new entry point joins this tuple
                      "_capture_and_report(", "capture_hip_thumbnail("):
             self.assertNotIn(
                 verb, body,
@@ -456,8 +381,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
                 "scene was opened" % verb)
 
     def test_the_scan_can_actually_see_the_panel(self):
-        """Guards the guard: an empty read passes every assertion
-        above - each file scan must see the function it is aimed at."""
+        """Guards the guard: an empty read passes every assertion above - each file scan must see the function it is aimed at."""
         panel_code = self._panel_source()
         section_code = self._sections_source()
         self.assertIn("def open_hip_scene", section_code)
@@ -467,11 +391,7 @@ class NoAutomaticCaptureTest(unittest.TestCase):
 
 
 class PlaceholderTest(unittest.TestCase):
-    """A scene with no capture shows a deliberate tile, not a blank.
-
-    This section can never fill the gap on its own - nothing renders in
-    the background - so the placeholder is the resting state rather than
-    a loading state, and an empty tile would read as broken."""
+    """A scene with no capture shows a deliberate tile, not a blank: this section can never fill the gap on its own - nothing renders in the background - so the placeholder is the resting state rather than a loading state, and an empty tile would read as broken."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -498,17 +418,7 @@ class PlaceholderTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(path), "ui/icon_hip.svg is missing")
 
     def test_a_capture_is_served_through_the_shared_engine(self):
-        """Guards the guard twice over.
-
-        If data() returned the placeholder unconditionally the test
-        above would pass while captures were ignored. And the load must
-        go through thumbnails.engine - reading the PNG directly inside
-        data() decodes it on the UI thread on every repaint, with no
-        cache and no eviction.
-
-        The engine is asynchronous, so this asserts the WIRING rather
-        than racing it: a stub records the request and returns a
-        recognisable image."""
+        """Guards the guard twice over: returning the placeholder unconditionally would pass the test above while captures were ignored, and the load must go through thumbnails.engine - reading the PNG directly inside data() decodes it on the UI thread on every repaint, with no cache and no eviction. The engine is asynchronous, so this asserts the WIRING rather than racing it: a stub records the request and returns a recognisable image."""
         from amaze.core import thumbnails
         from PySide6 import QtCore as _QtCore, QtGui as _QtGui
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))
@@ -539,25 +449,7 @@ class PlaceholderTest(unittest.TestCase):
 
 
 class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
-    """A repaint must not re-ask the filesystem (2026-08-05).
-
-    `data(DecorationRole)` is what Qt calls for every visible row on
-    every repaint - scroll, hover, resize - and the capture branch
-    stat'd the PNG inside it. Cheap on a warm local disk, which is why
-    it never showed; a registered File location is also exactly where
-    a sleeping external volume turns up (research.md > *Volume mounts
-    on macOS*), and there it is not cheap.
-
-    `scene_captures.thumb_dir()`'s own memo closed the DIRECTORY half of
-    this same path for this same reason - its note measures ten
-    `thumb_path()` calls at 20 makedirs and 40 isdir - and named
-    `folders.py`'s "cached so painting the sidebar never touches the
-    disk" as the intent it was failing. This is the file half.
-
-    Counted rather than asserted-by-shape: a test that only checked
-    for a `_capture_seen` attribute would pass while `data()` still
-    stat'd beside it.
-    """
+    """A repaint must not re-ask the filesystem: `data(DecorationRole)` is what Qt calls for every visible row on every repaint - scroll, hover, resize - and the capture branch stat'd the PNG inside it; cheap on a warm local disk, which is why it never showed, and not cheap on a sleeping external volume, which a registered File location is exactly where one turns up (research.md - Volume mounts on macOS). `thumb_dir()`'s own memo closed the DIRECTORY half of this path; this is the file half. Counted rather than asserted-by-shape: a test that only checked for a `_capture_seen` attribute would pass while `data()` still stat'd beside it."""
 
     def setUp(self):
         self.tmp = _Tmp(self)
@@ -569,13 +461,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
         self.addCleanup(ui_helpers.forget_svg_images)
 
     def _stats_of_the_capture(self):
-        """Stats aimed at THIS scene's PNG slot.
-
-        `file_library.os` is the real `os` module, so patching it is
-        process-wide - hence the filter: only calls naming the slot
-        under test are counted, and an unrelated stat somewhere else
-        in the paint cannot inflate or excuse the number.
-        """
+        """Stats aimed at THIS scene's PNG slot - `file_library.os` is the real `os` module, so patching it is process-wide; only calls naming the slot under test are counted, and an unrelated stat somewhere else in the paint cannot inflate or excuse the number."""
         wanted = scene_captures.thumb_path(self.scene)
         calls = []
         real = os.path.isfile
@@ -607,12 +493,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
             "already answered" % len(calls))
 
     def test_a_landed_capture_forgets_the_remembered_answer(self):
-        """The cache may not outlive the fact it caches.
-
-        Without this the optimisation is a bug: capture a scene that
-        was showing the placeholder and the tile keeps showing it,
-        because the model remembers 'no PNG' forever.
-        """
+        """The cache may not outlive the fact it caches - without this the optimisation is a bug: capture a scene that was showing the placeholder and the tile keeps showing it, because the model remembers the no-PNG answer forever."""
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))
         model.set_folder(self.tmp.dir)
         self._paint(model, times=2)          # remembers "no capture"
@@ -630,12 +511,7 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
 
 
 class ViewportStateTest(unittest.TestCase):
-    """Read the viewport before asking it for a frame.
-
-    Houdini has no call that copies the displayed image - every route
-    renders - so a capture costs whatever the active Hydra delegate
-    costs, and with a pathtracer that is unbounded - a capture has been
-    seen to block until a Karma render was stopped."""
+    """Read the viewport before asking it for a frame: Houdini has no call that copies the displayed image - every route renders - so a capture costs whatever the active Hydra delegate costs, and with a pathtracer that is unbounded; a capture has been seen to block until a Karma render was stopped."""
 
     def test_the_houdini_delegates_are_fast(self):
         for name in ("Houdini VK", "Houdini GL", "houdini vk",
@@ -649,13 +525,7 @@ class ViewportStateTest(unittest.TestCase):
                              "%r would stall a capture" % name)
 
     def test_an_obj_viewport_is_not_blocked(self):
-        """The case that shipped broken.
-
-        An OBJ viewport is not Hydra-based, so currentHydraRenderer()
-        raises there - the ordinary case, not a warning sign. Treating
-        unreadable as slow stopped every OBJ capture with "the scene
-        view is using unknown", while nothing was rendering at all.
-        """
+        """The case that shipped broken: an OBJ viewport is not Hydra-based, so currentHydraRenderer() raises there - the ordinary case, not a warning sign; treating unreadable as slow stopped every OBJ capture while nothing was rendering at all."""
         class _ObjViewport:
             def currentHydraRenderer(self):
                 raise AttributeError("no hydra renderer in OBJ")
@@ -670,9 +540,7 @@ class ViewportStateTest(unittest.TestCase):
         self.assertFalse(state["readable"])
 
     def test_no_viewer_does_not_block_either(self):
-        """Only a delegate we POSITIVELY recognise as a renderer stands
-        in the way. Everything else proceeds and fails later with its
-        own reason, if it fails at all."""
+        """Only a delegate POSITIVELY recognised as a renderer stands in the way - everything else proceeds and fails later with its own reason, if it fails at all."""
         state = scene_captures.viewport_state()
         self.assertFalse(state.get("blocking"))
 
@@ -701,16 +569,7 @@ class ViewportStateTest(unittest.TestCase):
 
 
 class SlowCapturePromptTest(unittest.TestCase):
-    """What the refusal SAYS and DOES when the viewport is rendering.
-
-    Was source-derived against panel.py, reading the message text and
-    the order of two statements out of the method body. The policy moved
-    into scene_captures.capture_open_scene (one home, two callers) and
-    every one of these went red on the move - a test pinned to WHERE the
-    code lives rather than to what it does. They are behavioural now:
-    capture_open_scene never touches hou.ui, so the real decision runs
-    headless and the assertions are on its actual output.
-    """
+    """What the refusal SAYS and DOES when the viewport is rendering. Was source-derived against panel.py; the policy moved into scene_captures.capture_open_scene (one home, two callers) and every one of these went red on the move - tests pinned to WHERE the code lives rather than to what it does. Behavioural now: capture_open_scene never touches hou.ui, so the real decision runs headless and the assertions are on its actual output."""
 
     def _patch(self, name, value):
         original = getattr(scene_captures, name)
@@ -718,8 +577,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.addCleanup(setattr, scene_captures, name, original)
 
     def _blocking(self, debug_on=False):
-        """A viewport rendering through Karma, with capture sabotaged so
-        any attempt to proceed fails the test rather than passing it."""
+        """A viewport rendering through Karma, with capture sabotaged so any attempt to proceed fails the test rather than passing it."""
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
         self._patch("opened_path", lambda: self.scene)
@@ -734,8 +592,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.addCleanup(setattr, scene_captures.debug, "is_on", original)
 
     def test_the_message_does_not_lecture(self):
-        """One line. The person reading it knows what renderer they
-        picked; repeating it back is noise."""
+        """One line - the person reading it knows what renderer they picked, and repeating it back is noise."""
         self._blocking()
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.scene)
@@ -753,8 +610,7 @@ class SlowCapturePromptTest(unittest.TestCase):
                       "in Debug Mode the delegate is the whole point")
 
     def test_the_state_is_read_before_capturing(self):
-        """Order, measured rather than read: the state must be consulted
-        BEFORE the capture, or reading it cannot avoid the stall."""
+        """Order, measured rather than read: the state must be consulted BEFORE the capture, or reading it cannot avoid the stall."""
         order = []
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
@@ -768,12 +624,7 @@ class SlowCapturePromptTest(unittest.TestCase):
         self.assertEqual(["state", "capture"], order)
 
     def test_it_refuses_rather_than_offering_to_proceed(self):
-        """No "capture anyway". Proceeding was on offer at first; a
-        capture through a rendering delegate can block indefinitely and
-        the remedy is one click in the viewport.
-
-        The sabotaged capture_thumbnail in _blocking is what proves it:
-        if the refusal ever falls through, the test fails there."""
+        """No capture-anyway offer: proceeding was on offer at first, and a capture through a rendering delegate can block indefinitely while the remedy is one click in the viewport. The sabotaged capture_thumbnail in _blocking is what proves it - if the refusal ever falls through, the test fails there."""
         self._blocking()
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(self.scene)
@@ -781,8 +632,7 @@ class SlowCapturePromptTest(unittest.TestCase):
 
 
 class TileCropTest(unittest.TestCase):
-    """A wide capture fills the tile and crops, rather than
-    letterboxing into dead bands."""
+    """A wide capture fills the tile and crops, rather than letterboxing into dead bands."""
 
     def _delegate(self):
         from amaze.panel.delegates import AssetItemDelegate
@@ -798,8 +648,7 @@ class TileCropTest(unittest.TestCase):
                          "the capture did not fill the tile height")
 
     def test_contain_leaves_the_short_edge_short(self):
-        """Guards the guard: if cover and contain produced the same
-        pixmap, the test above would pass while nothing changed."""
+        """Guards the guard: if cover and contain produced the same pixmap, the test above would pass while nothing changed."""
         from PySide6 import QtGui
         wide = QtGui.QImage(400, 100, QtGui.QImage.Format.Format_ARGB32)
         wide.fill(QtGui.QColor("#336699"))
@@ -810,8 +659,7 @@ class TileCropTest(unittest.TestCase):
             "changes nothing and this section gained no crop")
 
     def test_the_crop_is_centred(self):
-        """An off-centre crop would cut the subject out of every wide
-        capture."""
+        """An off-centre crop would cut the subject out of every wide capture."""
         from PySide6 import QtGui
         wide = QtGui.QImage(300, 100, QtGui.QImage.Format.Format_ARGB32)
         wide.fill(QtGui.QColor("#000000"))
@@ -825,10 +673,7 @@ class TileCropTest(unittest.TestCase):
             "the centre of the source is not at the centre of the tile")
 
     def test_only_hip_rows_ask_for_it(self):
-        """Crop became PER-ROW with the merge (one delegate serves four
-        kinds): exactly one crop_role wiring in panel.py, and the model
-        answers it True for hip rows alone - every other kind renders
-        square, where a crop is pure risk."""
+        """Crop became PER-ROW with the merge (one delegate serves four kinds): exactly one crop_role wiring in panel.py, and the model answers it True for hip rows alone - every other kind renders square, where a crop is pure risk."""
         code = open(os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "panel", "panel.py"), encoding="utf-8").read()
@@ -878,9 +723,7 @@ class OpenSceneBadgeTest(unittest.TestCase):
         self.assertEqual([False, False], self._flags())
 
     def test_the_badge_follows_the_LIVE_scene_not_what_amaze_opened(self):
-        """A scene opened by File > Open still gets the badge: the mark
-        answers "is this the one on screen?", which has one true answer
-        regardless of who opened it."""
+        """A scene opened by File > Open still gets the badge: the mark answers whether this is the one on screen, which has one true answer regardless of who opened it."""
         from amaze.helpers import hostos
         scene_captures.note_opened("")
         self.addCleanup(scene_captures.note_opened, "")
@@ -890,8 +733,7 @@ class OpenSceneBadgeTest(unittest.TestCase):
 
 
 class IconAssetsTest(unittest.TestCase):
-    """The icons are looked up by filename at paint time, so a missing
-    or renamed file is a silent no-badge rather than an error."""
+    """The icons are looked up by filename at paint time, so a missing or renamed file is a silent no-badge rather than an error."""
 
     def _ui(self, name):
         return os.path.join(
@@ -899,35 +741,18 @@ class IconAssetsTest(unittest.TestCase):
             "ui", name)
 
     def test_the_shipped_icons_exist(self):
-        # The badge_* four are the unified tile-badge family
-        # (2026-08-01) - a missing one is a silent no-badge at paint
-        # time, the exact failure this class exists for.
-        for name in ("badge_open.svg", "badge_star.svg",
+        for name in ("badge_open.svg", "badge_star.svg",  # the badge_* four are the unified tile-badge family - a missing one is a silent no-badge at paint time, the exact failure this class exists for
                      "badge_versions.svg", "badge_comment.svg",
                      "icon_screenshot.svg", "logo.svg"):
             self.assertTrue(os.path.isfile(self._ui(name)),
                             "ui/%s is missing" % name)
 
-    #: Icons consumed by IconMenuButton/ChipToggleButton, which
-    #: generate hover and pressed themselves.
-    BUTTON_ICONS = ("icon_library.svg", "icon_renderer.svg",
+    BUTTON_ICONS = ("icon_library.svg", "icon_renderer.svg",  # consumed by IconMenuButton/ChipToggleButton, which generate hover and pressed themselves
                     "icon_view.svg", "icon_screenshot.svg",
                     "grid.svg", "list.svg", "star.svg", "star_on.svg")
 
     def test_button_icons_ship_one_state_only(self):
-        """A toolbar icon carries BARE artwork - no ids, no state
-        layers.
-
-        Design exports draw hover and pressed as extra layers. If they
-        are not marked hidden they render stacked on top of the base
-        icon, which is how the capture button shipped with a click
-        rectangle and a download circle drawn over it. The button
-        classes produce those states at runtime (grey chip + tint swap),
-        so the asset must carry exactly one.
-
-        The rule is measured, not invented: every other button icon in
-        ui/ already has zero ids and zero hidden elements.
-        """
+        """A toolbar icon carries BARE artwork - no ids, no state layers: design exports draw hover and pressed as extra layers, and unhidden they render stacked on the base icon, which is how the capture button shipped with a click rectangle and a download circle drawn over it; the button classes produce those states at runtime, so the asset must carry exactly one. Measured, not invented: every other button icon in ui/ already has zero ids and zero hidden elements."""
         import re
         for name in self.BUTTON_ICONS:
             path = self._ui(name)
@@ -946,19 +771,7 @@ class IconAssetsTest(unittest.TestCase):
                 "unedited" % name)
 
     def test_button_icons_fill_their_frame_like_the_others(self):
-        """A toolbar icon must be the same optical size as its
-        neighbours.
-
-        The design files use different canvases, so an asset dropped in
-        at its export viewBox can render correctly and still look
-        wrong - the capture disc occupied 54% of a 47x47 canvas next to
-        a gear filling 81% of a 36x36 one, and appeared visibly smaller
-        in the same 30px button. The fix is to tighten the viewBox to
-        the artwork; this pins that it stayed tightened.
-
-        Measured as INK EXTENT, which is the thing the eye actually
-        compares - not the viewBox, which says nothing on its own.
-        """
+        """A toolbar icon must be the same optical size as its neighbours: the design files use different canvases, so an asset dropped in at its export viewBox can render correctly and still look wrong - a disc at 54% of its canvas next to a gear at 81% appears visibly smaller in the same 30px button; the fix is tightening the viewBox to the artwork, and this pins that it stayed tightened. Measured as INK EXTENT, the thing the eye actually compares - not the viewBox, which says nothing on its own."""
         from PySide6 import QtGui, QtSvg
         extents = {}
         for name in self.BUTTON_ICONS:
@@ -992,8 +805,7 @@ class IconAssetsTest(unittest.TestCase):
                 "the artwork." % (name, fill * 100))
 
     def test_the_scan_covers_icons_that_exist(self):
-        """Guards the guard: a renamed asset would make every
-        assertion above vacuous."""
+        """Guards the guard: a renamed asset would make every assertion above vacuous."""
         present = [n for n in self.BUTTON_ICONS
                    if os.path.isfile(self._ui(n))]
         self.assertGreaterEqual(
@@ -1002,25 +814,7 @@ class IconAssetsTest(unittest.TestCase):
             "check is inspecting almost nothing" % len(present))
 
     def test_the_badge_family_shares_a_dark_backdrop(self):
-        """What makes the four badges a family, stated so a REDRAW
-        does not break it.
-
-        The art moved twice on 2026-08-01 (dark disc + one light
-        stroke, then a translucent rounded square with per-badge glyph
-        colours), and both times a test that named hexes went red
-        while the badges were perfectly fine. So this names none. The
-        contract that actually matters on a tile:
-
-        * all four share a colour - the common backdrop that makes
-          them read as one set,
-        * that shared colour is DARK - the badge sits on arbitrary
-          thumbnails, and a light backdrop disappears on a bright one,
-        * each badge draws in at least two colours - a mark ON the
-          backdrop, not a flat shape.
-
-        An export that drops the backdrop, inverts it, or ships a
-        single flat colour fails. A recolour does not.
-        """
+        """What makes the four badges a family, stated so a REDRAW does not break it: the art moved twice in one day and both times a test that named hexes went red while the badges were perfectly fine, so this names none. The contract that matters on a tile: all four share a colour (the common backdrop that makes them one set), that shared colour is DARK (a light backdrop disappears on a bright thumbnail), and each badge draws in at least two colours (a mark ON the backdrop, not a flat shape). An export that drops the backdrop, inverts it, or ships a single flat colour fails; a recolour does not."""
         palettes = {name: test_support.art_colours(name)
                     for name in test_support.BADGE_FAMILY}
         shared = set.intersection(*palettes.values())
@@ -1049,16 +843,7 @@ class IconAssetsTest(unittest.TestCase):
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def test_the_versions_badge_has_a_hover_twin(self):
-        """Versions is the one badge that is a BUTTON, so it alone has
-        a second state. The pair must stay a pair: SAME MARKS, and a
-        difference that is only in the paint - a hover file whose
-        geometry has drifted is a button that changes shape under the
-        cursor.
-
-        Geometry, not colour: how the hover state reads (a lighter
-        backdrop today) is the designer's call and may change; that
-        the two files draw the same thing is not.
-        """
+        """Versions is the one badge that is a BUTTON, so it alone has a second state - and the pair must stay a pair: SAME MARKS, with a difference that is only in the paint, because a hover file whose geometry has drifted is a button that changes shape under the cursor. Geometry, not colour: how the hover state reads is the design's call and may change; that the two files draw the same thing is not."""
         base = self._paths("badge_versions.svg")
         hover = self._paths("badge_versions_hover.svg")
         self.assertTrue(base, "the versions badge draws nothing")
@@ -1073,21 +858,7 @@ class IconAssetsTest(unittest.TestCase):
             "hovering the versions badge shows no answer at all")
 
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
-        """The badge art is delivered art, not a code decision.
-
-        On 2026-08-01 a parallel session recoloured every backdrop in
-        the working tree - first amber, then #f4f4f4 - without a
-        request. The luminance test above caught the light one, but a
-        DARK wrong colour would have passed it. So this pins the
-        actual value: the backdrop the design specifies is black, and
-        the only thing that varies between the four is nothing at
-        all - they are one family or they are not.
-
-        If the design genuinely changes, this test changes WITH the
-        art, in the same commit, from the delivered file. That is the
-        point: an art change becomes a deliberate, reviewed act
-        instead of a silent edit nobody notices until a badge
-        disappears on a white thumbnail."""
+        """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
         backdrops = {}
         for name in test_support.BADGE_FAMILY + ("badge_versions_hover",):
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:
@@ -1108,11 +879,7 @@ class IconAssetsTest(unittest.TestCase):
             % backdrops)
 
         opacity = {name: o for name, (_c, o) in backdrops.items()}
-
-
-        # The pin changes WITH the art, in the same commit, which is
-        # the whole point of pinning it.
-        self.assertEqual("1", opacity.pop("badge_versions_hover"),
+        self.assertEqual("1", opacity.pop("badge_versions_hover"),  # SOLID on hover is the delivered design: a 50% hover - lighter than the resting badge - was tried and deliberately reversed, and the pin changes WITH the art, in the same commit
                          "the hover backdrop is not solid black")
         self.assertEqual(
             {"0.75"}, set(opacity.values()),
@@ -1124,10 +891,7 @@ class IconAssetsTest(unittest.TestCase):
             return re.findall(r'\sd="([^"]+)"', fh.read())
 
     def _paint(self, name):
-        """How that geometry is PAINTED: fills, strokes and their
-        opacities, in order. Deliberately not a colour set - the
-        hover state's difference has been an opacity, and could as
-        easily become a colour next time."""
+        """How that geometry is PAINTED: fills, strokes and their opacities, in order - deliberately not a colour set, because the hover state's difference has been an opacity and could as easily become a colour next time."""
         with open(self._ui(name), encoding="utf-8") as fh:
             return re.findall(
                 r'((?:fill|stroke)(?:-opacity)?|opacity)="([^"]+)"',
@@ -1135,51 +899,20 @@ class IconAssetsTest(unittest.TestCase):
 
 
 class CaptureButtonTest(unittest.TestCase):
-    """The capture button's place in the toolbar, on a REAL panel.
-
-    These five tests were source-derived, on the claim that "the button
-    lives on a constructed panel, which a headless test cannot build".
-    That claim was false - tests/ui_snapshot.py has built the panel
-    headlessly all along - and every one of them could pass while the
-    row was wrong, because what they matched was text in panel.py:
-
-    * the placement test compared `rfind` OFFSETS inside _build_menus,
-      i.e. the order the source is WRITTEN in. The row the user sees is
-      the order the builders RUN in, then reversed by _mirror_toolbar,
-      then twice amended - none of which a file offset can see.
-    * the mirror test asserted `"btn_hip_capture" in body`, which the
-      method's own eleven-line COMMENT about the button satisfies on its
-      own, and `"self.toolbar_layout.addItem(button_item)"`, which is
-      true of a dead branch.
-    * the "later work inserts rather than appends" test named ONE
-      builder, so a widget appended from any other one was invisible.
-    * both visibility tests matched a literal line, one of them only
-      within 900 characters of an assignment.
-
-    Now the row is READ off the constructed layout, so each of them
-    fails when the thing it claims to check is broken.
-    """
+    """The capture button's place in the toolbar, on a REAL panel. These five were source-derived, on the claim that a headless test cannot build the panel - false, tests/ui_snapshot.py has built it headlessly all along - and every one could pass while the row was wrong, because what they matched was text in panel.py: source offsets cannot see the order the builders RUN in, the mirror's reversal, or the two amendments after it, and one assertion was satisfied by a comment. Now the row is READ off the constructed layout, so each fails when the thing it claims to check is broken."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(
             test_support.class_scope(cls))
-        # RECORDED HERE, before any test drives a tab switch: "starts
-        # hidden" is a fact about construction, and the tests below
-        # change the button's visibility on purpose.
-        cls.section_at_construction = cls.panel.current_section
+        cls.section_at_construction = cls.panel.current_section  # recorded before any test drives a tab switch: starts-hidden is a fact about construction, and the tests below change visibility on purpose
         cls.hidden_at_construction = cls.panel.btn_hip_capture.isHidden()
 
     def _row(self):
         return test_support.toolbar_row(self.panel)
 
     def test_capture_sits_immediately_left_of_the_gear(self):
-        """The gear is the rightmost control from 2026-08-01, and
-        Capture is the one before it when the File tab shows it.
-
-        Read off the LAYOUT, not off a source offset: the build order,
-        the mirror's reversal and the two moves back to the end all
-        have to come out right for this to hold."""
+        """The gear is the rightmost control and Capture is the one before it when the File tab shows it - read off the LAYOUT, not a source offset: the build order, the mirror's reversal and the two moves back to the end all have to come out right for this to hold."""
         row = self._row()
         widgets = [entry for entry in row if entry not in ("gap", "stretch")]
         self.assertIn("btn_hip_capture", widgets,
@@ -1194,10 +927,7 @@ class CaptureButtonTest(unittest.TestCase):
             "reads %s" % (row,))
 
     def test_a_stretch_holds_it_apart_from_the_rest(self):
-        """It is the OUTERMOST control, not merely the last one: the
-        expanding item between the filter box and the button is what
-        pins it to the far edge. Without it the button sits against the
-        box and 'outermost' means nothing."""
+        """It is the OUTERMOST control, not merely the last one: the expanding item between the filter box and the button is what pins it to the far edge - without it the button sits against the box and outermost means nothing."""
         row = self._row()
         self.assertIn("stretch", row, "the toolbar row has no stretch")
         self.assertLess(
@@ -1206,9 +936,7 @@ class CaptureButtonTest(unittest.TestCase):
             "button, so it is not held at the edge - %s" % (row,))
 
     def test_the_filter_label_stays_left_of_its_box(self):
-        """The mirror's FIRST exception, and the reason it exists: a
-        literal reversal lands the label on the box's right, reading
-        [box][gap][Filter]."""
+        """The mirror's FIRST exception, and the reason it exists: a literal reversal lands the label on the box's right."""
         row = self._row()
         self.assertLess(
             row.index("filter_label"), row.index("line_filter"),
@@ -1216,8 +944,7 @@ class CaptureButtonTest(unittest.TestCase):
             "%s" % (row,))
 
     def test_it_starts_hidden(self):
-        """Whichever section opens first is not HIP, and a button that
-        acts on the open scene has no meaning there."""
+        """Whichever section opens first is not HIP, and a button that acts on the open scene has no meaning there."""
         self.assertNotEqual(
             "hip", self.section_at_construction,
             "the panel opened ON the HIP section, so this test is not "
@@ -1228,10 +955,7 @@ class CaptureButtonTest(unittest.TestCase):
             "it shows in whichever section happens to open first")
 
     def test_the_button_is_file_only(self):
-        """Driven through the real tab switch, both ways. Matching the
-        visibility LINE in panel.py proves nothing about whether
-        anything calls it. The File section is where scene tiles live
-        since the merge, so it owns the capture button now."""
+        """Driven through the real tab switch, both ways - matching the visibility LINE in panel.py proves nothing about whether anything calls it. The File section owns the capture button since the merge."""
         self.panel._on_tab_toggled("file", True)
         self.assertFalse(
             self.panel.btn_hip_capture.isHidden(),
@@ -1242,28 +966,7 @@ class CaptureButtonTest(unittest.TestCase):
             "the capture button stays visible after leaving File")
 
     def test_the_whole_row_reads_in_the_designed_order(self):
-        """One assertion over the entire row, so a control appended,
-        inserted or dropped ANYWHERE shows up - not only in the one
-        builder a source-scoped test happened to name.
-
-        The mirrored order (see _mirror_toolbar): Categories,
-        Preferences, View and Renderer - reversed from the order they
-        are built in - then the grid-list toggle, the favourites star,
-        the size slider, the Filter label and its box, then the stretch
-        and the capture button at the far edge.
-
-        From 2026-08-01: Categories leads the row, Online sits
-        immediately left of Comments (amber while you are in the online
-        world), and the GEAR moved to the far right with Capture
-        immediately to its left when the File tab shows it. This list is the DESIGN, so it changes when the
-        design does - in the same commit, like the badge art pins.
-
-        EVERY ENTRY IS A DISTINCT NAME, which is the whole point. While
-        the three menu/action buttons answered "IconMenuButton" they were
-        interchangeable, and swapping Renderer and View in _build_menus -
-        a real change to the row the user sees - kept all 763 tests
-        green. They carry objectNames now.
-        """
+        """One assertion over the entire row, so a control appended, inserted or dropped ANYWHERE shows up - not only in the one builder a source-scoped test happened to name. The order below is the DESIGN (Categories leads, the gear far right with Capture immediately left of it, the stretch holding them at the edge), so it changes when the design does - in the same commit, like the badge art pins. EVERY ENTRY IS A DISTINCT NAME, which is the whole point: while three buttons answered IconMenuButton they were interchangeable, and swapping two of them - a real change to the row the user sees - kept all 763 tests green; they carry objectNames now."""
         row = [entry for entry in self._row() if entry != "gap"]
         self.assertEqual(
             len(set(row)), len(row),
@@ -1280,8 +983,7 @@ class CaptureButtonTest(unittest.TestCase):
 
 
 class SectionRegistrationTest(unittest.TestCase):
-    """Scene rows live in the File section since the merge - the
-    registration pins move with them."""
+    """Scene rows live in the File section since the merge - the registration pins move with them."""
 
     def test_the_file_section_is_registered(self):
         keys = [cls.key for cls in sections.SECTION_CLASSES]
@@ -1291,8 +993,7 @@ class SectionRegistrationTest(unittest.TestCase):
                          "that absorbed it")
 
     def test_it_points_at_models_the_panel_builds(self):
-        """Every attribute name here is looked up on the panel at
-        runtime, so a typo is invisible until the tab is clicked."""
+        """Every attribute name here is looked up on the panel at runtime, so a typo is invisible until the tab is clicked."""
         file_cls = [c for c in sections.SECTION_CLASSES
                     if c.key == "file"][0]
         for attr in ("files_proxy_attr", "selection_attr", "delegate_attr",
@@ -1316,9 +1017,7 @@ class SectionRegistrationTest(unittest.TestCase):
 
 
 class CaptureDecisionPathTest(unittest.TestCase):
-    """capture_open_scene owns every refusal, so the panel button and
-    the shelf tool cannot drift. It never touches hou.ui, which is what
-    lets these run headless at all."""
+    """capture_open_scene owns every refusal, so the panel button and the shelf tool cannot drift - and it never touches hou.ui, which is what lets these run headless at all."""
 
     def _patch(self, name, value):
         original = getattr(scene_captures, name)
@@ -1354,15 +1053,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         self.assertIn("stop the viewport render", str(caught.exception))
 
     def test_the_guard_and_the_capture_get_the_SAME_viewport(self):
-        """Resolved once, threaded through.
-
-        scene_viewer()'s first rung is "under the cursor", so resolving
-        separately meant moving the mouse between the two calls was
-        enough: the guard cleared on the GL viewport and the flipbook
-        then ran on the Karma one - the unbounded block the guard
-        exists to prevent. Each call here returns a DIFFERENT object, so
-        a second resolution cannot go unnoticed.
-        """
+        """Resolved once, threaded through: scene_viewer()'s first rung is under-the-cursor, so resolving separately meant moving the mouse between the two calls was enough - the guard cleared on the GL viewport and the flipbook ran on the Karma one, the unbounded block the guard exists to prevent. Each call here returns a DIFFERENT object, so a second resolution cannot go unnoticed."""
         handed = []
         viewers = iter(["FIRST", "SECOND", "THIRD"])
         self.scene = _real_scene(self)
@@ -1386,9 +1077,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
                              "the capture resolved its own viewer")
 
     def test_the_shelf_tool_path_needs_no_target_and_no_amaze_open(self):
-        """No tile means no mismatch is possible, so the shelf tool
-        captures whatever is open - including a scene Amaze did not
-        open itself."""
+        """No tile means no mismatch is possible, so the shelf tool captures whatever is open - including a scene Amaze did not open itself."""
         taken = []
         self.scene = _real_scene(self, "manual.hiplc")
         self._patch("current_scene_path", lambda: self.scene)
@@ -1402,14 +1091,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
         self.assertEqual("/tmp/shot.png", out)
 
     def test_no_panel_entry_point_re_decides(self):
-        """Source-derived: EVERY capture entry point must delegate.
-
-        The first version read only `capture_hip_thumbnail` - the
-        right-click handler - while the toolbar button
-        `capture_open_scene_thumbnail` was a separate method carrying
-        its own copy of the policy and its own wording. The test written
-        to prevent that drift never looked at the method that had it.
-        """
+        """Source-derived: EVERY capture entry point must delegate. The first version read only the right-click handler while the toolbar button was a separate method carrying its own copy of the policy and its own wording - the test written to prevent that drift never looked at the method that had it."""
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "panel", "panel.py")
@@ -1431,28 +1113,10 @@ class CaptureDecisionPathTest(unittest.TestCase):
                     "capture_open_scene, once" % (name, owned))
 
 class CaptureRefreshesTheTileTest(unittest.TestCase):
-    """Regression, shipped broken 2026-07-29.
-
-    The shelf tool captured correctly - five 'thumbnail captured'
-    records in the log, the PNG replaced each time - and the tile did
-    not change. The engine keeps a decoded copy in memory and nothing
-    invalidated it, because the REFRESH lived in the panel button right
-    after its own call rather than in the capture. One caller hid that;
-    a second caller exposed it immediately.
-    """
+    """Regression: the shelf tool captured correctly - the PNG replaced each time - and the tile did not change. The engine keeps a decoded copy in memory and nothing invalidated it, because the REFRESH lived in the panel button right after its own call rather than in the capture; one caller hid that, a second exposed it immediately."""
 
     def test_the_whole_chain_repaints_the_right_row(self):
-        """END TO END: emit -> slot -> row_for_path -> refresh_row.
-
-        The original three cases tested the links and never the chain,
-        so replacing _on_capture_landed's body with `return` left them
-        all green - the shelf tool captures, the PNG is replaced, and
-        the tile still shows the old picture. That is the regression
-        this class is named for, twice shipped.
-
-        The case this replaces connected a listener and then emitted the
-        signal itself, which tested PySide rather than Amaze.
-        """
+        """END TO END: emit -> slot -> row_for_path -> refresh_row. The original three cases tested the links and never the chain, so replacing _on_capture_landed's body with a bare return left them all green - the regression this class is named for, twice shipped. The case this replaces emitted the signal itself after connecting its own listener, which tested PySide rather than Amaze."""
         tmp = _Tmp(self)
         scene = tmp.touch("one.hiplc")
         tmp.touch("two.hiplc")
@@ -1486,10 +1150,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
                          "a capture elsewhere repainted this model")
 
     def test_the_model_drops_its_cached_image_and_repaints(self):
-        """The two halves that make a tile actually change. Dropping
-        without repainting shows the old picture until something else
-        invalidates the view; repainting without dropping re-serves the
-        same decoded copy."""
+        """The two halves that make a tile actually change: dropping without repainting shows the old picture until something else invalidates the view; repainting without dropping re-serves the same decoded copy."""
         model = file_library.FileFiles(_Prefs())
         dropped, painted = [], []
         model._full_path = lambda row: "/scenes/x.hip"
@@ -1508,9 +1169,7 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
         self.assertEqual(1, len(painted), "the tile was not repainted")
 
     def test_the_capture_path_is_wired_to_the_model(self):
-        """Source-derived, because the wiring is a connect() made in a
-        constructor that a headless test cannot usefully drive: the
-        capture must emit, and the model must listen."""
+        """Source-derived, because the wiring is a connect() made in a constructor a headless test cannot usefully drive: the capture must emit, and the model must listen."""
         package = os.path.dirname(
             os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(package, "core", "scene_captures.py"),
@@ -1531,15 +1190,13 @@ class CaptureRefreshesTheTileTest(unittest.TestCase):
 
 
 class ReviewFixesTest(unittest.TestCase):
-    """Regressions for the defects a five-lens review found, each of
-    which shipped and none of which any existing test caught."""
+    """Regressions for the defects a five-lens review found, each of which shipped and none of which any existing test caught."""
 
     def _patch(self, name, value):
         original = getattr(scene_captures, name)
         setattr(scene_captures, name, value)
         self.addCleanup(setattr, scene_captures, name, original)
 
-    # --- the blank check refused REAL frames -------------------------
     def _png(self, colours):
         from PySide6 import QtGui
         img = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_ARGB32)
@@ -1556,14 +1213,11 @@ class ReviewFixesTest(unittest.TestCase):
         self.assertTrue(scene_captures._looks_blank(self._png(["#000000"])))
 
     def test_two_colours_is_a_REAL_frame(self):
-        """Houdini's shipped default scheme is flat black, so a
-        wireframe or flat-shaded view samples exactly two colours. The
-        old threshold called that blank and refused the capture."""
+        """Houdini's shipped default scheme is flat black, so a wireframe or flat-shaded view samples exactly two colours - the old threshold called that blank and refused the capture."""
         self.assertFalse(
             scene_captures._looks_blank(self._png(["#000000", "#c8c8c8"])),
             "a two-tone frame is still reported blank")
 
-    # --- "" must not canonicalise to "." -----------------------------
     def test_an_empty_path_stays_empty(self):
         self.assertEqual("", scene_captures._key(""))
         scene_captures.note_opened("")
@@ -1579,7 +1233,6 @@ class ReviewFixesTest(unittest.TestCase):
             scene_captures.amaze_opened_current_scene(),
             "after a reset Amaze claims to have opened the open scene")
 
-    # --- an unsaved scene has nothing to file against ----------------
     def test_an_unsaved_scene_is_refused(self):
         self._patch("current_scene_path", lambda: "/nope/untitled.hip")
         self._patch("capture_thumbnail", lambda p, v=None: self.fail(
@@ -1588,11 +1241,8 @@ class ReviewFixesTest(unittest.TestCase):
             scene_captures.capture_open_scene()
         self.assertIn("not been saved", str(caught.exception))
 
-    # --- the refusal must not contradict the screen ------------------
     def test_the_refusal_does_not_claim_a_different_scene_wrongly(self):
-        """The old wording said the viewport showed a different scene
-        even when it showed exactly this one and Amaze merely had not
-        opened it."""
+        """The old wording said the viewport showed a different scene even when it showed exactly this one and Amaze merely had not opened it."""
         tmp = _Tmp(self)
         scene = tmp.touch("open.hiplc")
         self._patch("current_scene_path", lambda: scene)
@@ -1603,7 +1253,6 @@ class ReviewFixesTest(unittest.TestCase):
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/s.png")
         scene_captures.capture_open_scene(scene)      # must NOT raise
 
-    # --- the relay guard must notice a changed signature -------------
     def test_the_relay_guard_checks_shape_not_just_presence(self):
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -1618,20 +1267,7 @@ class ReviewFixesTest(unittest.TestCase):
 
 
 class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
-    """Regression for a WRONG fix, shipped 2026-07-29 and reverted the
-    same hour.
-
-    A capture failed while the Scene View was browsing a COP network, so
-    the capture was made to REFUSE that context on the reasoning that a
-    COP has "nothing to photograph". That is false: browsing a copnet
-    the Scene View is still a real 3D perspective viewport - grid, axis
-    gizmo, camera - with the COP output displayed on a card in space,
-    and it captures fine. The refusal blocked legitimate work, and it
-    was inferred from one log line and a screenshot instead of tested.
-
-    The network being browsed does not determine whether the viewport
-    can be photographed. Nothing here may refuse on it.
-    """
+    """Regression for a WRONG fix, shipped and reverted the same hour: a capture failed while the Scene View was browsing a COP network, so that context was made to REFUSE on the reasoning that a COP has nothing to photograph. False - browsing a copnet the Scene View is still a real 3D perspective viewport (grid, axis gizmo, camera, the COP output on a card in space) and it captures fine; the refusal blocked legitimate work and was inferred from one log line and a screenshot instead of tested. The network being browsed does not determine whether the viewport can be photographed - nothing here may refuse on it."""
 
     class _Viewer:
         def __init__(self, category):
@@ -1679,8 +1315,7 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
         self.assertEqual("/tmp/shot.png", self._capture_from(None))
 
     def test_nothing_refuses_on_the_viewer_context(self):
-        """Source-derived: viewer_context is a DIAGNOSTIC. If a future
-        edit makes it a gate again, this goes red."""
+        """Source-derived: viewer_context is a DIAGNOSTIC - if a future edit makes it a gate again, this goes red."""
         import re
         path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -1697,8 +1332,7 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
 
 
 class ShelfTest(unittest.TestCase):
-    """The shelf ships with the package and is how a hotkey reaches
-    Amaze at all: Houdini cannot bind a key to a Python Panel action."""
+    """The shelf ships with the package and is how a hotkey reaches Amaze at all: Houdini cannot bind a key to a Python Panel action."""
 
     def _shelf_path(self):
         return os.path.join(
@@ -1716,19 +1350,11 @@ class ShelfTest(unittest.TestCase):
     def test_the_shelf_is_well_formed_and_has_every_tool(self):
         root = self._shelf()
         names = sorted(t.get("name") for t in root.findall("tool"))
-        # THE WHOLE SET, listed. A count would pass a rename and an
-        # accidental duplicate; the names are what the refusals quote
-        # at the user.
-        self.assertEqual(["amaze_capture_hip", "amaze_check_updates",
+        self.assertEqual(["amaze_capture_hip", "amaze_check_updates",  # THE WHOLE SET, listed: a count would pass a rename and an accidental duplicate, and the names are what the refusals quote at the user
                           "amaze_open_panel", "amaze_repair_library"], names)
 
     def test_every_tool_is_on_the_shelf_tab(self):
-        """A toolshelf is NECESSARY but not SUFFICIENT for the tab to
-        appear - the dock is populated from shelf SETS, and a loose
-        toolshelf belongs to none. This asserts only the part the repo
-        controls; the per-machine step is the manual's job. The first
-        version of this test said "the tab would not appear", which
-        stated a guarantee the package does not provide."""
+        """A toolshelf is NECESSARY but not SUFFICIENT for the tab to appear - the dock is populated from shelf SETS, and a loose toolshelf belongs to none; this asserts only the part the repo controls, and the per-machine step is the manual's job. The first version stated a guarantee the package does not provide."""
         root = self._shelf()
         tools = {t.get("name") for t in root.findall("tool")}
         shelf = root.find("toolshelf")
@@ -1740,28 +1366,19 @@ class ShelfTest(unittest.TestCase):
             "a tool exists but is not on the tab, so nothing shows it")
 
     def test_the_shelf_does_not_claim_to_install_itself(self):
-        """Regression for a false comment. The package registers the
-        shelf; it cannot dock it. Claiming otherwise is the documented
-        "a rule that describes a mechanism you do not have" failure, and
-        it sent the second machine out without the tab."""
+        """Regression for a false comment: the package registers the shelf, it cannot dock it - claiming otherwise is a rule describing a mechanism you do not have, and it sent the second machine out without the tab."""
         with open(self._shelf_path(), encoding="utf-8") as handle:
             body = handle.read()
         self.assertNotIn(
             "no per-machine setup", body,
             "the shelf claims to need no setup - it needs one")
-        # The id, not the filename: pointers are `▸m/first-run` since
-        # 2026-08-15 and tools/wiki-refs.py proves they resolve.
-        self.assertIn(
+        self.assertIn(  # the id, not the filename: pointers are wiki ids and tools/wiki-refs.py proves they resolve
             "▸m/first-run", body,
             "the shelf does not point at where the setup step is written")
 
     def test_every_icon_resolves_to_a_file_that_exists(self):
         root = self._shelf()
-        # $AMAZE is the repo/install ROOT, so the icon path is resolved
-        # from there - five dirnames up, the same anchor _shelf_path
-        # uses. Getting this wrong is why the first version of this test
-        # failed on a file that was present all along.
-        package = os.path.dirname(self._shelf_path())
+        package = os.path.dirname(self._shelf_path())  # $AMAZE is the repo/install ROOT, so the icon path resolves from there - getting this wrong failed the first version against a file that was present all along
         package = os.path.dirname(package)
         for tool in root.findall("tool"):
             icon = tool.get("icon") or ""
@@ -1791,12 +1408,8 @@ class ShelfTest(unittest.TestCase):
                 if t.get("name") == "amaze_open_panel"][0]
         script = tool.find("script").text or ""
         self.assertIn("interfaceByName", script)
-        # CROSS-REFERENCE the two files. Checking each for a literal
-        # independently is not a comparison: renaming INTERFACE in the
-        # shelf left this green while the tool hit "not installed" on
-        # every click.
         import re as _re
-        asked = _re.search(r'^INTERFACE\s*=\s*[\'"]([^\'"]+)', script, _re.M)
+        asked = _re.search(r'^INTERFACE\s*=\s*[\'"]([^\'"]+)', script, _re.M)  # CROSS-REFERENCE the two files: independent literal checks are not a comparison - renaming INTERFACE in the shelf left this green while the tool failed on every click
         self.assertIsNotNone(asked, "the tool names no interface")
         wanted = asked.group(1)
         pypanel = os.path.join(
@@ -1810,29 +1423,14 @@ class ShelfTest(unittest.TestCase):
             "does not declare that name" % wanted)
 
     def test_the_panel_tool_passes_the_interface_NAME_not_the_object(self):
-        """Regression, shipped broken 2026-07-29.
-
-        createFloatingPaneTab's python_panel_interface is documented as
-        "The NAME of the Python Panel interface" - a char const *.
-        Passing the hou.PythonPanelInterface returned by
-        interfaceByName raises `argument 5 of type 'char const *'` the
-        moment the tool is clicked. The API surface was probed with
-        dir() and the docstring read as far as the signature, which is
-        where the type is NOT stated.
-        """
+        """createFloatingPaneTab's python_panel_interface is documented as the NAME of the Python Panel interface - a char const * - so passing the hou.PythonPanelInterface object returned by interfaceByName raises a TypeError the moment the tool is clicked; the API surface was probed with dir() and the docstring read as far as the signature, which is where the type is NOT stated."""
         root = self._shelf()
         tool = [t for t in root.findall("tool")
                 if t.get("name") == "amaze_open_panel"][0]
         script = tool.find("script").text or ""
-        # The CALL, not the word: it also appears in a comment above,
-        # and matching that captured a comment instead of the call.
-        start = script.find("desktop.createFloatingPaneTab")
+        start = script.find("desktop.createFloatingPaneTab")  # the CALL, not the word - it also appears in a comment above, and matching that captured the comment instead of the call
         self.assertGreater(start, -1, "the tool no longer opens a panel")
-        # Balance the parentheses. The first version stopped at the
-        # first ")" after the call, which is the one closing
-        # size=(1100, 800) - so it cut the argument being asserted on
-        # and the test failed against correct code.
-        depth = 0
+        depth = 0  # balance the parentheses: stopping at the first close cut the argument being asserted on, and the test failed against correct code
         end = start
         for i in range(script.find("(", start), len(script)):
             if script[i] == "(":
@@ -1853,12 +1451,8 @@ class ShelfTest(unittest.TestCase):
         self.assertNotIn(
             "python_panel_interface=interface", call,
             "the interface OBJECT is being passed again")
-        # And INTERFACE must BE a name. Asserting the identifier alone
-        # is defeated by `INTERFACE = hou.pypanel.interfaceByName(...)`,
-        # which re-introduces the exact TypeError while this test stays
-        # green - the value is what the API receives.
         import re as _re
-        assigned = _re.search(r'^INTERFACE\s*=\s*(.+)$', script, _re.M)
+        assigned = _re.search(r'^INTERFACE\s*=\s*(.+)$', script, _re.M)  # INTERFACE must BE a name: the identifier alone is defeated by assigning interfaceByName's object to it, which re-introduces the exact TypeError while this stays green
         self.assertIsNotNone(assigned, "INTERFACE is never assigned")
         self.assertRegex(
             assigned.group(1).strip(), r'^[\'"][^\'"]+[\'"]$',
@@ -1866,36 +1460,27 @@ class ShelfTest(unittest.TestCase):
             "an object again")
 
     def test_no_default_hotkey_is_shipped(self):
-        """Choosing a key for the user silently takes one that already
-        means something. The Hotkey Editor is where it gets assigned."""
+        """Choosing a key for the user silently takes one that already means something - the Hotkey Editor is where it gets assigned."""
         with open(self._shelf_path(), encoding="utf-8") as handle:
             body = handle.read()
         self.assertNotIn("<hotkey", body.lower())
 
     def test_sync_install_carries_the_toolbar(self):
-        """A shipped file the sync does not carry is a file that only
-        ever exists in the repo - the documented under-sync trap."""
+        """A shipped file the sync does not carry is a file that only ever exists in the repo - the documented under-sync trap."""
         tools = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))),
             "tools", "sync-install.sh")
         with open(tools, encoding="utf-8") as handle:
             body = handle.read()
-        # The copy is an amaze_mirror call since the shared resolver
-        # (tools/houdini-env.sh) replaced the four rsync spellings; the
-        # old assertion looked for the literal `toolbar/` of the rsync
-        # form and read the refactor as a dropped copy.
-        self.assertIn('amaze_mirror "$repo/toolbar"', body,
+        self.assertIn('amaze_mirror "$repo/toolbar"', body,  # an amaze_mirror call since the shared resolver replaced the four rsync spellings - the old assertion looked for the rsync form and read the refactor as a dropped copy
                       "sync-install.sh does not copy the toolbar")
         self.assertIn('diff -rq "$repo/toolbar"', body,
                       "the sync does not VERIFY the toolbar landed")
 
 
 class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
-    """A hand-framed capture cannot be regenerated - rebuilding it means
-    reconstructing the scene - and it lived under cache_root, the one
-    directory the OS, a cache-clear preference and Delete Local Cache
-    are all entitled to purge."""
+    """A hand-framed capture cannot be regenerated - rebuilding it means reconstructing the scene - and it lived under cache_root, the one directory the OS, a cache-clear preference and Delete Local Cache are all entitled to purge."""
 
     def setUp(self):
         self.cache = tempfile.mkdtemp(prefix="amaze_hipcap_cache_")
@@ -1952,14 +1537,7 @@ class CapturesLiveOutsideTheCacheTest(unittest.TestCase):
 
 
 class SectionListIsSingleSourcedTest(unittest.TestCase):
-    """Every list of sections must come from ONE place.
-
-    Three copies existed - the tab strip and two inside the Preferences
-    dialog - and the two in Preferences never learned about "hip". So
-    toggling ANY section rebuilt enabled_sections from a six-entry list
-    and dropped HIP: the tab vanished, persisted, with no switch to turn
-    it back on and a migration flag that would not re-add it.
-    """
+    """Every list of sections must come from ONE place: three copies existed - the tab strip and two inside the Preferences dialog - and the two in Preferences never learned the new key, so toggling ANY section rebuilt enabled_sections from a six-entry list and dropped the tab: vanished, persisted, no switch to turn it back on, and a migration flag that would not re-add it."""
 
     def test_every_registered_section_is_offered(self):
         listed = [k for k, _lbl in sections.all_sections()]
@@ -1972,14 +1550,7 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
             self.assertTrue(label, "section %r has no label" % key)
 
     def test_no_hardcoded_section_list_is_INCOMPLETE(self):
-        """Source-derived, and aimed at the actual defect.
-
-        A literal list is not itself the bug - `_default_sections` needs
-        one as its fallback. The bug is a list that OMITS a registered
-        section: two of those lived in the Preferences dialog, so
-        toggling anything rebuilt the pref without "hip" and deleted the
-        tab. Any section list in the tree must name every section.
-        """
+        """Source-derived, aimed at the actual defect: a literal list is not itself the bug (`_default_sections` needs one as its fallback) - the bug is a list that OMITS a registered section, and two of those lived in the Preferences dialog. Any section list in the tree must name every section."""
         import re
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         keys = {c.key for c in sections.SECTION_CLASSES}
@@ -1997,17 +1568,11 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
                         r'\[[^\[\]]*"material"[^\[\]]*\]'
                         r'|\([^()]*"material"[^()]*\)', body, re.S):
                     listed = set(re.findall(r'"([a-z]+)"', match.group()))
-                    # "is this a section list?" keys on a CURRENT
-                    # non-material section key - the old "texture"
-                    # probe went vacuous the day that key retired.
                     if "gradient" not in listed and "file" not in listed:
-                        continue            # not a section list
-                    # A list allowed to be incomplete says so where it
-                    # is declared - the exemption is the comment, so it
-                    # travels with the code it excuses.
+                        continue            # not a section list - the is-it-one probe keys on a CURRENT non-material key, since the old texture probe went vacuous the day that key retired
                     if "deliberately partial" in \
                             body[max(0, match.start() - 400):match.start()]:
-                        continue
+                        continue            # a list allowed to be incomplete says so where it is declared - the exemption travels with the code it excuses
                     missing = keys - listed
                     if missing:
                         offenders.append(
@@ -2020,15 +1585,7 @@ class SectionListIsSingleSourcedTest(unittest.TestCase):
 
 
 class CleanupConfirmsBeforeDeletingTest(unittest.TestCase):
-    """Source-derived: Clean Library needs a GUI, but the ordering of
-    its dialogs is readable in the source.
-
-    The rule is "dialogs CONFIRM AN ACTION BEFORE IT HAPPENS - never
-    announce that one finished", and this method had it exactly
-    inverted: no gate at all, and two completion dialogs. It unlinks
-    .mat/.interface/.png files and drops folder pointers and
-    favourites, and two one-click entry points reach it.
-    """
+    """Source-derived: Clean Library needs a GUI, but the ordering of its dialogs is readable in the source. The rule - dialogs CONFIRM AN ACTION BEFORE IT HAPPENS, never announce that one finished - and this method had it exactly inverted: no gate at all and two completion dialogs, on a method that unlinks files and drops folder pointers and favourites, with two one-click entry points reaching it."""
 
     def _body(self):
         path = os.path.join(
