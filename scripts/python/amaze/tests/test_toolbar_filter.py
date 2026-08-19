@@ -1,12 +1,4 @@
-"""The Search box: one label, an empty field, in every tab.
-
-This file used to pin the opposite - a per-section placeholder text -
-and the whole premise was repealed 2026-08-01: the label reads Search,
-and the box shows NO placeholder anywhere. The label and the magnifier
-name the control; the box's tooltip is where :tag gets taught. These
-tests drive the real tab switch, so a section that starts writing its
-own text again turns them red.
-"""
+"""The Search box: one label, an empty field, in every tab - the label reads Search, the box shows NO placeholder anywhere, and the box's tooltip is where :tag gets taught. These tests drive the real tab switch, so a section that starts writing its own text again turns them red."""
 
 import json
 import os
@@ -26,11 +18,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 import hou  # noqa: E402,F401
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
-# AFTER test_support, deliberately: it is what redirects config_root and
-# the cache, and a module that resolves a path at import time would
-# otherwise reach the user's own files (practice.md - this very module
-# is the one that was caught doing it).
-from amaze.core import file_library, texture_library  # noqa: E402
+from amaze.core import file_library, texture_library  # noqa: E402 - AFTER test_support, which redirects config_root and the cache; a module resolving a path at import time would reach the user's own files
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 
 
@@ -49,15 +37,13 @@ class SearchBoxTest(unittest.TestCase):
         return self.panel.line_filter.placeholderText()
 
     def test_the_label_reads_search(self):
-        """The box searches, so the label says Search (2026-08-01) -
-        Filter was the old word."""
+        """The box searches, so the label says Search - Filter was the old word."""
         self.assertEqual(
             "Search", self.panel.filter_label.text(),
             "the toolbar label next to the box changed")
 
     def test_the_box_stays_empty_in_every_section(self):
-        """No placeholder text in any tab - the empty box IS the
-        design. A section that writes one again turns this red."""
+        """No placeholder text in any tab - the empty box IS the design."""
         for key, label in sections.all_sections():
             self.assertEqual(
                 "", self._placeholder_for(key),
@@ -65,8 +51,7 @@ class SearchBoxTest(unittest.TestCase):
                 "Search box again" % label)
 
     def test_the_online_browser_stays_empty_too(self):
-        """Online mode is a VIEW MODE over Materials with its own
-        placeholder history - it follows the same decree."""
+        """Online mode is a VIEW MODE over Materials with its own placeholder history - it follows the same rule."""
         self._placeholder_for("material")
         self.panel.open_online_source("PhysicallyBased")
         try:
@@ -75,10 +60,7 @@ class SearchBoxTest(unittest.TestCase):
                             "this test is not exercising it")
             online = self.panel.line_filter.placeholderText()
         finally:
-            # The real leave path. exit_online_materials is the mode
-            # exit only - it deliberately does not decide where you
-            # land, so calling it alone leaves the grid online.
-            self.panel.leave_online_world()
+            self.panel.leave_online_world()  # the real leave path - exit_online_materials is the mode exit alone and would leave the grid online
         self.assertEqual(
             "", online,
             "the online browser writes a placeholder into the "
@@ -86,14 +68,7 @@ class SearchBoxTest(unittest.TestCase):
 
 
 class FilterMenuEngineTest(unittest.TestCase):
-    """One menu, one button, five sections (2026-08-02).
-
-    The menu held the renderers alone until every section got its own
-    filter. What these pin is that it is ONE engine: the panel carries
-    a label to a section and a value back, and never learns what a
-    value means. A section that starts filtering from the panel again
-    turns these red.
-    """
+    """One menu, one button, five sections - ONE engine: the panel carries a label to a section and a value back, and never learns what a value means."""
 
     @classmethod
     def setUpClass(cls):
@@ -107,8 +82,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         return [act.text() for act in self.panel.menu_filter.actions()]
 
     def test_every_section_fills_the_menu_with_its_own_entries(self):
-        """The design, tab by tab. Materials is prefs-gated so only its
-        """
+        """The design, tab by tab: four sections pin their lists exactly; Materials is prefs-gated so only its everything-entry is fixed."""
         expected = {
             "gradient": ["All", "1 color", "2 colors", "3 colors",
                          "4 colors", "5+ colors"],
@@ -129,10 +103,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                 "Materials offers something that is not a renderer")
 
     def test_the_panel_never_interprets_a_value(self):
-        """The engine's whole claim. Two sections filter on values of
-        different TYPES (a renderer string, a (low, high) palette-size
-        pair), so a panel that understood either one could not serve
-        both."""
+        """The engine's whole claim: two sections filter on values of different TYPES (a renderer string, a (low, high) palette-size pair), so a panel that understood either one could not serve both."""
         self._labels_for("gradient")
         self.assertEqual(
             (5, None), self.panel.filter_values["5+ colors"],
@@ -144,8 +115,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "the Code menu's value changed shape")
 
     def test_a_pick_narrows_the_grid_and_all_puts_it_back(self):
-        """Driven through the real menu action, in the section whose
-        rows the fixture can count: one language in, everything out."""
+        """Driven through the real menu action, in the section whose rows the fixture can count: one language in, everything out."""
         self._labels_for("code")
         model = self.panel.code_model
         total = model.rowCount()
@@ -177,9 +147,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "All does not put every snippet back")
 
     def test_all_stores_no_filter_at_all(self):
-        """All REMOVES the filter rather than storing a value that
-        accepts every row - including a material with no renderer,
-        which Repair mints and which had no other way to be seen."""
+        """All REMOVES the filter rather than storing an accept-everything value - a material with no renderer (Repair mints those) has no other way to be seen."""
         self._labels_for("material")
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.apply_section_filter()
@@ -190,8 +158,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "index.data() on every pass to reach the same yes")
 
     def test_each_section_remembers_its_own_choice(self):
-        """One shared key would mean picking Redshift in Materials and
-        finding Nodes narrowed to nothing."""
+        """One shared key would mean picking Redshift in Materials and finding Nodes narrowed to nothing."""
         self._labels_for("code")
         act = self.panel.filter_actions["Python"]
         act.setChecked(True)
@@ -210,8 +177,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         self.panel.filter_menu_changed(self.panel.filter_actions["All"])
 
     def test_a_choice_no_longer_offered_falls_back_to_all(self):
-        """A renderer switched off in Preferences takes its entry with
-        it. The menu must not be left checked on nothing."""
+        """A renderer switched off in Preferences takes its entry with it - the menu must not be left checked on nothing."""
         self._labels_for("material")
         if "Redshift" not in self.panel.filter_actions:
             self.skipTest("Redshift not enabled in this fixture")
@@ -236,8 +202,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "longer offers")
 
     def test_the_palette_sizes_actually_filter(self):
-        """Colors filters on a range, so the last entry is open: 5+ has
-        to keep a 9-color palette while "4 colors" does not."""
+        """Colors filters on a range, so the last entry is open: `5+ colors` has to keep a 9-color palette while `4 colors` does not."""
         self._labels_for("gradient")
         model = self.panel.gradient_model
         proxy = self.panel.gradient_sorted_model
@@ -265,26 +230,18 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "All does not put every palette back")
 
     def test_the_file_kinds_actually_filter(self):
-        """The File section's rows are one list of several KINDS since
-        the merge, so its filter is the way back to one of them.
-
-        Driven on a real FileFiles over a real folder rather than the
-        fixture panel, which has no folders registered - the proxy and
-        the model are the shipped ones either way."""
+        """The File section's rows are one list of several KINDS, so its filter is the way back to one of them - driven on a real FileFiles over a real folder (the fixture panel has no folders registered); the proxy and the model are the shipped ones either way."""
         folder = tempfile.mkdtemp(prefix="amaze_filter_kinds_")
         self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         for name in ("a.png", "b.png", "c.obj", "d.hip", "e.txt"):
             with open(os.path.join(folder, name), "w") as handle:
                 handle.write("x")
-        # The real Prefs, through the real settings file: file_folders
-        # is read-only on the object, and a stub of it here would be a
-        # second copy of what FileFiles reads.
         home = tempfile.mkdtemp(prefix="amaze_filter_prefs_")
         self.addCleanup(shutil.rmtree, home, ignore_errors=True)
         with open(os.path.join(home, "settings.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"file_folders": [folder]}, handle)
-        prefs = prefs_module.Prefs()
+        prefs = prefs_module.Prefs()  # the real Prefs: file_folders is read-only, and a stub would be a second copy of what FileFiles reads
         prefs.path = home
         prefs.load()
         model = file_library.FileFiles(prefs)
@@ -308,11 +265,7 @@ class FilterMenuEngineTest(unittest.TestCase):
             "which has no kind of its own to be found under")
 
     def test_the_sidebar_counts_survive_all(self):
-        """The 2026-08-02 bug: the panel handed the category model the
-        LABEL "All", which Categories lowercases and matches as a
-        substring - so it matched no renderer, every count read 0 and,
-        with Hide Empty Categories on, every real category vanished
-        from the sidebar."""
+        """The panel once handed the category model the LABEL `All`, which Categories lowercases and substring-matches - no renderer matched, every count read 0, and Hide Empty Categories emptied the sidebar."""
         self._labels_for("material")
         if not self.panel.material_model.rowCount():
             self.skipTest("fixture library has no materials")
@@ -330,9 +283,7 @@ class FilterMenuEngineTest(unittest.TestCase):
 
 
 class RememberedFilterSettingsTest(unittest.TestCase):
-    """The settings file, which is a contract with data already on
-    disk: one key per section since 2026-08-02, where there was one
-    renderer for Materials alone."""
+    """The settings file, a contract with data already on disk: one key per section, where there was one renderer for Materials alone."""
 
     def _prefs(self, settings):
         home = tempfile.mkdtemp(prefix="amaze_filter_settings_")
@@ -346,17 +297,14 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         return p
 
     def test_an_old_settings_file_keeps_its_renderer(self):
-        """An upgrade must open on the renderer the user left it on,
-        not silently back at All."""
+        """An upgrade must open on the renderer the user left it on, not silently back at All."""
         p = self._prefs({"last_renderer": "Redshift"})
         self.assertEqual(
             "Redshift", p.section_filter("material"),
             "the remembered renderer was dropped on upgrade")
 
     def test_the_old_key_does_not_override_the_new_one(self):
-        """Both keys present means the file has been written since the
-        upgrade - the new one is the truth, and the stale renderer must
-        not reach back in."""
+        """Both keys present means the file was written since the upgrade - the new one is the truth."""
         p = self._prefs({"last_renderer": "Redshift",
                          "section_filters": {"material": "Karma",
                                              "code": "VEX"}})
