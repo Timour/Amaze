@@ -1,6 +1,4 @@
-"""
-Database Handler for Matlib - Saves Data as json to disk and ensures only one active connection
-"""
+"""Database handler for Matlib: json documents on disk, one live connection per database file; migration step `_MIGRATIONS[N]` runs when a loaded document carries `version == N` and mutates it in place to version N+1, so a `SCHEMA_VERSION` bump must ship with its step or the document keeps its old version and is recorded as an incomplete chain."""
 
 import json
 import os
@@ -12,48 +10,20 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 
-#: Schema version stamped into every database on save. Version 1 is
-#: the implicit legacy schema (no "version" key). Bump this together
-#: with a new _MIGRATIONS step - the load path applies steps in order,
-#: so either machine of a two-machine setup can open a library written
-#: by the other and land on the same schema.
 SCHEMA_VERSION = 6
 
-#: version-it-upgrades-FROM -> function(data) -> None (mutates in
-#: place). Step N runs when data["version"] == N, producing N+1.
-_MIGRATIONS = {}
 
-#: The three steps that upgraded shapes written before any release were
-#: deleted 2026-08-12 - every library that existed had already been
-#: converted by `AmazeNotes/tools/schema-convert.py`, so they upgraded
-#: from shapes nobody has. A document below SCHEMA_VERSION with no step
-#: for its version keeps that version, records an incomplete chain, and
-#: is refused rather than stamped as current.
+_MIGRATIONS = {}
 
 
 def _migration_v4(data: dict) -> None:
-    """v4 -> v5: the record stops carrying a favourite and a tile icon.
-
-    Both moved homes and were left on the row as frozen history so an
-    older build could still read them. Pre-1.0 there is no install base
-    that needs it, so they come off.
-
-    A favourite is PER-USER and lives in `material_favorites` in
-    settings.json - on the shared record, in a multi-user library, my
-    star toggled yours. A tile icon lives in `icons.json`, keyed by
-    asset id, which is the one home for every section.
-
-    NOT LEFT TO THE UNKNOWN-KEY COURTESY. `Material._KNOWN_KEYS` still
-    names both, so `get_as_dict` simply stops emitting them; if they
-    were unknown instead they would be carried verbatim forever and
-    this step would be undone by the next save.
-    """
+    """v4 to v5: strips `favorite` and `icon` from every asset row; both keys must also stay in the record class retired-key set (`Material._KNOWN_KEYS`), else the unknown-key courtesy carries them and the next save re-emits them."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
     for row in rows:
-        # A malformed row must not cost the rest - the same rule every
-        # other walk of this list follows.
+
+
         if not isinstance(row, dict):
             continue
         row.pop("favorite", None)
@@ -64,25 +34,13 @@ _MIGRATIONS[4] = _migration_v4
 
 
 def _migration_v5(data: dict) -> None:
-    """v5 -> v6: the record's `favorite` dies for good.
-
-    Schema 5 stripped it, but Colors kept WRITING it - the one section
-    whose rows never pass through `Material`, so nothing dropped it on
-    read, and every colour star toggled after the v4 step landed back
-    on the shared document. Stars live in favourites.json now, keyed by
-    the row's id and tagged with their owner (ROADMAP line 21); a field
-    on the shared record is everyone's, which was the defect.
-
-    Stripped, not adopted, matching the File store's rule: a star with
-    no owner is nobody's. Measured on both real libraries before the
-    move - 0 of 388 palettes starred - so the strip costs nothing.
-    """
+    """v5 to v6: strips `favorite` again - Colors rows never pass through `Material`, so schema-5 files kept regrowing it; the key must also stay in the retired-key set or the next save re-emits it."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
     for row in rows:
-        # A malformed row must not cost the rest - the same rule every
-        # other walk of this list follows.
+
+
         if not isinstance(row, dict):
             continue
         row.pop("favorite", None)
@@ -91,73 +49,28 @@ def _migration_v5(data: dict) -> None:
 _MIGRATIONS[5] = _migration_v5
 
 
-#: Survives the module reload; the class attribute points at it.
 _INSTANCES: dict = globals().get("_INSTANCES", {})
 
-#: Findings the next Clean Library report should surface, keyed by
-#: filename. MODULE-LEVEL with the same reload-survival trick as
-#: _INSTANCES above: panel.py reloads this module on every panel open,
-#: and reload re-executes the `class` statement - so a class-body dict
-#: was written to by generation 1 and read from generation 2, and a
-#: Clean Library after any panel reopen reported nothing at all.
+
 _INTEGRITY_NOTES: dict = globals().get("_INTEGRITY_NOTES", {})
 
 
-#: Per-database sibling files that prove that database was here before,
-#: for the case where it is momentarily ABSENT. Beyond the .bak-N /
-#: .unreadable copies hostos writes for every database, which
-#: existed_before checks unconditionally.
-#:
-#: Measured on the real library 2026-07-29: cops.json has four .bak
-#: files and no marker, code.json has a marker and NO .bak at all - so
-#: neither kind of trace alone covers both, and a .bak-only guard would
-#: pass code.json straight through to the empty-seed path it is meant to
-#: stop. The legacy marker name is listed too: it is only renamed on
-#: sight by code_library, which does not run until after this load.
 _EXISTED_MARKERS = {
     "code.json": (".amaze_code_starter_v1", ".assetlib_code_starter_v1"),
-    # Literals, not GradientLibrary._SEED_MARKER: gradient_library
-    # imports this module, so naming its class here would be a circular
-    # import. The code.json entry above is written out for the same
-    # reason. gradients.json was the ONE database missing from this
-    # table, which made Repair and the colours loader answer "was this
-    # file ever here?" differently about the same file.
     "gradients.json": (".amaze_gradient_seed_v1",
                        ".assetlib_gradient_seed_v1"),
 }
 
 
 def absent_but_known(directory: str, filename: str) -> str:
-    """For a database that is NOT on disk: the name of a trace saying it
-    was, or "" when this really is a new library.
-
-    Shared with library.py's cleanup, deliberately. Two callers ask the
-    same question about the same file within one session - "is this
-    missing because it is new, or because it has not arrived yet?" - and
-    they must never answer it differently: load() seeding an empty
-    cops.json and cleanup then reading its 8 assets' files as orphans is
-    the exact two-step that deleted 21 live files.
-    """
+    """Name of one trace proving an absent database file once existed in `directory`, or empty when it truly is new; shared with the `library.py` cleanup so no two callers can answer the newness of one file differently."""
     return hostos.existed_before(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
     )
 
 
 def _and_list(names) -> str:
-    """a / a and b / a, b and c - for a sentence the user has to act
-    on.
-
-    THE ONLY COPY LEFT, and it stays for a reason worth reading before
-    merging it. `library.py` and `repair.py` each had one too; those
-    two are now `helpers.and_list` (2026-08-10). This one cannot join
-    them: `helpers/helpers.py` imports `hou` at module level, and THIS
-    module is deliberately Houdini-free - the terminal restore tool
-    runs on a machine where Houdini will not start, which is the same
-    boundary that moved the quarantine out to `core/quarantine.py`.
-
-    So: two owners, one per side of the hou line, said out loud. Not
-    three copies that nobody meant.
-    """
+    """Joins names into a sentence list; a deliberate local twin of `helpers.and_list`, kept because `helpers` imports `hou` at module level and this module must stay importable where Houdini cannot start."""
     names = list(names)
     if len(names) <= 1:
         return names[0] if names else ""
@@ -165,21 +78,13 @@ def _and_list(names) -> str:
 
 
 def absent_traces(directory: str, filename: str) -> list:
-    """EVERY trace proving the file was here - what a refusal must
-    name so its instruction works in one pass."""
+    """Every trace proving the file was here - a refusal must name them all so its instruction works in one pass."""
+
     return hostos.existed_before_all(
         os.path.join(directory, filename), _EXISTED_MARKERS.get(filename, ())
     )
 
 
-#: THE FOUR LISTS, ONCE - filename, panel label, singular noun for a
-#: count - in panel order, which is Repair's order.
-#:
-#: Labels are copied from panel/sections.py because core must not
-#: import the UI package; test_absent_database asserts they agree.
-#: tools/library-audit.py keeps a third copy, stated at both ends: it
-#: runs where Houdini will not start. gradients.json has no
-#: DatabaseConnector but takes the same absent-but-known guard.
 SECTION_DATABASES = (
     ("library.json", "Material", "material"),
     ("cops.json", "Node", "node"),
@@ -187,7 +92,7 @@ SECTION_DATABASES = (
     ("gradients.json", "Color", "color"),
 )
 
-#: The one enumeration. Everything that walks all four reads this.
+
 DATABASES = tuple(name for name, _label, _holds in SECTION_DATABASES)
 
 _SECTION_LABELS = {name: label
@@ -196,47 +101,15 @@ _SECTION_LABELS = {name: label
 _SECTION_HOLDS = {name: holds
                   for name, _label, holds in SECTION_DATABASES}
 
-#: The lists whose assets own files in the shared ASSET folder, and
-#: therefore the only lists whose emptiness can say anything about a
-#: leftover .mat/.interface there.
-#:
-#: Code keeps its snippets INLINE in code.json (code_library: "No
-#: <id>.mat/.png files at all") and Colors keeps its ramps inline in
-#: gradients.json, so neither can own one. Both readers of that fact need
-#: the same answer: Clean Library's guard, which decides whether a list
-#: that reads empty holds the asset-folder sweep back, and Repair, which
-#: asks the user which section an unlisted pair belongs in. A section that
-#: cannot own the file must appear in neither.
+
 ASSET_FILE_OWNERS = ("library.json", "cops.json")
 
-#: Every database that can CLAIM an asset id in the shared folders.
-#: Wider than ASSET_FILE_OWNERS on purpose: a Code snippet owns no
-#: .mat, but it does own a recovery stamp beside the materials' and an
-#: icon in the shared image folder, so anything asking "is this file
-#: unowned" has to count it.
+
 ID_CLAIMING_DATABASES = ("library.json", "cops.json", "code.json")
 
 
 def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
-    """Which asset ids each database in `directory` claims.
-
-    Returns `(by_file, unreadable)` - a dict of filename -> set of ids
-    for every database that could be READ, and a list of the filenames
-    that exist and could not be. Absent files appear in neither: they
-    claim nothing, and whether that absence is suspicious is a policy
-    question this function deliberately does not answer (see
-    `absent_but_known`, and MaterialLibrary._all_known_asset_ids, which
-    refuses the sweep on it).
-
-    ONE HOME FOR "WHO OWNS THIS ID", beside the other classifiers here
-    for the same reason they are here: `mat/` and `img/` are SHARED by
-    Materials, Nodes and Code, so every reader of those folders has to
-    ask this, and two readers that answer it differently is the defect.
-    Clean Library's pass 3 has always asked it; `repair
-    .rebuild_from_stamps` did not, and claimed all 20 stamps in a
-    4-material library - 16 of them Nodes and Code (measured
-    2026-08-08).
-    """
+    """Returns `(by_file, unreadable)`: asset ids claimed per readable database in `directory`, plus filenames that exist but will not read; absent files appear in neither (newness is `absent_but_known` policy) - the one home for id ownership over the shared asset folders."""
     by_file, unreadable = {}, []
     for filename in (filenames or ID_CLAIMING_DATABASES):
         full = os.path.join(directory, filename)
@@ -256,9 +129,6 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
         found = set()
         for asset in data.get("assets") or []:
             if not isinstance(asset, dict):
-                # Not a row, and not ours to guess at. Counting it as
-                # "no id" would put "" in the id set, which matches
-                # nothing and is harmless but misleading in the log.
                 debug.event("database", "skipped a non-record entry",
                             file=full, entry=repr(asset)[:80])
                 continue
@@ -269,41 +139,12 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
 
 def asset_id_for_file(name: str, extensions: tuple,
                       tail: str = "") -> str | None:
-    """The asset id a file in the library's own folders belongs to, or
-    None when the name is not one of these files at all.
-
-    ONE classifier for the guard and for the sweep, deliberately. The
-    guard decides whether deleting is safe by counting the files that no
-    section lists; the sweep is the thing that deletes them. Two separate
-    copies of "which asset does this file belong to" can disagree, and a
-    guard that counts a different set of files than the sweep touches is
-    not a guard at all - it is a second opinion nobody reconciled.
-
-    STRICT BY SHAPE, and only ever in the refusing direction. A file
-    whose stem is not an id this app writes is not classified at all -
-    it is skipped and logged, never counted and never swept.
-
-    That asymmetry is the whole design. The sweep deletes what this
-    returns, so a classifier that guesses generously deletes generously.
-    The case it exists for is a sync client's conflicted-copy rename -
-    `library (conflicted copy 2026-07-29).mat` - which used to split on
-    the first dot, read as an unrecognised owner, and be swept as an
-    orphan: destroying the one artifact that existed to preserve a
-    divergence.
-
-    Two id shapes are accepted, because both are real: `uuid4().hex`
-    for everything new, and the pre-uuid all-digit timestamp ids that
-    Material.__init__ promises live forever. Anything else - a stem with
-    a space, a bracket, a dash, a second dot - is refused.
-    """
+    """The asset id a file in the library folders belongs to, or None when it is not such a file; the one classifier for both the delete guard and the sweep, strict only in the refusing direction - a stem not purely alphanumeric once `tail` and the extension come off (a sync-client conflicted-copy rename, for example) is logged and left alone, because the sweep deletes what this returns."""
     matched = next((e for e in extensions
                     if name.lower().endswith(e.lower())), None)
     if matched is None:
         return None
-    # EXACTLY stem + tail + extension, with nothing else between.
-    # Splitting on the first dot instead reads `asset.backup.mat` as
-    # belonging to asset "asset" - and then sweeps somebody's manual
-    # backup as a leftover the moment no row is called "asset".
+
     stem = name[: -len(matched)]
     if tail and stem.endswith(tail):
         stem = stem[: -len(tail)]
@@ -311,47 +152,20 @@ def asset_id_for_file(name: str, extensions: tuple,
         debug.event("cleanup", "file not classified - extra suffix",
                     file=name, stem=stem[:60])
         return None
-    # ALPHANUMERIC, nothing narrower. Real ids are uuid4 hex or the
-    # pre-uuid all-digit timestamps, and a rule spelled that way is
-    # tempting - but it refuses any id shape not anticipated here, and
-    # the sweep is not the place to discover one. What has to be
-    # excluded is punctuation and spaces, which is exactly what a
-    # conflicted-copy rename adds and what an id never contains.
+
     if not stem.isalnum():
-        # Refusing is the SAFE direction: an unrecognised file stays
-        # exactly where it is. Logged rather than silent, because a
-        # library accumulating unclassifiable files is worth seeing.
         debug.event("cleanup", "file not classified - left alone",
                     file=name, stem=stem[:60])
         return None
     return stem
 
 
-#: The fields two people can edit on the same asset from two machines
-#: without either edit being about the other: ROADMAP's "shared
-#: metadata" write kind, by name. Content is NOT here (the .mat pair
-#: has its own exclusive guard), and neither is anything derived from
-#: content (renderer, builder, date).
 _SHARED_METADATA_FIELDS = ("name", "categories", "tags", "description",
                            "license", "about", "icon", "node_color")
 
 
 def _merge_shared_metadata(mine: dict, theirs: dict, filename: str) -> None:
-    """Field-wise merge for a record both sessions hold.
-
-    "Two people editing DIFFERENT fields of the same asset is not a
-    conflict at all" (ROADMAP) - and whole-record ours-wins made it one:
-    my rename erased your retag, because the record was the unit of
-    comparison when the FIELD was the unit of editing.
-
-    Baseline-free, so the honest rule is asymmetric: a field where
-    THEIRS differs and MINE is empty/default takes theirs - an empty
-    description losing to a written one loses nothing - and anything
-    else keeps mine, with the collision RECORDED, not dialogued: an
-    editor mid-flow cannot answer "whose tags win" about an edit they
-    have never seen, and the note is enough to find the loser's value
-    in the peer's snapshot tiers.
-    """
+    """Field-wise merge for a record both sessions hold - the field, not the record, is the unit of editing: an empty local value adopts the peer value, and every real collision keeps the local value and is recorded, never dialogued."""
     for field in _SHARED_METADATA_FIELDS:
         if field not in theirs:
             continue
@@ -372,29 +186,10 @@ def _merge_shared_metadata(mine: dict, theirs: dict, filename: str) -> None:
 
 
 def wrong_shape(document) -> str:
-    """"" when `document` is shaped like a database, else what is wrong
-    with it - a phrase for the log, since the user-facing sentence is the
-    same however a file failed to be readable.
-
-    VALID JSON IS NOT A VALID DATABASE, and both readers of these files
-    need the same answer to that: the connector's merge, and library.py's
-    cleanup, which decides from it whether deleting anything is safe. Two
-    callers asking one question about one file must never answer it
-    differently - the same reason absent_but_known is shared.
-
-    Only the containers a reader actually walks are checked. An individual
-    asset entry is NOT validated here: the merge already skips a non-dict
-    row and leaves it on disk for whoever wrote it, which is the right
-    granularity - one bad row must not cost a session its writes.
-    """
+    """Empty string when `document` is shaped like a database, else a log phrase; valid json is not a valid database, and the merge and the cleanup must share this one answer - container keys only (`assets`, `categories`, `tags`, `gradients`), never individual rows, so one bad row cannot cost a session its writes."""
     if not isinstance(document, dict):
         return "top level is %s, not an object" % type(document).__name__
-    # "gradients" is here because gradients.json is read by this same
-    # helper and its loader walks that container - checking only the
-    # three names the other databases use would have passed
-    # {"gradients": "oops"} straight through to the code that iterates
-    # it. A key absent from a given file costs nothing: .get defaults to
-    # a list, so each file is only checked for what it actually carries.
+
     for key in ("assets", "categories", "tags", "gradients"):
         value = document.get(key, [])
         if not isinstance(value, list):
@@ -403,24 +198,7 @@ def wrong_shape(document) -> str:
 
 
 def wrong_table_shape(document, key: str) -> str:
-    """"" when `document` is `{key: {...}}`, else what is wrong with it.
-
-    wrong_shape's twin for the two library-adjacent SIDE TABLES -
-    notes.json and icons.json - whose payload is a mapping rather than
-    a list. Same argument as its sibling: valid JSON is not a valid
-    store, and the readers of one file must not answer that question
-    two different ways.
-
-    Both hand-rolled something weaker and neither survived a wrong
-    shape. `{"icons": null}` and `{"icons": []}` reached `.items()` and
-    raised AttributeError - which is neither OSError nor ValueError, so
-    the unreadable latch never engaged, the table was never cached, and
-    the exception repeated on every call from a PAINT path. notes.json
-    wrote `(loaded.get("notes") or {})`, which survives null but not a
-    non-empty list, and in the surviving case treated the junk as "no
-    notes yet" - so the next note written replaced every note in the
-    library with a one-key file.
-    """
+    """Empty string when `document` is `{key: {...}}`, else a log phrase; the `wrong_shape` twin for the mapping-payload side tables - a null or list payload otherwise reaches `.items()` and raises AttributeError, which the `(OSError, ValueError)` database guards never catch."""
     if not isinstance(document, dict):
         return "top level is %s, not an object" % type(document).__name__
     value = document.get(key, {})
@@ -430,10 +208,7 @@ def wrong_table_shape(document, key: str) -> str:
 
 
 def _keyed_store_label(filename: str) -> str:
-    """The side tables name themselves, in the registry that declares
-    them. Repair's alert sends the user here by name, so Repair must be
-    able to SAY the name - and a second copy of the four-entry table
-    below is how the two lists drifted in the first place."""
+    """The label a side table declares for itself in the `keyed_store` registry - one table, so the name Repair says cannot drift from the store it names."""
     try:
         from amaze.core import keyed_store
     except Exception:                                     # noqa: BLE001
@@ -452,56 +227,27 @@ def _keyed_store_noun(filename: str) -> str:
 
 
 def section_name(filename: str) -> str:
-    """"Nodes (cops.json)" - the user's word for a database, with the
-    filename kept because it is what they will look for on disk."""
+    """The section label with its filename, like `Nodes (cops.json)` - the filename stays because it is what the user will look for on disk."""
+
     label = _SECTION_LABELS.get(filename) or _keyed_store_label(filename)
     return "%s (%s)" % (label, filename) if label else filename
 
 
 def section_label(filename: str) -> str:
-    """"Nodes" alone - the tab's own name, for a sentence that sends the
-    reader to a CONTROL rather than to a file.
-
-    Both forms come from the one table so they cannot drift. Which to use
-    is not a style choice: section_name introduces the pair once, and a
-    later sentence in the same message that says "cops.json" where the
-    first said "Nodes (cops.json)" reads as a third thing. One name per
-    thing, in every file."""
+    """The bare tab name, like `Nodes`, for a sentence that sends the reader to a control; both forms come from the one table, and a message must keep one name per thing."""
     return (_SECTION_LABELS.get(filename)
             or _keyed_store_label(filename) or filename)
 
 
 def section_noun(filename: str, count: int = 2) -> str:
-    """"nodes", "material" - the word for what a section's count counts,
-    already singular or plural.
-
-    A bare number in a recovery dialog is unanswerable: "that copy holds
-    8" beside "the list you have now holds 548" reads as arithmetic, and
-    the reader still cannot tell whether the 8 are materials or colours.
-    From the same table as the labels, so the word for what a section
-    holds cannot drift from the name of the section."""
+    """The word a section count counts, like `material` or `nodes`, singular or plural by `count`; from the same table as the labels so the noun cannot drift, because a bare number in a recovery dialog is unanswerable."""
     noun = (_SECTION_HOLDS.get(filename)
             or _keyed_store_noun(filename) or "saved thing")
     return noun if count == 1 else noun + "s"
 
 
 def load_survivable(db, path: str, reload: bool = False):
-    """load() for a model constructed or switched during panel setup.
-
-    The PRIMARY index raises through, so the panel can offer the
-    repair dialog. A SECONDARY that exists and will not read must not
-    take the panel down instead: the connector's write latch is set so
-    nothing saves over the evidence, the file is preserved beside
-    itself, the user told once, and the model gets an empty document
-    of its own - never the connector's cache, whose falsy state is
-    what makes the next load retry. Colors carried exactly this guard
-    alone (hand-built, 2026-07-30); every sidecar list shares it now.
-
-    `reload` picks the connector door, and which one is not cosmetic:
-    `load()` returns the cached document when one is held - right at
-    construction, wrong on a library switch (research.md ▸ the
-    connector's own latch rules).
-    """
+    """load() for a model built or switched during panel setup: the primary index raises through to the repair dialog, while an unreadable secondary latches `_write_blocked`, preserves the file beside itself, alerts once and returns a fresh empty document - never the connector cache, whose falsy state is what makes the next load retry; `reload` must be true on a library switch, because `load()` returns any cached document."""
     try:
         return db.reload_with_path(path) if reload else db.load(path)
     except (OSError, ValueError) as exc:
@@ -526,26 +272,8 @@ def load_survivable(db, path: str, reload: bool = False):
 
 
 class DatabaseConnector:
-    """
-    Database Handler for Matlib - saves data as json to disk with one
-    active connection PER DATABASE FILE. Historically a plain singleton
-    hardcoded to library.json; the v2 COP section runs a second,
-    fully independent library over cops.json, so instances are now keyed
-    by filename (same instance returned for the same filename - all
-    existing callers pass nothing and keep sharing the library.json
-    connection exactly as before).
-    """
+    """Saves a json database to disk with one live connection per database file, instances keyed by `filename`; `_instances` and `_integrity_notes` bind to module-level dicts because `panel.py` reloads this module on every panel open and a re-executed class body would otherwise strand live models on a dead registry."""
 
-    #: Registry of live connectors, one per database FILE.
-    #:
-    #: Held OUTSIDE the class body: panel.py reloads this module on
-    #: every panel open, and reload re-executes the `class` statement -
-    #: producing a NEW class object with an empty registry. The models
-    #: keep pointing at the old connector's _data while db.set() writes
-    #: a different one, so sidebar counts and category colours silently
-    #: stop tracking saves. Worse, the fresh instance has no _path and
-    #: no stale-write baseline, so save() would build a RELATIVE path
-    #: and write into Houdini's working directory.
     _instances: dict = _INSTANCES
 
     def __new__(cls, filename: str = "library.json") -> Self:
@@ -557,55 +285,26 @@ class DatabaseConnector:
             inst._path = ""
             inst._disk_stat = None
             inst._loaded_ids = set()
-            #: Rows adopted from another session's save, awaiting
-            #: handover to the model (see take_adopted).
+
+
             inst._adopted = []
-            #: Ids the caller has explicitly deleted. _absorb_rows can
-            #: only KEEP rows, so a delete needs to be said out loud.
+
+            # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
             inst._forgotten = set()
-            #: Schema version as READ from disk, so save() cannot stamp
-            #: a downgrade over a newer build's file.
+
+
             inst._loaded_version = SCHEMA_VERSION
-            #: "_migrate stopped early, so this document is NOT at
-            #: SCHEMA_VERSION." Read by save(), which otherwise stamped
-            #: the target version over a chain that never completed.
             inst._migration_incomplete = False
-            #: "This file could not be trusted, so do not write it."
-            #: Set here rather than left to a getattr default so both
-            #: latches can be read plainly - and so reload_with_path has
-            #: something to reset rather than an attribute that may or
-            #: may not exist.
             inst._write_blocked = False
-            #: The LIBRARY FORMAT as read from disk (0 = pre-stamp),
-            #: and the read-only latch a stamp ahead of
-            #: branding.LIBRARY_FORMAT sets. Unlike _write_blocked it
-            #: never heals mid-session: the way out is updating Amaze,
-            #: not retrying the write.
             inst._loaded_format = 0
             inst._format_ahead = False
             inst._format_reported = False
-            #: Whether the user has been TOLD that saving is off. Once
-            #: per connector per session: save() is called from ordinary
-            #: sidebar use, so a line per save would be a wall of text.
             inst._block_reported = False
             cls._instances[filename] = inst
         return inst
 
     def _stat_file(self):
-        """(size, sha256) of the file on disk, or None when unreadable.
-
-        CONTENT, not (mtime_ns, size). Both directions of the stat
-        guard's error were measured (research.md): a same-size edit - a
-        boolean flip, an equal-length rename - passes a stat compare and
-        silently loses the peer's change, and a peer's byte-identical
-        atomic rewrite trips it as a conflict that is not there, sending
-        an ordinary save down the merge path for nothing.
-
-        The size rides along so a mismatch is answered before hashing
-        in the common case; the hash is the verdict. Cost: reading the
-        file - 1.4ms for the real 355KB library.json (research.md,
-        measured), on saves only, never per frame.
-        """
+        """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only)."""
         try:
             with open(self._path + self._filename, "rb") as handle:
                 raw = handle.read()
@@ -615,74 +314,24 @@ class DatabaseConnector:
             return None
 
     def _remember_disk_state(self, stat=None) -> None:
-        """Baseline for the stale-write guard: what the FILE looked
-        like when this session last read or wrote it, plus which asset
-        ids existed then (the membership baseline a three-way merge
-        needs to tell OUR deletions from THEIR additions).
-
-        `stat` is that (size, sha256) when the caller already holds it -
-        a save that has just written these exact bytes knows them
-        without a third read of the file.
-
-        THE READ IS WHAT IS OPTIONAL, NEVER THE BASELINE. Both halves
-        move together or neither does, which is the whole reason this
-        is one method. Saving the read by assigning `_disk_stat` at the
-        call site instead left `_loaded_ids` frozen at load time, so
-        every row added after the load sat permanently outside the
-        baseline - and a row this session added, saved and then deleted
-        came back as the peer's addition on the next merge, with
-        remove_asset reading that successful save as permission to
-        unlink every file behind it.
-        """
+        """The stale-write and merge baseline - `_disk_stat` plus `_loaded_ids`, re-derived TOGETHER on every load and successful save (ids frozen at load once returned a this-session row as a peer addition); `stat` is passed when the caller just wrote those exact bytes, and a non-dict row contributes no id, like every other walk of this list."""
         self._disk_stat = self._stat_file() if stat is None else stat
         self._loaded_ids = {
-            # A non-record entry has no id to contribute, and the three
-            # other walks of this list already skip one rather than
-            # guess at it. This was the only site that did not, so a
-            # single junk row raised AttributeError out of the load -
-            # through _normalize_all_category's save - and took the
-            # panel down, which is the outcome the row-skipping policy
-            # exists to prevent.
             str(a.get("id")) for a in (self._data or {}).get("assets", [])
             if isinstance(a, dict)
         }
 
     def _migrate(self, data: dict) -> None:
-        """Applies schema migrations in order to `data` and stamps the
-        current version on it. A database from a NEWER schema than this
-        build knows is left untouched and reported - never downgraded
-        blind.
-
-        Takes the document as an ARGUMENT rather than reading self._data,
-        so load() can migrate a parse result that is not committed yet.
-        A migration step raises like any other code, and while this ran
-        against self._data a half-applied step left the connector holding
-        a partial document with no stale-write baseline behind it
-        (_remember_disk_state never ran) - i.e. exactly the state save()
-        is least able to write safely."""
+        """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
         try:
             version = int(data.get("version", 1))
         except (TypeError, ValueError):
-            # A null, list or dict version raises TypeError - the ONE
-            # class no caller in this package catches, because every
-            # database guard here catches (OSError, ValueError), the
-            # pair a truncated file raises. The merge already guards
-            # the identical expression this way; this is its twin.
             debug.event("database", "unreadable version stamp - read "
                         "as legacy", file=self._filename,
                         found=repr(data.get("version")))
             version = 1
         self._loaded_version = version
-        # Re-derived on every read, never remembered: this connector can
-        # be pointed at another library at any time, and a gap in ONE
-        # library's chain must not follow the user into the next.
         self._migration_incomplete = False
-        # THE FORMAT STAMP - a separate contract from the schema chain:
-        # schema migrates shapes this build knows, format says whether
-        # this build may WRITE the file at all. Ahead of what this
-        # build knows = the session is read-only for this file, said
-        # ONCE, and the latch never heals - the way out is updating
-        # Amaze, not retrying.
         try:
             self._loaded_format = int(data.get("format", 0) or 0)
         except (TypeError, ValueError):
@@ -707,11 +356,6 @@ class DatabaseConnector:
         while version < SCHEMA_VERSION:
             step = _MIGRATIONS.get(version)
             if step is None:
-                # A gap in the chain: stamping SCHEMA_VERSION here would
-                # claim migrations that never ran. This refusal was
-                # correct and then completely undone by save(), which
-                # stamped max(_loaded_version, SCHEMA_VERSION) anyway -
-                # so the flag is what carries the refusal that far.
                 debug.event("database", "migration step missing",
                             file=self._filename, at_version=version)
                 self._migration_incomplete = True
@@ -724,33 +368,7 @@ class DatabaseConnector:
         self._loaded_version = version
 
     def load(self, path: str) -> dict:
-        """
-        Loads the Database from disk as json. Secondary databases
-        (anything that isn't library.json) are seeded as an empty
-        library on first use instead of failing - library.json itself
-        keeps the old behavior, since a missing PRIMARY database is a
-        real error the caller must surface, not silently paper over.
-
-        "First use" means NOTHING beside the file says it was ever here
-        (see absent_but_known). Absence alone is not newness: the file
-        only had to be gone for the instant panel.py constructs the
-        model - and panel.py constructs CopLibrary on EVERY panel open,
-        so a sync placeholder still arriving hit that window every
-        launch. Reproduced 2026-07-29: cops.json 5,537 bytes / 8 records
-        -> 96 bytes / 0 records, then Clean Library reported "23
-        orphaned file(s) on disk were removed" and all 21 files those 8
-        live assets owned were gone. snapshot_before_write returns early
-        for a path that does not exist, so the write that emptied the
-        file took NO backup either.
-        """
-        # A DIFFERENT LIBRARY THAN THE ONE THIS CONNECTOR SERVES takes
-        # the switch door. This line used to repoint `_path` under the
-        # cached document unconditionally, so a model constructed after
-        # the library moved - a hand edit or a rollback while the panel
-        # was closed - was served the OLD library's rows under the new
-        # path; serves() then agreed, and the first save wrote the old
-        # document into the new file. reload_with_path re-derives
-        # everything from the new disk, latches included.
+        """Load from disk. A secondary database absent WITH traces refuses for the session (absent_but_known - absence alone is not newness), absent without them seeds empty; a missing PRIMARY index raises to the caller; a path change reroutes to `reload_with_path`, never repointing `_path` under the cached document; reads are `utf-8-sig` (a BOM is a routine sync artifact) while writes stay plain utf-8; the parse commits to `_data` only AFTER `_migrate`, so a raising step leaves it falsy and the next load retries; a parsed non-database raises ValueError - refuse over overwrite, the same outcome a truncated file gets."""
         if (self._data and self._path
                 and hostos.canonical_path_key(self._path)
                 != hostos.canonical_path_key(path)):
@@ -763,53 +381,11 @@ class DatabaseConnector:
                 if traces:
                     self._refuse_absent(full, traces)
                     return self._data
-                # "_All", not "All": the leading underscore is the
-                # library's long-standing sort trick - it sorts before
-                # any letter so the pseudo-category stays pinned on top,
-                # and Categories.data() strips it for display.
                 self._data = {"categories": ["_All"], "tags": [], "assets": []}
                 self.save()
             else:
-                # utf-8-sig, not utf_8. A BOM in front of the document is
-                # a routine half-synced-editor artifact - Notepad and a
-                # few sync clients' conflict-resolution helpers write one
-                # - and json.load raises on it, which for library.json is
-                # a load with no recovery path at all. utf-8-sig reads a
-                # BOM-less file byte-identically, so this costs nothing
-                # for the normal case; the codec strips the marker only
-                # when it is actually there. Writing stays plain utf-8:
-                # nothing here should ever ADD a BOM.
-                #: PARSE INTO A LOCAL, COMMIT AFTER THE MIGRATION.
-                #: self._data used to be assigned straight from json.load
-                #: and migrated in place, so anything a migration step
-                #: raised left the connector holding a HALF-MIGRATED
-                #: document - with no stale-write baseline behind it,
-                #: because _remember_disk_state is the line after. That is
-                #: the worst state save() can be asked to write from: it
-                #: believes it holds the library, and _disk_stat is None
-                #: so the guard that would have caught the difference is
-                #: not armed. Leaving _data falsy instead means the
-                #: refusal is honest AND the next load() retries, because
-                #: `if not self._data` is what gates this whole branch.
                 with open(full, encoding="utf-8-sig") as lib_json:
                     parsed = json.load(lib_json)
-                # THE SAME CLASSIFIER AS THE MERGE, and it belongs here
-                # too. `[]` is valid JSON and not a database, and this is
-                # the PRIMARY index's read: _migrate's very first line is
-                # data.get(), so a list document raised AttributeError out
-                # of the model constructor - a class no caller can catch,
-                # because everything that guards a database read here
-                # guards (OSError, ValueError), the pair a truncated file
-                # raises. Reproduced live: library.json holding `[]` ->
-                # AttributeError: 'list' object has no attribute 'get'.
-                #
-                # Raising ValueError is deliberately the SAME outcome a
-                # truncated file already gets, not a new one. "Refuse over
-                # overwrite" is the settled policy for a file that exists
-                # and will not read, and a document of the wrong shape is
-                # that file; making this one shape uniquely fatal-in-a-
-                # different-way is how the merge ended up bypassing the
-                # whole preserve/latch/tell-the-user path.
                 malformed = wrong_shape(parsed)
                 if malformed:
                     debug.event("database", "load refused - not a database",
@@ -819,38 +395,23 @@ class DatabaseConnector:
                         % (self._filename, malformed))
                 self._migrate(parsed)
                 self._data = parsed
-                # EVERY category-bearing database - the primary was
-                # exempt while the name sort hid where _All sat, and
-                # the manual order shows the stored list as it is.
                 self._normalize_all_category()
                 self._note_suspicious_shrink(full)
             self._remember_disk_state()
         return self._data
 
-    #: Findings the next Clean Library report should surface: a list of
-    #: plain-language sentences, per filename - a transient console
-    #: note is easy to miss and invisible on Windows, and the person
-    #: who should read it is the one about to run a cleanup against
-    #: this data. Bound to the MODULE-level dict, which survives the
-    #: reload chain (see _INTEGRITY_NOTES).
     _integrity_notes: dict = _INTEGRITY_NOTES
 
     @classmethod
     def take_integrity_notes(cls) -> list:
-        """The pending findings, cleared on read - they describe load
-        moments that have been superseded once the next load runs."""
+        """The pending findings, cleared on read - they describe load moments superseded once the next load runs."""
         notes = [line for lines in cls._integrity_notes.values()
                  for line in lines]
         cls._integrity_notes.clear()
         return notes
 
     def _note_suspicious_shrink(self, full: str) -> None:
-        """After a successful parse: does this document hold under half
-        of what its newest snapshot holds? Report-only - a shrink can be
-        legitimate (a big deliberate cleanup), so it never blocks and
-        never repairs; it makes sure a human SEES the number before the
-        next sweep treats the shrunken list as the truth.
-        """
+        """After a successful parse: report (never block, never repair) a document holding under half of its newest snapshot - `wrong_shape` is ASKED, not caught, because a mis-shaped snapshot raising here would cost the load this note promises never to cost."""
         try:
             here = len(self._data.get("assets") or [])
             newest = None
@@ -863,17 +424,6 @@ class DatabaseConnector:
                 return
             with open(newest, encoding="utf-8-sig") as handle:
                 snapshot = json.load(handle)
-            # THE SAME CLASSIFIER THE LOAD AND THE MERGE USE. A snapshot
-            # that parses is not therefore a database, and `.get` on a
-            # list or a null raises AttributeError - which is not in the
-            # except below, so the note that promises never to cost a
-            # load took the whole panel down with it: load() runs inside
-            # the model constructor, so there is no grid and no message,
-            # only a traceback naming a file beside the library.
-            #
-            # Asked rather than caught, because "is this shaped like a
-            # database" already has one owner here and two guards
-            # answering it is how they drift.
             if wrong_shape(snapshot):
                 return
             backed = len(snapshot.get("assets") or [])
@@ -893,21 +443,7 @@ class DatabaseConnector:
             return                          # the note must never cost a load
 
     def _refuse_absent(self, full: str, traces) -> None:
-        """A secondary database that is gone but was here: hold an empty
-        library in memory so the panel still builds, and block every
-        write for the session so that emptiness cannot reach disk.
-
-        _write_blocked is the mechanism the merge-failure path already
-        uses, and reusing it is the point - it is the one flag save()
-        consults before doing anything, so there is no second way to
-        write that could miss this. Refusing ONCE would not be enough
-        anyway: it is the SECOND save that overwrites what the first one
-        preserved.
-
-        The model shows an empty section this session, which is honest -
-        the records genuinely are not readable right now - and nothing
-        is lost, because nothing is written.
-        """
+        """Absent-but-known: hold an empty library in memory so the panel still builds, and latch `_write_blocked` - the ONE flag save() consults, because it is the SECOND save that overwrites what the first preserved; the note names the full path, the way out, and EVERY trace (following one at a time spent a recovery copy per launch)."""
         self._data = {"categories": ["_All"], "tags": [], "assets": []}
         self._write_blocked = True
         debug.note(
@@ -916,47 +452,15 @@ class DatabaseConnector:
             "was created and nothing will be saved to it this session, "
             "so the file cannot be replaced by an empty one. Let the "
             "sync finish, then restart Houdini.\n"
-            # The PATH, not just the filename. The reader has to go and
-            # look at a directory they chose months ago; a bare
-            # "cops.json" leaves them hunting for it (prefs.py's
-            # unreadable-settings message names its full path for the
-            # same reason).
             "  Expected at: %s\n"
-            # The way OUT of the refusal, named. Without it the guard is
-            # permanent for anyone who deleted the database deliberately
-            # - the trace stays behind and keeps answering it-was-here
-            # forever, with nothing on screen saying what to do about it.
-            # Bare names, not second full paths: Expected-at above
-            # already gives the directory, and they are all in it.
-            #
-            # EVERY trace, not the first. This named one of the four
-            # the real library carries, so following it removed one
-            # and the next launch named the next - four runs, each
-            # spending a recovery copy.
             "  If you removed it on purpose, remove %s as well and the "
             "next launch starts a fresh one."
             % (section_name(self._filename), _and_list(traces), full,
                _and_list(traces)),
             file=full, evidence=", ".join(traces))
-        # _block_reported deliberately NOT set here. Being told once at
-        # panel open is not the same as being told at the moment an edit
-        # is dropped, which can be an hour later and is the point at
-        # which the user loses something.
 
     def _normalize_all_category(self) -> None:
-        """The categories invariant, kept at load: `_All` exists and
-        sits at row 0, and a pre-convention plain "All" is rewritten
-        rather than kept as a second row.
-
-        It was a one-time repair for the SECONDARY databases only,
-        and insert-if-missing only, because the primary's seeds put
-        `_All` first and the sidebar's name sort hid where the entry
-        actually sat. The manual order (2026-08-14) shows the stored
-        list as it is, so a stray `_All` mid-list would simply SHOW
-        mid-list - every category-bearing database keeps the
-        invariant now, library.json included.
-
-        IN PLACE throughout: models alias this list (see `set`)."""
+        """Keep the categories invariant at load: `_All` present at row 0 and legacy plain `All` rewritten, mutating the list in place because models alias it (see `set`)."""
         cats = self._data.get("categories")
         if not isinstance(cats, list):
             return
@@ -975,25 +479,7 @@ class DatabaseConnector:
             self.save()
 
     def set(self, assets: dict) -> None:
-        """Set data without saving, WITHOUT swapping the containers.
-
-        `current[:] = new` rather than `self._data[key] = new`. Fixing
-        only the merge was not enough: Categories and MaterialLibrary
-        hold a direct alias to these list objects, and this rebound all
-        four keys on every set - so the alias was already detached
-        before a merge could adopt anything into it.
-
-        This still replaces the CONTENT wholesale, which is a separate
-        defect (a second pane's rows are dropped by the first pane's
-        set/save) and a separate step. What it no longer does is change
-        which object the models are pointing at.
-        """
-        # The incoming value is COPIED before the container is emptied.
-        # A caller very often hands back the same object it was given -
-        # models pass `self._data`-derived state straight through - and
-        # `colours.clear()` on a dict that IS the source wipes what the
-        # update was about to read. Measured: four category-colour tests
-        # went red the moment this was written the obvious way.
+        """Set data without saving and never rebind the containers - models alias them - so contents change in place and incoming values are copied first because a caller may hand back the very objects being cleared."""
         for key in ("categories", "tags"):
             if key in assets:
                 incoming = list(assets[key] or [])
@@ -1008,43 +494,14 @@ class DatabaseConnector:
             colours.update(incoming_colours)
 
     def serves(self, library_dir: str) -> bool:
-        """Is this connector still pointed at `library_dir`?
-
-        The registry is keyed by FILENAME alone, so one instance serves
-        every pane in the process. That is deliberate - it survives the
-        module reload a panel open performs - but it means a library
-        switch in one pane rebinds the connector under all of them.
-
-        Measured shape of the failure: two panes on library A, one
-        switches to B via reload_with_path, and the other pane's model
-        still holds A's rows in memory. Its next save writes A's rows
-        into B's file.
-
-        Callers ask this before writing. Keying the registry by path
-        instead would have been the other fix, and it is the bigger
-        one: reload_with_path mutates the shared instance in place and
-        every model holds the instance, so path-keying changes how a
-        library switch works everywhere. This asks the same question
-        without moving the mechanism.
-        """
+        """True while this connector still points at `library_dir`; the registry is keyed by filename alone so one instance serves every pane, and callers must ask this before writing - a library switch in one pane rebinds the connector under all of them."""
         if not self._path or not library_dir:
             return True                    # nothing loaded yet to disagree
         return (hostos.canonical_path_key(self._path)
                 == hostos.canonical_path_key(library_dir))
 
     def _absorb_rows(self, incoming: list) -> None:
-        """Take the caller's rows WITHOUT dropping rows it never saw.
-
-        This used to replace the whole list from the caller's own copy.
-        Two panes share one connector but keep separate in-memory asset
-        lists, and the connector's write refreshes its OWN stale-write
-        baseline - so the guard never fires for the in-process case and
-        pane 2's save silently deleted the material pane 1 just added.
-
-        Union by id: the caller's version of a row it holds wins, and a
-        row it simply does not know about is kept. Absence therefore no
-        longer means "delete", which is why forget() exists.
-        """
+        """Union incoming rows by id in place: the caller wins for rows it holds, rows it never saw are kept, and only an explicit `forget` mark deletes - absence never means delete."""
         current = self._data.setdefault("assets", [])
         by_id, order = {}, []
         for row in current:
@@ -1060,50 +517,24 @@ class DatabaseConnector:
             if key not in by_id:
                 order.append(key)
             by_id[key] = row
-        # In place: models alias this list (see set()).
         current[:] = [by_id[key] for key in order
                       if key not in self._forgotten]
         self._forgotten.clear()
 
     def forget(self, mat_id: str) -> None:
-        """Drop a row on the next set(): the caller means DELETE.
-
-        Needed because _absorb_rows can only keep rows. Omitting a row
-        stopped meaning "remove it" the moment absence became "a pane
-        that has not heard of it", and without an explicit signal a
-        delete would simply be re-adopted from the connector's copy.
-        """
+        """Mark a row for deletion on the next `set`: `_absorb_rows` can only keep rows, so an omitted row would otherwise be re-adopted from the connector copy."""
         self._forgotten.add(str(mat_id))
         debug.event("database", "row marked for removal",
                     file=self._filename, mat_id=str(mat_id))
 
     def unforget(self, mat_id: str) -> None:
-        """Take back a forget() whose delete did not go through.
-
-        The mark outlives a refused save - _absorb_rows is what
-        consumes and clears it, and a save that returns False never
-        reaches there. So a caller that puts a row back in its model
-        after a refusal has to clear the mark too, or the NEXT save
-        deletes the row it just restored.
-        """
+        """Clear a `forget` mark after a refused save: only `_absorb_rows` consumes marks, so a caller that restores a row must clear the mark too or the next save deletes the restored row."""
         self._forgotten.discard(str(mat_id))
         debug.event("database", "row removal taken back",
                     file=self._filename, mat_id=str(mat_id))
 
     def save(self) -> bool:
-        """One always-on record per save() call, whatever happens inside.
-
-        The wrapper shape is deliberate, and it is the answer to the
-        step's own warning: converting the most safety-critical function
-        in the codebase into a single-exit body would restructure every
-        guard in it to gain a log line. Instead each exit names its
-        outcome and the finally writes exactly one record - including
-        the path where the body RAISES, which a tail line inside the
-        body can never see.
-
-        The library directory is logged as a digest, never raw: the log
-        is exportable and paths are the personal-data rule's territory.
-        """
+        """Wrap `_save_inner` so the `finally` emits exactly one record per call, the raising path included, with the library directory logged only as a digest (paths are personal data)."""
         self._save_outcome = "unrecorded"
         try:
             return self._save_inner()
@@ -1115,17 +546,10 @@ class DatabaseConnector:
                         outcome=self._save_outcome, dir_key=digest)
 
     def _refuse_unreadable_peer(self, full: str) -> bool:
-        """The stale-write merge could not READ the other session's
-        copy: preserve theirs, latch writes for the session, say it
-        once in full. Extracted from _save_inner when the format
-        latch gained its own refusal beside this one."""
+        """Refuse the save when the peer copy at `full` would not parse: preserve it, latch `_write_blocked` for the session, report once in full, and set `_block_reported` so `_save_inner` does not repeat it."""
         kept = hostos.preserve_unreadable(
             full, why="another session's database would not parse")
         self._write_blocked = True
-        # ONLY CLAIM THE COPY WHEN THERE IS ONE. preserve_unreadable
-        # has two paths that create nothing - a 0-byte source and a
-        # failed copy - and a reassurance that is not quite true is
-        # worse than none.
         copy_sentence = (
             " A copy of it is beside it as %s."
             % os.path.basename(kept)) if kept else ""
@@ -1136,89 +560,26 @@ class DatabaseConnector:
             "other machine has finished writing."
             % (self._filename, copy_sentence),
             file=full)
-        # Said in full here, so the once-per-session line in
-        # _save_inner does not repeat it on the next save.
         self._block_reported = True
         self._save_outcome = "merge-refused"
         return False
 
     def _save_inner(self) -> bool:
-        """Save Data to Disk. True only when the data reached the file.
-
-        The return value is not decoration. Every refusal below - an
-        empty document, the write-blocked latch, a merge that could not
-        read the other session's copy, a held file - used to return None
-        exactly like a completed save, so a caller that had ALREADY
-        written asset content to disk could not tell that the index
-        listing it never landed.
-
-        Written to a sibling temp file first, then swapped in with
-        hostos.replace_file (atomic on all three OSes, with a brief
-        retry for Windows transient holds - cloud-sync clients and
-        indexers briefly reopen the file after every change): a crash
-        or kill mid-write must never leave a truncated library.json -
-        it is the PRIMARY database and load() has no recovery path for
-        it. A persistent hold is reported to the user instead of
-        raised: callers are Qt slots, where an escaping exception only
-        lands on stderr, and self._data keeps the new state so the next
-        successful save persists it."""
+        """Merge concurrent changes, then write through a sibling temp file and atomic replace; True only when the bytes reached disk - every refusal path (empty document, write latch, unreadable peer, format ahead, held file) returns False, and version and format stamps never downgrade nor claim a migration that did not run."""
         if not self._data:
             self._save_outcome = "empty-document"
             return False
         full = self._path + self._filename
-        # STALE-WRITE GUARD: another session (another machine, another
-        # Houdini version) may have saved since this one loaded -
-        # writing our in-memory copy blind would silently erase their
-        # work. A changed file merges by asset id first: their NEW ids
-        # are adopted, ids WE deleted stay deleted (they were present
-        # at our load), and records both sides hold take OUR version
-        # (this session is the active editor).
-        # ONE read for the whole save: the stale-write guard and the
-        # identical-write compare both need (len, sha256) of the file,
-        # and nothing writes it between the two questions inside this
-        # call - reading it twice cost a full parse-sized read per save
-        # for an answer that could not differ.
         current_stat = self._stat_file()
         if self._disk_stat is not None and current_stat not in (
             None, self._disk_stat
         ):
-            # REFUSE OVER OVERWRITE. This guard fires precisely when the
-            # file changed underneath us - the two-Mac / cloud-sync case
-            # - and the merge's only failure mode is "their file will
-            # not parse right now", typically because it is mid-write.
-            # It used to `return` and let save() carry straight on,
-            # writing our copy over theirs: measured, 200 of their
-            # assets gone, with only a debug.event nobody sees. And
-            # snapshot_before_write is once-per-session, so a second
-            # save in the same session left no copy at all.
             if not self._merge_from_disk(full):
                 if getattr(self, "_format_ahead", False):
-                    # The merge READ the peer fine - it refused because
-                    # the peer's format is ahead. That is the format
-                    # latch's case, not an unreadable-file case: fall
-                    # through to the guard below, which says the true
-                    # sentence and preserves nothing (their file needs
-                    # no rescue - it is the newer one).
                     pass
                 else:
                     return self._refuse_unreadable_peer(full)
         if getattr(self, "_write_blocked", False):
-            # Set when a merge could not be performed, or when load()
-            # refused an absent-but-known file. Refusing ONCE is not
-            # enough: the next save would overwrite exactly what the
-            # first one preserved.
-            #
-            # And it has to SAY so. This was a debug.event, which is
-            # Debug-Mode gated and never prints - so a user whose edits
-            # were being dropped got no line anywhere, the exact shape
-            # practice.md forbids ("SAY WHY on every swallowed
-            # failure"). It matters more now than it did: _write_blocked
-            # used to need a two-session merge failure, and load() can
-            # now latch it from a sync hiccup at panel open.
-            #
-            # Once per connector per session - save() is called from
-            # ordinary sidebar use, and a line per save is a wall of
-            # text nobody reads.
             if not getattr(self, "_block_reported", False):
                 self._block_reported = True
                 debug.note(
@@ -1233,10 +594,6 @@ class DatabaseConnector:
             self._save_outcome = "write-blocked"
             return False
         if getattr(self, "_format_ahead", False):
-            # THE FORMAT LATCH: this library was saved by a newer
-            # Amaze, so this build must not write a byte of it. Said
-            # once per connector per session; the load-time alert
-            # already told the user in full.
             if not getattr(self, "_format_reported", False):
                 self._format_reported = True
                 debug.note(
@@ -1254,62 +611,23 @@ class DatabaseConnector:
         loaded_version = int(
             getattr(self, "_loaded_version", SCHEMA_VERSION) or 0)
         if getattr(self, "_migration_incomplete", False):
-            # THE STAMP MUST NOT CLAIM A MIGRATION THAT DID NOT RUN.
-            # _migrate stops at the last successfully-applied version when
-            # a step is missing from the chain - and save() then wrote
-            # max(_loaded_version, SCHEMA_VERSION) over it, which undoes
-            # the refusal completely. Reproduced live: SCHEMA_VERSION=3
-            # with no step 2, and the file correctly said 2 after the
-            # load and then wrongly said 3 after one ordinary save from
-            # ordinary sidebar use.
-            #
-            # A wrong stamp is not cosmetic. The version is what every
-            # other machine's load() decides from, so a file marked as
-            # upgraded is never migrated again by ANY build - the data
-            # stays at the old shape while every reader believes it is at
-            # the new one, permanently, and silently. That is why this
-            # ships before Versions, which is the next SCHEMA_VERSION
-            # bump: with a half-upgraded fleet it would mis-stamp a
-            # library on the first save.
             self._data["version"] = loaded_version
             debug.event("database", "version stamp held back - the "
                         "migration chain is incomplete",
                         file=self._filename, stamped=loaded_version,
                         target=SCHEMA_VERSION)
         else:
-            # max(), not a blind stamp. _migrate correctly REFUSES to
-            # touch a database from a newer build - and then save()
-            # overwrote its version anyway. Verified: load a version 99
-            # database, one save, and the file said version 2 with the
-            # newer build's data still in it - so that machine re-runs
-            # its whole migration chain over already-migrated data on the
-            # next open.
             self._data["version"] = max(loaded_version, SCHEMA_VERSION)
-        # THE FORMAT STAMP rides every write, never downgrading: a
-        # newer peer's stamp survives the same way the schema version
-        # does (and format-ahead already refused above, so reaching
-        # here means ours is current or the file's is older).
         self._data["format"] = max(
             int(getattr(self, "_loaded_format", 0) or 0),
             branding.LIBRARY_FORMAT)
-        # SKIP A WRITE THAT CHANGES NOTHING. The serialised document is
-        # compared to what is on disk, and an identical one is not
-        # written: every write costs a snapshot rotation, a sync upload
-        # and a backup-system event downstream, so a no-op save should
-        # be a no-op on disk too. Sync hygiene, explicitly not speed.
         serialised_stat = None
         try:
             import hashlib
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
             serialised_stat = (len(serialised),
                                hashlib.sha256(serialised).hexdigest())
-            # A merge above rewrote self._data, never the file, so the
-            # stat from the top of this call is still the disk's.
             if current_stat is not None and current_stat == serialised_stat:
-                # The disk already holds these exact bytes - remember
-                # THAT, no third read. Through the baseline's owner, so
-                # the membership half moves with it: a no-op save is
-                # just as much an agreement with the file as a write.
                 self._remember_disk_state(serialised_stat)
                 self._save_outcome = "identical-skip"
                 return True
@@ -1317,48 +635,12 @@ class DatabaseConnector:
             pass                    # let the real writer report it
 
         hostos.snapshot_before_write(full)
-        # Whether this write CREATES the file, asked before it does -
-        # the floor is minted after a successful write below.
-        # snapshot_before_write copies what is already on disk and
-        # rightly declines a path that is not there yet, so a list
-        # written exactly once had no `.bak` tier at all; library.json
-        # and cops.json carry no seed marker either, so nothing beside
-        # them said they had ever existed. That is the shape that cost
-        # 21 files - cops.json missing for the instant panel.py builds
-        # its model, read as a new library, seeded empty, and the
-        # cleanup that followed swept every file its 8 assets owned.
         created = not os.path.exists(full)
         try:
-            # Unique scratch name, fsync, atomic swap - all of it in
-            # hostos so the four databases cannot drift apart. The old
-            # shape wrote to a FIXED `full + ".tmp"`, which two savers
-            # shared: measured 794 reads that parsed cleanly while
-            # holding records from both writers.
             hostos.write_json_atomic(full, self._data, indent=4)
         except OSError as exc:
             debug.exception("database save", exc, file=full)
-            # debug.alert, not hou.ui.displayMessage. There is no hou.ui
-            # in a headless session - the thumbnail and report harnesses
-            # both run there - so the raw call raised AttributeError
-            # from inside this handler and replaced a legible "the file
-            # is held" with an obscure one about a missing attribute.
-            # alert() shows the dialog when there is a UI and prints
-            # when there is not, and keys so a save per edit does not
-            # re-interrupt.
-            # THE CAUSE, READ OFF THE ERRNO. This said "the file is held
-            # by another program" for every OSError, and measured
-            # 2026-08-10 that cause cannot occur on macOS at all - an
-            # atomic rename over a file another handle holds open
-            # succeeds. So the one message Amaze shows when a library
-            # write fails named a Windows-only cause on a Mac, and sent
-            # anyone whose synced folder had dropped looking for a
-            # program that was not there.
             cause, why = hostos.why_failed(exc, full)
-            # ONE LITERAL WITH A PLACEHOLDER, not a `+` join. The
-            # message survey that builds the dialog document reads
-            # literals out of the AST, so a sentence assembled with `+`
-            # is invisible to it - measured 2026-08-11, when this and
-            # the tile-icon one both vanished from a 90-message pass.
             debug.alert(
                 "Could not save the library - %s\n\n"
                 "Nothing already saved has been lost. This change is "
@@ -1369,43 +651,21 @@ class DatabaseConnector:
             self._save_outcome = "write-failed-%s" % cause
             return False
         else:
-            # The bytes just written ARE the serialisation above -
-            # write_json_atomic writes them verbatim (the identical-skip
-            # guard depends on exactly that and its test proves it) - so
-            # the stat is handed over rather than re-read: this was the
-            # third full read+hash per save. None when the serialisation
-            # raised, and then the owner reads the file itself.
             if created:
-                # THE FLOOR, FROM THE FIRST WRITE - the same line
-                # keyed_store, the policy and the settings carry, and
-                # the last of the six snapshotting writers to get it.
-                # No new KIND of file: `.bak-first` is already the
-                # documented immutable first-seen copy in the library's
-                # contents, it simply arrives one write earlier so that
-                # absence is answerable.
                 hostos.seed_restore_floor(full)
             self._remember_disk_state(serialised_stat)
             self._save_outcome = "stored"
             return True
 
     def take_adopted(self) -> list:
-        """Rows adopted from another session's save, handed over exactly
-        once so the model can insert them. Draining is deliberate: a
-        second call must not re-insert the same rows."""
+        """Rows adopted from a peer save, handed over exactly once - drained so a second call cannot re-insert the same rows."""
         rows = self._adopted
         self._adopted = []
         return rows
 
     @staticmethod
     def _migrate_peer(disk: dict) -> None:
-        """Bring a PEER document up to our shape, in place.
-
-        Shape only, deliberately: no stamping, no latching, no
-        reporting. `_migrate` also records `_loaded_version`,
-        `_migration_incomplete` and the format latch, which belong to
-        the file THIS connector loaded - running it over a peer would
-        overwrite our own verdicts with the peer's.
-        """
+        """Bring a PEER document up to our shape, in place - shape only: no stamping, no latching, no reporting, because those verdicts belong to the file THIS connector loaded."""
         try:
             version = int(disk.get("version", 1))
         except (TypeError, ValueError):
@@ -1418,84 +678,25 @@ class DatabaseConnector:
             version += 1
 
     def _merge_from_disk(self, full: str) -> bool:
-        """Three-way merge against a database another session changed
-        underneath us. Membership baseline = the ids present at OUR
-        load: a disk id missing from memory is OUR deletion if it was
-        in the baseline, THEIR addition if not. Categories and tags
-        union; conflicting records take memory (the active editor)."""
+        """Three-way merge against a database another session changed underneath us - membership baseline is the ids as of OUR last load or successful save (`_remember_disk_state` refreshes both together): a disk id missing from memory is OUR deletion if it was in the baseline, THEIR addition if not; categories and tags union; conflicting records take memory (the active editor)."""
         try:
-            # utf-8-sig for the same reason as load(): a BOM'd peer
-            # document would fail to parse here, and this failure path
-            # latches _write_blocked for the session - so the cheap read
-            # fix matters MORE here than in load().
             with open(full, encoding="utf-8-sig") as lib_json:
                 disk = json.load(lib_json)
         except (OSError, ValueError) as exc:
             debug.event("database", "merge read failed",
                         file=self._filename, error=str(exc))
             return False
-        # VALID JSON IS NOT A VALID DATABASE. The try/except above wraps
-        # only the parse, so a peer document that is `[]`, `null`, or
-        # `{"assets": null}` sailed past it and then raised
-        # AttributeError/TypeError out of the lines below - straight out
-        # of save(), which is a Qt slot, so it landed on stderr and
-        # nowhere else. Reproduced live for all three shapes. Worse than
-        # the crash: it bypassed the whole preserve/latch/tell-the-user
-        # path that a merely TRUNCATED file gets, so the one file shape
-        # that most needs preserving was the one shape that got none of
-        # it. Returning False routes it into that path instead.
         malformed = wrong_shape(disk)
         if malformed:
             debug.event("database", "merge refused - not a database",
                         file=self._filename, reason=malformed)
             return False
-        # MIGRATE THE PEER'S DOCUMENT BEFORE READING ITS ROWS, exactly
-        # as load() does. This read the raw file, so a peer still at an
-        # OLDER shape had its rows in a container this method does not
-        # look in - `disk.get("assets")` came back empty and the merge
-        # concluded the peer had deleted everything. Found while moving
-        # gradients onto this connector, where the older shape keeps its
-        # rows under `gradients`: a peer file written by a build from
-        # before that move would have been merged as if it were empty.
-        # The steps are idempotent, so a peer already at our version
-        # costs one dict walk.
         try:
             self._migrate_peer(disk)
         except Exception as exc:                         # noqa: BLE001
-            # A migration step raising here must not take the save with
-            # it: refusing routes into the same preserve/latch path a
-            # malformed peer already gets.
             debug.event("database", "peer migration failed - merge refused",
                         file=self._filename, error=str(exc))
             return False
-        # CARRY THE DISK'S VERSION THROUGH. The unknown-key loop at the
-        # end of this method cannot do it - "version" is always already in
-        # self._data, so it is always skipped - and this merge runs
-        # precisely when another session wrote the file, which is exactly
-        # when that other session may be the NEWER build. Without this the
-        # save that follows stamps our own version over theirs and the
-        # newer machine re-runs its whole chain over migrated data.
-        #
-        # NOT WHEN OUR OWN CHAIN HAS A GAP, and that exception is the
-        # whole reason this line is guarded. The two halves of this fix
-        # otherwise fight each other: save() stamps `_loaded_version` when
-        # _migration_incomplete is set, so raising it here to a peer's
-        # higher number puts THAT number on a document whose rows the
-        # missing migration step never touched. Measured: SCHEMA_VERSION 3
-        # with no step 2, a v2 file, a peer that rewrites it at 3 - after
-        # one ordinary save the file said 3 with two rows still v2-shaped.
-        # No build will ever migrate them again, which is precisely the
-        # permanent silent mis-stamp this step exists to prevent, reached
-        # through the door this step opened.
-        #
-        # The two harms are not equal, and that is what decides the
-        # direction. Holding the stamp down makes the newer machine re-run
-        # a migration over data it has already migrated - wasteful, and
-        # visible in its log. Raising it makes rows that were never
-        # migrated permanently indistinguishable from rows that were -
-        # silent, and unrecoverable without knowing which rows to look at.
-        # Stamping low is the honest claim: "at least one row here is
-        # still at the older shape."
         try:
             theirs_version = int(disk.get("version", 1))
         except (TypeError, ValueError):
@@ -1509,11 +710,6 @@ class DatabaseConnector:
         elif theirs_version > int(
                 getattr(self, "_loaded_version", SCHEMA_VERSION) or 0):
             self._loaded_version = theirs_version
-        # A peer stamped AHEAD of this build's format arrived while we
-        # ran - the other machine updated Amaze mid-session. Merging
-        # our old-format state over its file is exactly the write the
-        # stamp exists to stop, so the latch closes here and this save
-        # refuses through the format guard.
         try:
             theirs_format = int(disk.get("format", 0) or 0)
         except (TypeError, ValueError):
@@ -1533,9 +729,6 @@ class DatabaseConnector:
         adopted_rows = []
         for theirs in disk.get("assets", []):
             if not isinstance(theirs, dict):
-                # Not a row. Left on disk untouched for whoever wrote
-                # it; guessing at it is how one bad entry takes a save
-                # down with it.
                 debug.event('database', 'skipped a non-record asset entry',
                             file=self._filename, entry=repr(theirs)[:80])
                 continue
@@ -1546,39 +739,17 @@ class DatabaseConnector:
             elif tid in ours:
                 _merge_shared_metadata(ours[tid], theirs, self._filename)
         adopted = len(adopted_rows)
-        # Handed to the MODEL after the write (see take_adopted). It
-        # used to stop here: the row reached disk, _remember_disk_state
-        # folded its id into _loaded_ids, and the model never learned of
-        # it - so the NEXT save rebuilt assets[] from the model and wrote
-        # the row out of existence. Measured: Mac A adds a material, Mac
-        # B toggles a favourite -> disk 8 assets, model 7, second toggle
-        # -> disk back to 7. Gone, and B's grid never showed it.
         self._adopted.extend(adopted_rows)
-        # IN PLACE, never a rebind. Categories.__init__ and
-        # MaterialLibrary.__init__ hold a direct alias to these list
-        # objects, so `self._data[key] = merged` swaps the connector's
-        # list for a new one and leaves the model pointing at the old
-        # one. The adopted category reaches disk on this save and is
-        # erased by the very next one, because the model still holds -
-        # and re-serialises - the list without it.
         for key in ("categories", "tags"):
             existing = self._data.setdefault(key, [])
             for value in disk.get(key, []):
                 if value not in existing:
                     existing.append(value)
-        # category_colors is a DICT, and it was in neither list above -
-        # so another session's colours were simply overwritten by ours,
-        # or dropped entirely when this session had no colours at all.
-        # Union by key; ours wins a genuine conflict, as with assets.
         theirs_colors = disk.get("category_colors")
         if isinstance(theirs_colors, dict):
-            # In place for the same reason as the two lists above: a
-            # rebind detaches any alias a model is holding.
             ours_colors = self._data.setdefault("category_colors", {})
             for name, colour in theirs_colors.items():
                 ours_colors.setdefault(name, colour)
-        # Anything else a NEWER build wrote and this one does not know
-        # about: carry it through untouched rather than dropping it.
         for key, value in disk.items():
             if key not in self._data:
                 self._data[key] = value
@@ -1589,24 +760,6 @@ class DatabaseConnector:
             memory_assets=len(self._data.get("assets", [])),
         )
 
-        # THE LATCH HEALS HERE, and only here. It was set nowhere but a
-        # merge failure and cleared nowhere but __new__ and
-        # reload_with_path - so the recovery the message prescribes
-        # ("reopen Amaze") could not work: reopening re-enters load(),
-        # which short-circuits on the data it already holds. A user who
-        # fixed the file still could not save for the rest of the
-        # session.
-        #
-        # A merge that SUCCEEDED is proof the peer file parses again,
-        # which is the exact condition the latch was about. Nothing is
-        # weakened: the next save re-derives the refusal from disk if
-        # the file is bad again.
-        #
-        # NOT paired with moving the latch check above the stale-write
-        # block, which the step also proposed. That ordering would
-        # return False before the merge ever runs, so the latch could
-        # never clear - the check has to stay below the thing that
-        # heals it.
         if getattr(self, "_write_blocked", False):
             debug.event("database", "write block cleared - the file "
                         "merges again", file=self._filename)
@@ -1616,31 +769,7 @@ class DatabaseConnector:
         return True
 
     def reload_with_path(self, path: str) -> dict:
-        """Point this connector at a DIFFERENT library and read it.
-
-        The latches belong to the FILE, not to the session. Clearing
-        them is not optional: a connector is one process-wide instance
-        per filename, and Preferences can switch libraries at any time
-        (panel.switch_model_data -> library.reload_with_path). Measured
-        on the fixed build before this line existed - library A with
-        cops.json mid-sync latches _write_blocked, the user points
-        Preferences at healthy library B, B loads its assets fine, and
-        every save into B is silently dropped for the rest of the
-        session. A guard that follows the user to a library it was
-        never about is an outage.
-
-        load() re-latches immediately if the NEW path has the same
-        problem, so nothing is weakened - the refusal is re-derived from
-        what is on disk rather than remembered.
-        """
-        # EVERYTHING NEEDED TO PUT IT BACK, captured first. This set
-        # `_data = None` unconditionally with no try/except, so a load
-        # that failed - a path with no library.json - left the connector
-        # holding None for the life of the process. Every later save
-        # short-circuits on `if not self._data` and is silently
-        # discarded, while the panel keeps showing the rows it still has
-        # in memory. The user sees a library that will not save and no
-        # reason why.
+        """Point this connector at a DIFFERENT library and read it - every latch and stamp belongs to the FILE, not the session, so all are reset for `load()` to re-derive from the new path; a failed load restores the previous library state and re-raises."""
         previous = (self._data, self._path, self._disk_stat,
                     set(self._loaded_ids),
                     getattr(self, "_loaded_version", SCHEMA_VERSION),
@@ -1653,28 +782,14 @@ class DatabaseConnector:
         self._data = None
         self._write_blocked = False
         self._block_reported = False
-        # Same reasoning as the two latches above: an incomplete
-        # migration chain is a fact about THIS library's file, and
-        # carrying it into the next one would hold that library's version
-        # stamp back for no reason. load() re-derives it.
         self._migration_incomplete = False
-        # AND THE VERSION STAMP ITSELF. It is re-derived by _migrate on
-        # every read - but the SEED branch never calls _migrate, so a
-        # brand-new database in the new library was stamped with the
-        # OLD library's number, and a file marked as upgraded is never
-        # migrated again by any build.
         self._loaded_version = SCHEMA_VERSION
-        # The format latch is a fact about THIS library too - the next
-        # one deserves a fresh read, and load() re-derives all three.
         self._loaded_format = 0
         self._format_ahead = False
         self._format_reported = False
         try:
             return self.load(path)
         except Exception:
-            # Put the previous library back and re-raise: the caller
-            # decides what a failed switch means, and it must not
-            # inherit a connector that can no longer write.
             (self._data, self._path, self._disk_stat, self._loaded_ids,
              self._loaded_version, self._migration_incomplete,
              self._write_blocked, self._block_reported,
