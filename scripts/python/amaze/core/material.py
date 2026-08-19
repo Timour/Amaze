@@ -1,6 +1,4 @@
-"""
-Holds Material information
-"""
+"""One asset record (Material) and the family's shared constants."""
 
 from __future__ import annotations
 import os
@@ -8,35 +6,9 @@ import re
 import uuid
 import datetime
 
-#: Redshift's terminal node types, measured 2026-08-09 on 21.0.729 with
-#: the plugin loaded: a `redshift_vopnet` ships a `redshift_material`
-#: and an `rs_usd_material_builder` a `redshift_usd_material`. There is
-#: no `surface` connector to look for and the whole node IS the
-#: terminal - a Karma-shaped check answers False for every one of them.
-#:
-#: CORRECTED 2026-08-14: this used to say the terminals do not name
-#: their inputs, `Input 1`..`Input 8`. That is `inputLabels()`.
-#: `inputNames()` names every one of them, which is what
-#: TERMINAL_INPUTS below is built on, and a whole roadmap finding was
-#: written on the strength of the wrong half.
-#:
-#: HERE rather than in `render/nodes.py`, where it was: the preview
-#: engine needs it too and imports only `amaze.core` and
-#: `amaze.helpers`, never `amaze.render`. Five sites tested the first
-#: literal alone, so every `rs_usd_material_builder` was invisible to
-#: them - `nodes` re-exports this name so its own callers are unchanged.
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
 
-#: What each terminal calls the input a converter needs, by ROLE -
-#: because THE TWO FORMS DISAGREE. Measured 2026-08-14 on 22.0.407 and
-#: 21.0.729, identical on both: `redshift_material` says "Bump Map",
-#: `redshift_usd_material` says "BumpMap", and Surface and Displacement
-#: are spelled alike. Asking for one spelling silently dropped every
-#: output-node bump on the USD form, which is the majority of a real
-#: library - so the spellings live here, once, and callers ask by role
-#: through terminal_input(). A test walks the package for a by-hand
-#: `get("<spelling>")` so the straggler cannot come back.
 TERMINAL_INPUTS = {
     "surface": ("Surface",),
     "displacement": ("Displacement",),
@@ -45,13 +17,7 @@ TERMINAL_INPUTS = {
 
 
 def terminal_input(named_inputs: dict, role: str):
-    """The node wired into a Redshift terminal's `role` input, or None.
-
-    `named_inputs` is {input name: node} for the terminal - the shape
-    material_converter._named_inputs builds. Raises KeyError on a role
-    the table does not name: a silent None there would be exactly the
-    lookup-that-never-fires this table exists to prevent.
-    """
+    """The node wired into a Redshift terminal's `role` input, or None - the two terminal forms spell inputs differently (`Bump Map` vs `BumpMap`), so callers ask by ROLE; KeyError on a role TERMINAL_INPUTS does not name, deliberately."""
     for spelling in TERMINAL_INPUTS[role]:
         wired = named_inputs.get(spelling)
         if wired is not None:
@@ -59,39 +25,14 @@ def terminal_input(named_inputs: dict, role: str):
     return None
 
 
-#: THE MIXED-SELECTION SENTINEL - what an edit field shows when the
-#: selected assets disagree, and what set_assetdata reads as the
-#: instruction to leave that field alone. It is COMPARED against, so
-#: a second spelling anywhere is a silent overwrite waiting; a source
-#: scan (test_library.TheSentinelHasOneHome) keeps this the only one.
-#: Lives on the asset side because the model cannot import the panel.
 MULTIPLE_VALUES = "Multiple Values..."
 
 
-#: An asset id becomes FILENAMES - `mat/<id>.mat`, `mat/<id>.interface`,
-#: `img/<id>.png` - so the only ids that can be honoured are ones that
-#: are a single, safe path component.
-#:
-#: Deliberately NOT "32 hex only", which is what this check was first
-#: specified as. New ids are `uuid4().hex`, but the committed test
-#: fixture carries six 18-digit legacy timestamp ids and a "-1"
-#: sentinel row, and the code promises in Material.__init__ that legacy
-#: ids live forever. A 32-hex rule would refuse the whole fixture and
-#: every pre-uuid library on disk. What actually has to be excluded is
-#: separators and traversal, not an unfamiliar shape.
 _SAFE_ASSET_ID = re.compile(r"[0-9A-Za-z._-]{1,64}\Z")
 
 
 def is_safe_asset_id(raw) -> bool:
-    """True when this id can be composed into a filename safely.
-
-    The threat is concrete, not theoretical: `id` is read verbatim out
-    of library.json, and with `../../.ssh/authorized_keys` the ordinary
-    path composition resolves outside the library entirely - so a
-    tampered index picks which file the loader opens. Rejecting the id
-    at the boundary is the cheap half; hostos.contained_join is the
-    other half, applied where the path is actually built.
-    """
+    """True when this id can compose into a filename - ids are read verbatim out of library.json (a traversal there picks which file the loader opens), and legacy 18-digit timestamp ids plus the fixture's "-1" must pass, so the rule bans separators and traversal, never unfamiliar shapes."""
     text = str(raw)
     if text in (".", ".."):
         return False
@@ -99,73 +40,29 @@ def is_safe_asset_id(raw) -> bool:
 
 
 def payload_path(preferences, asset_id, suffix: str) -> str:
-    """The absolute path of ONE file asset `asset_id` owns in `mat/`.
-
-    `suffix` is everything after the id - `preferences.ext`,
-    `".interface"`, `".builder.json"`, `"_cop" + preferences.ext`.
-
-    THE ONE COMPOSITION. This was written out by hand at twenty sites in
-    `render/nodes.py` and `render/thumbs.py` as
-
-        preferences.dir + preferences.asset_dir + str(asset_id) + suffix
-
-    beside `library.asset_files()`'s `contained_join`, and the two agree
-    only while `preferences.dir` carries its trailing separator - an
-    invariant applied in `Prefs.save()` and nowhere near the twenty
-    readers of it. The same split had already been found and closed for
-    thumbnails (`tile_icons.thumbnail_path`); this is the payload half
-    of it, and `asset_files()` composes through here now so there is one
-    answer rather than two that happen to match.
-
-    It also carries the containment check the concatenations did not.
-    The id is read verbatim out of library.json, so a tampered index can
-    name `../../.ssh/authorized_keys` and choose which file the SAVER
-    writes - `is_safe_asset_id` is the door at the record, this is the
-    door at the path, and only one of them was on this route.
-    """
+    """THE ONE COMPOSITION of `mat/<id><suffix>` (suffix: `preferences.ext`, ".interface", ".builder.json", "_cop" + ext), with the containment check - `is_safe_asset_id` is the door at the record, this is the door at the path, and every caller shares the trailing-separator invariant through here."""
     from amaze.helpers import hostos
     assets = os.path.join(preferences.dir, preferences.asset_dir)
     return hostos.contained_join(assets, str(asset_id) + suffix)
 
 
-#: Renderer names that are Karma/MaterialX under the hood.
-#:
-#: "Karma" is the modern name; "MaterialX" is the legacy stored value
-#: from early libraries, and "MtlX" the label online imports briefly
-#: carried before they were unified into plain Karma materials. All
-#: three are the SAME renderer as far as behaviour goes - capability,
-#: import routing, thumbnail dispatch and batch rendering must treat
-#: them identically.
-#:
-#: This exists because adding "MtlX" as a display label silently broke
-#: five separate behaviours that each tested for the literal strings
-#: "Karma"/"MaterialX": imported materials were refused by the LOP
-#: capability check, their import routing matched no branch at all, and
-#: rerender/Render All took the wrong path. One predicate so a future
-#: renderer label cannot drift the same way.
 KARMA_RENDERERS = ("Karma", "MaterialX", "MtlX")
 
 
 def is_karma_renderer(renderer) -> bool:
-    """True for any Karma/MaterialX-family renderer label."""
+    """True for any Karma-family label - Karma, the legacy "MaterialX" and the brief "MtlX" are ONE renderer for capability, routing and thumbnails (overview.md ▸ Renderer terms), and one predicate keeps a new label from splitting them again."""
     name = str(renderer or "")
     return any(known in name for known in KARMA_RENDERERS)
 
 
 def normalized_renderer(name) -> str:
-    """The display/matching name for a STORED renderer string. Early
-    libraries stored Karma materials as "MaterialX", and online imports
-    were briefly tagged "MtlX" - both ARE Karma materials. Every
-    consumer (Material.renderer, the grid's RendererRole, the sidebar
-    counts) must map through here or filters and counts drift apart."""
+    """The display/matching name for a STORED renderer string - every consumer must map through here or filters and counts drift apart."""
     name = str(name or "")
     return "Karma" if name in ("MaterialX", "MtlX") else name
 
 
 class Material:
-    """
-    Holds Material information
-    """
+    """One asset record. `_RETIRED_KEYS` are keys this build understands but no longer writes - named so they are recognised and DROPPED, because an unknown key rides `_extra` verbatim and the next save would put a retired one straight back, undoing the schema step that stripped it. `MULTIPLE_VALUES` is the mixed-selection sentinel, COMPARED against, so it stays the one spelling (test_library.TheSentinelHasOneHome)."""
 
     def __init__(
         self,
@@ -187,50 +84,19 @@ class Material:
         self._builder = builder
         self._usd = usd
 
-        # THROUGH the setter, not around it: from_dict() builds every
-        # asset on load this way, so assigning the field directly let a
-        # legacy multi-category row survive the one place that exists to
-        # collapse it. The rule has to live in one place or it is not a
-        # rule.
+        # cats assigns THROUGH the categories setter - the one place that collapses a legacy multi-category row; new ids are uuid4 hex, legacy timestamp ids live forever (scene nodes and filenames carry them).
         self.categories = cats if cats else ""
         self._tags = [""] if not tags else tags
-        # uuid4 hex for NEW materials: machine-independent, no
-        # timestamp-tick collision window across two machines. Existing
-        # materials keep their legacy timestamp ids forever - scene
-        # nodes stamp them as userData and filenames carry them.
         self._mat_id = uuid.uuid4().hex if mat_id == "" else mat_id
         self._cop_net = {}
-        # Code section only: the snippet text (VEX/OpenCL/Python).
-        # Empty for every other asset type; persisted like any field.
         self._code = ""
-        # Optional human description, shown on hover (tooltip). Used by
-        # the Code section (curated starter snippets ship with one);
-        # empty for anything without a description. Persisted like any
-        # field.
         self._description = ""
-        # Credit/about text and the license, populated when a material is
-        # imported from an online library (author, source, link) to pay
-        # homage to the creators. Editable in the Material Info dialog;
-        # empty for anything not downloaded. Persisted like any field.
         self._about = ""
         self._license = ""
-        # Network-editor node color ([r, g, b]) captured at save time -
-        # [] when the node wore the default grey. Restored on import.
         self._node_color: list = []
 
-    #: Keys this build UNDERSTANDS but no longer writes. Named here so
-    #: they are recognised and therefore DROPPED: a key `_KNOWN_KEYS`
-    #: does not name is carried verbatim by `_extra`, so leaving these
-    #: out would put both straight back on the next save and undo the
-    #: schema-5 step that strips them. The same shape `_Persistence`
-    #: uses for a retired settings key, for the same reason.
-    #:
-    #: `favorite` is per-user now (`material_favorites` in
-    #: settings.json); `icon` lives in `icons.json`, keyed by asset id.
     _RETIRED_KEYS = frozenset({"favorite", "icon"})
 
-    #: Every key this build understands. Anything else on a row is
-    #: carried through untouched (see _extra) rather than dropped.
     _KNOWN_KEYS = frozenset({
         "id", "name", "categories", "tags", "date",
         "renderer", "usd", "builder", "cop_net", "code", "description",
@@ -239,27 +105,10 @@ class Material:
 
     @classmethod
     def from_dict(cls, material_dict: dict) -> Material:
-        """
-        Turns a dict, typically retrieved from the database into a Material Instance
-
-        :param cls: Description
-        :param material_dict: Description
-        :type material_dict: dict
-        :return: Description
-        :rtype: Material
-        """
-        # .get() with defaults, NOT hard indexing. A single missing key
-        # used to raise KeyError out of MaterialLibrary.__init__, so the
-        # panel could not open AT ALL - verified by deleting "usd" from
-        # one row of 546. One damaged row is a damaged row; it must not
-        # cost the whole library.
+        """A row into a Material - .get() with defaults throughout, because one damaged row must not cost the whole library its open; `favorite` is deliberately not read back (per-user now, schema 5 strips it), and everything unrecognised rides `_extra` verbatim so an older build cannot strip a newer one's fields on its next save."""
         name = material_dict.get("name", "")
         cats = material_dict.get("categories", [])
         tags = material_dict.get("tags", [])
-        # `favorite` is NOT read back: it is per-user now and lives in
-        # settings.json, and schema 5 strips it from the row. The
-        # in-memory flag stays as the fallback for a preferences object
-        # that has no favourites accessor at all.
         fav = False
         mat_id = material_dict.get("id", "")
         date = material_dict.get("date", "")
@@ -274,13 +123,6 @@ class Material:
         mat.about = material_dict.get("about", "")
         mat.license = material_dict.get("license", "")
         mat.node_color = material_dict.get("node_color", [])
-        # Everything this build does not recognise, kept verbatim and
-        # re-emitted by get_as_dict. Both directions were a FIXED key
-        # set, so an older build silently dropped a newer one's fields
-        # on the next save - verified: a "future_field" on an asset
-        # survived load and was absent after one save(). That is what an
-        # older build would do to `icon` across all 546 rows on
-        # another machine.
         mat._extra = {
             key: value for key, value in material_dict.items()
             if key not in cls._KNOWN_KEYS
@@ -288,14 +130,7 @@ class Material:
         return mat
 
     def get_as_dict(self) -> dict:
-        """
-        Return the current Instance as a Dictionary
-        Typically used before saving into the DB
-
-        :param self: Description
-        :return: Description
-        :rtype: dict[Any, Any]
-        """
+        """The record as saved - known fields first, then `_extra` last, never overwriting a known key."""
         material_dict = {
             "id": self._mat_id,
             "name": self._name,
@@ -312,7 +147,6 @@ class Material:
             "license": self._license,
             "node_color": self._node_color,
         }
-        # Unknown keys last, and they may not overwrite a known one.
         for key, value in (getattr(self, "_extra", None) or {}).items():
             material_dict.setdefault(key, value)
 
@@ -347,8 +181,7 @@ class Material:
 
     @property
     def about(self) -> str:
-        """Credit/about text (author, source, link) - '' if not from an
-        online library."""
+        """Credit/about text (author, source, link) - '' if not from an online library."""
         return self._about
 
     @about.setter
@@ -366,93 +199,42 @@ class Material:
 
     @property
     def mat_id(self) -> str:
-        """
-        Docstring for mat_id
-
-        :param self: Description
-        :return: Description
-        :rtype: str
-        """
+        """The asset id, as str."""
         return str(self._mat_id)
 
     @property
     def name(self) -> str:
-        """
-        Docstring for name
-
-        :param self: Description
-        :return: Description
-        :rtype: str
-        """
+        """The display name."""
         return self._name
 
     @name.setter
     def name(self, new_name: str) -> None:
-        """
-        Docstring for name
-
-        :param self: Description
-        :param new_name: Description
-        :type new_name: str
-        """
         self._name = new_name
 
     @property
     def date(self) -> str:
-        """
-        Docstring for date
-
-        :param self: Description
-        :return: Description
-        :rtype: str
-        """
+        """The save-time date string; assigning "" stamps now."""
         return self._date
 
     @date.setter
     def date(self, date: str = "") -> None:
-        """
-        Docstring for date
-
-        :param self: Description
-        :param date: Description
-        :type date: str
-        """
         self._date = date if date != "" else str(datetime.datetime.now())[:-7]
 
     def set_current_date(self) -> None:
-        """
-        Docstring for set_current_date
-
-        :param self: Description
-        """
         self.date = ""
 
     @property
     def fav(self) -> bool:
-        """
-        Docstring for fav
-
-        :param self: Description
-        :return: Description
-        :rtype: bool
-        """
+        """In-memory fallback only - the record's favourite field is dead, stars live per-user in favourites.json."""
         return self._fav
 
     @fav.setter
     def fav(self, fav: bool) -> None:
-        """
-        Docstring for fav
-
-        :param self: Description
-        :param fav: Description
-        :type fav: bool
-        """
         self._fav = fav
 
     @property
     def node_color(self) -> list:
-        """[r, g, b] the node was colored with at save time, [] for
-        the default grey."""
+        """[r, g, b] the node was colored with at save time, [] for the default grey."""
         return self._node_color
 
     @node_color.setter
@@ -461,13 +243,7 @@ class Material:
 
     @property
     def renderer(self) -> str:
-        """
-        Docstring for renderer
-
-        :param self: Description
-        :return: Description
-        :rtype: str
-        """
+        """The stored renderer, normalized for display and matching."""
         return normalized_renderer(self._renderer)
 
     @renderer.setter
@@ -476,84 +252,34 @@ class Material:
 
     @property
     def builder(self) -> int:
-        """
-        Docstring for builder
-
-        :param self: Description
-        :return: Description
-        :rtype: int
-        """
+        """Whether the saved node WAS a builder - nothing reads it since 2026-08-14 (its one consumer left with the dropped renderer); every save still records it, so retiring the field can be a schema step of its own."""
         return self._builder
 
     @builder.setter
     def builder(self, value) -> None:
-        """Whether the saved node WAS a builder.
-
-        NOTHING READS THIS SINCE 2026-08-14. Its one consumer was the
-        import path of the renderer dropped that day, which used it to
-        decide whether to restore the container's own parameter
-        interface. Every save still records it, and the field stays on
-        the record rather than being stripped by a schema step, so the
-        decision to retire it can be taken on its own."""
         self._builder = int(bool(value))
 
     @property
     def tags(self) -> list[str]:
-        """
-        Docstring for tags
-
-        :param self: Description
-        :return: Description
-        :rtype: list[str]
-        """
+        """The tag list; assigning takes a comma-separated string, stripped."""
         return self._tags
 
     @tags.setter
     def tags(self, tags: str) -> None:
-        """
-        Docstring for tags
-
-        :param self: Description
-        :param tags: Description
-        :type tags: str
-        """
         self._tags = [t.strip() for t in tags.split(",") if t.strip() != ""]
 
     @property
     def usd(self) -> int:
-        """
-        Docstring for usd
-
-        :param self: Description
-        :return: Description
-        :rtype: int
-        """
+        """The stored `usd` flag."""
         return self._usd
 
     @property
     def categories(self) -> list[str]:
-        """
-        Docstring for categories
-
-        :param self: Description
-        :return: Description
-        :rtype: list[str]
-        """
+        """An asset has ONE category, stored as a ≤1-entry list so the schema is unchanged; several collapse to the FIRST, and tags are the many-to-many axis (overview.md ▸ Models & storage)."""
         return self._cats
 
     @categories.setter
     def categories(self, cats: str) -> None:
-        """An asset has ONE category. Stored as a list purely so the
-        database schema is unchanged, but never more than one entry.
-
-        Multi-category was removed deliberately: no interface ever
-        offered it (the save dialog is a single combo, "Move to" picks
-        one), so it existed only here - and every per-category property
-        that came later would have had to invent a rule for which of an
-        asset's categories won. Tags are the many-to-many axis.
-
-        Anything with several is collapsed to the FIRST, which is what
-        collapse_multicategory() does to legacy rows on load."""
         if isinstance(cats, (list, tuple)):
             found = [str(c).strip() for c in cats if str(c).strip()]
         else:
@@ -561,26 +287,10 @@ class Material:
         self._cats = found[:1]
 
     def remove_category(self, cat: str) -> None:
-        """
-        Docstring for remove_category
-
-        :param self: Description
-        :param cat: Description
-        :type cat: str
-        """
         if cat in self._cats:
             self._cats.remove(cat)
 
     def rename_category(self, old: str, new: str) -> None:
-        """
-        Docstring for rename_category
-
-        :param self: Description
-        :param old: Description
-        :type old: str
-        :param new: Description
-        :type new: str
-        """
         for index, cat in enumerate(self._cats):
             if old == cat:
                 self._cats[index] = new
@@ -589,38 +299,13 @@ class Material:
         self, name: str | None, cats: str, tags: str, fav: bool, renderer: str | None,
         about: str | None = None, license: str | None = None,
     ) -> None:
-        """
-        Sets the Material Data to the given parameters
-
-        :param self: Description
-        :param name: Description
-        :type name: str | None
-        :param cats: Description
-        :type cats: str
-        :param tags: Description
-        :type tags: str
-        :param fav: Description
-        :type fav: bool
-        :param renderer: Description
-        :type renderer: str | None
-        """
-
+        """Apply edited fields and stamp the date. `fav` is accepted for arity and IGNORED - the live star is per-user via preferences, and writing the record field here seeded favourite adoption on unmigrated machines (overview.md ▸ Housekeeping semantics). For about/license, None leaves the field unchanged, "" clears it."""
         self.categories = cats
         self.tags = tags
-        # `fav` is accepted for arity and IGNORED: the record's
-        # favourite is frozen history for older builds (overview.md ▸
-        # Housekeeping semantics - "this build neither reads nor writes
-        # it"). Writing it here made the Edit Info checkbox the one
-        # path that still did - and the field is not shared metadata,
-        # so it won the merge outright and seeded favourite adoption on
-        # machines that had not migrated. The live star is per-user:
-        # library.set_assetdata routes it to preferences.
         if renderer:
             self._renderer = renderer
         if name:
             self.name = name
-        # None = leave unchanged (the drag/menu recategorise path doesn't
-        # touch credits); "" clears, a string sets.
         if about is not None:
             self.about = about
         if license is not None:
