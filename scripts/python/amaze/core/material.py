@@ -72,7 +72,6 @@ class Material:
         fav: bool = False,
         renderer: str = "MatX",
         date: str = "",
-        builder: int = 0,
         usd: int = 1,
         mat_id: str = "",
     ):
@@ -81,7 +80,6 @@ class Material:
         self._fav = fav
         self._renderer = renderer
         self.date = date
-        self._builder = builder
         self._usd = usd
 
         # cats assigns THROUGH the categories setter - the one place that collapses a legacy multi-category row; new ids are uuid4 hex, legacy timestamp ids live forever (scene nodes and filenames carry them).
@@ -95,11 +93,11 @@ class Material:
         self._license = ""
         self._node_color: list = []
 
-    _RETIRED_KEYS = frozenset({"favorite", "icon"})
+    _RETIRED_KEYS = frozenset({"favorite", "icon", "builder"})
 
     _KNOWN_KEYS = frozenset({
         "id", "name", "categories", "tags", "date",
-        "renderer", "usd", "builder", "cop_net", "code", "description",
+        "renderer", "usd", "cop_net", "code", "description",
         "about", "license", "node_color",
     }) | _RETIRED_KEYS
 
@@ -114,9 +112,8 @@ class Material:
         date = material_dict.get("date", "")
         renderer = material_dict.get("renderer", "")
         usd = material_dict.get("usd", False)
-        builder = material_dict.get("builder", 0)
 
-        mat = cls(name, cats, tags, fav, renderer, date, builder, usd, mat_id)
+        mat = cls(name, cats, tags, fav, renderer, date, usd, mat_id)
         mat.cop_net = material_dict.get("cop_net", {})
         mat.code = material_dict.get("code", "")
         mat.description = material_dict.get("description", "")
@@ -139,7 +136,6 @@ class Material:
             "date": self._date,
             "renderer": self._renderer,
             "usd": self._usd,
-            "builder": self._builder,
             "cop_net": self._cop_net,
             "code": self._code,
             "description": self._description,
@@ -249,15 +245,6 @@ class Material:
     @renderer.setter
     def renderer(self, value: str) -> None:
         self._renderer = value
-
-    @property
-    def builder(self) -> int:
-        """Whether the saved node WAS a builder - nothing reads it since 2026-08-14 (its one consumer left with the dropped renderer); every save still records it, so retiring the field can be a schema step of its own."""
-        return self._builder
-
-    @builder.setter
-    def builder(self, value) -> None:
-        self._builder = int(bool(value))
 
     @property
     def tags(self) -> list[str]:

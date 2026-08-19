@@ -528,7 +528,6 @@ class NodeHandler:
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
         self._builder_node = hou.node("/stage")
-        self._builder = 0
         self._renderer = ""
         self._import_path = None
         self._hou_parent = None
@@ -567,10 +566,6 @@ class NodeHandler:
         return self._builder_node
 
     @property
-    def builder(self) -> int:
-        return self._builder
-
-    @property
     def renderer(self) -> str:
         return self._renderer
 
@@ -578,30 +573,22 @@ class NodeHandler:
         """The renderer a node's type implies, or the refusal answer."""
         if node.type().name() == "redshift_vopnet":
             self._renderer = "Redshift"
-            self._builder = 1
         elif "rs_usd_material_builder" in node.type().name():
             self._renderer = "Redshift"
-            self._builder = 1
         elif node.type().name() == "octane_vopnet":
             self._renderer = "Octane"
-            self._builder = 1
         elif "octane_solaris_material_builder" in node.type().name():
             self._renderer = "Octane"
-            self._builder = 1
         elif "mtlxopen_pbr_surface" in node.type().name():
             self._renderer = "Karma"
-            self._builder = 0
         elif "mtlxstandard_surface" in node.type().name():
             self._renderer = "Karma"
-            self._builder = 0
         elif node.type().name() == "subnet":
-            self._builder = 1
             for n in node.children():
                 if "mtlx" in n.type().name():
                     self._renderer = "Karma"
         elif node.type().name() == "collect":
             self._renderer = "Karma"
-            self._builder = 0
         return self._renderer
 
     LOP_CAPABLE_NODE_TYPES = (

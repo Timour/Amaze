@@ -13,8 +13,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(
 import amaze                                            # noqa: E402
 from amaze import branding                              # noqa: E402
 from amaze.core import database                         # noqa: E402
+from amaze.core import material                         # noqa: E402
 from amaze.helpers import hostos                        # noqa: E402
 from amaze.prefs import prefs as prefs_mod              # noqa: E402
+from amaze.tests import test_support                    # noqa: E402
 
 
 class TheTestLibraryDoorMakesAWholeLibrary(unittest.TestCase):
@@ -225,6 +227,82 @@ class TheAssetWriterMakesItsFolderInsideTheLibraryOnly(unittest.TestCase):
                 os.path.join(target, "7.interface"),
                 os.path.join(target, "7.mat"), "interface", self._write_mat)
         self.assertFalse(os.path.exists(target))
+
+
+class TheBuilderFieldDiesAtSchemaSeven(unittest.TestCase):
+    """The 6 -> 7 step strips the record's `builder` - written by every save since the fork, read by nothing since 2026-08-14, so it comes off the format; the record class must retire the key too, or `_extra` carries it back on the next save."""
+
+    FILENAME = "library.json"
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_v7_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, self.FILENAME)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+
+    def _write(self, data):
+        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(data, handle, indent=4)
+
+    def _load(self):
+        db = database.DatabaseConnector(self.FILENAME)
+        return db, db.load(self.dir + os.sep)
+
+    def _v6_document(self):
+        return {
+            "version": 6, "categories": ["_All"], "tags": [],
+            "assets": [
+                {"id": "B0", "name": "one", "builder": 1,
+                 "renderer": "Karma", "usd": 1},
+                {"id": "B1", "name": "two", "builder": 0},
+            ],
+        }
+
+    def test_a_v6_document_climbs_to_seven_and_loses_builder(self):
+        """The literal 7 is the subject here, not a stray constant."""
+        self._write(self._v6_document())
+        _db, data = self._load()
+        self.assertEqual(database.SCHEMA_VERSION, data["version"],
+                         "premise: the chain reaches the current schema")
+        self.assertGreaterEqual(
+            data["version"], 7,
+            "SCHEMA_VERSION is still below 7 - the bump has not landed")
+        for row in data["assets"]:
+            self.assertNotIn("builder", row,
+                             "the dead field survived the step")
+
+    def test_everything_else_on_the_row_survives(self):
+        """A migration compares, never assumes - the rest is user data."""
+        self._write(self._v6_document())
+        _db, data = self._load()
+        row = data["assets"][0]
+        self.assertEqual("one", row.get("name"))
+        self.assertEqual("Karma", row.get("renderer"))
+        self.assertEqual(1, row.get("usd"))
+
+    def test_a_v4_document_climbs_the_whole_chain(self):
+        """`code.json` in the real library is a schema-4 document, so the chain must still carry one all the way up."""
+        self._write({
+            "version": 4, "categories": ["_All"], "tags": [],
+            "assets": [{"id": "A0", "name": "old", "favorite": True,
+                        "icon": {"name": "box"}, "builder": 1}],
+        })
+        _db, data = self._load()
+        self.assertEqual(database.SCHEMA_VERSION, data["version"])
+        row = data["assets"][0]
+        for gone in ("favorite", "icon", "builder"):
+            self.assertNotIn(gone, row,
+                             "a retired field outlived its step")
+        self.assertEqual("old", row.get("name"))
+
+    def test_the_record_class_retires_builder_everywhere(self):
+        """`from_dict` -> `get_as_dict` must DROP the key - unknown instead of retired, it rides `_extra` verbatim and the next save undoes the migration."""
+        mat = material.Material.from_dict(
+            {"id": "B7", "name": "n", "builder": 1})
+        self.assertNotIn(
+            "builder", mat.get_as_dict(),
+            "the record still emits `builder` - the next save undoes the step")
 
 
 if __name__ == "__main__":

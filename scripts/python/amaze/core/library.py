@@ -1239,7 +1239,6 @@ class MaterialLibrary(AssetLibrary):
             mat_id=new_mat.mat_id,
         )
         if saved:
-            new_mat.builder = handler.builder  # still recorded, though NOTHING has read it since 2026-08-14 - material.Material.builder's setter carries why it stays
             new_mat.cop_net = handler.cop_info
             row = len(self._assets)  # per-row insert signals, not a batch-wide layout pair in the caller, so each tile appears AS ITS SAVE FINISHES during a multi-save
             self.beginInsertRows(QtCore.QModelIndex(), row, row)

@@ -10,7 +10,7 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 
 _MIGRATIONS = {}
@@ -47,6 +47,20 @@ def _migration_v5(data: dict) -> None:
 
 
 _MIGRATIONS[5] = _migration_v5
+
+
+def _migration_v6(data: dict) -> None:
+    """v6 to v7: strips `builder` from every asset row - written by every save since the fork and read by nothing since 2026-08-14; the key must also stay in the record class retired-key set or the next save re-emits it."""
+    rows = data.get("assets")
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        row.pop("builder", None)
+
+
+_MIGRATIONS[6] = _migration_v6
 
 
 _INSTANCES: dict = globals().get("_INSTANCES", {})
