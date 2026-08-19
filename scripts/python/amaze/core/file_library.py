@@ -1,24 +1,4 @@
-"""Models for the File section - the merge of Images, Geometry and HIP.
-
-One folder-pointer list, one files model, EVERY file in the chosen
-folder. Each row carries a KIND, and the kind decides the behaviour:
-
-* **image** - background convert pipeline; double-click or drag loads
-  the file onto a node's file parameter.
-* **geometry** - rendered by Houdini in the blocking, ESC-interruptable
-  main-thread pass; double-click imports in context.
-* **hip** - hand-framed CAPTURES from the store under config_root,
-  never rendered and never mtime-invalidated.
-* **other** - shown with its OS icon, and its one action is Copy Path.
-
-This module COMPOSES texture_library, geo_library and scene_captures;
-it does not fork them. Keep every cache key's existing shape
-(`('tex', path, size)`, `('geo', path, cache_dir)`,
-`('hip', path, thumb_dir)`) and keep tile-icon keys as raw joined
-paths, or a user's generated thumbnails orphan.
-
-Dotfiles are skipped, or the list fills with `.DS_Store`.
-"""
+"""Models for the File section - the merge of Images, Geometry and HIP: one folder-pointer list, one files model, EVERY file in the chosen folder, each row carrying a KIND that decides its behaviour (image: background convert pipeline; geometry: blocking ESC-interruptable main-thread render; hip: hand-framed captures under config_root, never rendered, never mtime-invalidated; other: OS icon, Copy Path). This module COMPOSES texture_library, geo_library and scene_captures, never forks them. Keep every cache key's existing shape (`('tex', path, size)`, `('geo', path, cache_dir)`, `('hip', path, thumb_dir)`) and keep file keys CANONICAL - one spelling per file - or a user's generated thumbnails, comments and icons orphan. Dotfiles are skipped, or the list fills with `.DS_Store`."""
 
 from __future__ import annotations
 
@@ -32,18 +12,14 @@ from amaze.core import keyed_store, locations
 from amaze.core import texture_library, thumbnails, tile_icons
 from amaze.helpers import hostos
 
-#: Row kinds, in the order kind_for() checks them. Values are readable
-#: on purpose - they surface in menus, debug events and tests.
-KIND_IMAGE = "image"
+KIND_IMAGE = "image"  # row kinds in the order kind_for() checks them; values readable on purpose - they surface in menus, debug events and tests
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
 KIND_OTHER = "other"
 
 
 def kind_for(name: str) -> str:
-    """Which per-type behaviour a filename gets. The three recognisers
-    are the sections' own - one source for what counts as an image, a
-    geometry file or a scene."""
+    """Which per-type behaviour a filename gets - the three recognisers are the sections' own: one source for what counts as an image, a geometry file or a scene."""
     if scene_captures.matched_extension(name):
         return KIND_HIP
     if texture_library.matched_extension(name):
@@ -53,31 +29,16 @@ def kind_for(name: str) -> str:
     return KIND_OTHER
 
 
-#: The variables a path may be written against, and the pref tokens
-#: that choose one. "home" is the DEFAULT (decided 2026-07-31);
-#: "absolute" writes the literal path. (An "auto" pick-the-most-
-#: specific style existed for a day and was removed 2026-08-01: the
-#: label explained nothing, and four plain choices beat five clever
-#: ones. A stored "auto" maps to "home" in the prefs setter.)
-PATH_STYLES = ("absolute", "hip", "job", "home")
+PATH_STYLES = ("absolute", "hip", "job", "home")  # the variables a path may be written against; home is the DEFAULT, absolute writes the literal path, and a stored auto (a retired style) maps to home in the prefs setter
 _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
 
-#: Per-item records the geometry pass may write per RUN. event()'s
-#: flood guard keys on (category, message) alone, so these shared one
-#: key and went dark after 5 of 273 - and the five survivors were
-#: always the first five files rather than a sample worth having.
-GEO_PASS_LOG = "geo thumbnails"
+GEO_PASS_LOG = "geo thumbnails"  # per-item records the geo pass may write per RUN: event()'s flood guard keys on (category, message) alone, so these shared one key and went dark after 5 of 273 - always the first five files, not a sample worth having
 GEO_PASS_FAIL_LOG = "geo thumbnails failed"
 GEO_PASS_LOG_BUDGET = 20
 
 
 def houdini_path(path: str, style: str = "home") -> str:
-    """A path written the way Houdini writes them - for Copy Path and
-    the File section's location labels (the sheet: 'We should also
-    start using Houdini file paths'). `style` is Preferences > Write
-    Paths As: one specific variable, or "absolute". Falls back to the
-    absolute path untouched when hou is not importable (plain-python
-    tests) or the path does not live under the chosen variable."""
+    """A path written the way Houdini writes them - for Copy Path and the File section's location labels. `style` is Preferences > Write Paths As: one specific variable, or absolute. Falls back to the absolute path untouched when hou is not importable (plain-python tests) or the path does not live under the chosen variable."""
     path = hostos.canonical_path_key(path or "")
     if not path or style == "absolute":
         return path
@@ -99,21 +60,7 @@ def houdini_path(path: str, style: str = "home") -> str:
 
 
 def sweep_folder_cache(preferences, folder: str, remaining) -> int:
-    """Delete the cached image+geometry thumbnails belonging to a
-    REMOVED location (the confirmed 2026-07-31 decision) - the caches
-    are derived data keyed by full path, so this is the one moment
-    they can be dropped without a whole-cache clear, and without it a
-    removed folder's thumbnails linger forever.
-
-    Skips: paths still covered by any REMAINING registered folder
-    (conservative prefix check - re-rendering costs more than a few
-    stale files), cache dirs whose manifest is unreadable (never write
-    blind over a manifest - the recorded refuse-over-overwrite gate),
-    and hip captures entirely: hand-framed, not regenerable, durable
-    by design under config_root.
-
-    Returns how many cached thumbnails were deleted.
-    """
+    """Delete the cached image+geometry thumbnails belonging to a REMOVED location - the caches are derived data keyed by full path, so this is the one moment they can be dropped without a whole-cache clear, and without it a removed folder's thumbnails linger forever. Skips: paths still covered by any REMAINING registered folder (conservative prefix check - re-rendering costs more than a few stale files), cache dirs whose manifest is unreadable (never write blind over a manifest), and hip captures entirely (hand-framed, not regenerable, durable by design under config_root). Returns how many cached thumbnails were deleted."""
     prefix = hostos.canonical_path_key(folder).rstrip("/") + "/"
     keep_prefixes = [
         hostos.canonical_path_key(r).rstrip("/") + "/"
@@ -174,9 +121,7 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
 
 
 def shows_all_files(preferences, location: str) -> bool:
-    """Whether one registered location shows its unknown files: the
-    per-location Show All Files override when set, the global Show
-    Unknown Files preference otherwise (2026-08-01)."""
+    """Whether one registered location shows its unknown files: the per-location Show All Files override when set, the global Show Unknown Files preference otherwise."""
     override = locations.record(preferences, location).get("show_all")
     if override is not None:
         return bool(override)
@@ -184,16 +129,7 @@ def shows_all_files(preferences, location: str) -> bool:
 
 
 class FileFolders(folders.FolderListModel):
-    """The File section's registered-folder sidebar. Counts and lists
-    EVERY visible file - this section's whole point is that a folder
-    shows what is actually in it.
-
-    Per-location state (all confirmed 2026-07-31): recursion is per
-    folder (file_recursive_folders), the display name defaults to the
-    PATH itself (Houdini-collapsed) and can be renamed
-    (file_folder_names), removal sweeps the folder's cached
-    thumbnails, and Locate Folder carries name + recursion along with
-    the favourites the base already rewrites."""
+    """The File section's registered-folder sidebar - counts and lists EVERY visible file, because this section's whole point is that a folder shows what is actually in it. Per-location state: recursion is per folder (file_recursive_folders), the display name defaults to the Houdini-collapsed PATH and can be renamed (file_folder_names), removal sweeps the folder's cached thumbnails, and Locate Folder carries name + recursion along with the favourites the base already rewrites."""
 
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
@@ -204,31 +140,11 @@ class FileFolders(folders.FolderListModel):
     move_folder_method = "move_file_folder"
 
     def matches(self, filename: str) -> bool:
-        """The flat contract, answered by the per-LOCATION rule.
-
-        This used to be a second three-line body applying the GLOBAL
-        `file_show_unknown` preference that the per-location Show All
-        Files override replaced on 2026-08-01 - and it was unreachable,
-        because _folder_count calls matches_in() and this class
-        overrides that too. Unreachable and WRONG is the shape that
-        bites the next consumer of the documented subclass contract: it
-        would have got the pre-2026-08-01 answer, and a location with
-        Show All Files off inside a session with the global preference
-        on would count files the grid does not list - the sidebar
-        number disagreeing with the tiles, which is the exact defect
-        the per-location rule exists to prevent.
-
-        One rule, one body: with no location to ask about, the global
-        preference is the only answer available, which is what
-        matches_in("") gives.
-        """
+        """The flat contract, answered by the per-LOCATION rule. It used to be a second three-line body applying the global `file_show_unknown` preference the per-location override replaced - unreachable (this class overrides matches_in, which _folder_count calls) and WRONG, the shape that bites the next consumer of the documented subclass contract: the sidebar number disagreeing with the tiles is the exact defect the per-location rule exists to prevent. One rule, one body: with no location to ask about, the global preference is the only answer available, which is what an empty-path matches_in gives."""
         return self.matches_in("", filename)
 
 
-    def matches_in(self, path: str, filename: str) -> bool:
-        # Per-location Show All Files (2026-08-01): the count asks the
-        # LOCATION's rule, so the sidebar number and the grid agree
-        # per location, not just globally.
+    def matches_in(self, path: str, filename: str) -> bool:  # the count asks the LOCATION's rule, so the sidebar number and the grid agree per location, not just globally
         if filename.startswith("."):
             return False
         if shows_all_files(self.preferences, path):
@@ -251,42 +167,18 @@ class FileFolders(folders.FolderListModel):
             return
         path = self._folders()[row - 1]
         super().remove_folder(row)
-        # PER-LOCATION STATE DIES WITH THE POINTER - all of it, in one
-        # call. This used to name two of the four surfaces by hand and
-        # clear those; the colour and the Show All Files override were
-        # left behind, so re-registering the same folder brought back an
-        # amber sidebar row and a hidden-files setting the user had
-        # never re-chosen, with nothing on screen having said either was
-        # kept.
-        keyed_store.retire_prefix(self.preferences, path)
-        # ...and so do its cached thumbnails. COMMENTS AND TILE ICONS
-
-        # comments and icons": re-adding the folder is a clean slate
-        # (the UI text register ▸ File (folders) ▸ Remove). Hip captures are the
-        # one exception, and sweep_folder_cache says why - hand-framed,
-        # not regenerable. Which stores go is `survives_forget` on each
-        # spec, said once and readable, rather than inferred from which
-        # lines this method happens to contain.
-        sweep_folder_cache(
+        keyed_store.retire_prefix(self.preferences, path)  # PER-LOCATION STATE DIES WITH THE POINTER, all of it in one call: naming surfaces by hand left the colour and Show All Files behind, so re-registering brought back an amber row and a hidden-files setting the user never re-chose
+        sweep_folder_cache(  # ...and so do its cached thumbnails, comments and tile icons - removing a location clears everything, so re-adding is a clean slate (the UI text register - File (folders) - Remove); hip captures are the one exception, hand-framed and not regenerable, and which stores go is `survives_forget` on each spec, said once, never inferred from this method's lines
             self.preferences, path, list(self._folders()))
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
-        """One announcement, no enumeration.
-
-        This used to walk a hand-written tuple of three dicts plus one
-        list - and it named neither notes.json nor icons.json, so a
-        Locate Folder orphaned every comment and every tile icon still
-        keyed by the old path. The caller names the prefix that moved;
-        the engine walks its registry, and a store cannot fail to join
-        a list it does not have to be added to.
-        """
+        """One announcement, no enumeration - the old hand-written tuple named neither notes.json nor icons.json, so a Locate Folder orphaned every comment and tile icon still keyed by the old path; the caller names the prefix that moved, the engine walks its registry, and a store cannot fail to join a list it does not have to be added to."""
         keyed_store.relocate(self.preferences, old_path, new_path)
 
 
 class FileFiles(grid_columns.GridColumnsMixin,
                QtCore.QAbstractTableModel):
-    """All files inside the selected folder (or every registered folder
-    in "All" mode), each behaving as its kind."""
+    """All files inside the selected folder (or every registered folder in All mode), each behaving as its kind."""
 
     COLUMN_ROLES = {
         "name": QtCore.Qt.ItemDataRole.DisplayRole,
@@ -300,27 +192,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
     PathRole = QtCore.Qt.ItemDataRole.UserRole + 2
     FavoriteRole = QtCore.Qt.ItemDataRole.UserRole + 3
     FolderRole = QtCore.Qt.ItemDataRole.UserRole + 4
-    #: True for the scene Houdini currently has open (hip rows only).
-    OpenSceneRole = QtCore.Qt.ItemDataRole.UserRole + 5
-    #: KIND_* string for the row - the per-type dispatch key for menus,
-    #: double-click and drag.
-    KindRole = QtCore.Qt.ItemDataRole.UserRole + 6
-    #: Truthy when the delegate should crop this row's image to fill
-    #: the tile (hip captures are viewport-shaped; letterboxing them
-    #: wastes the tile).
-    CropRole = QtCore.Qt.ItemDataRole.UserRole + 7
-    #: Matches the library family's numbering (UserRole + 8 is the
-    #: category colour on both families, + 10 is notes on both).
-    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10
-    #: The colour set on the LOCATION this row came from - the File
-    #: section's answer to a category colour, painted as the same tile
-    #: band. Deliberately UserRole + 8, matching MaterialLibrary's
-    #: CategoryColorRole, so the one delegate reads one number.
-    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    OpenSceneRole = QtCore.Qt.ItemDataRole.UserRole + 5  # True for the scene Houdini currently has open (hip rows only)
+    KindRole = QtCore.Qt.ItemDataRole.UserRole + 6  # KIND_* string for the row - the per-type dispatch key for menus, double-click and drag
+    CropRole = QtCore.Qt.ItemDataRole.UserRole + 7  # crop this row's image to fill the tile - hip captures are viewport-shaped, letterboxing wastes the tile
+    NotesRole = QtCore.Qt.ItemDataRole.UserRole + 10  # matches the library family's numbering (+8 is the category colour on both families, +10 notes on both)
+    CategoryColorRole = QtCore.Qt.ItemDataRole.UserRole + 8  # the owning LOCATION's colour, painted as the same tile band - deliberately +8, matching MaterialLibrary's CategoryColorRole, so the one delegate reads one number
 
-    #: (done, total) for the current folder's background image batch or
-    #: geometry render pass - drives the thin bar above the grid.
-    progress_changed = QtCore.Signal(int, int)
+    progress_changed = QtCore.Signal(int, int)  # (done, total) for the current folder's background image batch or geometry render pass - drives the thin bar above the grid
 
     def __init__(self, preferences, parent=None) -> None:
         super().__init__()
@@ -329,70 +207,27 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._all_folders_mode = False
         self._files: list = []          # (folder, filename) pairs
         self._kinds: list = []          # KIND_* per row, same order
-        # Per-row engine spec: (key, source, payload). source is one of
-        # "file" (valid cached PNG, lazy), "convert" (image pipeline),
-        # "render" (geo pass), "capture" (hip store), "os-icon".
-        self._row_specs: list = []
+        self._row_specs: list = []      # per-row engine spec (key, source, payload); source is one of file (valid cached PNG, lazy), convert (image pipeline), render (geo pass), capture (hip store), os-icon
         self._key_rows: dict = {}
         self._image_cache = None
         self._image_cache_key = None
         self._geo_cache = None
         self._geo_cache_key = None
         self._pending_writes: dict = {}
-        #: Registered folders that could not be READ this scan, so the
-        #: empty state has a fact to speak from rather than teaching an
-        #: offline archive as an empty one.
-        self._unreadable_folders: set = set()
+        self._unreadable_folders: set = set()  # registered folders that could not be READ this scan, so the empty state has a fact to speak from rather than teaching an offline archive as an empty one
         self._progress_keys: set = set()
         self._progress_done = 0
         self._progress_total = 0
         self._os_icons: dict = {}
-        # Folder -> the owning location's colour band. THE PAINT PATH:
-        # data(CategoryColorRole) runs per tile per repaint, and the
-        # uncached shape deep-copied a location record per tile per
-        # frame - and keyed it on the row's own directory, so every
-        # subfolder row of a recursive location painted bandless.
-        # Cleared on rescan and by colours_changed().
-        self._colour_cache: dict = {}
-        # Does this scene have a capture? Filled lazily on the first
-        # paint of a row and kept, because the alternative is a stat
-        # per visible scene row per FRAME - data(DecorationRole) is
-        # what a repaint calls, and scroll, hover and resize are all
-        # repaints. scene_captures's own thumb_dir() memo closed the
-        # DIRECTORY half of this same path for the same reason (its
-        # note measures 10 thumb_path() calls at 20 makedirs + 40
-        # isdir); this is the file half. Cheap on a warm local disk,
-        # which is why it never showed - not cheap on a sleeping
-        # external volume, and a registered File location is exactly
-        # where one turns up (research.md > Volume mounts on macOS).
-        # Same shape as folders.py's `_counts` and delegates.py's font
-        # cache, so this stops being the odd one out.
-        self._capture_seen: dict = {}
-        # Through the RELAY, not the engine: the engine singleton is
-        # replaced on every module reload, which would leave this model
-        # wired to a dead one (see thumbnails._EngineSignals).
-        thumbnails.signals.ready.connect(self._on_thumb_key_ready)
+        self._colour_cache: dict = {}  # folder -> the owning location's colour band; THE PAINT PATH - the uncached shape deep-copied a location record per tile per frame and keyed on the row's own directory, painting recursive subfolder rows bandless; cleared on rescan and by colours_changed()
+        self._capture_seen: dict = {}  # does this scene have a capture, filled lazily on first paint and kept: the alternative is a stat per visible scene row per FRAME - cheap on a warm local disk, not on a sleeping external volume, which a registered File location is exactly where one turns up (research.md - Volume mounts on macOS); same shape as folders.py `_counts`
+        thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the singleton is replaced on every module reload, which would leave this model wired to a dead one (thumbnails._EngineSignals)
         thumbnails.signals.convert_attempted.connect(
             self._on_convert_attempted)
-        # A capture from anywhere - the tile menu, the shelf tool -
-        # repaints this model's row for that scene.
-        scene_captures.signals.captured.connect(self._on_capture_landed)
-
-    # -- caches, one per engine ---------------------------------------
+        scene_captures.signals.captured.connect(self._on_capture_landed)  # a capture from anywhere - the tile menu, the shelf tool - repaints this model's row for that scene
 
     def _get_image_cache(self):
-        """The texture pipeline's cache, exact same prefix and keys -
-        every thumbnail generated before the merge is still a hit.
-
-        Keyed on the cache GENERATION as well as the size, because
-        `ThumbnailCache.__init__` resolves the root once and then holds
-        its directory, its manifest path and its disk state. Changing
-        the cache location - Preferences, Default, or Test Mode moving
-        it into the test folder - left every cache built beforehand
-        writing to the old root (measured 2026-08-08, the test cache
-        looked like it did nothing). `set_cache_override` bumps the
-        counter; scene_captures has always keyed on it.
-        """
+        """The texture pipeline's cache, exact same prefix and keys - every thumbnail generated before the merge is still a hit. Keyed on the cache GENERATION as well as the size: `ThumbnailCache.__init__` resolves the root once and then holds its disk state, so changing the cache location left every cache built beforehand writing to the old root; `set_cache_override` bumps the counter, and scene_captures has always keyed on it."""
         key = (self.preferences.rendersize, hostos.cache_generation())
         if self._image_cache is None or self._image_cache_key != key:
             self._image_cache = texture_library.ThumbnailCache(key[0])
@@ -412,8 +247,6 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self._geo_cache_key = key
         return self._geo_cache
 
-    # -- listing ------------------------------------------------------
-
     def rowCount(self, parent=None) -> int:
         return len(self._files)
 
@@ -428,27 +261,17 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._load(list(self.preferences.file_folders))
 
     def refresh_current_folder(self) -> None:
-        """Re-runs the current selection. Cheap when nothing changed -
-        every item is still a cache hit."""
+        """Re-runs the current selection - cheap when nothing changed, every item is still a cache hit."""
         if self._all_folders_mode:
             self.set_all_folders()
         elif self._folder:
             self.set_folder(self._folder)
 
     def _scan(self, folder: str) -> list:
-        """[(containing_dir, name)] pairs - every visible file, flat by
-        default, recursive when Include Subfolders is on. Files keep
-        their CONTAINING dir so paths, cache keys and the Category
-        column stay correct per subfolder."""
+        """[(containing_dir, name)] pairs - every visible file, flat by default, recursive when Include Subfolders is on; files keep their CONTAINING dir so paths, cache keys and the Category column stay correct per subfolder."""
         results = []
         if not folder or not os.path.isdir(folder):
-            # AN UNREACHABLE FOLDER IS NOT AN EMPTY ONE. An unmounted
-            # share and a disconnected drive both look exactly like
-            # isdir() saying no, and the grid then showed the
-            # nothing-here-yet empty state - which teaches the wrong
-            # thing about somebody's archive that is merely offline.
-            # Recorded so the state has a fact behind it.
-            if folder:
+            if folder:  # an UNREACHABLE folder is not an empty one: an unmounted share looks exactly like isdir() saying no, and the nothing-here-yet state then teaches the wrong thing about an archive that is merely offline - recorded so the state has a fact behind it
                 self._unreadable_folders.add(folder)
                 debug.event("file", "a registered folder could not be "
                             "read", folder=folder, reason="not there")
@@ -457,10 +280,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if locations.record(self.preferences, folder).get("recursive"):
             for dirpath, dirnames, filenames in \
                     folders.walk_following_links(folder):
-                # The skip-hidden rule applies to DIRECTORIES too:
-                # without the prune, a project folder with recursion
-                # on floods the grid with thousands of .git internals.
-                dirnames[:] = [d for d in dirnames
+                dirnames[:] = [d for d in dirnames  # the skip-hidden rule applies to DIRECTORIES too: without the prune, recursion floods the grid with thousands of .git internals
                                if not d.startswith(".")]
                 dirnames.sort(key=str.lower)
                 for name in sorted(filenames, key=str.lower):
@@ -469,10 +289,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         else:
             try:
                 names = sorted(os.listdir(folder), key=str.lower)
-            except OSError as exc:
-                # Present but unreadable - a permissions change, a
-                # share that dropped mid-session. Same rule as above:
-                # say so rather than showing an empty folder.
+            except OSError as exc:  # present but unreadable - a permissions change, a share dropped mid-session; same rule as above, say so rather than showing an empty folder
                 self._unreadable_folders.add(folder)
                 debug.event("file", "a registered folder could not be "
                             "read", folder=folder, error=str(exc))
@@ -484,14 +301,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         return results
 
     def _load(self, folder_list: list) -> None:
-        """One scan, four behaviours. Image conversions queue in the
-        background exactly as the Images section did; geometry misses
-        render in the blocking interruptable pass exactly as Geometry
-        did; hip and other rows cost nothing at load."""
-        # FLUSH FIRST, then cancel: thumbnails generated before a
-        # folder switch must reach the manifest or the folder
-        # re-converts from scratch next visit (the Images lesson).
-        self._flush_image_cache("folder switch")
+        """One scan, four behaviours: image conversions queue in the background exactly as the Images section did, geometry misses render in the blocking interruptable pass exactly as Geometry did, hip and other rows cost nothing at load."""
+        self._flush_image_cache("folder switch")  # FLUSH FIRST, then cancel: thumbnails generated before a folder switch must reach the manifest or the folder re-converts from scratch next visit
         thumbnails.engine.cancel_pending_converts()
         image_cache = self._get_image_cache()
         geo_cache = self._get_geo_cache()
@@ -504,25 +315,18 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._pending_writes = {}
         self._progress_keys = set()
         self._colour_cache = {}
-        # A rescan is the moment the disk is authoritative again, so
-        # the remembered stats go with the rows they described.
-        self._capture_seen = {}
+        self._capture_seen = {}  # a rescan is the moment the disk is authoritative again, so the remembered stats go with the rows they described
         geo_misses = []
 
         entries = []
         for folder in folder_list:
-            # Per-location Show All Files (2026-08-01): unknown files
-            # are dropped at gather time, per the LOCATION they came
-            # from - the "All" view can show one location's unknowns
-            # and hide another's.
-            keep_other = shows_all_files(self.preferences, folder)
+            keep_other = shows_all_files(self.preferences, folder)  # unknowns are dropped at gather time, per the LOCATION they came from - the All view can show one location's unknowns and hide another's
             for dirpath, name in self._scan(folder):
                 if not keep_other and kind_for(name) == KIND_OTHER:
                     continue
                 entries.append((dirpath, name))
 
-        # ONE reconcile pass per manifest for every directory at once.
-        image_dirs: dict = {}
+        image_dirs: dict = {}  # ONE reconcile pass per manifest for every directory at once
         geo_dirs: dict = {}
         for dirpath, name in entries:
             kind = kind_for(name)
@@ -549,17 +353,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
                 elif image_cache.known_failure(full):
-                    # Already defeated every converter as it stands -
-                    # re-queueing pays each adapter's timeout again on
-                    # every visit. The row shows its placeholder;
-                    # Rerender Thumbnail is the deliberate retry.
-                    self._row_specs.append((key, "missing", full))
+                    self._row_specs.append((key, "missing", full))  # already defeated every converter as it stands - re-queueing pays each adapter's timeout again on every visit; Rerender Thumbnail is the deliberate retry
                 else:
                     self._row_specs.append((key, "convert", full))
                     if not convert_queued:
-                        # Options pushed once per batch, lazily - the
-                        # hou import stays out of plain-python paths.
-                        self._configure_engine_convert()
+                        self._configure_engine_convert()  # options pushed once per batch, lazily - the hou import stays out of plain-python paths
                         convert_queued = True
                     thumbnails.engine.discard(key)
                     thumbnails.engine.request_convert(
@@ -585,16 +383,12 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self.endResetModel()
 
         self._progress_done = 0
-        # Distinct KEYS, not rows - duplicates share one conversion
-        # (the progress-bar-stalls-forever lesson, texture_library).
-        self._progress_total = len(self._progress_keys)
+        self._progress_total = len(self._progress_keys)  # distinct KEYS, not rows - duplicates share one conversion (the progress-bar-stalls-forever lesson, texture_library)
         self.progress_changed.emit(
             self._progress_done, self._progress_total)
 
         if geo_misses:
             self._render_geo_misses(geo_misses)
-
-    # -- image pipeline (the Images section's, verbatim) --------------
 
     def _configure_engine_convert(self) -> None:
         import hou
@@ -605,28 +399,14 @@ class FileFiles(grid_columns.GridColumnsMixin,
         )
 
     def _on_thumb_key_ready(self, key) -> None:
-        """Engine delivery: repaint every row holding the key, and give
-        a freshly GENERATED image its main-thread disk-cache write
-        (the manifest is main-thread-only by design)."""
+        """Engine delivery: repaint every row holding the key, and give a freshly GENERATED image its main-thread disk-cache write (the manifest is main-thread-only by design)."""
         rows = self._key_rows.get(key) or ()
         if not rows:
             return
         full_path = self._pending_writes.pop(key, None)
         if full_path is not None and self._image_cache is not None:
             image = thumbnails.engine.peek(key)
-            # FILED AT THE SIZE IT WAS MADE AT, or not at all. The key
-            # carries the size the conversion was queued with
-            # (`("tex", path, size)`), and Preferences is non-modal - so
-            # RenderSize can change while a batch of conversions is in
-            # flight, and every delivery still landing afterwards was
-            # written into the NEW size's directory and manifest,
-            # matching the source file's own mtime and size. Small
-            # images then served as large ones, across restarts.
-            #
-            # The row still repaints below: the picture is right for
-            # this moment, it is only the durable copy that would be
-            # mislabelled.
-            queued_size = key[2] if len(key) > 2 else None
+            queued_size = key[2] if len(key) > 2 else None  # filed at the size it was made at, or not at all: Preferences is non-modal, so RenderSize can change mid-batch and late deliveries were written into the NEW size's manifest - small images served as large ones across restarts; the row still repaints below, only the durable copy would be mislabelled
             if image is not None and queued_size == self.preferences.rendersize:
                 self._image_cache.put(full_path, image)
             elif image is not None:
@@ -639,15 +419,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_convert_attempted(self, key) -> None:
-        """Advance the bar for every attempted item, success or failure;
-        flush the manifest once the batch completes."""
+        """Advance the bar for every attempted item, success or failure; flush the manifest once the batch completes."""
         if key not in self._progress_keys:
             return
         self._progress_keys.discard(key)
-        # An attempt that delivered no image is a FAILURE, and the one
-        # place both outcomes are known - remembered so the next visit
-        # skips it (texture_library.remember_failure says why).
-        failed_path = self._pending_writes.pop(key, None)
+        failed_path = self._pending_writes.pop(key, None)  # an attempt that delivered no image is a FAILURE, and this is the one place both outcomes are known - remembered so the next visit skips it (texture_library.remember_failure says why)
         if (failed_path is not None and self._image_cache is not None
                 and thumbnails.engine.peek(key) is None):
             self._image_cache.remember_failure(failed_path)
@@ -667,24 +443,12 @@ class FileFiles(grid_columns.GridColumnsMixin,
                        "(%s)" % exc, why=why)
 
     def _folder_colour(self, folder: str) -> str:
-        """The OWNING location's colour band for a row in `folder`.
-
-        Resolved by PREFIX - a subfolder row belongs to the registered
-        location above it, longest match wins; keying the lookup on the
-        row's own directory painted every subfolder row of a recursive
-        location bandless. Cached per FOLDER because this is the paint
-        path: the uncached shape deep-copied a location record per tile
-        per frame. Every input is in the key (the folder; the colour's
-        own changes clear the cache via colours_changed and the
-        rescan)."""
+        """The OWNING location's colour band for a row in `folder`, resolved by PREFIX - a subfolder row belongs to the registered location above it, longest match wins; keying on the row's own directory painted every subfolder row of a recursive location bandless. Cached per FOLDER because this is the paint path, and every input is in the key."""
         generation = locations.generation()
         cached = self._colour_cache.get(folder)
         if cached is not None and cached[0] == generation:
             return cached[1]
-        # The row's own directory first - the registered-location case,
-        # and the one that must keep working on every prefs surface
-        # (the unreachable-library fallback answers this read too).
-        colour = str(locations.record(
+        colour = str(locations.record(  # the row's own directory first - the registered-location case, which must keep working on every prefs surface
             self.preferences, folder).get("color", ""))
         if not colour:
             key = hostos.canonical_path_key(folder)
@@ -700,44 +464,22 @@ class FileFiles(grid_columns.GridColumnsMixin,
         return colour
 
     def colours_changed(self) -> None:
-        """A location's colour moved - drop the paint-path cache. The
-        caller (the section's colour setter) emits the repaint."""
+        """A location's colour moved - drop the paint-path cache; the caller (the section's colour setter) emits the repaint."""
         self._colour_cache = {}
 
     def clear_cache(self) -> None:
-        """Wipe the on-disk thumbnail caches (images AND geometry - one
-        clear() sweeps both prefixes) and the in-memory copies. Hip
-        captures are NOT touched: they are hand-framed and cannot be
-        regenerated, which is why they live under config_root."""
+        """Wipe the on-disk thumbnail caches (images AND geometry - one clear() sweeps both prefixes) and the in-memory copies; hip captures are NOT touched - hand-framed, not regenerable, which is why they live under config_root."""
         self._get_image_cache().clear()
-        # The geo cache object too: clear() rmtrees the geo prefix on
-        # disk, and the kept in-memory manifest went on describing
-        # deleted PNGs, growing entries that could never hit again.
-        self._geo_cache = None
+        self._geo_cache = None  # the object too: clear() rmtrees the geo prefix on disk, and a kept in-memory manifest went on describing deleted PNGs, growing entries that could never hit again
         self._geo_cache_key = None
         thumbnails.engine.clear()
 
-    # -- geo pipeline (the Geometry section's, verbatim) --------------
-
     def _render_geo_misses(self, misses: list) -> None:
-        """Render missing geometry thumbnails NOW, on the main thread -
-        blocking but ESC-interruptable; every finished file lands in
-        the disk cache immediately so an interrupted pass resumes."""
+        """Render missing geometry thumbnails NOW, on the main thread - blocking but ESC-interruptable; every finished file lands in the disk cache immediately so an interrupted pass resumes."""
         import hou
         from amaze.render import thumbs
 
-        # A CACHE GETS NO THUMBNAIL UNASKED. Filtered HERE rather than
-        # at the two places misses are collected, so there is one
-        # answer and the progress dialog below cannot open for a list
-        # that turns out to be entirely caches.
-        #
-        # Measured from the debug log, 2026-08-04: two filecache files
-        # were re-cooked on EVERY switch to Files - 45 failure records
-        # across 10 sessions, roughly 75 attempts, all
-        # `no cookable geometry` - and each pass put a progress bar on
-        # screen for work that could not succeed. Reported as the bar
-        # flashing on entering the section.
-        misses = [pair for pair in misses
+        misses = [pair for pair in misses  # a CACHE gets no thumbnail unasked, filtered HERE so there is one answer and the dialog cannot open for a list that is entirely caches: two filecache files once re-cooked on EVERY switch to Files (~75 attempts, all no-cookable-geometry), reported as the bar flashing on entering the section
                   if not geo_library.is_cache(pair[1])]
         if not misses:
             return
@@ -745,28 +487,11 @@ class FileFiles(grid_columns.GridColumnsMixin,
         size = self.preferences.rendersize
         thumber = thumbs.ThumbNailRenderer(self.preferences)
         cache.ensure_dir()
-        # ONE SCRATCH PER ITEM, and unique. A fixed name was ONE buffer
-        # for the whole pass, and `create_thumb_geo_file` decides
-        # success by `os.path.exists(out_path)` - so a render that
-        # wrote nothing found the PREVIOUS file's picture sitting there
-        # and reported success. An ESC does exactly that: the flipbook
-        # returns without raising, which that function's own comment
-        # records. The wrong image was then cached against this file's
-        # own mtime and size, so it survived restarts.
-        #
-        # The name is also shared by every Houdini process on the
-        # machine, which is the second half of the same fault.
-        #
-        # `create=False` matters: unique_scratch creates the file empty
-        # by default, and an empty file passes os.path.exists just as
-        # well as a leftover one.
-        scratch_seed = os.path.join(cache.cache_dir, "geo_render.png")
+        scratch_seed = os.path.join(cache.cache_dir, "geo_render.png")  # ONE SCRATCH PER ITEM, unique, create=False: a fixed name was one buffer for the whole pass, and create_thumb_geo_file decides success by os.path.exists - an ESC'd flipbook returns without raising, found the PREVIOUS file's picture and cached the wrong image against this file's own mtime; the fixed name was also shared by every Houdini process, and a pre-created empty file passes the exists test just as well
         total = len(misses)
         done = 0
         failed = []
-        # Fresh allowance for this pass's per-item records; the closing
-        # record below carries what the budget could not.
-        debug.begin_pass(GEO_PASS_LOG)
+        debug.begin_pass(GEO_PASS_LOG)  # fresh allowance for this pass's per-item records; the closing record below carries what the budget could not
         debug.begin_pass(GEO_PASS_FAIL_LOG)
         self.progress_changed.emit(0, total)
         try:
@@ -801,20 +526,14 @@ class FileFiles(grid_columns.GridColumnsMixin,
                                 cache.put(full, image)
                                 thumbnails.engine.deposit(
                                     ("geo", full, cache.cache_dir), image)
-                    finally:
-                        # Gone before the next item, whatever happened -
-                        # nothing may be left for a later render to
-                        # inherit and report as its own.
+                    finally:  # gone before the next item, whatever happened - nothing may be left for a later render to inherit and report as its own
                         try:
                             os.remove(tmp_path)
                         except OSError:
                             pass
                     done += 1
                     self.progress_changed.emit(done, total)
-                    # The pass blocks the event loop; pump paints only
-                    # so finished tiles appear mid-pass without letting
-                    # input re-enter the panel.
-                    QtWidgets.QApplication.processEvents(
+                    QtWidgets.QApplication.processEvents(  # the pass blocks the event loop; pump paints only, so finished tiles appear mid-pass without letting input re-enter the panel
                         QtCore.QEventLoop.ProcessEventsFlag
                         .ExcludeUserInputEvents
                     )
@@ -822,24 +541,9 @@ class FileFiles(grid_columns.GridColumnsMixin,
             debug.event("file", "geo pass interrupted",
                         done=done, total=total)
         finally:
-            # ONE record for the whole pass, ALWAYS, and it names every
-            # failure rather than the first few. The per-item records
-            # above are a bounded sample; this is the part that has to
-            # be complete, because a pass that logged 5 of 273 was
-            # unreadable exactly when it mattered.
-            debug.event("file", "geo pass done", done=done, total=total,
+            debug.event("file", "geo pass done", done=done, total=total,  # ONE record for the whole pass, ALWAYS, naming every failure - the per-item records are a bounded sample, and a pass that logged 5 of 273 was unreadable exactly when it mattered
                         failed=len(failed), files=failed)
-            # ONE OWNER PER FOLDER OPEN. This pass emits into the same
-            # signal the image-conversion batch uses, and its
-            # processEvents above pumps that batch's own progress - so
-            # a folder of 400 EXRs and 20 un-rendered geometry files
-            # made the bar alternate between n/20 and n/400, and then
-            # this terminal (0, 0) HID it while 380 conversions were
-            # still running. It reappeared on the next attempted, so
-            # the net effect was a flickering bar with the wrong
-            # denominator - the only signal the user has that a long
-            # conversion is still going.
-            if not self._progress_keys:
+            if not self._progress_keys:  # ONE OWNER PER FOLDER OPEN: this pass emits into the image batch's signal, so an unconditional terminal (0, 0) hid the bar while conversions still ran - a flickering bar with the wrong denominator, the only signal a long conversion is still going
                 self.progress_changed.emit(0, 0)
             cache.save()
             try:
@@ -848,18 +552,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
             except OSError:
                 pass
 
-    # -- hip capture relay (the HIP section's) ------------------------
-
     def _capture_png(self, hip_path: str) -> str:
-        """This scene's capture PNG, or "" if it has none.
-
-        The stat is remembered per scene (see `_capture_seen`): a
-        repaint must not ask the filesystem a question this process
-        already answered. `_on_capture_landed` forgets the one path a
-        capture just changed, and a rescan forgets the lot, so the
-        only way to a stale answer is deleting a PNG from under a
-        running panel - which re-reads on the next folder visit.
-        """
+        """This scene's capture PNG, or an empty path if it has none. The stat is remembered per scene (`_capture_seen`): a repaint must not ask the filesystem a question this process already answered - `_on_capture_landed` forgets the one path a capture just changed, a rescan forgets the lot, so the only way to a stale answer is deleting a PNG from under a running panel, re-read on the next folder visit."""
         seen = self._capture_seen.get(hip_path)
         if seen is None:
             png = scene_captures.thumb_path(hip_path)
@@ -869,16 +563,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
     def _on_capture_landed(self, hip_path) -> None:
         path = str(hip_path or "")
-        # Forget BEFORE the repaint: refresh_row paints, and painting
-        # is what re-asks.
-        self._capture_seen.pop(path, None)
+        self._capture_seen.pop(path, None)  # forget BEFORE the repaint: refresh_row paints, and painting is what re-asks
         row = self.row_for_path(path)
         if row >= 0:
             self.refresh_row(row)
 
     def refresh_row(self, row: int) -> None:
-        """Repaint one row after its capture was replaced - drops the
-        engine's copy first or the old image keeps being served."""
+        """Repaint one row after its capture was replaced - drops the engine's copy first or the old image keeps being served."""
         full = self._full_path(row)
         if full and 0 <= row < len(self._row_specs):
             key = self._row_specs[row][0]
@@ -899,19 +590,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 return row
         return -1
 
-    # -- OS icons for unrecognised files ------------------------------
-
     def _os_icon_image(self, path: str):
-        """The system's icon for this file type, drawn centred on a
-        transparent square. Cached per extension - the provider is not
-        free and a folder of logs is one icon repeated.
-
-        Per the recorded probe: the provider can hand back SMALL icons,
-        so the native pixmap is drawn at its own size (upscaled at most
-        2x, never more) rather than stretched across the tile. NEVER
-        empty: if the provider returns nothing paintable (measured
-        headless), Qt's own generic file icon stands in - a tile with
-        no picture at all reads as a loading failure."""
+        """The system's icon for this file type, drawn centred on a transparent square, cached per extension (the provider is not free and a folder of logs is one icon repeated). The provider can hand back SMALL icons, so the native pixmap draws at its own size, upscaled at most 2x, never stretched across the tile - and NEVER empty: if nothing paintable comes back, Qt's generic file icon stands in, because a tile with no picture at all reads as a loading failure."""
         ext = os.path.splitext(path)[1].lower()
         canvas_side = int(getattr(
             self.preferences, "rendersize", 512) or 512)
@@ -945,8 +625,6 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._os_icons[cache_key] = image
         return image
 
-    # -- shared row plumbing ------------------------------------------
-
     def _full_path(self, row: int):
         if 0 <= row < len(self._files):
             folder, name = self._files[row]
@@ -969,10 +647,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self.row_changed(index.row(), [self.FavoriteRole])
 
     def rerender_thumbnails(self, rows: list) -> None:
-        """Force-regenerate rendered thumbnails: image rows re-convert,
-        geometry rows re-render. Hip rows are SKIPPED - a capture is
-        hand-framed, only a new capture replaces it - and other rows
-        have nothing to render."""
+        """Force-regenerate rendered thumbnails: image rows re-convert, geometry rows re-render; hip rows are SKIPPED (a capture is hand-framed, only a new capture replaces it) and other rows have nothing to render."""
         image_cache = self._get_image_cache()
         geo_cache = self._get_geo_cache()
         geo_misses = []
@@ -985,11 +660,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             if kind == KIND_IMAGE:
                 if not queued:
                     self._configure_engine_convert()
-                # flush=False: one write after the loop, not one per
-                # row. 500 selected images meant 500 full manifest
-                # serialisations with an fsync each, on the main
-                # thread, before the progress bar even exists.
-                image_cache.invalidate(full, flush=False)
+                image_cache.invalidate(full, flush=False)  # one write after the loop, not one per row: 500 selected images meant 500 full manifest serialisations with an fsync each, on the main thread, before the bar even exists
                 key = ("tex", full, image_cache.size)
                 thumbnails.engine.discard(key)
                 self._row_specs[row] = (key, "convert", full)
@@ -1006,27 +677,14 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 geo_misses.append((row, full))
             else:
                 continue
-            # The caches re-key on LIVE preferences (the prefs dialog
-            # is non-modal), so a key built here can differ from the
-            # one _load registered - without this, the delivery finds
-            # no row, never writes the disk cache, and the tile keeps
-            # the old picture.
-            key_rows = self._key_rows.setdefault(key, [])
+            key_rows = self._key_rows.setdefault(key, [])  # the caches re-key on LIVE preferences (the dialog is non-modal), so a key built here can differ from the one _load registered - without this the delivery finds no row, never writes the disk cache, and the tile keeps the old picture
             if row not in key_rows:
                 key_rows.append(row)
             index = self.index(row, 0)
             self.row_changed(index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
-        # ONE flush for the whole selection, both caches. Their save()
-        # is a no-op when nothing was dirtied.
-        image_cache.save()
+        image_cache.save()  # ONE flush for the whole selection, both caches; save() is a no-op when nothing was dirtied
         geo_cache.save()
-        if queued:
-            # DISTINCT KEYS, not rows - the same lesson _load already
-            # carries: duplicate rows share one conversion, and a
-            # row-count total leaves the bar short forever and the
-            # manifest flush gated behind it never runs. The total is
-            # every key still pending, so an in-flight batch keeps a
-            # consistent bar instead of a clobbered one.
+        if queued:  # distinct KEYS, not rows, the lesson _load carries: a row-count total leaves the bar short forever and the flush gated behind it never runs; every key still pending keeps an in-flight batch's bar consistent
             self._progress_done = 0
             self._progress_total = len(self._progress_keys)
             self.progress_changed.emit(
@@ -1034,24 +692,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if geo_misses:
             self._render_geo_misses(geo_misses)
 
-    # -- tile icons (the folder-section contract, verbatim) -----------
-    #
-    # These rows are FILES, not library assets, so per-tile choices
-    # live in the library's icons.json keyed by absolute path.
-    #
-    # The key is CANONICAL now (2026-08-06). It stayed the raw
-    # os.path.join for a year of one reason - canonicalising would
-    # orphan every icons.json entry written before the File merge - and
-    # that reason was measured empty before this changed: icons.json
-    # does not exist and notes.json holds no file keys, so there is
-    # nothing to orphan and never was. The raw join was itself the
-    # orphaner: locations are stored $AMAZE-relative and expandString
-    # substitutes verbatim (research.md > Windows), so every key
-    # carried the location's `..` spelling - re-register the same
-    # folder absolute and every comment and icon under it went dark.
-    # One spelling per file, whatever road named it.
-
-    def file_key(self, row: int) -> str:
+    def file_key(self, row: int) -> str:  # rows are FILES, not library assets: per-tile choices live in icons.json keyed by absolute path, CANONICAL - the raw join carried the location's $AMAZE-relative spelling (research.md - Windows), so re-registering the same folder absolute sent every comment and icon under it dark; nothing was orphaned by canonicalising, measured: icons.json did not exist and notes.json held no file keys
         if not 0 <= row < len(self._files):
             return ""
         folder, name = self._files[row]
@@ -1062,8 +703,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         return tile_icons.override_for(self.preferences, key) if key else {}
 
     def tile_key(self, row: int) -> str:
-        """A file row is keyed by its PATH - the same key its icon is
-        stored under, and the one thing that survives a re-scan."""
+        """A file row is keyed by its PATH - the same key its icon is stored under, and the one thing that survives a re-scan."""
         return self.file_key(row)
 
     def set_tile_icon(self, index, spec, save: bool = True) -> bool:
@@ -1071,9 +711,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         key = self.file_key(row)
         if not key:
             return False
-        # Report what actually happened - a read-only library must not
-        # take icons it will lose at restart.
-        written = tile_icons.set_override(self.preferences, key, spec)
+        written = tile_icons.set_override(self.preferences, key, spec)  # report what actually happened - a read-only library must not take icons it will lose at restart
         model_index = self.index(row, 0)
         self.row_changed(model_index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
         return written
@@ -1092,19 +730,13 @@ class FileFiles(grid_columns.GridColumnsMixin,
             spec["ink"],
         )
 
-    # -- data ---------------------------------------------------------
-
     def data(self, index, role: int = 0):
-        # LATER COLUMNS are the table's, not the row's (step 1 of the
-        # QTableView migration). Column 0 falls through unchanged, so
-        # grid mode cannot tell any of this happened.
-        if index.column() > 0:
+        if index.column() > 0:  # LATER COLUMNS are the table's, not the row's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell any of this happened
             return self.column_data(index, role)
         if not index.isValid():
             return None
         row = index.row()
-        # isValid() does not mean in-range: an index outlives a shrink.
-        if not 0 <= row < len(self._files):
+        if not 0 <= row < len(self._files):  # isValid() does not mean in-range: an index outlives a shrink
             return None
         folder, name = self._files[row]
         kind = self._kinds[row]
@@ -1120,10 +752,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             if source == "os-icon":
                 return self._os_icon_image(payload)
             if source == "missing":
-                # Remembered: nothing could read this file as it
-                # stands, so the tile rests on its placeholder rather
-                # than paying every converter's timeout again.
-                return None
+                return None  # remembered: nothing could read this file as it stands, so the tile rests on its placeholder rather than paying every converter's timeout again
             if source == "file":
                 return thumbnails.engine.request_file(key, payload)
             if source == "capture":
@@ -1132,11 +761,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     image = thumbnails.engine.request_file(key, png)
                     if image is not None:
                         return image
-                # No capture yet - the resting state, not a wait.
-                return scene_captures.placeholder_image()
-            # convert / render rows: serve what has landed; after
-            # eviction the disk cache takes over as a file load.
-            image = thumbnails.engine.peek(key)
+                return scene_captures.placeholder_image()  # no capture yet - the resting state, not a wait
+            image = thumbnails.engine.peek(key)  # convert/render rows: serve what has landed; after eviction the disk cache takes over as a file load
             if image is not None:
                 return image
             if source == "convert":
@@ -1159,23 +785,16 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 return geo_library.matched_extension(
                     name).lstrip(".").upper()
             if kind == KIND_HIP:
-                # "Hiplc", not "HIPLC" - a scene extension is a word.
-                return scene_captures.matched_extension(
+                return scene_captures.matched_extension(  # capitalized, not upper-cased - a scene extension is a word
                     name).lstrip(".").capitalize()
             if kind == KIND_IMAGE:
-                # Its own recogniser now, like the other two kinds. The
-                # splitext fallback below is for KIND_OTHER, which by
-                # definition has no list to match against.
-                return texture_library.matched_extension(
+                return texture_library.matched_extension(  # its own recogniser, like the other two kinds; the splitext fallback below is for KIND_OTHER, which by definition has no list to match against
                     name).lstrip(".").upper()
             return os.path.splitext(name)[1].lstrip(".").upper()
         if role in (self.PathRole, QtCore.Qt.ItemDataRole.ToolTipRole):
             return hostos.canonical_path_key(os.path.join(folder, name))
         if role == self.FavoriteRole:
-            # A MEMBERSHIP TEST, per tile per repaint. `file_favorites`
-            # composes the whole list out of the store now, so asking it
-            # here would rebuild every star to answer about one.
-            return locations.is_favourite(
+            return locations.is_favourite(  # a MEMBERSHIP TEST per tile per repaint - file_favorites composes the whole list out of the store, so asking it here would rebuild every star to answer about one
                 self.preferences,
                 hostos.canonical_path_key(os.path.join(folder, name)))
         if role == self.FolderRole:
