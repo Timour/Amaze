@@ -479,6 +479,9 @@ class SectionTabBar(QtWidgets.QWidget):
     """The full-width section tab strip below the toolbar: a rounded-top tray holding one text tab per section, the selected one filled with a chip and a thin ring - hand-painted, because stylesheet-driven buttons never reliably hold their geometry on macOS native chrome, and its half-pixel constants are painted through QRectF so they land on physical pixel boundaries at 2x."""
 
     segmentClicked = QtCore.Signal(str)   # the key of the tab that just became checked, emitted only on an ACTUAL change, matching QAbstractButton.setChecked()'s own behaviour
+    cancelClicked = QtCore.Signal()   # the Cancel chip at the strip's right end; shown exactly while the conversion bar is - panel.set_conversion_bar_visible is the one driver
+
+    CANCEL_LABEL = "Cancel"
 
     HEIGHT = theme.ui_px(28)
     TRAY_HEIGHT = theme.ui_px(23)
@@ -504,6 +507,8 @@ class SectionTabBar(QtWidgets.QWidget):
         self._segments = list(segments)
         self._checked_key = None
         self._hover_key = None
+        self._cancel_visible = False
+        self._cancel_hover = False
         self.setFixedHeight(self.HEIGHT)
         self.setMouseTracking(True)
         self.setSizePolicy(
@@ -540,6 +545,34 @@ class SectionTabBar(QtWidgets.QWidget):
                 return key
         return None
 
+    def set_cancel_visible(self, visible: bool) -> None:
+        """Show or hide the Cancel chip. Call through panel.set_conversion_bar_visible, the chip's one driver - except _build_section_tabs, which re-applies the bar's CURRENT state to a freshly built strip."""
+        visible = bool(visible)
+        if visible != self._cancel_visible:
+            self._cancel_visible = visible
+            if not visible:
+                self._cancel_hover = False
+            self.update()
+
+    def cancel_visible(self) -> bool:
+        return self._cancel_visible
+
+    def _cancel_rect(self):
+        """The Cancel chip's rect at the strip's right end, level with the tabs - or None while hidden, or while the strip is too narrow for the chip to clear the last tab (a hit there would be ambiguous, so neither paint nor press resolves)."""
+        if not self._cancel_visible:
+            return None
+        metrics = self.fontMetrics()
+        tray_top = self.height() - self.TRAY_HEIGHT
+        chip_y = tray_top + (self.TRAY_HEIGHT - self.CHIP_HEIGHT) / 2.0
+        width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
+            + 2 * self.CHIP_PAD_X
+        x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width
+        rects = self._chip_rects()
+        tabs_right = rects[-1][1].right() if rects else 0
+        if x < tabs_right + self.CHIP_GAP:
+            return None
+        return QtCore.QRectF(x, chip_y, width, self.CHIP_HEIGHT)
+
     def sizeHint(self) -> QtCore.QSize:
         rects = self._chip_rects()
         right = rects[-1][1].right() + self.CHIP_INSET if rects else 0
@@ -549,6 +582,10 @@ class SectionTabBar(QtWidgets.QWidget):
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() != QtCore.Qt.MouseButton.LeftButton:
             return
+        cancel = self._cancel_rect()
+        if cancel is not None and cancel.contains(QtCore.QPointF(event.pos())):
+            self.cancelClicked.emit()
+            return
         key = self._key_at(event.pos())
         if key is not None:
             self.setChecked(key)
@@ -556,17 +593,22 @@ class SectionTabBar(QtWidgets.QWidget):
     @debug.guarded("SectionTabBar.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         key = self._key_at(event.pos())
-        if key != self._hover_key:
+        cancel = self._cancel_rect()
+        over_cancel = (cancel is not None
+                       and cancel.contains(QtCore.QPointF(event.pos())))
+        if key != self._hover_key or over_cancel != self._cancel_hover:
             self._hover_key = key
-            if key is not None:   # a pointing hand over an actual TAB only, since this strip spans the whole panel width and most of it is empty
+            self._cancel_hover = over_cancel
+            if key is not None or over_cancel:   # a pointing hand over an actual TAB or the Cancel chip only, since this strip spans the whole panel width and most of it is empty
                 self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
             else:
                 self.unsetCursor()
             self.update()
 
     def leaveEvent(self, event: QtCore.QEvent) -> None:
-        if self._hover_key is not None:
+        if self._hover_key is not None or self._cancel_hover:
             self._hover_key = None
+            self._cancel_hover = False
             self.unsetCursor()
             self.update()
 
@@ -616,6 +658,24 @@ class SectionTabBar(QtWidgets.QWidget):
             else:
                 painter.setPen(self.TEXT_UNSELECTED)
             painter.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, label)
+
+        cancel = self._cancel_rect()
+        if cancel is not None:   # ring only, no fill: a chip that reads as a BUTTON beside tabs that read as tabs
+            ring_w = theme.ui_px(1.0)
+            half = ring_w / 2.0
+            pen = QtGui.QPen(self.CHIP_RING)
+            pen.setWidthF(ring_w)
+            painter.setPen(pen)
+            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(
+                cancel.adjusted(half, half, -half, -half),
+                self.CHIP_RADIUS,
+                self.CHIP_RADIUS,
+            )
+            painter.setPen(self.TEXT_HOVER if self._cancel_hover
+                           else self.TEXT_UNSELECTED)
+            painter.drawText(cancel, QtCore.Qt.AlignmentFlag.AlignCenter,
+                             self.CANCEL_LABEL)
 
         painter.end()
 

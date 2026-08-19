@@ -297,7 +297,7 @@ class AssetSection(Section):
         panel.bind_grid_views(self._p(self.proxy_attr),
                               self._p(self.selection_attr),
                               self._p(self.delegate_attr))
-        panel.texture_progress.setVisible(False)  # may be another section's
+        panel.set_conversion_bar_visible(False)  # may be another section's
         panel.sync_list_columns()  # different section = different names
 
         selected_name = panel._select_default_sidebar_row(sidebar)  # the filter follows the row actually selected; the programmatic select fires no clicked()
@@ -962,7 +962,7 @@ class FolderSection(Section):
         panel.bind_grid_views(self._p(self.files_proxy_attr),
                               self._p(self.selection_attr),
                               self._p(self.delegate_attr))
-        panel.texture_progress.setVisible(False)  # may be another section's
+        panel.set_conversion_bar_visible(False)  # may be another section's
         panel.sync_list_columns()  # different section = different names
 
         registered = getattr(panel.prefs, self.folders_pref, []) or []
@@ -1428,7 +1428,7 @@ class OnlineContext(Section):
         panel.bind_grid_views(self._p(self.proxy_attr),
                               self._p(self.selection_attr),
                               self._p(self.delegate_attr))
-        panel.texture_progress.setVisible(False)
+        panel.set_conversion_bar_visible(False)
         panel.matx_online_model.reload()
         panel.sync_list_columns()
 

@@ -302,8 +302,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
     def _load(self, folder_list: list) -> None:
         """One scan, four behaviours: image conversions queue in the background exactly as the Images section did, geometry misses render in the blocking interruptable pass exactly as Geometry did, hip and other rows cost nothing at load."""
-        self._flush_image_cache("folder switch")  # FLUSH FIRST, then cancel: thumbnails generated before a folder switch must reach the manifest or the folder re-converts from scratch next visit
-        thumbnails.engine.cancel_pending_converts()
+        self.cancel_conversions("folder switch")
         image_cache = self._get_image_cache()
         geo_cache = self._get_geo_cache()
 
@@ -432,6 +431,15 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self._progress_done, self._progress_total)
         if self._progress_done >= self._progress_total:
             self._flush_image_cache("batch complete")
+
+    def cancel_conversions(self, why: str = "cancelled") -> None:
+        """Abandon the running image batch: the panel Cancel chip's verb, and the first thing a folder switch does. FLUSH FIRST, then cancel - thumbnails already generated must reach the manifest or the folder re-converts from scratch next visit. Then the batch is SETTLED: cancelled attempts never report, so the bar is driven to complete rather than left waiting for them. `_pending_writes` stays - a conversion finishing during the cancel still gets its durable write."""
+        self._flush_image_cache(why)
+        thumbnails.engine.cancel_pending_converts()
+        self._progress_keys = set()
+        self._progress_done = self._progress_total
+        self.progress_changed.emit(
+            self._progress_done, self._progress_total)
 
     def _flush_image_cache(self, why: str) -> None:
         if self._image_cache is None:

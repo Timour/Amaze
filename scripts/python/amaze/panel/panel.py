@@ -1110,7 +1110,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
         self.texture_progress = ui_helpers.ThinProgressBar()    # thin bar for texture thumbnail generation, docked above thumbview in verticalLayout_7 - which wraps thumbview ALONE, isolated from catview/details in the splitter. Built in code rather than the .ui; hidden until a folder with work to do is selected (see _on_texture_progress)
         self.texture_progress.set_accent_color(theme.accent(self.prefs.accent_color))
-        self.texture_progress.setVisible(False)
+        self.set_conversion_bar_visible(False)
         thumb_layout = self.ui.findChild(QtWidgets.QVBoxLayout, "verticalLayout_7")
         if thumb_layout is not None:
             thumb_layout.insertWidget(0, self.texture_progress)
@@ -2005,6 +2005,10 @@ class MatLibPanel(QtWidgets.QWidget):
         self.section_tabs.segmentClicked.connect(
             lambda key: self._on_tab_toggled(key, True)
         )
+        self.section_tabs.cancelClicked.connect(self._on_cancel_conversions)
+        bar = getattr(self, "texture_progress", None)
+        self.section_tabs.set_cancel_visible(    # a rebuild mid-batch: the chip's state is READ from the bar, the one source, so the new strip cannot disagree with it
+            bar is not None and not bar.isHidden())
         if self._central_layout is not None:
             self._central_layout.insertWidget(1, self.section_tabs)
         keys = [k for k, _ in segments]
@@ -2246,7 +2250,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._online_download_active = True    # the event pumping can deliver a late preview-worker signal, and this flag keeps that from repainting the bar with preview counts while the download owns it
         show_bar = self._needs_download(records)
         if show_bar:
-            self.texture_progress.setVisible(True)
+            self.set_conversion_bar_visible(True)
             self.texture_progress.set_progress(0, total * scale)
             QtWidgets.QApplication.processEvents(pump)
 
@@ -2266,7 +2270,7 @@ class MatLibPanel(QtWidgets.QWidget):
         finally:
             self._online_download_active = False
             if show_bar:
-                self.texture_progress.setVisible(False)
+                self.set_conversion_bar_visible(False)
 
     def _import_online_records(self, records) -> None:
         """Import one or more online records into the LIBRARY."""
@@ -3273,12 +3277,25 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         self._on_texture_progress(done, total)
 
+    def set_conversion_bar_visible(self, visible: bool) -> None:
+        """The ONE door to the conversion bar's visibility - the Section Tab Strip's Cancel chip shows exactly when the bar shows, so both move here or not at all. test_cancel_conversions pins this as the package's only site setting the bar visible or hidden."""
+        self.texture_progress.setVisible(visible)
+        tabs = getattr(self, "section_tabs", None)    # None during init_ui: the bar is hidden before the strip is built, and _build_section_tabs re-applies the bar's state
+        if tabs is not None:
+            tabs.set_cancel_visible(visible)
+
+    def _on_cancel_conversions(self) -> None:
+        """The Cancel chip's verb: stop the File batch. The model owns the pair and its order (file_library.cancel_conversions)."""
+        model = self.file_files_model
+        if model is not None:
+            model.cancel_conversions()
+
     def _on_texture_progress(self, done: int, total: int) -> None:
         """Shows/updates the thin progress bar above the thumbnail grid while texture thumbnails are generating for the selected folder. Hidden when there's nothing to do (fully cached / empty folder) or once generation completes."""
         if total <= 0 or done >= total:
-            self.texture_progress.setVisible(False)
+            self.set_conversion_bar_visible(False)
             return
-        self.texture_progress.setVisible(True)
+        self.set_conversion_bar_visible(True)
         self.texture_progress.set_progress(done, total)
 
     def _on_online_preview_progress(self, done: int, total: int) -> None:
