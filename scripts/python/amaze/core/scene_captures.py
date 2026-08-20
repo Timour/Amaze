@@ -1,25 +1,4 @@
-"""
-The scene-capture store and open-scene state for hip files.
-
-The capture store and its manifest, the capture decision path, the
-placeholder, `matched_extension`, and which scene is open or was opened
-by Amaze.
-
-Two rules, both unlike every other section:
-
-**Thumbnails are CAPTURED, never rendered.** A scene file cannot be
-imported into a scene Amaze controls - it IS a scene - and rebuilding
-one fails the moment a dependency is missing. A capture is
-`husd.assetutils.saveThumbnailFromViewer`, which wraps a flipbook and
-so keeps handles, gizmos and overlays. A row with no capture has no
-thumbnail; nothing renders in the background.
-
-**The store is NOT mtime-invalidated**, unlike ThumbnailCache. Dropping
-a hand-framed capture because the scene was re-saved would erase what
-the user composed. Captures live in their own directory, path -> sha1
--> png plus a manifest, and persist until re-captured. Treat that
-layout as a contract: an external reader consumes it.
-"""
+"""The scene-capture store and open-scene state for hip files: the capture store and its manifest, the capture decision path, the placeholder, `matched_extension`, and which scene is open or was opened by Amaze. Two rules, both unlike every other section: thumbnails are CAPTURED, never rendered (a scene cannot be imported into a scene Amaze controls - it IS one - so a row with no capture has no thumbnail and nothing renders in the background), and the store is NOT mtime-invalidated (dropping a hand-framed capture because the scene re-saved would erase what the user composed). Captures live in their own directory, path -> sha1 -> png plus a manifest - treat that layout as a contract, an external reader consumes it."""
 
 import hashlib
 import json
@@ -33,14 +12,9 @@ from PySide6 import QtCore
 from amaze.core import debug
 from amaze.helpers import hostos, ui_helpers
 
-#: Every Houdini scene extension is ONE file type. A library that holds
-#: a mix - your own .hiplc beside someone else's .hip - must not sort
-#: them into different sections or show one and hide the other.
-HIP_EXTENSIONS = (".hiplc", ".hipnc", ".hip")
+HIP_EXTENSIONS = (".hiplc", ".hipnc", ".hip")  # every Houdini scene extension is ONE file type - a mixed library must not sort them into different sections or show one and hide the other
 
-#: The captured image's long edge is capped here. A 4K viewport would
-#: otherwise write a multi-megabyte PNG per scene, and these are tiles.
-MAX_THUMB_EDGE = 1024
+MAX_THUMB_EDGE = 1024  # the captured image's long edge - a 4K viewport would otherwise write a multi-megabyte PNG per scene, and these are tiles
 
 
 def matched_extension(name: str) -> str:
@@ -48,28 +22,8 @@ def matched_extension(name: str) -> str:
     return hostos.matched_extension(name, HIP_EXTENSIONS)
 
 
-# ------------------------------------------------------- thumbnail store
 
-#: The resolved capture directory, memoised for the session.
-#:
-#: thumb_dir() runs a MIGRATION - config_root() and cache_root() each
-#: do an exists + makedirs (a real mkdir syscall), then two isdir
-#: checks, then possibly a full listdir and a rename per entry. It is
-#: called by thumb_path(), which data() calls on every DecorationRole
-#: read, which the delegate performs on every paint: measured, 10
-#: thumb_path() calls cost 20 makedirs and 40 isdir. Scrolling a folder
-#: of scenes paid that per visible tile per frame, on the main thread,
-#: inside paint - while folders.py:81 states the opposite intent for
-#: the sidebar ("cached so painting the sidebar never touches the
-#: disk"). The interrupted-migration branch is worse: it listdirs the
-#: legacy folder on EVERY call, permanently, when one file blocks the
-#: rename.
-#:
-#: A migration is a once-per-session job. Cleared by
-#: hostos.set_cache_override, because the tests point the cache
-#: elsewhere between cases and a memo that outlived that would hand
-#: one test's directory to the next.
-_thumb_dir_memo: dict = globals().get("_thumb_dir_memo", {})
+_thumb_dir_memo: dict = globals().get("_thumb_dir_memo", {})  # the resolved capture directory, memoised per session: thumb_dir() runs a MIGRATION (makedirs, isdirs, possibly a listdir+rename per entry) and thumb_path() reaches it from every DecorationRole paint - measured, 10 calls cost 20 makedirs and 40 isdir before the memo
 
 
 def forget_thumb_dir() -> None:
@@ -78,40 +32,8 @@ def forget_thumb_dir() -> None:
 
 
 def thumb_dir() -> str:
-    """Where captured scene views live: under config_root, NOT the cache.
-
-    These are hand-framed captures - somebody stood in the viewport and
-    chose an angle - and they cannot be regenerated: rebuilding one
-    means reconstructing the whole scene, which fails whenever a
-    dependency has moved. The cache root is the directory the OS, a
-    cache-clear preference and Delete Local Cache are all entitled to
-    purge; durable, non-regenerable data was the one thing that must
-    not live there (the same rule the corpus baselines follow).
-
-    Migrates the old cache-root folder in on first use, by rename, so
-    existing captures survive the location becoming correct. A capture
-    already present in the new home wins a per-file collision: it is
-    the one more recently written.
-    """
-    # THE KEY COSTS NOTHING TO BUILD, which is the whole point. Keying
-    # it on the resolved roots was the obvious version and still paid
-    # two `makedirs(exist_ok=True)` per call just to ask the question -
-    # CPython's makedirs calls isdir to decide whether to swallow the
-    # FileExistsError, so 20 paints still cost 40 stats. This is three
-    # identity comparisons instead:
-    #
-    #   * the two resolver FUNCTIONS, because the suite redirects them
-    #     wholesale (test_support.fixture_panel replaces config_root;
-    #     CapturesLiveOutsideTheCacheTest replaces both), and a memo
-    #     that survived that hands one test's directory to the next -
-    #     which is exactly what a counter-only key did;
-    #   * hostos.cache_generation(), which set_cache_override bumps, so
-    #     Preferences pointing the cache somewhere new is noticed
-    #     without either function being replaced.
-    #
-    # $AMAZE_CACHE_DIR is read at process start and never changes
-    # mid-session, so it needs no term here.
-    key = (hostos.config_root, hostos.cache_root, hostos.cache_generation())
+    """Where captured scene views live: under config_root, NOT the cache - a hand-framed capture cannot be regenerated, and the cache root is what the OS, a preference and Delete Local Cache are all entitled to purge; migrates the old cache-root folder in on first use by rename, newer captures winning a per-file collision."""
+    key = (hostos.config_root, hostos.cache_root, hostos.cache_generation())  # a key that costs NOTHING to build: the two resolver FUNCTIONS by identity (the suite replaces them wholesale, and a memo surviving that hands one test's directory to the next) plus cache_generation(), which set_cache_override bumps; keying on resolved roots paid two makedirs per ask
     if _thumb_dir_memo.get("key") == key:
         resolved = _thumb_dir_memo.get("dir")
         if resolved:
@@ -126,8 +48,7 @@ def thumb_dir() -> str:
                 debug.event("hip", "captures moved out of the cache",
                             src=legacy, dest=home)
             except OSError:
-                # Cross-volume or held - copy the slow way, keep going.
-                try:
+                try:  # cross-volume or held - copy the slow way, keep going
                     shutil.copytree(legacy, home, dirs_exist_ok=True)
                     debug.event("hip", "captures copied out of the cache",
                                 src=legacy, dest=home)
@@ -143,9 +64,7 @@ def thumb_dir() -> str:
                 _thumb_dir_memo.update(dir=legacy, key=key)
                 return legacy
     elif os.path.isdir(legacy):
-        # Both exist: an interrupted earlier migration. Adopt what the
-        # old folder still holds without overwriting newer captures.
-        for name in os.listdir(legacy):
+        for name in os.listdir(legacy):  # both exist: an interrupted earlier migration - adopt what the old folder holds without overwriting newer captures
             target = os.path.join(home, name)
             if not os.path.exists(target):
                 try:
@@ -161,18 +80,14 @@ def thumb_dir() -> str:
 
 
 def thumb_path(hip_path: str) -> str:
-    """The PNG slot for a scene file.
-
-    Keyed by a hash of the ABSOLUTE path, which is the same scheme the
-    other file-based caches use and the one an external consumer can
-    reproduce without reading our code: sha1(canonical path).png.
-    """
+    """The PNG slot for a scene file - sha1(canonical path).png, the same scheme the other file-based caches use and one an external consumer can reproduce without reading our code."""
     key = hostos.canonical_path_key(hip_path or "")
     digest = hashlib.sha1(key.encode("utf-8")).hexdigest()
     return os.path.join(thumb_dir(), digest + ".png")
 
 
 def has_thumbnail(hip_path: str) -> bool:
+    """Whether a non-empty capture exists for this scene - the tests pin the store's contract through it (a zero-byte file is no thumbnail, and a re-saved scene must not lose one), which is its reason to stay."""
     path = thumb_path(hip_path)
     try:
         return os.path.isfile(path) and os.path.getsize(path) > 0
@@ -185,14 +100,7 @@ def _manifest_path() -> str:
 
 
 def _record_manifest(hip_path: str, png: str) -> None:
-    """Remember which scene a hash belongs to.
-
-    The PNG name is a one-way hash, so without this the directory is
-    unreadable by a human and unrecoverable if the mapping is ever
-    needed in reverse. Written whole and small; a manifest that will
-    not parse is REPLACED rather than merged, because losing the map is
-    recoverable (re-capture) while refusing to record anything is not.
-    """
+    """Remember which scene a hash belongs to - without this the directory of one-way hashes is unreadable by a human; written whole and small, and a manifest that will not parse is REPLACED rather than merged, because losing the map is recoverable (re-capture) while refusing to record anything is not."""
     data = {}
     path = _manifest_path()
     try:
@@ -209,62 +117,24 @@ def _record_manifest(hip_path: str, png: str) -> None:
     }
     try:
         os.makedirs(thumb_dir(), exist_ok=True)
-        # ATOMIC, like every other durable JSON store in the package
-        # (database, notes, tile_icons, gradients, versions, prefs,
-        # library_policy, and the two sibling thumbnail manifests).
-        # This was the one writer still opening the destination "w":
-        # reproduced by dying partway through the dump, which left the
-        # file truncated, and the next capture then read it as
-        # unreadable and replaced it with a one-entry map - 50
-        # scene-to-thumbnail mappings gone. The captures themselves
-        # survive, but this map is the only thing making a directory of
-        # one-way hashes readable, which is what the docstring above
-        # says it is for.
-        hostos.write_json_atomic(path, data, indent=2)
+        hostos.write_json_atomic(path, data, indent=2)  # ATOMIC like every other durable JSON store here - the one writer still opening "w" left a truncated file on a mid-dump death, which the next capture read as unreadable and replaced with a one-entry map
     except OSError as exc:
         debug.event("hip", "manifest not written", error=str(exc))
 
 
-# --------------------------------------------------------- placeholder
-
-# The one rasterisation this kept lives in `ui_helpers.svg_image` now,
-# with the render it belonged to.
 
 
 def placeholder_image():
-    """The tile shown for a scene with no capture yet.
-
-    Every other section renders a real preview on a cache miss; this one
-    cannot, so the placeholder is not a "loading" state that will
-    resolve on its own - it is the resting state until someone presses
-    Capture. It therefore has to look deliberate rather than broken.
-
-    The render and its cache are `ui_helpers.svg_image`, which the
-    material library had a second copy of. This function stays because
-    the CONCEPT is this section's - which SVG stands for a scene with
-    no capture, and why it is a resting state - and that is not
-    something a generic renderer knows.
-    """
+    """The tile shown for a scene with no capture yet - not a loading state that resolves on its own but the RESTING state until someone presses Capture, so it has to look deliberate; the render and its cache are `ui_helpers.svg_image`, and this stays because which SVG stands for an uncaptured scene is this section's concept."""
     return ui_helpers.svg_image("icon_hip.svg")
 
 
-# ------------------------------------------------- which scene is open
 
-#: Survives importlib.reload - the panel reloads modules in place and a
-#: plain assignment would forget which scene Amaze opened every time.
-_state = globals().get("_state", {"opened": ""})
+_state = globals().get("_state", {"opened": ""})  # survives importlib.reload - the panel reloads modules in place, and a plain assignment would forget which scene Amaze opened
 
 
 def _key(path: str) -> str:
-    """canonical_path_key, but "" stays "".
-
-    os.path.normpath("") is ".", so an empty path became a TRUTHY key.
-    Two guards depended on the empty case: `if not opened` never fired,
-    and note_opened("") stored "." - which equals current_scene_path()
-    when Houdini has no file open, so amaze_opened_current_scene()
-    answered True for a scene Amaze never opened. A fail-OPEN in the one
-    check that prevents mis-filing.
-    """
+    """canonical_path_key, but "" stays "" - normpath("") is ".", a TRUTHY key equal to current_scene_path() when nothing is open, which failed OPEN the one check that prevents mis-filing."""
     return hostos.canonical_path_key(path) if path else ""
 
 
@@ -286,25 +156,13 @@ def current_scene_path() -> str:
 
 
 def amaze_opened_current_scene() -> bool:
-    """Whether the scene on screen is the one Amaze opened.
-
-    Compares the RECORDED path against what Houdini actually has open,
-    rather than tracking load events. If the user opens something else
-    by any means - File > Open, a recent-files entry, a crash recovery -
-    the comparison simply stops matching, with no callback to register,
-    no event to miss and nothing to get out of sync.
-    """
+    """Whether the scene on screen is the one Amaze opened - compares the RECORDED path against what is actually open, so a File > Open or a crash recovery simply stops matching with nothing to get out of sync; the capture policy deliberately dropped this clause (two source-derived tests pin that it stays dropped), and the behaviour tests keep the fail-closed semantics honest, which is its reason to stay."""
     opened = opened_path()
     return bool(opened) and opened == current_scene_path()
 
 
-# ------------------------------------------------- viewport state
 
-#: Delegates that DRAW the viewport rather than render it. A capture
-#: through one of these costs a raster frame - milliseconds. Measured
-#: on 22.0.394 the delegate reports as "Houdini VK"; older builds
-#: report "Houdini GL".
-FAST_DELEGATES = ("houdini gl", "houdini vk")
+FAST_DELEGATES = ("houdini gl", "houdini vk")  # delegates that DRAW the viewport rather than render it - a capture through one costs a raster frame; 22.0.394 reports "Houdini VK", older builds "Houdini GL"
 
 
 def delegate_is_fast(name) -> bool:
@@ -313,25 +171,7 @@ def delegate_is_fast(name) -> bool:
 
 
 def scene_viewer():
-    """The scene view the user is actually looking at, or None.
-
-    Order matters, and an earlier version of this had it BACKWARDS on a
-    wrong reading of the stock helper. Read the shipped source before
-    changing it: `toolutils.sceneViewer` (python3.*libs/toolutils.py)
-    loops "find the first scene viewer tab which is the CURRENT tab in
-    its pane" - it filters to a visible viewer. `paneTabOfType` is
-    documented as plain indexing with no such filter, so it can hand
-    back a viewer hidden behind another tab. Preferring it was a
-    REGRESSION against the helper it was supposed to improve on.
-
-    1. under the cursor - the one being pointed at;
-    2. the stock helper, with can_switch_tabs=False so that merely
-       ASKING never rearranges the user's panes (it defaults to True
-       and will make a viewer current);
-    3. any scene viewer at all, hidden or not, as a last resort.
-
-    GUI only: every call here is behind hou.ui.
-    """
+    """The scene view the user is actually looking at, or None - in order: under the cursor, then the stock helper with can_switch_tabs=False (its shipped source filters to a VISIBLE viewer, and merely asking must not rearrange panes), then any viewer at all; `paneTabOfType` is plain indexing that can hand back a hidden tab, so preferring it was a regression. GUI only."""
     try:
         import hou
         tab = hou.ui.paneTabUnderCursor()
@@ -341,8 +181,7 @@ def scene_viewer():
         pass
     try:
         import toolutils
-        # Raises hou.NotAvailable when no scene viewer is current.
-        viewer = toolutils.sceneViewer(can_switch_tabs=False)
+        viewer = toolutils.sceneViewer(can_switch_tabs=False)  # raises hou.NotAvailable when no scene viewer is current
         if viewer is not None:
             return viewer
     except Exception:                                    # noqa: BLE001
@@ -355,42 +194,19 @@ def scene_viewer():
 
 
 def viewer_context(viewer) -> str:
-    """The network category the Scene View is showing, lowercased.
-
-    DIAGNOSTIC ONLY. A previous version used this to REFUSE a capture
-    from a Cop network, on the reasoning that a COP has "nothing to
-    photograph". That is wrong: browsing a copnet, the Scene View is
-    still a real 3D perspective viewport - grid, axis gizmo, camera -
-    with the COP output displayed on a card in space, and capturing it
-    works. The refusal blocked legitimate work, and it was inferred from
-    a log line rather than tested. Recorded here so the inference is not
-    repeated: the network being browsed does NOT determine whether the
-    viewport can be photographed.
-    """
+    """The network category the Scene View is showing, lowercased - DIAGNOSTIC ONLY: the network being browsed does NOT determine whether the viewport can be photographed (a copnet still shows a real 3D viewport, and a refusal inferred from a log line once blocked legitimate work)."""
     try:
         pwd = viewer.pwd()
         category = pwd.childTypeCategory() if pwd else None
         return category.name().lower() if category else ""
     except Exception as exc:                             # noqa: BLE001
-        # SAY WHY: "not a 3D context" and "we could not ask" must not
-        # look the same, or this becomes the next unexplained refusal.
-        debug.event("hip", "could not read the viewer context",
+        debug.event("hip", "could not read the viewer context",  # say WHY: "not a 3D context" and "we could not ask" must not look the same
                     error="%s: %s" % (type(exc).__name__, exc))
         return ""
 
 
 def viewport_state(viewer=None) -> dict:
-    """What the scene view is doing, BEFORE asking it for a frame.
-
-    Every image-producing route Houdini offers RENDERS - there is no
-    call that copies the displayed frame (QWidget.grab() on the
-    viewport's Vulkan surface hangs outright; wiki). So a capture costs
-    whatever the active delegate costs, and with a pathtracer that is
-    unbounded: a capture has been seen to block until a Karma render
-    was stopped.
-
-    Reading the state first turns that from a surprise into a choice.
-    """
+    """What the scene view is doing BEFORE asking it for a frame - every image-producing route Houdini offers RENDERS (no call copies the displayed frame; QWidget.grab() on the Vulkan surface hangs), so with a pathtracer a capture blocks unboundedly, and reading the state first turns that surprise into a choice."""
     state = {
         "renderer": "",
         "blocking": False,
@@ -410,12 +226,7 @@ def viewport_state(viewer=None) -> dict:
         state["renderer"] = str(viewer.currentHydraRenderer())
         state["readable"] = True
     except Exception as exc:                             # noqa: BLE001
-        # An OBJ viewport is not Hydra-based, so this raises there -
-        # which is the ordinary case, not a warning sign. Blocking on
-        # an unreadable renderer stopped every OBJ capture, so the rule
-        # is: only stand in the way of a delegate we POSITIVELY
-        # recognise as a renderer.
-        state["error"] = str(exc)
+        state["error"] = str(exc)  # an OBJ viewport is not Hydra-based, so this raises there - the ordinary case; only stand in the way of a delegate POSITIVELY recognised as a renderer
     state["blocking"] = (
         state["readable"] and not delegate_is_fast(state["renderer"]))
     try:
@@ -425,41 +236,13 @@ def viewport_state(viewer=None) -> dict:
     return state
 
 
-# ------------------------------------------------------------- capture
 
 class CaptureRefused(Exception):
-    """The capture did not happen, WITH the reason.
-
-    Never a bare False: "no thumbnail appeared" and "the capture failed"
-    must not look the same to a caller, which is the failure shape this
-    project keeps rediscovering.
-    """
+    """The capture did not happen, WITH the reason - never a bare False: a missing thumbnail and a failed capture must not look the same to a caller."""
 
 
 def _looks_blank(png_path: str) -> bool:
-    """True when the image carries no picture worth keeping.
-
-    A capture taken before the viewport has drawn returns a single flat
-    colour, and storing that is worse than storing nothing: it looks
-    like the feature worked and it hides the scene behind a grey square
-    forever. Sampled rather than scanned - a 1024px PNG has a million
-    pixels and this runs on the UI thread.
-
-    BLANK MEANS ONE COLOUR. The threshold used to be "more than two",
-    which refused real frames: Houdini's shipped default scheme is flat
-    black (3DSceneColors sets BackgroundBottomColor to @BackgroundColor),
-    so a wireframe, flat-shaded or silhouette view samples exactly two.
-    A sphere filling 60% of the frame was called blank, the user was
-    told the viewport "had probably not finished drawing" - advice that
-    can never work - and a deliberate frame could never replace an older
-    one.
-
-    The check is deliberately weak in the other direction and cannot be
-    strong: on a GRADIENT background scheme an empty viewport already
-    samples many colours, so "nothing was drawn" is not detectable that
-    way at all. Catching the flat case is the whole of what this can
-    honestly do.
-    """
+    """True when the image carries no picture worth keeping - a capture taken before the viewport drew is a single flat colour, and storing it hides the scene behind a grey square forever. BLANK MEANS ONE COLOUR (a more-than-two threshold refused real frames: Houdini's default scheme is flat black, so a wireframe view samples exactly two), sampled not scanned, and deliberately weak the other way - a gradient background already samples many colours, so the flat case is all this can honestly catch."""
     try:
         from PySide6 import QtGui
         image = QtGui.QImage(png_path)
@@ -480,30 +263,7 @@ def _looks_blank(png_path: str) -> bool:
 
 
 def capture_thumbnail(hip_path: str, viewer=None) -> str:
-    """Capture the CURRENT scene view as this scene's thumbnail.
-
-    Returns the PNG path. Raises CaptureRefused with a readable reason -
-    the caller must always be able to tell the user WHY nothing
-    happened.
-
-    Uses husd.assetutils.saveThumbnailFromViewer, which SideFX ship
-    identically in 21.0.790 and 22.0.394. Two arguments matter:
-
-    - croptocamera=False. Cropping to the camera scales that crop into
-      whatever resolution is asked for, so any mismatch between the
-      request and the CAMERA's aperture distorts the image - SideFX's
-      own res=(256, 256) default stretches every non-square camera.
-      Capturing the whole viewport at its native aspect sidesteps the
-      distortion entirely, needs no camera at all (most scenes here are
-      OBJ-level and have none), and is what a scene view actually looks
-      like. The tiles keep aspect and fill the background, so a
-      non-square image is not a problem to solve.
-    - res = the viewport's own pixel size, capped. Native aspect, no
-      stretching.
-
-    GUI ONLY: hou.ui does not exist headless, so this cannot run in
-    hython. That is inherent - there is no viewport to capture.
-    """
+    """Capture the CURRENT scene view as this scene's thumbnail and return the PNG path; raises CaptureRefused with a readable reason. Uses `husd.assetutils.saveThumbnailFromViewer` (identical in 21.0.790 and 22.0.394) with croptocamera=False - cropping scales into the requested resolution, so any camera-aperture mismatch distorts, while the whole viewport at native aspect needs no camera at all - and res = the viewport's own pixels, capped. GUI ONLY: there is no viewport headless."""
     if not hip_path:
         raise CaptureRefused("No scene file was given.")
     try:
@@ -514,13 +274,7 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
             "This Houdini has no husd.assetutils (%s), so the viewport "
             "cannot be captured." % exc)
     try:
-        # Resolved by the CALLER when there is one. Resolving again here
-        # meant the guard and the shot could land on different
-        # viewports: rung one is "under the cursor", so moving the mouse
-        # between the two calls was enough - the guard cleared on the GL
-        # viewport and the flipbook then ran on the Karma one, which is
-        # exactly the unbounded block the guard exists to prevent.
-        if viewer is None:
+        if viewer is None:  # resolved by the CALLER when there is one: resolving again here let the guard clear on the GL viewport and the flipbook run on the Karma one, because rung one is "under the cursor" and the mouse moved between the calls
             viewer = scene_viewer()
     except Exception as exc:                             # noqa: BLE001
         raise CaptureRefused(
@@ -543,14 +297,7 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
         scale = MAX_THUMB_EDGE / float(longest)
         width, height = int(width * scale), int(height * scale)
 
-    # WHICH DELEGATE, and HOW LONG. The flipbook asks the viewport's
-    # Hydra delegate for a frame, so the capture costs whatever that
-    # delegate costs - and a pathtracer's frame has no upper bound.
-    # Recorded BEFORE the call, because a record written only on
-    # completion cannot distinguish "the user clicked late" from "the
-    # capture blocked", which is exactly what the first report of this
-    # could not answer.
-    renderer = "unknown"
+    renderer = "unknown"  # WHICH delegate and HOW LONG, recorded BEFORE the call: a record written only on completion cannot distinguish "the user clicked late" from "the capture blocked"
     try:
         renderer = str(viewer.currentHydraRenderer())
     except Exception as exc:                             # noqa: BLE001
@@ -577,13 +324,7 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
             "Houdini could not write the thumbnail: %s: %s"
             % (type(exc).__name__, exc))
     if not os.path.isfile(scratch):
-        # WHY, not just THAT. This fired from a Copernicus session and
-        # the message named only the missing path, which sent the
-        # diagnosis down a wrong road (a refusal that blocked a
-        # perfectly capturable viewport). Record everything cheap that
-        # could distinguish the causes, so the next occurrence is
-        # readable from the log alone.
-        detail = {"scratch": scratch, "context": viewer_context(viewer)}
+        detail = {"scratch": scratch, "context": viewer_context(viewer)}  # WHY, not just THAT: this fired from a Copernicus session naming only the missing path, which sent the diagnosis down a wrong road - record everything cheap that could tell the causes apart
         try:
             detail["frame"] = hou.frame()
         except Exception:                                # noqa: BLE001
@@ -617,25 +358,15 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
         _discard(scratch)
         raise CaptureRefused(
             "The thumbnail could not be put in place: %s" % exc)
-    # Sweep any orphan left by an earlier scratch scheme, so a machine
-    # upgrading into this code does not keep one forever: `.prev` from
-    # the move-aside version, `.png.new` from the extension-breaking one,
-    # and the FIXED `.capturing` name this replaced - a session killed
-    # mid-capture under that scheme left exactly one, and now that the
-    # name is unique nothing else would ever come back for it.
-    _discard(out + ".prev")
+    _discard(out + ".prev")  # sweep orphans of earlier scratch schemes (.prev from move-aside, .png.new from the extension-breaking one, the FIXED .capturing name) so an upgrading machine does not keep one forever
     _discard(out + ".new")
     _discard(_legacy_capture_scratch(out))
     _record_manifest(hip_path, out)
     debug.event("hip", "thumbnail captured", file=hip_path, png=out,
                 res=(width, height), renderer=renderer,
                 seconds=round(time.time() - started, 2))
-    # Tell every live model the file changed. Without this the capture
-    # succeeds and the tile keeps showing the old picture, because the
-    # engine is serving a decoded copy from memory - which is what the
-    # shelf tool did on its first outing.
     try:
-        signals.captured.emit(hip_path)
+        signals.captured.emit(hip_path)  # tell every live model the file changed - the engine serves a decoded copy from memory, and without this the capture succeeds while the tile keeps the old picture
     except Exception as exc:                             # noqa: BLE001
         debug.event("hip", "could not announce the capture",
                     error=str(exc), file=hip_path)
@@ -643,43 +374,20 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
 
 
 def _capture_scratch(out: str) -> str:
-    """The name Houdini writes a capture to before it is put in place.
-
-    Three rules, each got wrong once. It is a function so a headless
-    test can pin them; `capture_thumbnail` needs a live scene viewer.
-
-    - Write ASIDE and replace. Never move the existing thumbnail out of
-      the way first, or a crash mid-flipbook orphans the only copy.
-    - The suffix goes BEFORE the extension. Houdini picks the format
-      from the extension, so `out + ".new"` writes PIC2, which QImage
-      reads as a blank frame. ▸r/image-extension
-    - The name must be UNIQUE. `out` derives from the hip path, so a
-      fixed scratch is one buffer shared by every session capturing that
-      scene. ▸r/atomic-writes
-
-    `create=False`, unlike every other caller: Houdini writes this file,
-    which keeps `not os.path.isfile(scratch)` meaning "Houdini wrote
-    nothing".
-    """
+    """The name Houdini writes a capture to before it is put in place - three rules, each got wrong once, a function so a headless test can pin them: write ASIDE and replace (never move the live thumbnail first), the suffix goes BEFORE the extension (Houdini picks the format from it - ▸r/image-extension), and the name must be UNIQUE (▸r/atomic-writes). `create=False`, so `not os.path.isfile(scratch)` keeps meaning that Houdini wrote nothing."""
     root, ext = os.path.splitext(out)
     return hostos.unique_scratch(out, suffix=".capturing" + (ext or ".png"),
                                  create=False)
 
 
 def _legacy_capture_scratch(out: str) -> str:
-    """The FIXED name this used before the unique one, so a machine
-    upgrading into this code can be swept clean of the single leftover a
-    session killed mid-capture left behind. Nothing else would ever come
-    back for it now that the live name is unique."""
+    """The FIXED name this used before the unique one, so an upgrading machine can be swept clean of the single leftover a mid-capture death left - nothing else would ever come back for it."""
     root, ext = os.path.splitext(out)
     return root + ".capturing" + (ext or ".png")
 
 
 def _discard(path: str) -> None:
-    """Remove a scratch file, saying why if it will not go.
-
-    Replaces the old _restore(): with the write-aside shape there is
-    nothing to restore, because the live thumbnail is never moved."""
+    """Remove a scratch file, saying why if it will not go - with the write-aside shape there is nothing to restore, because the live thumbnail is never moved."""
     try:
         if os.path.isfile(path):
             os.remove(path)
@@ -689,22 +397,7 @@ def _discard(path: str) -> None:
 
 
 def capture_open_scene(target: str = "") -> str:
-    """Capture the open scene as its thumbnail. THE decision path.
-
-    Every refusal this feature can make lives here, so the panel button
-    and the shelf tool cannot drift apart - the button used to hold the
-    checks, the dialog and the refresh inline, which meant a second
-    caller would have been a second copy of the policy.
-
-    Callers do the reporting: this raises CaptureRefused with a
-    readable reason and never touches hou.ui, which is also what keeps
-    it testable headlessly.
-
-    `target` empty (the shelf tool) means "whatever is open" - there is
-    no tile to disagree with, so no mismatch is possible. `target` given
-    (the tile menu) must MATCH what is open, or the capture would be
-    filed under the wrong name.
-    """
+    """Capture the open scene as its thumbnail - THE decision path, every refusal this feature can make in one place so the panel button and the shelf tool cannot drift; raises CaptureRefused and never touches hou.ui, which keeps it headlessly testable. `target` empty (the shelf tool) means whatever is open; given (the tile menu) it must MATCH what is open, or the capture files under the wrong name."""
     opened = current_scene_path()
     if not target:
         if not opened:
@@ -712,35 +405,21 @@ def capture_open_scene(target: str = "") -> str:
                 "No scene is open, so there is nothing to capture.")
         target = opened
     elif target != opened:
-        # Say what is actually true. The old wording claimed the
-        # viewport was showing a different scene even when it was
-        # showing exactly this one and Amaze simply had not opened it -
-        # a message that contradicted the screen.
-        debug.event("hip", "capture refused - a different scene is open",
+        debug.event("hip", "capture refused - a different scene is open",  # say what is TRUE: the old wording claimed the viewport showed a different scene even when it showed exactly this one and Amaze simply had not opened it
                     wanted=target, open=opened)
         raise CaptureRefused(
             "Houdini has a different scene open, so the capture would "
             "be filed under the wrong name.\n\n"
             "Open this scene first.")
 
-    # An unsaved scene has a path that does not exist. Capturing it
-    # wrote a PNG no tile can ever show and added a manifest entry for
-    # a nonexistent file - and because the path is derived from the cwd,
-    # every later unsaved session in that directory overwrote the same
-    # slot.
-    if not os.path.isfile(target):
+    if not os.path.isfile(target):  # an unsaved scene has a path that does not exist - capturing it wrote a PNG no tile can show, and the cwd-derived path made every later unsaved session overwrite the same slot
         debug.event("hip", "capture refused - the scene is not on disk",
                     file=target)
         raise CaptureRefused(
             "This scene has not been saved yet, so there is nothing to "
             "file a thumbnail against.\n\nSave the scene first.")
 
-    # Look at the viewport BEFORE asking it for a frame. Houdini has no
-    # call that copies the displayed image - every route renders - so
-    # with a pathtracing delegate the capture blocks for as long as that
-    # render takes. Reading the state first turns an unbounded surprise
-    # into a choice.
-    viewer = scene_viewer()
+    viewer = scene_viewer()  # look at the viewport BEFORE asking it for a frame - every route renders, so a pathtracing delegate blocks for as long as that render takes
 
     state = viewport_state(viewer)
     if state.get("blocking"):
@@ -749,46 +428,23 @@ def capture_open_scene(target: str = "") -> str:
                     error=state.get("error", ""))
         message = "Please stop the viewport render before capturing."
         if debug.is_on():
-            # Debug Mode only. In normal use naming the renderer tells
-            # the user what they already chose; when diagnosing, it is
-            # the whole point.
-            message += "\n\nDetected: %s" % (
+            message += "\n\nDetected: %s" % (  # Debug Mode only: in normal use naming the renderer tells the user what they chose; when diagnosing, it is the whole point
                 state.get("renderer") or "unreadable")
         raise CaptureRefused(message)
     return capture_thumbnail(target, viewer)
 
 
 class _HipSignals(QtCore.QObject):
-    """Relay for "a capture landed", so a capture from ANYWHERE repaints
-    the tile.
-
-    The shelf tool captured correctly and the tile did not change: the
-    file on disk was replaced, but the engine keeps a decoded copy in
-    memory and nothing told it otherwise. The panel button had always
-    done that itself, right after its own call - which is exactly the
-    shape that breaks the moment a second caller exists. The refresh is
-    the CAPTURE's business, not the button's.
-    """
+    """Relay announcing a landed capture, so a capture from ANYWHERE repaints the tile - the refresh is the CAPTURE's business, not the button's, which is the shape that broke the moment a second caller (the shelf tool) existed."""
 
     captured = QtCore.Signal(object)     # the scene path, replaced
 
 
-# Reload-stable, the documented idiom: a module-level object rebuilt by
-# `importlib.reload` would strand every connection made by the previous
-# load, and the panel reloads its modules on every reopen.
-#: Bumped whenever a signal is ADDED, REMOVED or changes arity. The
-#: guard below compares it, because `hasattr` only proves a name is
-#: present: changing `captured` to take two arguments left the old
-#: one-argument relay in place for the rest of the session, `connect()`
-#: succeeded, and the emit then raised TypeError - which the caller
-#: swallows. Every tile would silently stop repainting, which is the
-#: exact bug the relay was added to fix.
-_RELAY_VERSION = 1
+_RELAY_VERSION = 1  # bumped whenever a signal is ADDED, REMOVED or changes arity: `hasattr` only proves a name present, and an old-arity relay left in place makes connect() succeed and the emit raise a swallowed TypeError - every tile silently stops repainting
 
-signals = globals().get("signals")
+signals = globals().get("signals")  # reload-stable, the documented idiom: a module-level object rebuilt by importlib.reload would strand every connection made by the previous load
 if signals is None or getattr(signals, "version", None) != _RELAY_VERSION:
     signals = _HipSignals()
     signals.version = _RELAY_VERSION
 
 
-# -------------------------------------------------------------- models

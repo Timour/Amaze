@@ -204,7 +204,7 @@ class GradientLibrary(library.AssetLibrary):
         }
 
     def note_uid(self, row: int) -> str:
-        """A palette's identity - its record id, the same key its Comments page and tile icon use."""
+        """A palette's identity - its record id, the same key its Comments page and tile icon are filed under; the identity tests (minted once, stable across reloads, legacy keys still valid) pin that guarantee through this row-spelling, which is its reason to stay."""
         if not 0 <= row < len(self._assets):
             return ""
         return str(self._assets[row].mat_id)

@@ -1,44 +1,10 @@
-"""The notes store: a notebook page per asset, in the library.
-
-One notes.json beside the index, keyed `<section>:<asset id>` for the
-asset sections and `file:<path>` for File rows.
-
-A note is `{"items": [...]}` - an ORDERED flow of
-`{"t": "text", "text": str}` and `{"t": "todo", "label": str,
-"done": bool}`, so text sits above, below and between the to-do frames.
-The older `{"text", "todos"}` shape converts on read. Writing an EMPTY
-page removes the key: that is how a note is deleted.
-
-An ADAPTER over the Keyed Store Engine. It owns the note's SHAPE - what
-a page is, how a key is spelled, the words the user reads - and nothing
-else. ▸p/store-guards
-
-A File key is the RAW `os.path.join`, NOT canonicalised, so it does not
-travel between operating systems. Canonicalising would orphan every
-entry written before the 2026-07-31 merge.
-"""
+"""The notes store: a notebook page per asset, in the library - one notes.json beside the index, keyed `<section>:<asset id>` for the asset sections and `file:<path>` for File rows. A note is `{"items": [...]}`, an ORDERED flow of `{"t": "text", "text": str}` and `{"t": "todo", "label": str, "done": bool}` (the older `{"text", "todos"}` shape converts on read); writing an EMPTY page removes the key, which is how a note is deleted. An ADAPTER over the Keyed Store Engine: it owns the note's SHAPE and nothing else (▸p/store-guards). A File key is the RAW `os.path.join`, NOT canonicalised - canonicalising would orphan every entry written before the 2026-07-31 merge."""
 
 from __future__ import annotations
 
 from amaze.core import keyed_store
 
 NOTES_FILE = "notes.json"
-
-# NOTE_YELLOW ("#fffc66") lived here, described as the colour the
-# Notes icon, the + button and the tile badge all carry. None of them
-# did any more: the note art is blue, and both places that once keyed
-# on the yellow now carry a comment saying it matched nothing. A
-# constant nothing reads still reads as the rule.
-
-#: The prefix a File row's key carries. Named here rather than spelled
-#: at the two call sites, because the engine needs it to tell a path
-#: key from an asset id inside one mixed file.
-#: RETIRED 2026-08-10. This named the `file:` key prefix so it would
-#: not be spelled at the call sites - and nothing ever read it, while
-#: the value that does the work is the literal `path_prefix="file:"` in
-#: the keyed-store registry, which is also spelled differently. A
-#: constant nobody reads cannot keep anything in step; it can only
-#: disagree. The registry entry is the one home.
 
 
 def note_key(section: str, ident) -> str:
@@ -47,16 +13,12 @@ def note_key(section: str, ident) -> str:
 
 
 def normalise(value) -> dict:
-    """A well-formed page, or {} for junk/empty. Tolerant on purpose:
-    a hand-edited or older-build entry keeps whatever parts parse -
-    including the first build's {"text", "todos"} shape, which becomes
-    text-then-todos in the flow."""
+    """A well-formed page, or {} for junk/empty - tolerant on purpose: a hand-edited or older-build entry keeps whatever parts parse, including the first build's `{"text", "todos"}` shape, which becomes text-then-todos in the flow."""
     if not isinstance(value, dict):
         return {}
     raw_items = value.get("items", None)
     if not isinstance(raw_items, list):
-        # The first build's shape: one text block, then the list.
-        raw_items = []
+        raw_items = []  # the first build's shape: one text block, then the todo list
         text = value.get("text", "")
         if isinstance(text, str) and text.strip():
             raw_items.append({"t": "text", "text": text})
@@ -84,20 +46,13 @@ def normalise(value) -> dict:
                 items.append({"t": "text", "text": text})
     if not items:
         return {}
-    # Unknown page-level fields ride along (a newer build's addition);
-    # "text" and "todos" do not - they were CONSUMED into items above,
-    # and carrying them too would duplicate the page on the next read.
-    page = {k: v for k, v in value.items()
+    page = {k: v for k, v in value.items()  # unknown page-level fields ride along (a newer build's addition); "text" and "todos" do not - they were CONSUMED into items above, and carrying them too would duplicate the page on the next read
             if k not in ("items", "text", "todos")}
     page["items"] = items
     return page
 
 
-#: The engine DECLARES this store (filename, payload, keyspace, the
-#: words the user reads); this attaches the one thing it cannot know -
-#: what a well-formed page is. Declared centrally so Repair and the
-#: library audit can enumerate the side tables without importing Qt.
-SPEC = keyed_store.bind(NOTES_FILE, normalise)
+SPEC = keyed_store.bind(NOTES_FILE, normalise)  # the engine DECLARES this store; this attaches the one thing it cannot know - what a well-formed page is
 
 
 def _store(preferences):
@@ -105,13 +60,7 @@ def _store(preferences):
 
 
 def notes(preferences) -> dict:
-    """Every note in this library, keyed by note_key() - a COPY.
-
-    It used to be the live cache, and a caller holding that could
-    mutate the table without writing anything: a refused save still lit
-    the tile's comment badge, and a later pass read the phantom back
-    and wrote its text a second time.
-    """
+    """Every note in this library, keyed by note_key() - a COPY, because a caller holding the live cache could mutate the table without writing anything."""
     return _store(preferences).all()
 
 
@@ -121,42 +70,21 @@ def note_for(preferences, key: str) -> dict:
 
 
 def has_note(preferences, key: str) -> bool:
-    """Whether this asset carries anything - the tile badge's question,
-    asked per tile per repaint. A membership test, no copy."""
+    """Whether this asset carries anything - the tile badge's question, asked per tile per repaint; a membership test, no copy."""
     return _store(preferences).has(key)
 
 
 def set_note(preferences, key: str, items: list) -> bool:
-    """Store one asset's page (an ordered item flow); an empty page
-    removes the key. Returns whether the write actually happened - a
-    read-only library must not take notes it will lose at restart.
-
-    THE REPORTING IS THE ENGINE'S. A `written()` beside this one used
-    to note the refusal and alert on a denial, and `tile_icons` had the
-    same ten lines with two words changed - while the other two stores
-    had none at all. Both halves are now where the engine's other two
-    failure reports already lived: the words on the store's Spec
-    (`denied_alert`), the policy in `_commit`. That also ended a
-    duplicate report - `_commit` already noted the refusal sentence,
-    and this noted the same string a second time, which `debug.note`
-    prints rather than deduplicates.
-    """
+    """Store one asset's page (an ordered item flow); an empty page removes the key. Returns whether the write actually happened - a read-only library must not take notes it will lose at restart. The failure reporting is the ENGINE's: the words on the store's Spec (`denied_alert`), the policy in `_commit`."""
     return bool(_store(preferences).set(key, {"items": items}))
 
 
 def set_notes(preferences, pages: dict):
-    """Store MANY pages in one write - `{key: items}`.
-
-    A sweep calling `set_note` per key rewrites `notes.json` once per
-    key and rotates a snapshot each time, so 39 gradients carrying an
-    old note pushed the restore tier's real history out with 39 copies
-    of the same minute. The engine already had the batched shape
-    (`keyed_store.update`); this exposes it.
-    """
+    """Store MANY pages in one write, `{key: items}` - a sweep calling `set_note` per key rotates a snapshot per key and pushes the restore tier's real history out with copies of the same minute; the engine already had the batched shape (`keyed_store.update`) and this exposes it."""
     return _store(preferences).update(
         {key: {"items": items} for key, items in (pages or {}).items()})
 
 
 def forget_notes() -> None:
-    """Drop the cache - a library switch or a test needs a re-read."""
+    """Drop the cache - a test seam like its keyed-store siblings; the product's library switch drops every table through `keyed_store.release()` at the switch door."""
     keyed_store.release()
