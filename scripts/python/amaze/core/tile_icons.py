@@ -1,30 +1,4 @@
-"""Tile icons: a chosen symbol on a chosen colour, for anything that
-has no picture to show.
-
-A LOP setup, a DOP network, a snippet - plenty of assets simply cannot
-be rendered, and a grid of identical fallback tiles tells the user
-nothing. This lets any tile carry a Feather icon on a background colour
-instead, chosen per asset.
-
-**The geometry comes from the design template**, not from taste:
-ui/icon_template.svg draws a 512x512 background with the icon's 24-unit
-grid placed at `translate(106, 106) scale(12.5)` and a stroke of 0.8
-grid units. That renders the icon's ink at **250px** across (Feather
-draws on a 24 grid with 2 units of padding, so 20 units x 12.5 = 250)
-with a **10px** stroke, centred. The numbers were read off the template
-by measuring its clipboard against Feather's own clipboard.svg, and are
-reproduced here so every one of the 287 icons lands identically.
-
-STROKE_UNITS is the one number that is a look rather than a
-measurement: 0.8 is the template's thin stroke, and Feather's own
-default is 2.0 (a much bolder 25px). One constant, either way.
-
-The composed image is written as a normal PNG into the library's image
-directory, so the thumbnail engine, the LRU cache, list mode and drag
-previews all keep working with no special case. It is written BESIDE
-the rendered thumbnail (`<id>_icon.png`), never over it: clearing the
-icon must bring a real render back, and an overwrite cannot be undone.
-"""
+"""Tile icons: a chosen Feather symbol on a chosen background colour for any tile with no picture to render - composed from ui/icon_template.svg's measured geometry (24-unit grid at scale 12.5 on a 512 canvas = 250px ink, 0.8-grid-unit stroke) and written as a normal PNG BESIDE the rendered thumbnail (`<id>_icon.png`, never over it), so the thumbnail engine, LRU cache, list mode and drag previews need no special case and clearing an icon brings the render back."""
 
 from __future__ import annotations
 
@@ -37,32 +11,16 @@ from PySide6 import QtCore, QtGui, QtSvg
 from amaze.core import debug, keyed_store
 from amaze.helpers import hostos
 
-#: Where the icon set lives, relative to the package.
 ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), "ui", "feather")
+    os.path.abspath(__file__))), "ui", "feather")  # the icon set, relative to the package
 
-#: Straight from the template: the 24-unit icon grid is drawn at this
-#: scale on a 512 canvas with a stroke this many grid units wide. The
-#: template's translate(106,106) is NOT a constant here - it is
-#: "centre the grid", derived per icon so a fitted one stays centred.
-#: Change these and every existing tile silently re-renders
-#: differently, so they are constants, not preferences.
 CANVAS = 512
-ICON_SCALE = 12.5
-STROKE_UNITS = 0.8
-#: Feather's own default weight, the other half of the Look preference.
-FEATHER_STROKE_UNITS = 2.0
-#: The rule the numbers above exist to satisfy: no icon's ink may span
-#: more than this on a 512 tile. Asserted by the tests against rendered
-#: pixels, so an edit that breaks the design intent fails loudly.
-INK_SPAN = 250.0      # Feather's 20 drawn units at ICON_SCALE
+ICON_SCALE = 12.5  # straight from the template - change these and every existing tile silently re-renders differently, so they are constants, not preferences
+STROKE_UNITS = 0.8  # the template's thin stroke - the one number that is a LOOK rather than a measurement
+FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other half of the Look preference
+INK_SPAN = 250.0      # the rule the numbers above satisfy: no icon's ink past this on a 512 tile, asserted by the tests against rendered pixels (Feather's 20 drawn units at ICON_SCALE)
 
-#: The two ink colours, chosen per tile (the dialog's "Icon color").
-#: Stored as a TOKEN rather than a hex value so re-tuning either one
-#: re-renders every tile that uses it, instead of leaving a library
-#: full of the old literal. The template drew near-black; light exists
-#: for dark backgrounds, where dark ink is invisible.
-INKS = {
+INKS = {  # ink colours stored as TOKENS, not hex: re-tuning either one re-renders every tile that uses it instead of stranding the old literal; light exists for dark backgrounds
     "dark": "#262626",
     "light": "#d0ced0",
 }
@@ -73,34 +31,15 @@ def ink_colour(token: str) -> str:
     """Hex for an ink token, falling back to dark for anything odd."""
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
-#: Four presets plus Custom, which opens the colour picker. These
-#: values are deliberately provisional - a palette can only be judged
-#: against real tiles at real sizes, so they are placed to be tuned.
-PRESETS = (
+PRESETS = (  # four presets plus Custom (the colour picker); deliberately provisional - a palette is only judged against real tiles at real sizes, so these are placed to be tuned
     ("Salmon", "#ef8878"),
     ("Mint", "#4af2a1"),
     ("Sky", "#5cc9f5"),
     ("Sand", "#e2b148"),
 )
 
-#: (name, bg, size, stroke) -> QImage, so a grid of tiles renders each
-#: distinct icon once.
-#:
-#: Capped in BYTES, not entries. A 240-entry cap sounds bounded until
-#: you multiply it by the tile size the user picked: measured ceilings
-#: were 63MB at rendersize 256, 252MB at 512 and 1007MB at 1024 - the
-#: comment here used to say the bound prevented "a gigabyte", and at
-#: 1024 it WAS a gigabyte, entirely outside the RAM budget the
-#: thumbnail engine honours.
-#:
-#: LRU, not FIFO: eviction popped the oldest INSERTED entry with no
-#: reordering on hit, so past the cap the hottest icons were thrown out
-#: first and every repaint re-composed them (0.38ms at 256, 1.37ms at
-#: 1024, per tile).
-_COMPOSED_MAX_BYTES = 64 * 1024 * 1024
-#: Kept as a ceiling on COUNT too - a library of tiny icons should not
-#: grow an unbounded dict just because it fits in the byte budget.
-_COMPOSED_MAX = 240
+_COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024 - "a gigabyte" was literal
+_COMPOSED_MAX = 240  # a COUNT ceiling too - tiny icons must not grow an unbounded dict inside the byte budget; LRU not FIFO, because insertion-order eviction threw the hottest icons first and every repaint re-composed them (0.38ms at 256, 1.37ms at 1024, per tile)
 _composed: "OrderedDict" = OrderedDict()
 _composed_bytes = 0
 
@@ -134,9 +73,7 @@ def icon_path(name: str) -> str:
 
 
 def _icon_body(name: str) -> str:
-    """The drawing commands inside a Feather SVG, without its own <svg>
-    wrapper - the wrapper carries a 24px size and a 2-unit stroke that
-    this module replaces with the template's."""
+    """The drawing commands inside a Feather SVG, without its own wrapper - the wrapper's 24px size and 2-unit stroke are what this module replaces with the template's."""
     try:
         with open(icon_path(name), encoding="utf-8") as handle:
             text = handle.read()
@@ -147,14 +84,7 @@ def _icon_body(name: str) -> str:
 
 
 def _ink_span_px(body: str, scale: float, stroke: float) -> float:
-    """How wide this icon actually draws, in pixels, at a given scale -
-    its PATH extent, with the stroke's own width taken back off.
-
-    Measured by rendering, because an SVG path's bounding box is not
-    something you can read off the file. Feather's grid says every icon
-    spans 20 units, and most do; the "-off" variants slash corner to
-    corner and span 22, which is how they broke the 250px rule while
-    every other icon obeyed it."""
+    """How wide this icon actually draws in pixels at a given scale - its PATH extent with the stroke taken back off, measured by rendering because a path's bounding box is not in the file; Feather spans 20 units except the "-off" variants' corner-to-corner 22 (research.md ▸ Qt image measurement)."""
     svg = (
         '<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">'
         '<g transform="translate(%s %s) scale(%s)" fill="none" '
@@ -172,11 +102,7 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
     painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
     renderer.render(painter)
     painter.end()
-    # createAlphaMask, NOT createMaskFromColor: the latter's polarity
-    # goes the other way and returns the whole canvas as "ink", which
-    # silently shrank every icon to half size. Verified against an
-    # exhaustive alpha scan - same rect, to the pixel.
-    box = QtGui.QRegion(
+    box = QtGui.QRegion(  # createAlphaMask, NOT createMaskFromColor - the other polarity returns the whole canvas as "ink" and silently halves every icon; verified against an exhaustive alpha scan (research.md ▸ Qt image measurement)
         QtGui.QBitmap.fromImage(image.createAlphaMask())
     ).boundingRect()
     if box.isEmpty():
@@ -185,10 +111,7 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
 
 
 def _fit(name: str, stroke_units: float):
-    """(scale, stroke) for this icon: the template's, reduced only if
-    its ink would otherwise exceed INK_SPAN. The stroke is divided by
-    the same factor so it still renders at its chosen pixel width - the
-    icons that shrink must not also thin out."""
+    """(scale, stroke) for this icon: the template's, reduced only if its ink would exceed INK_SPAN - the stroke divided by the same factor so shrunk icons keep their chosen pixel weight rather than thinning out."""
     key = (name, float(stroke_units))
     cached = _fits.get(key)
     if cached is not None:
@@ -206,17 +129,12 @@ def _fit(name: str, stroke_units: float):
 
 def compose_svg(name: str, background: str, stroke_units: float = 0.0,
                 ink: str = DEFAULT_INK) -> str:
-    """The template, rebuilt around one icon. Kept as SVG text rather
-    than painted by hand because that is what the template IS - the
-    same document, with the symbol swapped."""
+    """The template, rebuilt around one icon - kept as SVG text rather than painted by hand because that is what the template IS: the same document with the symbol swapped."""
     body = _icon_body(name)
     if not body:
         return ""
     scale, stroke = _fit(name, stroke_units or STROKE_UNITS)
-    # The template's 106 offset IS "centre the 24-unit grid": half the
-    # canvas, back off half the grid. Written that way so a fitted icon
-    # stays centred without a second constant to keep in step.
-    offset = CANVAS / 2.0 - 12.0 * scale
+    offset = CANVAS / 2.0 - 12.0 * scale  # the template's 106 IS "centre the 24-unit grid": half the canvas back off half the grid, derived so a fitted icon stays centred without a second constant
     return (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<svg viewBox="0 0 %d %d" xmlns="http://www.w3.org/2000/svg">\n'
@@ -269,27 +187,12 @@ def compose(name: str, background: str, size: int = CANVAS,
 
 def write(path: str, name: str, background: str, size: int = CANVAS,
           stroke_units: float = 0.0, ink: str = DEFAULT_INK) -> bool:
-    """Compose and save. False (recorded in the debug log) on any
-    failure - a tile icon is a nicety, never a reason a save fails."""
+    """Compose and save; False (recorded in the debug log) on any failure - a tile icon is a nicety, never a reason a save fails."""
     image = compose(name, background, size, stroke_units, ink)
     if image is None:
-        # note vs event for this file: an unknown icon name and a failed
-        # icon delete are internal - the tile keeps the icon it had - so
-        # those are events. The refusal in _write_overrides is
-        # work-affecting (the user's choice is not stored), so it stays
-        # visible as a note.
-        debug.event("icons", "no such tile icon", icon=name)
+        debug.event("icons", "no such tile icon", icon=name)  # internal failures (unknown icon, failed delete) log as events because the tile keeps the icon it had; the user-visible refusal of a store write is the keyed-store engine's report (Spec.denied_alert)
         return False
-    # ONE REPORT FOR TWO FAILURES, and each says only what it knows.
-    # These were two copies of the same four lines, both ending "check
-    # the library folder is reachable and not read-only" - two causes
-    # guessed at once, and the second names the wrong object: measured
-    # 2026-08-10, a read-only FILE does not stop a write here, because
-    # rename asks the DIRECTORY (research.md ▸ WHAT A FAILED WRITE
-    # ACTUALLY RAISES). The OSError path has an errno and can say which
-    # it was; Qt's `save` just answers False, so that one claims no
-    # cause rather than inventing the same pair.
-    why = ""
+    why = ""  # one report for two failures, each saying only what it knows: the OSError path carries an errno (research.md ▸ {#r/failed-write} - a read-only FILE does not stop a write, rename asks the DIRECTORY); Qt's save answers a bare False, so that one claims no cause
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         if not image.save(path, "PNG"):
@@ -312,19 +215,12 @@ def write(path: str, name: str, background: str, size: int = CANVAS,
 
 
 def is_valid_colour(value: str) -> bool:
-    """A colour the composer can actually use. Checked before storing,
-    because a bad value would otherwise reach every future compose()."""
+    """A colour the composer can actually use - checked before storing, because a bad value would otherwise reach every future compose()."""
     return bool(value) and QtGui.QColor.isValidColorName(str(value))
 
 
 def normalise(spec) -> dict:
-    """A stored icon choice, cleaned up: {"name", "bg", "ink"} or {}.
-
-    Anything unusable becomes {} rather than raising - this reads data
-    that a user (or a future version) may have written, and an odd
-    value should cost a fallback tile, not the whole grid. A choice
-    saved before ink existed simply gets the default, which is what it
-    was rendered with."""
+    """A stored icon choice cleaned to {"name", "bg", "ink"} or {} - anything unusable costs a fallback tile rather than the grid (this reads data a user or a future version may have written); a choice saved before ink existed gets the default it rendered with, and unknown fields ride along so a newer build's addition survives this build rewriting the entry."""
     if not isinstance(spec, dict):
         return {}
     name = str(spec.get("name", "") or "").strip()
@@ -336,8 +232,6 @@ def normalise(spec) -> dict:
     ink = str(spec.get("ink", "") or "").strip().lower()
     if ink not in INKS:
         ink = DEFAULT_INK
-    # Unknown fields ride along - a newer build's addition must survive
-    # this build rewriting the entry.
     record = {k: v for k, v in spec.items()
               if k not in ("name", "bg", "ink")}
     record.update({"name": name, "bg": background, "ink": ink})
@@ -345,12 +239,7 @@ def normalise(spec) -> dict:
 
 
 def stroke_for(preferences) -> float:
-    """The line weight to draw with, from Preferences - Look.
-
-    Two looks rather than a free number: the template's thin stroke,
-    and Feather's own default, which is what the icon set was drawn
-    for. Which one reads better is only obvious at tile size, so both
-    ship and the choice is the user's."""
+    """The line weight to draw with, from Preferences - Look: two looks rather than a free number (the template's thin stroke and Feather's own default), because which reads better is only obvious at tile size, so both ship and the choice is the user's."""
     try:
         weight = str(getattr(preferences, "icon_line_weight", "") or "")
     except Exception:                                       # noqa: BLE001
@@ -359,55 +248,21 @@ def stroke_for(preferences) -> float:
 
 
 def thumbnail_path(preferences, asset_id: str) -> str:
-    """`<library>/img/<id>.png` - the ONE composition of a library
-    thumbnail's path.
-
-    It was hand-concatenated in nine places in render/thumbs.py while
-    `MaterialLibrary.asset_files()` composed the same path with
-    os.path.join, and the two agree only while `preferences.dir` and
-    `img_dir` carry their trailing separator - enforced in exactly one
-    place, `refresh_data()` (prefs/persistence.py). The `dir` SETTER
-    does not
-    normalise, so any path that assigns it and renders before a save
-    produced `<parent>/libimg/<id>.png` from the concatenation while
-    asset_files(), Clean Library and tools/library-audit.py all looked
-    for `<lib>/img/<id>.png`: the render reported success, the tile
-    read Missing Thumbnail forever, and an unaccounted PNG was left
-    outside the library. Reproduced by assigning `prefs.dir` without a
-    separator; os.path.join is immune to the same input, which is why
-    the two disagreed rather than both being wrong.
-
-    Contained, like every other id-derived path: the id comes verbatim
-    out of library.json and nothing validates it on load.
-    """
+    """`<library>/img/<id>.png` - the ONE composition of a library thumbnail's path (nine hand-concatenations in render/thumbs.py once disagreed with `asset_files()` whenever `prefs.dir` was assigned without its trailing separator: the render reported success while every reader looked at `<lib>/img/` and the tile read Missing Thumbnail forever); contained, like every id-derived path, because the id comes verbatim out of library.json and nothing validates it on load."""
     return hostos.contained_join(
         os.path.join(preferences.dir, preferences.img_dir),
         str(asset_id) + preferences.img_ext)
 
 
 def icon_image_path(preferences, asset_id: str) -> str:
-    """Where a tile's composed icon lives: beside its thumbnail, with a
-    suffix, so the render underneath survives.
-
-    Composed exactly like `thumbnail_path` above, and for both of its
-    reasons. CONTAINED, because the id comes verbatim out of
-    library.json and nothing validates it on load - and this is the
-    path `render_for` WRITES and `clear_for` runs os.remove on, so a
-    concatenated one chose which file outside the library to create and
-    then delete. And through os.path.join, because the two forms
-    disagree whenever `preferences.dir` is assigned without a trailing
-    separator: the sibling resolved into `img/`, this one into
-    `<library>img/`.
-    """
+    """Where a tile's composed icon lives: beside its thumbnail with a suffix so the render underneath survives - composed exactly like `thumbnail_path` and for both of its reasons, and CONTAINED because this is the path `render_for` writes and `clear_for` runs os.remove on."""
     return hostos.contained_join(
         os.path.join(preferences.dir, preferences.img_dir),
         str(asset_id) + "_icon" + preferences.img_ext)
 
 
 def render_for(preferences, asset_id: str, spec) -> str:
-    """Compose an asset's icon onto disk and return the path, or "" if
-    there is no icon to make. Deleting the file when the icon is
-    cleared is the caller's job (it knows whether a render exists)."""
+    """Compose an asset's icon onto disk and return the path, or "" if there is no icon to make - deleting the file when the icon is cleared is the caller's job (it knows whether a render exists)."""
     spec = normalise(spec)
     if not spec:
         return ""
@@ -433,35 +288,17 @@ def clear_for(preferences, asset_id: str) -> None:
         debug.event("icons", "composed icon not removed", error=str(exc))
 
 
-# ---------------------------------------------------------------------
-# Where a choice is REMEMBERED
-#
-# Two kinds of tile, so two stores. A library asset (Materials, Nodes,
-# Code) has a record of its own, and the icon rides along in it - so it
-# travels with the library, survives a move, and is one more field in a
-# file that is already backed up. Images and Geometry are listings of
-# files on disk with no record anywhere, so their choices go in
-# icons.json beside the library index, keyed by absolute path.
-# ---------------------------------------------------------------------
-
 def forget_composed() -> None:
-    """Drop the composed-image caches - the LOOK changed (line weight),
-    so every remembered picture is now the wrong one."""
+    """Drop the composed-image caches - the LOOK changed (line weight), so every remembered picture is now the wrong one."""
     global _composed_bytes
     _composed.clear()
     _composed_bytes = 0
     _fits.clear()
 
 
-#: icons.json had NO absent-but-known guard of its own. It has one now
-#: without a line being written for it, because the guard is not
-#: something a store performs - it is what being declared IS. Measured
-#: on the real library 2026-08-03: icons.json is absent with no .bak
-#: tier of any kind, so the first icon ever picked was also the one
-#: write with no evidence behind it.
-OVERRIDES_FILE = "icons.json"
+OVERRIDES_FILE = "icons.json"  # declared into the keyed-store engine, which IS the absent-but-known guard the file never had of its own (measured 2026-08-03: absent with no .bak tier, so the first icon ever picked was the one write with no evidence behind it)
 
-SPEC = keyed_store.bind(OVERRIDES_FILE, normalise)
+SPEC = keyed_store.bind(OVERRIDES_FILE, normalise)  # the ONE home for EVERY tile's icon choice since schema 5 stripped the record's icon field: library assets key by asset id, File rows (no record of their own) by absolute path - so it travels with the library, and a clear here is the whole delete (library.py's set_override site says the same)
 
 
 def _store(preferences):
@@ -469,7 +306,7 @@ def _store(preferences):
 
 
 def overrides(preferences) -> dict:
-    """Every path-keyed icon choice in this library - a COPY."""
+    """Every icon choice in this library - a COPY."""
     return _store(preferences).all()
 
 
@@ -478,24 +315,10 @@ def override_for(preferences, key: str) -> dict:
 
 
 def set_override(preferences, key: str, spec) -> bool:
-    """Store (or with an empty spec, forget) one path's icon.
-
-    THE REPORTING IS THE ENGINE'S. A `written()` beside this one held
-    the refusal note and the denial alert; `notes.py` held the same ten
-    lines with two words changed, and the other two stores held none.
-    The words are on the Spec now (`denied_alert`) and the policy is in
-    `_commit`, beside the engine's other two failure reports - which
-    also ended a duplicate: `_commit` had already noted the refusal
-    sentence that this noted again.
-
-    A bare False could not say WHY, and the panel used to guess: a
-    refused write got "check that the library folder is writable" when
-    the folder was fine and the file simply would not parse. That is
-    the same defect the errno mapping fixes one level down.
-    """
+    """Store (or with an empty spec, forget) one key's icon - the failure reporting lives on the ENGINE (`Spec.denied_alert` + `_commit`'s errno mapping), which ended this module and notes.py carrying the same ten lines twice and the panel naming a wrong cause for a file that simply would not parse."""
     return bool(_store(preferences).set(key, spec))
 
 
 def forget_overrides() -> None:
-    """Drop the cached tables - the library directory changed under us."""
+    """Drop the cached tables - a test seam like its keyed-store siblings; the product's library switch drops them through the one `keyed_store.release()` at the switch door."""
     keyed_store.release()
