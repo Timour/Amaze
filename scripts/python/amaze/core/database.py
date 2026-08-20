@@ -3,6 +3,7 @@
 import json
 import os
 import hashlib
+import uuid
 from typing import Self
 
 from amaze import branding
@@ -10,7 +11,7 @@ from amaze.core import debug
 from amaze.helpers import hostos
 
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 
 _MIGRATIONS = {}
@@ -57,6 +58,21 @@ def _migration_v6(data: dict) -> None:
 
 
 _MIGRATIONS[6] = _migration_v6
+
+
+def _migration_v7(data: dict) -> None:
+    """v7 to v8: mints an `id` for every asset row that has neither `id` nor the legacy `uid`, IN PLACE - a row without one mints a fresh identity on every load, so the notes and tile icon stored against it orphan, and an ordinary save cannot repair it because the connector unions BY id and keeps the id-less original."""
+    rows = data.get("assets")
+    if not isinstance(rows, list):
+        return
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not str(row.get("id") or row.get("uid") or ""):
+            row["id"] = uuid.uuid4().hex
+
+
+_MIGRATIONS[7] = _migration_v7
 
 
 _INSTANCES: dict = globals().get("_INSTANCES", {})

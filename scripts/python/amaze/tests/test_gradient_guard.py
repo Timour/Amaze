@@ -276,39 +276,54 @@ class GradientRowRideTest(unittest.TestCase):
         self.assertEqual("legacy-value", lib.note_uid(row),
                          "the legacy identity was replaced by a mint")
 
-    def test_every_row_this_build_writes_carries_an_identity(self):
-        """No id-less row may survive a save - and a plain save CANNOT do this on its own, because the connector unions by id and keeps the id-less original, which is why the backfill stamps the raw row in place first."""
+    def _pre_bump_library(self):
+        """A v7 document holding one id-less row beside a stamped one - written at the LITERAL old version on purpose, since a fixture at the current one never reaches the step under test."""
         with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [{"name": "bare", "colors": []}]}, fh)
+            json.dump({"version": 7, "categories": [],
+                       "assets": [{"name": "bare", "colors": []},
+                                  {"name": "kept", "colors": [],
+                                   "id": "keptid"}]}, fh)
         test_support.reset_database_singletons()
-        lib = gradient_library.GradientLibrary(
+
+    def test_the_bump_mints_an_identity_for_a_row_that_has_none(self):
+        """A row without one mints a fresh identity on every load, orphaning the notes and icon keyed to it - and an ordinary save cannot repair it, because the connector unions BY id and keeps the id-less original."""
+        self._pre_bump_library()
+        gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
-        self.assertTrue(lib.save(), "the fixture save did not land")
         with open(self.path, encoding="utf-8") as fh:
             saved = json.load(fh)
+        self.assertEqual(SCHEMA, saved.get("version"),
+                         "the document did not reach the current schema")
         bare = [row["name"] for row in saved["assets"]
                 if not str(row.get("id") or "")]
         self.assertEqual([], bare,
-                         "%d saved row(s) carry no identity" % len(bare))
+                         "%d row(s) still carry no identity" % len(bare))
 
-    def test_a_saved_identity_is_stable_across_a_reload(self):
-        """Once written, the id is the row's identity - a reload that mints a fresh one is the failure the backfill used to cover."""
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [{"name": "bare", "colors": []}]}, fh)
-        test_support.reset_database_singletons()
+    def test_the_bump_leaves_an_identity_it_already_had(self):
+        """A migration that re-mints is worse than none: every note and icon keyed to the old id orphans at once."""
+        self._pre_bump_library()
+        gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+        with open(self.path, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        kept = {row["name"]: row.get("id") for row in saved["assets"]}
+        self.assertEqual("keptid", kept.get("kept"),
+                         "the migration overwrote an identity that was "
+                         "already there")
+
+    def test_a_minted_identity_is_stable_across_a_reload(self):
+        """The whole point of writing it back: the id must not change on the next open."""
+        self._pre_bump_library()
         first = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         minted = first.note_uid(_row_named(self, first, "bare"))
         self.assertTrue(minted, "no identity was minted at all")
-        self.assertTrue(first.save(), "the fixture save did not land")
         test_support.reset_database_singletons()
         again = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         self.assertEqual(
             minted, again.note_uid(_row_named(self, again, "bare")),
-            "the identity did not survive the save, so every launch "
+            "the identity did not survive the reload, so every launch "
             "keys the palette's notes and icon differently")
 
 

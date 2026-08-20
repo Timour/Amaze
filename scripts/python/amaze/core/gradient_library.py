@@ -70,10 +70,6 @@ class GradientLibrary(library.AssetLibrary):
 
     CategoryLabelRole = QtCore.Qt.ItemDataRole.UserRole + 13  # list mode's Category column, the display string; CategoryRole answers a LIST for the proxy. test_role_numbers holds the gap
 
-    def __init__(self, preferences) -> None:
-        super().__init__(preferences)
-        self._persist_minted_ids_once()
-
     @staticmethod
     def _asset_from_row(row: dict):
         """A palette rides as a `Material`, `colors` and `ramp` among its carried-through keys."""
@@ -94,23 +90,6 @@ class GradientLibrary(library.AssetLibrary):
         return bool(getattr(
             database.DatabaseConnector(self.DB_FILENAME),
             "_write_blocked", False))
-
-    def switch_model_data(self) -> None:
-        super().switch_model_data()
-        self._persist_minted_ids_once()
-
-    def _persist_minted_ids_once(self) -> None:
-        """Write a minted id back so it IS the row's identity rather than a value that changes every launch - notes and tile icons are keyed by it, and a plain save cannot do this because the connector unions by id and keeps the id-less original."""
-        raw = [row for row in (self._data.get("assets") or [])
-               if isinstance(row, dict)]
-        minted = 0
-        for row, asset in zip(raw, self._assets):
-            if not str(row.get("id") or row.get("uid") or ""):
-                row["id"] = asset.mat_id  # stamped INTO the connector's row, in place: the connector unions by id, so a bare save lands a duplicate beside the original
-                minted += 1
-        if minted and self.save():
-            debug.event("gradients", "ids minted and persisted",
-                        count=minted)
 
     _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
     _SEED_MARKER_LEGACY = ".assetlib_gradient_seed_v1"  # renamed on sight so an old library does not re-seed and duplicate
