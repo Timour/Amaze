@@ -66,7 +66,7 @@ def _reload(module):
         importlib.reload(module)
 
 
-_reload(keyed_store)    # FIRST: twelve modules read their stores through it (hostos included), so a stale engine keeps old tables while every caller gets new code
+_reload(keyed_store)    # FIRST: eleven modules read their stores through it, so a stale engine keeps old tables while every caller gets new code; a re-register keeps existing bindings, so binder modules outside this chain stay whole
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(debug)
 _reload(dragengine)

@@ -123,6 +123,8 @@ def register(filename: str, payload: str, keyspace: str, label: str,
         raise ValueError(
             "a mixed-keyspace store must say which prefix marks a path "
             "key, or a folder move cannot tell them apart")
+    if normalise is None:    # a re-register (a module reload) keeps the binding already attached, or every store whose BINDER module is not also reloaded opens with no normaliser
+        normalise = getattr(_registry.get(filename), "normalise", None)
     spec = Spec(filename=filename, payload=payload, keyspace=keyspace,
                 label=label, noun=noun, normalise=normalise,
                 path_prefix=path_prefix,

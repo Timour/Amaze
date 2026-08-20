@@ -38,7 +38,7 @@ PRESETS = (  # four presets plus Custom (the colour picker); deliberately provis
     ("Sand", "#e2b148"),
 )
 
-_COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024 - "a gigabyte" was literal
+_COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke, ink) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024
 _COMPOSED_MAX = 240  # a COUNT ceiling too - tiny icons must not grow an unbounded dict inside the byte budget; LRU not FIFO, because insertion-order eviction threw the hottest icons first and every repaint re-composed them (0.38ms at 256, 1.37ms at 1024, per tile)
 _composed: "OrderedDict" = OrderedDict()
 _composed_bytes = 0
@@ -55,7 +55,7 @@ _fits: dict = {}
 
 
 def icon_names() -> list:
-    """Every icon available, sorted. Read from disk once."""
+    """Every icon available, sorted - cached after the first successful read."""
     global _names
     if not _names:
         try:

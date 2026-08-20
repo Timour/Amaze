@@ -23,11 +23,12 @@ class SwitchRereadsCase(unittest.TestCase):
         """An edit that lands on disk BEHIND the cache (the other machine, via sync) is visible after the next pass through switch_all_models."""
         panel = self.panel
         prefs = panel.prefs
+        self.addCleanup(keyed_store.release)
         name = (tile_icons.icon_names() or ["feather"])[0]
         key = os.path.join(str(prefs.dir), "img", "switch-reread-probe.png")
         self.assertTrue(
             tile_icons.set_override(prefs, key, {"name": name, "bg": "#ef8878"}),
-            "the probe icon was refused, so nothing below tests the cache")
+            "the probe write reported failure")
         store = keyed_store.open_store(tile_icons.SPEC, prefs)
         with open(store.path, encoding="utf-8") as handle:
             text = handle.read()

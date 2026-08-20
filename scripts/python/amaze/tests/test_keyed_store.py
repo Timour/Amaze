@@ -1596,5 +1596,28 @@ class TheStoresBlankSlate(StoreCase):
             self.assertEqual(keyed_store.REASON_UNCHANGED, answer.reason)
 
 
+class ReRegisterKeepsTheBinding(StoreCase):
+
+    def test_a_module_reload_does_not_unbind_the_store(self):
+        """`register` says re-registering is safe for a module reload - so a re-register carrying no normaliser must keep the one already bound, or every store whose BINDER module is not also reloaded opens broken."""
+        original = keyed_store._registry[notes.NOTES_FILE]
+        self.addCleanup(
+            keyed_store._registry.__setitem__, notes.NOTES_FILE, original)
+        self.assertIsNotNone(
+            original.normalise,
+            "notes.json arrived unbound - nothing below tests the "
+            "reload survival it is about")
+        keyed_store.register(
+            filename=notes.NOTES_FILE, payload="notes",
+            keyspace=keyed_store.KEY_MIXED, path_prefix="file:",
+            label="Comments", noun="comment", category="notes")
+        self.assertIs(
+            original.normalise,
+            keyed_store._registry[notes.NOTES_FILE].normalise,
+            "a re-register with no normaliser dropped the binding - a "
+            "keyed_store reload would leave every un-reloaded binder's "
+            "store opening with spec.normalise None")
+
+
 if __name__ == "__main__":
     unittest.main()
