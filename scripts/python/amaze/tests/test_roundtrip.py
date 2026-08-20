@@ -241,17 +241,6 @@ class TestRoundTrip(unittest.TestCase):
             1, len(matnets),
             "three imports left %d matnets in one geo" % len(matnets))
 
-    def test_a_corrupt_interface_raises_a_hou_error_not_indexerror(self):
-        """IndexError is not a hou.Error, so it bypasses import_asset_to_scene's handler entirely - and in the thumbnail path it fires BETWEEN layoutAboutToBeChanged and layoutChanged, leaving the model with an unbalanced layout signal."""
-        empty = hou.node("/obj").createNode("matnet", "empty_probe")
-        self.addCleanup(empty.destroy)
-
-        class _Mat:
-            name = "probe"
-
-        with self.assertRaises(hou.Error):
-            nodes._first_child(empty, _Mat())
-
     def test_the_import_is_one_undo_entry(self):
         """Derived from the SOURCE, because driving it needs a live panel: the loop must sit inside a hou.undos.group, like every other import entry point. ▸p/source-derived-tests"""
         import re

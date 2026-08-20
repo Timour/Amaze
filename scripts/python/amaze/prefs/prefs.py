@@ -393,16 +393,17 @@ class Prefs(_Persistence):
 
     @property
     def file_favorites(self) -> list[str]:
+        """The test-assertion surface for File favourites - the product reads and writes through `locations` directly, and five test modules pin behaviour through this trio, which is its reason to exist (R52 keep-verdict 2026-08-20)."""
         from amaze.core import locations
         return locations.favourite_paths(self)
 
     def add_file_favorite(self, path: str) -> None:
         from amaze.core import locations
-        locations.set_favourite(self, path, True)
+        locations.set_favourite(self, path, True)  # kept for the same reason as file_favorites above
 
     def remove_file_favorite(self, path: str) -> None:
         from amaze.core import locations
-        locations.set_favourite(self, path, False)
+        locations.set_favourite(self, path, False)  # kept for the same reason as file_favorites above
 
     @property
     def last_file_folder(self) -> str:

@@ -762,7 +762,8 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         self._one_warm_palette()
         lib = self._library()
         lib.toggle_fav(_row_named(self, lib, "warm"))
-        self.assertTrue(lib.is_favorite(_row_named(self, lib, "warm")),
+        row = _row_named(self, lib, "warm")
+        self.assertTrue(lib.data(lib.index(row, 0), lib.FavoriteRole),
                         "the toggle did not light the star it just set")
         lib.save()    # the SHARED record must gain nothing on disk: a star that reaches gradients.json is everyone's again
         self.assertFalse(
@@ -773,8 +774,9 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         test_support.reset_database_singletons()    # a fresh session reads it back out of the library store
         keyed_store.release()
         again = self._library()
+        arow = _row_named(self, again, "warm")
         self.assertTrue(
-            again.is_favorite(_row_named(self, again, "warm")),
+            again.data(again.index(arow, 0), again.FavoriteRole),
             "the star did not survive a reload through the store")
 
     def test_the_step_takes_a_star_off_a_version_5_document(self):
@@ -792,7 +794,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
             "a version-5 record star survived the load - the step that "
             "retires the field did not run")
         self.assertFalse(
-            lib.is_favorite(row),
+            lib.data(lib.index(row, 0), lib.FavoriteRole),
             "a stripped record star still reads as a favourite - the "
             "read is answering the record, not the store")
 
@@ -800,8 +802,9 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         self._one_warm_palette()
         lib = self._library(user="")
         lib.toggle_fav(_row_named(self, lib, "warm"))
+        urow = _row_named(self, lib, "warm")
         self.assertFalse(
-            lib.is_favorite(_row_named(self, lib, "warm")),
+            lib.data(lib.index(urow, 0), lib.FavoriteRole),
             "a machine with nobody picked lit a star - the store filed "
             "it under a blank tag, which is an ABSENT user, not a "
             "shared one")

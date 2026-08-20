@@ -129,15 +129,6 @@ def activate_shader_inputs(builder) -> int:
     return count
 
 
-def _first_child(parent, mat):
-    """children()[0]; raises, because a bare IndexError escapes callers."""
-    kids = parent.children()
-    if not kids:
-        raise hou.OperationFailed(
-            '"%s" could not be rebuilt - its saved files look corrupt '
-            "(the interface produced no nodes)" % getattr(mat, "name", "?")
-        )
-    return kids[0]
 
 
 BUILDER_SUFFIX = ".builder.json"      # read, never exec'd ▸r/interface-contents

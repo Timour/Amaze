@@ -203,13 +203,6 @@ class GradientLibrary(library.AssetLibrary):
             "ramp": self._ramp_of(asset),
         }
 
-    def is_favorite(self, row: int) -> bool:
-        """The star, from the library store under its owner - the int-row spelling the Colors proxy reads."""
-        if not 0 <= row < len(self._assets):
-            return False
-        return locations.is_favourite(
-            self.preferences, self._assets[row].mat_id)
-
     def note_uid(self, row: int) -> str:
         """A palette's identity - its record id, the same key its Comments page and tile icon use."""
         if not 0 <= row < len(self._assets):

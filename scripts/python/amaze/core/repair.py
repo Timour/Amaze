@@ -34,12 +34,6 @@ def configured_library(preferences=None) -> str:
     return str(getattr(preferences, "dir", "") or "")
 
 
-def library_directory(preferences=None) -> str:
-    """The library folder if Amaze can look inside it, else ""."""
-    directory = configured_library(preferences)
-    return directory if directory and os.path.isdir(directory) else ""
-
-
 def survey(directory: str, asset_dir: str = "mat/",
            img_dir: str = "img/") -> dict:
     """Read-only, gathered once; while `complete` is False nothing is unclaimed."""
