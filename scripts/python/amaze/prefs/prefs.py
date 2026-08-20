@@ -140,14 +140,18 @@ class Prefs(_Persistence):
 
     def get_dir_from_user(self) -> bool:
         """Get Directory from User and write into prefs"""
+        ui = getattr(hou, "ui", None)
         count = 0
         while count < 3:
             if not os.path.exists(self._directory) or count < 1:
+                if ui is None:      # nobody to ask, so fall through to the branch that ACCEPTS a library already on disk
+                    count += 1
+                    continue
                 if not os.path.exists(self._directory) and count < 1:
-                    hou.ui.displayMessage("It looks like your library is not set up yet. Please choose a directory to store the library data")  # type: ignore
+                    ui.displayMessage("It looks like your library is not set up yet. Please choose a directory to store the library data")
                 elif count > 0:
-                    hou.ui.displayMessage("Invalid Path selected. Please try again")
-                path = hou.ui.selectFile(file_type=hou.fileType.Directory)
+                    ui.displayMessage("Invalid Path selected. Please try again")
+                path = ui.selectFile(file_type=hou.fileType.Directory)
                 if path == "":  # Canceled
                     return False
                 self.dir = hou.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below

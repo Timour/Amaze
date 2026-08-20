@@ -2,6 +2,7 @@
 
 import ast
 import os
+import tempfile
 import types
 import unittest
 from unittest import mock
@@ -12,13 +13,15 @@ import hou
 
 from amaze.core import dragengine, material
 from amaze.render import nodes, thumbs
+from amaze.utils import rc_calls
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 _PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py")
+GUARDED = ("panel/panel.py", "render/thumbs.py", "core/dragengine.py",
+           "utils/rc_calls.py", "prefs/prefs.py")
 
 
 def raw_reaches(relpath):
@@ -255,6 +258,102 @@ class TheFocusKeeperNeedsNoScreenTest(unittest.TestCase):
         self.assertEqual(1, len(reads),
                          "the capture skipped the pane-tab read in a session "
                          "that has a ui")
+
+
+class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
+    """The right-click entry points answer None instead of crashing, and the four callers already skip on None."""
+
+    def setUp(self):
+        self.assertFalse(hasattr(hou, "ui"),
+                         "this host HAS a ui, so nothing here is tested")
+
+    def test_the_panel_lookup_is_none_without_a_screen(self):
+        try:
+            answer = rc_calls._find_panel()
+        except AttributeError as crash:
+            self.fail("the panel lookup became a crash: %s" % crash)
+        self.assertIsNone(answer)
+
+    def test_a_right_click_save_stops_instead_of_crashing(self):
+        try:
+            rc_calls.save_material()
+        except AttributeError as crash:
+            self.fail("the right-click save became a crash: %s" % crash)
+
+
+class ThePanelLookupStillReadsTheScreenTest(unittest.TestCase):
+    """The accept path: a lookup that always answered None would break every right-click save in a real session."""
+
+    def test_the_pane_tabs_are_still_read_when_there_is_a_screen(self):
+        reads = []
+
+        def pane_tabs():
+            reads.append(True)
+            return ()
+
+        said = []
+        fake = types.SimpleNamespace(
+            paneTabs=pane_tabs,
+            displayMessage=lambda text, *a, **k: said.append(text))
+        with mock.patch.object(hou, "ui", fake, create=True):
+            self.assertIsNone(rc_calls._find_panel())
+        self.assertEqual(1, len(reads),
+                         "the guard skipped the pane-tab read in a session "
+                         "that has a ui")
+        self.assertEqual(1, len(said),
+                         "the guard swallowed the open-the-panel message in "
+                         "a session that could have shown it")
+
+
+class TheLibraryPickerRefusesHeadlessTest(unittest.TestCase):
+    """With no screen there is nobody to pick a folder, so the ASK is skipped - while a library that is already set up must still be saved."""
+
+    def setUp(self):
+        self.assertFalse(hasattr(hou, "ui"),
+                         "this host HAS a ui, so nothing here is tested")
+        self.prefs = test_support.fixture_prefs(self)
+
+    def test_a_missing_library_cannot_be_asked_for(self):
+        self.prefs._directory = os.path.join(tempfile.gettempdir(),
+                                             "amaze_no_such_library_dir")
+        try:
+            answer = self.prefs.get_dir_from_user()
+        except AttributeError as crash:
+            self.fail("the library picker became a crash: %s" % crash)
+        self.assertFalse(answer)
+
+    def test_an_existing_library_is_still_accepted_without_a_screen(self):
+        """The branch that accepts a library never touches the host dialogs, so a guard on the FUNCTION would turn this into a silent no-op the suite could not see."""
+        try:
+            answer = self.prefs.get_dir_from_user()
+        except AttributeError as crash:
+            self.fail("accepting a set-up library became a crash: %s" % crash)
+        self.assertTrue(answer,
+                        "a library that is already set up was refused "
+                        "because there was no screen to ask at")
+
+
+class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
+    """The accept path: the picker must still open where a person can answer it."""
+
+    def test_the_picker_opens_when_there_is_a_screen(self):
+        picked = []
+        prefs = test_support.fixture_prefs(self)
+        prefs._directory = os.path.join(tempfile.gettempdir(),
+                                        "amaze_no_such_library_dir")
+
+        def select_file(*_args, **_kwargs):
+            picked.append(True)
+            return ""
+
+        fake = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: None,
+            selectFile=select_file)
+        with mock.patch.object(hou, "ui", fake, create=True):
+            prefs.get_dir_from_user()
+        self.assertTrue(picked,
+                        "the guard skipped the folder picker in a session "
+                        "that has a ui")
 
 
 if __name__ == "__main__":
