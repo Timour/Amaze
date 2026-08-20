@@ -1,14 +1,4 @@
-"""What counts as an image, the shared thumbnail disk cache, and the
-folder-section filter proxy.
-
-The Images section merged into the File section on 2026-07-31
-(core/file_library.py), taking its models with it - the convert
-pipeline's bookkeeping lives in FileFiles now. What stays here is what
-that model and its tests consume: IMAGE_EXTENSIONS, ThumbnailCache
-(one class, every folder-section prefix - texture_thumbnails_* and
-geo_thumbnails_* both), and TextureFilterProxyModel, the name+favorite
-filter the File grid runs through.
-"""
+"""What counts as an image, the shared thumbnail disk cache, and the folder-section filter proxy. The Images section merged into the File section 2026-07-31 (core/file_library.py), taking its models with it; what stays here is what that model and its tests consume: IMAGE_EXTENSIONS, ThumbnailCache (one class, every folder-section prefix - texture_thumbnails_* and geo_thumbnails_* both), and TextureFilterProxyModel, the name+favorite filter the File grid runs through."""
 
 import hashlib
 import json
@@ -30,54 +20,23 @@ IMAGE_EXTENSIONS = (
     ".tga",
     ".bmp",
     ".hdr",
-    # Houdini's own texture format. Probed 2026-07-31: iconvert
-    # round-trips it (it is Houdini's format), and sips fails CLEANLY
-    # on it (exit 13, no file written), so the sips->iconvert fallback
-    # fires instead of serving garbage. Rendered thumbnails and Load
-    # to Node both apply - a .rat on a texture parm is its whole job.
-    ".rat",
-    # Camera raw in the one container macOS decodes natively. Probed
-    # 2026-08-07 on a real Sigma DNG: sips converts it in ~2.3s;
-    # Pillow declines fast, so the FORMAT order reaches sips cleanly.
-    # A photographer's archive folder is full of these, and without
-    # the extension the rows were not images at all.
-    ".dng",
+    ".rat",  # Houdini's own texture format - probed 2026-07-31: iconvert round-trips it and sips fails CLEANLY on it (exit 13, no file), so the sips->iconvert fallback fires instead of serving garbage
+    ".dng",  # camera raw in the one container macOS decodes natively - probed 2026-08-07 on a real Sigma DNG: sips converts in ~2.3s, Pillow declines fast, so the FORMAT order reaches sips cleanly
 )
 
 
 def matched_extension(name: str) -> str:
-    """The IMAGE_EXTENSIONS entry the filename ends with, or ''.
-
-    The geometry and scene kinds each had one of these and images did
-    not, so file_library recognised images with `endswith(tuple)`
-    instead - which answers yes/no but not WHICH, and that is why its
-    FormatRole had to fall back to os.path.splitext for this one kind.
-    Three kinds, one question, one shape.
-    """
+    """The IMAGE_EXTENSIONS entry the filename ends with, or '' - three kinds, one question, one shape (an `endswith(tuple)` answers yes/no but never WHICH, which forced a splitext fallback on this one kind)."""
     return hostos.matched_extension(name, IMAGE_EXTENSIONS)
 
-# Texture thumbnails generate at Preferences > RenderSize - the same
-# resolution materials render their shaderball thumbnail at - rather than
-# a separate hidden setting; the two are unified into a single setting.
 
-# Local-machine-only cache (not the file-synced install folder, not
-# the repo) - thumbnails are cheap byproducts, no reason to sync them.
-# The resolution is baked into the dir name so a RenderSize change can't
-# serve stale cached images generated at the old size.
 def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:
-    # The OS-integration engine owns the root location (per-OS
-    # convention) and the one-time migrations from every legacy dir.
+    # local-machine-only cache with the resolution baked into the dir name, so a RenderSize change cannot serve stale images; hostos owns the root and the legacy-dir migrations
     return os.path.join(hostos.cache_root(), f"{prefix}_{size}")
 
 
 class ThumbnailCache:
-    """Disk-backed cache of generated texture thumbnails, keyed by source
-    file path and kept 1:1 with what's actually in a folder: reconcile()
-    drops any cached entry whose source file is gone or has changed
-    (mtime/size), so stale thumbnails never linger. All methods are only
-    ever called from the main thread - manifest mutation is not
-    thread-safe by design, the background worker only generates images,
-    it never touches the cache itself."""
+    """Disk-backed cache of generated thumbnails, keyed by canonical source path and kept 1:1 with the folder by reconcile(); main-thread only - the background worker generates images and never touches the cache."""
 
     def __init__(self, size: int, prefix: str = "texture_thumbnails") -> None:
         self.size = size
@@ -89,17 +48,7 @@ class ThumbnailCache:
         self._remember_disk_state()
 
     def _load_manifest(self) -> dict:
-        """The manifest, or {} - and a file that EXISTS but will not
-        parse is not the same thing as no file.
-
-        Reading an unreadable manifest as empty and then writing over it
-        turns one truncated write into permanent loss of the whole map:
-        every PNG in the directory becomes an orphan nothing will ever
-        find again, and the folder re-converts from scratch on every
-        visit (~6.2s per EXR). Houdini catches SIGABRT and keeps going,
-        so a truncated write is not hypothetical here. tile_icons is the
-        reference implementation of this policy; this was the outlier.
-        """
+        """The manifest, or {} - a file that EXISTS but will not parse latches `_unreadable`, because reading it as empty and writing over it turns one truncated write into permanent loss of the whole map (every PNG orphaned, ~6.2s per EXR to re-convert; tile_icons is the reference policy)."""
         self._unreadable = False
         if not os.path.exists(self.manifest_path):
             return {}
@@ -124,23 +73,7 @@ class ThumbnailCache:
         self._disk_state = hostos.disk_state(self.manifest_path)
 
     def _adopt_from_disk(self) -> None:
-        """Fold in entries another writer added since this object read.
-
-        The manifest is read once, in __init__, and FileFiles keeps one
-        cache object per size for the whole session - so save() wrote
-        the whole in-memory dict over whatever was on disk. Reproduced:
-        tab A converts 300 images and flushes, tab B (which had read
-        the manifest earlier) converts 40 and flushes, and the manifest
-        then holds 40. Tab A's 300 PNGs are orphans nothing will ever
-        find again, and that folder re-converts from scratch on the
-        next visit at ~6.2s per EXR.
-
-        Adoption can only ADD, the same rule tile_icons._adopt_from_disk
-        states: an entry is per-file and self-describing, so there is no
-        field-level conflict to resolve - a key this session does not
-        hold is another writer's and is kept, a key both hold takes
-        ours, because ours was just measured against the file on disk.
-        """
+        """Fold in entries another writer added since this object read - adoption can only ADD (an entry is per-file and self-describing): a key this session does not hold is another writer's and is kept, a key both hold takes ours, because ours was just measured against the file on disk. Without it, two tabs flushing left the later writer's 40 entries and orphaned the earlier one's 300 PNGs."""
         current = hostos.disk_state(self.manifest_path)
         if current is None or getattr(self, "_disk_state", None) == current:
             return                          # nothing moved underneath us
@@ -166,33 +99,11 @@ class ThumbnailCache:
         if not self._dirty:
             return
         if getattr(self, "_unreadable", False):
-            # REFUSE OVER OVERWRITE: preserve what is there rather than
-            # replacing a map we could not read with a partial one.
-            return
+            return  # REFUSE OVER OVERWRITE: preserve what is there rather than replacing a map we could not read with a partial one
         if not self.ensure_dir():
             return
-        # Temp-then-replace: an in-place write that is interrupted
-        # leaves a truncated manifest, which the next launch reads as
-        # empty - the exact loss this method exists to prevent.
-        #
-        # A UNIQUE scratch name, not the fixed `manifest_path + ".new"`
-        # this used, and this is the LIVE case of that defect rather than
-        # the exotic one: the cache directory is derived from the size and
-        # a prefix, not from anything per-process, so two Houdini sessions
-        # on one machine browsing images share this exact path and
-        # therefore shared one scratch buffer. Measured for the JSON case,
-        # two writers x 600 saves through a fixed name: 790 unparseable
-        # reads and 794 that PARSED holding both writers' content. Read
-        # back, that is a map pointing at the wrong PNGs - and the module's
-        # own read path then declines to overwrite it, so the folder
-        # re-converts from scratch on every visit (~6.2s per EXR) until
-        # someone deletes the file by hand.
-        #
-        # indent=None keeps the bytes exactly as they were: this is a
-        # cache file, and a reformat would rewrite every manifest on disk
-        # for no reason.
         try:
-            self._adopt_from_disk()
+            self._adopt_from_disk()  # temp-then-replace through the atomic writer, whose UNIQUE scratch name matters here: two sessions share this exact path (the dir derives from size+prefix, nothing per-process), and a fixed scratch name measured 790 unparseable reads plus 794 that parsed holding both writers' content; indent=None keeps a cache file's bytes as they were
             hostos.write_json_atomic(self.manifest_path, self._manifest,
                                      indent=None)
             self._remember_disk_state()
@@ -207,32 +118,14 @@ class ThumbnailCache:
 
     @staticmethod
     def _key(full_path: str) -> str:
-        """How the manifest spells a source file - ONE answer, at every
-        door into it.
-
-        `reconcile_many`'s docstring has always said the keys are
-        canonicalised by `put()`. They were not: the raw argument went
-        in, and the promise held only because every caller happened to
-        canonicalise first - while telling the next author the step was
-        unnecessary. On Windows a raw `C:\\tex\\x.png` key then misses a
-        wanted set spelled with forward slashes, the entry reads stale,
-        its cached PNG is deleted, and the folder re-converts on every
-        visit at ~6s an EXR.
-
-        Applied on the LOAD side too, so a manifest written before this
-        normalises in place rather than orphaning its own entries.
-        """
+        """How the manifest spells a source file - ONE answer at every door in, applied on the LOAD side too so an older manifest normalises in place; a raw Windows-flavoured key misses a wanted set spelled with forward slashes, reads stale, and the folder re-converts every visit."""
         return hostos.canonical_path_key(full_path)
 
     def _cache_path(self, full_path: str) -> str:
         return os.path.join(self.cache_dir, self._cache_filename(full_path))
 
     def valid_path(self, full_path: str) -> str | None:
-        """The cached PNG's path if the manifest entry still matches the
-        source file on disk (same mtime/size) - a stat, no decode. The
-        engine's background file loader does the actual reading, so
-        folder opens no longer pay a synchronous decode per cached
-        file on the main thread."""
+        """The cached PNG's path if the manifest entry still matches the source file (same mtime/size) - a stat, no decode; the engine's background loader does the reading."""
         full_path = self._key(full_path)
         entry = self._manifest.get(full_path)
         if not entry:
@@ -249,30 +142,14 @@ class ThumbnailCache:
         return cache_path
 
     def ensure_dir(self) -> bool:
-        """Recreate the cache directory if it has gone away.
-
-        It genuinely does. clear() sweeps EVERY texture_thumbnails_* and
-        geo_thumbnails_* directory but recreates only its own, and
-        GeoFiles._get_cache() memoises its ThumbnailCache on
-        (size, mode, bg) - none of which change when the cache is
-        cleared. So one press of "Delete Local Cache" left the geometry
-        section holding a cache object pointing at a directory that no
-        longer existed, for the rest of the session: every render wrote
-        nothing, nothing was cached, and it repeated on every visit.
-
-        Cheap enough to call before each write (one stat on the happy
-        path), and it heals an externally deleted cache too."""
+        """Recreate the cache directory if it has gone away - it genuinely does: clear() sweeps every prefix directory but recreates only its own, while a memoised cache object keeps pointing at the swept path for the rest of the session; one stat on the happy path, and it heals an externally deleted cache too."""
         if os.path.isdir(self.cache_dir):
             return True
         try:
             os.makedirs(self.cache_dir, exist_ok=True)
             return True
         except OSError as exc:
-            # "cache" and "directory" are both the program's words, and
-            # the path is inside a folder the user has never opened, so
-            # it goes in the data. What they actually NOTICE is the
-            # slowness, which the old sentence never mentioned.
-            debug.note(
+            debug.note(  # what the user NOTICES is the slowness, so the sentence says that; the path goes in the data
                 "could not create the folder Amaze keeps image "
                 "thumbnails in (%s), so thumbnails are made again "
                 "every time you open the folder. Your images are "
@@ -280,8 +157,7 @@ class ThumbnailCache:
             return False
 
     def put(self, full_path: str, image: QtGui.QImage) -> None:
-        """Persist a freshly generated thumbnail and record it in the
-        manifest. Does not flush to disk - call save() when convenient."""
+        """Persist a freshly generated thumbnail and record it in the manifest - does not flush to disk, call save() when convenient."""
         full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
@@ -290,17 +166,9 @@ class ThumbnailCache:
         if not self.ensure_dir():
             return
         try:
-            # QImage.save returns False rather than raising - so a write
-            # into a missing directory used to fall straight through to
-            # the manifest line below and record a cache entry for a
-            # file that was never written. get() then found no file and
-            # re-rendered, every visit, forever.
-            written = image.save(self._cache_path(full_path), "PNG")
+            written = image.save(self._cache_path(full_path), "PNG")  # QImage.save answers False rather than raising - falling through here once recorded manifest entries for files never written, re-rendering every visit forever
         except Exception as exc:
-            # The BASENAME stays in the sentence, unlike the cache folder
-            # above: this one is the user's own image, in the folder they
-            # are looking at right now.
-            debug.note(
+            debug.note(  # the BASENAME stays in this sentence: it is the user's own image, in the folder they are looking at
                 "the thumbnail for %s could not be saved (%s), so it "
                 "is made again on every visit. The image itself is "
                 "untouched." % (os.path.basename(full_path), exc))
@@ -312,29 +180,12 @@ class ThumbnailCache:
                 "untouched." % os.path.basename(full_path),
                 path=full_path)
             return
-        # CANONICALISED HERE, which is what `reconcile_many`'s docstring
-        # has always claimed happens. It did not: the raw argument went
-        # in, and every caller happened to canonicalise first - so the
-        # promise held by convention while telling the next author the
-        # step was unnecessary. On Windows a raw `C:\tex\x.png` key then
-        # misses a wanted set spelled with forward slashes, the entry
-        # reads stale, its cached PNG is deleted and the folder
-        # re-converts on every visit.
-        full_path = hostos.canonical_path_key(full_path)
+        full_path = hostos.canonical_path_key(full_path)  # canonicalised HERE, which is what reconcile_many's docstring always claimed - it used to hold only because every caller happened to do it first
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 
     def remember_failure(self, full_path: str) -> None:
-        """Record that NOTHING could read this file as it stands.
-
-        Without this a file no converter can decode is re-queued on
-        every visit to its folder and pays each adapter's timeout
-        again - measured live as a stall that never resolves, on the
-        same handful of files, forever. The record is keyed to the
-        file as it is now, so replacing it with a good image converts
-        normally; `invalidate` (Rerender Thumbnail) clears it, which
-        is the deliberate retry.
-        """
+        """Record that NOTHING could read this file as it stands - keyed to the file as it is now, so replacing it converts normally and `invalidate` (Rerender Thumbnail) is the deliberate retry; without it an undecodable file re-queues and pays every adapter's timeout on each visit, forever."""
         full_path = self._key(full_path)
         try:
             st = os.stat(full_path)
@@ -346,8 +197,7 @@ class ThumbnailCache:
         self._dirty = True
 
     def known_failure(self, full_path: str) -> bool:
-        """True when this exact file has already defeated every
-        converter - the skip that keeps a folder open fast."""
+        """True when this exact file has already defeated every converter - the skip that keeps a folder open fast."""
         entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
             return False
@@ -359,39 +209,12 @@ class ThumbnailCache:
                 and entry.get("size") == st.st_size)
 
     def reconcile(self, folder: str, current_names: list) -> None:
-        """Drop cache entries for this folder whose source file is gone or
-        has changed, so the cache stays 1:1 with the folder's contents."""
+        """Drop cache entries for this folder whose source file is gone or changed, so the cache stays 1:1 with the folder's contents."""
         self.reconcile_many({folder: current_names})
 
     def reconcile_many(self, by_folder: dict) -> None:
-        """Reconcile SEVERAL directories in one pass over the manifest.
-
-        The per-directory version walks the whole manifest each time,
-        and the callers call it once per containing directory - so
-        opening a folder with Include Subfolders on was O(subdirs x
-        manifest). The manifest is global per resolution and grows with
-        every file ever thumbnailed, so this degraded monotonically:
-        measured 300 subdirs against a 40,000-entry manifest at 3.13s of
-        pure dict iteration, on the main thread, inside the folder open.
-
-        Each stale find also called save(), a full JSON rewrite of the
-        entire manifest, up to once per subdirectory. One pass, one
-        flush."""
-        # BOTH SIDES THROUGH canonical_path_key. The manifest's keys are
-        # canonicalised by put(), while these came straight off a scan
-        # dirpath - and relocate_folder (folders.py:232) forces a
-        # TRAILING SLASH onto a path it rewrites, which os.walk then
-        # preserves on the root dirpath. Reproduced: with the slash,
-        # `os.path.dirname(<key>)` is "/a/b" against a wanted key of
-        # "/a/b/", so every entry in that directory missed and nothing
-        # was ever reconciled again for a folder the user had run
-        # Locate Folder on - 2,000 deleted images leaving 2,000 orphan
-        # PNGs and 2,000 dead entries, in a manifest that is global per
-        # resolution and only grows. The same mismatch is unconditional
-        # on Windows, where the scan path is os.sep-flavoured and the
-        # keys are not: canonical_path_key's own docstring records that
-        # exact defect class having cost something once already.
-        wanted = {}
+        """Reconcile SEVERAL directories in one pass over the manifest, one flush - the per-directory walk was O(subdirs x manifest) with a full JSON rewrite per stale find (measured: 300 subdirs against 40,000 entries, 3.13s of dict iteration inside the folder open)."""
+        wanted = {}  # BOTH sides through canonical_path_key: scan dirpaths arrive os.sep-flavoured (and Locate Folder forces a trailing slash the walk preserves), so an uncanonicalised dirname never matches a wanted key and nothing reconciles again for that folder
         for folder, names in by_folder.items():
             key = hostos.canonical_path_key(folder)
             wanted[key] = {hostos.canonical_path_key(
@@ -399,9 +222,7 @@ class ThumbnailCache:
 
         stale = []
         for full_path, entry in self._manifest.items():
-            # Through the same funnel, so an entry written by an older
-            # build that did not canonicalise still matches.
-            current_full = wanted.get(hostos.canonical_path_key(
+            current_full = wanted.get(hostos.canonical_path_key(  # through the same funnel, so an entry written by an older build still matches
                 os.path.dirname(full_path)))
             if current_full is None:
                 continue          # not a directory we were asked about
@@ -430,22 +251,7 @@ class ThumbnailCache:
         self.save()
 
     def invalidate(self, full_path: str, flush: bool = True) -> None:
-        """Evict a single cache entry ("Rerender Thumbnail") - unlike
-        reconcile(), which only drops entries whose source file is gone
-        or changed, this drops a still-valid entry on request because the
-        user wants a fresh render regardless.
-
-        `flush=False` for a LOOP. This ended in an unconditional save(),
-        a full JSON serialise of the whole manifest through
-        write_json_atomic - fsync and rename - and rerender_thumbnails
-        calls it once per selected row: measured, 25 rows produced 25
-        full serialisations, so 500 selected images means 500 rewrites
-        of a manifest that is global per resolution and measured at
-        40,000 entries, on the main thread, before the progress bar is
-        even set up. reconcile_many's docstring records the identical
-        lesson ("One pass, one flush") for the sibling path; invalidate
-        never got it.
-        """
+        """Evict a single cache entry ("Rerender Thumbnail") - drops a still-valid entry on request, unlike reconcile(). `flush=False` for a LOOP, one save() after: an unconditional flush measured 25 rows as 25 full manifest serialisations (fsync each) on the main thread."""
         full_path = self._key(full_path)
         if full_path not in self._manifest:
             return
@@ -460,19 +266,8 @@ class ThumbnailCache:
         if flush:
             self.save()
 
-    def invalidate_many(self, paths) -> None:
-        """Evict several entries and write the manifest ONCE."""
-        for path in paths:
-            self.invalidate(path, flush=False)
-        self.save()
-
     def clear(self) -> None:
-        """Delete every cached thumbnail file and reset the manifest, in
-        memory and on disk. Sweeps every texture_thumbnails_* AND
-        geo_thumbnails_* directory, not just the current one's - the
-        geometry section keys its dirs by shading mode + background +
-        resolution, so combinations tried once would otherwise sit
-        orphaned in ~/Library/Caches forever."""
+        """Delete every cached thumbnail file and reset the manifest, in memory and on disk - sweeps every texture_thumbnails_* AND geo_thumbnails_* directory, because the geometry section keys its dirs by shading mode + background + resolution and combinations tried once would sit orphaned forever."""
         parent = os.path.dirname(self.cache_dir)
         try:
             for name in os.listdir(parent):
@@ -487,17 +282,7 @@ class ThumbnailCache:
 
 
 class TextureFilterProxyModel(grid_proxy.GridProxyModel):
-    """Combines a filename text filter with a favorites-only toggle for
-    the File section - deliberately not MultiFilterProxyModel
-    (core/multifilterproxy_model.py), which hardcodes Material-specific
-    role numbers (e.g. 258 as its own FavoriteRole) that would collide
-    with TextureFiles' unrelated role numbering rather than actually
-    generalizing across both models.
-
-    What the two DO share is the Grid area's invariant - what is shown
-    and in what order - and that is the base class they now have in
-    common (core/grid_proxy.py). This one only says what it filters
-    on."""
+    """Filename text filter + favorites-only toggle + kind filter for the File section - deliberately not MultiFilterProxyModel, whose hardcoded Material role numbers would collide with this model's unrelated numbering; what the two DO share (the Grid area's shown-and-ordered invariant) is the base class."""
 
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
@@ -514,13 +299,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         self.refilter()
 
     def watched_roles(self):
-        """Exactly what filterAcceptsRow reads - favourite, kind, the
-        display name - plus the sort role. A location colour picked on
-        the sidebar or a comment badge appearing emits its role over
-        every row, and the whole-blacklist fallback bought a full
-        re-filter and re-sort of the section for each (the base's own
-        watched_roles docstring names the gesture; MultiFilterProxyModel
-        answered, this proxy fell through)."""
+        """Exactly what filterAcceptsRow reads - favourite, kind, the display name - plus the sort role, so a role emitted over every row (a sidebar colour, a comment badge) does not buy a whole re-filter through the blacklist fallback."""
         watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
         model = self.sourceModel()
         for name in ("FavoriteRole", "KindRole"):
@@ -530,14 +309,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         return watched
 
     def set_kind_filter(self, kind) -> None:
-        """Show only rows of one KIND - a file_library.KIND_* value, or
-        None for every kind (which includes KIND_OTHER, the files the
-        section has no behaviour for).
-
-        The kind is what the File section IS since the 2026-07-31
-        merge: images, geometry and scenes stopped being three tabs and
-        became three kinds in one list, and this is how the toolbar
-        gets back to one of them."""
+        """Show only rows of one KIND - a file_library.KIND_* value, or None for every kind (KIND_OTHER included); the kind is what the File section IS since the 2026-07-31 merge, and this is how the toolbar gets back to one of them."""
         self._kind_filter = kind or ""
         self.refilter()
 
@@ -551,12 +323,7 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         if self._favorites_only and not index.data(model.FavoriteRole):
             return False
         if self._kind_filter:
-            # KindRole belongs to FileFiles, and this proxy serves that
-            # model alone - but a model without the role answers None
-            # rather than raising, which would silently accept every
-            # row. getattr keeps that honest: no role, no kind, no
-            # match.
-            kind_role = getattr(model, "KindRole", None)
+            kind_role = getattr(model, "KindRole", None)  # a model without the role answers None rather than raising, which would silently accept every row - no role, no kind, no match
             if kind_role is None:
                 return False
             if index.data(kind_role) != self._kind_filter:

@@ -1,15 +1,4 @@
-"""The two host engines own their branches - enforced, not requested.
-
-hostos.py has said "nothing else in the codebase may test sys.platform"
-since it was written, and nothing checked. A rule that lives only in a
-docstring is a rule until the first hurry.
-
-These are SOURCE-DERIVED tests: the property is structural, and driving
-it would need three operating systems and two Houdini installs, so the
-assertion is made against the files themselves. Comments and strings
-are tokenized out first - an earlier source-derived test in this project
-failed on the comment that documented the very fix it was checking.
-"""
+"""The two host engines own their branches - enforced by SOURCE-DERIVED tests (driving the property would need three operating systems and two Houdini installs), with comments and strings tokenized out first so a rule documented in prose cannot fail the rule it documents."""
 
 import os
 import sys
@@ -24,17 +13,7 @@ _PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _code_only(path):
-    """The file's source with comments and strings removed, so a rule
-    documented in prose cannot fail the rule it documents.
-
-    Tokens are reassembled BY LINE. The first version of this joined
-    every token with a newline, which put `hou`, `.`,
-    `applicationVersion`, `(`, `)` and `[` on six separate lines - so a
-    line-wise search for `applicationVersion()[` could never match
-    anything, and every test built on it passed while searching text
-    that cannot contain what it looks for. The inline sabotage test
-    below is what exposed it.
-    """
+    """The file's source with comments and strings removed, tokens reassembled BY LINE - joined any other way, a line-wise search for `applicationVersion()[` can never match and every test built on it passes vacuously (the inline sabotage test below is what keeps this honest)."""
     with open(path, "rb") as fh:
         try:
             toks = list(tokenize.tokenize(fh.readline))
@@ -53,11 +32,9 @@ def _code_only(path):
     for row in sorted(rows):
         line = ""
         for piece in rows[row]:
-            # A space only between two word-ish tokens, so `import os`
-            # survives while `hou.applicationVersion()[0]` stays intact.
             if line and (line[-1].isalnum() or line[-1] == "_") and \
                     (piece[0].isalnum() or piece[0] == "_"):
-                line += " "
+                line += " "  # a space only between two word-ish tokens: `import os` survives while `hou.applicationVersion()[0]` stays intact
             line += piece
         out.append(line)
     return "\n".join(out)
@@ -96,10 +73,7 @@ class TestHostEngineOwnership(unittest.TestCase):
         return found
 
     def test_no_module_branches_on_the_houdini_version(self):
-        """Every version difference goes through hostver, as a named
-        capability. A raw comparison at a call site is invisible to
-        anyone not running that version - which is how a y-flip aimed
-        the H21 viewport pick at the wrong end of the screen for days."""
+        """Every version difference goes through hostver as a named capability - a raw comparison at a call site is invisible to anyone not running that version."""
         offenders = self._offenders(
             "hostver.py",
             ("applicationVersion()[", "applicationVersion ()["))
@@ -119,10 +93,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             % "\n  ".join(offenders))
 
     def test_the_scan_survives_the_owner_being_excluded(self):
-        """Sabotage, inline. Both tests above pass trivially if the walk
-        finds nothing or the tokenizer eats everything. Run the same
-        scan WITHOUT the exclusion: hostver.py itself must show up, or
-        the machinery is not searching real code."""
+        """Sabotage, inline: run the scan WITHOUT the exclusion and hostver.py itself must show up, or the walk finds nothing and every green above means nothing."""
         hits = self._offenders("no_such_file.py", ("applicationVersion()[",))
         self.assertTrue(
             any("hostver.py" in h for h in hits),
@@ -130,9 +101,7 @@ class TestHostEngineOwnership(unittest.TestCase):
             "so a green result above means nothing. Found: %s" % hits)
 
     def test_prose_about_the_rule_does_not_trip_the_rule(self):
-        """The trap this file's own docstring names: a source-derived
-        test that matches its explanatory comments fails on the fix it
-        documents. hostos.py's docstring says the words 'sys.platform'."""
+        """hostos.py's docstring says the words `sys.platform`, so a tokenizer that stops stripping docstrings trips the rule on the fix that documents it."""
         code = _code_only(os.path.join(_PKG, "helpers", "hostos.py"))
         self.assertNotIn(
             "nothing else in the codebase", code,
@@ -154,8 +123,7 @@ class TestHostVerAnswers(unittest.TestCase):
         self.assertIsInstance(hostver.has_new_cops(), bool)
 
     def test_a_broken_hou_does_not_take_the_app_down(self):
-        """houdini_major() is consulted during a drag; if it raises, the
-        gesture must degrade, not crash the panel."""
+        """houdini_version() is read on every capability Env, drags included; if hou raises, the gesture must degrade, not crash the panel."""
         import hou
         from amaze.helpers import hostver
         real = hou.applicationVersion
@@ -165,7 +133,7 @@ class TestHostVerAnswers(unittest.TestCase):
             raise RuntimeError("no application")
 
         hou.applicationVersion = _boom
-        self.assertEqual(0, hostver.houdini_major())
+        self.assertEqual((), hostver.houdini_version())
         self.assertIsInstance(hostver.obj_pick_wants_device_pixels(2.0), bool)
 
 
@@ -198,8 +166,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertEqual("workaround", cap.resolve(self._env()))
 
     def test_every_condition_must_hold(self):
-        """ALL conditions, not any - the macOS condition went missing
-        once and a macOS workaround was applied to Windows."""
+        """ALL conditions, not any - a macOS workaround once reached Windows."""
         hv = self._hv()
         cap = hv.Capability(
             base="documented", base_evidence="e" * 50,
@@ -224,10 +191,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertEqual("strong", cap.resolve(self._env()))
 
     def test_explain_names_the_condition_that_vetoed(self):
-        """The payoff. A report from a machine nobody here can
-        reproduce should arrive with its composition already resolved -
-        not "the workaround did not apply" but "it did not apply
-        because this is not macOS"."""
+        """A report from an unreproducible machine arrives with its composition resolved - which condition vetoed, not just that one did."""
         hv = self._hv()
         report = hv.OBJ_PICK_DEVICE_PIXELS.explain(
             self._env(macos=False, windows=True))
@@ -248,8 +212,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertTrue(hv.OBJ_PICK_DEVICE_PIXELS.resolve(self._env()))
 
     def test_every_h22_build_takes_the_base(self):
-        """No 22.0.x below 393 has ever run here, so the series is not
-        split on the changelog's inference."""
+        """No 22.0.x below 393 has ever run here, so the series is not split on the changelog's inference."""
         hv = self._hv()
         for build in ((22, 0, 0), (22, 0, 390), (22, 0, 391), (22, 0, 394)):
             self.assertFalse(
@@ -258,9 +221,7 @@ class TestOpinionComposition(unittest.TestCase):
                 % (build,))
 
     def test_a_future_version_takes_the_base_not_the_workaround(self):
-        """The reason the base is the DOCUMENTED behaviour rather than
-        the oldest one: H23 must not inherit a Retina workaround from a
-        version it has nothing to do with."""
+        """The base is the DOCUMENTED behaviour, not the oldest: H23 must not inherit a Retina workaround it has nothing to do with."""
         hv = self._hv()
         self.assertFalse(
             hv.OBJ_PICK_DEVICE_PIXELS.resolve(self._env(houdini=(23, 0, 1))))
@@ -276,8 +237,7 @@ class TestOpinionComposition(unittest.TestCase):
             hv.OBJ_PICK_DEVICE_PIXELS.resolve(self._env(scale=1.0)))
 
     def test_a_raising_predicate_vetoes_instead_of_propagating(self):
-        """A capability is consulted inside a mouse handler. A broken
-        predicate must degrade to the base, not kill the gesture."""
+        """A capability is consulted inside a mouse handler - a broken predicate degrades to the base, never kills the gesture."""
         hv = self._hv()
 
         def _boom(env):
@@ -291,8 +251,7 @@ class TestOpinionComposition(unittest.TestCase):
         self.assertIn("raised", report["opinions"][0]["vetoed_by"])
 
     def test_every_opinion_and_base_carries_real_evidence(self):
-        """A version branch without evidence is a guess that outlives
-        whoever guessed. Enforced, not requested."""
+        """A version branch without evidence is a guess that outlives the guess - enforced, not requested."""
         hv = self._hv()
         caps = [(n, getattr(hv, n)) for n in dir(hv)
                 if n.isupper() and isinstance(getattr(hv, n), hv.Capability)]
@@ -314,19 +273,7 @@ class TestOpinionComposition(unittest.TestCase):
 
 
 class AFailedWriteSaysWhichFailure(unittest.TestCase):
-    """`hostos.why_failed` - the errno, not a guess.
-
-    `database.save()` answered this inline and answered it the same way
-    every time: *the file is held by another program*. Measured
-    2026-08-10 (research.md ▸ WHAT A FAILED WRITE ACTUALLY RAISES) that
-    cause CANNOT occur on macOS - an atomic rename over a file another
-    handle holds open succeeds - so the one message Amaze showed when a
-    library write failed named a Windows-only cause on a Mac, and sent
-    anyone whose synced folder had dropped looking for a program that
-    was not there.
-
-    The errnos below are the measured ones, from that probe.
-    """
+    """`hostos.why_failed` answers with the errno, never a guess - the errnos below are the measured ones (research.md ▸ {#r/failed-write}), and the point is that a wrong guessed cause sends the user to an object that was never involved."""
 
     def _cause(self, number):
         from amaze.helpers import hostos
@@ -360,18 +307,14 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         self.assertNotIn("another program", sentence)
 
     def test_it_names_the_FOLDER_for_a_permission_failure(self):
-        """Measured: `os.replace` over a `chmod 444` file SUCCEEDS,
-        because POSIX rename asks the directory. So an instruction to
-        check the file's permissions would send the user to the wrong
-        object, however obvious it reads."""
+        """Measured: `os.replace` over a read-only file SUCCEEDS because POSIX rename asks the directory - so the sentence must name the FOLDER, not the file."""
         import errno
 
         _cause, sentence = self._cause(errno.EACCES)
         self.assertIn("folder", sentence)
 
     def test_an_unmeasured_errno_claims_no_cause(self):
-        """Saying nothing specific is the right answer to a cause we
-        have not measured. Guessing is what this replaced."""
+        """Saying nothing specific is the right answer to an unmeasured cause - guessing is what this replaced."""
         from amaze.helpers import hostos
 
         cause, sentence = self._cause(999)

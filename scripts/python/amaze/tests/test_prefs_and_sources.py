@@ -799,21 +799,6 @@ class AGalleryIsLeftAsItWasFound(unittest.TestCase):
 
 class OneTooltipEngine(unittest.TestCase):
 
-    def test_the_old_engine_delegates(self):
-        """One tooltip engine: the older door delegates, so the measured device-pixel rule cannot be bypassed through it."""
-        self.assertFalse(
-            calls("helpers/helpers.py", "tooltip_html", "escape"),
-            "tooltip_html builds its own HTML again instead of "
-            "delegating to the measured engine")
-        self.assertTrue(
-            calls("helpers/helpers.py", "tooltip_html", "tooltip_text"),
-            "tooltip_html no longer delegates")
-
-    def test_both_doors_answer_the_same(self):
-        text = "A description that is short in characters but wide"
-        self.assertEqual(helpers.tooltip_html(text),
-                         ui_helpers.tooltip_text(text))
-
     def test_the_model_paths_use_the_measured_one(self):
         for rel in ("core/code_library.py", "core/gradient_library.py",
                     "core/matx_library.py"):

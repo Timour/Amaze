@@ -550,7 +550,9 @@ class UpdatePreviewWritesTheManifestOnce(unittest.TestCase):
             return real_write(path, data, **kw)
 
         hostos.write_json_atomic = spy
-        cache.invalidate_many(["/img/%d.png" % n for n in range(25)])
+        for n in range(25):  # the product's batch spelling (file_library.rerender_thumbnails): per-row evictions, one flush after
+            cache.invalidate("/img/%d.png" % n, flush=False)
+        cache.save()
 
         self.assertEqual(
             1, len(writes),

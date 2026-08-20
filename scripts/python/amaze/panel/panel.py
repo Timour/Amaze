@@ -12,7 +12,7 @@ import amaze
 from amaze.core import grid_columns
 from amaze.panel import (dragdrop_widgets, empty_state, grid, notes_panel,
                          sections, sidebar)
-from amaze.core import debug, keyed_store, library_policy, repair
+from amaze.core import debug, keyed_store, library_policy, locations, repair
 from amaze.core import versions
 from amaze.core import notes
 from amaze.core import scene_captures
@@ -67,6 +67,7 @@ def _reload(module):
 
 
 _reload(keyed_store)    # FIRST: eleven modules read their stores through it, so a stale engine keeps old tables while every caller gets new code; a re-register keeps existing bindings, so binder modules outside this chain stay whole
+_reload(locations)      # right after the engine it binds two stores into - and the switch door calls locations.forget()
 _reload(hostos)    # before library: the models import the shared thumbnail engine
 _reload(debug)
 _reload(dragengine)
@@ -553,7 +554,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def switch_all_models(self) -> None:
         """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
-        keyed_store.release()    # drop EVERY cached store table first, so a switch BACK to a library re-reads what is on disk instead of serving the session's old rows - sync can land another machine's edits behind the cache (test_switch_rereads is the pin)
+        locations.forget()    # drop EVERY cached store table first (keyed_store.release inside), so a switch BACK to a library re-reads what is on disk instead of serving the session's old rows - sync can land another machine's edits behind the cache (test_switch_rereads is the pin) - and re-arm the migration retry guards, since a switch is exactly the change that earns another try
         models = self.library_models()
         if not models:
             return

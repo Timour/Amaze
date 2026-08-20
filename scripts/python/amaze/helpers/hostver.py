@@ -1,39 +1,15 @@
-"""The host-capability engine: every "does this environment behave
-differently here?" question lives HERE.
-
-Sibling of `hostos.py`, which owns OS facts. Nothing else may compare
-`hou.applicationVersion()` against a number, and callers ask for the
-ANSWER ("which point does the pick want?"), never the version.
-
-A capability is a BASE value plus OPINIONS, each carrying its
-conditions and its evidence. Read ▸p/host-opinions before adding one -
-where the base comes from and how far an opinion may be scoped are the
-two things that go wrong.
-"""
+"""The host-capability engine: every question about whether this environment behaves differently lives HERE - sibling of `hostos.py`, which owns OS facts. Nothing else may compare `hou.applicationVersion()` against a number, and callers ask for the ANSWER, never the version. A capability is a BASE value plus OPINIONS, each carrying its conditions and its evidence; read ▸p/host-opinions before adding one."""
 
 import hou
 
 from amaze.helpers import hostos
 
 
-#: SideFX changelog, build 22.0.391: "Fixed issues with viewport lasso
-#: picking and picking with fully contained and visible geometry options
-#: enabled on macOS retina displays. Also fixed issues with viewport
-#: locate highlighting on macOS retina displays. The issues appeared
-#: only in the new UI."
-#:
-#: Documentation, NOT a boundary - see OBJ_PICK_DEVICE_PIXELS.
-RETINA_PICK_FIX_CHANGELOG = (22, 0, 391)
+RETINA_PICK_FIX_CHANGELOG = (22, 0, 391)  # the SideFX changelog build that fixed retina lasso/contained picking in the new UI on macOS - documentation, NOT a boundary (see OBJ_PICK_DEVICE_PIXELS)
 
 
 class Env(object):
-    """The environment an opinion is judged against.
-
-    `scale` is passed in by the caller rather than re-derived, so the
-    value that DECIDES is the value that gets APPLIED - two separate
-    reads could disagree about a window dragged between displays of
-    different densities.
-    """
+    """The environment an opinion is judged against - `scale` is passed in by the caller rather than re-derived, so the value that DECIDES is the value that gets APPLIED."""
 
     def __init__(self, houdini=None, macos=None, windows=None,
                  linux=None, scale=None):
@@ -53,14 +29,7 @@ class Env(object):
 
 
 class Opinion(object):
-    """One layer's claim about a capability.
-
-    conditions is an ordered tuple of (description, predicate) pairs,
-    ALL of which must hold. They are named rather than folded into one
-    lambda so that explain() can report which one vetoed - the
-    difference between "the workaround did not apply" and "the
-    workaround did not apply because this is not macOS".
-    """
+    """One layer's claim about a capability - `conditions` is an ordered tuple of (description, predicate) pairs, ALL of which must hold, named rather than folded into one lambda so explain() can report which one vetoed."""
 
     def __init__(self, value, conditions, evidence, strength=0):
         self.value = value
@@ -69,14 +38,7 @@ class Opinion(object):
         self.strength = strength
 
     def applies_to(self, env):
-        """(applied, vetoed_by) - EVERY condition that failed, joined.
-
-        Reporting only the first is misleading in exactly the case that
-        matters. A real record from a Windows box read "vetoed_by:
-        macOS" when the display was also unscaled - two independent
-        reasons, one shown - which invites the reader to think that
-        fixing the named one would change the answer.
-        """
+        """(applied, vetoed_by) - EVERY condition that failed, joined, because reporting only the first invites the reader to think fixing the named one would change the answer."""
         failed = []
         for description, predicate in self.conditions:
             try:
@@ -112,12 +74,7 @@ class Capability(object):
         return value
 
     def explain(self, env):
-        """Every opinion, whether it applied, and what vetoed it.
-
-        This is the point of the whole design. It goes in the debug log
-        so a report from a machine nobody here can reproduce arrives
-        with its composition already resolved.
-        """
+        """Every opinion, whether it applied, and what vetoed it - for the debug log, so a report from a machine nobody here can reproduce arrives with its composition already resolved."""
         considered = []
         for opinion in self.opinions:
             applied, vetoed = opinion.applies_to(env)
@@ -146,9 +103,7 @@ _SCALED = ("a scaled display (dpr != 1)",
            lambda env: bool(env.scale) and env.scale != 1.0)
 
 
-#: Whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels rather
-#: than the documented logical point.
-OBJ_PICK_DEVICE_PIXELS = Capability(
+OBJ_PICK_DEVICE_PIXELS = Capability(  # whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels rather than the documented logical point
     base=False,
     base_evidence=(
         "The documented behaviour and what SideFX ships today: the "
@@ -187,9 +142,7 @@ OBJ_PICK_DEVICE_PIXELS = Capability(
 )
 
 
-#: Whether the EXR->PNG conversion can use the new COPs (copnet) with
-#: full OCIO rather than a cop2net with restricted parameters.
-NEW_COPS = Capability(
+NEW_COPS = Capability(  # whether the EXR->PNG conversion can use the new COPs (copnet) with full OCIO rather than a cop2net with restricted parameters
     base=True,
     base_evidence=(
         "21.x and 22.x ship copnet with full OCIO, in continuous use for "
@@ -221,25 +174,8 @@ def houdini_version():
         return ()
 
 
-def houdini_major():
-    """The major version, e.g. 21. Prefer a named capability - this
-    exists for logging and for the diagnostics, which legitimately
-    REPORT the version rather than branch on it."""
-    version = houdini_version()
-    return version[0] if version else 0
-
-
 def obj_pick_wants_device_pixels(device_scale):
-    """Whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels.
-
-    The affected builds do not apply the device pixel ratio themselves,
-    so they want the point already multiplied by it. Origin and
-    convention are unchanged - the same bottom-left GL point H22 takes,
-    one factor apart.
-
-    See OBJ_PICK_DEVICE_PIXELS for the evidence, and explain_pick() for
-    why a given machine resolved the way it did.
-    """
+    """Whether GeometryViewport.queryNodeAtPixel wants DEVICE pixels - the affected builds do not apply the device pixel ratio themselves, so they want the point already multiplied by it, same bottom-left GL origin either way; see OBJ_PICK_DEVICE_PIXELS for the evidence and explain_pick() for a machine's resolution."""
     return OBJ_PICK_DEVICE_PIXELS.resolve(Env(scale=device_scale))
 
 
