@@ -408,39 +408,53 @@ class GradientCategoryColorTest(unittest.TestCase):
         self.assertEqual("", self._reload_sidebar().color_of("Warm"))
 
 
-class GradientNoteSweepTest(unittest.TestCase):
-    """The entry-level "note" moved to the Notes store, so loading a library that still carries one moves the text onto the palette's Comments page and consumes the field - no words lost on the way out."""
+def _curated_note_count() -> int:
+    """How many curated combinations ship colour text - DERIVED, so a seed test cannot pass by counting nothing."""
+    found = 0
+    for curated in gradient_library.CURATED_SETS:
+        path = gradient_library._def_path(curated["file"])
+        if not path or not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            for combo in json.load(handle).get("combinations", []):
+                if str(combo.get("note", "") or "").strip():
+                    found += 1
+    return found
+
+
+class GradientSeedNoteTest(unittest.TestCase):
+    """The curated colour text goes STRAIGHT to the Comments page: the retired entry-level `note` is never written, so nothing has to come along later and take it off again."""
 
     def setUp(self):
         test_support.reset_database_singletons()
-        self.dir = tempfile.mkdtemp(prefix="amaze_notesweep_")
+        self.dir = tempfile.mkdtemp(prefix="amaze_seednote_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [{"name": "klee", "colors": [],
-                                   "id": "kleeid",
-                                   "note":
-                                   "Theory: warm against cool."}]},
-                      fh, indent=1)
         self.prefs = _fixture_prefs(self, self.dir)
 
-    def test_the_note_lands_on_the_page_and_leaves_the_entry(self):
+    def _seeded(self):
         lib = gradient_library.GradientLibrary(preferences=self.prefs)
+        lib.seed_curated_palettes(
+            gradient_library.GradientCategories(preferences=self.prefs))
+        return lib
+
+    def test_the_text_lands_on_the_page_and_never_on_the_entry(self):
+        lib = self._seeded()
         from amaze.core import notes
-        row = _row_named(self, lib, "klee")
-        key = notes.note_key("gradient", lib.note_uid(row))
-        texts = [item["text"]
-                 for item in notes.note_for(self.prefs, key).get(
-                     "items", [])
-                 if item.get("t") == "text"]
-        self.assertIn("Theory: warm against cool.", texts,
-                      "the words must survive on the Notes page")
+        pages = [row for row in range(lib.rowCount())
+                 if notes.note_for(
+                     self.prefs,
+                     notes.note_key("gradient", lib.note_uid(row))
+                 ).get("items")]
+        self.assertTrue(pages,
+                        "no seeded palette carries its colour text, so "
+                        "the seed dropped it")
         with open(self.path, encoding="utf-8") as fh:
             saved = json.load(fh)
-        by_name = {g["name"]: g for g in saved["assets"]}
-        self.assertNotIn("note", by_name["klee"],
-                         "the consumed field may not come back on disk")
+        carried = [g["name"] for g in saved["assets"] if "note" in g]
+        self.assertEqual([], carried,
+                         "the retired field reached disk on %d rows"
+                         % len(carried))
 
 
 class GradientFirstOpenWriteCountTest(unittest.TestCase):
@@ -474,27 +488,31 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         self.addCleanup(setattr, hostos, "write_json_atomic", real)
         return seen
 
-    def test_twelve_notes_are_swept_in_one_write(self):
+    def test_the_whole_curated_seed_costs_one_notes_write(self):
+        """39 pages, ONE write - a per-note write rotates a snapshot each time, so the restore tier's real history goes out with 39 copies of the same minute."""
         seen = self._counted_writes()
-        gradient_library.GradientLibrary(preferences=self.prefs)
+        lib = gradient_library.GradientLibrary(preferences=self.prefs)
+        lib.seed_curated_palettes(
+            gradient_library.GradientCategories(preferences=self.prefs))
         self.assertEqual(
             1, seen.count("notes.json"),
-            "the sweep wrote notes.json %d times for 12 notes; a "
-            "per-note write also rotates a snapshot each time"
-            % seen.count("notes.json"))
+            "the seed wrote notes.json %d times; batching is what keeps "
+            "the snapshot tier usable" % seen.count("notes.json"))
 
-    def test_every_swept_note_still_arrives(self):
-        """Batching must not cost a page - the sweep's contract is moved, never dropped."""
+    def test_every_seeded_note_still_arrives(self):
+        """Batching must not cost a page - written together, all of them or the write failed."""
         lib = gradient_library.GradientLibrary(preferences=self.prefs)
+        lib.seed_curated_palettes(
+            gradient_library.GradientCategories(preferences=self.prefs))
         from amaze.core import notes
-        for i in range(12):
-            row = _row_named(self, lib, "g%d" % i)
-            key = notes.note_key("gradient", lib.note_uid(row))
-            texts = [item["text"] for item
-                     in notes.note_for(self.prefs, key).get("items", [])
-                     if item.get("t") == "text"]
-            self.assertIn("note %d" % i, texts,
-                          "g%d lost its note to the batch" % i)
+        pages = sum(1 for row in range(lib.rowCount())
+                    if notes.note_for(
+                        self.prefs,
+                        notes.note_key("gradient", lib.note_uid(row))
+                    ).get("items"))
+        self.assertEqual(_curated_note_count(), pages,
+                         "%d of %d curated notes reached their page"
+                         % (pages, _curated_note_count()))
 
     def test_stamped_rows_cost_no_identity_write(self):
         """Identity from birth: rows that arrive stamped give the id persist nothing to do, so it must not save the whole file - measured as a WRITE COUNT, because an id present afterwards cannot tell born-stamped from backfilled."""

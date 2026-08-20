@@ -73,7 +73,6 @@ class GradientLibrary(library.AssetLibrary):
     def __init__(self, preferences) -> None:
         super().__init__(preferences)
         self._persist_minted_ids_once()
-        self._sweep_notes_to_store_once()
 
     @staticmethod
     def _asset_from_row(row: dict):
@@ -99,7 +98,6 @@ class GradientLibrary(library.AssetLibrary):
     def switch_model_data(self) -> None:
         super().switch_model_data()
         self._persist_minted_ids_once()
-        self._sweep_notes_to_store_once()
 
     def _persist_minted_ids_once(self) -> None:
         """Write a minted id back so it IS the row's identity rather than a value that changes every launch - notes and tile icons are keyed by it."""
@@ -114,42 +112,12 @@ class GradientLibrary(library.AssetLibrary):
             debug.event("gradients", "ids minted and persisted",
                         count=minted)
 
-    def _sweep_notes_to_store_once(self) -> None:
-        """Move any entry-level `note` text onto the asset's Comments page; a note the store cannot take stays on the row and is retried next load - moved, never dropped."""
-        from amaze.core import notes
-        moved = cleared = 0
-        pages = {}
-        carriers = {}
-        for asset in self._assets:
-            extra = getattr(asset, "_extra", None)
-            if not isinstance(extra, dict) or "note" not in extra:
-                continue
-            text = str(extra.get("note", "") or "").strip()
-            if not text:
-                del extra["note"]
-                cleared += 1
-                continue
-            key = notes.note_key(self.NOTES_SECTION, asset.mat_id)
-            page = notes.note_for(self.preferences, key)
-            items = list(pages.get(key, page.get("items", [])))
-            items.append({"t": "text", "text": text})
-            pages[key] = items
-            carriers.setdefault(key, []).append(extra)
-        if pages and notes.set_notes(self.preferences, pages):  # collected and written ONCE: per-entry writes rotated a snapshot each
-            for extras in carriers.values():
-                for extra in extras:
-                    extra.pop("note", None)
-                    moved += 1
-        if moved or cleared:
-            self.save()
-            debug.event("gradients", "notes swept to the notes store",
-                        moved=moved, cleared=cleared)
-
     _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
     _SEED_MARKER_LEGACY = ".assetlib_gradient_seed_v1"  # renamed on sight so an old library does not re-seed and duplicate
 
     def seed_curated_palettes(self, category_model) -> None:
         """First run per library: every curated combination becomes a normal user gradient. Guarded by a marker file, best-effort - never blocks panel startup."""
+        from amaze.core import notes
         try:
             lib_dir = self.preferences.dir
             if not lib_dir:
@@ -163,6 +131,7 @@ class GradientLibrary(library.AssetLibrary):
                 return
             seeded = 0
             categories = []
+            pages = {}
             for curated in CURATED_SETS:
                 path = _def_path(curated["file"])
                 if not path or not os.path.exists(path):
@@ -185,8 +154,12 @@ class GradientLibrary(library.AssetLibrary):
                         "categories": [cat_name],
                         "colors": colors,
                         "ramp": _palette_ramp_data(colors),
-                        "note": combo.get("note", ""),
                     })
+                    text = str(combo.get("note", "") or "").strip()
+                    if text:
+                        pages[notes.note_key(self.NOTES_SECTION,
+                                             mat.mat_id)] = [
+                            {"t": "text", "text": text}]
                     row = len(self._assets)
                     self.beginInsertRows(QtCore.QModelIndex(), row, row)
                     try:
@@ -201,6 +174,8 @@ class GradientLibrary(library.AssetLibrary):
                 debug.event("gradient", "curated seed not marked - the "
                             "save did not reach disk")
                 return
+            if pages:
+                notes.set_notes(self.preferences, pages)  # AFTER the save landed: a page for a palette that never reached disk is an orphan
             for cat_name in categories:
                 category_model.check_add_category(cat_name)
         except Exception as exc:                        # noqa: BLE001
@@ -223,7 +198,6 @@ class GradientLibrary(library.AssetLibrary):
                 "starts. Your own palettes are not affected." % exc)
             self._seed_marker_failed = True  # a RECORD, not a guard: hand-deleting 348 duplicated palettes is not a next step that works
             return
-        self._sweep_notes_to_store_once()  # the seeded notes move to their Comments pages in THIS session, not on the next launch's sweep
 
     @staticmethod
     def _colors_of(asset) -> list:

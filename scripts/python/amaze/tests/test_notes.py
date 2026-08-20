@@ -703,6 +703,21 @@ class ModelRoleTest(unittest.TestCase):
             "lost it - the badge follows the wiring")
 
 
+def _curated_notes() -> int:
+    """How many curated combinations ship colour text - DERIVED from the def files, so adding a set cannot make the seed test pass by counting nothing."""
+    from amaze.core import gradient_library
+    found = 0
+    for curated in gradient_library.CURATED_SETS:
+        path = gradient_library._def_path(curated["file"])
+        if not path or not os.path.exists(path):
+            continue
+        with open(path, "r", encoding="utf-8-sig") as handle:
+            for combo in json.load(handle).get("combinations", []):
+                if str(combo.get("note", "") or "").strip():
+                    found += 1
+    return found
+
+
 class GradientNotesTest(unittest.TestCase):
     """Notes reach gradients like every section, keyed gradient:<id>."""
 
@@ -721,6 +736,21 @@ class GradientNotesTest(unittest.TestCase):
             "the curated palettes did not seed - these tests cannot "
             "check identity without gradients, and silently skipping "
             "is what hid them before")
+
+    def test_the_seed_writes_its_colour_text_to_the_store_not_the_row(self):
+        """The retired `note` field must not be written at all: a seeder that writes it and a sweep that removes it are one file arguing with itself."""
+        carried = [row for row in (self.model._data.get("assets") or [])
+                   if isinstance(row, dict) and "note" in row]
+        self.assertEqual([], carried,
+                         "%d seeded rows carry the retired `note` field"
+                         % len(carried))
+        badged = sum(1 for row in range(self.model.rowCount())
+                     if self.model.data(self.model.index(row, 0),
+                                        self.model.NotesRole))
+        self.assertEqual(_curated_notes(), badged,
+                         "the curated colour text did not reach the "
+                         "store - a seed that drops it loses the text "
+                         "silently, since the row no longer carries it")
 
     def test_every_gradient_is_born_with_identity(self):
         """After construction every entry has a uid and a reload keeps it."""
