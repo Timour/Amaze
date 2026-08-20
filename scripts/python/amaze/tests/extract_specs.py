@@ -1,25 +1,4 @@
-"""Build the generator's reference database from REAL materials.
-
-The Generator Engine works on a spec - a dict of standard-surface
-numbers. v1 invents those numbers from hand-picked ranges. This script
-replaces the guesswork with measured distributions taken from
-materials that actually exist:
-
-  * the user's own library (its Redshift materials run through the
-    converter, which already produces an mtlxstandard_surface), and
-  * the Karma materials Houdini itself ships in
-    $HH/usd/materials/basic_materials/basic_materials.usd.
-
-Output: res/material_specs.json - per parameter, the observed values
-plus their quantiles, and the same broken down by material category,
-so the generator can sample "what a real fabric looks like" instead of
-a uniform range.
-
-    hython tests/extract_specs.py [--limit N] [--out FILE]
-
-Needs the Redshift plugin for the library half (H21 here); the shipped
-Houdini corpus is read from USD text and needs nothing.
-"""
+"""Standard-surface numbers measured off real materials, for the generator."""
 
 import argparse
 import json
@@ -34,13 +13,6 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/, the directory that
-# holds the `amaze` package. The original had four, which lands on
-# scripts/ - where amaze is NOT importable - so every one of these
-# files silently imported amaze through Houdini's own package path,
-# i.e. the INSTALL. The sync-before-test discipline masked it for the
-# suite's whole life; it surfaced when a deliberately-unsynced
-# sabotage edit failed to change a test's behaviour.
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
@@ -48,7 +20,6 @@ sys.path.insert(
 from amaze.core import database, material as matmod  # noqa: E402
 from amaze.render import material_converter, nodes  # noqa: E402
 
-#: The spec parameters worth learning: everything the generator sets.
 SPEC_PARMS = (
     "base", "base_color", "metalness", "specular", "specular_roughness",
     "specular_IOR", "coat", "coat_roughness", "transmission",
@@ -87,8 +58,7 @@ def _read_shader(shader) -> dict:
 
 
 def from_library(library_dir: str, limit: int = 0) -> list:
-    """Convert the library's Redshift materials and read the numbers
-    off each converted shader."""
+    """Convert the library's Redshift materials and read each shader."""
     database.DatabaseConnector._instances.pop("library.json", None)
     data = database.DatabaseConnector("library.json").load(library_dir)
     records = [
@@ -106,7 +76,6 @@ def from_library(library_dir: str, limit: int = 0) -> list:
             mat._name = record.get("name", "")
             mat._mat_id = str(record.get("id"))
             mat._renderer = record.get("renderer", "")
-            mat._builder = record.get("builder", 0)
             handler = nodes.NodeHandler(prefs)
 
             def produce(builder, _handler=handler, _mat=mat):
@@ -148,8 +117,7 @@ _USD_INPUT = re.compile(
 
 
 def from_houdini_corpus() -> list:
-    """The standard_surface values SideFX ships in basic_materials.usd,
-    read straight from the USD text (no cook, no dependency)."""
+    """The values SideFX ships in `basic_materials.usd`, read as text."""
     hh = hou.getenv("HH") or ""
     path = os.path.join(
         hh, "usd", "materials", "basic_materials", "basic_materials.usd"
@@ -158,7 +126,6 @@ def from_houdini_corpus() -> list:
         return []
     text = open(path, encoding="utf-8", errors="replace").read()
     out = []
-    # Each "def Material" block up to the next one.
     blocks = re.split(r'def Material "', text)
     for block in blocks[1:]:
         name = block.split('"', 1)[0]
@@ -182,8 +149,7 @@ def from_houdini_corpus() -> list:
 
 
 def summarise(entries: list) -> dict:
-    """Per parameter: the observed values and their quantiles - the
-    shape the generator samples from."""
+    """Per parameter: the observed values and their quantiles."""
     scalars = {}
     colors = {}
     for entry in entries:
@@ -248,9 +214,7 @@ def main() -> int:
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         "res", "material_specs.json",
     )
-    # The public repo carries the NUMBERS, not the user's library
-    # contents: names and categories of library-sourced materials are
-    # dropped, Houdini's own shipped material names are kept (public).
+    # The public repo carries the numbers, never the library's own names.
     shipped = []
     for entry in entries:
         if entry.get("source") == "houdini":

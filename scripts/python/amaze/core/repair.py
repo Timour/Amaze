@@ -1,16 +1,4 @@
-"""Repair: what is wrong with this library, and what is safe to do.
-
-NEVER deletes. The strongest thing it may do is MOVE files into a dated
-folder inside the library.
-
-Run it from the shelf, in a session that has not opened a library: it
-REFUSES to change anything once one is open, because a connector that
-has already read a list will write its old document back over whatever
-was put back. The report always runs. ▸p/db-restore
-
-Nothing here may import the panel - Repair has to work when the panel
-will not open. Its dialogs block; `debug.alert` is the wrong sink.
-"""
+"""Repair: never deletes, only reports and moves. ▸p/db-restore"""
 
 import datetime
 import json
@@ -25,66 +13,21 @@ from amaze.helpers import helpers, hostos, restore as restore_lib
 from amaze.prefs import prefs as prefs_module
 
 
-#: Every list Repair knows how to read, in the order the panel shows
-#: them. All four go through DatabaseConnector since 2026-08-09, so
-#: all four get the same shape test, the same restore tier and the same
-#: sentences; gradients.json was the last one in and is still the least
-#: protected on the real library (no rolling copies at all when this
-#: was measured), which is what makes reporting on it worth the line.
-#:
-#: The names and their order are `database.SECTION_DATABASES`, not a
-#: copy: a section that arrives there is one Repair reports on.
 DATABASES = database.DATABASES
 
-#: Every file suffix an asset row owns in the asset folder - the ONE
-#: home for the set. Clean Library sweeps with these and the survey
-#: classifies with them, and the rehearsal test builds its expectation
-#: FROM here: a hand-rolled copy went stale twice, first missing
-#: .stamp.json, then .builder.json - each time on the first real
-#: library that had saved under the newer writer.
 ASSET_SIDECARS = (".mat", ".interface", ".builder.json", ".stamp.json")
 
 
 def side_tables() -> tuple:
-    """The keyed side tables, from the ONE registry that declares them.
-
-    Repair used to know only the four lists above, while BOTH side
-    tables' unreadable alerts send the user here by name - "put back a
-    recent copy with the Repair tool in the Amaze shelf" - and Repair
-    then surveyed neither and offered neither. `tools/library-audit.py`
-    kept the same list and grew the side tables on 2026-08-02; this copy
-    stayed narrow and nothing went red, because a hand-written list is
-    only as long as whoever last edited it remembered.
-    """
+    """The keyed side tables, from the one registry that declares them."""
     from amaze.core import keyed_store
     return keyed_store.filenames()
 
-#: What a re-attached asset is called. It is not a guess dressed up as a
-#: fact: the name, categories and tags lived ONLY in the list, and the
-#: files do not carry them (research.md - name/renderer strings appear
-#: in an asset file partly by coincidence, with no labelled field to
-#: read them from, and tags and date are absent outright).
 RECOVERED_CATEGORY = "Recovered"
 
 
 def configured_library(preferences=None) -> str:
-    """The library folder the settings NAME, whether or not it is there.
-
-    Kept apart from library_directory because the two answers earn two
-    different messages, and merging them was a WRONG DIAGNOSIS: nothing
-    configured yet is a fresh install and sends the reader to Preferences,
-    while a folder that is named and not reachable is an unmounted drive
-    or a synced folder that is not online. Telling that second reader they
-    have no library, and pointing them at Preferences, is how somebody
-    re-points Amaze at an empty folder and loses the library from the
-    panel. A wrong diagnosis costs more than none.
-
-    Takes preferences so a test can inject a fixture library; falls back
-    to reading the user's settings, which is what the shelf tool does.
-    Prefs.load() degrades to "unconfigured" rather than raising (it is
-    read with a default on every key for exactly this reason), so a
-    settings file that will not parse lands here as "" and gets the same
-    honest answer as a fresh install."""
+    """The folder the settings name, reachable or not: unconfigured is empty."""
     if preferences is None:
         preferences = prefs_module.Prefs()
         preferences.load()
@@ -99,28 +42,7 @@ def library_directory(preferences=None) -> str:
 
 def survey(directory: str, asset_dir: str = "mat/",
            img_dir: str = "img/") -> dict:
-    """READ ONLY: everything Repair knows, gathered once.
-
-    Returns a dict the report and every action work from, so the sentence
-    on screen and the file that gets moved can never come from two
-    different readings of the disk.
-
-    `complete` is the important one. It is True only when every list
-    either read cleanly or is genuinely absent with nothing saying it was
-    ever here - i.e. when the union of ids is the WHOLE union. While it
-    is False, no file may be called unclaimed: ORPHANHOOD IS RELATIVE TO
-    EVERY LIST SHARING THE DIRECTORY (measured: 548 + 8 = 556 .mat files,
-    exactly), and a file belonging to a list nobody could read looks
-    identical to a leftover. Twice now that reasoning has produced a
-    confident deletion of live assets - once in code, once by hand. So
-    the report says so, and quarantine is not offered at all.
-
-    A FOLDER AMAZE COULD NOT LOOK INSIDE counts against `complete` for
-    the same reason a list that will not parse does. It is the most
-    measured broken state in this project - the small json arriving
-    before the big folder on a second machine - and reporting it as
-    "every file is accounted for" would be a false all-clear from the one
-    tool whose job is to say what is wrong."""
+    """Read-only, gathered once; while `complete` is False nothing is unclaimed."""
     lists = []
     ids = set()
     complete = True
@@ -133,11 +55,6 @@ def survey(directory: str, asset_dir: str = "mat/",
     unaccounted = {}
     unreadable_folders = []
     for folder, extensions, tail in (
-            # The SAME kinds Clean Library sweeps with - a builder
-            # sidecar or recovery stamp whose asset row is gone must
-            # count here too, or the two tools report different numbers
-            # about one folder (the exact bug this module's own
-            # docstring forbids).
             (asset_dir, ASSET_SIDECARS, "_cop"),
             (img_dir, (".png",), "_icon")):
         names = _unlisted_in(directory, folder, extensions, tail, ids)
@@ -160,8 +77,7 @@ def survey(directory: str, asset_dir: str = "mat/",
 
 
 def _survey_one(directory: str, filename: str) -> dict:
-    """One list: what state it is in, what it holds, and what copies sit
-    beside it."""
+    """One list: its state, what it holds, and what copies sit beside it."""
     path = os.path.join(directory, filename)
     facts = restore_lib.info(path)
     entry = {
@@ -175,11 +91,6 @@ def _survey_one(directory: str, filename: str) -> dict:
                       for tier, snap in restore_lib.snapshots(path)],
     }
     if not facts["exists"]:
-        # ABSENT IS ONLY "NEW" WHEN NOTHING SAYS THE FILE WAS EVER HERE.
-        # The same question load() and Clean Library both ask, answered by
-        # the same function, because three callers disagreeing about
-        # whether a library is new is how an empty list was seeded over
-        # eight live assets.
         entry["trace"] = database.absent_but_known(directory, filename)
         entry["state"] = "absent-but-known" if entry["trace"] else "absent"
         return entry
@@ -190,35 +101,13 @@ def _survey_one(directory: str, filename: str) -> dict:
     from amaze.core import keyed_store
     spec = keyed_store.store_for(filename)
     if spec is not None:
-        # A side table's payload is a MAPPING, so the list shape test
-        # would call every healthy one malformed. Its own test is the
-        # one the store itself loads through, plus the same
-        # payload-key-present rule: a file holding the OTHER store's
-        # key parses, reads as empty, and is not this store's file.
         malformed = database.wrong_table_shape(document, spec.payload)
         if not malformed and spec.payload not in (document or {}):
             malformed = ("it holds no %r, so it is not the %s file"
                          % (spec.payload, spec.label))
     else:
-        # ALL FOUR DATABASES, gradients included since 2026-08-09. It
-        # was exempted here on the grounds that it had "its own format,
-        # no connector" - true when the line was written and not since:
-        # it is an ordinary DatabaseConnector document with rows under
-        # `assets`. The exemption outlived its premise, and the count
-        # fallback below does not cover the gap, because `count_in`
-        # walks the list keys, finds `assets` is not a list, finds no
-        # mapping payload and falls through to `len(document),
-        # "settings"`. So a Colors list the connector refuses to load
-        # answered 1 and was reported **ok, 1 settings** - no restore
-        # offered for the one list that needed it.
         malformed = database.wrong_shape(document)
     if malformed or facts["count"] is None:
-        # VALID JSON IS NOT A VALID LIST, and the same classifier the
-        # connector and Clean Library use decides it here too. `count is
-        # None` catches the Colors file the same way without needing a
-        # second shape test for it: a document nothing can be counted in
-        # is one nobody can read, and calling it EMPTY instead would say
-        # "there is nothing here" about a file that may be full.
         entry["state"] = "unreadable"
         entry["info"] = dict(
             facts,
@@ -233,21 +122,7 @@ def _survey_one(directory: str, filename: str) -> dict:
 
 def _unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
                  known_ids: set):
-    """Names of the files in one of the library's own folders that no list
-    accounts for, or None when the folder could not be read at all.
-
-    The SAME classifier Clean Library sweeps with
-    (database.asset_id_for_file), so Repair cannot report a different set
-    of files than Clean Library refused over. Two tools telling the user
-    two different numbers about one folder is its own bug.
-
-    None, not [] - the rule its sibling in library.py
-    (_files_no_section_accounts_for) already states: "a handler that
-    returns a neutral value makes a failure indistinguishable from an
-    honest empty result". Returning [] here read a folder that has not
-    synced down as a folder with nothing unaccounted for, and printed
-    "every file is accounted for" about a folder nobody had seen, while
-    Clean Library refused outright over the same directory."""
+    """Files no list accounts for, or None when the folder could not be read."""
     full = os.path.join(directory, folder)
     try:
         names = sorted(os.listdir(full))
@@ -264,24 +139,7 @@ def _unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
 
 
 def read_stamp(path: str) -> dict | None:
-    """One recovery stamp, or None when it cannot be read.
-
-    THE ONLY OPENER OF A STAMP IN THE PACKAGE, and it lives in this
-    module because that is the rule a source-derived test holds: stamps
-    are write-only shadows of a row, and a reader elsewhere makes them a
-    second source of truth. Clean Library's pass 3 needs the answer, so
-    it asks HERE rather than opening one itself - whether an asset can
-    still be put back is a question for the recovery tool.
-
-    One reader, so the sweep and `rebuild_from_stamps` cannot disagree.
-    If they did, the sweep would carry off the evidence the rebuild was
-    about to use - the shape of disagreement `database.ids_claimed_by`
-    was extracted to end.
-
-    utf-8-sig, like the rest of the package reads: strictly wider than
-    the plain utf-8 this used, so every stamp that read before still
-    reads and a BOM'd one recovers instead of counting damaged.
-    """
+    """One recovery stamp, or None: the only opener of a stamp in the package."""
     try:
         with open(path, encoding="utf-8-sig") as handle:
             record = json.load(handle)
@@ -296,33 +154,7 @@ def read_stamp(path: str) -> dict | None:
 
 def stamped_assets(directory: str, asset_dir: str = "mat/",
                    names: list | None = None) -> dict:
-    """The assets in `asset_dir` whose stamp actually reads, as
-    {id: record} - the ones a rebuild could put back.
-
-    `names` lets a caller that has ALREADY listed the folder hand its
-    listing in. Clean Library's pass 3 does, and not to save a syscall:
-    the sweep decides what to quarantine from one listing, and a second
-    listing taken a moment later can disagree with it - a stamp written
-    in between would spare a file the sweep never saw, and one deleted
-    in between would drop protection from a file it is about to move.
-    One listing, one set of facts.
-
-    READABLE IS THE WHOLE TEST. A stamp that will not parse rebuilds
-    nothing (`rebuild_from_stamps` counts it damaged), so treating it as
-    protection would hold files back for a recovery that can never run.
-    Unreadable stamp, ordinary leftover: same answer.
-
-    THE RECORD COMES BACK, not just the id, and that is what makes the
-    sweep's own sentence possible: the stamp holds the asset's NAME, so
-    a message about files nothing lists can name a material the user has
-    seen on a tile instead of a 32-character id they have seen nowhere.
-    Membership still reads `id in result`.
-
-    A folder that cannot be listed yields nothing rather than raising.
-    The caller is a guard whose own refusal path already covers
-    not-being-able-to-look; a second one here would give the sweep two
-    ways to be held back with different sentences.
-    """
+    """The assets whose stamp reads, as {id: record}; `names` reuses a listing."""
     folder = os.path.join(directory, asset_dir)
     if names is None:
         try:
@@ -343,33 +175,7 @@ def stamped_assets(directory: str, asset_dir: str = "mat/",
 
 def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
                         index_filename: str = "library.json") -> dict:
-    """Reconstruct a library index from the per-asset recovery stamps.
-
-    `index_filename` names WHICH index is being rebuilt, because the
-    stamps in `asset_dir` belong to several: the ids the other
-    databases claim are left out of the result.
-
-    THE DISASTER PATH, and the only reader of a stamp. Before stamps
-    existed the answer to "can this library survive losing
-    library.json?" was measured and it was NO: the asset files carry no
-    tags, no description, no favourite, no date, and no labelled field
-    to read a name or category out of (research.md).
-
-    Returns {"assets": [...], "categories": [...], "tags": [...],
-    "damaged": [...]} - a document in the shape library.json holds, plus
-    the ids whose stamp could not be read.
-
-    WHAT COMES BACK AND WHAT DOES NOT. Every per-asset field returns,
-    because the stamp is the asset's whole record. Cross-asset state
-    does not: the ORDER of categories, and their colours, are library
-    facts rather than asset facts and live only in the index. Categories
-    and tags are re-derived from the union of what the assets name, so
-    the set survives and the arrangement does not.
-
-    One damaged stamp costs its own asset and nothing else. The rebuild
-    completes and names it - a partial library the owner can see is
-    worth more than a refusal they cannot act on.
-    """
+    """One index rebuilt from the stamps `index_filename` claims, damaged named."""
     folder = os.path.join(directory, asset_dir)
     assets, damaged = [], []
     categories, tags = [], []
@@ -380,20 +186,6 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
                     folder=folder, error=str(exc))
         return {"assets": [], "categories": [], "tags": [], "damaged": []}
 
-    # WHOSE STAMPS ARE THESE? `mat/` is shared by Materials, Nodes and
-    # Code, so a rebuild that claims every stamp in it hands this index
-    # the other sections' assets - measured on a 4-material library
-    # holding 20 stamps, 16 of them Nodes and Code. The ids the SIBLING
-    # databases claim are asked for through the one classifier that
-    # owns that question, the same one Clean Library's pass 3 asks
-    # (database.ids_claimed_by).
-    #
-    # A sibling that will not READ claims nothing here, and that is the
-    # safe direction for a REBUILD: this path only ever adds rows to an
-    # index that is already lost, and a row too many is visible and
-    # deletable where a row missing is gone. It is the opposite of the
-    # sweep's direction, which refuses on the same evidence because it
-    # DELETES.
     owned_elsewhere = set()
     by_file, unreadable = database.ids_claimed_by(directory)
     for filename, ids in by_file.items():
@@ -409,11 +201,6 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         asset_id = name[: -len(STAMP_SUFFIX)]
         if asset_id in owned_elsewhere:
             continue
-        # THE SHARED READER, not a second parse. Clean Library's pass 3
-        # spares the files of any id whose stamp reads; if that judgement
-        # and this one came from two pieces of code, the sweep could
-        # carry off a stamp this rebuild would have accepted, or hold
-        # back files it could never restore. One reader, one answer.
         record = read_stamp(os.path.join(folder, name))
         if record is None:
             damaged.append(asset_id)
@@ -438,17 +225,7 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
 
 
 def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
-    """Put an unreadable library.json right, without a human choosing
-    the route: the newest snapshot that parses wins, else the index is
-    rebuilt from the per-asset recovery stamps. Returns (ok, how) -
-    `how` is a short sentence for the log and the dialog's follow-up.
-
-    Built for the PANEL's own load-failure dialog, which runs before
-    any model exists - the one moment repair.run's a-panel-is-open
-    refusal does not apply, because there is nothing in memory yet to
-    overwrite what this puts back. put_back saves the broken current
-    file beside itself first, so even this route destroys nothing.
-    """
+    """Newest snapshot that parses, else a rebuild from stamps; (ok, how)."""
     target = os.path.join(directory, "library.json")
     for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
         source = "%s.%s" % (target, tier)
@@ -474,14 +251,6 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
                        "were found")
     try:
         hostos.snapshot_before_write(target)
-        # THE STAMPS THIS REBUILDS FROM ARE WRITTEN BY THIS BUILD, so
-        # the rows are at the current schema and the document must say
-        # so. A hardcoded 1 under-claimed it - benign only while both
-        # migration steps happen to be no-ops on already-migrated rows,
-        # and Versions is the next SCHEMA_VERSION bump. And omitting
-        # `format` dropped the write-protection stamp entirely, so a
-        # build with an older LIBRARY_FORMAT opened the rebuilt library
-        # read-WRITE instead of being told to update.
         hostos.write_json_atomic(target, {
             "version": database.SCHEMA_VERSION,
             "format": branding.LIBRARY_FORMAT,
@@ -507,11 +276,7 @@ def unaccounted_total(findings: dict) -> int:
 
 
 def restorable(findings: dict) -> list:
-    """(filename, tier, snapshot info, current info) for every copy that
-    could be put back - newest first within each list, lists in panel
-    order. A healthy list is included: rolling one back is a legitimate
-    thing to want, and only offering it for a broken one would be a
-    guess about why the user came here."""
+    """Every copy that could be put back, newest first, in panel order."""
     offers = []
     for entry in findings["lists"]:
         for tier, snap in entry["snapshots"]:
@@ -519,30 +284,15 @@ def restorable(findings: dict) -> list:
     return offers
 
 
-# ---------------------------------------------------------------------
-# What the user reads. Every sentence in this section is the product;
-# the code above only decides which of them are true.
-# ---------------------------------------------------------------------
-
 def _holdings(entry: dict) -> str:
-    """"548 saved materials" - the count with the word for what was
-    counted. "548 saved" asks the reader to supply the noun, and for
-    Colors the number is colours while for Code it is snippets."""
+    """The count with the word for what was counted, per section."""
     count = entry["info"]["count"] or 0
     return "%d saved %s" % (
         count, database.section_noun(entry["filename"], count))
 
 
 def _copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
-    """"from 2026-07-27 20:31, 8 saved nodes" - a saved copy named by the
-    only two things that can answer "which one do I want".
-
-    NEVER BY ITS TIER. "bak-1" and "bak-first" are storage suffixes;
-    nothing on screen or anywhere in Houdini has ever shown them, so
-    asking someone to choose between them under pressure is asking them
-    to guess. The date and the count are the identity, and they are what
-    the real library's copies differ by (measured: cops.json bak-1 8
-    assets, bak-2 6, bak-first 2)."""
+    """A saved copy named by its date and count, never by its storage tier."""
     if snap["error"]:
         return "from %s, cannot be read" % snap["when"]
     count = snap["count"] or 0
@@ -551,21 +301,11 @@ def _copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
 
 
 def _snapshot_line(entry: dict) -> str:
-    """What the copies beside a list would bring back."""
     if not entry["snapshots"]:
-        # WHAT WAS NOT DAMAGED, in the same breath as the limit. "There is
-        # nothing to put back" on its own reads as "your work is gone",
-        # and for a list it is not: the materials are files in the folder,
-        # and a list Amaze cannot read has not touched them.
         line = ("%s: there are no saved copies of this list beside it, so "
                 "there is nothing to put back." % entry["label"])
         if entry["filename"] in database.ASSET_FILE_OWNERS:
-            # ONLY WHERE IT IS TRUE. Code keeps its snippets inline and
-            # Colors keeps its ramps inline, so for those two sections
-            # there are no files of their own in the folder and the
-            # reassurance would point at nothing - a reassurance that is
-            # not quite true is worse than none, because the reader stops
-            # believing the next one.
+            # Only where it is true: Code and Colors keep their assets inline.
             line += (" Your %s' own files and thumbnails are still in the "
                      "library folder either way."
                      % database.section_noun(entry["filename"], 2))
@@ -575,34 +315,8 @@ def _snapshot_line(entry: dict) -> str:
     return "%s: saved copies - %s." % (entry["label"], "; ".join(parts))
 
 
-# `_and_list` was defined here TWICE at module level, so the later one
-# silently won for all five call sites; that round removed the second
-# and left this module still holding a copy of what `core/library.py`
-# also had. Both are gone now - `helpers.and_list` is the owner, and
-# the call sites below name it.
-
-
 def report_lines(findings: dict) -> list:
-    """The whole report, in the user's words.
-
-    No index, no record, no row, no database, no session, no merge, no
-    schema, no orphan, no stale. The library, your materials, the folder,
-    the file, the list, saved copies. A user who cannot tell from this
-    what is wrong and what happens next has been handed a log, not a
-    report.
-
-    "Section" is the one word here the user has never seen on a control -
-    the tabs say Materials, Nodes, Code and Colors - so the first line
-    introduces it against those four names rather than leaving it to be
-    inferred four paragraphs later."""
-    # Without the rstrip the sentence ends in "/." - prefs keeps the
-    # library path with its separator because everything else joins onto
-    # it, and a full stop after a slash reads as a typo.
-    # The SIDE TABLES are named from the registry, not spelled out
-    # here. This sentence introduced four sections and then the report
-    # listed six things, because Repair learned the side tables
-    # (2026-08-03) and the sentence above them did not - which is the
-    # same drift, one line higher, that the registry exists to end.
+    """The whole report, in the user's words, never the program's."""
     from amaze.core import keyed_store
     extra = [spec.label.lower() for spec in keyed_store.stores()
              if spec.in_library]
@@ -636,11 +350,6 @@ def report_lines(findings: dict) -> list:
         elif state == "absent-but-known":
             troubled.append(entry)
             unchecked.append(label)
-            # THE TRACE IS NOT NAMED HERE. "and cops.json.bak-1 beside it
-            # says there was one" gives "beside it" no antecedent - the
-            # list is the thing that is not there - and names a file in a
-            # sentence that does not send anybody to touch it. Clean
-            # Library names it, because that message does.
             lines.append(
                 "%s: there is no list for it in the library folder, though "
                 "Amaze can see there was one here before. If this folder "
@@ -650,12 +359,6 @@ def report_lines(findings: dict) -> list:
             lines.append("%s: nothing saved here yet." % label)
 
     if empty:
-        # ONE line for all of them, not one per section: two empty
-        # sections used to produce two near-identical thirty-word
-        # sentences in one dialog, which is the nagging the aggregate
-        # rule exists to prevent. Clean Library teaches this same
-        # ambiguity; the tool the refusal sends people to may not say
-        # less about it than the refusal did.
         lines.append("")
         lines.append(
             "A list that holds nothing looks the same whether nothing was "
@@ -676,10 +379,6 @@ def report_lines(findings: dict) -> list:
                      % _files_by_folder(findings))
         lines.extend(_what_can_be_added_back(findings))
     elif total:
-        # NAME THE SECTION, do not point at the dialog. "a list above
-        # could not be read either" makes the reader count paragraphs,
-        # and "some of them may well be its" makes them parse a
-        # possessive to find out whether their assets are at risk.
         lines.append(
             "No section lists %s. Amaze could not check the %s list either, "
             "so some of those files may be its. Nothing will be moved "
@@ -698,16 +397,12 @@ def report_lines(findings: dict) -> list:
 
 
 def _files(count: int) -> str:
-    """"1 file" / "3 files". The engineer's "file(s)" is the plural of a
-    program, not of English, and it lands in the sentences somebody acts
-    on."""
+    """The count and its English plural, never the parenthesised one."""
     return "1 file" if count == 1 else "%d files" % count
 
 
 def _files_on_a_button(count: int) -> str:
-    """"2 Files" - the same count, capitalised for a button label, since
-    every other button in this tool is Title Case and one lowercase word
-    in the row reads as a typo."""
+    """The same count, capitalised: every button in this tool is Title Case."""
     return _files(count).replace("file", "File")
 
 
@@ -717,15 +412,7 @@ def _and_folders(folders: list) -> str:
 
 
 def _files_by_folder(findings: dict) -> str:
-    """"2 files in the mat folder (A.mat, A.interface) and 1 file in the
-    img folder (A_icon.png)".
-
-    FOLDER BY FOLDER, never as one total: Clean Library weighs the asset
-    folder alone, so a combined number here would have the refusal saying
-    2 and the tool it sends you to saying 3 about one library. The names
-    are given while there are few of them, because the next dialog offers
-    to move these files and "2 in mat" is not something anybody can check
-    before clicking."""
+    """Folder by folder, never one total: Clean Library weighs one folder."""
     parts = []
     for folder, names in findings["unaccounted"].items():
         if not names:
@@ -739,13 +426,7 @@ def _files_by_folder(findings: dict) -> str:
 
 
 def _what_can_be_added_back(findings: dict) -> list:
-    """The line that keeps the two buttons apart.
-
-    Adding back takes only complete pairs; moving aside takes everything
-    unaccounted for. With three unlisted files where one is half a
-    material, two buttons act on two different sets and nothing on screen
-    said so - and "unlisted" against "unclaimed" read as a synonym rather
-    than a distinction."""
+    """The line that keeps the two buttons apart: pairs against everything."""
     addable = _reattachable_files(findings)
     total = unaccounted_total(findings)
     if not addable or len(addable) == total:
@@ -759,13 +440,6 @@ def _folder_name(folder: str) -> str:
     return str(folder).rstrip("/\\") or folder
 
 
-# ---------------------------------------------------------------------
-# The actions. Two of them write; neither can delete.
-# ---------------------------------------------------------------------
-
-#: Why no action may run from a Houdini that has read the library, as a
-#: phrase the callers' refusal sentences carry whole. Worded without a
-#: full stop at the end so "Amaze moved nothing: %s." composes cleanly.
 _SESSION_HOLDS_THE_LIBRARY = (
     "this Houdini has already read the library and would write what it "
     "remembers back over the change - quit Houdini, start it again, and "
@@ -773,43 +447,13 @@ _SESSION_HOLDS_THE_LIBRARY = (
 
 
 def _refuse_a_houdini_that_holds_the_library(refusal=ValueError) -> None:
-    """EVERY ACTION ENFORCES THIS FOR ITSELF, before touching anything.
-
-    run() checks the same thing to decide which buttons exist, and the
-    first version stopped there - which made the guard a property of one
-    UI helper rather than of the operations. Any other route to these
-    functions (a future menu item, a shelf script, somebody driving the
-    module from the Python shell) would have changed a library that this
-    process is about to overwrite from memory. The operations are where
-    the danger is, so the operations are where the guard lives; the
-    button logic is a courtesy on top."""
+    """Every action enforces this for itself; the button logic is a courtesy."""
     if session_has_a_library_open():
         raise refusal(_SESSION_HOLDS_THE_LIBRARY)
 
 
 def quarantine(findings: dict) -> dict:
-    """MOVE every unclaimed file into THE quarantine - the same
-    machine-local one Clean Library uses. Returns {"folder", "moved",
-    "failed"}.
-
-    The strongest thing Repair may do. This wrote to its own
-    <library>/_removed_<date>/ until 2026-07-31, which the campaign had
-    already ruled out for Clean Library three times over: it grows
-    inside the library forever, it breaks the no-temporary-files rule,
-    and it puts the recovered copies inside the very synced tree the
-    worst case arrives through. Two tools with two quarantines is also
-    two answers to "where did my file go". One location now, one
-    30-day window, one place to look - named in the report.
-
-    Refuses outright while any list is unreadable. Moving a file whose
-    owner could not be read is moving data on a guess, and that guess has
-    already cost this project real assets twice.
-
-    Also refuses a Houdini that has already read the library - for
-    itself, not by trusting run() to have asked. A moved file is not
-    overwritten by a later save the way a restored list is, but the
-    decision to move it was made against findings this process's own
-    memory is about to invalidate."""
+    """Move unclaimed files into the one quarantine; refuses on any bad list."""
     _refuse_a_houdini_that_holds_the_library()
     if not findings["complete"]:
         raise ValueError("one of the library's lists cannot be read, so "
@@ -822,17 +466,10 @@ def quarantine(findings: dict) -> dict:
             continue
         for name in names:
             source = os.path.join(findings["directory"], folder, name)
-            # The shared mover: same destination, same collision rule,
-            # same 30-day retention as Clean Library's sweep.
             if library_mod.quarantine_file(findings["directory"], source):
                 moved.append(name)
             else:
                 failed.append(name)
-    # ONE record, carrying BOTH whole lists. A per-failure event shared
-    # one flood key with every other failure in the session and went
-    # dark after five, so "3 moved" with two silently left behind was
-    # exactly the report-that-lies-by-omission this was meant to
-    # prevent. Complete, or it cannot be followed back.
     debug.event("repair", "unclaimed files moved aside", folder=root,
                 moved=len(moved), failed=len(failed),
                 moved_files=moved, failed_files=failed)
@@ -841,31 +478,7 @@ def quarantine(findings: dict) -> dict:
 
 
 def reattach(findings: dict, filename: str) -> dict:
-    """Add a row to `filename` for every unclaimed asset pair, so the
-    files stop being unclaimed. Returns {"added": [ids], "path": ...}.
-
-    ONLY a complete pair (<id>.mat AND <id>.interface) is offered: one
-    half of a pair is not an asset, and inventing a row for it would put
-    a tile in the panel that cannot open.
-
-    WHAT THIS CANNOT RECOVER, and the caller says so before asking: the
-    name, the categories, the tags and the date lived only in the list.
-    They are not in the files (research.md - a renderer or name string
-    turns up in an asset file partly by coincidence, with no labelled
-    field to read it from). So a re-attached asset comes back under a
-    plain name in one new category, and the renderer field is left empty
-    rather than guessed at. Import does not consult it - the node type
-    comes from the saved file itself - so the asset works; the badge is
-    blank until it is saved again.
-
-    Rows are built by Material itself and written with get_as_dict, not
-    hand-assembled here, so the shape cannot drift from what the app
-    writes.
-
-    Refuses a Houdini that has already read the library - for itself,
-    like quarantine and put_back: a row added to a list this process
-    holds in memory is erased by that process's next save, whoever
-    called."""
+    """A row for every complete unclaimed pair, under a plain name and no renderer."""
     _refuse_a_houdini_that_holds_the_library()
     if not findings["complete"]:
         raise ValueError("one of the library's lists cannot be read, so "
@@ -874,8 +487,6 @@ def reattach(findings: dict, filename: str) -> dict:
     document, error = restore_lib.read_document(path)
     malformed = error or database.wrong_shape(document)
     if malformed:
-        # NO RAW EXCEPTION TEXT ON SCREEN. The reason goes to the log, and
-        # the sentence the caller shows is complete without it.
         debug.event("repair", "cannot add to a list it cannot read",
                     file=filename, reason=malformed)
         raise ValueError("that list cannot be read, so nothing was added "
@@ -905,21 +516,13 @@ def reattach(findings: dict, filename: str) -> dict:
 
 
 def _complete_pairs(findings: dict) -> list:
-    """The ids among the unclaimed files that have BOTH halves in the
-    asset folder, in a stable order."""
+    """The unclaimed ids with both halves present, in a stable order."""
     halves = {}
     for name in findings["unaccounted"].get(findings["asset_dir"], []):
         asset_id = database.asset_id_for_file(
             name, (".mat", ".interface"), "_cop")
         if not asset_id:
             continue
-        # THE COMPANION IS NOT A HALF. `asset_id_for_file` strips the
-        # `_cop` tail to answer WHICH asset owns the file, and the
-        # extension alone cannot tell `X.mat` from `X_cop.mat` - so a
-        # COP companion counted as X's material half, and with the real
-        # `X.mat` lost Add Back minted a row whose material file does
-        # not exist. The same suffix-vs-kind collision library.py
-        # records having fixed once in `_hold_pre_edit_files`.
         if os.path.splitext(name)[0] != asset_id:
             continue
         halves.setdefault(asset_id, set()).add(
@@ -929,12 +532,7 @@ def _complete_pairs(findings: dict) -> list:
 
 
 def _reattachable_files(findings: dict) -> list:
-    """Every unlisted FILE that adding a pair back would account for -
-    both halves, and the thumbnail beside them.
-
-    Counted in files rather than in assets because that is the unit the
-    other button is counted in, and the two numbers are only comparable
-    if they count the same thing."""
+    """Every file adding a pair back accounts for, counted like the other button."""
     pairs = set(_complete_pairs(findings))
     if not pairs:
         return []
@@ -949,32 +547,9 @@ def _reattachable_files(findings: dict) -> list:
 
 
 def _write_json(path: str, document) -> None:
-    """Write a list back, keeping the app's own formatting (indent 4) so
-    the next real save produces a minimal diff in a synced folder.
-
-    THROUGH THE PACKAGE'S OWN SCRATCH-AND-PROMOTE, not a hand-rolled one.
-    unique_scratch cannot collide with another writer's buffer (a fixed
-    name was measured producing 794 reads that PARSED while holding
-    records from both writers), and promote_scratch carries the fsync and
-    the permission rule this project paid for twice - preserve the
-    destination's mode, EXCEPT 0600, which is our own earlier bug's
-    fingerprint. Writing this by hand would have narrowed the one library
-    file that is 0666 on the real machine down to the umask default, and
-    narrowing is the direction that locks a colleague out of a shared
-    library silently.
-
-    NOT write_json_atomic, which is the same thing plus
-    snapshot_before_write: that rotates the rolling copies, and the copy
-    it would rotate out is one the user may be about to restore from. A
-    recovery tool must not spend the evidence."""
+    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies."""
     scratch = hostos.unique_scratch(path, suffix=".repairing")
     try:
-        # newline="\n" for the same reason write_json_atomic carries it:
-        # this writes the SAME database documents, so a repair that left
-        # CRLF behind on Windows would defeat save()'s identical-write
-        # guard and have the next ordinary save rewrite the file - the
-        # bug that keyword fixes, arriving through the one door that
-        # deliberately does not go through that function.
         with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
     except OSError:
@@ -984,43 +559,19 @@ def _write_json(path: str, document) -> None:
 
 
 def put_back(findings: dict, filename: str, tier: str) -> dict:
-    """Put one saved copy back, through the same code the terminal tool
-    uses. A second implementation of a restore is a second answer.
-
-    Refuses a Houdini that has already read the library - FOR ITSELF,
-    not by trusting the caller. restore_lib.put_back leaves that to
-    whoever calls it because the terminal tool cannot know about
-    connectors; this function can, it is the one Houdini route to a
-    restore, and a list put back under a live connector is overwritten
-    by that connector's next save while the user believes they
-    recovered. Raised as RestoreRefused so the caller's one refusal
-    path shows it whole."""
+    """One saved copy back, through the shared restore; raises `RestoreRefused`."""
     _refuse_a_houdini_that_holds_the_library(
         lambda phrase: restore_lib.RestoreRefused(
             "Nothing was put back: %s." % phrase))
     target = os.path.join(findings["directory"], filename)
-    # allow_loss: THIS caller has already informed the choice. The
-    # picker names every copy by date and record count and the report
-    # names what the list holds now, so a smaller copy chosen here is
-    # chosen knowingly. The refusal exists for the blind path - the
-    # terminal tool restoring a parseable-but-empty snapshot with no
-    # counts shown anywhere - and that path keeps it.
     done = restore_lib.put_back(target, tier, allow_loss=True)
     debug.event("repair", "saved copy put back", file=filename, tier=tier,
                 undo=done["undo"])
     return done
 
 
-# ---------------------------------------------------------------------
-# The shelf tool's own flow: the guards, one report, then the choice.
-# ---------------------------------------------------------------------
-
 def open_panel_tab():
-    """An Amaze panel tab in the current desktop, or None.
-
-    Reads Houdini's own pane list - it does NOT import or construct
-    anything of Amaze's, which is the whole point: this runs when the
-    panel cannot be built."""
+    """An Amaze panel tab, or None; reads Houdini's pane list, imports nothing."""
     try:
         desktop = hou.ui.curDesktop()                    # type: ignore
         tabs = desktop.paneTabs()
@@ -1039,20 +590,12 @@ def open_panel_tab():
 
 
 def session_has_a_library_open() -> bool:
-    """Whether anything in this Houdini session has already read a list.
-
-    One connector exists per file for the whole process and load() is
-    gated on `if not self._data`, so a connector that has read a list
-    holds that document until the process ends - and its next save writes
-    that document, not what is on disk. Anything put back now would be
-    overwritten by it. Includes the case where the panel was opened and
-    closed again, which is exactly how someone arrives here."""
+    """Whether anything in this session holds a list, a closed panel included."""
     return bool(database.DatabaseConnector._instances)
 
 
 def run(preferences=None) -> None:
-    """The shelf tool. Reports always; changes only from a Houdini that
-    has not opened a library yet."""
+    """The shelf tool: reports always, changes only with no library open."""
     configured = configured_library(preferences)
     if not configured:
         hou.ui.displayMessage(                           # type: ignore
@@ -1062,10 +605,6 @@ def run(preferences=None) -> None:
             title="Amaze Repair")
         return
     if not os.path.isdir(configured):
-        # A DIFFERENT SITUATION AND A DIFFERENT MESSAGE. Telling somebody
-        # with an offline drive that they have no library, and sending
-        # them to Preferences, is how a library gets re-pointed at an
-        # empty folder.
         hou.ui.displayMessage(                           # type: ignore
             "Amaze cannot reach the library folder it is set to use:\n\n%s"
             "\n\nNothing was changed. If it is on a drive or in a synced "
@@ -1080,20 +619,6 @@ def run(preferences=None) -> None:
 
     panel = open_panel_tab()
     if panel is not None:
-        # ONE HONEST REFUSAL, AND THE WAY OUT IS THE WHOLE POINT OF IT.
-        # Nothing here tries to work around a live panel: it writes the
-        # list on many actions and on timers nobody here has measured, so
-        # anything put back would be overwritten within seconds and the
-        # user would believe they had recovered.
-        #
-        # "Close Amaze, then run Repair again" was the first wording and
-        # it was a next step that does NOT work: one connector per file
-        # lives for the whole process, so closing the panel leaves the
-        # lists in memory and the second run lands on the paragraph below
-        # with no buttons. Only quitting Houdini empties them, so that is
-        # what the sentence says. Not Warning severity either: nothing was
-        # attempted and nothing is at risk - alarm is a budget, and it is
-        # spent on the restore confirm.
         hou.ui.displayMessage(                           # type: ignore
             "Amaze is open, so Repair stopped before reading anything.\n\n"
             "An open Amaze saves the library while you work, and it would "
@@ -1140,19 +665,12 @@ def run(preferences=None) -> None:
 
 
 def _choices(findings: dict, may_change: bool):
-    """The buttons, and only the ones that would change something. A
-    button offering a route that cannot work is the failure practice.md
-    names by name."""
+    """Only the buttons that would change something, each with its own count."""
     choices, actions = [], []
     if may_change and restorable(findings):
         choices.append("Put a Saved Copy Back")
         actions.append("restore")
     if may_change and findings["complete"] and _complete_pairs(findings):
-        # THE COUNT IS ON THE BUTTON, and it is not decoration: this one
-        # acts on the complete pairs and the next one on everything
-        # unaccounted for, which are different sets whenever a half file
-        # is lying about. "Files" in both, too - "unlisted" against
-        # "unclaimed" read as a synonym and hid the distinction.
         choices.append("Add %s to a Section"
                        % _files_on_a_button(len(_reattachable_files(
                            findings))))
@@ -1180,20 +698,12 @@ def _do_restore(findings: dict) -> None:
     filename, tier, snap, current = offers[chosen[0]]
     label = database.section_label(filename)
     if snap["error"]:
-        # NOT "cannot be read EITHER" - the list this copy belongs to may
-        # be perfectly healthy, and a picker deliberately offers those
-        # too, so "either" sends the reader looking for a second fault
-        # that is not there.
         hou.ui.displayMessage(                            # type: ignore
             "That copy of the %s list cannot be read, so Amaze left "
             "everything alone. Try another copy." % label,
             title="Amaze Repair")
         return
-    # NAME WHAT IT RECOVERS AND WHAT IT WOULD LOSE - and DO THE
-    # SUBTRACTION. A confirm that only names the loss is answered with
-    # Cancel forever; one that only names the gain is a trap; and one
-    # that hands over two numbers under pressure leaves the reader to
-    # work out that 548 -> 8 is 540 gone, which is the whole decision.
+    # Name the gain and the loss, and do the subtraction for the reader.
     held = snap["count"] or 0
     if current["error"]:
         change = ("The list you have now cannot be read at the moment, so "
@@ -1223,14 +733,6 @@ def _do_restore(findings: dict) -> None:
     except restore_lib.RestoreRefused as exc:
         hou.ui.displayMessage(str(exc), title="Amaze Repair")  # type: ignore
         return
-    # THE UNDO NAMES A ROUTE THE TOOL ACTUALLY HAS. The copy of the
-    # previous state is one of the copies snapshots() offers, so "run
-    # Repair again and put it back" is a step somebody can follow -
-    # earlier this said "this can be undone by putting that one back"
-    # while the picker could not list it at all. The copy put_back
-    # actually made, by the name it returned - each restore writes its
-    # own timestamped one now, so a guessed fixed name would point at
-    # the wrong restore's copy or at nothing.
     undo = (restore_lib.info(os.path.join(findings["directory"],
                                           done["undo"]))
             if done["undo"] else None)
@@ -1269,9 +771,7 @@ def _do_quarantine(findings: dict) -> None:
     try:
         result = quarantine(findings)
     except ValueError as exc:
-        # Unreachable through the buttons - _choices does not offer this
-        # while a list is unreadable - and handled anyway, because "the
-        # button cannot be there" is a claim about a different function.
+        # Unreachable through the buttons, and handled anyway.
         hou.ui.displayMessage(                            # type: ignore
             "Amaze moved nothing: %s." % exc,             # a sentence
             title="Amaze Repair")
@@ -1311,8 +811,7 @@ def _do_reattach(findings: dict) -> None:
     label = database.section_label(filename)
     noun = database.section_noun(filename, len(pairs))
     if hou.ui.displayMessage(                             # type: ignore
-        # "file pair" is how a material is STORED, not what it is - the
-        # reader has never had to know it takes two files.
+        # How a material is stored is not what it is.
         "Add %d unlisted %s to %s?" % (len(pairs), noun, label),
         help="Each one comes back in a new category called %s, named %s "
              "plus the start of its file name - rename them afterwards. "

@@ -1,10 +1,4 @@
-"""Database-layer hardening: the read, the migration and the merge.
-
-One file per defect class, all of them in the layer that owns the
-library index. Every refusal here is sabotage-verified, and every
-refusal has an accept-path test beside it - a guard that always fires is
-an outage, not a guard, and this layer has shipped one of those before.
-"""
+"""Database-layer hardening: the read, the migration and the merge."""
 
 import io
 import json
@@ -14,8 +8,6 @@ import sys
 import tempfile
 import unittest
 
-# THREE dirnames up = scripts/python, the directory holding the `amaze`
-# package - the DEV tree, not the install on Houdini's path.
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
@@ -24,9 +16,6 @@ from amaze.core import database
 from amaze.helpers import hostos                             # noqa: E402
 from amaze.tests import test_support                        # noqa: E402
 
-#: A fixture's stamp, read from the module rather than typed. The one
-#: place a LITERAL is correct is a test whose subject IS a particular
-#: version - `_v4_document` below says 4 on purpose.
 SCHEMA = database.SCHEMA_VERSION
 
 
@@ -43,13 +32,7 @@ class _Case(unittest.TestCase):
         self.addCleanup(test_support.reset_database_singletons)
 
     def _document(self, count=3, version=None):
-        # TODAY'S STAMP by default. With no upgrade steps left, any
-        # document below the current schema loads as an INCOMPLETE
-        # chain and every save afterwards holds the stamp back - so an
-        # old version here would quietly put tests about something else
-        # onto the refusal path. The schema-gap class needs a document
-        # BELOW the target, which is its whole subject, and says so
-        # locally with `version=2`.
+        # Today's stamp by default: an older one lands on the refusal path.
         return {
             "version": (database.SCHEMA_VERSION if version is None
                         else version),
@@ -60,13 +43,7 @@ class _Case(unittest.TestCase):
         }
 
     def _write(self, data, encoding="utf-8", path=None):
-        # newline="\n" to match hostos.write_json_atomic. A fixture that
-        # lays a file down differently from the product is not a fixture:
-        # test_a_bom_less_database_round_trips_byte_identical reads a
-        # file, saves, and compares BYTES, so on Windows this wrote CRLF,
-        # the product wrote LF, and the save it asserts is a no-op became
-        # a real rewrite. It passed before only because both sides were
-        # wrong in the same direction.
+        # A fixture that lays a file down differently from the product is none.
         with open(path or self.path, "w", encoding=encoding,
                   newline="\n") as handle:
             json.dump(data, handle, indent=4)
@@ -84,15 +61,10 @@ class _Case(unittest.TestCase):
 
 
 class TheSmallBatchTest(_Case):
-    """Five behaviours from the 2026-08-08 small sweep that are not
-    already covered by a sibling test file: the version-key guards,
-    every-trace refusals, and the SVG cache. Sabotage each named fix
-    and exactly one of these goes red."""
+    """The version-key guards, every-trace refusals, and the SVG cache."""
 
     def test_a_malformed_version_key_is_read_as_legacy(self):
-        """int(None) raises TypeError - the one class no caller here
-        catches, because every database guard catches (OSError,
-        ValueError). It must never leave _migrate."""
+        """`int(None)` raises `TypeError`, which no caller here catches."""
         for broken in (None, [], {}, "not a number"):
             with self.subTest(version=broken):
                 document = self._document()
@@ -104,9 +76,7 @@ class TheSmallBatchTest(_Case):
                                  "a malformed version cost the rows")
 
     def test_a_library_switch_forgets_the_old_schema_number(self):
-        """The seed branch never calls _migrate, so a fresh database
-        in the NEW library was stamped with the OLD library's number -
-        and a file marked upgraded is never migrated again."""
+        """The seed branch skips `_migrate`, and a stamped file never migrates."""
         ahead = self._document()
         ahead["version"] = 99
         self._write(ahead)
@@ -120,8 +90,7 @@ class TheSmallBatchTest(_Case):
             "the new library inherited the old one's schema number")
 
     def test_a_refusal_names_every_trace_not_the_first(self):
-        """Four traces beside a file meant four runs and four
-        different sentences, each spending a recovery copy."""
+        """One refusal for every trace, or each run spends a recovery copy."""
         self._write(self._document())
         for tier in ("bak-1", "bak-2", "bak-3"):
             shutil.copyfile(self.path, "%s.%s" % (self.path, tier))
@@ -155,19 +124,7 @@ class TheSmallBatchTest(_Case):
 
 
 class LoadDoesNotMarryCachedDataToANewPathTest(unittest.TestCase):
-    """`load()` set `self._path` UNCONDITIONALLY and then returned the
-    cached document - so a connector serving library A, asked to load
-    library B, answered with A's rows under B's path. `serves(B)` then
-    said yes, and the next save wrote A's whole document into B's file.
-
-    Reachable without any test contortion: switch the library while
-    the panel is closed (a hand edit, a rollback), reopen it - every
-    model constructs through `load()`, the singleton survives, and the
-    first save clobbers the new library with the old one's content.
-    `reload_with_path` was built for switches; `load()` has to take
-    that door itself when the path moves, because callers at
-    construction time cannot know the singleton's history.
-    """
+    """`load` takes the switch door itself when the path moves under a singleton."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -210,15 +167,7 @@ class LoadDoesNotMarryCachedDataToANewPathTest(unittest.TestCase):
 
 
 class TheLibraryFormatStampTest(_Case):
-    """An older build refuses a newer library before writing a byte.
-
-    The format stamp is a separate contract from the schema version:
-    the schema chain migrates DATA shapes this build knows; the format
-    stamp declares whether this build may WRITE the file at all. A
-    stamp ahead of `branding.LIBRARY_FORMAT` latches the session
-    read-only - rows load, every save refuses, one sentence says why.
-    Sabotage: remove the format guard in `_save_inner` and the
-    refusal tests go red while the stamp test stays green."""
+    """A stamp ahead of `branding.LIBRARY_FORMAT` latches the session read-only."""
 
     def test_a_save_stamps_todays_format(self):
         from amaze import branding
@@ -266,14 +215,7 @@ class TheLibraryFormatStampTest(_Case):
 
 
 class BomPrefixedDatabaseLoadsTest(_Case):
-    """A BOM in front of the document must not cost the library.
-
-    `encoding="utf_8"` raises on a byte-order mark, and for library.json
-    load() has no recovery path - the panel opens on an exception. A BOM
-    is an ordinary artifact of a file that has been through a Windows
-    editor or a sync client's conflict helper, so this is a read the
-    layer simply could not do.
-    """
+    """A byte-order mark is an ordinary artifact and must not cost the library."""
 
     def test_a_bom_prefixed_database_loads_at_full_record_count(self):
         self._write(self._document(5), encoding="utf-8-sig")
@@ -290,9 +232,7 @@ class BomPrefixedDatabaseLoadsTest(_Case):
         self.assertEqual(["_All", "Wood"], data["categories"])
 
     def test_the_primary_database_is_read_the_same_way(self):
-        """library.json is the one with no recovery path, so it is the
-        one that matters most - and it takes a different branch in
-        load()."""
+        """The primary has no recovery path and takes its own branch in `load`."""
         self.FILENAME = "library.json"
         self.path = os.path.join(self.dir, "library.json")
         self._write(self._document(4), encoding="utf-8-sig")
@@ -300,11 +240,7 @@ class BomPrefixedDatabaseLoadsTest(_Case):
         self.assertEqual(4, len(data["assets"]))
 
     def test_a_bom_less_database_round_trips_byte_identical(self):
-        """The accept path, and the reason utf-8-sig is free: it must not
-        change one byte of an ordinary file. Read, save, compare.
-        The fixture carries today's format stamp AND today's schema - a
-        stampless or older file's first save legitimately gains one of
-        each, which is those tests' subject, not this one's."""
+        """The accept path: an ordinary file must not change by one byte."""
         from amaze import branding
         document = self._document(3)
         document["format"] = branding.LIBRARY_FORMAT
@@ -322,10 +258,7 @@ class BomPrefixedDatabaseLoadsTest(_Case):
             "every no-op save now looks like a change to the sync client")
 
     def test_nothing_writes_a_bom_back(self):
-        """utf-8-sig on the READ only. If the writer ever adopted it,
-        every save would prepend a marker that every other reader of this
-        library - restore.py, a text editor, another build - then has to
-        know about."""
+        """On the read only: a written marker becomes every other reader's problem."""
         self._write(self._document(2), encoding="utf-8-sig")
         db, _ = self._load()
         db.set({"assets": [{"id": "ASSET0"}], "categories": ["_All"],
@@ -337,11 +270,9 @@ class BomPrefixedDatabaseLoadsTest(_Case):
                 "the save wrote a byte-order mark of its own")
 
     def test_a_bom_prefixed_peer_document_merges(self):
-        """The merge read is the one where a parse failure LATCHES the
-        session's writes, so a BOM there is worse than at load."""
+        """A parse failure on the merge read latches this session's writes."""
         self._write(self._document(2))
         db, _ = self._load()
-        # Another session rewrites the file, with a BOM, adding a row.
         peer = self._document(2)
         peer["assets"].append({"id": "THEIRS1", "name": "theirs"})
         self._write(peer, encoding="utf-8-sig")
@@ -358,15 +289,7 @@ class BomPrefixedDatabaseLoadsTest(_Case):
 
 
 class MigrationFailureLeavesNothingCommittedTest(_Case):
-    """A raising migration must not leave a half-document behind.
-
-    load() assigned self._data from json.load and then migrated it in
-    place, so a step that raised left the connector holding a partially
-    upgraded document - and _remember_disk_state, the line after, never
-    ran. That is the one combination save() cannot survive: it believes
-    it holds the whole library, and _disk_stat is None so the stale-write
-    guard is not armed either.
-    """
+    """A raising migration must not leave a half-document behind."""
 
     def setUp(self):
         super().setUp()
@@ -378,8 +301,7 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
         database._MIGRATIONS.update(self._original)
 
     def _break_the_migration(self):
-        """A step that mutates and THEN raises - a half-applied step, not
-        a step that fails cleanly. Failing cleanly was never the problem."""
+        """A step that mutates and then raises: half-applied, not clean."""
         def half_then_raise(data):
             data["categories"] = ["ruined"]
             raise ValueError("migration step blew up halfway")
@@ -387,8 +309,7 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
         database._MIGRATIONS[1] = half_then_raise
 
     def _v1_document(self):
-        """No "version" key = the implicit legacy schema, so _migrate
-        actually runs a step."""
+        """No version key is the implicit legacy schema, so a step runs."""
         return {"categories": ["_All", "Wood"], "tags": ["rough"],
                 "assets": [{"id": "ASSET0"}, {"id": "ASSET1"}]}
 
@@ -421,9 +342,7 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
                              "a failed migration reached disk")
 
     def test_a_clean_read_afterwards_re_arms_the_guard(self):
-        """The recovery path, and the reason leaving _data falsy is the
-        right refusal: `if not self._data` gates the whole load branch,
-        so the next load RETRIES instead of answering from wreckage."""
+        """Leaving `_data` falsy is why the next load retries rather than answers."""
         self._write(self._v1_document())
         self._break_the_migration()
         db = self._connector()
@@ -443,22 +362,12 @@ class MigrationFailureLeavesNothingCommittedTest(_Case):
         db.set({"assets": [{"id": "ASSET0"}], "categories": ["_All"],
                 "tags": []})
         db.save()
-        # The question is whether a save REACHED DISK after the guard
-        # re-armed, not how many rows survived it: set() unions now, so
-        # rows this caller never mentioned are kept rather than dropped.
         self.assertIn("ASSET0", [a["id"] for a in self._on_disk()["assets"]],
                       "an ordinary save after the recovery was refused")
 
 
 class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
-    """v4 -> v5. Both fields moved homes and were left on the row as
-    frozen history for an older build; pre-1.0 there is no install base
-    that needs them.
-
-    A favourite is per-user (`material_favorites` in settings.json) - on
-    the shared record, in a multi-user library, my star toggled yours. A
-    tile icon lives in `icons.json`, keyed by asset id.
-    """
+    """A favourite is per-user and a tile icon lives in `icons.json`, not the row."""
 
     def _v4_document(self):
         return {
@@ -488,11 +397,6 @@ class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
         self.assertEqual(["A0", "A1"], [r["id"] for r in data["assets"]])
         self.assertEqual(["one", "two"], [r["name"] for r in data["assets"]])
 
-    # The other half - that a MODEL save does not put the fields back
-    # through `_extra` - is pinned in test_library, because it is
-    # `Material` that decides and this connector never builds one. A
-    # version asserted here stayed green with `_KNOWN_KEYS` sabotaged,
-    # which is what a test of the wrong layer looks like.
 
     def test_a_junk_row_does_not_stop_the_step(self):
         document = self._v4_document()
@@ -504,27 +408,10 @@ class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
 
 
 class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
-    """This build ships no migration steps, and a document older than
-    the current schema is REFUSED rather than guessed at.
-
-    1.0 is the first version, so there is nothing to upgrade from: the
-    three steps that lived here described shapes written before any
-    release, and every library that existed was converted before they
-    were deleted. What stays is the forward machinery - the registry,
-    the loop, the incomplete-chain flag and the refusal in `save()` -
-    which is how the next bump happens.
-
-    ASSERTED THROUGH A CONNECTOR, never on `_MIGRATIONS` itself. The
-    registry is module-global and sibling classes install their own
-    steps into it and restore them afterwards, so a test reading its
-    contents is order-dependent: the first version of this one asserted
-    an empty dict and failed `1 != 2`, having been handed a step
-    another class had installed.
-    """
+    """An older document is refused, asserted through a connector, never the registry."""
 
     def _pre_release_document(self):
-        """Version 1 is the implicit legacy schema - the shape the very
-        first libraries were written in, before any release."""
+        """Version 1 is the implicit legacy schema, written before any release."""
         return {"version": 1, "categories": ["_All"], "tags": [],
                 "assets": [{"id": "ASSET0", "name": "mat 0"}]}
 
@@ -543,9 +430,7 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
             "current")
 
     def test_it_is_not_stamped_as_current_by_an_ordinary_save(self):
-        """The consequence that matters. A wrong stamp is permanent and
-        silent: every reader decides from the version, so a document
-        marked current is never migrated again by ANY build."""
+        """A wrong stamp is permanent: a document marked current never migrates."""
         self._write(self._pre_release_document())
         db, data = self._load()
         db.set({"assets": data["assets"], "categories": data["categories"],
@@ -562,8 +447,7 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
             "the version claim is refused, never the user's edit")
 
     def test_a_current_document_is_not_flagged(self):
-        """The accept path. A flag that fires on every load would refuse
-        every stamp, and the refusal above would prove nothing."""
+        """The accept path: a flag that fires on every load proves nothing."""
         self._write(self._document(1))
         db, data = self._load()
         self.assertEqual(SCHEMA, data["version"])
@@ -574,17 +458,7 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
 
 
 class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
-    """The "unreadable" latch must not outlive the problem.
-
-    prefs.py and gradient_library.py both set `_load_failed` on a parse
-    failure and neither cleared it anywhere, so a repaired file could
-    never be saved again for the life of the object. For Prefs that
-    object lives as long as the panel and panel.py re-reads it on a
-    library switch and when Preferences closes - so "launch while the
-    file is half-synced, wait for the sync, reopen Preferences" read the
-    file back perfectly and still refused every save, with the
-    once-per-session explanation already spent.
-    """
+    """The unreadable latch must not outlive the problem it was set for."""
 
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="amaze_relatch_")
@@ -636,9 +510,7 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
                              "the save was still refused after the repair")
 
     def test_prefs_still_refuses_while_the_file_is_broken(self):
-        """The accept path for the REFUSAL: clearing the latch on a good
-        read must not clear it on a bad one. A second failed read has to
-        latch again - the guard is re-derived, not remembered."""
+        """A second failed read latches again: the guard is re-derived."""
         self._good_settings()
         self._truncate()
         prefs = self._prefs()
@@ -658,9 +530,7 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
         from amaze.core import gradient_library
 
         class _Prefs:
-            """The family-model surface, as a stub. NOT a real Prefs:
-            one constructed under hython resolves $AMAZE to the live
-            install, which is how a test overwrote real settings."""
+            """A stub, never a real `Prefs`: one under hython finds the install."""
 
             asset_dir = "mat/"
             img_dir = "img/"
@@ -696,11 +566,6 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
             json.dump({"version": SCHEMA, "categories": ["Warm"],
                        "assets": [{"name": "theirs",
                                    "id": "theirsuid"}]}, handle)
-        # THE RELOAD DOOR, which is how a repair heals now: the latch
-        # is the connector's, and reload_with_path re-derives it from
-        # disk. A plain re-read answers the cached refusal on purpose,
-        # so the heal is the same gesture the other three databases
-        # use - switching or reopening the panel.
         with contextlib.redirect_stdout(io.StringIO()):
             lib.switch_model_data()
         self.assertFalse(
@@ -716,19 +581,7 @@ class ARepairedFileCanBeSavedAgainTest(unittest.TestCase):
 
 
 class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
-    """settings.json is snapshotted on every write and had no floor, so
-    the file spent its whole first life with no restore point at all -
-    the same hole keyed_store closed with seed_restore_floor.
-
-    AND IT DOES NOT GET AN ABSENCE VERDICT, which is the half of this
-    that was proposed and refused. The databases latch on absence
-    because a library is SHARED and a file can be late; settings.json
-    is per-machine and never travels, so there is no late case - while
-    deleting it IS the prescribed way out of an unreadable one, and the
-    `.unreadable` copy that refusal leaves behind would be exactly the
-    trace a latch would read. test_absent_database's
-    test_deleting_the_broken_file_UNLATCHES_the_session pins that route
-    and is what caught the mistake."""
+    """A restore floor, but no absence verdict: this file is per-machine."""
 
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="amaze_absent_prefs_")
@@ -752,9 +605,7 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
         return library + os.sep
 
     def test_a_first_launch_still_opens_and_saves(self):
-        """The accept path, and the outage this guard must never become.
-        A machine that has never run Amaze has no settings.json and
-        nothing beside it, and has to open and save normally."""
+        """The accept path: a machine that has never run Amaze opens and saves."""
         prefs = self._prefs()
         prefs.load()
         self.assertFalse(getattr(prefs, "_load_failed", False),
@@ -771,9 +622,7 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
             "can tell a late file from a new machine")
 
     def test_the_floor_survives_a_later_write(self):
-        """Write-once, like every other floor: the first-seen copy is
-        what a restore falls back to, so a later save must not roll it
-        forward over the state being recovered from."""
+        """Write-once: a later save must not roll the floor forward."""
         self._configured()
         floor = self.settings + ".bak-first"
         first = open(floor, encoding="utf-8").read()
@@ -785,10 +634,7 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
                          "the write-once floor was replaced")
 
     def test_deleting_the_settings_still_starts_fresh(self):
-        """The route a trace-based absence latch would have closed, kept
-        here beside the floor that would have armed it: removing the
-        file is how a machine starts over, and the next save has to
-        land."""
+        """Removing the file is how a machine starts over, and the save lands."""
         self._configured()
         os.remove(self.settings)
         prefs = self._prefs()
@@ -805,16 +651,7 @@ class SettingsGetTheirOwnRestoreFloor(unittest.TestCase):
 
 
 class MergeRefusesJsonOfTheWrongShapeTest(_Case):
-    """Valid JSON is not a valid database.
-
-    `_merge_from_disk`'s try/except wraps only the parse, so a peer
-    document that is `[]`, `null` or `{"assets": null}` parsed fine and
-    then raised AttributeError/TypeError out of save() - a Qt slot, so
-    the traceback reached stderr and nothing else. And it bypassed the
-    whole preserve/latch/tell-the-user path a merely truncated file gets,
-    so the shape most in need of preserving was the one that got none of
-    it.
-    """
+    """Valid JSON is not a valid database, and takes the same refusal path."""
 
     SHAPES = (
         ("a bare list", []),
@@ -832,9 +669,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
     )
 
     def _loaded_connector(self):
-        """A connector with a real stale-write baseline, so the peer
-        document is actually reached: the merge only runs when the file
-        changed since our load."""
+        """A real stale-write baseline: the merge only runs on a changed file."""
         self._write(self._document(2))
         db, _ = self._load()
         self.assertIsNotNone(db._disk_stat, "premise: the guard is armed")
@@ -843,8 +678,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         return db
 
     def _replace_behind_it(self, payload):
-        """What another session (or a sync client's conflict helper)
-        leaves on disk. Written raw so `null` really is null."""
+        """What another session leaves on disk, written raw so null is null."""
         with open(self.path, "w", encoding="utf-8") as handle:
             json.dump(payload, handle)
 
@@ -861,9 +695,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
                               % (label, type(exc).__name__, exc))
 
     def test_the_session_is_latched_for_every_one_of_them(self):
-        """Not raising is half the fix. The other half is that this must
-        land in the SAME refusal path a truncated file gets - refuse the
-        write, preserve the file, say so - not be waved through."""
+        """Not raising is half the fix; the same refusal path is the other."""
         for label, payload in self.SHAPES:
             with self.subTest(shape=label):
                 self.setUp()
@@ -891,9 +723,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
             "soon as anything does write")
 
     def test_a_normal_peer_document_still_merges(self):
-        """The accept path, and the one that would turn this guard into an
-        outage: the ordinary two-machine case must still adopt their row.
-        A shape check that is too strict stops every merge there is."""
+        """The accept path: a shape check too strict stops every merge there is."""
         db = self._loaded_connector()
         peer = self._document(2)
         peer["assets"].append({"id": "THEIRS1", "name": "theirs"})
@@ -910,17 +740,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         self.assertIn("shiny", on_disk["tags"])
 
     def test_the_load_refuses_the_same_shapes_in_a_class_callers_catch(self):
-        """THE PRIMARY READ NEEDS THE SAME CLASSIFIER. The shape check
-        landed in the merge and not in load(), so `[]` at the front door
-        still raised AttributeError out of _migrate's first line -
-        `data.get(...)` - and AttributeError is a class nothing here
-        catches: every guard around a database read guards
-        (OSError, ValueError), the pair a truncated file raises.
-
-        ValueError is deliberately the SAME outcome a truncated file gets,
-        not a new one. "Refuse over overwrite" is the settled policy for a
-        file that exists and will not read, and a document of the wrong
-        shape is that file."""
+        """The front door raises the class its callers catch, like a truncated file."""
         for label, payload in self.SHAPES:
             with self.subTest(shape=label):
                 self.setUp()
@@ -936,8 +756,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
                     "it back over the file" % label)
 
     def test_the_load_still_accepts_an_ordinary_document(self):
-        """The accept path. A shape check at the front door that is too
-        strict does not corrupt anything - it stops the panel opening."""
+        """The accept path: too strict at the front door stops the panel opening."""
         self._write(self._document(3))
         db, data = self._load()
         self.assertEqual(3, len(data["assets"]),
@@ -945,9 +764,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         self.assertFalse(db._write_blocked)
 
     def test_one_bad_row_does_not_cost_the_session_its_writes(self):
-        """The granularity matters. A non-dict ENTRY is already skipped
-        and left on disk; escalating that to a full refusal would make
-        one junk row disable saving for the session."""
+        """A junk row is skipped, not escalated into a session-wide refusal."""
         db = self._loaded_connector()
         peer = self._document(2)
         peer["assets"].append("not a row at all")
@@ -962,19 +779,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
 
 
 class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
-    """A save must not delete the settings this build has never heard of.
-
-    load() reads every key it knows into a private attribute and
-    refresh_data() rebuilds the saved document from those attributes
-    alone, so anything unrecognised was simply absent from the next
-    write. Confirmed on the real machine's own settings file: 44 keys in
-    .bak-first against 49 in the current one, with `gradient_favorites`
-    in one and gone from the other.
-
-    In a two-machine setup that is lossy in both directions, and the
-    saves that do it come from ordinary sidebar use - registering a
-    texture folder, starring a file - not from opening Preferences.
-    """
+    """A save must not delete the settings this build has never heard of."""
 
     def setUp(self):
         self.home = tempfile.mkdtemp(prefix="amaze_prefs_keys_")
@@ -1012,8 +817,7 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
             "settings, silently reverted")
 
     def test_a_falsy_unknown_value_survives_too(self):
-        """`0`, `False`, `""` and `[]` are the ones a truthiness-based
-        carry-through would drop, and they are ordinary setting values."""
+        """A truthiness-based carry-through drops ordinary setting values."""
         self._seed(future_flag=False, future_count=0, future_name="",
                    future_list=[])
         prefs = self._prefs()
@@ -1028,9 +832,7 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
                                  "the value was rewritten")
 
     def test_a_known_key_is_still_the_build_s_own_value(self):
-        """The accept path, and the one that would make this a bug: the
-        carried-through document must NOT win over what the build
-        actually holds, or every preference edit would be discarded."""
+        """The carried-through document must not win over what the build holds."""
         self._seed(thumbsize=128, gradient_favorites=["wada:1"])
         prefs = self._prefs()
         prefs.load()
@@ -1044,10 +846,7 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
                          "and the unknown key was lost anyway")
 
     def test_a_reload_does_not_accumulate_a_previous_library_s_keys(self):
-        """self.data is REPLACED per read, not merged into. Preferences
-        can point at a different settings file, and carrying the previous
-        one's unknown keys across would write another machine's settings
-        into this one."""
+        """Replaced per read, or a switch writes another machine's settings here."""
         self._seed(gradient_favorites=["wada:1"])
         prefs = self._prefs()
         prefs.load()
@@ -1068,20 +867,7 @@ class PrefsKeepsKeysItDoesNotKnowTest(unittest.TestCase):
 
 
 class TheSchemaStampMustNotLieTest(_Case):
-    """A version stamp is a promise to every other machine.
-
-    `_migrate` correctly stops at the last successfully-applied version
-    when a step is missing from the chain - and `save()` then wrote
-    max(_loaded_version, SCHEMA_VERSION) anyway, undoing the refusal
-    completely. Reproduced live: SCHEMA_VERSION=3 with no step 2, and the
-    file correctly said 2 after the load and wrongly said 3 after one
-    ordinary save.
-
-    A wrong stamp is not cosmetic. The version is what every reader
-    decides from, so a file marked upgraded is never migrated again by
-    ANY build - the data stays at the old shape while every reader
-    believes otherwise, permanently and silently.
-    """
+    """A version stamp is a promise to every other machine, and permanent."""
 
     def setUp(self):
         super().setUp()
@@ -1095,9 +881,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         database._MIGRATIONS.update(self._real_migrations)
 
     def _target_with_a_gap(self):
-        """A build whose SCHEMA_VERSION is 3 but which ships no step 2 -
-        the shape of a half-updated fleet, and the shape this project is
-        about to be in, since Versions IS the next bump."""
+        """A build whose `SCHEMA_VERSION` is 3 but which ships no step 2."""
         database.SCHEMA_VERSION = 3
         database._MIGRATIONS.pop(2, None)
 
@@ -1105,9 +889,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         self._write(self._document(2, version=2))   # version 2 on disk
         self._target_with_a_gap()
         db, data = self._load()
-        # THE PREMISE IN MEMORY, not on disk: load() does not write, so
-        # "the file still says 2" is true whether or not _migrate refused
-        # anything, and asserting it would prove nothing at all.
+        # The premise in memory, not on disk: `load` does not write either way.
         self.assertEqual(
             2, data["version"],
             "premise: _migrate must stop at 2 - if it has stopped "
@@ -1125,8 +907,7 @@ class TheSchemaStampMustNotLieTest(_Case):
             "2 - no build will ever migrate it again")
 
     def test_the_records_are_still_written(self):
-        """Holding the stamp back must not hold the SAVE back. The user's
-        edit still has to reach disk; only the version claim is refused."""
+        """Holding the stamp back must not hold the save back."""
         self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, _ = self._load()
@@ -1134,19 +915,12 @@ class TheSchemaStampMustNotLieTest(_Case):
                 "tags": []})
         db.save()
         on_disk = self._on_disk()
-        # assertIn, not an exact list. set() unions now - a caller
-        # that hands over one row is saying "here is mine", not "delete
-        # everything else" - and this test is about the STAMP, not about
-        # what set() drops. What it has to prove is that holding the
-        # version back did not hold the edit back.
         self.assertIn("EDITED1", [a["id"] for a in on_disk["assets"]],
                       "the edit was dropped along with the stamp")
         self.assertEqual(2, on_disk["version"])
 
     def test_a_complete_chain_still_stamps_the_new_version(self):
-        """The accept path. If this fired whenever the target moved, no
-        library would ever be marked as upgraded and the migration would
-        re-run on every launch for the life of the file."""
+        """The accept path, or the migration re-runs on every launch forever."""
         self._write(self._document(2, version=2))
         database.SCHEMA_VERSION = 3
         database._MIGRATIONS[2] = lambda data: data.setdefault("moods", [])
@@ -1165,8 +939,7 @@ class TheSchemaStampMustNotLieTest(_Case):
                       "the step's own change did not survive the save")
 
     def test_a_newer_build_s_file_is_still_not_downgraded(self):
-        """The other direction, already fixed once and easy to break
-        again: a version 99 document must keep saying 99."""
+        """The other direction: a newer document keeps its own number."""
         document = self._document(2)
         document["version"] = 99
         self._write(document)
@@ -1178,10 +951,7 @@ class TheSchemaStampMustNotLieTest(_Case):
                          "a newer build's file was stamped down to ours")
 
     def test_a_newer_peer_version_survives_the_merge_path(self):
-        """The merge runs precisely when another session wrote the file -
-        which is exactly when that session may be the NEWER build. The
-        unknown-key carry-through cannot cover this: "version" is always
-        already in our own document, so it is always skipped."""
+        """The merge runs when another session wrote, which may be a newer build."""
         self._write(self._document(2))
         db, _ = self._load()
         peer = self._document(2)
@@ -1199,26 +969,13 @@ class TheSchemaStampMustNotLieTest(_Case):
             "it has already migrated")
 
     def test_a_peer_version_is_not_carried_past_a_gap_in_our_chain(self):
-        """THE TWO HALVES OF THIS STEP FOUGHT EACH OTHER, and this is where
-        they met. The merge raised _loaded_version to the peer's number
-        unconditionally, and save() stamps _loaded_version when the chain
-        is incomplete - so the peer's higher version was written over rows
-        the missing step never touched. Same permanent, silent mis-stamp
-        this whole step exists to prevent, reached through the door it
-        opened.
-
-        The direction is deliberate, not merely safe. Stamping low makes
-        the newer machine re-run a migration over data it has already
-        migrated: wasteful, and in its log. Stamping high makes rows that
-        were never migrated indistinguishable from rows that were, for
-        good."""
+        """Stamping low costs a re-run; stamping high loses which rows migrated."""
         self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, data = self._load()
         self.assertTrue(db._migration_incomplete, "premise: our chain has a "
                         "gap, so save() stamps _loaded_version")
         self.assertEqual(2, data["version"], "premise: we stopped at 2")
-        # The peer HAS step 2 and has already rewritten the file at 3.
         peer = self._document(2, version=2)
         peer["version"] = 3
         for row in peer["assets"]:
@@ -1235,16 +992,13 @@ class TheSchemaStampMustNotLieTest(_Case):
             "the peer's version 3 was stamped over our own rows, which the "
             "missing step never touched - the file now claims a shape two "
             "of its rows do not have, and no build will migrate them again")
-        # And the claim above is about real rows, not just a number.
         self.assertTrue(
             [row for row in on_disk["assets"] if "moods" not in row],
             "premise: at least one row must still be at the old shape, or "
             "the stamp would not be a lie")
 
     def test_a_peer_version_is_still_carried_through_a_whole_chain(self):
-        """The accept path for the line above. With no gap, a peer's newer
-        version must still survive - otherwise every merge downgrades the
-        other machine's file and it re-runs its whole chain."""
+        """With no gap, a peer's newer version survives the merge."""
         self._write(self._document(2))
         db, data = self._load()
         self.assertFalse(db._migration_incomplete,
@@ -1261,9 +1015,7 @@ class TheSchemaStampMustNotLieTest(_Case):
             "now downgrades a newer machine's file")
 
     def test_the_flag_does_not_follow_the_user_to_another_library(self):
-        """A latch belongs to the FILE, not the session - the rule this
-        module already learned twice. A gap in library A's chain must not
-        hold library B's stamp back."""
+        """A latch belongs to the file, not the session."""
         self._write(self._document(2, version=2))
         self._target_with_a_gap()
         db, _ = self._load()
@@ -1288,19 +1040,7 @@ class TheSchemaStampMustNotLieTest(_Case):
 
 
 class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
-    """There is exactly ONE `.unreadable` copy per file, forever.
-
-    Write-once is deliberate: the SECOND failure is usually a write we
-    caused, so the first copy is the one holding the original. But two
-    degenerate cases made that single slot useless.
-
-    * A 0-byte source was preserved. A sync placeholder is an ordinary
-      state for a file in a synced library, so the slot was spent on
-      nothing and the genuinely truncated file that arrived a minute
-      later got no copy at all.
-    * A 0-byte `.unreadable` was kept forever. A copy holding no bytes is
-      not evidence of anything, and keeping it locked the slot shut.
-    """
+    """One `.unreadable` copy per file, forever, and never spent on no bytes."""
 
     def setUp(self):
         from amaze.helpers import hostos
@@ -1327,9 +1067,7 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
             "the one rescue copy was spent on an empty placeholder")
 
     def test_the_slot_is_still_free_for_the_real_thing(self):
-        """The point of the fix, driven as a sequence: the placeholder
-        arrives first, the truncated file a moment later. That second
-        file is the one worth keeping."""
+        """The placeholder arrives first; the truncated file is worth keeping."""
         self._write("")
         self.hostos.preserve_unreadable(self.path, why="placeholder")
         self._write('{"gradients": [{"name": "real"')      # truncated
@@ -1341,8 +1079,7 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
                              "the preserved copy is not the damaged file")
 
     def test_an_empty_existing_copy_is_replaced(self):
-        """A `.unreadable` holding no bytes cannot be the evidence the
-        write-once rule is protecting."""
+        """A copy holding no bytes is not the evidence write-once protects."""
         self._write("", path=self.keep)
         self._write('{"gradients": [{"name": "real"')
         result = self.hostos.preserve_unreadable(self.path, why="truncated")
@@ -1353,8 +1090,7 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
             "be preserved for this file again")
 
     def test_a_real_existing_copy_is_never_replaced(self):
-        """The accept path for write-once, and the reason this rule
-        exists: the FIRST copy is the one that holds the original."""
+        """Write-once: the first copy is the one that holds the original."""
         self._write("the first, genuine failure", path=self.keep)
         self._write("a later, already-defaulted rewrite")
         result = self.hostos.preserve_unreadable(self.path, why="second")
@@ -1371,8 +1107,7 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.keep))
 
     def test_an_ordinary_damaged_file_is_still_preserved(self):
-        """The accept path that matters most: the guard must not have
-        turned into "never preserve anything"."""
+        """The accept path: the guard must not have become never-preserve."""
         self._write('{"gradients": [')
         self.assertEqual(self.keep,
                          self.hostos.preserve_unreadable(self.path))
@@ -1380,10 +1115,7 @@ class TheRescueSlotIsNotSpentOnNothingTest(unittest.TestCase):
 
 
 class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
-    """The save refusal said "A copy of it is beside it as .unreadable"
-    unconditionally, and preserve_unreadable has two paths that create
-    nothing. A reassurance that is not quite true is worse than jargon,
-    because the reader stops believing the next one."""
+    """A refusal may only promise a copy that was actually made."""
 
     def _watch_notes(self):
         from amaze.core import debug
@@ -1424,8 +1156,7 @@ class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
             "the only surviving version of the other session's work")
 
     def test_it_claims_no_copy_when_there_is_none(self):
-        """A 0-byte peer file: nothing is preserved, so nothing may be
-        promised. The refusal itself must still happen."""
+        """Nothing preserved, nothing promised; the refusal still happens."""
         said = self._refused_save("")
         self.assertTrue(said, "the refusal stopped happening")
         self.assertFalse(
@@ -1437,11 +1168,7 @@ class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
             "goes looking for a file that is not there")
 
     def test_the_policy_write_only_claims_a_copy_that_exists_too(self):
-        """THE SAME UNTRUE SENTENCE, IN A SECOND PLACE. library_policy's
-        note said "a copy is beside it as .unreadable" unconditionally as
-        well; the plan named only database.py, and one policy speaking with
-        two voices is how a guard gets fixed in one module and not the
-        other."""
+        """The same sentence in a second place: one policy, two voices."""
         from amaze.core import library_policy
 
         notes = self._watch_notes()
@@ -1459,8 +1186,7 @@ class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
                          "made")
 
     def test_the_policy_write_does_name_a_copy_it_did_make(self):
-        """The accept path: when there IS a copy, the note has to name it,
-        or the one surviving version of the file is unfindable."""
+        """When there is a copy the note names it, or it is unfindable."""
         from amaze.core import library_policy
 
         notes = self._watch_notes()
@@ -1475,16 +1201,7 @@ class TheRefusalOnlyClaimsACopyThatExistsTest(_Case):
 
 
 class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
-    """`.bak-first` is written once and never rotated.
-
-    snapshot_before_write copied whatever was on disk with no parse check
-    at all, so a single half-synced launch minted the one permanent
-    restore point from garbage - and the rolling `.bak-N` ring then aged
-    the good states out behind it. gradients.json and code.json have NO
-    `.bak-*` tier of any kind on the real library (measured 2026-07-29),
-    which means their very next snapshot IS their permanent floor:
-    exactly one chance to get it right.
-    """
+    """The permanent floor is written once, so it is never minted from garbage."""
 
     def setUp(self):
         from amaze.helpers import hostos
@@ -1492,8 +1209,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="amaze_snapshot_")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.path = os.path.join(self.dir, "gradients.json")
-        # snapshot_before_write is once per session per PATH, and the
-        # module-level set outlives a single test.
+        # The once-per-path marker is module-level and outlives one test.
         hostos._session_snapshots.pop(self.path, None)
         self.addCleanup(hostos._session_snapshots.pop, self.path, None)
 
@@ -1502,10 +1218,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             handle.write(text)
 
     def _good(self, count=3):
-        # TODAY'S shape - rows under `assets` with an identity - the
-        # same reason the fixture writes LF like the product does: a
-        # fixture laying files down in a shape we no longer ship is
-        # not a fixture.
+        # Today's shape: a fixture in a shape we no longer ship is not one.
         self._write(json.dumps(
             {"version": SCHEMA,
              "categories": ["Warm"],
@@ -1525,20 +1238,11 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             "is a floor made of nothing")
 
     def test_a_read_that_fails_outright_does_not_burn_the_slot_either(self):
-        """THE SAME DEFECT, THREE LINES EARLIER IN THE SAME FUNCTION. The
-        marker was released when the bytes would not parse and not when the
-        read itself failed - and that branch is the TRANSIENT one: the
-        Windows sync-client hold replace_file already retries around, a
-        share that dropped for a second. Burning the session's one chance
-        on a failure that has already passed left the file with no restore
-        point for the rest of the session."""
+        """A failed read is the transient branch, so it may not burn the slot."""
         if self.hostos.is_windows() or os.geteuid() == 0:
             self.skipTest("an unreadable file needs POSIX bits and a "
                           "non-root reader")
         self._good(12)
-        # A real unreadable file rather than a patched open(): the branch
-        # under test is an OSError from the read, and producing one for
-        # real cannot be wrong about which call raises.
         os.chmod(self.path, 0o000)
         self.addCleanup(os.chmod, self.path, 0o644)
         self.hostos.snapshot_before_write(self.path)
@@ -1556,9 +1260,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             "restore point")
 
     def test_a_later_good_save_still_gets_its_own_first_tier(self):
-        """The half that makes the guard useful rather than merely safe.
-        The once-per-session marker has to be RELEASED, or the session's
-        one chance is spent on the read that failed."""
+        """The marker has to be released, or the one chance is already spent."""
         self._write('{"gradients": [{"name": "g0"')
         self.hostos.snapshot_before_write(self.path)
         self._good(40)
@@ -1573,8 +1275,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
                              "the permanent copy is not the healthy file")
 
     def test_a_good_file_is_still_snapshotted(self):
-        """The accept path. A parse check that rejected anything real
-        would silently switch the whole backup system off."""
+        """The accept path: a parse check too strict switches backups off."""
         self._good(5)
         self.hostos.snapshot_before_write(self.path)
         self.assertTrue(os.path.exists(self.path + ".bak-first"),
@@ -1582,9 +1283,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.path + ".bak-1"))
 
     def test_a_bom_prefixed_file_is_still_snapshotted(self):
-        """A BOM'd document loads fine now (utf-8-sig), so it must not
-        read as garbage here - that would deny a backup to exactly the
-        file most likely to need one."""
+        """A document the reader accepts must not read as garbage here."""
         with open(self.path, "w", encoding="utf-8-sig") as handle:
             json.dump({"assets": [{"name": "g0"}]}, handle)
         self.hostos.snapshot_before_write(self.path)
@@ -1593,8 +1292,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
             "a byte-order mark was treated as corruption")
 
     def test_a_good_rotation_is_not_disturbed(self):
-        """The rolling ring still rolls, and an identical rewrite still
-        does not consume a slot."""
+        """The ring still rolls, and an identical rewrite consumes no slot."""
         self._good(3)
         self.hostos.snapshot_before_write(self.path)
         self.hostos._session_snapshots.pop(self.path, None)
@@ -1613,9 +1311,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
                 "an identical rewrite consumed a rotation slot")
 
     def test_a_corrupt_file_does_not_rotate_a_good_tier_out(self):
-        """The compound failure: the ring is what a restore falls back to
-        when .bak-first is too old, and rotating garbage in pushes the
-        oldest good state off the end."""
+        """Rotating garbage in pushes the oldest good state off the end."""
         self._good(40)
         self.hostos.snapshot_before_write(self.path)
         self.hostos._session_snapshots.pop(self.path, None)
@@ -1629,11 +1325,7 @@ class ASnapshotSlotIsNotSpentOnGarbageTest(unittest.TestCase):
 
 
 class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
-    """A refused write must leave the shared DOCUMENT exactly as it
-    was, not only the model: set() consumes the pending delete into the
-    connector's live data before save() answers, so a declined delete
-    sat in the document waiting for ANY other model's save - Categories
-    writes only its own keys and never re-adds assets - to commit it."""
+    """A refused write leaves the shared document whole, not only the model."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1651,8 +1343,7 @@ class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
         from amaze.core import database
 
         model = self.library_mod.MaterialLibrary(preferences=self.prefs)
-        # A row with a REAL id: the fixture's damaged row answers -1
-        # and never appears in the document.
+        # A real id: the fixture's damaged row answers -1 and never appears.
         row = next(i for i, a in enumerate(model.assets)
                    if str(a.mat_id) not in ("", "-1"))
         asset = model.assets[row]
@@ -1709,10 +1400,7 @@ class ARefusalLeavesTheDocumentWhole(unittest.TestCase):
 
 
 class ANoOpSaveCostsOneRead(unittest.TestCase):
-    """The identical-skip exists for sync hygiene; it was still paying
-    a full read+hash THREE times per save (stale guard, identical
-    compare, remember) and a 548-file stamp scan afterwards - for a
-    save that by its own verdict changed nothing."""
+    """A save that changes nothing pays one read, not three and a scan."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1748,20 +1436,13 @@ class ANoOpSaveCostsOneRead(unittest.TestCase):
 
 
 class QuarantineCrossesVolumes(unittest.TestCase):
-    """The quarantine lives under config_root while the library may
-    live on an external drive, a NAS or another Windows drive letter -
-    and os.replace cannot rename across that boundary. Every caller
-    treats "" as "could not be moved", so Clean Library's sweep and
-    Repair's Move Aside silently did nothing on exactly those setups.
-    The fallback copies-then-unlinks; not atomic, but the shipped
-    alternative was nothing happening at all."""
+    """`os.replace` cannot cross a volume, so the fallback copies then unlinks."""
 
     def test_a_cross_device_move_still_lands(self):
         from unittest.mock import patch
         from amaze.core import quarantine
 
-        # fixture_prefs first: it redirects config_root, so the
-        # quarantine folder lands inside the temp tree.
+        # `fixture_prefs` first: it redirects the config root into the temp tree.
         test_support.fixture_prefs(self)
         library = tempfile.mkdtemp(prefix="amaze_qxdev_")
         self.addCleanup(shutil.rmtree, library, ignore_errors=True)
@@ -1801,8 +1482,7 @@ class _CleanupCase(unittest.TestCase):
         return self.library_mod.MaterialLibrary(preferences=self.prefs)
 
     def _cleanup(self, model):
-        # patch.object with create=True: hou.ui may not exist under
-        # hython at all, and a raw assignment leaks into later tests.
+        # `create=True`: `hou.ui` may not exist under hython at all.
         with self._patch.object(self._hou, "ui", self._MagicMock(),
                                 create=True):
             model.cleanup_db(show_dialog=False)
@@ -1819,8 +1499,7 @@ class _CleanupCase(unittest.TestCase):
             json.dump(document, handle, indent=4)
 
     def _files_for(self, asset_id):
-        """The pair a material owns, both present so pass 1 keeps the
-        row and only pass 3's judgement is under test."""
+        """Both halves present, so only pass 3's judgement is under test."""
         paths = [os.path.join(self.mat_dir, asset_id + ".mat"),
                  os.path.join(self.mat_dir, asset_id + ".interface")]
         for path in paths:
@@ -1829,16 +1508,7 @@ class _CleanupCase(unittest.TestCase):
         return paths
 
     def _drop_rows_with_no_files(self):
-        """Rewrite the fixture index keeping only rows whose files are
-        actually on disk, BEFORE the model is built.
-
-        Not tidying. The committed fixture carries a row with id -1 and no
-        files, so pass 1 always finds something to remove and pass 2
-        therefore always SAVES - and that save merges the file it is
-        writing over, which adopts any row another session added. The
-        adoption is a real second line of defence and it is tested
-        elsewhere; here it masks the thing under test completely, so the
-        orphan pass would look safe with the fix removed."""
+        """Keep only rows with files, or pass 2 saves and the merge masks this."""
         document = self._read_own()
         keep = [row for row in document["assets"]
                 if os.path.exists(os.path.join(
@@ -1848,8 +1518,7 @@ class _CleanupCase(unittest.TestCase):
         self._write_own(document)
 
     def _ids_known_at_the_decision(self, model):
-        """The in-memory ids as they stand when the orphan pass actually
-        asks - which is the only moment the premise is about."""
+        """The in-memory ids at the moment the orphan pass actually asks."""
         seen = {}
         real = model._all_known_asset_ids
 
@@ -1862,15 +1531,7 @@ class _CleanupCase(unittest.TestCase):
 
 
 class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
-    """A panel left open cannot see what the other machine added.
-
-    `_all_known_asset_ids` skipped the model's own file outright - "its
-    ids are the in-memory ones" - but in-memory means "as at our load".
-    Another session adding a material writes both the row and its files;
-    this session's pass 3 then reads those files as belonging to nobody
-    and deletes them, while the correct, newer row sits on disk untouched.
-    The next Clean Library removes that row too, for missing files.
-    """
+    """In-memory means as at our load, so the sweep re-reads its own index."""
 
     NEWCOMER = "OTHERSESSION1"
 
@@ -1878,8 +1539,6 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
         self._drop_rows_with_no_files()
         model = self._model()
         owned = self._files_for(self.NEWCOMER)
-        # The other machine's save, straight to disk behind the model's
-        # back - which is exactly what it looks like from here.
         document = self._read_own()
         document["assets"].append({
             "id": self.NEWCOMER, "name": "theirs", "categories": ["Wood"],
@@ -1888,10 +1547,7 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
         self._write_own(document)
         known = self._ids_known_at_the_decision(model)
         self._cleanup(model)
-        # THE PREMISE, at the moment the decision was made. Asserting it
-        # before the call is not enough: an intervening save merges the
-        # file and adopts the row, and then the pass is safe for a reason
-        # that has nothing to do with reading the index from disk.
+        # The premise at the moment of the decision, not before the call.
         self.assertIn("memory", known,
                       "premise: the orphan pass never ran at all")
         self.assertNotIn(
@@ -1907,9 +1563,7 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
                 % os.path.basename(path))
 
     def test_a_genuine_orphan_is_still_swept(self):
-        """The accept path, and the one that matters: reading the own file
-        must not turn the orphan pass into a no-op. If it did, Clean
-        Library would quietly stop working for everybody."""
+        """The accept path: reading the own file must not make the pass a no-op."""
         model = self._model()
         genuine = os.path.join(self.mat_dir, "GENUINEORPHAN1.mat")
         with open(genuine, "w", encoding="utf-8") as handle:
@@ -1920,10 +1574,7 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
             "the orphan pass did not run - a file in no index survived")
 
     def test_a_row_this_session_added_is_still_protected(self):
-        """The union has to keep BOTH sides. A row this session just added
-        may not have reached disk yet, so dropping the in-memory ids in
-        favour of the file would delete the files of the material the user
-        saved a second ago."""
+        """The union keeps both sides: a new row may not have reached disk."""
         model = self._model()
         owned = self._files_for("INMEMORY1")
         document = self._read_own()
@@ -1931,7 +1582,6 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
             "id": "INMEMORY1", "name": "mine", "categories": ["Wood"],
             "tags": [], "favorite": False, "renderer": "Karma",
         }))
-        # Disk deliberately left WITHOUT the row.
         self._write_own(document)
         self._cleanup(model)
         for path in owned:
@@ -1941,9 +1591,7 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
                 "deleted - that is the material the user just saved")
 
     def test_a_malformed_own_database_does_not_kill_the_sweep(self):
-        """`[]` and `{"assets": null}` parse fine and then raised
-        AttributeError/TypeError past the OSError/ValueError handler, so
-        Clean Library died mid-sweep with no summary and no dialog."""
+        """A wrong-shaped own index must not kill the sweep mid-run."""
         for payload in ([], None, {"assets": None}):
             with self.subTest(payload=payload):
                 self.setUp()
@@ -1968,29 +1616,7 @@ class CleanupReadsItsOwnDatabaseFromDiskTest(_CleanupCase):
 
 
 class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
-    """"It lists nothing" is not the same as "it owns nothing" - and the
-    dangerous condition was never "it lists nothing" on its own.
-
-    A sibling that parses perfectly into ZERO rows was once taken at its
-    word: "it owns nothing, so nothing in the directory can belong to it."
-    That is the exact shape a wrongly-seeded list has (measured
-    2026-07-29: cops.json 5,537 bytes / 8 records -> 96 / 0) and pass 3
-    then deleted the 21 files its 8 live assets owned. It is ALSO the
-    honest shape of a section nobody has ever used, so a blanket refusal
-    would switch Clean Library off for most libraries.
-
-    The test that separates them is the FILES: an empty list plus files in
-    the asset folder that no section accounts for is a load that failed;
-    an empty list with nothing unaccounted for is a section nobody used.
-
-    This REPLACED the first version's test, which asked whether a copy
-    beside the file still listed materials. Measured on the real library,
-    that evidence is missing from exactly the files that need it most -
-    code.json and gradients.json have no .bak at all - and the live-model
-    acceptance that went with it was defeated by the ordinary case, since
-    Clean Library is reached from the panel's own View menu with every
-    section loaded.
-    """
+    """Listing nothing is not owning nothing; the unaccounted files separate them."""
 
     COP_ID = "COPOWNED1"
 
@@ -1998,9 +1624,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         super().setUp()
         self.cops = os.path.join(self.prefs.dir, "cops.json")
         self.code = os.path.join(self.prefs.dir, "code.json")
-        # The files a COP asset owns, both present so pass 1 keeps
-        # nothing and only pass 3's judgement is under test. Nothing in
-        # any list on disk mentions this id.
         self.owned = self._files_for(self.COP_ID)
 
     def _empty_cops(self):
@@ -2009,10 +1632,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                        "assets": []}, handle)
 
     def _no_backups_premise(self):
-        """The whole point of the new test: it must work with no copy of
-        the emptied file anywhere. gradients.json has none on the real
-        library and code.json has none either, so the guard that needed
-        one protected everything except what needed protecting."""
+        """It must work with no copy of the emptied file anywhere."""
         self.assertEqual(
             [], [n for n in os.listdir(self.prefs.dir)
                  if n.startswith("cops.json.")],
@@ -2043,17 +1663,12 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
             "files were spared and the user was told nothing")
 
     def test_the_refusal_says_how_many_files_and_where(self):
-        """The reader has to be able to go and look. Two files, named as a
-        count and a folder they can open - not 32-hex filenames, which
-        carry no information for anybody."""
+        """A count and a folder they can open, never 32-hex filenames."""
         self._empty_cops()
         model = self._model()
         self._cleanup(model)
         self.assertTrue(self._skip_line(model),
                         "premise: the sweep must have been held back")
-        # The REASON line, one per section - the headline names the
-        # sections and this says what is wrong with each, because carrying
-        # both in one sentence nested a parenthetical inside another.
         why = [line for line in model.last_cleanup_summary
                if line.startswith("Node (cops.json):")]
         self.assertTrue(why,
@@ -2071,11 +1686,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
             "with, which reads as a typo in a sentence")
 
     def test_the_refusal_names_the_repair_tool_and_how_to_reach_it(self):
-        """A REFUSAL NAMES THE WAY OUT. Here it cannot be "delete a copy":
-        what stands in the way is real files nothing lists. It is Repair -
-        and the shelf tab is a per-machine step, so a sentence that stops
-        at "on the Amaze shelf" is a next step that does not work on a
-        machine where nobody added the tab."""
+        """A refusal names the way out, including the per-machine shelf step."""
         self._empty_cops()
         model = self._model()
         self._cleanup(model)
@@ -2090,12 +1701,6 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertIn("Shelves", route[0],
                       "nothing says how to get the Amaze tab, and adding "
                       "it is a per-machine step")
-        # AND THE RESTART. This message can only be reached from the panel,
-        # so this Houdini has already read the library - one connector per
-        # file lives for the whole process and its next save writes what it
-        # remembers. Repair can therefore report in this session and only
-        # ACT in a fresh one, and a route that does not say so sends the
-        # reader to a tool that will tell them to quit and come back.
         self.assertIn("quit Houdini", route[0],
                       "the way out does not mention the restart Repair "
                       "needs before it can put anything right")
@@ -2104,8 +1709,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                       "opened again")
 
     def test_the_refusal_explains_that_both_causes_look_alike(self):
-        """Teach before you warn: the reader cannot tell from the fact
-        alone whether their library is damaged or simply unused."""
+        """Teach before you warn: damaged and unused look the same."""
         self._empty_cops()
         model = self._model()
         self._cleanup(model)
@@ -2118,9 +1722,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertIn("failed to load", lines[0])
 
     def test_two_empty_sections_get_one_explanation_between_them(self):
-        """AGGREGATE BEFORE INTERRUPTING. One line per empty section put
-        two near-identical thirty-word sentences in a single dialog, which
-        is the nagging the rule exists to prevent."""
+        """Aggregate before interrupting: one explanation, not one per section."""
         self._empty_cops()
         self._write_own({"version": 2, "categories": ["_All"], "tags": [],
                          "assets": []})
@@ -2135,16 +1737,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                       "reader cannot tell which are empty")
 
     def test_a_live_model_agreeing_it_is_empty_does_not_override_files(self):
-        """THE DOOR THAT CLOSED. The version this replaces accepted the
-        section's own model, having read the file and not been refused,
-        as proof the emptiness was real - and then swept.
-
-        Clean Library is reached from the panel's View menu, so the panel
-        is open and every enabled section is loaded: a list that loaded as
-        nothing produces exactly this model, agreeing perfectly happily.
-        The one configuration that defeated the guard was the ordinary
-        one. Files no section accounts for cannot be talked out of
-        existence by a model - only the user can say whose they are."""
+        """A model cannot talk unaccounted files out of existence; only the user can."""
         from amaze.core import cop_library
 
         self._empty_cops()
@@ -2170,13 +1763,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                 % os.path.basename(path))
 
     def test_the_union_of_every_section_decides_what_is_unaccounted_for(self):
-        """ORPHANHOOD IS RELATIVE TO EVERY LIST SHARING THE DIRECTORY.
-        Measured on the real library: 548 records in library.json plus 8
-        in cops.json is 556 .mat files, exactly. A file the Code list
-        accounts for is accounted for, even though the Nodes list is the
-        one being judged - getting this wrong is how 21 files belonging to
-        8 live COP assets were deleted, and how a human nearly deleted the
-        same 8 by hand."""
+        """Orphanhood is relative to every list sharing the directory."""
         self._empty_cops()
         with open(self.code, "w", encoding="utf-8") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
@@ -2195,17 +1782,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                 % os.path.basename(path))
 
     def test_an_unused_section_with_nothing_left_behind_still_sweeps(self):
-        """THE ACCEPT PATH, and the one that decides whether this is a
-        guard or an outage. Most libraries have an unused Nodes section;
-        refusing there would switch Clean Library off for nearly everyone.
-
-        The leftover here is an image, and that is deliberate: the guard
-        weighs the ASSET folder, where every asset's content pair lives.
-        An image with no owner is a thumbnail whose material is gone, not
-        evidence that a list failed to load. (Narrow on purpose - see
-        DB-HARDENING step 10. Widening the guard to the image folder would
-        turn this accept path into a refusal, which is the cost to weigh
-        if anyone proposes it.)"""
+        """The accept path: the guard weighs the asset folder, never the images."""
         self._empty_cops()
         for path in self.owned:
             os.remove(path)
@@ -2229,15 +1806,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
             "survived a Clean Library that reported no refusal")
 
     def test_an_empty_code_list_does_not_hold_the_asset_folder_back(self):
-        """THE ACCEPT PATH, NARROWED TO THE LISTS THAT COULD BE INVOLVED.
-
-        The guard weighs the ASSET folder, and a Code snippet cannot own
-        anything in it - code_library: "Storage is INLINE text ... No
-        <id>.mat/.png files at all". So an empty Code list held the sweep
-        back over a leftover .mat it could not possibly have owned: the
-        accept path paid the cost of the guard twice as often, for no
-        safety at all. code.json's ids still count towards the union; only
-        its emptiness stops being evidence about this folder."""
+        """A section storing inline text owns nothing in the asset folder."""
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
@@ -2259,9 +1828,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                          "run")
 
     def test_an_empty_code_list_is_still_read_into_the_union(self):
-        """The narrowing is about EMPTINESS AS EVIDENCE, not about reading
-        the file. A Code asset owns an icon in the image folder, and
-        without its ids that icon is swept as a leftover."""
+        """The narrowing is about emptiness as evidence, not about reading."""
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
@@ -2278,10 +1845,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                         "ids are not in the union any more")
 
     def test_the_refusal_carries_no_parse_position(self):
-        """NO RAW EXCEPTION TEXT ON SCREEN, no Errno, no parse position.
-        The entry was built as "%s (%s)" with the json error, so the
-        message the user acts on read "cops.json (Expecting property name
-        enclosed in double quotes: line 1 column 3 (char 2))"."""
+        """No raw exception text on screen, no errno, no parse position."""
         with open(self.cops, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [{"id": "COPOWNED1"}')      # truncated
         model = self._model()
@@ -2297,9 +1861,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                       "with two names for one thing")
 
     def test_the_dialog_says_whether_anything_was_cleaned(self):
-        """A refusal that opens with "Library cleanup finished" tells the
-        reader who takes the first line and closes that the library was
-        tidied, when nothing was touched."""
+        """The first line may not read as finished when nothing was touched."""
         self._empty_cops()
         model = self._model()
         with self._patch.object(self._hou, "ui", self._MagicMock(),
@@ -2313,8 +1875,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertNotIn("Library cleanup finished", shown)
 
     def test_a_healthy_library_still_sweeps(self):
-        """The other half of the accept path: with every section listing
-        its own assets, a genuine leftover is still removed."""
+        """With every section listing its own assets, a leftover still goes."""
         with open(self.cops, "w", encoding="utf-8") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
@@ -2334,9 +1895,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                 "perfectly well" % os.path.basename(path))
 
     def test_the_refusal_does_not_contradict_itself(self):
-        """The shared sentence ends in "could not be checked". "Could not
-        be read" fights an entry saying the file is right there and lists
-        nothing."""
+        """Could-not-be-checked, since could-not-be-read fights the entry."""
         self._empty_cops()
         model = self._model()
         self._cleanup(model)
@@ -2345,11 +1904,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
         self.assertIn("could not check", summary)
 
     def test_nothing_is_called_unaccounted_for_while_a_list_is_unreadable(self):
-        """A HALF-BUILT UNION MAY NOT ACCUSE ANYBODY. When another list
-        will not parse the sweep is already held back, and the ids that
-        list holds are unknown - so counting files against the ids we DO
-        have would report a live asset's files as unaccounted for, in a
-        sentence the user is meant to act on."""
+        """A half-built union may not accuse anybody in a sentence to act on."""
         self._empty_cops()
         with open(self.code, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [{"id": "SOMETHING"}')      # truncated
@@ -2369,11 +1924,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                             "%s was deleted" % os.path.basename(path))
 
     def test_a_byte_order_mark_on_a_sibling_does_not_abort_the_sweep(self):
-        """The cleanup read is the utf-8-sig call site beyond the two in
-        database.py, and it decides whether DELETING is safe. A BOM'd
-        sibling read as unreadable aborts the sweep for a file that is
-        perfectly good - the guard firing on a healthy library, which is
-        an outage rather than safety."""
+        """This read decides whether deleting is safe, so it reads like the others."""
         with open(self.cops, "w", encoding="utf-8-sig") as handle:
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": [{"id": self.COP_ID}]}, handle)
@@ -2397,11 +1948,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
                 "perfectly well" % os.path.basename(path))
 
     def test_a_folder_that_cannot_be_listed_is_not_read_as_all_clear(self):
-        """SAY WHY, AND FAIL CLOSED. An empty list back from the scan means
-        "nothing is unaccounted for", which is the answer that lets the
-        sweep delete - so a failure to read the folder has to come back as
-        something else entirely, or a failure and an honest empty result
-        are the same value."""
+        """Fail closed: an empty list is the answer that lets the sweep delete."""
         model = self._model()
         shutil.rmtree(self.mat_dir)
         self.assertIsNone(
@@ -2410,11 +1957,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
             "nothing unaccounted for")
 
     def test_the_guard_and_the_sweep_share_one_classifier(self):
-        """A guard that counts a different set of files than the sweep
-        touches is a second opinion nobody reconciled. Both go through
-        database.asset_id_for_file, so the tails the sweep strips are
-        exactly the ones the guard treats as owned - and so does Repair,
-        which reports on the same folder."""
+        """A guard counting a different set than the sweep touches is a second opinion."""
         pair = (".mat", ".interface")
         self.assertEqual(
             "ABC", database.asset_id_for_file("ABC_cop.mat", pair, "_cop"))
@@ -2430,12 +1973,7 @@ class AnEmptySectionWithFilesLeftBehindStopsTheSweepTest(_CleanupCase):
 
 
 class SaveReportsWhetherItReachedDiskTest(_Case):
-    """add_asset writes a material's .mat and .interface BEFORE the
-    index write runs. Every refusal in save() used to return None
-    exactly like a completed save, so the caller reported success for an
-    asset the library does not list - the user watches a tile appear and
-    it is gone the next time Houdini opens.
-    """
+    """The files are written before the index, so a save has to state its verdict."""
 
     def test_a_completed_save_says_so(self):
         """First, so the verdict cannot be satisfied by always failing."""
@@ -2459,8 +1997,7 @@ class SaveReportsWhetherItReachedDiskTest(_Case):
         self.assertFalse(db.save())
 
     def test_a_held_file_says_no(self):
-        """The disk-full / file-held path: the only exit that reports
-        through hou.ui rather than the latch."""
+        """The held-file path: the only exit that reports through a dialog."""
         self._write(self._document())
         db, _loaded = self._load()
         db.set(self._document(count=4))
@@ -2478,9 +2015,7 @@ class SaveReportsWhetherItReachedDiskTest(_Case):
                          "success")
 
     def test_no_exit_from_save_returns_none(self):
-        """Source-derived. A bare `return` is indistinguishable from a
-        completed save at the call site, and that is the whole defect -
-        so no exit may leave the verdict unstated."""
+        """From source: a bare return reads as a completed save at the call site."""
         import ast
         import inspect
         source = inspect.getsource(database)
@@ -2496,19 +2031,13 @@ class SaveReportsWhetherItReachedDiskTest(_Case):
 
 
 class TheWriteBlockHealsTest(_Case):
-    """The latch was set on a merge failure and cleared nowhere except
-    a fresh connector - so "reopen Amaze", the recovery the message
-    prescribes, could not work: reopening re-enters load(), which
-    short-circuits on the data it already holds. A user who fixed the
-    file still could not save for the rest of the session.
-    """
+    """The recovery the message prescribes has to actually clear the latch."""
 
     def _latch(self):
         self._write(self._document())
         db, _ = self._load()
         db.set(self._document(count=4))
-        # Another session replaces the file with something unparseable,
-        # and moves its clock so the stale-write guard fires.
+        # An unparseable file with a moved clock, so the stale-write guard fires.
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write("{ half a document")
         stat = os.stat(self.path)
@@ -2545,17 +2074,10 @@ class TheWriteBlockHealsTest(_Case):
 
 
 class AFailedLibrarySwitchRollsBackTest(_Case):
-    """reload_with_path set _data = None before loading, with no
-    try/except: a switch to a path with no database left the connector
-    holding None for the life of the process, silently discarding every
-    later save while the panel showed stale rows."""
+    """A failed switch rolls back, or the connector discards every later save."""
 
     def test_switching_to_an_empty_directory_is_not_a_failure(self):
-        """PREMISE CHECK, and it corrects the step. reload_with_path was
-        specified as leaving the connector holding None after a failed
-        load - but load() no longer fails on a missing database: it
-        seeds an empty one, which is how a NEW library starts. The
-        stranding defect is already gone."""
+        """A missing database seeds an empty one, which is how a new library starts."""
         self._write(self._document())
         db, _ = self._load()
         empty = tempfile.mkdtemp(prefix="amaze_noswitch_")
@@ -2566,10 +2088,7 @@ class AFailedLibrarySwitchRollsBackTest(_Case):
                         "that cannot write")
 
     def test_the_previous_library_survives_a_failed_switch(self):
-        """The path the rollback is FOR: a load that genuinely raises -
-        a permission error, an unreadable directory. Without it the
-        connector holds None for the life of the process and every save
-        is discarded in silence."""
+        """The path the rollback is for: a load that genuinely raises."""
         self._write(self._document())
         db, _ = self._load()
         before = json.loads(json.dumps(db._data))
@@ -2597,17 +2116,10 @@ class AFailedLibrarySwitchRollsBackTest(_Case):
 
 
 class TheMergeMustNotDetachAModelsListTest(_Case):
-    """Categories and MaterialLibrary hold a direct alias to the
-    connector's category and tag lists. Rebinding swaps the connector's
-    list for a new one and leaves the model pointing at the old one, so
-    an adopted category reaches disk on one save and is erased by the
-    next."""
+    """The models alias the connector's lists, so rebinding detaches them."""
 
     def test_the_alias_survives_SET(self):
-        """A model takes its alias at construction and keeps it for the
-        life of the panel, while set() runs on every save. Rebinding
-        there detaches the alias before a merge can adopt anything into
-        it - so this has to hold first, or the merge fix is pointless."""
+        """The alias is taken at construction while `set` runs on every save."""
         self._write(self._document())
         db, _ = self._load()
         alias_cats = db._data.setdefault("categories", [])
@@ -2631,10 +2143,7 @@ class TheMergeMustNotDetachAModelsListTest(_Case):
         self.assertEqual({"Wood": "#ff0000"}, alias_colours)
 
     def test_set_handles_being_given_its_own_containers(self):
-        """Callers routinely hand back the object they were given.
-        Emptying the destination before copying then wipes the source -
-        four category-colour tests went red the first time this was
-        written the obvious way."""
+        """Callers hand back the object they were given, so emptying first wipes it."""
         self._write(self._document())
         db, _ = self._load()
         db._data["category_colors"] = {"Wood": "#123456"}
@@ -2648,11 +2157,9 @@ class TheMergeMustNotDetachAModelsListTest(_Case):
         self._write(self._document())
         db, _ = self._load()
         db.set(self._document(count=4))
-        # AFTER set(), because that is what a model does: it hands the
-        # connector its state and then holds the alias.
+        # After `set`, because that is what a model does with its state.
         alias = db._data["categories"]
 
-        # Another session adds a category and saves.
         theirs = self._document()
         theirs["categories"] = ["_All", "Wood", "Theirs"]
         self._write(theirs)
@@ -2680,25 +2187,18 @@ class TheMergeMustNotDetachAModelsListTest(_Case):
 
 
 class OnePaneMustNotDropAnothersRowTest(_Case):
-    """Two panes share one connector - the registry is keyed by
-    filename - but each keeps its own in-memory asset list. set() used
-    to replace the connector's rows wholesale from the caller's copy,
-    and because the connector's own write refreshes its own stale-write
-    baseline, the guard never fires for this in-process case. Pane 2's
-    save silently deleted the material pane 1 had just added.
-    """
+    """Two panes share one connector, so `set` unions rather than replaces."""
 
     def test_a_row_the_caller_never_saw_survives_its_save(self):
         self._write(self._document(count=2))
         db, _ = self._load()
 
-        # Pane 1 adds a row and saves.
         db.set({"assets": [{"id": "ASSET0"}, {"id": "ASSET1"},
                            {"id": "PANE1_NEW"}],
                 "categories": ["_All"], "tags": []})
         self.assertTrue(db.save())
 
-        # Pane 2 was built earlier and has never heard of PANE1_NEW.
+        # Pane 2 was built earlier and has never heard of the new row.
         db.set({"assets": [{"id": "ASSET0"}, {"id": "ASSET1"}],
                 "categories": ["_All"], "tags": []})
         self.assertTrue(db.save())
@@ -2709,8 +2209,7 @@ class OnePaneMustNotDropAnothersRowTest(_Case):
                       "first pane had just added, and nothing said so")
 
     def test_the_callers_version_of_a_row_it_holds_still_wins(self):
-        """Union must not mean "ignore the caller" - an edit to a row
-        the caller does hold has to land."""
+        """A union must not ignore the caller: their edit still has to land."""
         self._write(self._document(count=2))
         db, _ = self._load()
         db.set({"assets": [{"id": "ASSET0", "name": "renamed"}],
@@ -2734,8 +2233,7 @@ class OnePaneMustNotDropAnothersRowTest(_Case):
         self.assertIn("ASSET2", ids)
 
     def test_forget_does_not_persist_past_the_set_it_applies_to(self):
-        """A forgotten id must not keep suppressing a row somebody
-        legitimately re-adds later."""
+        """A forgotten id must not suppress a row somebody re-adds later."""
         self._write(self._document(count=2))
         db, _ = self._load()
         db.forget("ASSET1")
@@ -2750,12 +2248,7 @@ class OnePaneMustNotDropAnothersRowTest(_Case):
 
 
 class AMovedConnectorMustNotBeWrittenThroughTest(_Case):
-    """The registry is keyed by filename alone, so one connector serves
-    every pane. A library switch in one pane repoints it under all of
-    them, and a pane still holding the old library's rows then writes
-    them into the new library's file - with the stale-write guard blind
-    to it, because the connector's own write refreshed its own baseline.
-    """
+    """A switch in one pane repoints the shared connector under all of them."""
 
     FILENAME = "library.json"
 
@@ -2789,9 +2282,7 @@ class AMovedConnectorMustNotBeWrittenThroughTest(_Case):
             "the new one")
 
     def test_a_trailing_separator_is_not_a_different_library(self):
-        """The comparison is on canonical paths: a model holding
-        "/lib/" and a connector holding "/lib" are the same place, and
-        refusing there would break every save for no reason."""
+        """The comparison is on canonical paths, or every save refuses."""
         self._write(self._document())
         db, _ = self._load()
         self.assertTrue(db.serves(self.dir))
@@ -2799,10 +2290,7 @@ class AMovedConnectorMustNotBeWrittenThroughTest(_Case):
 
 
 class ContentFingerprintGuardTest(_Case):
-    """Both directions of the stat guard's error, measured before the
-    change: a same-size edit passes (mtime, size) and the peer's change
-    is lost; a byte-identical rewrite trips it as a conflict that is
-    not there."""
+    """A stat guard misses a same-size edit and invents an identical-rewrite conflict."""
 
     def _arm(self):
         self._write(self._document())
@@ -2811,13 +2299,11 @@ class ContentFingerprintGuardTest(_Case):
         return db
 
     def test_a_same_size_edit_is_seen(self):
-        """The stat guard's blind spot: flip one byte, restore the
-        mtime, keep the size."""
+        """The blind spot: flip one byte, restore the mtime, keep the size."""
         db = self._arm()
         with open(self.path, encoding="utf-8") as handle:
             raw = handle.read()
         stat_before = os.stat(self.path)
-        # ASSET2 -> ASSEX2: same length, different content.
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(raw.replace("ASSET2", "ASSEX2", 1))
         os.utime(self.path, ns=(stat_before.st_atime_ns,
@@ -2830,8 +2316,7 @@ class ContentFingerprintGuardTest(_Case):
                       "change was overwritten without a merge")
 
     def test_a_byte_identical_rewrite_is_not_a_conflict(self):
-        """A peer's atomic no-op rewrite must not send an ordinary save
-        down the merge path."""
+        """A peer's no-op rewrite must not send an ordinary save down the merge."""
         db = self._arm()
         with open(self.path, "rb") as handle:
             raw = handle.read()
@@ -2848,9 +2333,7 @@ class ContentFingerprintGuardTest(_Case):
                          "conflict and merged for nothing")
 
     def test_two_noop_saves_leave_the_file_untouched(self):
-        """Sync hygiene: every write costs a snapshot rotation and a
-        sync upload downstream, so a save that changes nothing must be
-        a no-op on disk too."""
+        """Sync hygiene: a save that changes nothing is a no-op on disk too."""
         db = self._arm()
         self.assertTrue(db.save())
         stat_first = os.stat(self.path)
@@ -2864,12 +2347,7 @@ class ContentFingerprintGuardTest(_Case):
             "rotation and a sync upload for nothing")
 
     def test_a_reloaded_model_writes_the_fixture_byte_identically(self):
-        """The spec's own demand: the two existing byte-determinism
-        tests would not catch a Material.get_as_dict key-reorder. Load
-        the committed fixture into a REAL model, save to scratch, and
-        byte-compare - if serialisation is deterministic end to end,
-        the no-op skip above is sound; if a key reorders, this is the
-        test that says so."""
+        """Through a real model, because a key reorder is invisible to the others."""
         from amaze.core import library as library_mod
         from amaze.tests import test_support as ts
         prefs_obj = ts.fixture_prefs(self)
@@ -2883,10 +2361,6 @@ class ContentFingerprintGuardTest(_Case):
         with open(source, "rb") as handle:
             after = handle.read()
         if before != after:
-            # The FIRST save may legitimately differ from the committed
-            # fixture (schema stamp, formatting). What must hold is
-            # byte-determinism from then on: a second save of the same
-            # state writes the same bytes.
             self.assertTrue(model.save())
             with open(source, "rb") as handle:
                 third = handle.read()
@@ -2898,16 +2372,12 @@ class ContentFingerprintGuardTest(_Case):
 
 
 class CreditGoesToTheRowWithTheIdTest(_Case):
-    """matx_import credited assets[-1] after add_asset. The save inside
-    add_asset can ADOPT another session's row - appended after ours by
-    the merge - so the last row can be somebody else's material, and the
-    credit, licence and description landed on it."""
+    """A save can adopt a peer's row, so the last row is not ours by position."""
 
     FILENAME = "library.json"
 
     def test_an_adopted_row_lands_after_ours(self):
-        """The premise, proven at the connector: adoption appends, so
-        position is not identity."""
+        """The premise: adoption appends, so position is not identity."""
         self._write(self._document(count=2))
         db, _ = self._load()
 
@@ -2930,8 +2400,7 @@ class CreditGoesToTheRowWithTheIdTest(_Case):
                             "re-check matx_import")
 
     def test_the_call_site_uses_the_id(self):
-        """Source-derived pin: the scenario above is real, so the call
-        site must resolve by id, and must not slide back to position."""
+        """From source: the call site resolves by id and may not slide back."""
         import inspect
         from amaze.core import matx_import
         source = inspect.getsource(matx_import.import_record)
@@ -2944,10 +2413,7 @@ class CreditGoesToTheRowWithTheIdTest(_Case):
 
 
 class PackageDirectoriesCarryIdentityTest(unittest.TestCase):
-    """Destination names derived from the title alone: two sources both
-    offer a "Red Brick", and extracting the second into the first's
-    directory interleaves two packages' textures - the .mtlx that
-    survives references a mixture."""
+    """Two sources offering one title must not extract into one directory."""
 
     class _R:
         def __init__(self, source, uid, title):
@@ -2964,16 +2430,14 @@ class PackageDirectoriesCarryIdentityTest(unittest.TestCase):
                          "directory: %s" % names)
 
     def test_the_same_record_maps_to_the_same_directory(self):
-        """Identity must be stable, or re-downloading a record can never
-        find what it already fetched."""
+        """Identity must be stable, or a re-download never finds what it fetched."""
         from amaze.core import matx_import
         a = matx_import.package_dirname(self._R("polyhaven", "x", "Moss"))
         b = matx_import.package_dirname(self._R("polyhaven", "x", "Moss"))
         self.assertEqual(a, b)
 
     def test_the_title_still_leads_the_name(self):
-        """Readability survives: the directory a user browses starts
-        with the words they know."""
+        """The directory a user browses still starts with the words they know."""
         from amaze.core import matx_import
         name = matx_import.package_dirname(
             self._R("polyhaven", "u1", "Old Oak"))
@@ -2984,11 +2448,7 @@ class PackageDirectoriesCarryIdentityTest(unittest.TestCase):
 
 
 class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
-    """A list that shrank past half since its newest snapshot reads
-    exactly like a list that is fine - 1 record parses as cleanly as
-    40. Report-only: a shrink can be a deliberate cleanup, so it never
-    blocks and never repairs, but a human sees the two numbers before
-    the next sweep treats the shrunken list as truth."""
+    """Report-only: a shrink can be deliberate, but a human sees both numbers."""
 
     def setUp(self):
         super().setUp()
@@ -3031,10 +2491,7 @@ class ASuspiciousShrinkIsSaidOutLoudTest(_Case):
 
 
 class EverySaveLeavesExactlyOneRecordTest(_Case):
-    """The step's own reviewer flag honoured: rather than converting
-    the most safety-critical function into a single-exit body, a
-    wrapper logs in finally - so every path, INCLUDING a raise, leaves
-    exactly one database/save record, and each exit names its outcome."""
+    """A wrapper logs in `finally`, so every exit leaves exactly one record."""
 
     def _save_records(self, log):
         return [r for r in log.records("database")
@@ -3104,10 +2561,7 @@ class EverySaveLeavesExactlyOneRecordTest(_Case):
 
 
 class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
-    """ROADMAP by name: two people editing DIFFERENT fields of the same
-    asset is not a conflict at all - and whole-record ours-wins made it
-    one. My rename erased your retag because the record was the unit of
-    comparison while the field was the unit of editing."""
+    """The field is the unit of editing, so it is the unit of comparison."""
 
     def _their_edit(self, **fields):
         theirs = self._document()
@@ -3157,16 +2611,7 @@ class DifferentFieldsOfOneAssetBothSurviveTest(_Case):
 
 
 class ADatabaseWrittenOnceHasAFloor(_Case):
-    """The four lists were the last snapshotting writers with no
-    write-once floor. `snapshot_before_write` copies what is ALREADY on
-    disk and rightly declines a file that is not there yet, so a list
-    written exactly once had no `.bak` tier at all - and `library.json`
-    and `cops.json` carry no seed marker either, so nothing beside them
-    said they had ever existed.
-
-    That is the shape that cost 21 files: cops.json gone for the instant
-    the panel builds its model, read as a new library, seeded empty, and
-    the cleanup that followed took every file the 8 real assets owned."""
+    """A list written exactly once still gets a floor saying it existed."""
 
     def test_a_seeded_database_gets_a_floor(self):
         self._load()                        # absent, untraced -> seeded
@@ -3177,8 +2622,7 @@ class ADatabaseWrittenOnceHasAFloor(_Case):
             "missing for an instant it reads as a new library again")
 
     def test_the_floor_makes_absence_answerable(self):
-        """What the floor is FOR, asked through the guard that reads
-        it rather than through the filename."""
+        """Asked through the guard that reads it, not through the filename."""
         self._load()
         os.remove(self.path)
         self.assertTrue(
@@ -3187,8 +2631,7 @@ class ADatabaseWrittenOnceHasAFloor(_Case):
             "next load seeds an empty one over it")
 
     def test_the_floor_is_not_rolled_forward(self):
-        """Write-once, like every other floor: a restore falls back to
-        the FIRST seen state, so later saves must not overwrite it."""
+        """Write-once: a restore falls back to the first-seen state."""
         self._load()
         floor = self.path + ".bak-first"
         first = open(floor, encoding="utf-8").read()
@@ -3200,16 +2643,7 @@ class ADatabaseWrittenOnceHasAFloor(_Case):
 
 
 class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
-    """`_note_suspicious_shrink` promises in its own docstring that the
-    note must never cost a load, and guards `(OSError, ValueError,
-    TypeError)`. It then calls `.get("assets")` on whatever the newest
-    snapshot parses to - and a non-dict raises `AttributeError`, which
-    is exactly the class this module elsewhere catches deliberately and
-    whose absence its docstrings twice name as the bug.
-
-    It escapes `load()`, and `load()` runs inside the model
-    constructor during panel setup: no grid, no message, and nothing on
-    screen naming the file beside the library that did it."""
+    """A note that escapes `load` takes the panel down during construction."""
 
     def _snapshot(self, document):
         with open(self.path + ".bak-1", "w", encoding="utf-8",
@@ -3231,10 +2665,7 @@ class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
         self.assertEqual(3, len(data["assets"]))
 
     def test_a_real_shrink_is_still_reported(self):
-        """The accept path. Ignoring an unreadable snapshot must not
-        make the shrink note stop firing on a readable one - the note is
-        the only thing that puts the number in front of a human before
-        the next sweep treats the short list as the truth."""
+        """Ignoring an unreadable snapshot must not silence the readable ones."""
         self._write(self._document(count=1))
         self._snapshot(self._document(count=8))
         self._load()
@@ -3245,28 +2676,10 @@ class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
 
 
 class TheMembershipBaselineFollowsEverySave(_Case):
-    """`_loaded_ids` is how the merge tells OUR deletion from THEIR
-    addition: an id on disk but not in memory was deleted by us if it
-    was in the baseline, and added by them if it was not.
-
-    `_remember_disk_state` sets it, and it is the only thing that does.
-    The successful-save exit stopped calling it when the content stat
-    was derived from the serialisation instead of re-read, so the
-    baseline froze at load time and every row added afterwards was
-    permanently outside it.
-
-    What that costs is not a stale flag. `remove_asset` writes the LIST
-    FIRST and treats the save's answer as permission to unlink - so a
-    merge that puts the row back still returns True, and the .mat, the
-    .interface, the thumbnail, the builder sidecar, the recovery stamp
-    and the whole version folder are removed behind a row that is still
-    listed and still on screen.
-    """
+    """The baseline tells our deletion from their addition, so every save moves it."""
 
     def _peer_edits(self):
-        """Any real change by the other machine, so the next save takes
-        the stale-write path. The guard compares CONTENT, so a rename is
-        enough and nothing here depends on timing."""
+        """Any real peer change: the guard compares content, so timing is free."""
         theirs = self._on_disk()
         theirs["assets"][0]["name"] = "renamed by the other machine"
         self._write(theirs)
@@ -3284,8 +2697,7 @@ class TheMembershipBaselineFollowsEverySave(_Case):
 
         self._peer_edits()
 
-        # Said out loud, exactly as removeRow does - absence alone is
-        # not a delete, which is why forget() exists.
+        # Said out loud: absence alone is not a delete.
         db.forget("MINE")
         db.set({"assets": [{"id": "ASSET0", "name": "mat 0"}]})
         self.assertTrue(db.save(), "premise: the second save landed")
@@ -3297,10 +2709,7 @@ class TheMembershipBaselineFollowsEverySave(_Case):
             "permission to unlink every file behind it")
 
     def test_a_row_the_peer_added_after_our_save_is_still_adopted(self):
-        """The accept path beside the refusal. Widening the baseline is
-        only correct while a genuinely NEW peer row is still adopted -
-        the honest way to fail this defect is to stop adopting anything,
-        which loses the other machine's work instead of ours."""
+        """Widening the baseline is only correct while a new peer row still lands."""
         self._write(self._document(count=1))
         db, _ = self._load()
 
@@ -3327,9 +2736,7 @@ class TheMembershipBaselineFollowsEverySave(_Case):
             "the next save rebuilds assets[] without it")
 
     def test_an_identical_skip_also_moves_the_baseline(self):
-        """The other exit that derives the stat instead of remembering
-        it. A save whose bytes match disk returns True and is just as
-        much an agreement with the file as one that wrote."""
+        """A save whose bytes match disk agrees with the file just as much."""
         self._write(self._document(count=1))
         db, _ = self._load()
 

@@ -1,16 +1,4 @@
-"""Repair: the way out of Clean Library's refusal.
-
-Clean Library refuses when it cannot tell a leftover from somebody's
-asset, and per practice.md the next step a refusal names has to ACTUALLY
-WORK - three refusals have shipped here whose stated remedy could not.
-So this file tests the route as well as the tool: the sentence Clean
-Library prints, the shelf entry it names, the icon that entry points at,
-and the four things Repair can then do.
-
-The load-bearing property is a NEGATIVE one - Repair never deletes - so
-it is checked from the source with ast rather than by hoping a test
-happens to exercise the branch that would.
-"""
+"""Repair: the way out of Clean Library's refusal, and the route to it."""
 
 import ast
 import datetime
@@ -43,7 +31,6 @@ from amaze.helpers import hostos                          # noqa: E402
 from amaze.helpers import restore as restore_lib          # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
-#: repo root: tests -> amaze -> python -> scripts -> repo
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 SHELF = os.path.join(REPO, "toolbar", "Amaze.shelf")
@@ -92,8 +79,7 @@ class _Case(unittest.TestCase):
 
 
 class TheReportSaysWhatIsWrongTest(_Case):
-    """REPORT IN THE USER'S WORDS. A report nobody can act on is a log
-    with a dialog around it."""
+    """A report nobody can act on is a log with a dialog around it."""
 
     def test_a_healthy_library_says_so_and_offers_nothing_to_fix(self):
         findings = self._survey()
@@ -125,10 +111,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                       "dialog offers to move them")
 
     def test_two_empty_lists_get_one_explanation_between_them(self):
-        """The tool the refusal sends people to may not say LESS about an
-        empty section than the refusal did - and may not say it twice
-        either. Clean Library teaches the ambiguity in one line; so does
-        this."""
+        """One line for the ambiguity, no less than the refusal said, and not twice."""
         self._cops([])
         with open(os.path.join(self.dir, "code.json"), "w",
                   encoding="utf-8") as handle:
@@ -143,9 +126,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertIn("failed to load", explanations[0])
 
     def test_an_unreadable_list_is_named_and_stops_any_moving(self):
-        """The honest half. While a list cannot be read, the union of ids
-        is incomplete, so no file may be called unclaimed - and quarantine
-        is not offered at all, not merely discouraged."""
+        """While a list cannot be read, no file may be called unclaimed."""
         with open(self.cops, "w", encoding="utf-8") as handle:
             handle.write('{"assets": [{"id": "COPOWNED1"}')     # truncated
         self._pair()
@@ -169,8 +150,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             repair.quarantine(findings)
 
     def test_a_list_that_has_not_arrived_is_told_apart_from_a_new_one(self):
-        """ABSENT IS ONLY "NEW" WHEN NOTHING SAYS THE FILE WAS EVER HERE,
-        and Repair asks the same function load() and Clean Library ask."""
+        """Absent is new only when nothing says the file was ever here."""
         blank = self._survey()
         nodes = [e for e in blank["lists"] if e["filename"] == "cops.json"][0]
         self.assertEqual("absent", nodes["state"])
@@ -190,22 +170,13 @@ class TheReportSaysWhatIsWrongTest(_Case):
         self.assertIn("run Repair again", text,
                       "a list that may still be arriving is reported with "
                       "no next step")
-        # NO FILENAME THE USER HAS NEVER OPENED, unless the message sends
-        # them to touch it - and this one does not. "cops.json.bak-1
-        # beside it says there was one" also left "beside it" with no
-        # antecedent: the list is the thing that is not there. Clean
-        # Library names the file, because that message does tell them to
-        # remove it.
         self.assertNotIn("cops.json.bak-1", text,
                          "the report names a file the reader has never "
                          "opened in a sentence that does not send them to "
                          "it")
 
     def test_the_saved_copies_say_what_each_would_bring_back(self):
-        """"Which one do I want" cannot be answered from a filename. The
-        count and the date are the answer, and they are what the real
-        library's copies differ by (measured: cops.json bak-1 8 assets,
-        bak-2 6, bak-first 2)."""
+        """The count and the date are the answer; a filename is not."""
         self._cops([])
         self._write(self.cops + ".bak-1",
                     {"assets": [{"id": "A"}, {"id": "B"}]})
@@ -218,9 +189,6 @@ class TheReportSaysWhatIsWrongTest(_Case):
                                r"1 saved node",
                          "the count arrives without the word for what was "
                          "counted, or without agreeing with it")
-        # NOT BY TIER. "bak-1" and "bak-first" are storage suffixes the
-        # user has never seen on screen, and choosing between them under
-        # pressure is guessing.
         for suffix in ("bak-1", "bak-first"):
             self.assertNotIn(suffix, text,
                              "the report asks the reader to choose by "
@@ -228,8 +196,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                              "shown them" % suffix)
 
     def test_a_copy_that_cannot_be_read_is_not_offered_as_a_rescue(self):
-        """A cloud client can truncate the BACKUP too, and a copy listed
-        as if it would work is a next step that cannot."""
+        """A backup can be truncated too, so a listed copy must be readable."""
         self._cops([])
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
             handle.write("{ truncated")
@@ -239,16 +206,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                                r"cannot be read")
 
     def test_a_colors_file_of_the_wrong_shape_is_not_called_empty(self):
-        """A file nothing can be counted in must read as unreadable.
-        Calling it empty tells the reader there is nothing here about a
-        file that may be full, and that is the sentence that gets a
-        library thrown away.
-
-        A LIST document is caught by the count fallback alone, which is
-        why this one passed while the sibling below did not. (This
-        docstring used to open "the Colors list has its own format and
-        no connector" - true until 2026-08-09, and the premise the
-        survey's exemption was resting on.)"""
+        """A file nothing can be counted in reads as unreadable, never empty."""
         with open(os.path.join(self.dir, "gradients.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(["not", "a", "list", "Amaze", "wrote"], handle)
@@ -261,20 +219,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                          "complete, so files could be moved on a guess")
 
     def test_a_broken_colors_file_that_still_COUNTS_is_unreadable(self):
-        """The shape the count fallback cannot catch, and the one the
-        connector actually refuses.
-
-        `count_in` walks the list keys, finds `assets` is not a list,
-        finds no mapping payload, and falls through to `len(document),
-        "settings"` - so a Colors file that no longer loads answered 1
-        and the survey's gradients exemption called it healthy. The
-        report then read **Colors - ok, 1 settings** while the section
-        was dead in the panel, and no restore was offered for the one
-        list that needed it.
-
-        Since 2026-08-09 gradients.json is an ordinary connector
-        document with rows under `assets`, so it takes the same shape
-        test as the other three."""
+        """The shape `count_in` answers 1 for, which the connector refuses."""
         with open(os.path.join(self.dir, "gradients.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"version": 3, "categories": ["_All"],
@@ -292,8 +237,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             "files could be moved aside on a guess")
 
     def test_a_healthy_colors_file_is_still_ok(self):
-        """The accept path beside it: taking the exemption away must not
-        make every healthy Colors library read as broken."""
+        """The accept path: a healthy Colors library must not read as broken."""
         findings = self._survey()
         colors = [e for e in findings["lists"]
                   if e["filename"] == "gradients.json"][0]
@@ -302,16 +246,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                       % colors["state"])
 
     def test_a_folder_it_could_not_read_is_not_called_accounted_for(self):
-        """A FALSE ALL-CLEAR FROM THE TOOL WHOSE JOB IS TO SAY WHAT IS
-        WRONG. With the asset folder not synced down - the most measured
-        broken state in this project, the small json arriving before the
-        big folder - the report said "every file in the library's own
-        folders is accounted for" about a folder nobody had looked in,
-        while Clean Library refused outright over the same directory.
-
-        The rule its sibling in library.py already states: a handler that
-        returns a neutral value makes a failure indistinguishable from an
-        honest empty result."""
+        """A neutral value makes a failure indistinguishable from an empty result."""
         shutil.rmtree(self.mat_dir)
         findings = self._survey()
         self.assertEqual([self.prefs.asset_dir],
@@ -333,10 +268,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
             repair.quarantine(findings)
 
     def test_the_two_buttons_say_how_many_files_each_one_acts_on(self):
-        """Two buttons acting on two different sets, with nothing saying
-        they differ: adding back takes only complete pairs, moving aside
-        takes everything unaccounted for. "Unlisted" against "unclaimed"
-        read as a synonym rather than as a distinction."""
+        """Two buttons act on two different sets, so each says its own count."""
         self._cops([])
         self._pair()
         with open(os.path.join(self.mat_dir, "HALFONLY2.mat"), "w",
@@ -355,8 +287,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
                       "different files")
 
     def test_the_report_avoids_the_words_the_style_guide_bans(self):
-        """practice.md ▸ The user's words, not the program's. These are
-        the words that exist only because of how the thing was built."""
+        """The user's words: these exist only because of how it was built."""
         self._cops([])
         self._pair()
         with open(os.path.join(self.dir, "code.json"), "w",
@@ -373,15 +304,7 @@ class TheReportSaysWhatIsWrongTest(_Case):
 
 
 class RepairNeverDeletesTest(unittest.TestCase):
-    """THE ONE PROPERTY THAT MAY NOT REGRESS.
-
-    Checked from the SOURCE rather than by driving branches: a test that
-    a particular call did not delete anything proves nothing about the
-    branch nobody drove. Parsed with ast, not searched as text - the
-    module's own docstring says the words `os.remove` and `shutil.rmtree`
-    out loud, and a substring test would fail on the sentence promising
-    they are absent (a comment once failed the test that documented the
-    fix it described)."""
+    """The one property that may not regress, read from source with `ast`."""
 
     FORBIDDEN = {
         ("os", "remove"), ("os", "unlink"), ("os", "rmdir"),
@@ -414,8 +337,7 @@ class RepairNeverDeletesTest(unittest.TestCase):
             "a delete is needed here the design is wrong" % ", ".join(found))
 
     def test_the_test_can_fail(self):
-        """ASSERT THE TEST'S OWN PREMISE: the walk has to be able to find
-        one, or it is checking nothing."""
+        """The walk has to be able to find one, or it is checking nothing."""
         tree = ast.parse("import os\nos.remove('x')\n")
         hits = [n for n in ast.walk(tree)
                 if isinstance(n, ast.Call)
@@ -450,11 +372,7 @@ class MovingFilesAsideTest(_Case):
         self.assertEqual([], result["failed"])
 
     def test_the_folder_is_THE_quarantine_not_a_second_one(self):
-        """Superseded contract, updated 2026-07-31: Repair used its own
-        <library>/_removed_<date>/ while Clean Library used the
-        machine-local quarantine - two tools, two answers to "where did
-        my file go", and one of them grew inside the synced library
-        forever. One location now, with the 30-day window."""
+        """One quarantine for both tools, machine-local, with the 30-day window."""
         from amaze.core import library as library_mod
         self._cops([])
         self._pair()
@@ -469,13 +387,7 @@ class MovingFilesAsideTest(_Case):
             "the quarantine is inside the synced library again")
 
     def test_a_second_round_the_same_day_keeps_the_first_copy(self):
-        """THE ONE DELETE THAT WAS STILL POSSIBLE IN REPAIR, and no test
-        could see it: os.replace OVERWRITES, and the holding folder is
-        named per calendar day. The help text invites the exact sequence -
-        "you can look through them or drag them back at any time" - so
-        drag a file back, let it be written again, run Repair the same
-        day, and the first copy's bytes were gone with no message. It is
-        none of the calls the no-delete test forbids."""
+        """`os.replace` overwrites, and the holding folder is named per day."""
         self._cops([])
         path = os.path.join(self.mat_dir, self.COP_ID + ".mat")
         with open(path, "w", encoding="utf-8") as handle:
@@ -498,9 +410,7 @@ class MovingFilesAsideTest(_Case):
         self.assertIn("ROUND TWO BYTES\n", landed)
 
     def test_the_quarantine_folder_is_invisible_to_the_next_sweep(self):
-        """It must not become the next Clean Library's problem: the sweep
-        lists the asset and image folders, and a top-level folder is not
-        in either."""
+        """A top-level folder is in neither list the next sweep walks."""
         self._cops([])
         self._pair()
         result = repair.quarantine(self._survey())
@@ -526,8 +436,7 @@ class AddingUnlistedFilesBackTest(_Case):
         document = self._read(os.path.join(self.dir, "library.json"))
         rows = [r for r in document["assets"] if r.get("id") == self.COP_ID]
         self.assertEqual(1, len(rows), "the asset was not added once")
-        # The shape has to be the app's own, or the panel meets a row it
-        # cannot build. Driven through the real loader, not eyeballed.
+        # Through the real loader: the row shape has to be the app's own.
         asset = material_mod.Material.from_dict(rows[0])
         self.assertEqual(self.COP_ID, str(asset.mat_id))
         self.assertIn(repair.RECOVERED_CATEGORY, document["categories"])
@@ -541,8 +450,7 @@ class AddingUnlistedFilesBackTest(_Case):
                          "back, so Clean Library would still refuse")
 
     def test_only_a_complete_pair_is_offered(self):
-        """One half of a pair is not an asset, and a row for it would put
-        a tile in the panel that cannot open."""
+        """Half a pair would put a tile in the panel that cannot open."""
         self._cops([])
         with open(os.path.join(self.mat_dir, "HALFONLY1.mat"), "w",
                   encoding="utf-8") as handle:
@@ -555,16 +463,7 @@ class AddingUnlistedFilesBackTest(_Case):
         self.assertNotIn("reattach", actions)
 
     def test_a_COP_companion_is_not_the_material_half_of_a_pair(self):
-        """`asset_id_for_file` strips the `_cop` tail to get the id, and
-        the halves test then reads the extension off the ORIGINAL name -
-        so `X_cop.mat` counted as X's `.mat`. With the real `X.mat`
-        lost, Add Back mints a row whose material file does not exist:
-        the tile-that-cannot-open its own docstring says must never be
-        invented, and the next Clean Library reports it as a
-        missing-file row forever.
-
-        The identical suffix-vs-kind collision `library.py` records
-        having already fixed once in `_hold_pre_edit_files`."""
+        """`X_cop.mat` must not count as X's `.mat`, or Add Back mints a dead row."""
         self._cops([])
         for name, body in (("PAIRCOP1_cop.mat", "the companion\n"),
                            ("PAIRCOP1.interface", "the interface\n")):
@@ -581,9 +480,7 @@ class AddingUnlistedFilesBackTest(_Case):
         self.assertNotIn("reattach", actions)
 
     def test_a_real_pair_beside_a_companion_is_still_offered(self):
-        """The accept path: a genuine pair that HAPPENS to have a COP
-        companion beside it must still be reattachable, or the fix
-        removes recovery from the assets most worth recovering."""
+        """The accept path: a genuine pair beside a companion still comes back."""
         self._cops([])
         for name in ("PAIRFULL1.mat", "PAIRFULL1.interface",
                      "PAIRFULL1_cop.mat"):
@@ -603,8 +500,7 @@ class AddingUnlistedFilesBackTest(_Case):
             repair.reattach(self._survey(), "library.json")
 
     def test_the_list_it_writes_is_still_loadable_by_the_app(self):
-        """The whole point of writing through Material.get_as_dict: a
-        hand-assembled row drifts from what the app writes."""
+        """Written through `Material.get_as_dict`; a hand-built row drifts."""
         self._cops([])
         self._pair()
         repair.reattach(self._survey(), "cops.json")
@@ -624,8 +520,7 @@ class PuttingASavedCopyBackTest(_Case):
                      "assets": [{"id": "A"}, {"id": "B"}]})
         done = repair.put_back(self._survey(), "cops.json", "bak-1")
         self.assertEqual(2, len(self._read(self.cops)["assets"]))
-        # The undo copy's name is timestamped, never reused - a fixed
-        # name made the second restore overwrite the first one's undo.
+        # The undo copy is timestamped, never a fixed name.
         self.assertTrue(
             done["undo"].startswith("cops.json.bak-before-restore-"),
             "the undo copy is not named per restore: %r" % done["undo"])
@@ -635,17 +530,7 @@ class PuttingASavedCopyBackTest(_Case):
             "restore cannot be undone")
 
     def test_the_undo_copy_is_offered_back_and_survives_being_used(self):
-        """THE PROMISED UNDO HAS TO BE A COPY THE TOOL WILL OFFER.
-
-        The done-dialog says the list from a moment ago is still there and
-        Repair will offer it back. Before this, the undo copy was not among
-        the copies snapshots() lists at all, and the only route to it -
-        the terminal tool - destroyed it: the undo was a single fixed name
-        written BEFORE its source was read, so putting the undo back
-        overwrote it with the state it was undoing and then copied that
-        over itself. Measured through the shipped CLI: 500 assets, restore
-        bak-1 (495), restore bak-before-restore, two successes, and the
-        500-asset state gone from the folder."""
+        """The promised undo has to be a copy `snapshots` will offer back."""
         self._cops([{"id": "LIVE1"}, {"id": "LIVE2"}])
         self._write(self.cops + ".bak-1",
                     {"version": 2, "categories": ["_All"], "tags": [],
@@ -669,9 +554,6 @@ class PuttingASavedCopyBackTest(_Case):
             [r["id"] for r in self._read(self.cops)["assets"]],
             "putting the undo copy back did not bring the list you had "
             "back - the undo is a preserved copy, not a restorable one")
-        # AND THE UNDO'S OWN SOURCE SURVIVES BEING USED. With the fixed
-        # name, restoring the undo copy overwrote it before reading it -
-        # the one-way door with two names.
         self.assertEqual(
             ["LIVE1", "LIVE2"],
             [r["id"] for r in self._read(
@@ -680,12 +562,7 @@ class PuttingASavedCopyBackTest(_Case):
             "choice cannot flip back")
 
     def test_two_restores_in_a_row_keep_the_starting_state(self):
-        """THE SECOND RESTORE MUST NOT DELETE WHAT THE FIRST ONE SAVED.
-        A fixed undo name meant restore bak-1 then restore bak-2 left the
-        starting state nowhere on disk - the exact evening a worried user
-        has, trying copies until one looks right. Every restore now writes
-        its own timestamped undo copy, so the whole trail stays walkable
-        back to the beginning."""
+        """Every restore writes its own undo copy, so the trail stays walkable."""
         self._cops([{"id": "START1"}, {"id": "START2"}, {"id": "START3"}])
         self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
         self._write(self.cops + ".bak-2", {"assets": [{"id": "B"}]})
@@ -699,8 +576,6 @@ class PuttingASavedCopyBackTest(_Case):
             [r["id"] for r in self._read(
                 os.path.join(self.dir, first["undo"]))["assets"]],
             "the pre-first-restore state is gone from the folder")
-        # And the picker offers both, newest first, so the way back to
-        # the start is a visible choice rather than an archaeology dig.
         offered = [tier for filename, tier, _snap, _now
                    in repair.restorable(self._survey())
                    if filename == "cops.json"]
@@ -715,10 +590,7 @@ class PuttingASavedCopyBackTest(_Case):
             "does not arrive at the starting state")
 
     def test_a_missing_copy_is_refused_without_a_tier_or_a_filename(self):
-        """The refusal is shown in a Repair dialog, so it may not read
-        "There is no bak-1 copy of library.json to put back" - a storage
-        suffix and a file nobody has opened, in a dialog whose every other
-        sentence says Nodes and "a copy from 2026-07-27 20:31"."""
+        """No storage suffix and no filename in a dialog the user reads."""
         self._cops([{"id": "LIVE1"}])
         with self.assertRaises(restore_lib.RestoreRefused) as caught:
             repair.put_back(self._survey(), "cops.json", "bak-3")
@@ -732,9 +604,7 @@ class PuttingASavedCopyBackTest(_Case):
                       "the terminal tool loses the detail it prints")
 
     def test_it_goes_through_the_one_shared_implementation(self):
-        """A second implementation of a restore is a second answer. This
-        pins that Repair does not have one: the shared function is what
-        runs."""
+        """A second implementation of a restore would be a second answer."""
         self._cops([])
         self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
         with patch.object(restore_lib, "put_back",
@@ -745,9 +615,7 @@ class PuttingASavedCopyBackTest(_Case):
                          "helpers/restore.py")
 
     def test_a_refusal_carries_no_exception_text_for_the_dialog(self):
-        """NO RAW EXCEPTION TEXT ON SCREEN, no Errno, no parse position -
-        and the sentence has to be complete without it. The detail rides
-        in .detail, where the terminal tool and the log can have it."""
+        """No raw exception text on screen; the detail rides in `.detail`."""
         self._cops([{"id": "LIVE1"}])
         with open(self.cops + ".bak-1", "w", encoding="utf-8") as handle:
             handle.write("{ truncated")
@@ -788,14 +656,10 @@ class PuttingASavedCopyBackTest(_Case):
 
 
 class TheGuardsTest(_Case):
-    """Repair reports always; it changes only from a session that has not
-    opened a library."""
+    """Repair reports always; it changes only from a session with no library open."""
 
     def test_a_session_that_has_read_a_library_may_not_change_anything(self):
-        """load() is gated on `if not self._data`, so a connector that has
-        read a list holds that document until the process ends - and its
-        next save writes it back over anything put back here. Measured
-        from the code, not guessed."""
+        """A connector holds its document until the process ends and saves it back."""
         self.assertFalse(repair.session_has_a_library_open(),
                          "premise: the registry starts empty")
         connector = database.DatabaseConnector("cops.json")
@@ -803,12 +667,7 @@ class TheGuardsTest(_Case):
         self.assertIsNotNone(connector)
 
     def test_the_actions_themselves_refuse_such_a_session(self):
-        """THE GUARD IS A PROPERTY OF THE OPERATIONS, NOT OF THE BUTTONS.
-        _choices withholding a button protects exactly one caller; any
-        other route to these functions - a future menu item, a script,
-        the Python shell - would change a library this process is about
-        to overwrite from memory. So each action checks for itself, and
-        this drives all three with a connector alive."""
+        """The guard belongs to the operations; a withheld button protects one caller."""
         self._cops([])
         paths = self._pair()
         self._write(self.cops + ".bak-1", {"assets": [{"id": "A"}]})
@@ -844,8 +703,7 @@ class TheGuardsTest(_Case):
                          "from memory the moment Amaze next saves")
 
     def test_finding_no_panel_does_not_raise_without_a_desktop(self):
-        """It must work when the panel will not open, which includes
-        having no interface at all - this is how the suite runs."""
+        """It must work with no interface at all, which is how the suite runs."""
         self.assertIsNone(repair.open_panel_tab())
 
     def test_no_library_folder_is_said_plainly_and_nothing_is_read(self):
@@ -857,22 +715,13 @@ class TheGuardsTest(_Case):
         self.assertIn("Preferences", said,
                       "the user is not told where to set one")
 
-
     def test_a_library_folder_that_is_not_reachable_is_not_called_absent(
             self):
-        """NEVER GUESS A CAUSE. One message for both situations told the
-        user with an unmounted drive that they had no library and sent
-        them to Preferences to pick one - which is how somebody re-points
-        Amaze at an empty folder and loses the library from the panel."""
         prefs = _NoLibraryPrefs()
         prefs.dir = os.path.join(self.dir, "not-mounted") + os.sep
         with patch.object(hou, "ui", MagicMock(), create=True):
             repair.run(preferences=prefs)
-            # The ARGUMENTS, not str(call). A mock call's repr escapes
-            # every backslash, so on Windows the message really did name
-            # the folder and the assertion could still never find it -
-            # `C:\Users\...` searched inside `C:\\Users\\...`. Reading
-            # the args gives the text the user is actually shown.
+            # The arguments, not `str(call)`: a mock repr escapes every backslash.
             said = " ".join(
                 str(value)
                 for call in hou.ui.displayMessage.call_args_list
@@ -894,9 +743,7 @@ class _NoLibraryPrefs:
 
 
 class TheWholeFlowTest(_Case):
-    """Driving run() itself. A feature is not verified until a test drives
-    the CALL SITE: 190 tests once passed while a menu action raised on
-    click."""
+    """Driving `run` itself: a feature is not verified until its call site is."""
 
     def _run(self, buttons, listed=None):
         ui = MagicMock()
@@ -907,8 +754,7 @@ class TheWholeFlowTest(_Case):
         return ui
 
     def test_the_report_is_one_dialog_and_close_changes_nothing(self):
-        """AGGREGATE BEFORE INTERRUPTING: one dialog listing what was
-        found, never one per problem."""
+        """Aggregate before interrupting: one dialog, never one per problem."""
         self._cops([])
         paths = self._pair()
         ui = self._run(buttons=[99])          # 99 = the Close button index
@@ -925,11 +771,7 @@ class TheWholeFlowTest(_Case):
             ui = self._run(buttons=[0])
         said = str(ui.displayMessage.call_args_list[0])
         self.assertIn("Amaze is open", said)
-        # THE STEP HAS TO WORK. "Close Amaze, then run Repair again" was
-        # the first wording, and closing a tab does not empty the
-        # registry: one connector per file lives for the whole process, so
-        # the second run landed on the report with no buttons - the user
-        # does exactly what they were told and is no better off.
+        # Closing a tab does not empty the registry; only a restart does.
         self.assertIn("Quit Houdini", said,
                       "the refusal names a next step that cannot bring the "
                       "buttons back")
@@ -938,9 +780,7 @@ class TheWholeFlowTest(_Case):
                          "it carried on past the refusal")
 
     def test_a_session_that_has_read_a_library_gets_the_report_only(self):
-        """The guard WIRED IN, not just callable. run() is where the
-        decision is made, and a report that offered a button here would
-        put a list back that the next save writes over from memory."""
+        """The guard wired in: `run` is where the decision is made."""
         self._cops([])
         self._write(self.cops + ".bak-1", {"assets": [{"id": "OLD1"}]})
         database.DatabaseConnector("cops.json")     # the panel, earlier
@@ -954,9 +794,6 @@ class TheWholeFlowTest(_Case):
                          "save would write over it")
         self.assertIn("Quit Houdini", str(shown),
                       "nothing tells the user how to get the buttons back")
-        # The words the style guide bans, checked on the DIALOG this time -
-        # report_lines has its own test, and this sentence is added after
-        # it, which is exactly where a "session" slips back in.
         for word in ("session", "index", "record", "row", "database",
                      "merge", "schema", "stale"):
             self.assertNotIn(word, str(shown).lower(),
@@ -967,7 +804,7 @@ class TheWholeFlowTest(_Case):
         self._write(self.cops + ".bak-1",
                     {"version": 2, "categories": ["_All"], "tags": [],
                      "assets": [{"id": "OLD1"}]})
-        # report -> "Put a Saved Copy Back" (0), confirm -> button 0, done
+        # report to the restore button, confirm, done.
         ui = self._run(buttons=[0, 0, 0], listed=(0,))
         confirm = str(ui.displayMessage.call_args_list[1])
         self.assertIn("holds 1 node", confirm,
@@ -976,9 +813,6 @@ class TheWholeFlowTest(_Case):
         self.assertIn("holds 2", confirm,
                       "the confirm does not say what is there now, so the "
                       "loss cannot be judged")
-        # THE SUBTRACTION IS THE DECISION. Two numbers and no arithmetic
-        # is what a reader under pressure clicks past; 548 -> 8 is 540
-        # gone and the sentence has to say it.
         self.assertIn("takes you from 2 to 1", confirm,
                       "the confirm gives both numbers and never says what "
                       "the change is")
@@ -1017,10 +851,7 @@ class TheWholeFlowTest(_Case):
 
 
 class TheRouteFromCleanLibraryTest(_Case):
-    """THE STEP A REFUSAL NAMES MUST ACTUALLY WORK. Three refusals have
-    shipped here whose stated remedy could not, so the route is tested
-    end to end: the sentence, the shelf entry it names, the icon that
-    entry points at, and whether running it clears the refusal."""
+    """The step a refusal names must actually work, so the route is tested."""
 
     def _clean(self, model):
         with patch.object(hou, "ui", MagicMock(), create=True):
@@ -1046,24 +877,13 @@ class TheRouteFromCleanLibraryTest(_Case):
                       "the tab the refusal names does not show it")
 
     def test_the_tab_the_refusal_tells_them_to_add_exists(self):
-        """The refusal says "choose Shelves, then Amaze" - a per-machine
-        step. If the shelf's label ever changed, that sentence would
-        name something not in the menu."""
+        """The refusal names a menu entry, so its label has to exist."""
         root = ET.parse(SHELF).getroot()
         labels = [shelf.get("label") for shelf in root.findall("toolshelf")]
         self.assertIn("Amaze", labels)
 
     def test_the_tool_uses_the_committed_icon_in_the_family(self):
-        """The shelf references the committed icon, and the icon shares
-        the Amaze mark's viewBox.
-
-        The first version froze the artwork's exact viewBox literal -
-        and correctly failed the moment a legitimate design pass
-        resized both icons together (2026-07-31, both moved to
-        30x30/84 percent fill). A pin on design-owned numbers fails
-        every honest art update; what the test actually protects is
-        one-sided restyling, and comparing the two files to EACH OTHER
-        holds exactly that without freezing either."""
+        """The two icons are compared to each other, never to a frozen number."""
         root = ET.parse(SHELF).getroot()
         tool = [t for t in root.findall("tool")
                 if t.get("name") == "amaze_repair_library"][0]
@@ -1088,8 +908,6 @@ class TheRouteFromCleanLibraryTest(_Case):
             "shelf family drifts apart again")
 
     def test_the_tool_runs_repair_and_guards_its_import(self):
-        """Follow the two existing tools exactly: a guarded import with a
-        readable message when amaze is not importable from that session."""
         root = ET.parse(SHELF).getroot()
         tool = [t for t in root.findall("tool")
                 if t.get("name") == "amaze_repair_library"][0]
@@ -1098,10 +916,7 @@ class TheRouteFromCleanLibraryTest(_Case):
         self.assertIn("except ImportError", script)
         self.assertIn("not importable from this session", script)
         self.assertIn("repair.run()", script)
-        # STRIP THE COMMENTS FIRST. The script's own comment explains that
-        # it does not touch the panel, and a bare substring test fails on
-        # the sentence documenting the property it is checking - the exact
-        # trap practice.md records for source-derived tests.
+        # Strip the comments first: a substring test matches the sentence saying so.
         code = "\n".join(line for line in script.splitlines()
                          if not line.strip().startswith("#"))
         self.assertNotIn("panel", code,
@@ -1109,9 +924,7 @@ class TheRouteFromCleanLibraryTest(_Case):
                          "the one thing it must not need")
 
     def test_the_refusal_names_repair_and_repair_then_clears_it(self):
-        """THE WHOLE ROUTE, in one test. Clean Library refuses and names
-        Repair; Repair moves the unclaimed files aside; Clean Library runs
-        again. Every step is the real code."""
+        """The whole route in one test, every step the real code."""
         self._cops([])
         paths = self._pair()
         model = self._material_model()
@@ -1124,13 +937,6 @@ class TheRouteFromCleanLibraryTest(_Case):
                             "Clean Library deleted the files it refused "
                             "over")
 
-        # The user quits Houdini, starts it again and runs Repair before
-        # opening Amaze - the exact step the refusal names. The reset IS
-        # that restart: the actions now refuse for themselves while a
-        # connector from the refused run is still alive, so a route test
-        # that skipped the restart would be driving a flow the tool
-        # forbids. Nothing in the route needs a model, which is why the
-        # survey is called directly here exactly as run() calls it.
         test_support.reset_database_singletons()
         findings = repair.survey(self.dir, self.prefs.asset_dir,
                                  self.prefs.img_dir)
@@ -1139,11 +945,6 @@ class TheRouteFromCleanLibraryTest(_Case):
                          "over - the two tools disagree about the folder")
         repair.quarantine(findings)
 
-        # A fresh session, a fresh model, and the sweep must run now. The
-        # leftover proving it ran is an IMAGE: with a section still
-        # listing nothing, anything unclaimed in the ASSET folder holds
-        # the sweep back again by design - see the test below, which is
-        # that consequence pinned rather than discovered later.
         test_support.reset_database_singletons()
         again = self._material_model()
         leftover = os.path.join(self.img_dir, "GONEMATERIAL1.png")
@@ -1162,17 +963,7 @@ class TheRouteFromCleanLibraryTest(_Case):
 
     def test_a_later_leftover_goes_through_repair_too_while_a_list_is_empty(
             self):
-        """THE PRICE OF THE STRICT GUARD, pinned so nobody meets it as a
-        surprise.
-
-        While any section lists nothing, an unclaimed file in the asset
-        folder holds the sweep back EVERY time - so for a library with a
-        section nobody uses, moving leftovers aside is Repair's job from
-        then on, not Clean Library's. That is a real cost and it was
-        accepted knowingly: Repair's answer (move aside, keep the bytes,
-        never delete) is strictly safer than the one Clean Library would
-        have given (unlink), the refusal names it, and it works. What must
-        NOT happen is the user being stuck, and they are not."""
+        """The price of the strict guard: while a section lists nothing, Repair owns it."""
         self._cops([])
         model = self._material_model()
         later = os.path.join(self.mat_dir, "GENUINELEFTOVER2.mat")
@@ -1184,16 +975,13 @@ class TheRouteFromCleanLibraryTest(_Case):
         self.assertTrue(os.path.exists(later),
                         "Clean Library swept it after all, and this test no "
                         "longer describes what the guard does")
-        # The restart the refusal demands, without which quarantine now
-        # refuses this process for itself.
         test_support.reset_database_singletons()
         result = repair.quarantine(self._survey())
         self.assertEqual(["GENUINELEFTOVER2.mat"], result["moved"])
         self.assertFalse(os.path.exists(later))
 
     def test_repair_and_clean_library_count_the_same_files(self):
-        """One classifier, two tools. Two numbers about one folder is its
-        own bug, and the number is what the user acts on."""
+        """One classifier, two tools: two numbers about one folder is a bug."""
         self._cops([])
         self._pair()
         for name in ("STRAY1.mat.writing", "notes.txt", "STRAY2_cop.mat"):
@@ -1215,19 +1003,7 @@ class TheRouteFromCleanLibraryTest(_Case):
 
 
 class TheRealLibraryRehearsalTest(unittest.TestCase):
-    """The same route against the REAL library's own shape.
-
-    AN INDEPENDENT REPRO FINDS WHAT A FIX'S OWN TESTS CANNOT: the first
-    version of the 2026-07-29 fix was sabotage-verified, accept-path
-    tested and green, and still deleted the same 23 files. So this
-    rebuilds the incident from the symptom instead of from the diff.
-
-    The lists and their saved copies are COPIED; the 1,112 asset files
-    and 557 images are reproduced as empty stand-ins with the real names,
-    because what every decision here turns on is which id a filename
-    belongs to and nothing else. Measured on the real library: 548 + 8 =
-    556 .mat files, exactly. The real library is only ever READ.
-    """
+    """The same route against the real library's shape, which is only ever read."""
 
     LISTS = database.DATABASES
 
@@ -1277,8 +1053,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
                     for row in json.load(handle).get("assets", [])}
 
     def test_the_real_library_is_coherent_and_sweeps_clean(self):
-        """THE ACCEPT PATH ON THE REAL SHAPE. If the guard fires here,
-        Clean Library is broken for the only library that exists."""
+        """The accept path: if the guard fires here, Clean Library is broken."""
         findings = self._survey()
         self.assertTrue(findings["complete"])
         self.assertEqual(
@@ -1295,16 +1070,9 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
                          "every one of them is listed")
 
     def test_the_incident_itself_is_refused_and_repair_undoes_it(self):
-        """cops.json 5,537 bytes / 8 records -> 96 / 0, which is what a
-        list seeded over a sync placeholder looks like. 21 files belonging
-        to those 8 live assets were deleted. Now: refused, named, and put
-        back."""
+        """A list seeded over a sync placeholder: refused, named, and put back."""
         owned = sorted(
             name for name in os.listdir(self.mat_dir)
-            # Repair's OWN suffix set, imported - the hand-rolled copy
-            # here went stale twice (first .stamp.json, then
-            # .builder.json), each time on the first real library that
-            # had saved under the newer writer.
             if database.asset_id_for_file(
                 name, repair.ASSET_SIDECARS, "_cop") in self._cop_ids())
         self.assertTrue(owned, "premise: the real cops.json owns files in "
@@ -1328,12 +1096,6 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
             owned, findings["unaccounted"][self.prefs.asset_dir],
             "Repair does not report the same asset files Clean Library "
             "refused over")
-        # The images those assets own are unaccounted for too, and Repair
-        # reports them although the guard deliberately does not weigh
-        # them (DB-HARDENING step 10 is narrow on purpose). Measured on
-        # the real library: 16 asset files plus 7 thumbnails - which is
-        # the "23 orphaned file(s) on disk were removed" of the incident,
-        # to the file.
         self.assertGreater(repair.unaccounted_total(findings), len(owned),
                            "the thumbnails those assets own are not "
                            "reported, so the report is narrower than the "
@@ -1341,22 +1103,12 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         tiers = [tier for tier, _snap in restore_lib.snapshots(self.cops)]
         self.assertIn("bak-1", tiers,
                       "premise: the real cops.json has a saved copy")
-        # The restart the refusal demands - put_back refuses a Houdini
-        # whose connectors still hold the library it is about to change.
         test_support.reset_database_singletons()
         repair.put_back(findings, "cops.json", "bak-1")
 
         test_support.reset_database_singletons()
         after = self._survey()
         self.assertTrue(after["complete"])
-        # bak-1 is OLDER than the newest saves: an asset saved since
-        # the last snapshot has no row in the restored list, so its
-        # files are - correctly - still reported. A zero expectation
-        # here held only for a library that never saved between
-        # snapshots; the honest claim is that every file whose row
-        # bak-1 DOES hold is accounted again. (put_back saves the
-        # pre-restore state first, so the newer rows are one more
-        # restore away, not lost.)
         after_ids = after["ids"]
         still_unlisted = sorted(
             name for name in owned
@@ -1374,22 +1126,7 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
 
 
 class TestRecoveredRowsAreVisible(unittest.TestCase):
-    """Repair's promise is that you can SEE what it recovered.
-
-    reattach() mints a recovered row with renderer="", and the
-    completion dialog tells the user to open Amaze and look in the
-    Recovered category. The grid is a PROXY, and the proxy used to
-    reject an empty renderer before it reached the all_renderers
-    escape - so the row existed, counted in rowCount() on the source
-    model, and was invisible under every setting of the Renderer menu.
-
-    The whole suite missed it because no test had ever imported
-    multifilterproxy_model: the one model-level repair assertion builds
-    a CopLibrary, and the cop proxy carries no renderer filter at all.
-    So these drive the MATERIAL proxy specifically, and the sidebar
-    counter beside it, since category._asset_matches_renderer promises
-    in its docstring to mirror the proxy exactly.
-    """
+    """A recovered row carries an empty renderer, and the proxy has to show it."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1404,9 +1141,7 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
         return proxy
 
     def test_the_fixture_has_the_row_this_is_about(self):
-        """Premise. The committed fixture carries one renderer="" row -
-        the shape Repair produces - so these tests are not inventing a
-        case the app cannot reach."""
+        """Premise: the committed fixture carries the row Repair produces."""
         empties = [a for a in self.model.assets if str(a.renderer) == ""]
         self.assertEqual(1, len(empties),
                          "fixture no longer holds an empty-renderer row, "
@@ -1421,8 +1156,7 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
             "selected, so Edit Info cannot reach it either")
 
     def test_a_named_renderer_still_excludes_the_empty_row(self):
-        """The fix must not turn All into the only working filter: an
-        empty renderer is not a MaterialX one."""
+        """All must not become the only working filter; empty is not MaterialX."""
         proxy = self._proxy("materialx")
         renderers = [
             str(self.model.data(self.model.index(row, 0), self.model.RendererRole))
@@ -1431,9 +1165,7 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
         self.assertEqual(renderers.count("MaterialX"), proxy.rowCount())
 
     def test_the_sidebar_counter_agrees_with_the_grid(self):
-        """category._asset_matches_renderer's docstring promises it
-        mirrors the proxy EXACTLY. Fixing one and not the other puts a
-        category in the sidebar reading 0 next to a grid showing it."""
+        """The counter mirrors the proxy, or a sidebar 0 sits beside a full grid."""
         cats = category.Categories(preferences=self.prefs)
         cats._renderer_filter = "all_renderers"
         self.assertTrue(
@@ -1445,14 +1177,7 @@ class TestRecoveredRowsAreVisible(unittest.TestCase):
 
 
 class TestLibraryManifest(unittest.TestCase):
-    """What a library may contain, asserted rather than reasoned out.
-
-    Until 2026-07-30 this was written down nowhere, so "is this library
-    clean?" got answered by reading the code fresh each time - and the
-    first answer given that day was wrong in a way that would have swept
-    out the product's own restore tier. tools/library-audit.py is the
-    statement; these keep it honest.
-    """
+    """What a library may contain; `tools/library-audit.py` is the statement."""
 
     def _audit_module(self):
         import importlib.util
@@ -1463,14 +1188,7 @@ class TestLibraryManifest(unittest.TestCase):
         return module
 
     def test_product_data_is_recognised(self):
-        """The databases come from `database.DATABASES`, not a copy.
-
-        The audit tool keeps its own list on purpose - it must run
-        where Houdini will not start, so it cannot import the package -
-        and that is exactly why this end has to be derived: a fifth
-        section added to the product must fail HERE if the audit was
-        never told about it.
-        """
+        """From `database.DATABASES`: the audit's own list cannot import it."""
         audit = self._audit_module()
         checked = tuple(database.DATABASES) + (
             "policy.json",
@@ -1484,9 +1202,7 @@ class TestLibraryManifest(unittest.TestCase):
             self.assertEqual("ok", audit.classify(rel), rel)
 
     def test_the_restore_tier_is_never_called_clutter(self):
-        """The rule this exists to prevent. A .bak file is how Repair
-        gets a library back; classifying it as junk would invite a
-        cleanup that removes the only way home."""
+        """A saved copy is the way home, so it may never classify as junk."""
         audit = self._audit_module()
         for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
             self.assertEqual("ok", audit.classify("library.json." + tier))
@@ -1515,23 +1231,14 @@ class TestLibraryManifest(unittest.TestCase):
 
 
 class TheRebuildDrillTest(unittest.TestCase):
-    """Delete library.json outright and put the library back.
-
-    Before the recovery stamps this was not possible, and it was
-    measured rather than assumed: mat/<id>.mat, .interface and
-    img/<id>.png carry no tags, no description, no favourite, no date
-    and no labelled name or category, so nothing could rebuild an index
-    (research.md). The stamps exist to change that answer, and a drill
-    that is never run is a claim, not a capability.
-    """
+    """Delete the index outright and put the library back from its stamps."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
         self.model = library_mod.MaterialLibrary(preferences=self.prefs)
-        # One save writes every stamp: they are refreshed after a
-        # successful index write, and none exists yet.
+        # One save writes every stamp, and none exists yet.
         self.assertTrue(self.model.save(), "premise: the fixture saves")
         self.mat_dir = os.path.join(self.prefs.dir, self.prefs.asset_dir)
 
@@ -1545,22 +1252,11 @@ class TheRebuildDrillTest(unittest.TestCase):
                          "would silently lose it")
 
     def test_a_rebuild_leaves_the_other_sections_assets_alone(self):
-        """`mat/` is SHARED by Materials, Nodes and Code, so the
-        stamps in it belong to three indexes. A rebuild that claims
-        all of them hands this one the other sections' assets -
-        measured on a real 553-material library holding 580 stamps,
-        the other 27 Nodes and Code.
-
-        Asked through database.ids_claimed_by, the same classifier
-        Clean Library's pass 3 asks, so the two readers of these
-        folders cannot answer it differently.
-        """
+        """`mat/` is shared by three sections, so a rebuild may not claim it all."""
         import json as json_mod
         mine = {str(a.mat_id) for a in self.model.assets}
         self.assertTrue(mine, "premise: this library has materials")
 
-        # A snippet with a stamp beside the materials', listed only in
-        # code.json - exactly what a saved Code asset leaves.
         stranger = "c0de0000000040008000000000000001"
         with open(os.path.join(self.prefs.dir, self.prefs.asset_dir,
                                stranger + ".stamp.json"), "w",
@@ -1589,16 +1285,7 @@ class TheRebuildDrillTest(unittest.TestCase):
             "a category that belongs to Code came with it")
 
     def test_the_rebuilt_index_carries_this_builds_stamps(self):
-        """The stamps a rebuild reads are written by THIS build, so its
-        rows are at the current schema - and the document said version 1
-        and carried no `format` at all.
-
-        The version is benign only while both migration steps happen to
-        be no-ops on already-migrated rows, and Versions is the next
-        SCHEMA_VERSION bump. The missing format is not benign now: it is
-        the stamp that makes an older build open the library read-only
-        and point at the updater, so a rebuilt library invited exactly
-        the write the stamp exists to stop."""
+        """A rebuild writes this build's schema and its `format` stamp."""
         import json as json_mod
         from amaze import branding
 
@@ -1646,13 +1333,7 @@ class TheRebuildDrillTest(unittest.TestCase):
                 "is not carrying the whole row" % mat_id)
 
     def test_every_per_asset_FIELD_survives_including_the_soft_ones(self):
-        """The fields that only the index used to hold. A rebuild that
-        returns ids and names but drops tags and descriptions is not a
-        rebuild, it is a file listing.
-
-        NOT the favourite: schema 5 took it off the record, and it is
-        per-user in `settings.json` now - a library rebuild has no
-        business restoring it and could not see it if it tried."""
+        """Ids and names alone are a file listing; the favourite is per-user."""
         row = 1
         asset = self.model.assets[row]
         asset.tags = "brushed,worn"
@@ -1673,8 +1354,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertIn("brushed", rebuilt["tags"])
 
     def test_one_corrupt_stamp_costs_only_its_own_asset(self):
-        """The sabotage the plan asks for by name: the rebuild must
-        complete and name the casualty, not refuse."""
+        """The rebuild completes and names the casualty, rather than refusing."""
         stamps = self._stamps()
         self.assertTrue(stamps, "premise: there are stamps to corrupt")
         victim = stamps[0]
@@ -1691,9 +1371,6 @@ class TheRebuildDrillTest(unittest.TestCase):
             "the rebuild did not name the asset it could not recover")
 
     def test_a_stamp_is_never_read_in_normal_operation(self):
-        """Write-only by design: the model must not depend on them.
-        Source-derived, because a read added later would be invisible
-        to any behavioural test that still passes."""
         import ast
         root = os.path.dirname(os.path.dirname(os.path.abspath(
             library_mod.__file__)))
@@ -1710,9 +1387,7 @@ class TheRebuildDrillTest(unittest.TestCase):
                 if "STAMP_SUFFIX" not in text:
                     continue
                 for node in ast.walk(ast.parse(text)):
-                    # A read is an open() whose argument mentions the
-                    # stamp. The writer in library.py opens one too, so
-                    # only flag files OTHER than the writer and Repair.
+                    # A read is an `open` naming a stamp, outside the writer itself.
                     if isinstance(node, ast.Call) and \
                             getattr(node.func, "id", "") == "open" and \
                             name not in ("library.py", "repair.py"):
@@ -1724,8 +1399,7 @@ class TheRebuildDrillTest(unittest.TestCase):
 
 
 class QuarantineIsBoundedTest(unittest.TestCase):
-    """A holding folder that only ever grows is a slow leak, and moving
-    it out of the library relocates that rather than solving it."""
+    """A holding folder that only ever grows is a leak wherever it lives."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_quar_")
@@ -1769,8 +1443,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
                         "is what makes a wrong sweep recoverable")
 
     def test_the_window_follows_the_NAME_not_mtime(self):
-        """mtime is rewritten by a backup pass or a file copy; the name
-        says which day these files were actually taken out."""
+        """A copy rewrites mtime; the name says which day they were taken out."""
         import time as _t
         old = _t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400))
         old_dir = self._day(old)
@@ -1781,9 +1454,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
                          "never expires")
 
     def test_a_conflicted_copy_is_never_classified_as_sweepable(self):
-        """The case the strict classifier exists for: a sync client's
-        rename is the ONE artifact preserving a divergence, and it used
-        to read as an unrecognised owner and get swept."""
+        """A sync client's rename is the one artifact preserving a divergence."""
         for name in ("library (conflicted copy 2026-07-29).mat",
                      "mat_001 2.mat",
                      "abc-def.mat",
@@ -1805,12 +1476,7 @@ class QuarantineIsBoundedTest(unittest.TestCase):
 
 
 class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
-    """The union in DatabaseConnector.set() means absence no longer says
-    "remove this" - a row the caller does not mention is kept, because
-    it might be a row that caller has simply never heard of. So the
-    model has to say a delete out loud, and nothing proved it did:
-    removing the forget() call left the whole suite green.
-    """
+    """The connector unions, so absence is not a delete: it has to be said."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1838,8 +1504,7 @@ class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
             "stated and this one was not")
 
     def test_it_stays_gone_after_another_save(self):
-        """The row must not be re-adopted from the connector's own copy
-        on the next save either."""
+        """Nor re-adopted from the connector's own copy on the next save."""
         self.test_a_deleted_asset_does_not_come_back()
         gone = self._ids_on_disk()
         self.model.save()
@@ -1848,11 +1513,7 @@ class DeletingAnAssetActuallyDeletesItTest(unittest.TestCase):
 
 
 class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
-    """Uniquifying the scratch names made leftovers unbounded: a hard
-    kill mid-write leaves a fresh <name>.<rand>.writing each time, the
-    classifier rightly refuses them, and nothing else ever touched
-    them. The sweep is age-gated - a fresh scratch may be a live write
-    in another session."""
+    """The sweep is age-gated: a fresh scratch may be another session's write."""
 
     def setUp(self):
         self.prefs = test_support.fixture_prefs(self)
@@ -1908,18 +1569,7 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
 
 
 class TheSentenceJoinerHasOneOwner(unittest.TestCase):
-    """`helpers.and_list`, and what it must produce.
-
-    It was three functions - `library.py`, `repair.py` and
-    `database.py` - two of which are now this one. Nothing asserted the
-    joining anywhere: sabotaging it to a plain comma join left
-    `test_library` and `test_repair` green, so a shared helper that
-    several user-facing sentences run through was pinned by nothing.
-
-    `database.py` keeps a copy on purpose (it is Houdini-free and this
-    module imports `hou`), so its answers are checked against this
-    one's rather than left to agree by luck.
-    """
+    """`helpers.and_list`, and `database.py`'s Houdini-free copy of it."""
 
     def test_it_punctuates_the_way_a_sentence_does(self):
         from amaze.helpers import helpers
@@ -1928,8 +1578,7 @@ class TheSentenceJoinerHasOneOwner(unittest.TestCase):
         self.assertEqual("a", helpers.and_list(["a"]))
         self.assertEqual("a and b", helpers.and_list(["a", "b"]))
         self.assertEqual("a, b and c", helpers.and_list(["a", "b", "c"]))
-        # A generator, not just a list - the call sites pass
-        # comprehensions and a sorted() straight in.
+        # A generator, not just a list: the call sites pass comprehensions in.
         self.assertEqual("a, b and c",
                          helpers.and_list(x for x in ("a", "b", "c")))
 

@@ -1,24 +1,4 @@
-"""Conversion Report: run the Redshift->Karma converter over REAL
-library materials and report what survived.
-
-The converter's correctness was previously argued from hand-made test
-scenes; a library of production Redshift materials is a far better
-witness. This is a headless harness - it needs Houdini WITH the
-Redshift plugin (H21 here), never touches the live library (read-only),
-and writes both a console summary and a jsonl record per material.
-
-    hython tests/conversion_report.py [--limit N] [--out FILE]
-
-Per material it asserts the structural invariants a converted Karma
-material must hold, in order:
-  1. the source imports at all (a saved .mat that cannot load is a
-     library problem, reported separately from a conversion problem),
-  2. conversion returns a builder,
-  3. the builder carries the material flag,
-  4. its surface terminal is wired (the pitch-black guard),
-  5. it translates to a real USD Material prim through a throwaway
-     material library cook - the only ground truth that matters.
-"""
+"""Redshift->Karma conversion over the real library, read-only, under hython."""
 
 import argparse
 import json
@@ -33,13 +13,6 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/, the directory that
-# holds the `amaze` package. The original had four, which lands on
-# scripts/ - where amaze is NOT importable - so every one of these
-# files silently imported amaze through Houdini's own package path,
-# i.e. the INSTALL. The sync-before-test discipline masked it for the
-# suite's whole life; it surfaced when a deliberately-unsynced
-# sabotage edit failed to change a test's behaviour.
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
@@ -49,8 +22,7 @@ from amaze.render import material_converter, nodes  # noqa: E402
 
 
 def library_materials(library_dir: str) -> list:
-    """Every Redshift material in the library, newest first, as
-    Material objects. Read-only: the database is loaded, never saved."""
+    """Every Redshift material in the library; loads, never saves."""
     database.DatabaseConnector._instances.pop("library.json", None)
     data = database.DatabaseConnector("library.json").load(library_dir)
     out = []
@@ -65,8 +37,7 @@ def library_materials(library_dir: str) -> list:
 
 
 class _Prefs:
-    """The minimum the import/convert paths read, pointed at the real
-    library for READING and nowhere for writing."""
+    """The least the import and convert paths read; nowhere to write."""
 
     def __init__(self, library_dir):
         self.dir = library_dir
@@ -82,10 +53,7 @@ class _Prefs:
 
 
 def check_material(record, prefs, staging) -> dict:
-    """Convert one library material through the REAL path (the Redshift
-    converter is an adapter into the Karma material engine's funnel,
-    exactly as core/library.convert_redshift_to_karma drives it) and
-    return its verdict."""
+    """Convert one material through the real path and return its verdict."""
     result = {"name": record.get("name"), "id": record.get("id"),
               "renderer": record.get("renderer"), "stage": "convert",
               "ok": False, "detail": "", "notes": 0}
@@ -94,7 +62,6 @@ def check_material(record, prefs, staging) -> dict:
     mat._name = record.get("name", "")
     mat._mat_id = str(record.get("id"))
     mat._renderer = record.get("renderer", "")
-    mat._builder = record.get("builder", 0)
     mat._categories = list(record.get("categories", []))
     mat._tags = list(record.get("tags", []))
 
@@ -118,9 +85,6 @@ def check_material(record, prefs, staging) -> dict:
         return result
 
     report = report_holder.get("report")
-    # ConversionReport's own vocabulary: skipped inputs and
-    # approximations. A "clean" conversion with skips is still a
-    # conversion worth reviewing, so both are counted and kept.
     result["skipped"] = list(getattr(report, "skipped", []) or [])
     result["approximated"] = list(getattr(report, "approximated", []) or [])
     result["notes"] = len(result["skipped"]) + len(result["approximated"])
