@@ -118,7 +118,7 @@ class ThumbnailCache:
 
     @staticmethod
     def _key(full_path: str) -> str:
-        """How the manifest spells a source file - ONE answer at every door in, applied on the LOAD side too so an older manifest normalises in place; a raw Windows-flavoured key misses a wanted set spelled with forward slashes, reads stale, and the folder re-converts every visit."""
+        """How the manifest spells a source file - ONE answer at every door in (the load side keeps entries verbatim, so an older raw-spelled key stays until re-written); a raw Windows-flavoured key misses a wanted set spelled with forward slashes, reads stale, and the folder re-converts every visit."""
         return hostos.canonical_path_key(full_path)
 
     def _cache_path(self, full_path: str) -> str:
@@ -180,7 +180,7 @@ class ThumbnailCache:
                 "untouched." % os.path.basename(full_path),
                 path=full_path)
             return
-        full_path = hostos.canonical_path_key(full_path)  # canonicalised HERE, which is what reconcile_many's docstring always claimed - it used to hold only because every caller happened to do it first
+        full_path = hostos.canonical_path_key(full_path)  # canonicalised HERE, at the write door itself - it used to hold only because every caller happened to do it first
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 

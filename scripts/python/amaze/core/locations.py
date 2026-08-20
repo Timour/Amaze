@@ -513,7 +513,7 @@ def migrate(preferences) -> dict:
             "joined": adopted, "already_there": len(existing)}  # `joined`: how many of this machine's locations joined ones the other machine already put there - a visible product outcome, the second sidebar growing by the first's folders
 
 
-_asset_deferred: set = set()  # (dir, uid) pairs whose asset-favourites migration could not land this session - keyed on the USER too, so picking one in the ASK dialog or Preferences retries immediately
+_asset_deferred: set = globals().get("_asset_deferred", set())  # (dir, uid) pairs whose asset-favourites migration could not land this session - keyed on the USER too, so picking one in the ASK dialog or Preferences retries immediately; reload-stable like its two siblings above
 
 
 def migrate_asset_favourites(preferences) -> dict:

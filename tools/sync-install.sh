@@ -149,9 +149,11 @@ fi
 # Verify the whole of scripts/, not just python/amaze: the rsync copies
 # "$repo/scripts/", so anything added beside it would ship UNVERIFIED.
 if diff -rq "$repo/scripts" "$install/scripts" \
-        --exclude=__pycache__ >/dev/null \
-   && diff -rq "$repo/python_panels" "$install/python_panels" >/dev/null \
-   && diff -rq "$repo/toolbar" "$install/toolbar" >/dev/null \
+        --exclude=__pycache__ --exclude=.DS_Store >/dev/null \
+   && diff -rq "$repo/python_panels" "$install/python_panels" \
+        --exclude=.DS_Store >/dev/null \
+   && diff -rq "$repo/toolbar" "$install/toolbar" \
+        --exclude=.DS_Store >/dev/null \
    && diff -q "$repo/OPmenu.xml" "$install/OPmenu.xml" >/dev/null; then
     echo "sync-install: $install is identical to the repo"
 else
