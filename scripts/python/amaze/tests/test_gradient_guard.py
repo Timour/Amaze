@@ -276,8 +276,24 @@ class GradientRowRideTest(unittest.TestCase):
         self.assertEqual("legacy-value", lib.note_uid(row),
                          "the legacy identity was replaced by a mint")
 
-    def test_a_minted_id_is_persisted_and_stable(self):
-        """A row that arrived with no identity gets one, written back, so it does not change on every launch under the notes and icons keyed by it."""
+    def test_every_row_this_build_writes_carries_an_identity(self):
+        """No id-less row may survive a save - and a plain save CANNOT do this on its own, because the connector unions by id and keeps the id-less original, which is why the backfill stamps the raw row in place first."""
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"version": SCHEMA, "categories": [],
+                       "assets": [{"name": "bare", "colors": []}]}, fh)
+        test_support.reset_database_singletons()
+        lib = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+        self.assertTrue(lib.save(), "the fixture save did not land")
+        with open(self.path, encoding="utf-8") as fh:
+            saved = json.load(fh)
+        bare = [row["name"] for row in saved["assets"]
+                if not str(row.get("id") or "")]
+        self.assertEqual([], bare,
+                         "%d saved row(s) carry no identity" % len(bare))
+
+    def test_a_saved_identity_is_stable_across_a_reload(self):
+        """Once written, the id is the row's identity - a reload that mints a fresh one is the failure the backfill used to cover."""
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump({"version": SCHEMA, "categories": [],
                        "assets": [{"name": "bare", "colors": []}]}, fh)
@@ -286,13 +302,14 @@ class GradientRowRideTest(unittest.TestCase):
             preferences=_fixture_prefs(self, self.dir))
         minted = first.note_uid(_row_named(self, first, "bare"))
         self.assertTrue(minted, "no identity was minted at all")
+        self.assertTrue(first.save(), "the fixture save did not land")
         test_support.reset_database_singletons()
         again = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         self.assertEqual(
             minted, again.note_uid(_row_named(self, again, "bare")),
-            "the minted id was not persisted, so every launch keys the "
-            "palette's notes and icon differently")
+            "the identity did not survive the save, so every launch "
+            "keys the palette's notes and icon differently")
 
 
 class GradientTileIconTest(unittest.TestCase):

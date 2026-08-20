@@ -100,7 +100,7 @@ class GradientLibrary(library.AssetLibrary):
         self._persist_minted_ids_once()
 
     def _persist_minted_ids_once(self) -> None:
-        """Write a minted id back so it IS the row's identity rather than a value that changes every launch - notes and tile icons are keyed by it."""
+        """Write a minted id back so it IS the row's identity rather than a value that changes every launch - notes and tile icons are keyed by it, and a plain save cannot do this because the connector unions by id and keeps the id-less original."""
         raw = [row for row in (self._data.get("assets") or [])
                if isinstance(row, dict)]
         minted = 0
