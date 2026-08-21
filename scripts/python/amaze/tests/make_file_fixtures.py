@@ -1,6 +1,5 @@
 """Build the tracked fixture assets - one tiny file per KIND, plus the scene test_renders loads - as `USER=amaze hython make_file_fixtures.py`, the neutral account being something Houdini resolves at startup and this script cannot set for itself (▸r/author-stamp); the output is COMMITTED so the suite generates nothing at test time, and this exits 1 naming the file if anything it wrote carries an account name, a machine name or a home directory."""
 import os
-import pwd
 import re
 import shutil
 import socket
@@ -117,10 +116,18 @@ def make_scenes(folder: str) -> None:
     shutil.rmtree(scratch, ignore_errors=True)
 
 
+def real_account() -> str:
+    """This machine's account name, from the password database rather than `USER` - a run passes a neutral one and the environment would answer with the stand-in. ▸r/author-stamp"""
+    try:
+        import pwd                       # absent on Windows
+    except ImportError:
+        return os.environ.get("USERNAME") or ""
+    return pwd.getpwuid(os.getuid()).pw_name
+
+
 def identity_pattern():
-    """This machine's real account and host names, with any dotted tail a writer appends and in any case - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`. Read from the password database, NEVER from `USER`: a run passes a neutral one, and taking it from the environment would match the stand-in and leave the real name."""
-    names = {pwd.getpwuid(os.getuid()).pw_name,
-             socket.gethostname().split(".")[0]}
+    """This machine's real account and host names, with any dotted tail a writer appends and in any case - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`."""
+    names = {real_account(), socket.gethostname().split(".")[0]}
     alternatives = b"|".join(
         re.escape(name.encode("utf-8"))
         for name in sorted(names, key=len, reverse=True)
