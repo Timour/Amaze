@@ -769,7 +769,7 @@ copied per dialog.
 - **Section-owned** — a Section provides its own dialog through the
   Section API's `edit_dialog()` hook, like it owns its menu. Material →
   **Edit Info Dialog**; Code → its editor. File/Node can get
-  one the same way ("they can get one the same way").
+  one the same way when they need it.
 
 | Dialog | Section | In code |
 |---|---|---|

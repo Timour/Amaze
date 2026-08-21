@@ -1,13 +1,4 @@
-"""LOP material assignment, tested headlessly for the first time.
-
-This is the USD half of a viewport drop - the app's busiest workflow
-(the debug log counts drag as its single largest activity) and the
-part that was hardest to check, because reaching it meant dragging a
-tile onto a Solaris viewport by hand and looking at the result.
-
-Now that it is plain functions over hou/USD objects, the cases can be
-built directly: real stages, real bindings, real assignmaterial nodes.
-"""
+"""LOP material assignment, tested headlessly: the USD half of a viewport drop, built directly out of real stages, real bindings and real assignmaterial nodes rather than reached by dragging a tile onto a Solaris viewport."""
 
 import os
 import sys
@@ -29,8 +20,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 class _Scene:
-    """A LOP network with two spheres, a material library holding two
-    materials, and a binding on the first sphere."""
+    """A LOP network with two spheres, a material library holding two materials, and a binding on the first sphere."""
 
     def __init__(self, testcase):
         self.lopnet = hou.node("/stage").createNode("lopnet")
@@ -72,8 +62,7 @@ class TestBoundMaterials(unittest.TestCase):
         self.assertIn("/sphere_a", prims)
 
     def test_unbound_prim_reports_nothing(self):
-        """No binding means the drop menu offers assign, not swap - so
-        an empty list here is what keeps 'Swap' from appearing."""
+        """No binding means the drop menu offers assign, not swap - an empty list here is what keeps Swap from appearing."""
         scene = _Scene(self)
         self.assertEqual(
             lop_assign.bound_materials_under(scene.stage(), "/sphere_b"), []
@@ -100,8 +89,7 @@ class TestRemoveUnreferenced(unittest.TestCase):
         self.assertIsNotNone(scene.liblop.node("mat_a"))
 
     def test_keeps_a_material_that_is_still_assigned(self):
-        """The failure that matters: deleting a material still bound
-        somewhere else turns one swap into a scene-wide breakage."""
+        """The failure that matters: deleting a material still bound somewhere else turns one swap into a scene-wide breakage."""
         scene = _Scene(self)
         scene.bind("/sphere_a", "/materials/mat_a")
         kept = lop_assign.remove_unreferenced_material(
@@ -111,8 +99,7 @@ class TestRemoveUnreferenced(unittest.TestCase):
         self.assertIsNotNone(scene.liblop.node("mat_a"))
 
     def test_empty_primpattern_does_not_count_as_a_use(self):
-        """assignMat empties a pattern when it moves prims away; a
-        material left behind by that IS collectable."""
+        """assignMat empties a pattern when it moves prims away; a material left behind by that IS collectable."""
         scene = _Scene(self)
         scene.bind("", "/materials/mat_a")
         removed = lop_assign.remove_unreferenced_material(
@@ -138,8 +125,7 @@ class TestNameNewAssign(unittest.TestCase):
                       "assign was not named after its prim")
 
     def test_leaves_a_reused_assign_alone(self):
-        """Only the node just created is renamed - an assign that
-        already earned its name keeps it."""
+        """Only the node just created is renamed - an assign that already earned its name keeps it."""
         scene = _Scene(self)
         existing = scene.assign.name()
         lop_assign.name_new_assign(
@@ -149,9 +135,7 @@ class TestNameNewAssign(unittest.TestCase):
 
 
 class TestDropChoices(unittest.TestCase):
-    """What the viewport drop menu offers - the decision the panel used
-    to make inline while building QMenu actions, so it could only be
-    checked by dragging onto a viewport and reading the popup."""
+    """What the viewport drop menu offers - the decision the panel used to make inline while building QMenu actions, checkable only by dragging onto a viewport and reading the popup."""
 
     def test_unbound_prim_offers_assign_up_the_ancestor_chain(self):
         scene = _Scene(self)
@@ -164,8 +148,7 @@ class TestDropChoices(unittest.TestCase):
                         labels[0])
 
     def test_bound_prim_offers_swap_first(self):
-        """Swap before assign: rebinding what is already there beats
-        piling another assignment on top and leaving a dead material."""
+        """Swap before assign: rebinding what is already there beats piling another assignment on top and leaving a dead material."""
         scene = _Scene(self)
         scene.bind("/sphere_a", "/materials/mat_a")
         choices = lop_assign.drop_choices(scene.stage(), "/sphere_a")
@@ -183,8 +166,7 @@ class TestDropChoices(unittest.TestCase):
                          "'Swap All' offered for a single material")
 
     def test_payloads_are_what_the_actions_need(self):
-        """The panel hands these straight to swap_assignments /
-        assignMat - a wrong shape here is a crash at click time."""
+        """The panel hands these straight to swap_assignments / assignMat - a wrong shape here is a crash at click time."""
         scene = _Scene(self)
         scene.bind("/sphere_a", "/materials/mat_a")
         for kind, _label, payload in lop_assign.drop_choices(
@@ -198,25 +180,14 @@ class TestDropChoices(unittest.TestCase):
                 self.assertTrue(str(payload).startswith("/"))
 
     def test_no_prim_or_no_stage_offers_nothing(self):
-        """A drop on empty viewport space must produce no menu at all -
-        an empty list is what makes the caller bail before popping one."""
+        """A drop on empty viewport space must produce no menu at all - an empty list is what makes the caller bail before popping one."""
         scene = _Scene(self)
         self.assertEqual(lop_assign.drop_choices(scene.stage(), ""), [])
         self.assertEqual(lop_assign.drop_choices(None, "/sphere_a"), [])
 
 
 class TestCollectionBindings(unittest.TestCase):
-    """Houdini's assignmaterial writes ONE OF TWO binding styles: a
-    plain material:binding relationship, or a collection binding
-    (material:binding:collection:<name>). Reading only the first meant
-    a material assigned the collection way offered no Swap entry - the
-    drop menu had nothing to show for that object while working
-    perfectly on its neighbour, which is exactly how it was reported:
-    "the drop menu offered nothing for one object".
-
-    Built like a real scene: SOP-created geometry, so the prims are
-    /thing_object1/mesh_0 rather than hand-authored xforms.
-    """
+    """Houdini's assignmaterial writes ONE OF TWO binding styles - a plain material:binding relationship or a collection binding (material:binding:collection:<name>) - and reading only the first left a collection-assigned material with no Swap entry, so the drop menu offered nothing for one object while working on its neighbour; built like a real scene, SOP-created, so the prims are /thing_object1/mesh_0 rather than hand-authored xforms."""
 
     def _sop_scene(self, bind_method):
         lopnet = hou.node("/stage").createNode("lopnet")
@@ -244,9 +215,7 @@ class TestCollectionBindings(unittest.TestCase):
             lop_assign.bound_materials_under(stage, "/torus_object1"))
 
     def test_collection_binding_is_found(self):
-        """The reported bug: bind method 1 authors
-        material:binding:collection:<name> with targets
-        [collection, material]."""
+        """Bind method 1 authors material:binding:collection:<name> with targets [collection, material]."""
         stage = self._sop_scene(1)
         found = lop_assign.bound_materials_under(stage, "/torus_object1")
         self.assertTrue(found, "a collection-bound material offered no swap")
@@ -260,8 +229,7 @@ class TestCollectionBindings(unittest.TestCase):
                          "no Swap entry for a collection-bound material")
 
     def test_found_from_a_child_prim_too(self):
-        """Drops land on /torus_object1/mesh_0 - the binding is on the
-        parent, and the ancestor walk has to reach it."""
+        """Drops land on /torus_object1/mesh_0 - the binding is on the parent, and the ancestor walk has to reach it."""
         stage = self._sop_scene(1)
         self.assertTrue(
             lop_assign.bound_materials_under(stage, "/torus_object1/mesh_0"),
@@ -269,15 +237,7 @@ class TestCollectionBindings(unittest.TestCase):
 
 
 class TestAssignNodeLookup(unittest.TestCase):
-    """A viewport drop must not bind into a node nothing displays.
-
-    first_materiallibrary has always filtered to the display chain,
-    because "an assignment into a disconnected one silently does not
-    display". find_assignmaterial had no such filter and returned the
-    first assignmaterial in CREATION order - so a leftover disconnected
-    one won over the live node: the material imported, the binding was
-    written where nothing shows it, the menu was accepted, and the
-    viewport did not change. No error, no icon."""
+    """A viewport drop must not bind into a node nothing displays: find_assignmaterial once returned the first assignmaterial in CREATION order, so a leftover disconnected one won over the live node and the binding landed where nothing shows it - material imported, menu accepted, viewport unchanged, no error and no icon (first_materiallibrary has always filtered to the display chain for the same reason)."""
 
     def setUp(self):
         from amaze.core import dragengine
@@ -287,11 +247,7 @@ class TestAssignNodeLookup(unittest.TestCase):
         self.addCleanup(self.lopnet.destroy)
         self.sphere = self.lopnet.createNode("sphere")
 
-        # A leftover from an earlier session: created FIRST, wired to
-        # nothing. Creation order is what the old lookup went by.
-        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")
-
-        # The real one, in the display chain.
+        self.stale = self.lopnet.createNode("assignmaterial", "stale_assign")  # a leftover from an earlier session: created FIRST, wired to nothing, which is what the old creation-order lookup went by
         self.live = self.lopnet.createNode("assignmaterial", "live_assign")
         self.live.setInput(0, self.sphere)
         self.live.setDisplayFlag(True)
@@ -307,16 +263,12 @@ class TestAssignNodeLookup(unittest.TestCase):
             "binding lands where nothing displays it")
 
     def test_creation_order_still_wins_when_nothing_is_connected(self):
-        """The unfiltered lookup stays the fallback - a network with no
-        assign node in the chain must still converge on one node rather
-        than chaining a new one per drop."""
+        """The unfiltered lookup stays the fallback - a network with no assign node in the chain must still converge on one node rather than chaining a new one per drop."""
         orphan_net = hou.node("/stage").createNode("lopnet")
         self.addCleanup(orphan_net.destroy)
         first = orphan_net.createNode("assignmaterial", "first")
         orphan_net.createNode("assignmaterial", "second")
-        # By PATH, not identity: hou returns a fresh Python wrapper for
-        # the same node on every lookup.
-        self.assertEqual(
+        self.assertEqual(   # by PATH, not identity: hou returns a fresh Python wrapper for the same node on every lookup
             first.path(),
             self.dragengine.find_assignmaterial(orphan_net).path())
 
@@ -331,18 +283,10 @@ class TestAssignNodeLookup(unittest.TestCase):
 
 
 class TestLockedContextIsRefused(unittest.TestCase):
-    """Dropping into a locked asset must return a reason, not raise.
-
-    _drop_context_under_cursor falls back to the network editor's pwd(),
-    which is the locked node when the editor is dived into a locked
-    asset. update_context resolves the destination and may CREATE a
-    container to reach it, so that raised hou.PermissionError - a
-    SIBLING of OperationFailed, not a subclass - straight out of the
-    release slot."""
+    """Dropping into a locked asset must return a reason, not raise: _drop_context_under_cursor falls back to the network editor's pwd(), which is the locked node when the editor is dived into one, and update_context may CREATE a container to reach the destination - raising hou.PermissionError, a SIBLING of OperationFailed rather than a subclass, straight out of the release slot."""
 
     def test_permission_error_is_not_a_subclass_of_operation_failed(self):
-        """The trap itself, pinned: code that catches OperationFailed
-        does NOT catch this."""
+        """The trap itself, pinned: code that catches OperationFailed does NOT catch this."""
         self.assertFalse(
             issubclass(hou.PermissionError, hou.OperationFailed),
             "hou.PermissionError became an OperationFailed subclass - "
@@ -366,11 +310,7 @@ class TestLockedContextIsRefused(unittest.TestCase):
                                       "locked asset")
 
         handler.update_context = refuse
-        # An asset whose FILES exist: the import now refuses a missing
-        # or empty payload before it ever reaches update_context (and
-        # rightly so - update_context creates containers), so a
-        # file-less fixture row would never reach the case under test.
-        asset = None
+        asset = None   # an asset whose FILES exist: the import refuses a missing or empty payload before reaching update_context, so a file-less fixture row would never reach the case under test
         for candidate in model.assets:
             payload = os.path.join(
                 prefs.dir, prefs.asset_dir, str(candidate.mat_id) + prefs.ext)

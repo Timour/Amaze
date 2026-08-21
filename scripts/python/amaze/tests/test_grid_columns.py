@@ -1,33 +1,4 @@
-"""The Grid's COLUMNS as a MODEL fact - step 1 of the table migration.
-
-List mode has been a table COSTUME since it was built: a `QListView`
-in ListMode whose delegate paints ten regions inside one item's rect,
-under a hand-painted header strip. 681 lines, no click-sorting, no
-drag-resizing. Decided 2026-08-04, once the cost of changing it
-after release: *"changing it after release costs far more."*
-
-THIS STEP IS ADDITIVE AND CANNOT BE SEEN. Column 0 answers exactly
-what the model answered before, for every role; columns 1..9 are new.
-`QListView` shows `modelColumn()` 0 and nothing else, so **grid mode
-is untouched by construction** - which is the property that makes the
-migration safe to land in pieces rather than one commit.
-
-The measured fact that shaped it: a `QAbstractListModel`'s
-`index(row, col)` returns an INVALID index for any col > 0 even when
-`columnCount` says ten. A list model is not a table with its columns
-switched off; it is a different model. So the four grid models are
-`QAbstractTableModel` now.
-
-The MECHANISM behind that was re-probed 2026-08-05 and the first
-answer was wrong: nothing hard-codes column 0, and `columnCount` is
-callable and returns the override. `hasIndex()` is what refuses -
-`QAbstractListModel` declares `columnCount` private in C++, so PySide6
-never installs the Python override into the vtable, and `hasIndex()`
-calls it VIRTUALLY and gets Qt's own 1 while Python calling the same
-method gets ten. The two disagree and nothing shows it from Python.
-The conclusion was right anyway, which is how the wrong reason
-survived. Full probe in research.md ▸ Qt widgets, views & painting.
-"""
+"""The Grid's COLUMNS as a MODEL fact - step 1 of the table migration, additive and invisible: column 0 answers what the model answered before and columns 1..9 are new, which is why the four grid models are `QAbstractTableModel` rather than list models with columns switched on. ▸p/grid-columns-migration"""
 
 import os
 import sys
@@ -52,8 +23,7 @@ from amaze.tests import test_support  # noqa: E402
 PACKAGE = os.path.dirname(
     os.path.dirname(os.path.abspath(__file__)))
 
-#: (section key, panel attribute) for every model the Grid shows.
-GRID_MODELS = (
+GRID_MODELS = (   # (section key, panel attribute) for every model the Grid shows
     ("material", "material_model"),
     ("cop", "cop_model"),
     ("code", "code_model"),
@@ -65,10 +35,7 @@ GRID_MODELS = (
 class ThereIsONEColumnOrder(unittest.TestCase):
 
     def test_every_model_reads_the_SAME_list(self):
-        """The order was defined on the painted header WIDGET, and the
-        models cannot import that (`ui_helpers` imports `core.debug`,
-        so it would cycle) - which is why it moved to `core`. The
-        widget is gone; the reason it moved is not."""
+        """The order was defined on the painted header WIDGET, and the models cannot import that (`ui_helpers` imports `core.debug`, so it would cycle) - which is why it moved to `core`. The widget is gone; the reason it moved is not."""
         for name in ("material_model", "gradient_model", "node_model"):
             model = getattr(self.panel, name, None)
             if model is None:
@@ -103,16 +70,14 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                 yield key, model
 
     def test_every_grid_model_is_a_TABLE_model(self):
-        """A list model refuses column > 0 whatever columnCount says -
-        measured, and the reason this is not a mixin over the old base."""
+        """A list model refuses column > 0 whatever columnCount says - measured, and the reason this is not a mixin over the old base."""
         for key, model in self._models():
             with self.subTest(section=key):
                 self.assertIsInstance(model, QtCore.QAbstractTableModel)
                 self.assertIsInstance(model, grid_columns.GridColumnsMixin)
 
     def test_every_grid_model_offers_the_same_column_count(self):
-        """The header is shared, so a model with its own idea of how
-        many columns there are would label somebody else's."""
+        """The header is shared, so a model with its own idea of how many columns there are would label somebody else's."""
         for key, model in self._models():
             with self.subTest(section=key):
                 self.assertEqual(len(grid_columns.COLUMNS),
@@ -128,23 +93,16 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                 self.assertEqual(3, index.column())
 
     def test_COLUMN_ZERO_answers_exactly_what_it_used_to(self):
-        """The safety property. Grid mode reads column 0 and nothing
-        else, so if this drifts the whole migration is visible."""
+        """The safety property. Grid mode reads column 0 and nothing else, so if this drifts the whole migration is visible."""
         display = QtCore.Qt.ItemDataRole.DisplayRole
         for key, model in self._models():
             with self.subTest(section=key):
-                # A NAMED row, found rather than assumed: the material
-                # fixture's row 0 carries an empty name on purpose, and
-                # the first version of this test read that as the
-                # column having broken.
                 named = [row for row in range(min(model.rowCount(), 40))
-                         if model.index(row, 0).data(display)]
+                         if model.index(row, 0).data(display)]  # a NAMED row, found rather than assumed: the material fixture's row 0 carries an empty name on purpose, and the first version of this test read that as the column having broken
                 self.assertTrue(named, "%s has no named row to check" % key)
                 index = model.index(named[0], 0)
                 self.assertTrue(index.data(display))
-                # A UserRole the grid delegate reads must still answer
-                # here - column 0 is where every existing reader looks.
-                role = getattr(model, "FavoriteRole", None)
+                role = getattr(model, "FavoriteRole", None)  # a UserRole the grid delegate reads must still answer here - column 0 is where every existing reader looks
                 if role is not None:
                     self.assertIsNot(
                         index.data(role), NotImplemented,
@@ -163,8 +121,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                     "%s's Name column does not show the row's name" % key)
 
     def test_a_column_the_model_cannot_fill_answers_NOTHING(self):
-        """Color has no Tags and File has no Version. Neither knows the
-        other exists - the column is simply absent from its map."""
+        """Color has no Tags and File has no Version. Neither knows the other exists - the column is simply absent from its map."""
         gradient = self.panel.gradient_model
         tags = grid_columns.KEYS.index("tags")
         self.assertIsNone(
@@ -180,8 +137,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
             "File answered the Version column")
 
     def test_a_LIST_of_values_is_joined_for_display(self):
-        """Categories and tags are lists on the record. A cell shows
-        text, and `['Metal', 'Wood']` is not it."""
+        """Categories and tags are lists on the record. A cell shows text, and `['Metal', 'Wood']` is not it."""
         model = self.panel.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
@@ -195,9 +151,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
                 % type(value).__name__)
 
     def test_a_non_display_role_stays_column_ZEROs_business(self):
-        """Decoration and the rest are read by the grid delegate off
-        column 0. Answering them in every column would put the
-        thumbnail in all ten."""
+        """Decoration and the rest are read by the grid delegate off column 0. Answering them in every column would put the thumbnail in all ten."""
         model = self.panel.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
@@ -219,15 +173,7 @@ class AGridModelAnswersPerCOLUMN(unittest.TestCase):
 
 
 class ACellSAYSWhatItIs(unittest.TestCase):
-    """How a cell READS. Four decisions taken on the first shipped
-    table (2026-08-04): the name is bold, the category is written in
-    the colour that category was given, every cell has air either
-    side, and a tick column measures its mark.
-
-    All of them are answered by the MODEL or by Qt's own knobs, not by
-    a painter: a font role, a foreground role, a style metric.
-    Nothing here draws anything.
-    """
+    """How a cell READS. Four decisions taken on the first shipped table (2026-08-04): the name is bold, the category is written in the colour that category was given, every cell has air either side, and a tick column measures its mark. - All of them are answered by the MODEL or by Qt's own knobs, not by a painter: a font role, a foreground role, a style metric. Nothing here draws anything."""
 
     @classmethod
     def setUpClass(cls):
@@ -237,18 +183,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         return grid_columns.KEYS.index(key)
 
     def test_NO_column_asks_for_a_font_of_its_own(self):
-        """The rows wear the VIEW's font, like every other list in the
-        host.
-
-        A bold Name column was asked for and then taken back out on
-        2026-08-04. The reason it had to go is worth keeping: Qt uses
-        `FontRole` AS-IS, so answering it with a bare `QFont()` with
-        bold set hands the cell Qt's DEFAULT family and size - not the
-        panel's font in bold, a different typeface. Same shape as the
-        absolute point-size floor that made Windows rows disagree.
-
-        If a weight is ever wanted again it has to be derived from the
-        view's font, not constructed beside it."""
+        """The rows wear the VIEW's font, like every other list in the host. - A bold Name column was asked for and then taken back out on 2026-08-04. The reason it had to go is worth keeping: Qt uses `FontRole` AS-IS, so answering it with a bare `QFont()` with bold set hands the cell Qt's DEFAULT family and size - not the panel's font in bold, a different typeface. Same shape as the absolute point-size floor that made Windows rows disagree. - If a weight is ever wanted again it has to be derived from the view's font, not constructed beside it."""
         model = self.panel.material_model
         if not model.rowCount():
             self.skipTest("no materials in the fixture")
@@ -262,9 +197,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
                     "not add weight to them" % key)
 
     def test_the_CATEGORY_is_written_in_the_CATEGORYS_OWN_COLOUR(self):
-        """The colour the user gave that category, and the same one the
-        grid paints under its tiles - so the two views cannot disagree
-        about what a category looks like."""
+        """The colour the user gave that category, and the same one the grid paints under its tiles - so the two views cannot disagree about what a category looks like."""
         panel = self.panel
         model = panel.material_model
         column = self._column("category")
@@ -283,15 +216,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
             "the Category cell is not the category's own colour")
 
     def _colour_a_category(self, colour):
-        """Give one category a colour and return the row wearing it.
-
-        COLOUR ONE, do not go looking for one: the fixture ships none
-        coloured, so both of these tests read green against a library
-        where there was nothing to colour anything with. One skipped
-        itself; the other stayed green with `name` deliberately wired
-        to the category ink. "A harder SETUP, never a weaker
-        assertion" - practice.md.
-        """
+        """Give one category a colour and return the row wearing it. - COLOUR ONE, do not go looking for one: the fixture ships none coloured, so both of these tests read green against a library where there was nothing to colour anything with. One skipped itself; the other stayed green with `name` deliberately wired to the category ink - a harder SETUP rather than a weaker assertion (practice.md)."""
         model = self.panel.material_model
         column = self._column("category")
         row = next((r for r in range(model.rowCount())
@@ -317,8 +242,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
                     "%s coloured itself - only Category does" % key)
 
     def test_a_row_whose_category_has_NO_colour_asks_for_none(self):
-        """No colour is not black. Answering `ForegroundRole` with an
-        invalid QColor paints the text in whatever that is."""
+        """No colour is not black. Answering `ForegroundRole` with an invalid QColor paints the text in whatever that is."""
         model = self.panel.material_model
         column = self._column("category")
         role = model.CategoryColorRole
@@ -333,10 +257,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
         self.skipTest("every fixture category has a colour")
 
     def test_NO_column_overrides_its_alignment(self):
-        """Including the tick columns. They were centred for one build
-        and reverted (2026-08-04): a `QHeaderView` label starts at the
-        cell's left edge, so a centred mark reads as a different table
-        from the eight columns beside it."""
+        """Including the tick columns. They were centred for one build and reverted (2026-08-04): a `QHeaderView` label starts at the cell's left edge, so a centred mark reads as a different table from the eight columns beside it."""
         model = self.panel.material_model
         for key in (("name", "type", "category", "tags")
                     + grid_columns.GridColumnsMixin.TICK_COLUMNS):
@@ -356,13 +277,7 @@ class ACellSAYSWhatItIs(unittest.TestCase):
 
 
 class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
-    """"the favourite and comment columns sized wrong" (2026-08-04).
-
-    They did not: `ResizeToContents` measures `DisplayRole`, that role
-    still carries the raw yes/no because the SORT compares it, and so
-    the column asked for room to print the word "False" - which is
-    never drawn.
-    """
+    """The favourite and comment columns sized wrong (2026-08-04). - `ResizeToContents` measures `DisplayRole`, that role still carries the raw yes/no because the SORT compares it, and so the column asked for room to print the word "False" - which is never drawn."""
 
     @classmethod
     def setUpClass(cls):
@@ -403,29 +318,12 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
             "the tick's inset is not the padding every other cell has")
 
     def test_a_tick_cell_PAINTS_ITSELF_when_the_row_is_selected(self):
-        """The first live build broke here: the highlight band stopped
-        dead at Favorite and started again after it, because this
-        delegate drew the mark and never drew the CELL. Two gaps in
-        the band, and the gaps were exactly the tick columns.
-
-        Compared against what a PLAIN cell paints under the same
-        option, in the strip to the right of the mark. The first
-        version sampled one corner pixel and asserted it equalled the
-        palette's Highlight - which is a claim about how a STYLE draws
-        a selection, not about this delegate. H21's style leaves that
-        corner alone, so it read black and the test failed on a
-        machine where the code was correct.
-        """
+        """The first live build broke here: the highlight band stopped dead at Favorite and started again after it, because this delegate drew the mark and never drew the CELL. Two gaps in the band, and the gaps were exactly the tick columns. - Compared against what a PLAIN cell paints under the same option, in the strip to the right of the mark. The first version sampled one corner pixel and asserted it equalled the palette's Highlight - which is a claim about how a STYLE draws a selection, not about this delegate. H21's style leaves that corner alone, so it read black and the test failed on a machine where the code was correct."""
         table = self.panel.thumbtable
         column = grid_columns.KEYS.index("favorite")
         delegate = table.itemDelegateForColumn(column)
         index = table.model().index(0, column)
-        # A plain cell with NO TEXT, which is what a tick cell is: the
-        # background and nothing else. The first comparison used the
-        # REAL index, so it put our mark against the printed word
-        # "True" - a difference for the right reason, in a test that
-        # is about the background.
-        blank_model = QtGui.QStandardItemModel()
+        blank_model = QtGui.QStandardItemModel()  # a plain cell with NO TEXT, which is what a tick cell is: the first comparison used the REAL index, so it put our mark against a printed word - a difference for the right reason, in a test about the background
         blank_model.appendRow(QtGui.QStandardItem(""))
         self.addCleanup(blank_model.deleteLater)
         plain = QtWidgets.QStyledItemDelegate(table)
@@ -451,9 +349,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
 
         ours = render(delegate, index)
         theirs = render(plain, blank_model.index(0, 0))
-        # The strip RIGHT of the mark: the tick sits at the left edge,
-        # PAD in, and is at most SIDE wide.
-        left = delegate.PAD + delegate.SIDE + 2
+        left = delegate.PAD + delegate.SIDE + 2  # the strip RIGHT of the mark: the tick sits at the left edge, PAD in, and is at most SIDE wide
         sampled = 0
         for x in range(left, 60):
             for y in range(0, 20):
@@ -469,9 +365,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
         self.assertTrue(sampled, "nothing was compared - not a test")
 
     def test_every_tick_column_actually_gets_a_tick_delegate(self):
-        """The other direction from `test_a_YES_NO_column_is_a_TICK_
-        column`: a column can be listed as a tick and still be drawn as
-        text if nothing binds it."""
+        """The other direction from `test_a_YES_NO_column_is_a_TICK_ column`: a column can be listed as a tick and still be drawn as text if nothing binds it."""
         table = self.panel.thumbtable
         bound = {
             key for column, key in enumerate(grid_columns.KEYS)
@@ -485,17 +379,7 @@ class ATickColumnIsAsWideAsTheTICK(unittest.TestCase):
 
 
 class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
-    """`setSortIndicatorShown(True)` makes a stock `QHeaderView`
-    reserve room for the arrow in EVERY section, because any of them
-    might become the sorted one.
-
-    Measured 2026-08-04 at Houdini's 12pt: 21px each, so eight shown
-    columns paid 147px for one arrow - and it fell hardest on the
-    columns whose heading is all they hold. Favorite asked 80px to
-    show a tick under the word "Favorite", 59 without it. That
-    reservation, not the cell, is why those two columns kept reading
-    as mis-sized.
-    """
+    """`setSortIndicatorShown(True)` makes a stock `QHeaderView` reserve room for the arrow in EVERY section, because any of them might become the sorted one. - Measured 2026-08-04 at Houdini's 12pt: 21px each, so eight shown columns paid 147px for one arrow - and it fell hardest on the columns whose heading is all they hold. Favorite asked 80px to show a tick under the word "Favorite", 59 without it. That reservation, not the cell, is why those two columns kept reading as mis-sized."""
 
     @classmethod
     def setUpClass(cls):
@@ -512,10 +396,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
         self.assertIsInstance(self.header, ui_helpers.GridHeaderView)
 
     def test_a_column_with_no_arrow_pays_nothing_for_one(self):
-        """The IDENTITY, not Qt's arithmetic: a non-sorted section
-        measures exactly what it would with the indicator switched
-        off. If Qt ever changes how it reserves the space, this fails
-        instead of quietly drifting."""
+        """The IDENTITY, not Qt's arithmetic: a non-sorted section measures exactly what it would with the indicator switched off. If Qt ever changes how it reserves the space, this fails instead of quietly drifting."""
         header = self.header
         self.assertTrue(header.isSortIndicatorShown(),
                         "no indicator to reserve room for - not a test")
@@ -536,8 +417,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
                     % grid_columns.KEYS[column])
 
     def test_the_SORTED_column_still_has_room_for_its_arrow(self):
-        """Taking the room off every column would put the arrow on top
-        of the heading of whichever one you sorted by."""
+        """Taking the room off every column would put the arrow on top of the heading of whichever one you sorted by."""
         header = self.header
         column = header.sortIndicatorSection()
         self.assertIn(
@@ -553,13 +433,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
 
 
 class EveryCellHasAIREitherSide(unittest.TestCase):
-    """Five pixels of air either side of a cell's text (2026-08-04).
-
-    Through the STYLE's own metric, not a stylesheet. The first answer
-    was `QTableView::item { padding-left: 5px; ... }` and it cost four
-    unrelated things - the widget's font, the selection band's colour,
-    the selected text's colour, and a second copy of each in the rule.
-    """
+    """Five pixels of air either side of a cell's text (2026-08-04). - Through the STYLE's own metric, not a stylesheet. The first answer was `QTableView::item { padding-left: 5px; ... }` and it cost four unrelated things - the widget's font, the selection band's colour, the selected text's colour, and a second copy of each in the rule."""
 
     @classmethod
     def setUpClass(cls):
@@ -575,44 +449,19 @@ class EveryCellHasAIREitherSide(unittest.TestCase):
         self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
 
     def test_the_table_wears_NO_style_object(self):
-        """A `QProxyStyle` handed to `setStyle` is owned by nobody: the
-        widget does not take it and the bindings declare no `parent` or
-        `reference-count` rule for that call, unlike `setHorizontalHeader`
-        and `setItemDelegateForColumn` which declare both. The view kept
-        a pointer to a freed object and the process bus-errored on
-        teardown - three test classes fatal, and a live session left a
-        signal-10 crash log on quit (2026-08-04)."""
+        """A `QProxyStyle` handed to `setStyle` is owned by nobody: the widget does not take it and the bindings declare no `parent` or `reference-count` rule for that call, unlike `setHorizontalHeader` and `setItemDelegateForColumn` which declare both. The view kept a pointer to a freed object and the process bus-errored on teardown - three test classes fatal, and a live session left a signal-10 crash log on quit (2026-08-04)."""
         self.assertNotIsInstance(
             self.panel.thumbtable.style(), QtWidgets.QProxyStyle,
             "the table wears a style object again")
 
     def test_the_table_carries_NO_stylesheet(self):
-        """A stylesheet hands item drawing to `QStyleSheetStyle`,
-        whatever the rule names: the font resolves from the
-        application default, the band is drawn with its own blend, and
-        selected text comes out in the ORDINARY text colour rather
-        than `HighlightedText`. Seen in the panel 2026-08-04: the band
-        and the text both wrong while the tick marks were right - the
-        ticks being the one thing that asks the palette by hand.
-        """
+        """A stylesheet hands item drawing to `QStyleSheetStyle`, whatever the rule names: the font resolves from the application default, the band is drawn with its own blend, and selected text comes out in the ORDINARY text colour rather than `HighlightedText`. Seen in the panel 2026-08-04: the band and the text both wrong while the tick marks were right - the ticks being the one thing that asks the palette by hand."""
         self.assertEqual(
             "", self.panel.thumbtable.styleSheet(),
             "the table carries a stylesheet again")
 
     def test_the_SELECTION_is_left_to_HOUDINI(self):
-        """Nothing here paints or recolours a selected row any more.
-
-        The panel puts `hou.qt.styleSheet()` on its own root and every
-        child inherits it, so the table already carries Houdini's
-        `QAbstractItemView::item:selected` - `ListEntrySelected`
-        (SELECTION_BASE) blended toward the row, with the full colour
-        as a hairline top and bottom, and `TextColor` for the text.
-        Both from `config/UIDark.hcs`. A second opinion here is what
-        made the list disagree with every other list in the host.
-
-        Pinned as the ABSENCE of an override, not as a colour: the
-        colour is Houdini's to change, and an offscreen render cannot
-        see the app stylesheet anyway."""
+        """Nothing here paints or recolours a selected row any more. - The panel puts `hou.qt.styleSheet()` on its own root and every child inherits it, so the table already carries Houdini's `QAbstractItemView::item:selected` - `ListEntrySelected` (SELECTION_BASE) blended toward the row, with the full colour as a hairline top and bottom, and `TextColor` for the text. Both from `config/UIDark.hcs`. A second opinion here is what made the list disagree with every other list in the host. - Pinned as the ABSENCE of an override, not as a colour: the colour is Houdini's to change, and an offscreen render cannot see the app stylesheet anyway."""
         delegate = self.panel.thumbtable.itemDelegate()
         for name in ("_highlight", "_selected_text", "set_highlight"):
             self.assertFalse(
@@ -642,8 +491,7 @@ class GridModeCannotSeeAnyOfIt(unittest.TestCase):
             "the grid view is showing a column other than the row")
 
     def test_the_proxy_passes_the_columns_through(self):
-        """A proxy that flattened them would leave the table with one
-        column and no explanation."""
+        """A proxy that flattened them would leave the table with one column and no explanation."""
         self.panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         proxy = self.panel.thumblist.model()
@@ -654,16 +502,7 @@ class GridModeCannotSeeAnyOfIt(unittest.TestCase):
 
 
 class ARowRepaintCoversTheWholeROW(unittest.TestCase):
-    """`dataChanged(index(row, 0), index(row, 0))` was the whole row
-    when a row WAS one column. With ten it invalidates the thumbnail
-    and nothing else, so every later cell keeps its old text until
-    something unrelated forces a repaint.
-
-    Fifteen emit sites read perfectly and were quietly half-right the
-    moment the models gained columns - which is the kind of thing that
-    would have shipped as "the Type column doesn't update" weeks later.
-    `GridColumnsMixin.row_changed` is the one way to say it now.
-    """
+    """`dataChanged(index(row, 0), index(row, 0))` was the whole row when a row WAS one column. With ten it invalidates the thumbnail and nothing else, so every later cell keeps its old text until something unrelated forces a repaint. - Fifteen emit sites read perfectly and were quietly half-right the moment the models gained columns - which is the kind of thing that would have shipped as a Type column that never updates, found weeks later. `GridColumnsMixin.row_changed` is the one way to say it now."""
 
     @classmethod
     def setUpClass(cls):
@@ -688,8 +527,7 @@ class ARowRepaintCoversTheWholeROW(unittest.TestCase):
             % (first, last, len(grid_columns.COLUMNS)))
 
     def test_no_model_still_emits_a_single_column_row_range(self):
-        """Read as STRUCTURE: an emit whose topLeft and bottomRight are
-        the same expression is a row repaint that covers one column."""
+        """Read as STRUCTURE: an emit whose topLeft and bottomRight are the same expression is a row repaint that covers one column."""
         import ast
         offenders = []
         for name in ("library", "code_library", "cop_library",
@@ -716,20 +554,12 @@ class ARowRepaintCoversTheWholeROW(unittest.TestCase):
             "row_changed()" % offenders)
 
     def test_a_finished_PREVIEW_repaints_its_row(self):
-        """The one repaint path only the ONLINE model has: a download
-        lands, the thumbnail engine says so, and the tile has to pick it
-        up. No test ever ran it, so the one-argument `self.index(row)`
-        sat in `_on_preview_ready` after the migration fixed the other
-        61 sites - and every arriving preview raised `TypeError` where
-        it should have repainted (12 of them in one live session,
-        2026-08-05).
-        """
+        """The one repaint path only the ONLINE model has: a download lands, the thumbnail engine says so, and the tile has to pick it up. No test ever ran it, so the one-argument `self.index(row)` sat in `_on_preview_ready` after the migration fixed the other 61 sites - and every arriving preview raised `TypeError` where it should have repainted (12 of them in one live session, 2026-08-05)."""
         from amaze.core import matx_library, matx_sources
 
         model = matx_library.MatxOnlineLibrary.__new__(
             matx_library.MatxOnlineLibrary)
-        # Signals only. The real __init__ starts threads and fetches.
-        QtCore.QAbstractTableModel.__init__(model)
+        QtCore.QAbstractTableModel.__init__(model)  # signals only: the real __init__ starts threads and fetches
         record = matx_sources.MatxRecord(
             source="GPUOpen", uid="u0", title="M0", kind="package",
             payload={})
@@ -761,21 +591,7 @@ class ARowRepaintCoversTheWholeROW(unittest.TestCase):
             "view filtering on roles will ignore it")
 
     def test_no_TABLE_model_builds_a_ONE_ARGUMENT_index(self):
-        """`QAbstractTableModel.index(row)` will not take one argument:
-        the list base defaults the column, the table base requires it
-        (research.md ▸ Qt widgets, views & painting).
-
-        The migration swept 62 call sites and fixed 61. The 62nd was
-        `matx_library._on_preview_ready`, on the one path no test ran -
-        and NOTHING in the suite held the fact, so a 63rd would be
-        exactly as invisible. This holds it.
-
-        Read as STRUCTURE, off the BASE CLASS rather than the file: a
-        one-argument `index(row)` on a `QAbstractListModel` is correct
-        and stays untouched (`folders.py` has one), and a subclass that
-        reaches the table base through another class - `CopLibrary` via
-        `MaterialLibrary` - is still a table model.
-        """
+        """`QAbstractTableModel.index(row)` will not take one argument: the list base defaults the column, the table base requires it (research.md ▸ Qt widgets, views & painting). - The migration swept 62 call sites and fixed 61. The 62nd was `matx_library._on_preview_ready`, on the one path no test ran - and NOTHING in the suite held the fact, so a 63rd would be exactly as invisible. This holds it. - Read as STRUCTURE, off the BASE CLASS rather than the file: a one-argument `index(row)` on a `QAbstractListModel` is correct and stays untouched (`folders.py` has one), and a subclass that reaches the table base through another class - `CopLibrary` via `MaterialLibrary` - is still a table model."""
         import ast
 
         classes = []
@@ -833,12 +649,7 @@ class ARowRepaintCoversTheWholeROW(unittest.TestCase):
 
 
 class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
-    """Step 2b: list mode shows a real `QTableView`.
-
-    A second VIEW, not a second area. It shares the model, the proxy
-    and the SELECTION MODEL with the grid - which is what stops list
-    mode doubling every area binding - and only one is visible.
-    """
+    """Step 2b: list mode shows a real `QTableView`. - A second VIEW, not a second area. It shares the model, the proxy and the SELECTION MODEL with the grid - which is what stops list mode doubling every area binding - and only one is visible."""
 
     @classmethod
     def setUpClass(cls):
@@ -855,8 +666,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         self.addCleanup(self._mode, "grid")
 
     def test_both_views_share_one_model_and_one_selection(self):
-        """Two views over one selection model is Qt's own arrangement,
-        and it is the whole reason this does not double the bindings."""
+        """Two views over one selection model is Qt's own arrangement, and it is the whole reason this does not double the bindings."""
         panel = self.panel
         self.assertIs(panel.thumblist.model(), panel.thumbtable.model())
         self.assertIs(panel.thumblist.selectionModel(),
@@ -885,16 +695,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         self.assertTrue(panel.thumblist.isVisible())
 
     def test_the_painted_STRIP_no_longer_exists(self):
-        """`ListColumnHeader` was a strip painted above the rows, told
-        the column widths by hand and told again whenever the rows
-        scrolled sideways - or its labels named whichever column had
-        slid underneath them. A QHeaderView IS the view's header: it
-        cannot disagree with its rows and it scrolls with them.
-
-        Retired with the fit that fed it (2026-08-04). The panel no
-        longer builds one at all, which is what this pins - a second
-        header coming back is a second answer to where a column is.
-        """
+        """`ListColumnHeader` was a strip painted above the rows, told the column widths by hand and told again whenever the rows scrolled sideways - or its labels named whichever column had slid underneath them. A QHeaderView IS the view's header: it cannot disagree with its rows and it scrolls with them. - Retired with the fit that fed it (2026-08-04). The panel no longer builds one at all, which is what this pins - a second header coming back is a second answer to where a column is."""
         self.assertFalse(
             hasattr(self.panel, "list_header"),
             "the panel builds a painted column strip again, beside a "
@@ -905,24 +706,13 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
             "a second header could need")
 
     def test_the_table_does_NOT_wear_the_tile_delegate(self):
-        """That delegate paints a whole TILE per index. On a table a
-        row is ten indexes, and the first render put ten tile-height
-        cells side by side."""
+        """That delegate paints a whole TILE per index. On a table a row is ten indexes, and the first render put ten tile-height cells side by side."""
         panel = self.panel
         self.assertIsNot(panel.thumbtable.itemDelegate(),
                          panel.thumblist.itemDelegate())
 
     def test_LIST_MODE_HAS_NO_PICTURE_COLUMN(self):
-        """Decided 2026-08-04: list mode shows no thumbnail at all -
-        the cleaner answer to the slowness by a distance.
-
-        At list size a thumbnail is 16px, the same argument that took
-        the BADGES out of list rows days earlier. Removing it also
-        removes the reason column measuring was expensive:
-        DecorationRole is never asked for in list mode now, so nothing
-        queues a picture the user cannot see. Measured across the
-        three states: 1668 reads, then 18, now none.
-        """
+        """Decided 2026-08-04: list mode shows no thumbnail at all - the cleaner answer to the slowness by a distance. - At list size a thumbnail is 16px, the same argument that took the BADGES out of list rows days earlier. Removing it also removes the reason column measuring was expensive: DecorationRole is never asked for in list mode now, so nothing queues a picture the user cannot see. Measured across the three states: 1668 reads, then 18, now none."""
         self._mode("list")
         self.assertTrue(
             self.panel.thumbtable.isColumnHidden(
@@ -930,9 +720,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
             "list mode is showing a thumbnail column again")
 
     def test_a_column_this_section_cannot_fill_is_HIDDEN(self):
-        """Materials has no open-scene role, so there is no Open
-        column - the same answer the painted strip gave by drawing
-        nothing."""
+        """Materials has no open-scene role, so there is no Open column - the same answer the painted strip gave by drawing nothing."""
         panel = self.panel
         self._mode("list")
         self.assertTrue(
@@ -944,14 +732,10 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
                 grid_columns.KEYS.index("name")))
 
     def test_the_row_is_one_text_line_not_a_tile(self):
-        """`activate()` can run in GRID mode, where the thumb size is
-        the slider's 128 - reading it there gave 133px rows."""
+        """`activate()` can run in GRID mode, where the thumb size is the slider's 128 - reading it there gave 133px rows."""
         panel = self.panel
         self._mode("list")
-        # A TEXT LINE, since the picture column went: the row used to
-        # be sized to fit a 16px thumbnail and there is no thumbnail in
-        # it now.
-        metrics = QtGui.QFontMetrics(panel.thumblist.font())
+        metrics = QtGui.QFontMetrics(panel.thumblist.font())  # a TEXT LINE, since the picture column went: the row used to be sized to fit a 16px thumbnail and there is no thumbnail in it now
         height = panel.thumbtable.verticalHeader().defaultSectionSize()
         self.assertLess(
             height, metrics.height() + theme.ui_px(12),
@@ -959,8 +743,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         self.assertGreaterEqual(height, metrics.height())
 
     def test_the_table_wears_the_panels_own_colours(self):
-        """A QTableView brings the platform palette - white rows and
-        black text against a dark panel."""
+        """A QTableView brings the platform palette - white rows and black text against a dark panel."""
         panel = self.panel
         panel.show()
         self.addCleanup(panel.hide)
@@ -972,14 +755,7 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
 
 
 class TheHeaderSORTS(unittest.TestCase):
-    """What the painted strip could never do, and the reason the whole
-    migration was worth its cost: click a heading and the rows reorder
-    by that column.
-
-    It needs nothing new. Every column answers DisplayRole with its own
-    text (the mixin), and QSortFilterProxyModel compares exactly that
-    for whichever column it is asked about.
-    """
+    """What the painted strip could never do, and the reason the whole migration was worth its cost: click a heading and the rows reorder by that column. - It needs nothing new. Every column answers DisplayRole with its own text (the mixin), and QSortFilterProxyModel compares exactly that for whichever column it is asked about."""
 
     @classmethod
     def setUpClass(cls):
@@ -1035,10 +811,7 @@ class TheHeaderSORTS(unittest.TestCase):
                          "the second click did not reverse the order")
 
     def test_a_chosen_column_survives_a_FILTER_change(self):
-        """`setDynamicSortFilter(False)` turns off the re-sort after a
-        filter change - GridProxyModel puts it back, reading
-        `sortColumn()`. If it read 0 instead, a user's chosen column
-        would snap back to name on the next keystroke."""
+        """`setDynamicSortFilter(False)` turns off the re-sort after a filter change - GridProxyModel puts it back, reading `sortColumn()`. If it read 0 instead, a user's chosen column would snap back to name on the next keystroke."""
         panel = self.panel
         column = grid_columns.KEYS.index("category")
         panel.thumbtable.sortByColumn(
@@ -1053,20 +826,7 @@ class TheHeaderSORTS(unittest.TestCase):
 
 
 class TheSelectionSpeaksInROWS(unittest.TestCase):
-    """List mode selects whole ROWS; every consumer sees ONE index per
-    row, at column 0.
-
-    research.md ▸ *Row selection over a table view* (measured): a
-    SelectRows selection answers `selectedIndexes()` with one index PER
-    CELL - ten for one selected row, the hidden thumb column included -
-    and the current index keeps whichever column the click landed on.
-    Left raw, one selected row greys every needs-one menu entry, labels
-    read "Delete (10)", and Favorite toggles the same asset ten times -
-    an even number, so the star appears dead. The collapse to column 0
-    lives at the chokepoints (`grid_columns.selected_rows`,
-    `ui_helpers.live_current_index`); these tests select through the
-    table the way a CLICK does and hold it there.
-    """
+    """List mode selects whole ROWS; every consumer sees ONE index per row, at column 0. - research.md ▸ *Row selection over a table view* (measured): a SelectRows selection answers `selectedIndexes()` with one index PER CELL - ten for one selected row, the hidden thumb column included - and the current index keeps whichever column the click landed on. Left raw, one selected row greys every needs-one menu entry, labels read "Delete (10)", and Favorite toggles the same asset ten times - an even number, so the star appears dead. The collapse to column 0 lives at the chokepoints (`grid_columns.selected_rows`, `ui_helpers.live_current_index`); these tests select through the table the way a CLICK does and hold it there."""
 
     @classmethod
     def setUpClass(cls):
@@ -1087,9 +847,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
     def _select_row(self, row):
-        """Select the way a CLICK does: current lands on a VISIBLE cell
-        (the thumb column is hidden, so no click can land on column 0),
-        the selection spans the row."""
+        """Select the way a CLICK does: current lands on a VISIBLE cell (the thumb column is hidden, so no click can land on column 0), the selection spans the row."""
         proxy = self.panel.thumbtable.model()
         selection = self.panel.thumbtable.selectionModel()
         flags = (QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect
@@ -1126,9 +884,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "column - and the star ends where it began")
 
     def test_assign_category_MOVES_the_selected_asset(self):
-        """The Move-to menu and the sidebar drop both land here, and
-        both were dead: a one-argument `index(row)` on a table model
-        raises TypeError before any row is edited."""
+        """The Move-to menu and the sidebar drop both land here, and both were dead: a one-argument `index(row)` on a table model raises TypeError before any row is edited."""
         proxy = self._select_row(0)
         model = self.panel.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
@@ -1146,8 +902,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "one selected row reads as a multi-selection in the form")
 
     def test_update_info_WRITES_the_edit(self):
-        """The Edit Info dialog's Update path - the second shipped
-        one-argument `index(row)`."""
+        """The Edit Info dialog's Update path - the second shipped one-argument `index(row)`."""
         proxy = self._select_row(0)
         model = self.panel.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
@@ -1159,11 +914,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "Update Info wrote nothing")
 
     def test_a_dragged_column_width_survives_a_tab_switch(self):
-        """Widths are DEFAULTS the user can drag (overview.md §2) - but
-        the seed ran on every activate and view-mode switch, so a
-        dragged column snapped back to its default on the next tab
-        click. The seed runs once per view; later syncs change
-        visibility only."""
+        """Widths are DEFAULTS the user can drag (overview.md §2) - but the seed ran on every activate and view-mode switch, so a dragged column snapped back to its default on the next tab click. The seed runs once per view; later syncs change visibility only."""
         panel = self.panel
         header = panel.thumbtable.horizontalHeader()
         column = grid_columns.KEYS.index("name")
@@ -1178,10 +929,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             "the tab switch re-seeded the default over the user's drag")
 
     def test_recategorising_a_selection_is_TWO_index_writes(self):
-        """One for the new category, ONE for the whole selection - not
-        one per row plus one per row's tag check: each index write
-        serialises and hashes the full 548-row document, and a 50-tile
-        Move-to paid it a hundred times."""
+        """One for the new category, ONE for the whole selection - not one per row plus one per row's tag check: each index write serialises and hashes the full 548-row document, and a 50-tile Move-to paid it a hundred times."""
         from unittest import mock
 
         from amaze.helpers import hostos as hostos_mod
@@ -1204,10 +952,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             % len(writes))
 
     def test_the_table_offers_the_menu_and_the_primary_action(self):
-        """`thumblist` gets both wirings; the table got neither, so in
-        list mode right-click opened nothing and double-click did
-        nothing - the whole GRID_MENU unreachable in one of the two
-        view modes."""
+        """`thumblist` gets both wirings; the table got neither, so in list mode right-click opened nothing and double-click did nothing - the whole GRID_MENU unreachable in one of the two view modes."""
         table = self.panel.thumbtable
 
         def connected(signal):
@@ -1225,12 +970,7 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
 
 
 class TheCallersNameTheColumnToo(unittest.TestCase):
-    """test_no_TABLE_model_builds_a_ONE_ARGUMENT_index holds the fact
-    INSIDE the model classes; this is the callers' half. Both shipped
-    instances were in panel.py - the Move-to path and the Edit Info
-    Update path, exactly the verbs nothing drove - and both raise
-    TypeError the moment they run, because every grid model is a table
-    now."""
+    """test_no_TABLE_model_builds_a_ONE_ARGUMENT_index holds the fact INSIDE the model classes; this is the callers' half. Both shipped instances were in panel.py - the Move-to path and the Edit Info Update path, exactly the verbs nothing drove - and both raise TypeError the moment they run, because every grid model is a table now."""
 
     def test_no_panel_caller_builds_a_ONE_ARGUMENT_index(self):
         import ast
@@ -1266,23 +1006,14 @@ class TheCallersNameTheColumnToo(unittest.TestCase):
 
 
 class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
-    """Two things decided whether a column exists and they disagreed.
-
-    Visibility came from the tile delegate's roles, content from the
-    model's `COLUMN_ROLES`. The File section passes `category_role`, so
-    the column was shown, sortable and coloured - and `FileFiles` has
-    no `"category"` entry, so every cell answered None. Every other
-    column File cannot fill is correctly hidden, because nobody told
-    the delegate about those."""
+    """Two things decided whether a column exists and they disagreed. - Visibility came from the tile delegate's roles, content from the model's `COLUMN_ROLES`. The File section passes `category_role`, so the column was shown, sortable and coloured - and `FileFiles` has no `"category"` entry, so every cell answered None. Every other column File cannot fill is correctly hidden, because nobody told the delegate about those."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _activate(self, key):
-        """The table's column state is the ACTIVE section's answer, so
-        it has to be the section under test - reading File's model
-        against another section's table proves nothing."""
+        """The table's column state is the ACTIVE section's answer, so it has to be the section under test - reading File's model against another section's table proves nothing."""
         kept = self.panel.current_section
         if kept != key:
             self.addCleanup(self.panel.section_tabs.setChecked, kept)
@@ -1320,28 +1051,14 @@ class AColumnIsShownONLYIfTheModelCanFillIt(unittest.TestCase):
 
 
 class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
-    """Five delegates are built per `activate()` and parented to the
-    table, which outlives every one of them.
-
-    `setItemDelegate*` takes no ownership, so the previous five stayed
-    alive as C++ children with nothing pointing at them. Measured in a
-    live session 2026-08-12: `thumbtable` held ELEVEN after an ordinary
-    afternoon - two full sets plus Qt's default, only the last set
-    reachable. The same Qt fact `grid._open` already pays a
-    `deleteLater()` for."""
+    """Five delegates are built per `activate()` and parented to the table, which outlives every one of them. - `setItemDelegate*` takes no ownership, so the previous five stayed alive as C++ children with nothing pointing at them. Measured in a live session 2026-08-12: `thumbtable` held ELEVEN after an ordinary afternoon - two full sets plus Qt's default, only the last set reachable. The same Qt fact `grid._open` already pays a `deleteLater()` for."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _live(self):
-        """Delegates still parented to the table, AFTER flushing the
-        deferred deletes.
-
-        `processEvents()` alone does not dispatch `DeferredDelete`, so
-        a `deleteLater()`'d delegate is still a child and this would
-        read a fixed leak as a live one (research.md > Qt widgets,
-        views & painting, measured 2026-08-12)."""
+        """Delegates still parented to the table, AFTER flushing the deferred deletes. - `processEvents()` alone does not dispatch `DeferredDelete`, so a `deleteLater()`'d delegate is still a child and this would read a fixed leak as a live one (research.md > Qt widgets, views & painting, measured 2026-08-12)."""
         app = QtWidgets.QApplication.instance()
         app.processEvents()
         app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
@@ -1360,9 +1077,7 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
             "each tab switch leaks the set it replaced")
 
     def test_the_table_still_has_its_delegates_afterwards(self):
-        """The accept path: dropping the old set must not drop the live
-        one, or the cells stop painting. The view takes no ownership,
-        so a delegate that is merely unparented is collected."""
+        """The accept path: dropping the old set must not drop the live one, or the cells stop painting. The view takes no ownership, so a delegate that is merely unparented is collected."""
         delegate = self.panel.thumblist.itemDelegate()
         grid.bind_table_cell_delegates(self.panel, delegate)
         self._live()

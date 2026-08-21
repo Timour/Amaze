@@ -1,20 +1,4 @@
-"""Selecting a tile never moves the grid.
-
-Qt's autoScroll (on by default for every item view) re-scrolls on
-EVERY currentChanged - a mouse click on a half-cut tile included. In
-the panel that read as the grid jumping under the cursor the moment a
-partly-visible tile was selected, and it was reported as exactly that
-(2026-07-31: "the grid must not nudge").
-
-The behavioural test drives the real panel's real view through the
-same internal path a click takes (current-index change on the view's
-selection model - the code Qt gates on autoScroll), because a test of
-a COPY of the setting proves nothing about the shipped view. The
-second test pins the property through the grid/list switch:
-setViewMode() has form here - it silently re-applies the movement
-mode and disarmed dragging once (recorded) - so "set at construction"
-needs proof that a view-mode flip does not quietly turn it back on.
-"""
+"""Selecting a tile never moves the grid: Qt's autoScroll re-scrolls on EVERY currentChanged, a click on a half-cut tile included, which shows as the grid nudging under the cursor. The behavioural test drives the real panel's real view through the path a click takes (a current-index change on the view's own selection model), because a COPY of the setting proves nothing about the shipped view, and the second test pins the property through the grid/list switch - setViewMode() has silently re-applied the movement mode and disarmed dragging before, so construction-time setting needs proof it survives a flip."""
 
 import os
 import sys
@@ -37,24 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
 class TheWheelIsONEEngineForBothViews(unittest.TestCase):
-    """One scroll path, two views, both axes.
-
-    The handler was Y-ONLY once, letting X fall through to Qt's own
-    per-item stepping. That was invisible until list rows grew wider
-    than the panel, and then sideways felt accelerated beside up and
-    down - because only one of the two applied the user's
-    `scroll_speed` to a pixel delta.
-
-    Nothing pinned any of it. Before 2026-08-04 no test in this suite
-    constructed a `QWheelEvent` at all, for either view, so the shared
-    engine that step 2a of the table migration created was never
-    exercised on the view it was created for.
-
-    Built on BARE views, not the panel: with no panel above them the
-    handler falls back to `SCROLL_SPEED`, so the arithmetic is a fixed
-    number rather than whatever this machine's preference happens to
-    be - and the numbers below are the contract, not a direction.
-    """
+    """One scroll path, two views, both axes - the handler was Y-ONLY once, letting X fall through to Qt's per-item stepping, so sideways ran accelerated beside up and down once list rows grew wider than the panel, and no test in this suite constructed a QWheelEvent at all before 2026-08-04. Built on BARE views: with no panel above them the handler falls back to `SCROLL_SPEED`, so the arithmetic is a fixed number rather than this machine's preference, and the numbers below are the contract."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 
@@ -102,9 +69,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                     "a pixel delta is not the user's speed applied to it")
 
     def test_a_CLASSIC_NOTCH_is_the_notch_size_not_Qts_own_step(self):
-        """A mouse with no pixel data reports 120-unit notches only.
-        A trackpad never reaches this branch, so it is exactly the
-        path that goes untested on a laptop."""
+        """A mouse with no pixel data reports 120-unit notches only - a trackpad never reaches this branch, so it is the path that goes untested on a laptop."""
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = self._view(name)
@@ -116,11 +81,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                     "one notch is not WHEEL_NOTCH_PX at the user's speed")
 
     def test_a_SIDEWAYS_gesture_never_moves_the_view_DOWN(self):
-        """The axis is a choice of scrollbar, and only that. The table
-        is where it can be seen - a list of single-column items has no
-        horizontal range - but the wrong-axis bug is worth pinning on
-        BOTH, because falling through to the vertical bar is what a
-        Y-only handler did."""
+        """The axis is a choice of scrollbar and only that - visible on the table, since a single-column list has no horizontal range, but pinned on BOTH because falling through to the vertical bar is what a Y-only handler did."""
         for name in self.VIEWS:
             with self.subTest(view=name):
                 view = self._view(name)
@@ -139,10 +100,7 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
                         "bar by the user's speed")
 
     def test_the_TABLE_really_does_have_a_sideways_range(self):
-        """Anti-vacuity for the test above: its horizontal assertion is
-        conditional, so something has to prove the condition is met on
-        at least one view, or the whole axis case could pass by never
-        being reached."""
+        """Anti-vacuity for the test above: its horizontal assertion is conditional, so something must prove the condition is met on at least one view, or the axis case passes by never being reached."""
         view = self._view("DragDropTableView")
         self.assertTrue(
             view.horizontalScrollBar().maximum(),
@@ -151,27 +109,14 @@ class TheWheelIsONEEngineForBothViews(unittest.TestCase):
 
 
 class SelectingNeverScrollsTheGridTest(unittest.TestCase):
-    """Built against the REAL panel, like the menu wiring tests: the
-    thing being pinned is a property of the shipped thumblist, and a
-    view built by the test would happily pass with the panel broken."""
+    """Built against the REAL panel: the property pinned belongs to the shipped thumblist, and a view built by the test would pass with the panel broken."""
 
     @classmethod
     def setUpClass(cls):
-        # The ISOLATED panel: its own settings, its own library, its own
-        # caches, no network, and - the reason this stopped using
-        # _protect_live_settings on 2026-08-02 - NO registered file
-        # locations. That guard only protected the settings file and the
-        # log; the panel still opened the real library and the real File
-        # locations, which on this machine are personal photograph and
-        # texture archives. fixture_panel asserts every one of those
-        # paths is inside the tempdir before it returns.
-        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))  # the ISOLATED panel: own settings, own library, own caches, no network and NO registered file locations - this is what `_protect_live_settings` stopped being enough for on 2026-08-02, a guard over the settings file and the log alone still letting the panel open the real library, and fixture_panel asserts every path is inside the tempdir before returning
 
     def test_selecting_a_half_cut_tile_leaves_the_view_where_it_was(self):
-        """The report, replayed: a small viewport, a tile that does not
-        fully fit, current moved onto it - the scrollbar must not move.
-        With autoScroll back on, Qt scrolls right here and this reads
-        a changed value."""
+        """A small viewport, a tile that does not fully fit, current moved onto it - the scrollbar must not move; with autoScroll back on Qt scrolls right here and this reads a changed value."""
         view = self.panel.thumblist
         model = view.model()
         if model is None or model.rowCount() < 2:
@@ -207,21 +152,14 @@ class SelectingNeverScrollsTheGridTest(unittest.TestCase):
             "the grid moved under the selection - the jump is back")
 
     def test_the_view_stays_put_through_the_view_mode_switch(self):
-        """setViewMode() re-applies state behind the caller's back (it
-        disarmed dragging once - recorded). Both modes must leave the
-        no-self-scrolling contract standing."""
+        """setViewMode() re-applies state behind the caller's back and disarmed dragging once, so both modes must leave the no-self-scrolling contract standing."""
         kept = self.panel.prefs.view_mode
         self.addCleanup(setattr, self.panel.prefs, "view_mode", kept)
         self.addCleanup(self.panel.apply_view_mode)
         for mode in ("grid", "list"):
             self.panel.prefs.view_mode = mode
             self.panel.apply_view_mode()
-            # THE VIEW THAT IS UP, not `thumblist` outright - which is
-            # the HIDDEN one in list mode, so this loop ran twice and
-            # asked the same widget both times while the table it never
-            # looked at had autoScroll ON. `grid.visible_view` exists
-            # because three other readers made this exact mistake.
-            view = grid.visible_view(self.panel)
+            view = grid.visible_view(self.panel)  # THE VIEW THAT IS UP, not `thumblist` outright, which is the HIDDEN one in list mode - this loop asked the same widget twice while the table it never looked at had autoScroll ON
             self.assertFalse(
                 view.hasAutoScroll(),
                 "view mode %r turned autoScroll back on - selecting a "

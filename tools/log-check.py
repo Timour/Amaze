@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""What the app actually did in the user's last session.
-
-Run this FIRST on any report - a bug, a change request, or "I tried
-X". Not because a rule says so: it has repeatedly held information the
-code cannot give. It once showed 38 unhandled exceptions from a stale
-module, and a "sources unavailable (URLError)" line that named a
-corrupted hostname while the UI looked completely normal.
-
-It exists as a script because the reason the check got skipped was
-friction - writing a bespoke query each time. This is one command.
-
-    tools/log-check.py            the last session
-    tools/log-check.py --all      every session in the file
-"""
+"""What the app actually did in the user's last session. - Run this FIRST on any report - a bug, a change request, or an attempt that went wrong. Not because a rule says so: it has repeatedly held information the code cannot give. It once showed 38 unhandled exceptions from a stale module, and a `sources unavailable (URLError)` line that named a corrupted hostname while the UI looked completely normal. - It exists as a script because the reason the check got skipped was friction - writing a bespoke query each time. This is one command. - tools/log-check.py the last session tools/log-check.py --all every session in the file"""
 
 import collections
 import json
