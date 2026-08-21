@@ -34,14 +34,16 @@ EDGE_NAMES = (   # names that have broken extension matching before - contents d
 
 def iconvert(src: str, dest: str) -> bool:
     tool = os.path.join(hou.getenv("HFS") or "", "bin", "iconvert")
+    workdir = os.path.dirname(dest) or "."
     try:
-        subprocess.run([tool, os.path.basename(src), os.path.basename(dest)],
-                       check=True, cwd=os.path.dirname(dest) or ".",
+        subprocess.run([tool, os.path.relpath(src, workdir),
+                        os.path.basename(dest)],
+                       check=True, cwd=workdir,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.CalledProcessError) as exc:
         print("  !! %s failed: %s" % (os.path.basename(dest), exc))
         return False
-    return os.path.exists(dest)  # BASENAMES from the destination directory: iconvert records its own command line inside the image it writes, so an absolute path here publishes the operator's home directory (`verify_no_identity` is the backstop, and the tool's own path is still absolute - a home-installed HFS would be caught there rather than avoided here)
+    return os.path.exists(dest)  # RELATIVE paths from the destination directory: iconvert records its own command line inside the image it writes, so an absolute path here publishes the operator's home directory (`verify_no_identity` is the backstop, and the tool's own path is still absolute - a home-installed HFS would be caught there rather than avoided here)
 
 
 def make_source_png(path: str) -> None:
@@ -54,6 +56,11 @@ def make_source_png(path: str) -> None:
     image.save(path, "PNG")
 
 
+GEO_NAMES = ("cube.bgeo", "cube.obj", "cube.abc")   # NO `.bgeo.sc`: its payload is blosc-compressed, so the host name Houdini stamps into it cannot be reached or proven absent, and KIND_GEO is already carried by these three ▸r/author-stamp
+
+SCENE_NAMES = ("empty.hip", "empty.hiplc", "empty.hipnc")
+
+
 def make_geometry(folder: str) -> None:
     """A box, written through Houdini so each format is genuine."""
     geo = hou.node("/obj").createNode("geo", "fixture_geo")
@@ -61,7 +68,7 @@ def make_geometry(folder: str) -> None:
     rop = geo.createNode("rop_geometry")
     rop.parm("soppath").set(box.path())
     try:
-        for name in ("cube.bgeo", "cube.obj", "cube.abc"):   # NO `.bgeo.sc`: its payload is blosc-compressed, so the host name Houdini stamps into it cannot be reached or proven absent, and KIND_GEO is already carried by these three ▸r/author-stamp
+        for name in GEO_NAMES:
             rop.parm("sopoutput").set(os.path.join(folder, name))
             try:
                 rop.parm("execute").pressButton()
@@ -124,7 +131,7 @@ def make_scenes(folder: str) -> None:
     """All three scene extensions - each is its own KIND_HIP label ('Hiplc', not 'HIPLC'), and matched_extension picks the longest. Saved in a scratch directory and moved, because the save location is written INTO the file."""
     scratch = neutral_scratch("scenes")
     neutral_scene_vars(scratch)
-    for name in ("empty.hip", "empty.hiplc", "empty.hipnc"):
+    for name in SCENE_NAMES:
         try:
             staged = os.path.join(scratch, name)
             hou.hipFile.save(staged, save_to_recent_files=False)
@@ -185,8 +192,10 @@ PLACEHOLDERS = ("/someone", "/someone-else", "/projects")
 
 def complaints(path: str) -> list:
     """Everything about `path` that must not publish. Judges the STORED bytes with patterns of its own - never the redactor's, which would make a redacted file certify itself. ▸r/author-stamp"""
-    home = re.compile(rb"(?:/Users/|/home/|C:\\Users\\)[A-Za-z0-9_.-]+"
-                      rb"|/var/folders/[A-Za-z0-9_+-]{2}/[A-Za-z0-9_+-]{10,}")
+    home = re.compile(rb"(?:/Users/|/home/|[A-Za-z]:[\\/]Users[\\/])"   # both Windows spellings, any case: Houdini's own session values carry C:/Users/<name> FORWARD-slashed (▸r/launching-shell-decides), and on Windows this pattern is the only guard a neutral %USERNAME% leaves standing (▸r/author-stamp)
+                      rb"[A-Za-z0-9_.-]+"
+                      rb"|/var/folders/[A-Za-z0-9_+-]{2}/[A-Za-z0-9_+-]{10,}",
+                      re.IGNORECASE)
     stamped = re.compile(rb"(?<![A-Za-z0-9_])([A-Za-z0-9_.+-]{2,64})@"   # the host half must be DOTTED: without it two random bytes either side of an `@` read as a stamp, and an .hdr's raw pixels carry plenty
                          rb"([A-Za-z0-9_-]{1,60}(?:\.[A-Za-z0-9_-]{2,20})+)"
                          rb"(?![A-Za-z0-9_])")
@@ -263,12 +272,19 @@ def main() -> int:
     shutil.copy2(png, os.path.join(nested, "nested.png"))
     shutil.rmtree(SCRATCH_ROOT, ignore_errors=True)
 
-    written = [os.path.join(OUT, f) for f in sorted(os.listdir(OUT))
-               if os.path.isfile(os.path.join(OUT, f))]
-    written += [os.path.join(nested, "nested.png"),
-                os.path.join(SCENES, "Materials.hiplc")]
-    total = sum(os.path.getsize(p) for p in written if os.path.isfile(p))
-    print("\n%d files, %.1f KB total" % (len(written), total / 1024.0))
+    written = (   # every file the run INTENDS, never a listdir of what survived: a writer that failed must show up as "was never written" below rather than drop out of the roster with a green verdict
+        [png]
+        + [os.path.join(OUT, "ramp." + ext) for ext in IMAGE_FORMATS]
+        + [os.path.join(OUT, name) for name in EDGE_NAMES]
+        + [os.path.join(OUT, name) for name in GEO_NAMES + SCENE_NAMES]
+        + [os.path.join(OUT, "readme.txt"),
+           os.path.join(nested, "nested.png"),
+           os.path.join(SCENES, "Materials.hiplc")]
+    )
+    present = [p for p in written if os.path.isfile(p)]
+    total = sum(os.path.getsize(p) for p in present)
+    print("\n%d of %d files, %.1f KB total"
+          % (len(present), len(written), total / 1024.0))
 
     redacted = redact_written(written)
     print("redacted %d stamped identit%s"

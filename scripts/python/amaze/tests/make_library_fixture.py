@@ -20,13 +20,13 @@ OUT = os.path.join(HERE, "assets", "library")
 
 CATEGORIES = ["_All", "Karma_Mats", "usds"]
 
-MATERIALS = (   # (id, name, base colour) - ids and names are the ones the suite already cites, so this is a drop-in replacement; the colours differ only so six tiles are tellable apart by eye, nothing asserts on them
-    ("139888336268658010", "Metal", (0.56, 0.57, 0.58)),
-    ("139888336377945550", "Bricks", (0.52, 0.24, 0.18)),
-    ("139888336889814930", "gold", (1.00, 0.77, 0.34)),
-    ("139888337058723210", "glass", (0.78, 0.87, 0.90)),
-    ("139888337254621540", "bubblegum", (0.94, 0.55, 0.70)),
-    ("139888337459841200", "plastic", (0.20, 0.42, 0.72)),
+MATERIALS = (   # (id, name, category, base colour) - ids, names and the TWO-category spread are the corpus the suite already cites, so this is a drop-in replacement; a single populated category would leave `usds` empty and category removal, per-category filtering and the hide-empty sidebar running against a degenerate library. The colours differ only so six tiles are tellable apart by eye, nothing asserts on them
+    ("139888336268658010", "Metal", "Karma_Mats", (0.56, 0.57, 0.58)),
+    ("139888336377945550", "Bricks", "Karma_Mats", (0.52, 0.24, 0.18)),
+    ("139888336889814930", "gold", "usds", (1.00, 0.77, 0.34)),
+    ("139888337058723210", "glass", "usds", (0.78, 0.87, 0.90)),
+    ("139888337254621540", "bubblegum", "usds", (0.94, 0.55, 0.70)),
+    ("139888337459841200", "plastic", "usds", (0.20, 0.42, 0.72)),
 )
 
 DATE = "2026-01-27 20:07:06"   # a FIXED date: a generated timestamp would rewrite every row on every run and the rows are what the suite reads
@@ -39,8 +39,8 @@ def sentinel_row() -> dict:
             "builder": 0}
 
 
-def asset_row(asset_id: str, name: str) -> dict:
-    return {"id": asset_id, "name": name, "categories": ["Karma_Mats"],
+def asset_row(asset_id: str, name: str, category: str) -> dict:
+    return {"id": asset_id, "name": name, "categories": [category],
             "tags": [""], "favorite": False, "date": DATE,
             "renderer": "MaterialX", "usd": 1, "builder": 0}
 
@@ -88,7 +88,7 @@ def main() -> int:
     guard.neutral_scene_vars(scratch)
     parent = hou.node("/mat")
     written = []
-    for asset_id, name, colour in MATERIALS:
+    for asset_id, name, _category, colour in MATERIALS:
         builder = build_material(parent, name, colour)
         save_pair(builder, asset_id, os.path.join(OUT, "mat"))
         thumb = os.path.join(OUT, "img", asset_id + ".png")
@@ -103,7 +103,7 @@ def main() -> int:
                 "format": branding.LIBRARY_FORMAT,
                 "categories": CATEGORIES, "tags": [],
                 "assets": [sentinel_row()]
-                + [asset_row(i, n) for i, n, _c in MATERIALS]}
+                + [asset_row(i, n, c) for i, n, c, _colour in MATERIALS]}
     index = os.path.join(OUT, "library.json")
     with open(index, "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=1)

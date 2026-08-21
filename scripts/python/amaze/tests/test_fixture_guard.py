@@ -1,6 +1,7 @@
 """The fixture generator's identity guard, driven against every way an earlier version of it passed something it should have caught. ▸p/guard-must-be-independent"""
 
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -29,7 +30,7 @@ class GuardCase(unittest.TestCase):
 
     def write(self, payload, suffix=".bgeo"):
         folder = tempfile.mkdtemp(prefix="amaze_guard_")
-        self.addCleanup(lambda: None)
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
         path = os.path.join(folder, "probe" + suffix)
         with open(path, "wb") as handle:
             handle.write(payload)
@@ -84,12 +85,24 @@ class TheGuardCatchesWhatEarlierVersionsPassed(GuardCase):
                          account="ab", host="xy")
 
     def test_the_per_user_temp_directory(self):
-        """macOS per-user temp is an account-specific token, and pointing a scene's JOB and POSE at it swapped one machine-local path for another the guard could not see."""
+        """macOS per-user temp is an account-specific token, and pointing a scene's JOB and POSE at it swapped one machine-local path for another the guard could not see. The token here is INVENTED to the real shape - a lifted one would itself be the leak this file exists to catch."""
         self.pin("builduser", "BuildBox")
         path = self.write(b"set -g HIP = '/var/folders/zz/"
-                          b"zyxwvuts9876rqpo5432nmlk0000gn/T/x'\n")
+                          b"zyxw9vut8srq7pon6mlk0000gn/T/x'\n")
         self.assertTrue(gen.complaints(path),
                         "the per-user temp token passed the guard")
+
+    def test_a_forward_slashed_windows_home(self):
+        """Houdini's own session values spell a Windows home with FORWARD slashes (research.md ▸ r/launching-shell-decides), and on Windows the home pattern is the only guard a neutral %USERNAME% leaves standing."""
+        self.pin("builduser", "BuildBox")
+        for payload in (b"set -g HIP = 'C:/Users/somebody/houdini22.0/x'\n",
+                        b"c:\\users\\somebody\\Documents\\x\n"):
+            with self.subTest(payload=payload):
+                path = self.write(payload)
+                self.assertTrue(
+                    gen.complaints(path),
+                    "a Windows home spelled the way Houdini writes it "
+                    "passed the guard: %r" % payload)
 
     def test_an_opaque_format_is_a_finding_not_a_pass(self):
         """A byte scan cannot see inside a compressed payload, so silence there is unproven rather than clean."""

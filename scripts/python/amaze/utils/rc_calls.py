@@ -25,11 +25,12 @@ def _find_panel():
 
 def save_material(node=None) -> None:
     """Node right-click `Save to Amaze` on a material - the save flow stays SELECTION-based because multi-selection saves are a feature, so this door bridges the click into the selection instead of passing the node through: an unselected clicked node becomes the whole selection (right-clicking an unselected builder used to save whatever ELSE was selected), a node already inside a multi-selection keeps the whole selection, and the selection write lands on the undo stack like the click it stands in for (research.md ▸ Node graph). This lived untestable in OPmenu.xml's scriptCode; ROADMAP R50 moved it here beside its three siblings."""
+    panel = _find_panel()   # the panel FIRST, the selection write after: with no panel there is no save, and a refused save must not have cost the user the multi-selection they built
+    if not panel:
+        return
     if node is not None and not node.isSelected():
         node.setSelected(True, clear_all_selected=True)
-    panel = _find_panel()
-    if panel:
-        panel.save_asset()
+    panel.save_asset()
 
 
 def save_cop(node=None) -> None:

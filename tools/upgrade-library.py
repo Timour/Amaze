@@ -8,8 +8,12 @@ import subprocess
 import sys
 import tempfile
 
-NAMES = ("library.json", "cops.json", "code.json", "gradients.json")
 LEGACY_CONTAINERS = ("snippets", "cops", "gradients")  # pre-assets row homes; this build's engine does not re-home them, so a document carrying rows there must refuse rather than stamp
+
+
+def _names() -> tuple:
+    """The database roster, read from the product itself - a copy here goes silently stale the day a fifth section database lands, and this tool's whole job is completeness."""
+    return _connector().DATABASES
 
 
 def _package_root() -> str:
@@ -27,7 +31,7 @@ def _connector():
 def _read_raw(directory: str) -> dict:
     """{filename: document} for every database present, read as plain json - a file that will not parse reads as {"version": None}, which every mode downstream refuses."""
     found = {}
-    for name in NAMES:
+    for name in _names():
         path = os.path.join(directory, name)
         if os.path.exists(path):
             try:
@@ -128,10 +132,11 @@ def _preflight(docs: dict, code: int) -> dict:
                               % missing)
             continue
         stranded = _legacy_rows(doc)
-        if stranded and version < code:
+        if stranded:   # whatever the stamp says: the app's own save re-stamps a legacy-shaped file to current while its migrations only touch `assets`, so a current version is no proof the rows were ever re-homed
             refusals[name] = ("keeps %d rows under a pre-assets container "
-                              "this build's engine would not re-home - "
-                              "the upgrade would strand them" % stranded)
+                              "this build's engine cannot re-home - the "
+                              "rows are stranded, whatever the version "
+                              "stamp says" % stranded)
     return refusals
 
 
@@ -171,7 +176,7 @@ def _migrate_inplace(directory: str, skip_current: bool = True) -> dict:
     database = _connector()
     code = database.SCHEMA_VERSION
     refusals = {}
-    for name in NAMES:
+    for name in _names():
         path = os.path.join(directory, name)
         if not os.path.exists(path):
             continue
@@ -239,7 +244,7 @@ def _rehearse(directory: str) -> tuple:
     work = tempfile.mkdtemp(prefix="amaze_upgrade_rehearsal_")
     copy = os.path.join(work, "lib")
     os.makedirs(copy)
-    for name in NAMES:
+    for name in _names():
         path = os.path.join(directory, name)
         if os.path.exists(path):
             shutil.copy2(path, os.path.join(copy, name))
@@ -295,15 +300,15 @@ def write(directory: str) -> int:
     if not docs:
         print("no Amaze database found in %s" % directory)
         return 2
-    if all(d.get("version") == code for d in docs.values()):
-        print("every database is already at v%d - nothing to do" % code)
-        return 0
-    refusals = _preflight(docs, code)
+    refusals = _preflight(docs, code)   # BEFORE the nothing-to-do answer: a current stamp with stranded legacy rows must refuse, never read as done
     if refusals:
         for name, why in sorted(refusals.items()):
             print("REFUSED: %s %s" % (name, why))
         print("nothing was changed anywhere")
         return 2
+    if all(d.get("version") == code for d in docs.values()):
+        print("every database is already at v%d - nothing to do" % code)
+        return 0
 
     print("rehearsing on a copy first...")
     diffs, refusals = _rehearse(directory)
@@ -354,6 +359,11 @@ def write(directory: str) -> int:
 
 
 def main(argv) -> int:
+    if sys.version_info < (3, 11):   # the app modules this drives need 3.11 (database.py imports typing.Self), and without the guard a stock macOS python3 answers every mode with an ImportError traceback and exit 1 - the code the contract reserves for rows moved
+        print("REFUSED: this tool needs Python 3.11+ and this is %d.%d - "
+              "run it with hython or a newer python3"
+              % sys.version_info[:2])
+        return 2
     flags = [a for a in argv[1:] if a.startswith("--")]
     args = [a for a in argv[1:] if not a.startswith("--")]
     unknown = [f for f in flags if f not in ("--write", "--rehearse",

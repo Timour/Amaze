@@ -34,7 +34,9 @@ if [ -z "$install" ] || [ ! -d "$install" ]; then
         echo "  \$AMAZE is not set, and no readable Amaze.json package" >&2
         echo "  declared it. Package files found:" >&2
         pkgs="$(amaze_package_files)"
-        if [ -n "$pkgs" ]; then printf '    %s\n' $pkgs >&2
+        # quoted, one path per line: an unquoted expansion word-splits a
+        # "John Smith" home into two entries that name no real file
+        if [ -n "$pkgs" ]; then printf '%s\n' "$pkgs" | sed 's/^/    /' >&2
         else echo "    (none, on any platform path)" >&2; fi
         echo "  Wire the package (INSTALL.md step 2) or export \$AMAZE." >&2
     fi

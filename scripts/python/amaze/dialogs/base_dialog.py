@@ -67,6 +67,11 @@ class AssetDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout()
         if self._content is not None:
+            if self._form.rowCount():
+                raise RuntimeError(
+                    "AssetDialog.finish: %d add_* row(s) would be lost - "
+                    "a dialog uses form rows OR set_content, never both"
+                    % self._form.rowCount())
             layout.addWidget(self._content)
             if self._buttons is not None:
                 layout.addWidget(self._buttons)

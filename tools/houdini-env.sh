@@ -27,33 +27,37 @@ amaze_houdini_roots() {
         vendor="$(cygpath -u "${PROGRAMFILES:-C:/Program Files}" 2>/dev/null \
                   || printf '%s' "/c/Program Files")/Side Effects Software"
         for d in "$vendor"/*; do
-            if [ -x "$d/bin/hython.exe" ]; then found="$found$d"$'\n'; fi
+            if [ -x "$d/bin/hython.exe" ]; then found="$found$d"$'\t'"$d"$'\n'; fi
         done
     else
         for d in /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources; do
-            if [ -x "$d/bin/hython" ]; then found="$found$d"$'\n'; fi
+            if [ -x "$d/bin/hython" ]; then found="$found$d"$'\t'"$d"$'\n'; fi
         done
         # Linux: /opt/hfsMAJOR.MINOR is SideFX's symlink to the current
         # build, so the bare glob matches every install twice - keep the
         # symlink (a hard-coded build number goes stale, INSTALL.md 0d)
         # and drop any real directory a kept symlink already resolves to.
-        local resolved covered=""
+        # Each line is "sortkey<TAB>path", and a kept symlink's key is
+        # the BUILD it resolves to: keyed on itself, hfs22.0 version-
+        # sorts below every real point-build beside it, handing tail -1
+        # a stale leftover instead of the current build.
+        local resolved covered=$'\n'
         for d in /opt/hfs*; do
             if [ -L "$d" ] && [ -x "$d/bin/hython" ]; then
-                found="$found$d"$'\n'
                 resolved="$(cd "$d" 2>/dev/null && pwd -P)"
+                found="$found${resolved:-$d}"$'\t'"$d"$'\n'
                 covered="$covered$resolved"$'\n'
             fi
         done
         for d in /opt/hfs*; do
             if [ ! -L "$d" ] && [ -x "$d/bin/hython" ]; then
                 resolved="$(cd "$d" 2>/dev/null && pwd -P)"
-                case "$covered" in *"$resolved"$'\n'*) continue ;; esac
-                found="$found$d"$'\n'
+                case "$covered" in *$'\n'"$resolved"$'\n'*) continue ;; esac
+                found="$found$d"$'\t'"$d"$'\n'
             fi
         done
     fi
-    if [ -n "$found" ]; then printf '%s' "$found" | sort -V; fi
+    if [ -n "$found" ]; then printf '%s' "$found" | sort -V | cut -f2; fi
 }
 
 amaze_newest_houdini() {
@@ -76,17 +80,19 @@ amaze_hython() {
 # branches put the Linux pref-dir glob inside the WINDOWS branch, so
 # Linux resolved nothing and every sync there needed $AMAZE by hand
 # (practice.md > p/linux-tooling-blind). The globs that miss on a
-# platform simply match no file: Documents is the Windows stray, the
-# /Applications and ~/Library pair is macOS, and ~/houdini* is the pref
-# dir on BOTH Windows (via Git Bash $HOME) and Linux - it stays last so
-# the real pref dir outranks the Documents copy (INSTALL.md).
+# platform simply match no file: Documents is the Windows stray,
+# ~/houdini* is the pref dir on BOTH Windows (via Git Bash $HOME) and
+# Linux and outranks it, and the /Applications and ~/Library pair is
+# macOS - ~/Library goes LAST because it is the only glob that can
+# match beside ~/houdini* on one machine, and there (macOS) it is the
+# real pref dir while ~/houdini* can only be a stray (INSTALL.md).
 amaze_package_files() {
     [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
     local f
     for f in "$HOME"/Documents/houdini*/packages/Amaze.json \
              /Applications/Houdini/sidefx_packages/Amaze.json \
-             "$HOME"/Library/Preferences/houdini/*/packages/Amaze.json \
-             "$HOME"/houdini*/packages/Amaze.json; do
+             "$HOME"/houdini*/packages/Amaze.json \
+             "$HOME"/Library/Preferences/houdini/*/packages/Amaze.json; do
         if [ -f "$f" ]; then printf '%s\n' "$f"; fi
     done
 }

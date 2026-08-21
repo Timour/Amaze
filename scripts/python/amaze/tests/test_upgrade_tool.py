@@ -102,7 +102,10 @@ class TheRehearsalTouchesNothing(UpgradeToolCase):
         before = self._bytes()
         code, out = self._run(self.tool.rehearse_only, self.dir)
         self.assertEqual(0, code)
-        self.assertIn("v7 -> v8", out.replace("None", "8"))
+        target = self.tool._connector().SCHEMA_VERSION
+        self.assertIn("v7 -> v%d" % target, out,
+                      "the rehearsal never climbed the copy - a vNone "
+                      "here means the phase wrote nothing readable")
         self.assertEqual(before, self._bytes(),
                          "the rehearsal wrote into the real library")
         self.assertEqual([], self._backups())
