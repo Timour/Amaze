@@ -1,8 +1,4 @@
-"""The empty grid: which blank, whose words, and a button that works.
-
-Every test here is aimed at a defect that SHIPPED - the first build
-passed thirteen and was reverted the same day (devlog 480).
-"""
+"""The empty grid: which blank, whose words, and a button that works - every test aimed at a defect that SHIPPED, the first build passing thirteen and reverting the same day (devlog 480)."""
 import unittest
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -11,9 +7,7 @@ from amaze.panel import empty_state, grid, sections
 from amaze.panel import panel as panel_module
 from amaze.tests import test_support
 
-# A widget cannot be built before this exists, and a SUBSET run has no
-# earlier module to have made one.
-_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # a widget cannot be built before this exists, and a SUBSET run has no earlier module to have made one
 
 
 class TheDeclarationsAreWellFormed(unittest.TestCase):
@@ -47,8 +41,7 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                     % (blank, verb))
 
     def test_a_button_label_and_a_verb_arrive_together(self):
-        """One without the other is a button that does nothing, or a
-        working verb the user is never offered."""
+        """One without the other is a button that does nothing, or a working verb the user is never offered."""
         tables = [empty_state.SHARED]
         tables += [getattr(c, "EMPTY", {})
                    for c in sections.SECTION_INDEX.values()]
@@ -91,9 +84,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
         self.assertEqual((None, ""), empty_state.verdict(self.panel))
 
     def test_a_search_that_matches_nothing_is_not_an_empty_library(self):
-        """THE ONE THE ORIGINAL SKIPPED ITSELF ON - its premise was a
-        `skipTest`, so a filter that failed to bite reported success,
-        and it is an ASSERT here."""
+        """THE ONE THE ORIGINAL SKIPPED ITSELF ON - its premise was a `skipTest`, so a filter that failed to bite reported success, and it is an ASSERT here."""
         view = grid.visible_view(self.panel)
         if view.model() is None or not view.model().rowCount():
             self.skipTest("the fixture library has no rows to filter")
@@ -111,9 +102,7 @@ class TheEngineSaysWhichBlank(unittest.TestCase):
 
 
 class TheClearButtonActuallyRefilters(unittest.TestCase):
-    """DEFECT 3 - every reverted test hand-called `filter_thumb_view()`
-    after clearing, supplying the second push the real button never
-    made, so all of them passed against a broken verb (devlog 480)."""
+    """DEFECT 3 - every reverted test hand-called `filter_thumb_view()` after clearing, the second push the real button never made, so all passed against a broken verb (devlog 480)."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -137,11 +126,87 @@ class TheClearButtonActuallyRefilters(unittest.TestCase):
                          "filtered - the verb did not refilter")
 
 
+class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
+    """The favourites star over nothing starred used to fall through to the category blank, which quoted an empty category name."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        view = grid.visible_view(self.panel)
+        proxy = view.model() if view is not None else None
+        if proxy is None or not proxy.rowCount():
+            self.skipTest("the fixture library has no rows")
+        self.view, self.proxy = view, proxy
+        self.source = proxy.sourceModel()
+        self.role = self.source.FavoriteRole
+
+    def _unstar_everything(self):
+        starred = [self.proxy.index(r, 0)
+                   for r in range(self.proxy.rowCount())
+                   if self.proxy.index(r, 0).data(self.role)]
+        if starred:
+            self.panel.grid_toggle_favourite(starred)
+        QtWidgets.QApplication.processEvents()
+
+    def _favourites_only(self, on):
+        self.panel.cb_favsonly.setChecked(on)
+        QtWidgets.QApplication.processEvents()
+
+    def test_no_favourites_at_all_is_its_own_blank(self):
+        self._unstar_everything()
+        self._favourites_only(True)
+        self.addCleanup(self._favourites_only, False)
+        self.assertEqual(0, self.proxy.rowCount(),
+                         "premise: the star emptied the grid")
+
+        blank, _detail = empty_state.verdict(self.panel)
+        self.assertEqual(
+            empty_state.NO_FAVOURITES, blank,
+            "an unstarred library behind the favourites star read as "
+            "an empty category, quoting an empty name")
+
+    def test_a_search_still_outranks_the_favourites_blank(self):
+        self._unstar_everything()
+        self._favourites_only(True)
+        self.addCleanup(self._favourites_only, False)
+        self.panel.line_filter.setText("zzzz-no-such-asset")
+        self.panel.filter_thumb_view()
+        self.addCleanup(self.panel.clear_filter_box)
+
+        blank, _detail = empty_state.verdict(self.panel)
+        self.assertEqual(
+            empty_state.NO_MATCH, blank,
+            "with a search active the search explains the blank, and "
+            "clearing it must come first")
+
+    def test_one_star_anywhere_flips_the_discriminator(self):
+        """`_any_favourite` separates the favourites blank from the category blank - a star set THIS instant must be seen, so no cache may sit under it."""
+        self._unstar_everything()
+        self.assertFalse(empty_state._any_favourite(self.source))
+        self.panel.grid_toggle_favourite([self.proxy.index(0, 0)])
+        QtWidgets.QApplication.processEvents()
+        self.assertTrue(
+            empty_state._any_favourite(self.source),
+            "the star just set is invisible to the discriminator, so "
+            "the favourites blank would claim no favourites exist")
+
+    def test_the_show_all_verb_alone_restores_the_rows(self):
+        self._unstar_everything()
+        before = self.proxy.rowCount()
+        self._favourites_only(True)
+        self.assertEqual(0, self.proxy.rowCount(), "premise: emptied")
+
+        # NOTHING ELSE IS CALLED. That is the whole test.
+        self.panel.clear_favourites_filter()
+        QtWidgets.QApplication.processEvents()
+
+        self.assertFalse(self.panel.cb_favsonly.isChecked())
+        self.assertEqual(before, self.proxy.rowCount(),
+                         "the star is off and the grid is still "
+                         "filtered - the verb did not refilter")
+
+
 class TheButtonCanBeClicked(unittest.TestCase):
-    """DEFECT 2 - measured by setting the attribute back, only the
-    FIRST of these three catches it; `childAt` and a directly-sent
-    event both bypass the parent's transparency, so the other two guard
-    different failures (devlog 480)."""
+    """DEFECT 2 - a re-set `WA_TransparentForMouseEvents` is caught only by the FIRST of these three, `childAt` and a directly-sent event both bypassing the parent's transparency, so each guards a different failure. ▸r/transparent-for-mouse (devlog 480)"""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -172,7 +237,7 @@ class TheButtonCanBeClicked(unittest.TestCase):
                       "something else")
 
     def test_pressing_and_releasing_it_runs_the_verb(self):
-        """Real QMouseEvents, so nothing about delivery is assumed."""
+        """Real QMouseEvents through the device-carrying overload (the short one is deprecated in Qt 6 and prints per run), so nothing about delivery is assumed. ▸r/transparent-for-mouse"""
         self.page.say(self.panel, empty_state.NO_MATCH, "brick")
         self.page.resize(500, 400)
         self.page.layout().activate()
@@ -181,8 +246,6 @@ class TheButtonCanBeClicked(unittest.TestCase):
         fired = []
         button.clicked.connect(lambda *_: fired.append(True))
         middle = QtCore.QPointF(button.rect().center())
-        # The device-carrying overload: the shorter one is deprecated in
-        # Qt 6 and prints on every run.
         pointer = QtGui.QPointingDevice.primaryPointingDevice()
         for kind in (QtCore.QEvent.Type.MouseButtonPress,
                      QtCore.QEvent.Type.MouseButtonRelease):
@@ -204,15 +267,9 @@ class TheTextWraps(unittest.TestCase):
             self.skipTest("no grid pane layout in this fixture")
 
     def test_the_sentence_fills_the_pane_and_is_centred(self):
-        """Both halves, because each has its own way of going wrong: at
-        its sizeHint the text clips, and capped by a maximum it sits
-        against the left margin."""
+        """Both halves, each with its own way of going wrong - at its sizeHint the text clips, capped by a maximum it sits left - measured on a DETACHED page, since `resize` on a managed layout child is undone by the next `activate()`. ▸r/label-centres-itself"""
         for width in (900, 500, 250):
             with self.subTest(width=width):
-                # DETACHED, because `resize` on a managed layout child
-                # is undone by the next activate() - which is how this
-                # test first passed while measuring a different width
-                # (research.md > Qt widgets, views & painting).
                 page = empty_state.EmptyPage()
                 self.addCleanup(page.deleteLater)
                 page.say(self.panel, empty_state.NOTHING_HERE, "Metal")
@@ -263,8 +320,7 @@ class OnlyOneFaceIsUp(unittest.TestCase):
         self.assertEqual(["list"], self._shown())
 
     def test_a_view_mode_change_does_not_dismiss_a_blank(self):
-        """`show_table` runs on a view-mode switch and must not be the
-        thing that decides a blank is over - only the model is."""
+        """`show_table` runs on a view-mode switch and must not be the thing that decides a blank is over - only the model is."""
         empty_state.page(self.panel)
         grid.apply_grid_face(self.panel, True)
         grid.show_table(self.panel, True)

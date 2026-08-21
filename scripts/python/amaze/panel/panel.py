@@ -3526,6 +3526,12 @@ class MatLibPanel(QtWidgets.QWidget):
         """The empty state's Show All button."""
         self._stand_on_all_category()
 
+    def clear_favourites_filter(self) -> None:
+        """The favourites blank's Show All button: uncheck the star chip and its own `toggled` handler carries the change to the active context - `toggled` fires on a programmatic setChecked, unlike the filter box's `textEdited` one verb up."""
+        chip = getattr(self, "cb_favsonly", None)
+        if chip is not None:
+            chip.setChecked(False)
+
     def clear_filter_box(self) -> None:
         """The empty state's Clear Search button."""
         box = getattr(self, "line_filter", None)

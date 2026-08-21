@@ -1,9 +1,4 @@
-"""THE EMPTY STATE ENGINE - which blank the grid is showing.
-
-Words in the UI text register; a SIBLING of the two grid
-views and never an overlay, so `grid.apply_grid_face` owns all three
-visibilities and nothing here positions anything (devlog 480).
-"""
+"""THE EMPTY STATE ENGINE - which blank the grid is showing: a SIBLING of the two grid views whose visibilities `grid.apply_grid_face` owns (nothing here positions anything), words in the UI text register, and every `SHARED` row is (headline, sentence, button label, verb) with a blank verb meaning no button (devlog 480)."""
 from PySide6 import QtCore, QtWidgets
 
 from amaze.helpers import theme
@@ -12,12 +7,11 @@ from amaze.panel import grid
 NOTHING_YET = "nothing-yet"
 NO_MATCH = "nothing-matches"
 NOTHING_HERE = "nothing-here"
+NO_FAVOURITES = "no-favourites"
 UNREACHABLE = "unreachable"
 
 MAX_QUOTED = 24                 # the quoted search is unbounded input
 
-#: (headline, sentence, button label, verb); a blank verb means no
-#: button.
 SHARED = {
     NO_MATCH: (
         'Nothing matches "%s"',
@@ -27,6 +21,10 @@ SHARED = {
         'Nothing in "%s"',
         "Your other categories still have %s in them.",
         "Show All", "show_all_categories"),
+    NO_FAVOURITES: (
+        "No favorites yet",
+        "Click the star on a tile to favorite it.",
+        "Show All", "clear_favourites_filter"),
     UNREACHABLE: (
         "Can't read that folder",
         "%s did not answer. It may be a drive that is not mounted, or "
@@ -45,8 +43,7 @@ def _elide(text: str) -> str:
 
 
 def verdict(panel) -> tuple:
-    """(blank, detail) for the current section, or (None, "") - read
-    off the VIEW, whose proxy answers both counts."""
+    """(blank, detail) for the current section, or (None, "") - read off the VIEW, whose proxy answers both counts."""
     view = grid.visible_view(panel)
     if view is None:
         return (None, "")
@@ -74,12 +71,33 @@ def verdict(panel) -> tuple:
             search = ""
     if search:
         return (NO_MATCH, search)
+    if _favourites_only(panel) and not _any_favourite(source):
+        return (NO_FAVOURITES, "")
     return (NOTHING_HERE, _current_category(panel))
 
 
+def _favourites_only(panel) -> bool:
+    """Is the toolbar's favourites star down? Read defensively, like the search box above - a deleted chip answers RuntimeError."""
+    chip = getattr(panel, "cb_favsonly", None)
+    if chip is None:
+        return False
+    try:
+        return bool(chip.isChecked())
+    except RuntimeError:
+        return False
+
+
+def _any_favourite(source) -> bool:
+    """Does ANY row of `source` carry a star? Separates a library with no favourites at all (its own blank) from a category that merely holds none of them (the category blank still explains that one, and its Show All lands on the favourites)."""
+    role = getattr(source, "FavoriteRole", None)
+    if role is None:
+        return True    # a model with no star column cannot claim "no favorites yet"
+    return any(source.index(row, 0).data(role)
+               for row in range(source.rowCount()))
+
+
 def _unreadable_folder(panel) -> str:
-    """The first folder the File model could not read, or "" - its only
-    reader, and without it a dead drive looks like an empty one."""
+    """The first folder the File model could not read, or "" - its only reader, and without it a dead drive looks like an empty one."""
     if getattr(panel, "current_section", "") != "file":
         return ""
     model = getattr(panel, "file_files_model", None)
@@ -106,7 +124,7 @@ def _current_category(panel) -> str:
 
 
 def words_for(panel, blank: str, detail: str) -> tuple:
-    """(headline, sentence, button label, verb) with %s filled in."""
+    """(headline, sentence, button label, verb) with %s filled in - UNREACHABLE quotes a path whole, the rest take the section's noun."""
     section = panel._section() if hasattr(panel, "_section") else None
     table = dict(SHARED)
     declared = getattr(section, "EMPTY", None) or {}
@@ -119,7 +137,6 @@ def words_for(panel, blank: str, detail: str) -> tuple:
     if "%s" in headline:
         headline = headline % _elide(detail)
     if "%s" in sentence:
-        # UNREACHABLE quotes a path whole; the rest take the noun.
         filler = detail if blank == UNREACHABLE \
             else getattr(section, "empty_noun", "items")
         sentence = sentence % filler
@@ -127,11 +144,7 @@ def words_for(panel, blank: str, detail: str) -> tuple:
 
 
 class EmptyPage(QtWidgets.QWidget):
-    """The words. NO geometry code, deliberately - no `setGeometry`, no
-    event filter, no `paintEvent`, and no
-    `WA_TransparentForMouseEvents`, which suppresses mouse delivery to
-    a widget AND its children (devlog 480).
-    """
+    """The words. NO geometry code, deliberately - no `setGeometry`, no event filter, no `paintEvent`, and never `WA_TransparentForMouseEvents`. ▸r/transparent-for-mouse (devlog 480)"""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -146,18 +159,12 @@ class EmptyPage(QtWidgets.QWidget):
         self._text = QtWidgets.QLabel("", self)
         for label in (self._head, self._text):
             label.setWordWrap(True)
-            # THE LABEL CENTRES ITS OWN TEXT, and the label fills the
-            # pane. Neither layout route works: the alignment argument
-            # hands a wrapping label its sizeHint width so it clips,
-            # and without it a widget capped by `setMaximumWidth` sits
-            # at the cell's LEFT edge - both measured live.
             label.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
-                               | QtCore.Qt.AlignmentFlag.AlignTop)
+                               | QtCore.Qt.AlignmentFlag.AlignTop)    # the label fills the pane and CENTRES ITS OWN TEXT - neither layout route works ▸r/label-centres-itself
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
         self._btn = QtWidgets.QPushButton("", self)
-        # The flag IS right here - a button takes its own width.
         outer.addWidget(self._btn, 0,
                         QtCore.Qt.AlignmentFlag.AlignHCenter)
         outer.addStretch(1)
@@ -213,8 +220,7 @@ def refresh(panel) -> None:
 
 
 def track(panel) -> None:
-    """Watch the model, so all six paths that change the row count
-    reach `refresh` without naming themselves (devlog 480)."""
+    """Watch the model, so all six paths that change the row count reach `refresh` without naming themselves (devlog 480)."""
     view = grid.visible_view(panel)
     model = view.model() if view is not None else None
     if model is None:
