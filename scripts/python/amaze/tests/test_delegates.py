@@ -154,7 +154,7 @@ class _RectSpy(QtGui.QPainter):
 
 
 class CardFillsItsCellTest(unittest.TestCase):
-    """A tile with no subtitle must not have a shorter card: grid_cell_size always reserves both text heights while _paint sized the card from the text it was about to DRAW, so a material with an empty renderer label got a card - and a category colour band - 18px shorter than its own cell, bare grid background underneath, beside normal tiles at every slider size (measured at ts=128, cell height 180: card bottom 179 with a subtitle, 161 without)."""
+    """A tile with no subtitle must not have a shorter card: grid_cell_size always reserves both text heights while _paint sized the card from the text it was about to DRAW, so a material with an empty renderer label got a card - and a category colour band - 18px shorter than its own cell, bare grid background underneath, beside normal tiles at every slider size (measured at ts=128, cell height 180: card bottom 179 with a subtitle, 161 without). `grid_cell_size` reserves `fm_name.height() + fm_rend.height()` while `_paint` sized from `h_name + (h_rend if renderer else 0)`, and `library.renderer_label` answers "" for a renderer it does not know - which is how a real row reaches the short branch."""
 
     SUBTITLE = QtCore.Qt.ItemDataRole.UserRole + 3
 

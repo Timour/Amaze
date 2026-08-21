@@ -487,7 +487,7 @@ class TheOnlineWorldIsASKEDLikeAnySection(AreaBindingCase):
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
 
-        online = panel.matx_online_model  # SEEDED, never waited for: the fixture blocks the network so the catalogue is empty and there is no category to click, and a skipTest on that would be exactly the dead cover this module opens on - `_all` is the model's own cache, test_generator seeds it the same way, and the source is read back off the model rather than named because entering the world sets a source filter and a record outside it is filtered away before `categories()` ever sees it
+        online = panel.matx_online_model  # SEEDED, never waited for: the fixture blocks the network so the catalogue is empty and there is no category to click, and a skipTest on that would be dead cover, a test that goes quiet the moment its fixture thins out - `_all` is the model's own cache, test_generator seeds it the same way, and the source is read back off the model rather than named because entering the world sets a source filter and a record outside it is filtered away before `categories()` ever sees it
         previous = online._all
         online._all = [matx_sources.MatxRecord(
             source=online._source_filter, uid="a12-probe",

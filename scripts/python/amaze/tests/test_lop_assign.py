@@ -1,4 +1,4 @@
-"""LOP material assignment, tested headlessly: the USD half of a viewport drop, built directly out of real stages, real bindings and real assignmaterial nodes rather than reached by dragging a tile onto a Solaris viewport."""
+"""LOP material assignment, tested headlessly: the USD half of a viewport drop, built directly out of real stages, real bindings and real assignmaterial nodes rather than reached by dragging a tile onto a Solaris viewport - which is worth the trouble because the debug log counts drag as the app's single largest activity."""
 
 import os
 import sys

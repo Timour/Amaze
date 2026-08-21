@@ -476,7 +476,7 @@ class MenuWiringTest(unittest.TestCase):
                               "%s's proxy is not over its own model" % key)
 
     def test_every_section_model_answers_the_icon_api(self):
-        """One panel handler serves all five, so all five must speak the same two methods - whatever they store the choice in. - What survives in this file is what is about tile ICONS: four menu tests were retired 2026-08-03 with the six per-section handlers they drove (Customize reaching the handler, Category not come back, Info stayed out of Color and Node, the selection law greying rather than hiding), and test_grid_menu.py drives every context's real menu through the one builder and asserts the whole rendering instead."""
+        """One panel handler serves all five, so all five must speak the same two methods - whatever they store the choice in. - What survives in this file is what is about tile ICONS: four menu tests were retired 2026-08-03 with the six per-section handlers they drove - `_material_rc_menu` and its siblings - which checked that Customize reached the handler, that Category had not come back, that Info stayed out of Color and Node, and that the selection law greyed rather than hid; test_grid_menu.py drives every context's real menu through the one builder and asserts the whole rendering instead."""
         for model_attr, _proxy in self.SECTIONS:
             model = getattr(self.panel, model_attr, None)
             for method in ("tile_icon", "set_tile_icon"):

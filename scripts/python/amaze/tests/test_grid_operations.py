@@ -125,7 +125,7 @@ class OnlyASectionThatRENDERSOffersUpdatePreview(unittest.TestCase):
 class DeleteIsONEShapeWithFourSetsOfWORDS(unittest.TestCase):
     """Delete was written four times, and every copy had the same shape: count the DISTINCT source rows, ask with a sentence that says what goes and how many, remove HIGHEST ROW FIRST because a removal shifts everything below it, then refresh the sidebar because a category may just have emptied. - Only the sentence is really per-section - a material's files, a node asset's networks, a snippet's applied code, a palette's applied ramps. The descending order is the part a fifth copy would get wrong, silently: ascending removal deletes the wrong rows and only for multi-selections."""
 
-    DELETING = ("MaterialSection", "CopSection", "CodeSection",
+    DELETING = ("MaterialSection", "CopSection", "CodeSection",   # the contexts whose Delete removes a LIBRARY record - File is deliberately absent, its rows being files on disk and the section having no Delete at all
                 "GradientSection")
 
     def test_the_FILE_section_offers_no_delete_at_all(self):

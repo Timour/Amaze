@@ -21,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
 class TheWheelIsONEEngineForBothViews(unittest.TestCase):
-    """One scroll path, two views, both axes - the handler was Y-ONLY once, letting X fall through to Qt's per-item stepping, so sideways ran accelerated beside up and down once list rows grew wider than the panel, and no test in this suite constructed a QWheelEvent at all before 2026-08-04. Built on BARE views: with no panel above them the handler falls back to `SCROLL_SPEED`, so the arithmetic is a fixed number rather than this machine's preference, and the numbers below are the contract."""
+    """One scroll path, two views, both axes - the handler was Y-ONLY once, letting X fall through to Qt's per-item stepping, so sideways ran accelerated beside up and down once list rows grew wider than the panel, and no test in this suite constructed a QWheelEvent at all before 2026-08-04. Built on BARE views: with no panel above them the handler falls back to `SCROLL_SPEED`, so the arithmetic is a fixed number rather than this machine's `scroll_speed` preference, and the numbers below are the contract. Step 2a of the table migration."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 

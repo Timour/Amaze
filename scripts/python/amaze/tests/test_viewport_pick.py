@@ -144,7 +144,7 @@ class TestPickCoordinateSpace(unittest.TestCase):
         for gl_y in (0, 2, 140, 277, 279):
             vp = _Viewport(h=self.HEIGHT, scale=self.SCALE)
             _Version(self, 21)
-            _Platform(self, "macos")  # the OS is pinned for the same reason the BUILD is: this asserts the workaround FIRES, and it is macOS-only, so without the pin the test reads the real host and can only pass on a Mac
+            _Platform(self, "macos")  # the OS is pinned for the same reason the BUILD is: this asserts the workaround FIRES, and it is macOS-only, so without the pin the test reads the real host and can only pass on a Mac - which is how it failed on its first Windows run
             dragengine._pick(_Viewer(vp), "obj", 100, gl_y,
                              self.SCALE, self.HEIGHT)
             self.assertEqual(
