@@ -31,6 +31,25 @@ amaze_houdini_roots() {
         for d in /Applications/Houdini/Houdini*/Frameworks/Houdini.framework/Versions/Current/Resources; do
             if [ -x "$d/bin/hython" ]; then found="$found$d"$'\n'; fi
         done
+        # Linux: /opt/hfsMAJOR.MINOR is SideFX's symlink to the current
+        # build, so the bare glob matches every install twice - keep the
+        # symlink (a hard-coded build number goes stale, INSTALL.md 0d)
+        # and drop any real directory a kept symlink already resolves to.
+        local resolved covered=""
+        for d in /opt/hfs*; do
+            if [ -L "$d" ] && [ -x "$d/bin/hython" ]; then
+                found="$found$d"$'\n'
+                resolved="$(cd "$d" 2>/dev/null && pwd -P)"
+                covered="$covered$resolved"$'\n'
+            fi
+        done
+        for d in /opt/hfs*; do
+            if [ ! -L "$d" ] && [ -x "$d/bin/hython" ]; then
+                resolved="$(cd "$d" 2>/dev/null && pwd -P)"
+                case "$covered" in *"$resolved"$'\n'*) continue ;; esac
+                found="$found$d"$'\n'
+            fi
+        done
     fi
     if [ -n "$found" ]; then printf '%s' "$found" | sort -V; fi
 }
@@ -50,22 +69,23 @@ amaze_hython() {
     fi
 }
 
-# Package files that may define $AMAZE, most authoritative LAST - on
-# Windows the pref dir follows $HOME, so a machine exporting it leaves
-# the Documents copy present, readable and never loaded (INSTALL.md).
+# Package files that may define $AMAZE, most authoritative LAST and ONE
+# list for every platform - a dev machine is any machine, and the per-OS
+# branches put the Linux pref-dir glob inside the WINDOWS branch, so
+# Linux resolved nothing and every sync there needed $AMAZE by hand
+# (practice.md > p/linux-tooling-blind). The globs that miss on a
+# platform simply match no file: Documents is the Windows stray, the
+# /Applications and ~/Library pair is macOS, and ~/houdini* is the pref
+# dir on BOTH Windows (via Git Bash $HOME) and Linux - it stays last so
+# the real pref dir outranks the Documents copy (INSTALL.md).
 amaze_package_files() {
     local f
-    if amaze_is_windows; then
-        for f in "$HOME"/Documents/houdini*/packages/Amaze.json \
-                 "$HOME"/houdini*/packages/Amaze.json; do
-            if [ -f "$f" ]; then printf '%s\n' "$f"; fi
-        done
-    else
-        for f in /Applications/Houdini/sidefx_packages/Amaze.json \
-                 "$HOME"/Library/Preferences/houdini/*/packages/Amaze.json; do
-            if [ -f "$f" ]; then printf '%s\n' "$f"; fi
-        done
-    fi
+    for f in "$HOME"/Documents/houdini*/packages/Amaze.json \
+             /Applications/Houdini/sidefx_packages/Amaze.json \
+             "$HOME"/Library/Preferences/houdini/*/packages/Amaze.json \
+             "$HOME"/houdini*/packages/Amaze.json; do
+        if [ -f "$f" ]; then printf '%s\n' "$f"; fi
+    done
 }
 
 # Windows ships stub aliases that exist, are executable, and fail when

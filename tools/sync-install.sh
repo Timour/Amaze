@@ -26,7 +26,18 @@ for e in json.load(open(sys.argv[1])).get('env', []):
     done < <(amaze_package_files)
 fi
 if [ -z "$install" ] || [ ! -d "$install" ]; then
-    echo "sync-install: cannot find the install (set \$AMAZE)" >&2
+    echo "sync-install: cannot find the install." >&2
+    if [ -n "$install" ]; then
+        echo "  \$AMAZE resolved to a path that is not a directory:" >&2
+        echo "    $install" >&2
+    else
+        echo "  \$AMAZE is not set, and no readable Amaze.json package" >&2
+        echo "  declared it. Package files found:" >&2
+        pkgs="$(amaze_package_files)"
+        if [ -n "$pkgs" ]; then printf '    %s\n' $pkgs >&2
+        else echo "    (none, on any platform path)" >&2; fi
+        echo "  Wire the package (INSTALL.md step 2) or export \$AMAZE." >&2
+    fi
     exit 1
 fi
 
