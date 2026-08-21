@@ -178,7 +178,10 @@ check "a technical commit message passes" 0 $?
 
 echo "REFUSES - a message carrying more than the change"
 # These name nobody, so the identity list cannot see them. Every one is
-# a shape found in the published history by audit.
+# a SHAPE found in the published history by audit - and the wording is
+# invented to fit that shape, never lifted. A fixture quoting a real
+# report publishes it here instead, which is the leak this file exists
+# to catch.
 
 printf 'Widen the tick column\n\nHis call: the mark decides the width.\n' > msg.txt
 "$here/commit-msg" msg.txt >/dev/null 2>&1
@@ -201,7 +204,7 @@ printf 'Widen the tick column\n\nThe width rule is the one we\nagreed on for eve
 "$here/commit-msg" msg.txt >/dev/null 2>&1
 check "an attribution straddling a line break is refused" 1 $?
 
-printf 'Widen the tick column\n\nThe field was restyled, reported as "the thumbnails\nare almost useless" during the pass.\n' > msg.txt
+printf 'Widen the tick column\n\nThe field was restyled, reported as "the swatch\nrenders upside down" during the pass.\n' > msg.txt
 "$here/commit-msg" msg.txt >/dev/null 2>&1
 check "a quotation straddling a line break is refused" 1 $?
 

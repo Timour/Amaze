@@ -151,7 +151,7 @@ def identity_names() -> tuple:
 
 
 def identity_pattern():
-    """Those names with any dotted tail a writer appends, in any case, and NOT inside a longer word - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`. None when there is nothing to match, so a caller never compiles an empty alternation that hits every offset."""
+    """Those names with any dotted tail a writer appends, in any case, and NOT inside a longer word - Houdini stamps a lowercased host with a `.local` tail where `socket.gethostname()` answers the bare mixed-case one. None when there is nothing to match, so a caller never compiles an empty alternation that hits every offset."""
     names = identity_names()
     if not names:
         return None
