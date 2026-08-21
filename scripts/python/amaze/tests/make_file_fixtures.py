@@ -1,40 +1,24 @@
-"""Build the File-section fixture folder: one tiny file per KIND.
-
-    hython make_file_fixtures.py
-
-Run it when the fixture set needs to change; the output is COMMITTED,
-so the suite never generates anything at test time.
-
-WHY GENERATED, NOT COPIED. The File section's locations on a real
-machine are the user's own photograph and texture archives, and a
-fixture must never be a copy of those - `tests/assets/` is tracked and
-publishes to the public repo. Every file here is drawn from a formula
-in this script: a 32x32 colour ramp, a two-primitive box, an empty
-scene. Nothing depicts anything.
-
-Every image format goes through Houdini's own `iconvert`, which is the
-same decoder chain the Thumbnail Engine's CONVERT provider uses - so
-these exercise the real route, including the two formats that have
-their own probed branches (`.exr` and `.rat`, research.md ▸ Houdini
-image writing).
-"""
+"""Build the tracked fixture assets - one tiny file per KIND, plus the scene test_renders loads - as `USER=amaze hython make_file_fixtures.py`, the neutral account being something Houdini resolves at startup and this script cannot set for itself (▸r/author-stamp); the output is COMMITTED so the suite generates nothing at test time, and this exits 1 naming the file if anything it wrote carries an account name, a machine name or a home directory."""
 import os
+import pwd
+import re
 import shutil
+import socket
 import subprocess
 import sys
+import tempfile
 
 import hou
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "assets", "files")
+SCENES = os.path.join(HERE, "assets", "houdini")
 
-#: Every image format the File section recognises, written from one
-#: source PNG so a decode difference is the only thing that can differ.
-IMAGE_FORMATS = ("jpg", "tif", "tga", "bmp", "exr", "hdr", "rat")
+NEUTRAL = b"amaze"
 
-#: Names that have broken extension matching before. Contents do not
-#: matter; the NAME is the fixture.
-EDGE_NAMES = (
+IMAGE_FORMATS = ("jpg", "tif", "tga", "bmp", "exr", "hdr", "rat")   # every image format the File section recognises, written from one source PNG so a decode difference is the only thing that can differ
+
+EDGE_NAMES = (   # names that have broken extension matching before - contents do not matter, the NAME is the fixture
     "UPPERCASE EXTENSION.PNG",     # matching is case-insensitive
     "with spaces.png",             # quoting in every path that joins it
     "wíth-únicøde.png",            # non-ASCII, NFD/NFC on macOS
@@ -44,12 +28,13 @@ EDGE_NAMES = (
 def iconvert(src: str, dest: str) -> bool:
     tool = os.path.join(hou.getenv("HFS") or "", "bin", "iconvert")
     try:
-        subprocess.run([tool, src, dest], check=True,
+        subprocess.run([tool, os.path.basename(src), os.path.basename(dest)],
+                       check=True, cwd=os.path.dirname(dest) or ".",
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except (OSError, subprocess.CalledProcessError) as exc:
         print("  !! %s failed: %s" % (os.path.basename(dest), exc))
         return False
-    return os.path.exists(dest)
+    return os.path.exists(dest)  # BASENAMES from the destination directory: iconvert records its own command line inside the image it writes, so absolute paths here publish the operator's home directory (verify_no_home_paths is the backstop)
 
 
 def make_source_png(path: str) -> None:
@@ -79,15 +64,115 @@ def make_geometry(folder: str) -> None:
         geo.destroy()
 
 
+def neutral_scene_vars(scratch: str) -> None:
+    """Point every path variable Houdini stamps into a saved scene at `scratch` - HIP and HIPFILE follow the save location, but JOB and POSE are inherited from the session and carry the operator's home directory into the file otherwise."""
+    for name in ("JOB", "POSE"):
+        try:
+            hou.hscript("set -g %s = '%s'" % (name, scratch))
+        except hou.Error:
+            pass
+
+
+def stand_in(value: bytes) -> bytes:
+    """The replacement for one stamped identity, at the SAME byte length - which is the whole constraint, a shorter one being a corrupt file. ▸r/author-stamp"""
+    if len(value) <= len(NEUTRAL):
+        return NEUTRAL[:len(value)]
+    return NEUTRAL + b"-" * (len(value) - len(NEUTRAL))
+
+
+def redact_identity(path: str) -> int:
+    """Overwrite this machine's account and host names wherever `path` carries them, in place and at the same byte length. Returns how many were replaced. ▸r/author-stamp"""
+    with open(path, "rb") as handle:
+        blob = handle.read()
+    replaced = []
+    def swap(match):
+        replaced.append(match.group(0))
+        return stand_in(match.group(0))
+    out = identity_pattern().sub(swap, blob)
+    if replaced:
+        with open(path, "wb") as handle:
+            handle.write(out)
+    return len(replaced)
+
+
+def redact_tree(folder: str) -> int:
+    total = 0
+    for root, _dirs, names in os.walk(folder):
+        for name in names:
+            total += redact_identity(os.path.join(root, name))
+    return total
+
+
 def make_scenes(folder: str) -> None:
-    """All three scene extensions - each is its own KIND_HIP label
-    ('Hiplc', not 'HIPLC'), and matched_extension picks the longest."""
+    """All three scene extensions - each is its own KIND_HIP label ('Hiplc', not 'HIPLC'), and matched_extension picks the longest. Saved in a scratch directory and moved, because the save location is written INTO the file."""
+    scratch = tempfile.mkdtemp(prefix="amaze_fixture_scene_")
+    neutral_scene_vars(scratch)
     for name in ("empty.hip", "empty.hiplc", "empty.hipnc"):
         try:
-            hou.hipFile.save(os.path.join(folder, name),
-                             save_to_recent_files=False)
-        except hou.Error as exc:
+            staged = os.path.join(scratch, name)
+            hou.hipFile.save(staged, save_to_recent_files=False)
+            shutil.move(staged, os.path.join(folder, name))
+        except (hou.Error, OSError) as exc:
             print("  !! %s failed: %s" % (name, exc))
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
+def identity_pattern():
+    """This machine's real account and host names, with any dotted tail a writer appends and in any case - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`. Read from the password database, NEVER from `USER`: a run passes a neutral one, and taking it from the environment would match the stand-in and leave the real name."""
+    names = {pwd.getpwuid(os.getuid()).pw_name,
+             socket.gethostname().split(".")[0]}
+    alternatives = b"|".join(
+        re.escape(name.encode("utf-8"))
+        for name in sorted(names, key=len, reverse=True)
+        if len(name) > 2 and name.encode("utf-8") != NEUTRAL)
+    return re.compile(rb"(?:" + alternatives + rb")(?:\.[A-Za-z0-9-]+)*",
+                      re.IGNORECASE)
+
+
+def make_materials_scene(folder: str) -> None:
+    """The scene test_renders loads: two Karma materials under `/mat`, so an assertion that the load brought materials with it has something to find."""
+    scratch = tempfile.mkdtemp(prefix="amaze_fixture_mat_")
+    hou.hipFile.clear(suppress_save_prompt=True)
+    neutral_scene_vars(scratch)   # AFTER the clear, which puts every global variable back to the session's own
+    mat = hou.node("/mat")
+    for name in ("fixture_material_a", "fixture_material_b"):
+        mat.createNode("materialbuilder", name)   # flagged Material by construction, wiring not required ▸r/material-flag
+    staged = os.path.join(scratch, "Materials.hiplc")
+    try:
+        hou.hipFile.save(staged, save_to_recent_files=False)
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+        shutil.move(staged, os.path.join(folder, "Materials.hiplc"))
+    except (hou.Error, OSError) as exc:
+        print("  !! Materials.hiplc failed: %s" % exc)
+    shutil.rmtree(scratch, ignore_errors=True)
+
+
+def verify_no_identity(folder: str) -> int:
+    """Refuse to leave a fixture carrying a home path, an account name or a machine name. Returns how many carried one. ▸r/author-stamp"""
+    home = re.compile(rb"(?:/Users/|/home/|C:\\Users\\)[A-Za-z0-9_.-]+")
+    stamped = re.compile(rb"[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+\.[A-Za-z]{2,}")
+    mine = identity_pattern()
+    bad = []
+    for root, _dirs, names in os.walk(folder):
+        for name in names:
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, folder)
+            try:
+                with open(path, "rb") as handle:
+                    blob = handle.read()
+            except OSError:
+                continue
+            for found in set(home.findall(blob)):
+                text = found.decode("utf-8", "replace")
+                if not text.endswith(("/someone", "/someone-else", "/projects")):
+                    bad.append((rel, text))
+            for found in set(stamped.findall(blob)) | set(mine.findall(blob)):
+                if found != stand_in(found):
+                    bad.append((rel, found.decode("utf-8", "replace")))
+    for rel, text in sorted(set(bad)):
+        print("  !! %s carries %s" % (rel, text))
+    return len(set(bad))
 
 
 def main() -> int:
@@ -112,10 +197,10 @@ def main() -> int:
 
     make_geometry(OUT)
     make_scenes(OUT)
+    make_materials_scene(SCENES)
+    print("Materials.hiplc")
 
-    # KIND_OTHER: recognised by nothing, must still list and draw an
-    # OS icon rather than being skipped.
-    with open(os.path.join(OUT, "readme.txt"), "w") as handle:
+    with open(os.path.join(OUT, "readme.txt"), "w") as handle:   # KIND_OTHER: recognised by nothing, must still list and draw an OS icon rather than being skipped
         handle.write("fixture\n")
     shutil.copy2(png, os.path.join(nested, "nested.png"))
 
@@ -123,6 +208,17 @@ def main() -> int:
     total = sum(os.path.getsize(os.path.join(OUT, f))
                 for f in files if os.path.isfile(os.path.join(OUT, f)))
     print("\n%d entries, %.1f KB total" % (len(files), total / 1024.0))
+
+    redacted = redact_tree(OUT) + redact_tree(SCENES)
+    print("redacted %d stamped identit%s"
+          % (redacted, "y" if redacted == 1 else "ies"))
+    carried = verify_no_identity(OUT) + verify_no_identity(SCENES)
+    if carried:
+        print("REFUSED: %d fixture(s) still carry an account name, a "
+              "machine name or a home directory - not publishable, fix "
+              "the writer above" % carried)
+        return 1
+    print("verified: no fixture carries an identity or a home directory")
     return 0
 
 
