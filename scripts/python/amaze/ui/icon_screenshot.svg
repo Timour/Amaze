@@ -4,36 +4,26 @@
    version="1.1"
    xml:space="preserve"
    xmlns="http://www.w3.org/2000/svg"
-   xmlns:svg="http://www.w3.org/2000/svg"><!-- HIP capture icon (download arrow in a disc), from Screenshoot.svg
-       in the design file. Colors are load-time tint targets:
-       #5d7abd = icon body, #2d2d2d = punch-out - the same pair the
-       Library gear uses, so IconMenuButton tints this identically.
+   xmlns:svg="http://www.w3.org/2000/svg"><!-- HIP capture icon (solid picture glyph: framed photo, sun and
+       slope cut as negative space), redrawn 2026-08-21. The body is a
+       load-time tint target: #5d7abd, the same target the Library gear
+       uses, so IconMenuButton tints this identically. No punch-out
+       colour any more - the glyph's interior is negative space, and
+       state feedback is the button's own chip.
 
-       BARE ARTWORK ONLY, matching icon_library.svg. The design file
-       also draws the cube frame and a pressed rectangle around this;
-       IconMenuButton produces hover and pressed itself (grey chip +
-       tint swap), so an icon asset here carries one state, no ids and
-       no hidden elements.
+       BARE ARTWORK ONLY, matching icon_library.svg. IconMenuButton
+       produces hover and pressed itself (grey chip + tint swap), so an
+       icon asset here carries one state, no ids and no hidden
+       elements.
 
-       The viewBox is TIGHTENED to the artwork rather than left at the
-       design file's 47x47 canvas: the disc occupied 54% of that frame
-       while every other toolbar icon fills 81-90% of its own, so it
-       rendered visibly smaller in the same 30px button. Measured, not
-       eyeballed - see the ink-extent test. --><path
-     fill="#5d7abd"
-     d="M 36 23.5 C 36 30.403561 30.403561 36 23.5 36 C 16.596441 36 11 30.403561 11 23.5 C 11 16.596439 16.596441 11 23.5 11 C 30.403561 11 36 16.596439 36 23.5 Z" /><g
-     style="fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
-     transform="matrix(0.74755404,0,0,0.75238377,14.529352,14.471395)"><rect
-       x="3"
-       y="3"
-       width="18"
-       height="18"
-       rx="2"
-       ry="2"
-       style="stroke:#2d2d2d;stroke-opacity:1;fill:none;stroke-width:2.66679106;stroke-dasharray:none" /><circle
-       cx="7.6839252"
-       cy="7.6839252"
-       r="2.3160746"
-       style="fill:#2d2d2d;fill-opacity:1;stroke:none;stroke-width:3.08824;stroke-dasharray:none;stroke-opacity:1" /><polyline
-       points="21 15 16 10 5 21"
-       style="stroke:#2d2d2d;stroke-opacity:1;fill:none;stroke-width:2.66679106;stroke-dasharray:none" /></g></svg>
+       The viewBox stays TIGHTENED to the artwork rather than the
+       design canvas, so it renders the same optical size as its
+       neighbours in the same 30px button. Measured, not eyeballed -
+       see the ink-extent test. --><g
+     style="fill:#5d7abd;fill-opacity:1;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round"
+     transform="matrix(1.3887797,0,0,1.3888826,6.8352256,6.8339863)"><path
+       style="stroke:none;stroke-width:2.66679"
+       d="m 5.0001919,2.9995439 c -1.108,0 -2.0013186,0.8934511 -2.0013186,2.0014511 V 19.00077 c 0,0.98928 0.7128078,1.806559 1.6538311,1.9703 L 16.300065,9.3205991 a 1.4286163,1.4286163 0 0 1 2.02222,0 l 2.678004,2.6789849 V 5.000995 c 0,-1.108 -0.893318,-2.0014511 -2.001318,-2.0014511 z M 7.6834218,5.3670192 A 2.3160746,2.3160746 0 0 1 10.000875,7.6851721 2.3160746,2.3160746 0 0 1 7.6834218,10.000729 2.3160746,2.3160746 0 0 1 5.3685808,7.6851721 2.3160746,2.3160746 0 0 1 7.6834218,5.3670192 Z M 17.311175,12.352629 8.6657922,20.999625 H 18.998971 c 1.108,0 2.001318,-0.890855 2.001318,-1.998855 v -2.956749 z" /><g
+       style="opacity:1"><path
+         style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1"
+         d="M 21,15 16,10" /></g></g></svg>
