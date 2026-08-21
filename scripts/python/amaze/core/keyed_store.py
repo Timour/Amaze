@@ -973,6 +973,23 @@ def retire_prefix(preferences, prefix: str) -> dict:
     return results
 
 
+def retire_owner(preferences, uid: str) -> dict:
+    """A user is gone: drop every row tagged theirs from every user-tagged store, one guarded write each - the fan-out a user deletion announces, so a new per-user store joins by declaring itself. ▸p/store-declarations"""
+    results = {}
+    uid = str(uid)
+    if not uid:
+        return results
+    for spec in stores():
+        if not spec.user_tagged:
+            continue
+        store = open_store(spec, preferences)
+        doomed = [stored for stored in store.everyones()
+                  if untagged_key(spec, stored)[0] == uid]
+        if doomed:
+            results[spec.filename] = store.retire_stored(doomed)
+    return results
+
+
 
 
 def release(preferences=None) -> None:

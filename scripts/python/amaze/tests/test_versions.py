@@ -511,5 +511,75 @@ class TheWholeLoopThroughTheModelTest(unittest.TestCase):
             "signature exists to prevent")
 
 
+class DeletingAUser(unittest.TestCase):
+    """Deleting a user removes the record AND everything tagged theirs - favourites and registered folders - and only theirs (settled 2026-08-22: sweep, blank pointer on self-delete, last-user deletion allowed)."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+
+    def _become(self, uid):
+        self.prefs.library_user = uid
+
+    def test_delete_sweeps_only_their_tagged_rows(self):
+        from amaze.core import keyed_store, locations, users
+        anna = users.create(self.prefs, "Anna")
+        bo = users.create(self.prefs, "Bo")
+        self._become(anna)
+        self.assertTrue(locations.set_favourite(self.prefs, "m-anna", True))
+        self.assertTrue(locations.register(
+            self.prefs, os.path.join(self.prefs.dir, "anna-folder")))
+        self._become(bo)
+        self.assertTrue(locations.set_favourite(self.prefs, "m-bo", True))
+
+        self.assertTrue(users.delete(self.prefs, anna))
+
+        self.assertEqual({bo: "Bo"}, users.all_users(self.prefs))
+        favs = keyed_store.open_store(
+            locations.FAVOURITES_SPEC, self.prefs).everyones()
+        owners = {keyed_store.untagged_key(
+            locations.FAVOURITES_SPEC, key)[0] for key in favs}
+        self.assertEqual({bo}, owners,
+                         "the sweep left the deleted user's stars, or "
+                         "took the survivor's: %s" % favs)
+        records = keyed_store.open_store(
+            locations.SPEC, self.prefs).everyones()
+        owners = {keyed_store.untagged_key(
+            locations.SPEC, key)[0] for key in records}
+        self.assertNotIn(anna, owners,
+                         "the deleted user's registered folder survived")
+
+    def test_delete_answers_False_for_a_stranger(self):
+        from amaze.core import users
+        users.create(self.prefs, "Anna")
+        self.assertFalse(users.delete(self.prefs, "f" * 32))
+
+    def test_deleting_yourself_clears_this_machines_pointer(self):
+        from amaze.core import users
+        anna = users.create(self.prefs, "Anna")
+        users.create(self.prefs, "Bo")
+        self._become(anna)
+        self.assertTrue(users.delete(self.prefs, anna))
+        self.assertEqual("", str(self.prefs.library_user or ""),
+                         "the pointer still names the deleted user")
+        self.assertIsNone(users.current(self.prefs),
+                          "somebody was adopted silently - the ASK "
+                          "state is the picker's to resolve")
+
+    def test_the_last_deletion_returns_to_mint_and_a_stale_pointer_is_not_a_name(self):
+        from amaze.core import users
+        only = users.create(self.prefs, "Anna")
+        self._become(only)
+        self.assertTrue(users.delete(self.prefs, only))
+        self.assertEqual(users.MINT, users.first_run_state(self.prefs))
+
+        self._become(only)    # another machine still pointing at the dead UID
+        minted = users.current(self.prefs)
+        self.assertTrue(minted)
+        name = users.name_for(self.prefs, minted)
+        self.assertIn(name, users.PLACEHOLDER_NAMES,
+                      "the stale UID hex was minted as a NAME: %r"
+                      % name)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -906,5 +906,63 @@ class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
             "%s" % delays)
 
 
+class TheUserRowCreatesAndDeletes(unittest.TestCase):
+    """Preferences > User grew create and delete beside rename (settled 2026-08-22): the combo carries the picker's own create row, deletion sweeps everything tagged theirs, and the row goes blank on self-delete until somebody is picked."""
+
+    def test_the_user_row_offers_create_and_delete(self):
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog, user_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        p.library_user = users.create(p, "Cobalt")
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        combo = dlg.cbb_library_user
+        sentinel = user_dialog.UserPickerDialog.CREATE
+        rows = [combo.itemData(i) for i in range(combo.count())]
+        self.assertIn(sentinel, rows,
+                      "the row cannot create a user - the picker "
+                      "dialog's create entry is missing here")
+        self.assertEqual(sentinel, rows[-1],
+                         "the create entry is not the LAST row, so it "
+                         "reads as a user called Create")
+        self.assertTrue(dlg._btn_delete_user.isEnabled())
+
+    def test_creating_a_user_switches_to_them(self):
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        p.library_user = users.create(p, "Cobalt")
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        dlg.create_library_user("  Fern  ")
+        names = set(users.all_users(p).values())
+        self.assertEqual({"Cobalt", "Fern"}, names)
+        self.assertEqual("Fern", users.name_for(p, p.library_user),
+                         "creating did not switch this machine to the "
+                         "new user")
+        self.assertEqual("Fern", dlg.cbb_library_user.currentText())
+
+    def test_deleting_the_current_user_blanks_the_row(self):
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        first = users.create(p, "Cobalt")
+        users.create(p, "Sienna")
+        p.library_user = first
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        dlg.delete_library_user(first)
+        self.assertEqual({"Sienna"}, set(users.all_users(p).values()))
+        self.assertEqual("", str(p.library_user or ""))
+        self.assertEqual(-1, dlg.cbb_library_user.currentIndex(),
+                         "the row adopted somebody silently - blank "
+                         "until picked is the ASK rule")
+        self.assertFalse(dlg._btn_edit_user.isEnabled())
+        self.assertFalse(dlg._btn_delete_user.isEnabled())
+
+
 if __name__ == "__main__":
     unittest.main()

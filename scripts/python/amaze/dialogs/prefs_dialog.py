@@ -10,7 +10,7 @@ from PySide6.QtGui import QCloseEvent
 
 from amaze import branding
 from amaze.core import debug, library_policy, texture_library, users
-from amaze.dialogs import base_dialog
+from amaze.dialogs import base_dialog, user_dialog
 from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
@@ -117,17 +117,24 @@ class PrefsDialog(base_dialog.AssetDialog):
             for user_id, name in sorted(users.all_users(self._prefs).items(),
                                         key=lambda pair: pair[1].lower()):
                 combo.addItem(name, user_id)
+            combo.addItem("Create a new user...",
+                          user_dialog.UserPickerDialog.CREATE)    # the picker dialog's own create row, LAST so it never reads as a user
             combo.setCurrentIndex(max(combo.findData(uid), 0) if uid else -1)
         finally:
             combo.blockSignals(False)
         self._btn_edit_user.setEnabled(bool(uid))
+        self._btn_delete_user.setEnabled(bool(uid))
 
     def _pick_library_user(self, index: int) -> None:
-        """Switch this machine to the chosen user, which is what a second machine does instead of becoming a stranger."""
-        uid = self.cbb_library_user.itemData(index)
-        if uid:
-            users.adopt(self._prefs, uid)
+        """Switch this machine to the chosen user - or, on the create row, ask for a name and switch to the new one; which is what a second machine does instead of becoming a stranger."""
+        data = self.cbb_library_user.itemData(index)
+        if data == user_dialog.UserPickerDialog.CREATE:
+            self._ask_create_library_user()
+            return
+        if data:
+            users.adopt(self._prefs, data)
             self._btn_edit_user.setEnabled(True)
+            self._btn_delete_user.setEnabled(True)
 
     def rename_library_user(self, name: str) -> None:
         """Relink the current user's NAME; the UID is untouched so everything already tagged stays tagged - one field write, not a migration."""
@@ -144,6 +151,45 @@ class PrefsDialog(base_dialog.AssetDialog):
         dialog.exec()
         if not dialog.canceled:
             self.rename_library_user(dialog.name)
+
+    def create_library_user(self, name: str) -> None:
+        """Mint a user and switch this machine to them - creating-then-becoming is this row's case; a second machine picking ITSELF is the first-open picker's."""
+        uid = users.create(self._prefs, name)
+        if uid:
+            users.adopt(self._prefs, uid)
+        self._reload_library_users()
+
+    def _ask_create_library_user(self) -> None:
+        dialog = base_dialog.NameDialog("Create User", "")
+        dialog.exec()
+        if dialog.canceled:
+            self._reload_library_users()    # the combo is sitting on the create row; put the real selection back
+            return
+        self.create_library_user(dialog.name)
+
+    def delete_library_user(self, uid) -> None:
+        """Delete `uid` and everything tagged theirs; the row goes blank until somebody is picked - nobody is adopted silently."""
+        if users.delete(self._prefs, uid):
+            self._reload_library_users()
+
+    def _ask_delete_library_user(self) -> None:
+        uid = users.current(self._prefs)
+        if not uid:
+            return
+        name = users.name_for(self._prefs, uid)
+        answer = hou.ui.displayMessage(  # type: ignore
+            'Delete user "%s" from this library?' % name,
+            help="Their favorites and registered folders are removed "
+                 "from this library everywhere it syncs. A machine "
+                 'signed in as "%s" will ask who is using the library '
+                 "the next time it opens. This cannot be undone." % name,
+            buttons=("Delete User", "Cancel"),
+            default_choice=1, close_choice=1,
+            severity=hou.severityType.Warning,
+            title=branding.APP_NAME,
+        )
+        if answer == 0:
+            self.delete_library_user(uid)
 
     def set_allow_overwrite(self, checked: bool) -> None:
         """Write the overwrite policy to the LIBRARY; turning it ON is the direction that exposes other people's work, so that is the direction confirmed."""
@@ -237,12 +283,18 @@ class PrefsDialog(base_dialog.AssetDialog):
             "Change the name shown for this user. Only the name "
             "changes - your favorites and folders stay yours."))
         self._btn_edit_user.clicked.connect(self._ask_rename_library_user)
+        self._btn_delete_user = QtWidgets.QPushButton("Delete")
+        self._btn_delete_user.setToolTip(ui_helpers.tooltip_text(
+            "Remove this user from the library, along with their "
+            "favorites and registered folders. Asks first."))
+        self._btn_delete_user.clicked.connect(self._ask_delete_library_user)
         self._reload_library_users()
         self.cbb_library_user.currentIndexChanged.connect(
             self._pick_library_user)
         form.addRow(self._label("User"),
                     self._path_row(self.cbb_library_user,
-                                   self._btn_edit_user))
+                                   self._btn_edit_user,
+                                   self._btn_delete_user))
 
         self._add_divider(form)
         self.line_cache = QtWidgets.QLineEdit(
