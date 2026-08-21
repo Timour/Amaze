@@ -5,7 +5,6 @@ import shutil
 import socket
 import subprocess
 import sys
-import tempfile
 
 import hou
 
@@ -14,6 +13,15 @@ OUT = os.path.join(HERE, "assets", "files")
 SCENES = os.path.join(HERE, "assets", "houdini")
 
 NEUTRAL = b"amaze"
+SCRATCH_ROOT = "/tmp/amaze-fixture-build"   # a LITERAL neutral path, never tempfile.mkdtemp: a scene records the directory it was saved from, and macOS per-user temp is /var/folders/<hash>/ - an account-specific token the home-path patterns do not match
+
+OPAQUE = (".sc", ".rat", ".abc", ".usd", ".usdc")   # formats that compress or tile their payload, so a byte scan of the stored file proves nothing about what is inside ▸r/author-stamp
+
+CLEARED = {   # opaque files proven identity-free by writing them under two different accounts and comparing: identical bytes means the account never reached the payload ▸r/author-stamp
+    "ramp.rat": "byte-identical under two accounts (2026-08-21)",
+    "cube.abc": "differs by the same 2 timestamp bytes whether the account "
+                "changes or not (2026-08-21)",
+}
 
 IMAGE_FORMATS = ("jpg", "tif", "tga", "bmp", "exr", "hdr", "rat")   # every image format the File section recognises, written from one source PNG so a decode difference is the only thing that can differ
 
@@ -33,7 +41,7 @@ def iconvert(src: str, dest: str) -> bool:
     except (OSError, subprocess.CalledProcessError) as exc:
         print("  !! %s failed: %s" % (os.path.basename(dest), exc))
         return False
-    return os.path.exists(dest)  # BASENAMES from the destination directory: iconvert records its own command line inside the image it writes, so absolute paths here publish the operator's home directory (verify_no_home_paths is the backstop)
+    return os.path.exists(dest)  # BASENAMES from the destination directory: iconvert records its own command line inside the image it writes, so an absolute path here publishes the operator's home directory (`verify_no_identity` is the backstop, and the tool's own path is still absolute - a home-installed HFS would be caught there rather than avoided here)
 
 
 def make_source_png(path: str) -> None:
@@ -64,7 +72,7 @@ def make_geometry(folder: str) -> None:
 
 
 def neutral_scene_vars(scratch: str) -> None:
-    """Point every path variable Houdini stamps into a saved scene at `scratch` - HIP and HIPFILE follow the save location, but JOB and POSE are inherited from the session and carry the operator's home directory into the file otherwise."""
+    """Point JOB and POSE at `scratch` too - HIP and HIPFILE already follow the save location, and these two are inherited from the session, carrying the operator's preference directory into the file otherwise. Pass a NEUTRAL scratch: all four are written into the scene verbatim."""
     for name in ("JOB", "POSE"):
         try:
             hou.hscript("set -g %s = '%s'" % (name, scratch))
@@ -72,39 +80,49 @@ def neutral_scene_vars(scratch: str) -> None:
             pass
 
 
+def neutral_scratch(name: str) -> str:
+    """A build directory whose PATH names nobody, because a saved scene records the directory it came from. ▸r/author-stamp"""
+    path = os.path.join(SCRATCH_ROOT, name)
+    shutil.rmtree(path, ignore_errors=True)
+    os.makedirs(path)
+    return path
+
+
 def stand_in(value: bytes) -> bytes:
-    """The replacement for one stamped identity, at the SAME byte length - which is the whole constraint, a shorter one being a corrupt file. ▸r/author-stamp"""
-    if len(value) <= len(NEUTRAL):
-        return NEUTRAL[:len(value)]
+    """The replacement for one stamped identity, at the SAME byte length - which is the whole constraint, a shorter one being a corrupt file. Never a PREFIX of the neutral name: `amaz` truncated to `amaz` is a redaction that changes nothing. ▸r/author-stamp"""
+    if len(value) < len(NEUTRAL):
+        return b"x" * len(value)
     return NEUTRAL + b"-" * (len(value) - len(NEUTRAL))
 
 
 def redact_identity(path: str) -> int:
     """Overwrite this machine's account and host names wherever `path` carries them, in place and at the same byte length. Returns how many were replaced. ▸r/author-stamp"""
+    pattern = identity_pattern()
+    if pattern is None:
+        return 0
     with open(path, "rb") as handle:
         blob = handle.read()
     replaced = []
+
     def swap(match):
         replaced.append(match.group(0))
         return stand_in(match.group(0))
-    out = identity_pattern().sub(swap, blob)
+
+    out = pattern.sub(swap, blob)
     if replaced:
         with open(path, "wb") as handle:
             handle.write(out)
     return len(replaced)
 
 
-def redact_tree(folder: str) -> int:
-    total = 0
-    for root, _dirs, names in os.walk(folder):
-        for name in names:
-            total += redact_identity(os.path.join(root, name))
-    return total
+def redact_written(paths) -> int:
+    """Redact only the files this run WROTE - never a whole directory, which would reach third-party assets sitting beside them."""
+    return sum(redact_identity(p) for p in paths if os.path.isfile(p))
 
 
 def make_scenes(folder: str) -> None:
     """All three scene extensions - each is its own KIND_HIP label ('Hiplc', not 'HIPLC'), and matched_extension picks the longest. Saved in a scratch directory and moved, because the save location is written INTO the file."""
-    scratch = tempfile.mkdtemp(prefix="amaze_fixture_scene_")
+    scratch = neutral_scratch("scenes")
     neutral_scene_vars(scratch)
     for name in ("empty.hip", "empty.hiplc", "empty.hipnc"):
         try:
@@ -125,20 +143,27 @@ def real_account() -> str:
     return pwd.getpwuid(os.getuid()).pw_name
 
 
-def identity_pattern():
-    """This machine's real account and host names, with any dotted tail a writer appends and in any case - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`."""
+def identity_names() -> tuple:
+    """This machine's real account and host names, longest first. ▸r/author-stamp"""
     names = {real_account(), socket.gethostname().split(".")[0]}
-    alternatives = b"|".join(
-        re.escape(name.encode("utf-8"))
-        for name in sorted(names, key=len, reverse=True)
-        if len(name) > 2 and name.encode("utf-8") != NEUTRAL)
-    return re.compile(rb"(?:" + alternatives + rb")(?:\.[A-Za-z0-9-]+)*",
-                      re.IGNORECASE)
+    return tuple(sorted((n for n in names if n and n.encode("utf-8") != NEUTRAL),
+                        key=len, reverse=True))
+
+
+def identity_pattern():
+    """Those names with any dotted tail a writer appends, in any case, and NOT inside a longer word - Houdini stamps `amaze----------` where `socket.gethostname()` answers `amaze----`. None when there is nothing to match, so a caller never compiles an empty alternation that hits every offset."""
+    names = identity_names()
+    if not names:
+        return None
+    alternatives = b"|".join(re.escape(n.encode("utf-8")) for n in names)
+    return re.compile(
+        rb"(?<![A-Za-z0-9_])(?:" + alternatives
+        + rb")(?:\.[A-Za-z0-9-]+)*(?![A-Za-z0-9_])", re.IGNORECASE)
 
 
 def make_materials_scene(folder: str) -> None:
-    """The scene test_renders loads: two Karma materials under `/mat`, so an assertion that the load brought materials with it has something to find."""
-    scratch = tempfile.mkdtemp(prefix="amaze_fixture_mat_")
+    """The scene test_renders loads: two `materialbuilder` nodes under `/mat`, so an assertion that the load brought materials with it has something to find. ▸r/material-flag"""
+    scratch = neutral_scratch("materials")
     hou.hipFile.clear(suppress_save_prompt=True)
     neutral_scene_vars(scratch)   # AFTER the clear, which puts every global variable back to the session's own
     mat = hou.node("/mat")
@@ -155,31 +180,57 @@ def make_materials_scene(folder: str) -> None:
     shutil.rmtree(scratch, ignore_errors=True)
 
 
-def verify_no_identity(folder: str) -> int:
-    """Refuse to leave a fixture carrying a home path, an account name or a machine name. Returns how many carried one. ▸r/author-stamp"""
-    home = re.compile(rb"(?:/Users/|/home/|C:\\Users\\)[A-Za-z0-9_.-]+")
-    stamped = re.compile(rb"[A-Za-z0-9_.-]+@[A-Za-z0-9_.-]+\.[A-Za-z]{2,}")
-    mine = identity_pattern()
-    bad = []
-    for root, _dirs, names in os.walk(folder):
-        for name in names:
-            path = os.path.join(root, name)
-            rel = os.path.relpath(path, folder)
-            try:
-                with open(path, "rb") as handle:
-                    blob = handle.read()
-            except OSError:
-                continue
-            for found in set(home.findall(blob)):
-                text = found.decode("utf-8", "replace")
-                if not text.endswith(("/someone", "/someone-else", "/projects")):
-                    bad.append((rel, text))
-            for found in set(stamped.findall(blob)) | set(mine.findall(blob)):
-                if found != stand_in(found):
-                    bad.append((rel, found.decode("utf-8", "replace")))
-    for rel, text in sorted(set(bad)):
-        print("  !! %s carries %s" % (rel, text))
-    return len(set(bad))
+PLACEHOLDERS = ("/someone", "/someone-else", "/projects")
+
+
+def complaints(path: str) -> list:
+    """Everything about `path` that must not publish. Judges the STORED bytes with patterns of its own - never the redactor's, which would make a redacted file certify itself. ▸r/author-stamp"""
+    home = re.compile(rb"(?:/Users/|/home/|C:\\Users\\)[A-Za-z0-9_.-]+"
+                      rb"|/var/folders/[A-Za-z0-9_+-]{2}/[A-Za-z0-9_+-]{10,}")
+    stamped = re.compile(rb"(?<![A-Za-z0-9_])([A-Za-z0-9_.+-]{2,64})@"   # the host half must be DOTTED: without it two random bytes either side of an `@` read as a stamp, and an .hdr's raw pixels carry plenty
+                         rb"([A-Za-z0-9_-]{1,60}(?:\.[A-Za-z0-9_-]{2,20})+)"
+                         rb"(?![A-Za-z0-9_])")
+    literal = re.compile(
+        rb"(?<![A-Za-z0-9_])(?:"
+        + (b"|".join(re.escape(n.encode("utf-8"))
+                     for n in identity_names()) or rb"(?!)")
+        + rb")(?![A-Za-z0-9_])", re.IGNORECASE)
+    try:
+        with open(path, "rb") as handle:
+            blob = handle.read()
+    except OSError as exc:
+        return ["unreadable, so unproven (%s)" % exc]
+    found = []
+    for match in home.finditer(blob):
+        text = match.group(0).decode("utf-8", "replace")
+        if not text.endswith(PLACEHOLDERS):
+            found.append(text)
+    for match in stamped.finditer(blob):
+        if all(half and half == stand_in(half)   # both halves are stand-ins, so this one is already redacted - checked per half, never by a prefix, which is what let `amaze-@amaze---` read as a real name
+               for half in (match.group(1), match.group(2))):
+            continue
+        found.append(match.group(0).decode("utf-8", "replace"))
+    found += [m.group(0).decode("utf-8", "replace")
+              for m in literal.finditer(blob)]
+    if (path.endswith(OPAQUE) and not found
+            and os.path.basename(path) not in CLEARED):
+        found.append("OPAQUE - a byte scan cannot see inside this format, "
+                     "so it is unproven rather than clean")
+    return sorted(set(found))
+
+
+def verify_no_identity(paths) -> int:
+    """Refuse to leave a written file carrying an identity, a home path, or a payload this cannot read at all. Returns how many files failed."""
+    failed = 0
+    for path in sorted(paths):
+        if not os.path.isfile(path):
+            print("  !! %s was never written" % os.path.basename(path))
+            failed += 1
+            continue
+        for text in complaints(path):
+            print("  !! %s carries %s" % (os.path.basename(path), text))
+            failed += 1
+    return failed
 
 
 def main() -> int:
@@ -210,20 +261,23 @@ def main() -> int:
     with open(os.path.join(OUT, "readme.txt"), "w") as handle:   # KIND_OTHER: recognised by nothing, must still list and draw an OS icon rather than being skipped
         handle.write("fixture\n")
     shutil.copy2(png, os.path.join(nested, "nested.png"))
+    shutil.rmtree(SCRATCH_ROOT, ignore_errors=True)
 
-    files = sorted(os.listdir(OUT))
-    total = sum(os.path.getsize(os.path.join(OUT, f))
-                for f in files if os.path.isfile(os.path.join(OUT, f)))
-    print("\n%d entries, %.1f KB total" % (len(files), total / 1024.0))
+    written = [os.path.join(OUT, f) for f in sorted(os.listdir(OUT))
+               if os.path.isfile(os.path.join(OUT, f))]
+    written += [os.path.join(nested, "nested.png"),
+                os.path.join(SCENES, "Materials.hiplc")]
+    total = sum(os.path.getsize(p) for p in written if os.path.isfile(p))
+    print("\n%d files, %.1f KB total" % (len(written), total / 1024.0))
 
-    redacted = redact_tree(OUT) + redact_tree(SCENES)
+    redacted = redact_written(written)
     print("redacted %d stamped identit%s"
           % (redacted, "y" if redacted == 1 else "ies"))
-    carried = verify_no_identity(OUT) + verify_no_identity(SCENES)
+    carried = verify_no_identity(written)
     if carried:
-        print("REFUSED: %d fixture(s) still carry an account name, a "
-              "machine name or a home directory - not publishable, fix "
-              "the writer above" % carried)
+        print("REFUSED: %d finding(s) - a fixture carries an account name, "
+              "a machine name, a home directory, or a payload this cannot "
+              "read; fix the writer above" % carried)
         return 1
     print("verified: no fixture carries an identity or a home directory")
     return 0
