@@ -61,7 +61,7 @@ def make_geometry(folder: str) -> None:
     rop = geo.createNode("rop_geometry")
     rop.parm("soppath").set(box.path())
     try:
-        for name in ("cube.bgeo.sc", "cube.bgeo", "cube.obj", "cube.abc"):
+        for name in ("cube.bgeo", "cube.obj", "cube.abc"):   # NO `.bgeo.sc`: its payload is blosc-compressed, so the host name Houdini stamps into it cannot be reached or proven absent, and KIND_GEO is already carried by these three ▸r/author-stamp
             rop.parm("sopoutput").set(os.path.join(folder, name))
             try:
                 rop.parm("execute").pressButton()
