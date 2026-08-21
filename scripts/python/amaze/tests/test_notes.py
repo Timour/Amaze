@@ -1088,16 +1088,30 @@ class PanelWiringTest(unittest.TestCase):
                          panel.notes_panel.section_label.text())
 
 
+def _painted_badges(delegate, index, side=96):
+    """What the badge painter actually put on a tile."""
+    canvas = QtGui.QPixmap(side, side)
+    canvas.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(canvas)
+    try:
+        delegate._paint_badges(painter, index, 0, 0, side)
+    finally:
+        painter.end()
+    return canvas.toImage()
+
+
 class VersionsBadgeHoverTest(unittest.TestCase):
-    """The versions badge is the tile's one BUTTON - it answers hover."""
+    """A button badge answers hover - versions is the original case."""
 
     ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate rather than reading panel.py - the icon_side lesson (practice.md, 2026-07-29)
 
     def _delegate(self):
         from amaze.panel import delegates
-        return delegates.AssetItemDelegate(
+        delegate = delegates.AssetItemDelegate(
             QtCore.Qt.ItemDataRole.UserRole + 78,   # subtitle_role
             versions_role=self.ROLE)
+        delegate.set_badge_click("versions", lambda index: None)    # a badge with no click wired is not a button, and button_badge_at answers for buttons only - production always wires versions where the role exists
+        return delegate
 
     def _index(self, versions):
         model = QtGui.QStandardItemModel()
@@ -1108,47 +1122,38 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         return model.index(0, 0)
 
     def test_the_badge_answers_only_inside_itself(self):
+        from amaze.panel import delegates
         delegate = self._delegate()
         index = self._index(3)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._versions_badge_rect(rect, True)
+        badge = delegate._badge_rect(rect, True, delegates.LOWER_LEFT)
         self.assertTrue(
-            delegate.versions_badge_at(index, rect, badge.center(), True),
+            delegate.button_badge_at(index, rect, badge.center(), True),
             "the badge does not answer at its own centre")
         outside = QtCore.QPoint(rect.right() - 2, rect.top() + 2)
         self.assertFalse(
-            delegate.versions_badge_at(index, rect, outside, True),
+            delegate.button_badge_at(index, rect, outside, True),
             "the badge answers for a point in the opposite corner")
 
     def test_a_single_version_asset_has_no_badge_to_hover(self):
         """One version paints no badge, so nothing there takes the pointer."""
+        from amaze.panel import delegates
         delegate = self._delegate()
         index = self._index(1)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._versions_badge_rect(rect, True)
+        badge = delegate._badge_rect(rect, True, delegates.LOWER_LEFT)
         self.assertFalse(
-            delegate.versions_badge_at(index, rect, badge.center(), True),
+            delegate.button_badge_at(index, rect, badge.center(), True),
             "an asset with one version offers a badge to hover")
-
-    def _painted(self, delegate, index, side=96):
-        """What the badge painter actually put on a tile."""
-        canvas = QtGui.QPixmap(side, side)
-        canvas.fill(QtCore.Qt.GlobalColor.transparent)
-        painter = QtGui.QPainter(canvas)
-        try:
-            delegate._paint_badges(painter, index, 0, 0, side)
-        finally:
-            painter.end()
-        return canvas.toImage()
 
     def test_hover_swaps_the_art_the_PAINTER_lays_down(self):
         """Compare what is PAINTED - the flag test stayed green while the painter kept the base art."""
         delegate = self._delegate()
         index = self._index(3)
 
-        cold = self._painted(delegate, index)
-        delegate.set_versions_hover(index)
-        hot = self._painted(delegate, index)
+        cold = _painted_badges(delegate, index)
+        delegate.set_button_hover("versions", index)
+        hot = _painted_badges(delegate, index)
 
         self.assertFalse(cold.isNull() or hot.isNull())
         self.assertNotEqual(
@@ -1159,26 +1164,98 @@ class VersionsBadgeHoverTest(unittest.TestCase):
     def test_the_hover_state_reports_changes_once(self):
         delegate = self._delegate()
         index = self._index(3)
-        self.assertFalse(delegate._is_versions_hovered(index))
-        self.assertTrue(delegate.set_versions_hover(index),
+        self.assertFalse(delegate._is_button_hovered("versions", index))
+        self.assertTrue(delegate.set_button_hover("versions", index),
                         "setting a new hover reported no change")
-        self.assertTrue(delegate._is_versions_hovered(index))
-        self.assertFalse(delegate.set_versions_hover(index),
+        self.assertTrue(delegate._is_button_hovered("versions", index))
+        self.assertFalse(delegate.set_button_hover("versions", index),
                          "re-setting the SAME hover reported a change - "
                          "every mouse move would repaint the grid")
-        self.assertTrue(delegate.set_versions_hover(QtCore.QModelIndex()))
-        self.assertFalse(delegate._is_versions_hovered(index))
+        self.assertTrue(delegate.set_button_hover(
+            "versions", QtCore.QModelIndex()))
+        self.assertFalse(delegate._is_button_hovered("versions", index))
 
     def test_the_tooltip_says_what_a_click_does(self):
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
         import inspect
-        body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
+        body = inspect.getsource(delegates.AssetItemDelegate._badge_tooltip)
         self.assertIn("Click to select version", body)
-        self.assertIn("ui_helpers.tooltip_text", body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
+        self.assertIn("Add to favorites", body)
+        self.assertIn("Remove from favorites", body)
+        help_body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
+        self.assertIn("ui_helpers.tooltip_text", help_body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
         self.assertTrue(
             ui_helpers.tooltip_text("Click to select version"),
             "the shared tooltip helper returned nothing")
+
+
+class StarButtonPaintTest(unittest.TestCase):
+    """The star paints in three states - dim rest, brighter hover, amber favourite - and ONLY where its click is wired, so the online grid keeps its empty corner."""
+
+    FAV = QtCore.Qt.ItemDataRole.UserRole + 79
+
+    def _delegate(self, wired=True):
+        from amaze.panel import delegates
+        delegate = delegates.AssetItemDelegate(
+            QtCore.Qt.ItemDataRole.UserRole + 78,   # subtitle_role
+            favorite_role=self.FAV)
+        if wired:
+            delegate.set_badge_click("favourite", lambda index: None)
+        return delegate
+
+    def _index(self, favourite):
+        model = QtGui.QStandardItemModel()
+        item = QtGui.QStandardItem("mat")
+        item.setData(favourite, self.FAV)
+        model.appendRow(item)
+        self._model = model                 # keep it alive
+        return model.index(0, 0)
+
+    def _blank(self, side=96):
+        canvas = QtGui.QPixmap(side, side)
+        canvas.fill(QtCore.Qt.GlobalColor.transparent)
+        return canvas.toImage()
+
+    def test_an_UNWIRED_delegate_paints_no_star_on_a_plain_row(self):
+        painted = _painted_badges(self._delegate(wired=False),
+                                  self._index(False))
+        self.assertEqual(self._blank(), painted,
+                         "the online grid grew a star button it cannot "
+                         "serve")
+
+    def test_the_wired_delegate_paints_the_resting_star(self):
+        painted = _painted_badges(self._delegate(), self._index(False))
+        self.assertNotEqual(self._blank(), painted,
+                            "no resting star - the badge is still an "
+                            "indicator that hides until favourited")
+
+    def test_hover_brightens_the_resting_star(self):
+        delegate = self._delegate()
+        index = self._index(False)
+        rest = _painted_badges(delegate, index)
+        delegate.set_button_hover("favourite", index)
+        hot = _painted_badges(delegate, index)
+        self.assertNotEqual(rest, hot,
+                            "the resting star does not answer the "
+                            "pointer")
+
+    def test_a_favourite_paints_the_amber_state(self):
+        rest = _painted_badges(self._delegate(), self._index(False))
+        on = _painted_badges(self._delegate(), self._index(True))
+        self.assertNotEqual(self._blank(), on)
+        self.assertNotEqual(rest, on,
+                            "favourited and not paint the same star")
+
+    def test_the_amber_state_does_NOT_answer_hover(self):
+        """An ON state carried by colour does not lighten - the toolbar chips' rule, holding on the tile."""
+        delegate = self._delegate()
+        index = self._index(True)
+        rest = _painted_badges(delegate, index)
+        delegate.set_button_hover("favourite", index)
+        hot = _painted_badges(delegate, index)
+        self.assertEqual(rest, hot,
+                         "the amber star changes under the cursor")
 
 
 if __name__ == "__main__":

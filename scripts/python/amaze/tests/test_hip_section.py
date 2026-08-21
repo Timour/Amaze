@@ -843,7 +843,7 @@ class IconAssetsTest(unittest.TestCase):
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def test_the_versions_badge_has_a_hover_twin(self):
-        """Versions is the one badge that is a BUTTON, so it alone has a second state - and the pair must stay a pair: SAME MARKS, with a difference that is only in the paint, because a hover file whose geometry has drifted is a button that changes shape under the cursor. Geometry, not colour: how the hover state reads is the design's call and may change; that the two files draw the same thing is not."""
+        """Versions is a BUTTON, so it has a second state - and the pair must stay a pair: SAME MARKS, with a difference that is only in the paint, because a hover file whose geometry has drifted is a button that changes shape under the cursor. Geometry, not colour: how the hover state reads is the design's call and may change; that the two files draw the same thing is not."""
         base = self._paths("badge_versions.svg")
         hover = self._paths("badge_versions_hover.svg")
         self.assertTrue(base, "the versions badge draws nothing")
@@ -857,19 +857,52 @@ class IconAssetsTest(unittest.TestCase):
             "the hover twin is painted exactly like its base, so "
             "hovering the versions badge shows no answer at all")
 
+    def test_the_star_button_states_draw_the_same_star(self):
+        """The star is the second button and carries THREE files - rest, hover, favourite - one geometry, differing only in paint, so the button cannot change shape under the cursor or on click."""
+        base = self._paths("badge_star.svg")
+        self.assertTrue(base, "the star badge draws nothing")
+        for state in ("badge_star_40.svg", "badge_star_75.svg"):
+            self.assertEqual(
+                base, self._paths(state),
+                "%s no longer draws the same marks as badge_star - a "
+                "state of one button changed shape" % state)
+        self.assertNotEqual(
+            self._paint("badge_star_40.svg"),
+            self._paint("badge_star_75.svg"),
+            "rest and hover are painted identically, so the resting "
+            "star shows no answer to the pointer")
+
+    @staticmethod
+    def _effective_paint(tag):
+        """The fill and fill-opacity that actually PAINT a tag: a style attribute outranks the presentation attributes beside it. ▸r/svg-style-wins"""
+        def attribute(name):
+            found = re.search(r'\b%s="([^"]*)"' % name, tag)
+            return found.group(1) if found else None
+        style = attribute("style") or ""
+        fill = re.search(r'fill:\s*(#[0-9a-fA-F]{6})', style)
+        opacity = re.search(r'fill-opacity:\s*([0-9.]+)', style)
+        colour = (fill.group(1) if fill else attribute("fill")) or ""
+        alpha = opacity.group(1) if opacity else (
+            attribute("fill-opacity") or "1")
+        return colour.lower(), float(alpha)
+
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
+        expected_alpha = {"badge_open": 0.75, "badge_star": 0.75,
+                          "badge_versions": 0.75, "badge_comment": 0.75,
+                          "badge_versions_hover": 1.0,
+                          "badge_star_40": 0.4, "badge_star_75": 0.75}   # the DELIVERED values - family discs 75%, versions hover solid, the star button 40% OF FULL at rest - and they change only WITH new art, in its commit
         backdrops = {}
-        for name in test_support.BADGE_FAMILY + ("badge_versions_hover",):
+        for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:
                 body = fh.read()
             match = re.search(
-                r'id="Rounded-Rectangle[^"]*"\s+fill="(#[0-9a-fA-F]{6})"'
-                r'\s+fill-opacity="([0-9.]+)"', body)
+                r'<path[^>]*?id="Rounded-Rectangle[^"]*"[^>]*?>',
+                body, re.S)
             self.assertIsNotNone(
                 match, "ui/%s.svg has no backdrop shaped like the "
                        "family's" % name)
-            backdrops[name] = (match.group(1).lower(), match.group(2))
+            backdrops[name] = self._effective_paint(match.group(0))
 
         colours = {c for c, _o in backdrops.values()}
         self.assertEqual(
@@ -878,12 +911,11 @@ class IconAssetsTest(unittest.TestCase):
             "was recoloured somewhere other than the design: %s"
             % backdrops)
 
-        opacity = {name: o for name, (_c, o) in backdrops.items()}
-        self.assertEqual("1", opacity.pop("badge_versions_hover"),  # SOLID on hover is the delivered design: a 50% hover - lighter than the resting badge - was tried and deliberately reversed, and the pin changes WITH the art, in the same commit
-                         "the hover backdrop is not solid black")
-        self.assertEqual(
-            {"0.75"}, set(opacity.values()),
-            "a badge backdrop left the family's 75%%: %s" % opacity)
+        for name, want in expected_alpha.items():
+            self.assertAlmostEqual(
+                want, backdrops[name][1], places=2,
+                msg="ui/%s.svg's backdrop opacity left the delivered "
+                    "design" % name)
 
     def _paths(self, name):
         """The drawn geometry of an SVG: every path's `d`, in order."""
@@ -891,10 +923,10 @@ class IconAssetsTest(unittest.TestCase):
             return re.findall(r'\sd="([^"]+)"', fh.read())
 
     def _paint(self, name):
-        """How that geometry is PAINTED: fills, strokes and their opacities, in order - deliberately not a colour set, because the hover state's difference has been an opacity and could as easily become a colour next time."""
+        """How that geometry is PAINTED: fills, strokes, opacities and style attributes, in order - deliberately not a colour set, because the hover state's difference has been an opacity and could as easily become a colour next time. Style attributes carry paint too, and outrank the plain ones beside them. ▸r/svg-style-wins"""
         with open(self._ui(name), encoding="utf-8") as fh:
             return re.findall(
-                r'((?:fill|stroke)(?:-opacity)?|opacity)="([^"]+)"',
+                r'((?:fill|stroke)(?:-opacity)?|opacity|style)="([^"]+)"',
                 fh.read())
 
 

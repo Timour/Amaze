@@ -6,7 +6,7 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -546,6 +546,66 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
             [], painted,
             "the icon was applied to %s, none of which is the asset "
             "that was selected" % painted)
+
+
+class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
+    """The tile's star button flips every SELECTED row when the clicked tile is one of them, and just its own tile when it is not (settled 2026-08-21) - and only delegates whose grid can serve the flip wire the click at all."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        self.proxy = self.panel.material_sorted_model
+        self.role = self.panel.material_model.FavoriteRole
+        self.selmodel = self.panel.material_selection_model
+        self.assertGreater(self.proxy.rowCount(), 2,
+                           "need three materials to tell selection "
+                           "semantics apart")
+
+    def _fav(self, row):
+        return bool(self.proxy.index(row, 0).data(self.role))
+
+    def _select(self, *rows):
+        self.selmodel.clearSelection()
+        for row in rows:
+            self.selmodel.select(
+                self.proxy.index(row, 0),
+                QtCore.QItemSelectionModel.SelectionFlag.Select)
+
+    def test_a_click_INSIDE_the_selection_flips_every_selected_row(self):
+        before = [self._fav(0), self._fav(1)]
+        self._select(0, 1)
+        self.panel._favourite_badge_clicked(self.proxy.index(1, 0))
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(
+            [not b for b in before], [self._fav(0), self._fav(1)],
+            "one gesture on a selected tile's star did not star the "
+            "whole selection")
+
+    def test_a_click_OUTSIDE_the_selection_flips_only_the_clicked_tile(self):
+        before = [self._fav(0), self._fav(2)]
+        self._select(0)
+        self.panel._favourite_badge_clicked(self.proxy.index(2, 0))
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(
+            [before[0], not before[1]], [self._fav(0), self._fav(2)],
+            "a click outside the selection reached beyond its own tile")
+
+    def test_which_delegates_offer_the_star_button(self):
+        """Every LOCAL grid wires the star click; the online grid wires none, because an online record has no favourite state to flip."""
+        for name in ("thumb_delegate", "asset_delegate",
+                     "file_delegate", "gradient_delegate"):
+            self.assertIn(
+                "favourite", getattr(self.panel, name)._badge_clicks,
+                "%s offers no star button" % name)
+        self.assertNotIn(
+            "favourite", self.panel.matx_delegate._badge_clicks,
+            "the online grid grew a star button it cannot serve")
+        self.assertIn("versions", self.panel.thumb_delegate._badge_clicks)
+        self.assertNotIn(
+            "versions", self.panel.asset_delegate._badge_clicks,
+            "Node/Code wired the versions click their sections cannot "
+            "serve")
 
 
 if __name__ == "__main__":

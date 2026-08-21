@@ -20,26 +20,29 @@ class Badge:
     """One tile badge as DATA - art, corner, and the delegate attribute holding its role - so `_paint_badges` is the only code that draws one and a section cannot lose a badge to silence."""
 
     __slots__ = ("name", "art", "corner", "role_attr", "minimum",
-                 "hover_art")
+                 "hover_art", "off_art", "off_hover_art")
 
     def __init__(self, name, art, corner, role_attr, minimum=0,
-                 hover_art="") -> None:
+                 hover_art="", off_art="", off_hover_art="") -> None:
         self.name = name
         self.art = art
         self.corner = corner
         self.role_attr = role_attr    # the delegate attribute holding this badge's role, or None where the section does not have it
         self.minimum = minimum        # a count badge draws only at or above this - versions is the only one, because an asset with a single version has no history to show
-        self.hover_art = hover_art    # the second state, for the one badge that is a BUTTON
+        self.hover_art = hover_art    # the ON state's answer to the pointer, where it has one
+        self.off_art = off_art        # drawn while the role is FALSY - only on a delegate that wired this badge's click, so the off state is a button's rest and never a dead indicator
+        self.off_hover_art = off_hover_art    # the off state's answer to the pointer
 
     def __repr__(self) -> str:                                # pragma: no cover
         return "<Badge %s>" % (self.name,)
 
 
-BADGES = (      # THE TABLE, in paint order; no two share a corner, and the art lives in `ui/badge_*.svg` with the palette in the ART rather than in code - all four render AS DRAWN, no re-tinting
+BADGES = (      # THE TABLE, in paint order; no two share a corner, and the art lives in `ui/badge_*.svg` with the palette in the ART rather than in code - all render AS DRAWN, no re-tinting
     Badge("open", "badge_open", TOP_LEFT, "_open_role"),                 # the scene currently open
-    Badge("favourite", "badge_star", TOP_RIGHT, "_favorite_role"),       # favourite
+    Badge("favourite", "badge_star", TOP_RIGHT, "_favorite_role",
+          off_art="badge_star_40", off_hover_art="badge_star_75"),       # a BUTTON: dim star at rest, brighter under the pointer, amber when favourite - and amber answers no hover, because a state carried by COLOUR does not lighten (the toolbar chips' rule)
     Badge("versions", "badge_versions", LOWER_LEFT, "_versions_role",
-          minimum=2, hover_art="badge_versions_hover"),                  # more than one version
+          minimum=2, hover_art="badge_versions_hover"),                  # more than one version - a BUTTON: click opens the Versions dialog
     Badge("comment", "badge_comment", LOWER_RIGHT, "_notes_role"),       # carries a comment
 )
 
@@ -249,6 +252,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._tag_role = tag_role              # list mode's last two columns; a section with neither passes None and simply does not get them
         self._licence_role = licence_role
         self._category_color_role = category_color_role    # a category can carry a colour, which paints the text band under the tile. None = this section has no category colours (folders and palette groups do not)
+        self._badge_clicks = {}       # badge name -> the panel's handler; wiring one is what MAKES that badge a button, so the online delegate's star stays an indicator that never draws its off state. Per instance, never a class default: a shared dict would wire every delegate at once
+        self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge
 
     @staticmethod
     def _to_pixmap(icon):
@@ -374,27 +379,29 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         painter.drawPath(path)
         painter.restore()
 
-    _versions_click = None    # set by the panel: called with the clicked index when the badge is hit. The delegate DETECTS; dialogs are the panel's
+    def set_badge_click(self, name, callback) -> None:
+        """Wire `name`'s badge to the panel's handler, making it a BUTTON: the delegate DETECTS the hit; what a click means is the panel's."""
+        self._badge_clicks[name] = callback
 
-    def set_versions_click(self, callback) -> None:
-        self._versions_click = callback
-
-    def set_versions_hover(self, index) -> bool:
-        """Remember which tile's versions badge the cursor is over and answer whether that CHANGED, so the caller repaints only then - a repaint per mouse move across a 500-tile grid is not free. Stored as a persistent index, because rows move under filtering and renaming and a stale row number would light the wrong tile."""
-        current = getattr(self, "_versions_hover", None)
-        new = QtCore.QPersistentModelIndex(index) if (
-            index is not None and index.isValid()) else None
+    def set_button_hover(self, name, index) -> bool:
+        """Remember which tile's `name` badge the cursor is over and answer whether that CHANGED, so the caller repaints only then - a repaint per mouse move across a 500-tile grid is not free. Stored as a persistent index, because rows move under filtering and renaming and a stale row number would light the wrong tile."""
+        current = self._button_hover
+        new = (name, QtCore.QPersistentModelIndex(index)) if (
+            name and index is not None and index.isValid()) else None
         if (current is None) != (new is None) or (
                 new is not None and current is not None
-                and QtCore.QModelIndex(current) != QtCore.QModelIndex(new)):
-            self._versions_hover = new
+                and (current[0] != new[0]
+                     or QtCore.QModelIndex(current[1])
+                     != QtCore.QModelIndex(new[1]))):
+            self._button_hover = new
             return True
         return False
 
-    def _is_versions_hovered(self, index) -> bool:
-        hover = getattr(self, "_versions_hover", None)
-        return (hover is not None and hover.isValid()
-                and QtCore.QModelIndex(hover) == index)
+    def _is_button_hovered(self, name, index) -> bool:
+        hover = self._button_hover
+        return (hover is not None and hover[0] == name
+                and hover[1].isValid()
+                and QtCore.QModelIndex(hover[1]) == index)
 
     def _is_list(self, option) -> bool:
         """IS THIS A LIST ROW? One question asked one way - it was asked three (the view's `viewMode()`, `option.decorationPosition`, and `prefs.view_mode`), nothing kept them in step, and the click was the one that drifted: it fired in list mode over a badge that mode never draws."""
@@ -404,58 +411,85 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         except Exception:                                # noqa: BLE001
             return False
 
-    def versions_badge_at(self, index, option_rect, point, mode_grid):
-        """Is `point` on this tile's versions badge? False below two versions, because there is no badge to be on and a tooltip over empty pixels is a lie."""
+    def button_badge_at(self, index, option_rect, point, mode_grid):
+        """The BUTTON badge under `point` on this tile, or None. Only a badge with a wired click answers, and only where it is actually DRAWN - versions below two is absent, a star's off state exists only where wired - because a tooltip or a swallowed click over empty pixels is a lie."""
         if not mode_grid:
-            return False    # A LIST ROW HAS NO BADGES - they became columns there, because at list size a badge is 12px and its art rasterises to a dark smudge; so there is nothing to hover, tooltip or click
-        if self._versions_role is None or not index.isValid():
-            return False
-        count = index.data(self._versions_role)
-        if not count or int(count) < 2:
-            return False
-        return self._versions_badge_rect(
-            option_rect, mode_grid).contains(point)
+            return None    # A LIST ROW HAS NO BADGES - they became columns there, because at list size a badge is 12px and its art rasterises to a dark smudge; so there is nothing to hover, tooltip or click
+        if not index.isValid():
+            return None
+        for badge in BADGES:
+            if badge.name not in self._badge_clicks:
+                continue
+            role = getattr(self, badge.role_attr)
+            if role is None:
+                continue
+            value = index.data(role)
+            if value:
+                if badge.minimum and int(value) < badge.minimum:
+                    continue
+            elif not badge.off_art:
+                continue
+            if self._badge_rect(option_rect, mode_grid,
+                                badge.corner).contains(point):
+                return badge
+        return None
 
-    def _versions_badge_rect(self, option_rect, mode_grid):
-        """Where the badge sits, for hit-testing - it MIRRORS the paint maths, and a few pixels of drift is tolerable on a 35px target."""
+    def _badge_rect(self, option_rect, mode_grid, corner):
+        """Where `corner`'s badge sits, for hit-testing - it MIRRORS the paint maths, and a few pixels of drift is tolerable on a 35px target."""
         pad = self.PAD
         icon_side = option_rect.width() - 2 * pad if mode_grid \
             else max(option_rect.height() - 2 * pad, 1)
         badge = self._badge_side(icon_side)
         inset = theme.ui_px(2)
-        x = option_rect.left() + pad + inset
-        y = option_rect.top() + pad + icon_side - badge - inset
+        x = option_rect.left() + pad + (
+            inset if corner in (TOP_LEFT, LOWER_LEFT)
+            else icon_side - badge - inset)
+        y = option_rect.top() + pad + (
+            inset if corner in (TOP_LEFT, TOP_RIGHT)
+            else icon_side - badge - inset)
         return QtCore.QRect(int(x), int(y), int(badge), int(badge))
 
+    def _badge_tooltip(self, badge, index):
+        """The words a button badge shows on hover - state-aware, so the star names the ACTION a click would take, not the state it is in."""
+        if badge.name == "versions":
+            return "Click to select version"
+        if badge.name == "favourite":
+            role = getattr(self, badge.role_attr)
+            return ("Remove from favorites"
+                    if role is not None and index.data(role)
+                    else "Add to favorites")
+        return ""
+
     def helpEvent(self, event, view, option, index):
-        """The versions badge names itself on hover and the rest of the tile stays silent; Qt asks the delegate first, so this is the hook - a tooltip set on the ITEM would follow the cursor across the whole tile."""
+        """A button badge names itself on hover and the rest of the tile stays silent; Qt asks the delegate first, so this is the hook - a tooltip set on the ITEM would follow the cursor across the whole tile."""
         if (event is not None
-                and event.type() == QtCore.QEvent.Type.ToolTip
-                and self.versions_badge_at(
-                    index, option.rect, event.pos(),
-                    not self._is_list(option))):
-            QtWidgets.QToolTip.showText(
-                event.globalPos(),
-                ui_helpers.tooltip_text("Click to select version"),
-                view)
-            return True
+                and event.type() == QtCore.QEvent.Type.ToolTip):
+            badge = self.button_badge_at(
+                index, option.rect, event.pos(),
+                not self._is_list(option))
+            words = self._badge_tooltip(badge, index) if badge else ""
+            if words:
+                QtWidgets.QToolTip.showText(
+                    event.globalPos(),
+                    ui_helpers.tooltip_text(words),
+                    view)
+                return True
         QtWidgets.QToolTip.hideText()
         return super().helpEvent(event, view, option, index)
 
     def editorEvent(self, event, model, option, index):
-        """The one interactive spot on a tile: a click inside the versions badge, on an asset that has versions."""
-        if (self._versions_click is not None
-                and self._versions_role is not None
-                and event.type() == QtCore.QEvent.Type.MouseButtonRelease
+        """The interactive spots on a tile: a click inside a button badge - versions on an asset that has them, the star in either of its states."""
+        if (event.type() == QtCore.QEvent.Type.MouseButtonRelease
                 and event.button() == QtCore.Qt.MouseButton.LeftButton):
-            if self.versions_badge_at(
-                    index, option.rect, event.position().toPoint(),
-                    not self._is_list(option)):
+            badge = self.button_badge_at(
+                index, option.rect, event.position().toPoint(),
+                not self._is_list(option))
+            if badge is not None:
                 try:
-                    self._versions_click(index)
+                    self._badge_clicks[badge.name](index)
                 except Exception as exc:                  # noqa: BLE001
-                    debug.event("versions", "badge click handler "
-                                "failed", error=str(exc))
+                    debug.event("badges", "%s badge click handler "
+                                "failed" % badge.name, error=str(exc))
                 return True
         return super().editorEvent(event, model, option, index)
 
@@ -474,13 +508,18 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             if role is None:
                 continue
             value = index.data(role)
-            if not value:
-                continue
-            if badge.minimum and int(value) < badge.minimum:
-                continue
-            art = badge.art
-            if badge.hover_art and self._is_versions_hovered(index):
-                art = badge.hover_art    # the hover art is the SAME mark on a lighter disc - a button that answers the pointer. Only the versions badge has a second state; the others are indicators, not controls
+            hovered = self._is_button_hovered(badge.name, index)
+            if value:
+                if badge.minimum and int(value) < badge.minimum:
+                    continue
+                art = badge.hover_art if (badge.hover_art and hovered) \
+                    else badge.art    # a hover art is the SAME mark, differing only in paint - a button that answers the pointer
+            else:
+                if not (badge.off_art
+                        and badge.name in self._badge_clicks):
+                    continue    # an off state exists only as a BUTTON's rest - a delegate with no click wired (the online grid) keeps its empty corner
+                art = badge.off_hover_art if (
+                    hovered and badge.off_hover_art) else badge.off_art
             mark = self._badge_pixmap(art, side, dpr)
             if mark.isNull():
                 continue

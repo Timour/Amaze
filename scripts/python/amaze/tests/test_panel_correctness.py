@@ -393,8 +393,8 @@ class NodeAndCodeDoNotBorrowTheVersionColumn(unittest.TestCase):
             "the Node/Code delegate carries the version roles, so those "
             "two sections paint a Version column again")
 
-    def test_the_versions_hover_reads_the_active_delegate(self):
-        source = func_source("panel/panel.py", "_sync_versions_hover")
+    def test_the_badge_hover_reads_the_active_delegate(self):
+        source = func_source("panel/panel.py", "_sync_badge_hover")
         self.assertIn(
             "self.thumblist.itemDelegate()", source,
             "the hover hit-test hard-codes the Materials delegate, "
