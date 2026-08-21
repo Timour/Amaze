@@ -60,7 +60,7 @@ if [ "$status" -ne 0 ] || [ "$failed" -ne 0 ] || [ "$leak" -ne 0 ] \
    || [ "$tests_ran" -eq 0 ]; then
     echo >&2
     echo "PUSH REFUSED - the suite is not green." >&2
-    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK|^Testing ' | tail -25 >&2 || true
+    printf '%s\n' "$output" | grep -E '^(FAIL|ERROR):|^FAILED|LOG LEAK|^Testing |^run-tests: ' | tail -25 >&2 || true
     echo >&2
     echo "  $tests_ran test(s) ran, $failed suite(s) failed. Fix, or push --no-verify." >&2
     exit 1
