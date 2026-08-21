@@ -356,5 +356,81 @@ class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
                         "that has a ui")
 
 
+class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
+    """ROADMAP R51: ONE shell owner. Every QDialog subclass in dialogs/ either rides AssetDialog or names its recorded reason in a HOUSE_STRAY class attribute - the four one-off dialogs hand-copied the shell line by line before this pin existed."""
+
+    def test_every_dialog_class_is_based_or_excused(self):
+        import importlib
+        import pkgutil
+
+        from amaze import dialogs as dialogs_pkg
+        from amaze.dialogs.base_dialog import AssetDialog
+
+        strays = []
+        seen = 0
+        for info in pkgutil.iter_modules(dialogs_pkg.__path__):
+            module = importlib.import_module("amaze.dialogs." + info.name)
+            for name, value in vars(module).items():
+                if not (isinstance(value, type)
+                        and issubclass(value, QtWidgets.QDialog)
+                        and value.__module__ == module.__name__):
+                    continue
+                seen += 1
+                if issubclass(value, AssetDialog):
+                    continue
+                if isinstance(getattr(value, "HOUSE_STRAY", None), str):
+                    continue
+                strays.append("%s.%s" % (module.__name__, name))
+        self.assertGreaterEqual(
+            seen, 5, "the walk found almost no dialog classes, so it is "
+                     "not scanning the package it thinks it is")
+        self.assertEqual(
+            [], strays,
+            "these dialogs neither ride AssetDialog nor record a reason "
+            "in HOUSE_STRAY, so the next style or sizing fix silently "
+            "misses them: %s" % strays)
+
+
+class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
+    """ROADMAP R50: right-click Save on a material saves the CLICKED node - the flow stays selection-based because multi-selection saves are a feature, so the door bridges the click into the selection the way its three siblings pass the node straight through."""
+
+    def setUp(self):
+        mat = hou.node("/mat")
+        self.a = mat.createNode("materialbuilder", "door_click")
+        self.b = mat.createNode("materialbuilder", "door_other")
+        self.addCleanup(self.a.destroy)
+        self.addCleanup(self.b.destroy)
+        self.panel = mock.Mock()
+        patcher = mock.patch.object(rc_calls, "_find_panel",
+                                    return_value=self.panel)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_an_unselected_clicked_node_becomes_the_selection(self):
+        self.b.setSelected(True, clear_all_selected=True)   # the premise is set EXPLICITLY - createNode selects what it creates, so trusting the post-create state would test the wrong selection
+        rc_calls.save_material(self.a)
+        self.assertTrue(self.a.isSelected(),
+                        "the clicked node never entered the selection")
+        self.assertFalse(
+            self.b.isSelected(),
+            "the save would have followed the selection, not the click - "
+            "the bug this door exists to prevent")
+        self.panel.save_asset.assert_called_once_with()
+
+    def test_a_click_inside_a_multi_selection_keeps_it(self):
+        self.a.setSelected(True, clear_all_selected=True)
+        self.b.setSelected(True)
+        rc_calls.save_material(self.a)
+        self.assertTrue(
+            self.a.isSelected() and self.b.isSelected(),
+            "multi-save is a feature - a click inside the selection "
+            "must not shrink it")
+        self.panel.save_asset.assert_called_once_with()
+
+    def test_no_node_still_saves_the_selection(self):
+        rc_calls.save_material()
+        self.panel.save_asset.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

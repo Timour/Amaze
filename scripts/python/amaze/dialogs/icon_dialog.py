@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze.core import tile_icons
+from amaze.dialogs import base_dialog
 from amaze.helpers import theme, ui_helpers
 
 CELL = 34            # one icon button in the chooser grid
@@ -12,14 +13,13 @@ COLUMNS = 10         # how wide the grid runs before wrapping
 SIDE_WIDTH = 150     # preview, swatches and buttons all measure this, so the side reads as one block
 
 
-class IconDialog(QtWidgets.QDialog):
-    """NON-MODAL icon + colour picker; `spec` is the result and `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel."""
+class IconDialog(base_dialog.AssetDialog):
+    """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel."""
 
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True) -> None:
-        super().__init__(parent)
-        self.canceled = True
+        super().__init__("Tile Icon", fixed_size=False, parent=parent)
         self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
         self.new_tile_name = None
@@ -31,14 +31,16 @@ class IconDialog(QtWidgets.QDialog):
         self._ink = current.get("ink", "") or tile_icons.DEFAULT_INK
         self._buttons_by_name: dict = {}
 
-        self.setWindowTitle("Tile Icon")
         gap = theme.ui_px(8)
 
-        root = QtWidgets.QHBoxLayout(self)
-        root.setContentsMargins(gap, gap, gap, gap)
+        content = QtWidgets.QWidget()
+        root = QtWidgets.QHBoxLayout(content)
+        root.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
         root.setSpacing(gap)
         root.addLayout(self._build_chooser(gap), 1)
         root.addWidget(self._build_side(gap), 0)
+        self.set_content(content)
+        self.finish(ok_cancel=False)   # Accept lives in the side column, wired to _accept
         self._refresh_preview()
 
 
@@ -264,9 +266,8 @@ class IconDialog(QtWidgets.QDialog):
 
     def _clear(self) -> None:
         self.spec = {}
-        self.canceled = False
         self._harvest_tile_name()
-        self.accept()
+        self._on_accept()
 
     def _harvest_tile_name(self) -> None:
         """On any accepting close: the new name, or None when the field is absent, greyed, blank or unchanged."""
@@ -280,6 +281,5 @@ class IconDialog(QtWidgets.QDialog):
     def _accept(self) -> None:
         self.spec = tile_icons.normalise(
             {"name": self._name, "bg": self._bg, "ink": self._ink})
-        self.canceled = False
         self._harvest_tile_name()
-        self.accept()
+        self._on_accept()

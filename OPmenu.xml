@@ -68,20 +68,10 @@ return "Unavailable in this Context"
 </labelExpression>
             <scriptCode>
 <![CDATA[
-n = kwargs.get("node", None)
-if n is not None:
-    # The save flow is selection-based (multi-selection saves are a
-    # feature) - but the user right-clicked THIS node, so make sure it
-    # is actually part of the selection: right-clicking an unselected
-    # builder used to save whatever ELSE happened to be selected.
-    # Right-clicking a node already in a multi-selection keeps the
-    # whole selection (multi-save unchanged).
-    if not n.isSelected():
-        n.setSelected(True, clear_all_selected=True)
-    from amaze.utils import rc_calls
-    import importlib
-    importlib.reload(rc_calls)
-    rc_calls.save_material()
+from amaze.utils import rc_calls
+import importlib
+importlib.reload(rc_calls)
+rc_calls.save_material(kwargs.get("node", None))
 ]]>
                 </scriptCode>
         </scriptItem>

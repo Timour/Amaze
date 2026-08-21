@@ -222,7 +222,7 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
         self.assertIn(
-            "self.usd_dialog_category_model.sort(0)", self.flat_source,
+            "self.save_dialog_category_model.sort(0)", self.flat_source,
             "the dropdown's alphabetical sort was removed - that one "
             "is deliberate (typing against an alphabetical list)")
 

@@ -65,17 +65,16 @@ def _logo_image(widget=None):
     return image
 
 
-class PrefsDialog(QtWidgets.QDialog):
-    """Preferences, attached to the MatLibPanel."""
+class PrefsDialog(base_dialog.AssetDialog):
+    """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
     def __init__(self, prefs, panel=None, file_files_model=None) -> None:
-        super(PrefsDialog, self).__init__()
+        super().__init__(branding.APP_NAME + " Preferences",
+                         fixed_size=False)
         self._prefs = prefs
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model
-
-        self.setWindowTitle(branding.APP_NAME + " Preferences")
 
         tabs = QtWidgets.QTabWidget()
         tabs.setDocumentMode(True)
@@ -85,11 +84,8 @@ class PrefsDialog(QtWidgets.QDialog):
         tabs.addTab(self._build_look_tab(), "Look")
         tabs.addTab(self._build_about_tab(), "About")
 
-        mainlayout = QtWidgets.QVBoxLayout()
-        _m = theme.ui_px(12)
-        mainlayout.setContentsMargins(_m, _m, _m, _m)
-        mainlayout.addWidget(tabs)
-        self.setLayout(mainlayout)
+        self.set_content(tabs)
+        self.finish(ok_cancel=False, margins=12)   # 12px, recorded: a tabbed window keeps its air - the 5px house margin is for compact forms
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)

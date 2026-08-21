@@ -774,16 +774,17 @@ copied per dialog.
 | Dialog | Section | In code |
 |---|---|---|
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
-| **Code Dialog** | Code | `dialogs/code_dialog.py` (AssetDialog: pending) |
-| **Save Dialog** | Materials / Cop | `dialogs/usd_dialog.py` (AssetDialog: pending) |
+| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog |
+| **Save Dialog** | Materials / Cop | `dialogs/save_dialog.py` ✓ AssetDialog |
 | **Gradient / Category Dialog** | Colors | `dialogs/gradient_dialog.py` ✓ AssetDialog |
-| **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` (AssetDialog: pending) |
-| **Icon Dialog** | any tile | `dialogs/icon_dialog.py` |
+| **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
+| **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |
 | **About** | — | a TAB inside `dialogs/prefs_dialog.py`, shared with Debug — there is no separate About dialog |
 
-*Adoption is incremental* — GradientDialog/CategoryDialog use AssetDialog;
-the others migrate one at a time (low-risk, not force-retrofitted).
+*Adoption is complete* (R51, 2026-08-21) — every dialog rides AssetDialog,
+and `test_headless_dialogs` pins it: a new QDialog subclass in `dialogs/`
+either rides the base or records its reason in a `HOUSE_STRAY` attribute.
 
 ---
 

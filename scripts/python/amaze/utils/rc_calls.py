@@ -23,8 +23,10 @@ def _find_panel():
     return panel
 
 
-def save_material() -> None:
-    """Call Save Script from RC-Menus in Houdini Network Pane"""
+def save_material(node=None) -> None:
+    """Node right-click `Save to Amaze` on a material - the save flow stays SELECTION-based because multi-selection saves are a feature, so this door bridges the click into the selection instead of passing the node through: an unselected clicked node becomes the whole selection (right-clicking an unselected builder used to save whatever ELSE was selected), a node already inside a multi-selection keeps the whole selection, and the selection write lands on the undo stack like the click it stands in for (research.md ▸ Node graph). This lived untestable in OPmenu.xml's scriptCode; ROADMAP R50 moved it here beside its three siblings."""
+    if node is not None and not node.isSelected():
+        node.setSelected(True, clear_all_selected=True)
     panel = _find_panel()
     if panel:
         panel.save_asset()

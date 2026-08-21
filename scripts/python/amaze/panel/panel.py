@@ -36,7 +36,7 @@ from amaze.core import (
 from amaze.dialogs import (
     base_dialog,
     prefs_dialog,
-    usd_dialog,
+    save_dialog,
     gradient_dialog,
     code_dialog,
     icon_dialog,
@@ -106,7 +106,7 @@ _reload(code_library)    # after library/category: it subclasses the material ma
 
 _reload(base_dialog)    # FIRST of the dialogs: gradient_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
 _reload(prefs_dialog)
-_reload(usd_dialog)
+_reload(save_dialog)
 _reload(icon_dialog)
 _reload(gradient_dialog)
 _reload(code_dialog)
@@ -2698,7 +2698,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if self.current_section == "cop":
             current_cat = self._selected_category_name()
 
-        dialog = usd_dialog.UsdDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
+        dialog = save_dialog.SaveDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
             self.get_cop_category_names(), current_cat, name=node.name()
         )
         r = dialog.exec_()
@@ -3876,21 +3876,21 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model or not self.category_model:
             return
         """Query user for input upon material-save"""
-        self.usd_dialog_category_model = QtCore.QSortFilterProxyModel()
-        self.usd_dialog_category_model.setSourceModel(self.category_model)    # the SOURCE model, never the sidebar proxy: the sidebar hides empty categories and the save dialog must offer every one of them (this proxy does its own sorting and All-filtering regardless)
+        self.save_dialog_category_model = QtCore.QSortFilterProxyModel()
+        self.save_dialog_category_model.setSourceModel(self.category_model)    # the SOURCE model, never the sidebar proxy: the sidebar hides empty categories and the save dialog must offer every one of them (this proxy does its own sorting and All-filtering regardless)
         usd_filter = "^(?!All).*$"
-        self.usd_dialog_category_model.setFilterRegularExpression(usd_filter)
-        self.usd_dialog_category_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.usd_dialog_category_model.sort(0)
+        self.save_dialog_category_model.setFilterRegularExpression(usd_filter)
+        self.save_dialog_category_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
+        self.save_dialog_category_model.sort(0)
 
         cats = []
-        for elem in range(self.usd_dialog_category_model.rowCount()):
-            idx = self.usd_dialog_category_model.index(elem, 0)
-            cats.append(self.usd_dialog_category_model.data(idx))
+        for elem in range(self.save_dialog_category_model.rowCount()):
+            idx = self.save_dialog_category_model.index(elem, 0)
+            cats.append(self.save_dialog_category_model.data(idx))
 
         current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 
-        dialog = usd_dialog.UsdDialog(cats, current_cat)
+        dialog = save_dialog.SaveDialog(cats, current_cat)
         r = dialog.exec_()
 
         debug.event(

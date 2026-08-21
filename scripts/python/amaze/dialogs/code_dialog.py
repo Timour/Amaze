@@ -1,8 +1,4 @@
-"""Save/edit dialog for the Code section. Name + Language + editable
-Category + Tags + a code editor styled like Houdini's wrangle
-VEXpression field (black background, line-number gutter, the shared VEX
-syntax colours). Used for New Snippet (empty), Edit (prefilled), and
-Save from Node (code + language prefilled)."""
+"""Save/edit dialog for the Code section. Name + Language + editable Category + Tags + a code editor styled like Houdini's wrangle VEXpression field (black background, line-number gutter, the shared VEX syntax colours). Used for New Snippet (empty), Edit (prefilled), and Save from Node (code + language prefilled)."""
 
 from PySide6 import QtWidgets, QtGui, QtCore
 
@@ -10,6 +6,7 @@ from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 
 from amaze import branding
+from amaze.dialogs import base_dialog
 from amaze.helpers import vex_syntax
 
 LANGUAGES = ("VEX", "OpenCL", "Python", "Code")
@@ -28,9 +25,7 @@ class _LineNumberArea(QtWidgets.QWidget):
 
 
 class CodeEditor(QtWidgets.QPlainTextEdit):
-    """A wrangle-style code editor: black background, monospace, a grey
-    line-number gutter, and the shared VEX syntax highlighter - the
-    standard Qt CodeEditor pattern, coloured to match Houdini."""
+    """A wrangle-style code editor: black background, monospace, a grey line-number gutter, and the shared VEX syntax highlighter - the standard Qt CodeEditor pattern, coloured to match Houdini."""
 
     GUTTER_BG = QtGui.QColor("#1a1a1a")
     GUTTER_FG = QtGui.QColor("#7a7a7a")
@@ -48,10 +43,8 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
             4 * QtGui.QFontMetricsF(font).horizontalAdvance(" ")
         )
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.LineWrapMode.NoWrap)
-        # Black field, light default text, teal-ish selection - the
-        # wrangle editor look. Scrollbars stay native (no ancestor
-        # stylesheet, so no scrollbar-rendering regression).
-        self.setStyleSheet(
+        self.setStyleSheet(   # black field, light default text, teal-ish selection - the wrangle editor look; scrollbars stay native (no ancestor stylesheet, so no scrollbar-rendering regression)
+
             "QPlainTextEdit { background-color: %s; color: %s;"
             " border: 1px solid #2b2b2b; selection-background-color:"
             " #264f78; }"
@@ -63,8 +56,6 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         self._update_gutter_width(0)
         self._highlighter = vex_syntax.VexHighlighter(self.document())
         self.setPlainText(text)
-
-    # -- gutter ---------------------------------------------------------
 
     def line_number_area_width(self) -> int:
         digits = max(2, len(str(max(1, self.blockCount()))))
@@ -121,7 +112,9 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
         painter.end()
 
 
-class CodeDialog(QtWidgets.QDialog):
+class CodeDialog(base_dialog.AssetDialog):
+    """The snippet save form on the house shell - resizable, because the editor is the point of the window."""
+
     def __init__(
         self,
         categories: list,
@@ -133,73 +126,50 @@ class CodeDialog(QtWidgets.QDialog):
         description: str = "",
         title: str = "Save Code to " + branding.APP_NAME,
     ) -> None:
-        super().__init__()
+        super().__init__(title, fixed_size=False)
         self.name = ""
         self.language = ""
         self.category = ""
         self.tags = ""
         self.code = ""
         self.description = ""
-        self.canceled = True
-
-        self.setWindowTitle(title)
-
-        form = QtWidgets.QFormLayout()
 
         self._line_name = QtWidgets.QLineEdit(name)
         self._line_name.setToolTip(ui_helpers.tooltip_text(
             "Name it, pick a category, and add tags to find "
             "it again later."))
         self._line_name.setMinimumWidth(theme.ui_px(360))
-        form.addRow("Name", self._line_name)
+        self.add_row("Name", self._line_name)
 
         self._combo_lang = QtWidgets.QComboBox()
         for lang in LANGUAGES:
             self._combo_lang.addItem(lang)
         if language in LANGUAGES:
             self._combo_lang.setCurrentText(language)
-        form.addRow("Language", self._combo_lang)
+        self.add_row("Language", self._combo_lang)
 
-        self._combo_category = QtWidgets.QComboBox()
-        self._combo_category.setEditable(True)
-        for cat in categories:
-            self._combo_category.addItem(cat)
-        self._combo_category.setCurrentText(
-            category or (categories[0] if categories else "")
+        self._combo_category = self.add_combo(
+            "Category", categories,
+            current=category or (categories[0] if categories else ""),
+            editable=True,
         )
-        form.addRow("Category", self._combo_category)
 
-        self._line_tags = QtWidgets.QLineEdit(tags)
-        form.addRow("Tags", self._line_tags)
+        self._line_tags = self.add_row("Tags", QtWidgets.QLineEdit(tags))
 
-        # Shown on hover over the tile - a short note on what the snippet
-        # does / how to use it (the curated starter snippets ship one).
-        self._text_desc = QtWidgets.QPlainTextEdit(description)
+        self._text_desc = QtWidgets.QPlainTextEdit(description)   # shown on hover over the tile - a short note on what the snippet does (the curated starter snippets ship one)
         self._text_desc.setPlaceholderText(
             "Optional - shown on hover (what it does, sliders to add...)"
         )
         self._text_desc.setFixedHeight(theme.ui_px(56))
-        form.addRow("Description", self._text_desc)
+        self.add_row("Description", self._text_desc)
 
         self._editor = CodeEditor(code)
         self._editor.setMinimumSize(theme.ui_px(560), theme.ui_px(320))
-        form.addRow("Code", self._editor)
+        self.add_row("Code", self._editor)
 
-        buttons = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.StandardButton.Ok
-            | QtWidgets.QDialogButtonBox.StandardButton.Cancel
-        )
-        buttons.accepted.connect(self._confirm)
-        buttons.rejected.connect(self.reject)
-        form.addRow(buttons)
+        self.finish()
 
-        layout = QtWidgets.QVBoxLayout()
-        layout.addLayout(form)
-        _m = theme.ui_px(8)
-        layout.setContentsMargins(_m, _m, _m, _m)
-        self.setLayout(layout)
-
-    def _confirm(self) -> None:
+    def _on_accept(self) -> None:
         self.name = self._line_name.text().strip()
         self.language = self._combo_lang.currentText().strip()
         self.category = self._combo_category.currentText().strip()
@@ -211,5 +181,4 @@ class CodeDialog(QtWidgets.QDialog):
                 self, "Empty snippet", "There is no code to save."
             )
             return
-        self.canceled = False
-        self.accept()
+        super()._on_accept()
