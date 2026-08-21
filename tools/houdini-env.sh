@@ -19,6 +19,8 @@ amaze_is_windows() {
 # holds bin/hython, never by name, and the loop replaces `ls -d <glob>`,
 # which exits non-zero on no match and kills the caller under pipefail.
 amaze_houdini_roots() {
+    # zsh ABORTS on an unmatched glob where bash carries it as a literal, and this file is sourced from interactive zsh too - nonomatch, function-scoped, gives every shell the bash reading (measured 2026-08-21: `/opt/hfs*` killed the sourcing shell on a Mac).
+    [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
     local d found=""
     if amaze_is_windows; then
         local vendor
@@ -79,6 +81,7 @@ amaze_hython() {
 # dir on BOTH Windows (via Git Bash $HOME) and Linux - it stays last so
 # the real pref dir outranks the Documents copy (INSTALL.md).
 amaze_package_files() {
+    [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
     local f
     for f in "$HOME"/Documents/houdini*/packages/Amaze.json \
              /Applications/Houdini/sidefx_packages/Amaze.json \
