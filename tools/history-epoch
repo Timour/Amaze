@@ -1,0 +1,6 @@
+2026-08-21b
+# The history epoch. Every history rewrite bumps the first line (the
+# rewrite runbook's last step). A clone whose main carries a different
+# epoch than origin's predates a rewrite; the session gate notices and
+# runs the reclone repair, which resets the clone when that is provably
+# safe and says why when it is not.
