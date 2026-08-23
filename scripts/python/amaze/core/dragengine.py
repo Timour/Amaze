@@ -82,6 +82,10 @@ _move = {
     "blocked": False,
     "target": (None, "", -1),
     "type_name": "",
+    "pane_at": 0.0,
+    "pane": None,
+    "pane_kind": None,
+    "pane_rect": None,
 }
 
 
@@ -91,6 +95,40 @@ def _reset_move() -> None:
     _move["blocked"] = False
     _move["target"] = (None, "", -1)
     _move["type_name"] = ""
+    _move["pane_at"] = 0.0
+    _move["pane"] = None
+    _move["pane_kind"] = None
+    _move["pane_rect"] = None
+
+
+PANE_REVALIDATE = 0.25
+
+
+def pane_under_cursor_tracked(now=None):
+    """(pane, kind, fresh) for the gesture's per-move pane question: the real z-aware lookup runs when the cursor LEAVES the cached pane's screen rect and at most every PANE_REVALIDATE otherwise - between, a pure rect check answers, because `paneTabUnderCursor` measured ~3ms per call under drag load. ▸p/drag-move-cost"""
+    from PySide6 import QtGui
+
+    now = time.time() if now is None else now
+    age = now - _move["pane_at"]
+    rect = _move["pane_rect"]
+    if rect is not None:
+        if age < PANE_REVALIDATE and rect.contains(QtGui.QCursor.pos()):
+            return _move["pane"], _move["pane_kind"], False
+    elif _move["pane_at"] and age < PICK_INTERVAL:    # a MISS holds only a pick interval, so entering the editor from dead space is never 250ms blind
+        return None, None, False
+    _move["pane_at"] = now
+    tab = pane_tab_under_cursor()
+    kind, rect = None, None
+    if tab is not None:
+        try:
+            kind = tab.type()
+            rect = tab.qtScreenGeometry()
+        except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+            tab, kind, rect = None, None, None
+    _move["pane"] = tab
+    _move["pane_kind"] = kind
+    _move["pane_rect"] = rect
+    return tab, kind, True
 
 
 def ghost_tick(editor, now=None) -> bool:
@@ -447,15 +485,23 @@ def _probe_transforms(tab, viewer, world):
 
 
 def _scene_viewer_under_cursor():
-    """(viewer, x, y, widget height, device scale) for the scene viewer under the cursor in viewer-space GL coordinates, origin bottom-left, or (None, 0, 0, 0, 1.0) - mapped through qtWindow(), the GL area, never qtScreenGeometry(), which is the whole pane and carries the toolbar as a constant x error. ▸r/pick-boundary"""
-    from PySide6 import QtGui
-
+    """(viewer, x, y, widget height, device scale) for the scene viewer under the cursor, or (None, 0, 0, 0, 1.0) - the lookup half; the geometry lives in `_scene_viewer_geometry`. ▸r/pick-boundary"""
     tab = pane_tab_under_cursor()
     if tab is None:
         return None, 0, 0, 0, 1.0
     try:
         if tab.type() != hou.paneTabType.SceneViewer:
             return None, 0, 0, 0, 1.0
+    except AttributeError:
+        return None, 0, 0, 0, 1.0
+    return _scene_viewer_geometry(tab)
+
+
+def _scene_viewer_geometry(tab):
+    """(viewer, x, y, widget height, device scale) for a KNOWN scene viewer in viewer-space GL coordinates, origin bottom-left - mapped through qtWindow(), the GL area, never qtScreenGeometry(), which is the whole pane and carries the toolbar as a constant x error. ▸r/pick-boundary"""
+    from PySide6 import QtGui
+
+    try:
         geo = tab.qtScreenGeometry()
     except AttributeError:
         return None, 0, 0, 0, 1.0
@@ -619,15 +665,21 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
 
 
 
-def hover_update(panel, section_key) -> None:
-    """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, and Materials only."""
+def hover_update(panel, section_key, pane_tab=None,
+                 pane_kind=None) -> None:
+    """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, Materials only, with the TRACKED pane handed in so a tick over any other pane costs no lookup ▸p/drag-move-cost."""
     if section_key != "material":
         return
     now = time.time()
     if now - _hover["last_pick"] < PICK_INTERVAL:
         return
     _hover["last_pick"] = now
-    viewer, x, y, wh, scale = _scene_viewer_under_cursor()
+    if pane_tab is None and pane_kind is None:
+        viewer, x, y, wh, scale = _scene_viewer_under_cursor()
+    elif pane_kind != hou.paneTabType.SceneViewer:
+        viewer, x, y, wh, scale = None, 0, 0, 0, 1.0
+    else:
+        viewer, x, y, wh, scale = _scene_viewer_geometry(pane_tab)
     if viewer is None:
         _set_highlight(None, None, "", now, force_clear=True)
         return

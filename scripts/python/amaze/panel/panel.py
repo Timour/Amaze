@@ -3207,9 +3207,11 @@ class MatLibPanel(QtWidgets.QWidget):
         except AttributeError:
             return None, None
 
-    def _node_under_cursor(self) -> hou.Node | None:
-        """The scene node the cursor is over: in a network editor the node under the mouse (native cursor chain, see _network_items_at_cursor), over a Parameter Editor the node whose parameters that pane is showing."""
-        pane_tab, pane_type = self._pane_and_kind_under_cursor()
+    def _node_under_cursor(self, pane_tab=None,
+                           pane_type=None) -> hou.Node | None:
+        """The scene node the cursor is over: in a network editor the node under the mouse (native cursor chain, see _network_items_at_cursor), over a Parameter Editor the node whose parameters that pane is showing. `pane_tab`/`pane_type` skip the pane lookup where the caller already tracked it ▸p/drag-move-cost."""
+        if pane_tab is None:
+            pane_tab, pane_type = self._pane_and_kind_under_cursor()
         if pane_tab is None:
             return None
         if pane_type == hou.paneTabType.Parm:    # dropping a gradient on the parm pane you are already looking at beats hunting the node, especially for ramps

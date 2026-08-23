@@ -141,11 +141,15 @@ class GridGestureMixin:
                     return
                 self._move_preview()
                 if self._drag_panel is not None:    # a self-managed gesture has no Qt drag events, so the drop-target feedback is driven from the cursor position
+                    pane_tab, pane_kind, _fresh = (    # ONE tracked pane answer per move for every consumer below - the raw lookup measured ~3ms under drag load ▸p/drag-move-cost
+                        dragengine.pane_under_cursor_tracked())
                     self._drag_panel._update_category_drag_hover_global()
                     dragengine.hover_update(
-                        self._drag_panel, self._drag_section
+                        self._drag_panel, self._drag_section,
+                        pane_tab, pane_kind
                     )
-                    self._ghost_update(self._drag_panel)    # the outline, cleared by dragengine.end() on every exit path including the leave the host treats as a suspend
+                    self._ghost_update(self._drag_panel, pane_tab,
+                                       pane_kind)    # the outline, cleared by dragengine.end() on every exit path including the leave the host treats as a suspend
             return
         super().mouseMoveEvent(event)
 
@@ -374,8 +378,8 @@ class GridGestureMixin:
                 name = ""
         return name or ""
 
-    def _ghost_update(self, panel) -> None:
-        """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the outline's POSITION every move, the target questions on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
+    def _ghost_update(self, panel, pane_tab, pane_type) -> None:
+        """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the pane arrives TRACKED from the caller, the outline's POSITION follows every move, and the target questions run on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
         section = self._drag_section
         idx = self._drag_index
         if panel is None or idx is None:
@@ -385,7 +389,6 @@ class GridGestureMixin:
             dragengine.ghost_clear()
             return
         try:
-            pane_tab, pane_type = panel._pane_and_kind_under_cursor()
             if (pane_tab is None
                     or pane_type != hou.paneTabType.NetworkEditor):
                 dragengine.ghost_clear()
@@ -394,7 +397,8 @@ class GridGestureMixin:
             if dragengine.ghost_tick(pane_tab):
                 blocked = bool(
                     rule.on_node
-                    and panel._node_under_cursor() is not None)
+                    and panel._node_under_cursor(pane_tab, pane_type)
+                    is not None)
                 target = (None, "", -1)    # a wire under the cursor is an INSERT, asked only where the payload could BE a link in a chain: a created carrier or an imported network
                 type_name = ""
                 if not blocked:

@@ -46,6 +46,19 @@ class ScriptedEditor(object):
             raise hou.OperationFailed("no rect for this item")
 
 
+class ScriptedPane(object):
+    """A pane tab answering a fixed kind and screen rect, so the pane-tracking tests need no desktop."""
+
+    def __init__(self, rect):
+        self._rect = rect
+
+    def type(self):
+        return "kind-probe"
+
+    def qtScreenGeometry(self):
+        return self._rect
+
+
 def _rect(x, y, w=0.71, h=0.50):
     """A node body the size H22 draws one, centred on x, y."""
     return hou.BoundingRect(x - w / 2.0, y - h / 2.0,
@@ -269,6 +282,73 @@ class TestTheGhostTick(DropTargetTest):
             editor.asked_with,
             "the box was queried for an answer the preference had "
             "already refused")
+
+    def test_the_pane_is_looked_up_once_and_held_by_its_rect(self):
+        from PySide6 import QtCore, QtGui
+        looked = []
+        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
+        with mock.patch.object(dragengine, "pane_tab_under_cursor",
+                               side_effect=lambda: looked.append(1) or pane), \
+             mock.patch.object(QtGui.QCursor, "pos",
+                               return_value=QtCore.QPoint(50, 50)):
+            t0 = 1000.0
+            tab, kind, fresh = dragengine.pane_under_cursor_tracked(now=t0)
+            self.assertTrue(fresh)
+            self.assertIs(tab, pane)
+            self.assertEqual("kind-probe", kind)
+            tab, kind, fresh = dragengine.pane_under_cursor_tracked(
+                now=t0 + 0.01)
+            self.assertFalse(fresh, "inside the rect, within the "
+                             "revalidate window, the cache answers")
+            self.assertEqual(1, len(looked),
+                             "the cursor never left the pane and the "
+                             "desktop was walked again anyway")
+
+    def test_leaving_the_rect_forces_an_immediate_lookup(self):
+        from PySide6 import QtCore, QtGui
+        looked = []
+        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
+        with mock.patch.object(dragengine, "pane_tab_under_cursor",
+                               side_effect=lambda: looked.append(1) or pane), \
+             mock.patch.object(QtGui.QCursor, "pos",    # only read once a rect exists, so one OUTSIDE point serves both calls
+                               return_value=QtCore.QPoint(500, 50)):
+            t0 = 1000.0
+            dragengine.pane_under_cursor_tracked(now=t0)
+            _tab, _kind, fresh = dragengine.pane_under_cursor_tracked(
+                now=t0 + 0.001)
+            self.assertTrue(fresh, "the cursor left the cached rect and "
+                            "the stale pane was served anyway")
+            self.assertEqual(2, len(looked))
+
+    def test_the_hold_expires_on_the_revalidate_interval(self):
+        from PySide6 import QtCore, QtGui
+        looked = []
+        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
+        with mock.patch.object(dragengine, "pane_tab_under_cursor",
+                               side_effect=lambda: looked.append(1) or pane), \
+             mock.patch.object(QtGui.QCursor, "pos",
+                               return_value=QtCore.QPoint(50, 50)):
+            t0 = 1000.0
+            dragengine.pane_under_cursor_tracked(now=t0)
+            dragengine.pane_under_cursor_tracked(
+                now=t0 + dragengine.PANE_REVALIDATE * 1.01)
+            self.assertEqual(
+                2, len(looked),
+                "a pane covered by a floating window mid-gesture would "
+                "never be noticed without the slow revalidate")
+
+    def test_a_new_gesture_forgets_the_held_pane(self):
+        from PySide6 import QtCore, QtGui
+        looked = []
+        pane = ScriptedPane(QtCore.QRect(0, 0, 100, 100))
+        with mock.patch.object(dragengine, "pane_tab_under_cursor",
+                               side_effect=lambda: looked.append(1) or pane), \
+             mock.patch.object(QtGui.QCursor, "pos",
+                               return_value=QtCore.QPoint(50, 50)):
+            dragengine.pane_under_cursor_tracked(now=1000.0)
+            dragengine.begin("material")
+            dragengine.pane_under_cursor_tracked(now=1000.001)
+            self.assertEqual(2, len(looked))
 
     def test_the_node_shape_is_resolved_once_per_type(self):
         calls = []
