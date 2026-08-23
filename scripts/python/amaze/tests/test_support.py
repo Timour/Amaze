@@ -415,4 +415,5 @@ def art_colours(name: str) -> set:
     with open(path, encoding="utf-8") as handle:
         body = handle.read().lower()
     found = set(re.findall(r'(?:fill|stroke)="(#[0-9a-f]{3,8})"', body))
+    found |= set(re.findall(r'(?<![-\w])(?:fill|stroke)\s*:\s*(#[0-9a-f]{3,8})', body))    # style-declared paints too - a style attribute outranks the presentation attribute beside it (r/svg-style-wins), so an Inkscape export declares its real colours here
     return {c for c in found if c != "none"}
