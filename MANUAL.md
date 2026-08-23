@@ -110,7 +110,7 @@ on a dark backdrop so it stays readable on any thumbnail:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="18"> | top-left | the scene you currently have open (File) |
-| <img src="scripts/python/amaze/ui/badge_star.svg" width="18"> | top-right | favorited |
+| <img src="scripts/python/amaze/ui/badge_star.svg" width="18"> | top-right | the favorite button — on every tile: dim when not a favorite, brighter under the cursor, amber when favorited. Click to toggle; with several tiles selected, clicking a selected tile's star toggles them all |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="18"> | lower-left | has more than one [version](#versions) — click it to browse them |
 | <img src="scripts/python/amaze/ui/badge_comment.svg" width="18"> | lower-right | carries a [comment](#comments) |
 
@@ -528,6 +528,16 @@ you work.
 
 **Library** — library path, **Clean Up Library**, **Reload Library**,
 **Open Library Folder**; cache path and **Delete Local Cache**.
+
+**User** — who you are in this library. Your favorites, your File
+folders and the versions you save are kept per user, so picking
+yourself on another computer gives you the same things back. The
+dropdown switches users, **Rename** changes only the name,
+**Create a new user...** adds one and switches to them, and
+**Delete** removes a user together with their favorites and
+registered folders everywhere the library syncs — it asks first, and
+a machine still signed in as that user is asked who they are the next
+time it opens.
 
 > Settings that govern the library itself — the render settings and
 > renderer choices, conversion and download throughput, and how paths
