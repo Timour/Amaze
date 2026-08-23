@@ -801,7 +801,11 @@ because choosing the prim is UI.
 One SELF-MANAGED gesture for every section — no native QDrag, no drop
 hooks. The widgets run press-move-release on the live event loop; the
 engine owns everything spatial and temporal: throttled per-move picking
-(`locateSceneGraphPrim` / `queryNodeAtPixel`), the hover highlight with
+(`locateSceneGraphPrim` / `queryNodeAtPixel`), the ghost's target tick
+and the rect-tracked pane (`ghost_tick` / `pane_under_cursor_tracked` —
+the expensive per-move questions run at the pick cadence while the
+outline follows every move; a full per-move resolution saturated the
+loop at the mouse's own rate, 2026-08-23), the hover highlight with
 restore-on-end, release-target resolution (`viewport_release_target`),
 container placement (`first_materiallibrary(connected_to=)`,
 `find_assignmaterial`), Houdini's stock LOP helpers (`stock_lop()`), and
