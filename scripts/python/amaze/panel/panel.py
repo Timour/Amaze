@@ -929,6 +929,12 @@ class MatLibPanel(QtWidgets.QWidget):
             self.action_gallery_import.triggered.connect(
                 self.import_galleries
             )
+            self.action_package_import = self.online_menu.addAction(
+                "Package Import (.amazepkg)"
+            )
+            self.action_package_import.triggered.connect(
+                self.import_amaze_package
+            )
             self.online_menu.addSeparator()    # generating is a third way to get a material into the scene, beside browsing online sources and importing a gallery, so it gets its own group below them
             self.action_generate_material = self.online_menu.addAction(
                 "Generate Material"
@@ -1798,6 +1804,57 @@ class MatLibPanel(QtWidgets.QWidget):
         if getattr(self, "menu_filter", None) is None:
             return
         self.build_filter_menu()
+
+    def import_package_file(self, path: str, restore: bool = False) -> dict:
+        """ACT half of the package import: every asset lands in its own section (fresh ids, `Import` category; `restore=True` adopts by original id), plain files land in the library's `import/` folder which registers as a location - answering the core summary."""
+        models = {}
+        for cls in sections.SECTION_CLASSES:
+            attr = getattr(cls, "model_attr", "")
+            model = getattr(self, attr, None) if attr else None
+            if model is not None and getattr(cls, "key", "") != "file":
+                models[cls.key] = model
+        summary = packages.import_package(models, self.prefs, path,
+                                          restore=restore)
+        for key, names in summary.get("categories", {}).items():
+            section = self.sections.get(key)
+            st = section.stack() if section is not None else None
+            if st is None:
+                continue
+            for name in sorted(names):
+                st.categories.check_add_category(name)
+        if summary.get("files"):
+            folder = os.path.join(self.prefs.dir, "import")
+            self.prefs.add_file_folder(folder)
+            self.prefs.set_file_folder_name(folder, "Import")
+        return summary
+
+    def import_amaze_package(self) -> None:
+        """Package Import: the read-mode picker, then the act door; the summary speaks once, dialog-free when headless."""
+        ui = getattr(hou, "ui", None)
+        if not self.prefs.dir:
+            if ui is not None:
+                ui.displayMessage("Please set a library first.")
+            return
+        picked = ui.selectFile(
+            title="Import Amaze Package",
+            file_type=hou.fileType.Any,
+            pattern="*" + packages.SUFFIX,
+            chooser_mode=hou.fileChooserMode.Read,
+        ) if ui is not None else ""
+        picked = (picked or "").strip()
+        if not picked:
+            return
+        try:
+            summary = self.import_package_file(
+                hou.text.expandString(picked))
+        except packages.PackageError as exc:
+            if ui is not None:
+                ui.displayMessage(str(exc))
+            return
+        if ui is not None:
+            ui.displayMessage(
+                "Imported %d asset(s) and %d file(s) into the Import "
+                "category." % (summary["imported"], summary["files"]))
 
     def ask_package_destination(self) -> str:
         """The write-mode picker for an `.amazepkg` export - "" when headless or cancelled, the suffix appended when the user leaves it off."""

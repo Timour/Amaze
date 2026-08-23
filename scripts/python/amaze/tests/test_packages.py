@@ -21,6 +21,11 @@ sys.path.insert(
 from amaze.tests import test_support  # noqa: E402
 
 
+def _bytes(path: str) -> bytes:
+    with open(path, "rb") as handle:
+        return handle.read()
+
+
 def _out_path(testcase, name="export.amazepkg"):
     """A destination inside the suite's sandboxed tempdir - the guarded writer refuses anywhere else under the runner."""
     folder = tempfile.mkdtemp(prefix="amaze_pkg_")
@@ -74,7 +79,7 @@ class PackageExportTest(unittest.TestCase):
             for kind, arcname in entry["files"].items():
                 source = model.asset_files(asset.mat_id)[kind]
                 self.assertEqual(
-                    open(source, "rb").read(), bundle.read(arcname),
+                    _bytes(source), bundle.read(arcname),
                     "member %r does not byte-match the library's %s"
                     % (arcname, kind))
 
@@ -84,7 +89,10 @@ class PackageExportTest(unittest.TestCase):
         asset = self._material_with_files()
         item = packages.collect_asset(model, asset.mat_id)
         for kind, path in model.asset_files(asset.mat_id).items():
-            if os.path.exists(path):
+            if kind in packages.DERIVED:
+                self.assertNotIn(kind, item["sources"],
+                                 "a derived %s rode the package" % kind)
+            elif os.path.exists(path):
                 self.assertIn(kind, item["sources"])
             else:
                 self.assertNotIn(kind, item["sources"])
@@ -271,6 +279,146 @@ class ExportMenuTest(unittest.TestCase):
         entry = packages.read_manifest(out)["entries"][0]
         self.assertEqual("file", entry["type"])
         self.assertEqual("image", entry["kind"])
+
+
+class PackageImportTest(unittest.TestCase):
+    """The import half: fresh imports mint NEW ids and land in the `Import` category, restore mode unions adopt-only by the package's ORIGINAL ids, plain files land in the library's own import folder, and a package missing a member is refused whole."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _gradient_package(self, out, fresh_note="rides along"):
+        from amaze.core import notes, packages
+        model = self.panel.gradient_model
+        asset = model.assets[0]
+        key = notes.note_key("gradient", asset.mat_id)
+        self.assertTrue(notes.set_note(
+            self.panel.prefs, key, [{"t": "text", "text": fresh_note}]))
+        self.addCleanup(notes.set_note, self.panel.prefs, key, [])
+        item = packages.collect_asset(model, asset.mat_id)
+        packages.write_package(out, [item])
+        return asset
+
+    def test_a_fresh_import_mints_a_new_id_and_lands_in_Import(self):
+        from amaze.core import notes, packages
+        model = self.panel.gradient_model
+        out = _out_path(self)
+        original = self._gradient_package(out)
+        before = model.rowCount()
+        summary = self.panel.import_package_file(out)
+        self.assertEqual(1, summary["imported"])
+        self.assertEqual(before + 1, model.rowCount())
+        newborn = model.assets[-1]
+        self.assertNotEqual(str(original.mat_id), str(newborn.mat_id),
+                            "a fresh import kept the package's id")
+        cats = newborn.categories
+        self.assertEqual(["Import"],
+                         [cats] if isinstance(cats, str) else list(cats))
+        page = notes.note_for(
+            self.panel.prefs,
+            notes.note_key("gradient", newborn.mat_id))
+        self.assertEqual("rides along", page["items"][0]["text"],
+                         "the note page did not follow the newborn id")
+        self.assertIn(
+            "Import", self.panel.gradient_categories_model._categories,
+            "the Import category never reached the sidebar model")
+
+    def test_a_fresh_import_twice_makes_two_copies(self):
+        model = self.panel.gradient_model
+        out = _out_path(self)
+        self._gradient_package(out)
+        before = model.rowCount()
+        self.panel.import_package_file(out)
+        self.panel.import_package_file(out)
+        self.assertEqual(before + 2, model.rowCount(),
+                         "a fresh import deduplicated - that is restore "
+                         "mode's job, not this door's")
+
+    def test_restore_mode_unions_by_the_original_id(self):
+        from amaze.core import packages
+        model = self.panel.gradient_model
+        out = _out_path(self)
+        original = self._gradient_package(out)
+        before = model.rowCount()
+        summary = self.panel.import_package_file(out, restore=True)
+        self.assertEqual(0, summary["imported"])
+        self.assertEqual(1, summary["skipped"],
+                         "an id already in the library was re-imported")
+        self.assertEqual(before, model.rowCount())
+        with_new_id = _out_path(self, "minted.amazepkg")
+        item = packages.collect_asset(model, original.mat_id)
+        item = dict(item, record=dict(item["record"], id="f" * 32))
+        packages.write_package(with_new_id, [item])
+        summary = self.panel.import_package_file(with_new_id, restore=True)
+        self.assertEqual(1, summary["imported"])
+        self.assertEqual("f" * 32, str(model.assets[-1].mat_id),
+                         "restore minted a fresh id instead of adopting "
+                         "the package's own")
+
+    def test_a_file_entry_lands_in_the_import_location(self):
+        from amaze.core import packages
+        from amaze.helpers import hostos as hostos_mod
+        folder = tempfile.mkdtemp(prefix="amaze_pkg_filesrc_")
+        self.addCleanup(
+            __import__("shutil").rmtree, folder, ignore_errors=True)
+        source = os.path.join(folder, "walk.bvh")
+        with open(source, "wb") as handle:
+            handle.write(b"mocap")
+        out = _out_path(self)
+        packages.write_package(out, [packages.collect_file(source,
+                                                           "other")])
+        summary = self.panel.import_package_file(out)
+        self.assertEqual(1, summary["files"])
+        landed = os.path.join(self.panel.prefs.dir, "import", "walk.bvh")
+        self.assertEqual(b"mocap", _bytes(landed))
+        registered = [hostos_mod.canonical_path_key(p)
+                      for p in self.panel.prefs.file_folders]
+        self.assertIn(
+            hostos_mod.canonical_path_key(os.path.dirname(landed)),
+            registered,
+            "the import folder is not a registered location, so the "
+            "landed file is invisible in the File section")
+
+    def test_a_package_missing_a_member_is_refused_whole(self):
+        from amaze.core import packages
+        model = self.panel.gradient_model
+        out = _out_path(self)
+        self._gradient_package(out)
+        import zipfile as _zip
+        broken = _out_path(self, "broken.amazepkg")
+        with _zip.ZipFile(out) as src, _zip.ZipFile(broken, "w") as dst:
+            manifest = json.loads(src.read(packages.MANIFEST))
+            manifest["entries"][0]["files"]["thumbnail"] = "assets/x/y/z.png"
+            dst.writestr(packages.MANIFEST, json.dumps(manifest))
+        before = model.rowCount()
+        with self.assertRaises(packages.PackageError):
+            self.panel.import_package_file(broken)
+        self.assertEqual(before, model.rowCount(),
+                         "a refused package still changed the library")
+
+    def test_an_imported_materials_family_lands_under_the_new_id(self):
+        from amaze.core import packages
+        model = self.panel.material_model
+        asset = next(a for a in model.assets
+                     if any(os.path.exists(p)
+                            for p in model.asset_files(a.mat_id).values()))
+        out = _out_path(self)
+        packages.write_package(
+            out, [packages.collect_asset(model, asset.mat_id)])
+        before = model.rowCount()
+        self.panel.import_package_file(out)
+        self.assertEqual(before + 1, model.rowCount())
+        newborn = model.assets[-1]
+        sources = {k: p for k, p in
+                   model.asset_files(asset.mat_id).items()
+                   if k not in packages.DERIVED and os.path.exists(p)}
+        for kind, source in sources.items():
+            target = model.asset_files(newborn.mat_id)[kind]
+            self.assertTrue(os.path.exists(target),
+                            "the %s payload never landed" % kind)
+            self.assertEqual(_bytes(source), _bytes(target),
+                             "the %s payload does not byte-match" % kind)
 
 
 if __name__ == "__main__":

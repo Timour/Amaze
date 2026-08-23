@@ -704,8 +704,8 @@ class TheOnlineWorld(unittest.TestCase):
         self.assertTrue(panel.btn_notes.isEnabled(),
                         "Comments did not come back")
 
-    def test_the_View_menu_is_down_to_the_two_importers(self):
-        """Everything else in it became a button or a tab, and a menu row beside its own button is a second way to one thing - what is left are the two ONE-SHOT actions, which are not state and have nothing to duplicate: Gallery Import and Generate Material; no submenu either, two entries do not earn one."""
+    def test_the_View_menu_is_down_to_the_one_shot_actions(self):
+        """Everything else in it became a button or a tab, and a menu row beside its own button is a second way to one thing - what is left are the ONE-SHOT actions, which are not state and have nothing to duplicate: the two importers and Generate Material; no submenu, three entries do not earn one."""
         menu = self.panel.ui.findChild(QtWidgets.QMenu, "menuView")
         self.assertIsNotNone(menu)
         rows = [a.text() for a in menu.actions() if not a.isSeparator()]
@@ -716,9 +716,10 @@ class TheOnlineWorld(unittest.TestCase):
                 "%s is still a View menu row - it has a button or a "
                 "tab of its own now" % gone)
         self.assertEqual(
-            ["Gallery Import (.gal)", "Generate Material"],
+            ["Gallery Import (.gal)", "Package Import (.amazepkg)",
+             "Generate Material"],
             [r for r in rows if r],
-            "the View menu is not the two importers")
+            "the View menu is not the one-shot actions")
         self.assertFalse(
             [a for a in menu.actions() if a.menu() is not None],
             "there is still a submenu in the View menu")

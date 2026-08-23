@@ -4,6 +4,8 @@ import json
 import os
 import zipfile
 
+from PySide6 import QtCore
+
 from amaze import branding
 from amaze.core import notes
 from amaze.helpers import hostos
@@ -11,6 +13,7 @@ from amaze.helpers import hostos
 FORMAT = 1
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
+DERIVED = ("stamp",)    # regenerated from the record on every save, so packing one ships an instantly-stale copy
 
 
 class PackageError(Exception):
@@ -27,7 +30,7 @@ def collect_asset(model, mat_id) -> dict:
                            % (mat_id, model.NOTES_SECTION))
     sources = {kind: path
                for kind, path in model.asset_files(mat_id).items()
-               if os.path.exists(path)}
+               if kind not in DERIVED and os.path.exists(path)}
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
     return {"type": "asset", "section": model.NOTES_SECTION,
@@ -99,6 +102,98 @@ def read_manifest(path: str) -> dict:
             "package format %s is newer than the %s this build reads "
             "- update Amaze to import it" % (got, FORMAT))
     return manifest
+
+
+def import_package(models, prefs, path: str, restore: bool = False) -> dict:
+    """Bring one package into the library - FRESH by default (ids minted, every asset filed under `Import`), adopt-only by the package's ORIGINAL ids with `restore=True` - refusing whole on a missing member or no library, and answering {imported, skipped, files, refused, categories}."""
+    if not getattr(prefs, "dir", ""):
+        raise PackageError("no library set - nowhere to import into")
+    problems = verify_package(path)
+    if problems:
+        raise PackageError("%s is not whole: %s"
+                           % (os.path.basename(path),
+                              "; ".join(problems)))
+    manifest = read_manifest(path)
+    summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
+               "categories": {}}
+    with zipfile.ZipFile(path) as bundle:
+        for entry in manifest.get("entries", ()):
+            if entry.get("type") == "asset":
+                _import_asset(models, prefs, bundle, entry, restore,
+                              summary)
+            elif entry.get("type") == "file":
+                _import_file(prefs, bundle, entry, summary)
+    return summary
+
+
+def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
+    """One asset entry into its section's model - payload family first, then the row, then save, then the note; a refused save takes the row back out and counts `refused`."""
+    section = str(entry.get("section") or "")
+    model = models.get(section)
+    if model is None:
+        summary["skipped"] += 1
+        return
+    row = dict(entry.get("record") or {})
+    if restore:
+        present = {str(a.mat_id) for a in model.assets}
+        if str(row.get("id") or "") in present:
+            summary["skipped"] += 1
+            return
+    else:
+        row.pop("id", None)
+        row.pop("uid", None)    # the pre-connector id spelling adopts onto `id` in every reader, so it must go too or the mint never runs
+        row["categories"] = ["Import"]
+    asset = model._asset_from_row(row)
+    targets = model.asset_files(asset.mat_id)
+    for kind, arcname in (entry.get("files") or {}).items():
+        target = targets.get(kind)
+        if not target:
+            continue
+        hostos.check_sandbox(target)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with hostos.scratch_beside(target) as scratch:
+            with open(scratch, "wb") as handle:
+                handle.write(bundle.read(arcname))
+    at = len(model._assets)
+    model.beginInsertRows(QtCore.QModelIndex(), at, at)
+    try:
+        model._assets.append(asset)
+    finally:
+        model.endInsertRows()
+    if not model.save():
+        model.beginRemoveRows(QtCore.QModelIndex(), at, at)    # nothing named the id yet, so taking the row back leaves only lonely payload files, which Clean Library already sweeps
+        try:
+            model._assets.pop(at)
+        finally:
+            model.endRemoveRows()
+        summary["refused"] += 1
+        return
+    page = entry.get("note") or {}
+    if page.get("items"):
+        notes.set_note(prefs, notes.note_key(section, asset.mat_id),
+                       page["items"])
+    cats = row.get("categories") or []
+    summary["categories"].setdefault(section, set()).update(
+        [cats] if isinstance(cats, str) else cats)
+    summary["imported"] += 1
+
+
+def _import_file(prefs, bundle, entry, summary) -> None:
+    """One plain-file entry into `<library>/import/`, a numbered suffix keeping an existing name safe."""
+    folder = os.path.join(prefs.dir, "import")
+    os.makedirs(folder, exist_ok=True)
+    name = os.path.basename(str(entry.get("name") or "package_file"))
+    target = os.path.join(folder, name)
+    stem, ext = os.path.splitext(name)
+    bump = 0
+    while os.path.exists(target):
+        bump += 1
+        target = os.path.join(folder, "%s_%d%s" % (stem, bump, ext))
+    hostos.check_sandbox(target)
+    with hostos.scratch_beside(target) as scratch:
+        with open(scratch, "wb") as handle:
+            handle.write(bundle.read(entry["arc"]))
+    summary["files"] += 1
 
 
 def verify_package(path: str) -> list:
