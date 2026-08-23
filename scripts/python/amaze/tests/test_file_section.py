@@ -85,7 +85,7 @@ class TheFileTabIntroducesItselfOnceTest(unittest.TestCase):
 
 
 class LocationsFollowTheLibraryTest(unittest.TestCase):
-    """The locations and File favourites move into the library and settings.json keeps the copy - REAL_SHAPE mirrors the real settings measured 2026-08-05, deliberately including two locations carrying nothing but registration and one `show_all: False` override, the two cases a decoration-table composition or a falsy-dropping normaliser silently loses."""
+    """The locations and File favourites move into the library and settings.json keeps the copy - REAL_SHAPE is shaped on the real settings measured 2026-08-05, deliberately keeping two locations carrying nothing but registration and one `show_all: False` override, the two cases a decoration-table composition or a falsy-dropping normaliser silently loses."""
 
     REAL_SHAPE = {
         "directory": "",
@@ -171,7 +171,7 @@ class LocationsFollowTheLibraryTest(unittest.TestCase):
                 return keyed_store.Written(False, keyed_store.REASON_NO_USER)
             return real_update(store, values)
 
-        with mock.patch.object(keyed_store.Store, "update",    # patched from the START: load() runs the migration, and deleting the files after would hit the .bak tier's BLIND refusal instead of the branch under test
+        with mock.patch.object(keyed_store.Store, "update",    # patched from the START: the fixture's own first locations read can migrate, and deleting the files after would hit the .bak tier's BLIND refusal instead of the branch under test
                                refuse_favourites):
             prefs, library = self._prefs()
             result = locations_mod.migrate(prefs)    # marker unset, so this re-runs and answers with the state
@@ -349,7 +349,7 @@ class LocationsArePerUserTest(unittest.TestCase):
 
     OTHER = "0f0e0d0c0b0a09080706050403020100"
 
-    PRE_TAG_ROWS = {    # a pre-tag locations.json with every decoration kind - what an upgrading machine's library holds on first open
+    PRE_TAG_ROWS = {    # a pre-tag locations.json - what an upgrading machine's library holds on first open (name, show_all and recursive; colour is exercised in REAL_SHAPE)
         "/tex/img/": {"registered": True, "recursive": True},
         "/tex/bokeh/": {"registered": True, "name": "Bokeh files"},
         "/models/obj/": {"registered": True, "show_all": False},
@@ -527,7 +527,7 @@ class KindRouterTest(unittest.TestCase):
 
 
 class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
-    """Every path Amaze writes INTO THE SCENE goes through _scene_path (the Write Paths As preference) - the texture funnel, the geometry loader and the drag payload all once wrote raw absolutes."""
+    """Every path Amaze writes INTO THE SCENE goes through _scene_path (the Write Paths As preference) - the texture funnel, the geometry loader and the drag payload all once wrote raw absolutes; the texture-funnel case is pinned in DropFilePathOnNodeTest."""
 
     @classmethod
     def setUpClass(cls):
@@ -553,7 +553,7 @@ class ScenePathsAreSpelledPerPreferenceTest(unittest.TestCase):
             "the geometry import writes the raw absolute path")
 
     def test_the_drag_payload_is_the_spelled_text_and_nothing_else(self):
-        """ONE flavour, the spelled text: a file URL is an OS open-this handle Houdini honours - released outside a field it offers to CLEAR THE SCENE, and inside one it beats the spelled text."""
+        """ONE flavour, the spelled text: a file URL is an OS open-this handle Houdini honoured - released outside a field it OFFERED to clear the scene, and inside one it BEAT the spelled text, which is why drops wrote absolute paths."""
         home = self._home()
         raw = home + "/textures/amaze_spelling.png"
         mime = self.panel.thumblist._file_drag_mime(self.panel, raw)
@@ -1172,7 +1172,7 @@ class HoudiniPathTest(unittest.TestCase):
                          "$HOME / $JOB / $HIP / Absolute")
 
     def test_the_test_library_switch_freezes_the_real_path_rows(self):
-        """While the Test Library switch is on, the Library Path and Cache Path rows are INERT - their browse buttons would otherwise write the real fields with a test path, the one combination that could lose a library."""
+        """While the Test Library switch is on, the Library Path row is INERT - its browse button would otherwise write the real field with a test path, the one combination that could lose a library; the Cache Path row stays live, because the cache does not move with the library."""
         import os
         import shutil
         import tempfile
@@ -1481,7 +1481,7 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
 
 
 class OsIconTest(unittest.TestCase):
-    """A file Amaze does not recognise still gets a picture: the OS's own icon on a transparent tile-sized canvas, never scaled past 2x its native size."""
+    """A file Amaze does not recognise still gets a picture: the OS's own icon on a transparent tile-sized canvas, never scaled past 2x its native size (the recorded probe's caveat)."""
 
     def _model_with(self, *names):
         tmp = tempfile.mkdtemp(prefix="amaze_osicon_")
@@ -2036,7 +2036,7 @@ class LocationManagementTest(unittest.TestCase):
 
 
 class CleanupPrunesThroughTheModelTest(unittest.TestCase):
-    """Clean Library drops dead location pointers through the MODEL - the rows come straight out of prefs, so a bare prefs write changes the count with no structural signal (a bare layoutChanged is also a native H21 segfault, research.md); three locations with the live one BETWEEN the dead two, the setup a low-row-first removal fails on."""
+    """Clean Library drops dead location pointers through the MODEL - the rows come straight out of prefs, so a bare prefs write changes the count with no structural signal (research.md ▸ A BARE layoutChanged.emit() SEGFAULTS H21 TOO); three locations with the live one BETWEEN the dead two, the setup a low-row-first removal fails on."""
 
     @classmethod
     def setUpClass(cls):
@@ -2071,7 +2071,6 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
             % (before - model.rowCount(), len(removed)))
         survivors = list(panel.prefs.file_folders)
         self.assertIn(    # the locations API answers CANONICAL absolutes, so the expectation converts too
-
             hostos.canonical_path_key(alive), survivors,
             "cleanup removed a location whose folder is still there")
         for path in (dead_a, dead_b):
