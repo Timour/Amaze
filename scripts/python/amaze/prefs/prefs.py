@@ -147,11 +147,10 @@ class Prefs(_Persistence):
                 if ui is None:      # nobody to ask, so fall through to the branch that ACCEPTS a library already on disk
                     count += 1
                     continue
-                if not os.path.exists(self._directory) and count < 1:
-                    ui.displayMessage("It looks like your library is not set up yet. Please choose a directory to store the library data")
-                elif count > 0:
+                if count > 0:   # only a RETRY speaks - the first picker follows the user's own gesture, and the set-up preamble it used to carry was a dialog in front of the dialog ▸p/dialogs-are-a-bill; its context is the title below now
                     ui.displayMessage("Invalid Path selected. Please try again")
-                path = ui.selectFile(file_type=hou.fileType.Directory)
+                path = ui.selectFile(file_type=hou.fileType.Directory,
+                                     title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled
                     return False
                 self.dir = hou.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below

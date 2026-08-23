@@ -356,6 +356,30 @@ class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
                         "the guard skipped the folder picker in a session "
                         "that has a ui")
 
+    def test_the_picker_opens_directly_and_carries_its_own_context(self):
+        """The click that opens the picker is the consent, so nothing speaks first - the set-up preamble was a dialog in front of the dialog the gesture asked for ▸p/dialogs-are-a-bill. The context it carried moved into the picker's own title, which first launch still needs."""
+        said = []
+        titles = []
+        prefs = test_support.fixture_prefs(self)
+        prefs._directory = os.path.join(tempfile.gettempdir(),
+                                        "amaze_no_such_library_dir")
+
+        def select_file(*_args, **kwargs):
+            titles.append(kwargs.get("title", ""))
+            return ""
+
+        fake = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: said.append(text),
+            selectFile=select_file)
+        with mock.patch.object(hou, "ui", fake, create=True):
+            prefs.get_dir_from_user()
+        self.assertEqual([], said,
+                         "a message interrupted on the way to the folder "
+                         "picker")
+        self.assertTrue(titles and titles[0],
+                        "the picker opened without a title, so a first "
+                        "launch shows an unlabelled folder chooser")
+
 
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
     """ROADMAP R51: ONE shell owner. Every QDialog subclass in dialogs/ either rides AssetDialog or names its recorded reason in a HOUSE_STRAY class attribute - the four one-off dialogs hand-copied the shell line by line before this pin existed."""
