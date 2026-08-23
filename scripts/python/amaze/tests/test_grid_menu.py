@@ -102,7 +102,8 @@ class TheTableIsWellFormED(unittest.TestCase):
         """The menu law (the UI text register, set 2026-07-31): the tile's presentation, Favorite, then Delete last of all, in every grid menu - one shared tail now, so this pins the tail rather than five copies of an ordering."""
         labels = [e.label for e in sections.GRID_MENU_TAIL if e.label]
         self.assertEqual(
-            ["Update Preview", "Customize", "Favorite", "Delete"], labels)
+            ["Update Preview", "Customize", "Favorite", "Export Package",
+             "Delete"], labels)
 
     def test_no_section_writes_its_own_copy_of_a_tail_entry(self):
         """The five copies, as a table fact - a section that spells a tail label out in its own rows has started a sixth."""
@@ -241,14 +242,16 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_material_with_one_selected(self):
         self.assertEqual(
             ["Info", "Copy To > [/mat, /stage]", "----",
-             "Update Preview", "Customize", "Favorite", "Delete"],
+             "Update Preview", "Customize", "Favorite", "Export Package",
+             "Delete"],
             self._show("material", (0,)))
 
     def test_material_with_two_selected(self):
         """Info acts on one item and greys; everything else acts on the whole selection and stays live."""
         self.assertEqual(
             ["Info(off)", "Copy To > [/mat, /stage]", "----",
-             "Update Preview", "Customize", "Favorite", "Delete"],
+             "Update Preview", "Customize", "Favorite", "Export Package",
+             "Delete"],
             self._show("material", (0, 1)))
 
     def test_material_with_nothing_selected(self):
@@ -256,7 +259,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertEqual(
             ["Info(off)", "Copy To > [/mat, /stage](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
-             "Delete(off)"],
+             "Export Package(off)", "Delete(off)"],
             self._show("material"))
 
     def test_color_with_one_selected(self):
@@ -265,7 +268,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
             ["Apply",
              "Apply as > [Constant, Linear, CatmullRom, MonotoneCubic, "
              "Bezier, BSpline, Hermite]",
-             "----", "Customize", "Favorite", "Delete"],
+             "----", "Customize", "Favorite", "Export Package", "Delete"],
             [row for row in shown if not row.startswith("Copy Color")])
         swatches = [row for row in shown if row.startswith("Copy Color")]
         self.assertEqual(1, len(swatches))
@@ -276,7 +279,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-entry actions grey; Customize, Favorite and Delete act on the whole selection like every section."""
         shown = self._show("gradient", (0, 1))
         self.assertEqual(
-            ["Apply(off)", "----", "Customize", "Favorite", "Delete"],
+            ["Apply(off)", "----", "Customize", "Favorite",
+             "Export Package", "Delete"],
             [row for row in shown
              if not row.startswith(("Apply as", "Copy Color"))])
         for row in shown:
@@ -288,19 +292,19 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """The fixture has no Node assets, so this is the empty case - exactly the one that used to produce no menu at all."""
         self.assertEqual(
             ["Load(off)", "----", "Update Preview(off)", "Customize(off)",
-             "Favorite(off)", "Delete(off)"],
+             "Favorite(off)", "Export Package(off)", "Delete(off)"],
             self._show("cop"))
 
     def test_code_with_one_selected(self):
         self.assertEqual(
             ["New File", "----", "Apply", "Edit", "----",
-             "Customize", "Favorite", "Delete"],
+             "Customize", "Favorite", "Export Package", "Delete"],
             self._show("code", (0,)))
 
     def test_code_with_two_selected(self):
         self.assertEqual(
             ["New File", "----", "Apply(off)", "Edit(off)", "----",
-             "Customize", "Favorite", "Delete"],
+             "Customize", "Favorite", "Export Package", "Delete"],
             self._show("code", (0, 1)))
 
     def test_code_offers_NEW_FILE_over_an_empty_selection(self):
@@ -326,7 +330,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertTrue(rows, "the fixture has no image rows")
         self.assertEqual(
             ["Import", "Copy Path", "----", "Show Location",
-             "Update Preview", "Customize", "Favorite"],
+             "Update Preview", "Customize", "Favorite", "Export Package"],
             self._show("file", rows[:1]))
 
     def test_file_two_images_grey_IMPORT(self):
@@ -335,7 +339,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertGreater(len(rows), 1, "need two image rows")
         self.assertEqual(
             ["Import(off)", "Copy Path", "----", "Show Location(off)",
-             "Update Preview", "Customize", "Favorite"],
+             "Update Preview", "Customize", "Favorite", "Export Package"],
             self._show("file", rows[:2]))
 
     def test_file_two_GEOMETRY_rows_keep_IMPORT_live(self):
@@ -344,7 +348,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertGreater(len(rows), 1, "need two geometry rows")
         self.assertEqual(
             ["Import", "Copy Path", "----", "Show Location(off)",
-             "Update Preview", "Customize", "Favorite"],
+             "Update Preview", "Customize", "Favorite", "Export Package"],
             self._show("file", rows[:2]))
 
     def test_file_scene_row(self):
@@ -353,15 +357,17 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         self.assertTrue(rows, "the fixture has no scene rows")
         self.assertEqual(
             ["Load", "Copy Path", "----", "Show Location",
-             "Capture Preview(off)", "Customize", "Favorite"],
+             "Capture Preview(off)", "Customize", "Favorite",
+             "Export Package"],
             self._show("file", rows[:1]))
 
     def test_file_unknown_row_offers_only_COPY_PATH(self):
-        """The one honest action for a file Houdini probably cannot open - Import, Load, Capture and Update Preview are absent rather than greyed: none of them exists for this kind."""
+        """The honest actions for a file Houdini probably cannot open - Import, Load, Capture and Update Preview are absent rather than greyed: none of them exists for this kind. Export stays: any file rides a package whole."""
         rows = self._rows_of_kind(file_library.KIND_OTHER)
         self.assertTrue(rows, "the fixture has no unknown-kind rows")
         self.assertEqual(
-            ["Copy Path", "----", "Show Location", "Customize", "Favorite"],
+            ["Copy Path", "----", "Show Location", "Customize", "Favorite",
+             "Export Package"],
             self._show("file", rows[:1]))
 
     def test_file_NEVER_offers_delete(self):

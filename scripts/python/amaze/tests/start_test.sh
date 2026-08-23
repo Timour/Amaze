@@ -171,7 +171,7 @@ test_redshift_terminal test_dead_cover test_updater test_preview_boundary \
 test_empty_state test_role_numbers test_comment_budget test_ui_labels \
 test_fresh_library test_grouped_import test_row_addressing \
 test_device_pixmap test_switch_rereads test_upgrade_tool \
-test_fixture_guard"
+test_fixture_guard test_packages"
 
 # Vulkan viewport multithreading OFF for the suite, on every platform.
 # Ten panel modules crash 10/10 with it on - Houdini's own heap misuse

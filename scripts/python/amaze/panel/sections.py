@@ -8,7 +8,7 @@ import os
 import hou
 from PySide6 import QtCore, QtWidgets
 
-from amaze.core import (debug, dragengine, file_library, grid_columns,
+from amaze.core import (debug, dragengine, file_library, grid_columns, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -47,6 +47,7 @@ GRID_MENU_TAIL = (
               shown="menu_offers_preview"),
     MenuEntry("Customize", verb="menu_customize"),
     MenuEntry("Favorite", verb="menu_favourite"),
+    MenuEntry("Export Package", verb="menu_export_package"),
     MenuEntry("Delete", verb="menu_delete", shown="deletes_rows"),
 )
 
@@ -132,6 +133,12 @@ class Section:
     def stack(self):
         """The AssetStack for the curated machinery, or None for sections that do not use it."""
         return None
+
+    def menu_export_package(self, indexes, current, payload=None) -> None:
+        """ASK half of the grid export: the panel picks the destination, `export_package_to` does the work - headless tests drive that door directly."""
+        path = self.panel.ask_package_destination()
+        if path:
+            self.export_package_to(list(indexes), path)
 
     def filter_text(self, text: str) -> None:
         pass
@@ -320,6 +327,9 @@ class AssetSection(Section):
         SEPARATOR,
         MenuEntry("Set Color", verb="menu_set_colour"),
         MenuEntry("Clear Color", verb="menu_clear_colour"),
+        SEPARATOR,
+        MenuEntry("Export Category", verb="menu_export_category",
+                  needs="one"),
     )
 
     def menu_add_category(self, indexes, current, payload=None) -> None:
@@ -343,6 +353,49 @@ class AssetSection(Section):
                 st.categories.rename_category(name, new_name)
             st.model.save()
         self._refilter_from_sidebar()    # the rename rewrites every asset and the sidebar row, leaving the proxy narrowed to a name nothing carries any more: without this the row reads correctly, stays highlighted, and the grid is permanently empty with nothing said until another row is clicked. Through the ONE route a sidebar click uses, never a second place that knows how a category becomes a filter
+
+    def export_package_to(self, indexes, path: str) -> int:
+        """ACT half: the selected rows (proxy indexes) leave as one `.amazepkg` - record, existing family files and note per asset - answering the entry count."""
+        st = self.stack()
+        if st is None:
+            return 0
+        items = []
+        for index in indexes:
+            if index is None or not index.isValid():
+                continue
+            source = (st.proxy.mapToSource(index)
+                      if st.proxy is not None else index)
+            asset = st.model.assets[source.row()]
+            items.append(packages.collect_asset(st.model, asset.mat_id))
+        if not items:
+            return 0
+        return packages.write_package(path, items)
+
+    def export_category_to(self, category, path: str) -> int:
+        """ACT half of the sidebar export: every asset carrying `category` (None means the whole section) leaves as one package."""
+        st = self.stack()
+        if st is None:
+            return 0
+        items = []
+        for asset in st.model.assets:
+            cats = asset.categories
+            if isinstance(cats, str):    # the record field is "" for none and may be a single name - `in` on a string would substring-match
+                cats = [cats] if cats else []
+            if category is None or category in cats:
+                items.append(packages.collect_asset(st.model,
+                                                    asset.mat_id))
+        if not items:
+            return 0
+        return packages.write_package(path, items)
+
+    def menu_export_category(self, indexes, current, payload=None) -> None:
+        """ASK half: the clicked sidebar row names the category (All exports the whole section), the panel picks the destination."""
+        name = self.sidebar_key(current) if current is not None else None
+        if name in ("All", "_All", ""):
+            name = None
+        path = self.panel.ask_package_destination()
+        if path:
+            self.export_category_to(name, path)
 
     def _refilter_from_sidebar(self) -> None:
         """Point the grid at whatever the sidebar is standing on now: both category verbs change what the current row MEANS, and the proxy holds the value it was given when the row was clicked."""
@@ -1209,6 +1262,21 @@ class FileSection(FolderSection):
         "": _PATH_ONLY,
     }
 
+    def export_package_to(self, indexes, path: str) -> int:    # the File flavour: each selected row's file rides whole under its kind
+        items = []
+        for index in indexes:
+            if index is None or not index.isValid():
+                continue
+            source = index.data(file_library.FileFiles.PathRole)
+            if not source:
+                continue
+            kind = (index.data(file_library.FileFiles.KindRole)
+                    or file_library.kind_for(os.path.basename(source)))
+            items.append(packages.collect_file(source, kind))
+        if not items:
+            return 0
+        return packages.write_package(path, items)
+
     def click_import_geo(self, index) -> bool:
         self.panel.import_geo_asset(index)
         return True
@@ -1637,6 +1705,9 @@ class GradientSection(AssetSection):
                   shown="on_a_category"),
         MenuEntry("Clear Color", verb="menu_clear_colour",
                   shown="on_a_category"),
+        SEPARATOR,
+        MenuEntry("Export Category", verb="menu_export_category",
+                  needs="one"),
     )
 
     def on_a_category(self, indexes, current) -> bool:

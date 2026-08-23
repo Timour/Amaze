@@ -1,32 +1,4 @@
-"""The Sidebar's MENU: the Grid's builder, a different table.
-
-BATCH 7 of the four-areas restructure. Three right-click handlers in
-panel.py - `_asset_catlist_menu`, `_file_catlist_menu` and
-`_gradient_catlist_menu`, 226 lines - were the same five decisions the
-six GRID menus had been, in three more copies:
-
-* the same spine in all three - Add, Rename, Remove, a divider, Set
-  Color, Clear Color - with File swapping Rename for a Label submenu
-  and adding Locate and two per-location toggles;
-* each placing its own dividers, writing its own selection law, and
-  guarding its own conditional entries against the None-collision by
-  hand (`action_rename is not None and action == action_rename`, three
-  times in the Color menu alone);
-* each unpacking `CategoryDialog`'s two-field answer its own way.
-
-They are `Section.SIDEBAR_MENU` now, rendered by the same
-`panel/grid.py` builder as `GRID_MENU`. The builder gained exactly two
-things to take them: a `checkable` field (File's two per-location
-toggles) and a per-CHILD enabled state (File's Label submenu greys
-Remove when there is no label).
-
-THE MENUS PINNED HERE WERE RECORDED FROM THE THREE HANDLERS before
-they were deleted - by stashing the rewrite, running the recorder
-against HEAD, and restoring it. That round-trip earned its keep
-immediately: the first version of the Label submenu HID Remove where
-the old one greyed it, which no test would have caught and which
-breaks the law that an entry never vanishes.
-"""
+"""The Sidebar's MENU pins - `Section.SIDEBAR_MENU` through the same `panel/grid.py` builder as `GRID_MENU`; the shapes were RECORDED from the three panel.py handlers they replaced before those were deleted, so a rendering difference is a regression against shipped behaviour, not a style call."""
 
 import os
 import sys
@@ -47,14 +19,12 @@ sys.path.insert(
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-#: Every context with a sidebar menu.
-SIDEBAR_CONTEXTS = ("MaterialSection", "CopSection", "CodeSection",
+SIDEBAR_CONTEXTS = ("MaterialSection", "CopSection", "CodeSection",    # every context with a sidebar menu
                     "FileSection", "GradientSection")
 
 
 def render(menu) -> list:
-    """Label, tick state, submenu children inline, "(off)" when greyed
-    - the shape the before/after recording used."""
+    """Label, tick state, submenu children inline, "(off)" when greyed - the shape the before/after recording used."""
     out = []
     for action in menu.actions():
         if action.isSeparator():
@@ -104,8 +74,7 @@ class TheTableIsWellFormED(unittest.TestCase):
                             % (name, entry.label, fact))
 
     def test_the_three_asset_sections_share_ONE_table(self):
-        """Not three equal copies - the same object. A copy is a copy
-        that will drift, which is what the six grid menus proved."""
+        """Not three equal copies - the same OBJECT; a copy is a copy that will drift."""
         tables = {id(getattr(sections, name).SIDEBAR_MENU)
                   for name in ("MaterialSection", "CopSection",
                                "CodeSection")}
@@ -114,9 +83,7 @@ class TheTableIsWellFormED(unittest.TestCase):
             "Material, Node and Code no longer share one sidebar table")
 
     def test_only_FILE_uses_a_checkable_entry(self):
-        """The two per-location toggles are the only ticks in any
-        menu. If another section grows one, the law it follows should
-        be decided rather than copied."""
+        """The two per-location toggles are the only ticks in any menu - a section growing one decides its law rather than copying it."""
         for name in SIDEBAR_CONTEXTS:
             ticks = [e.label for e in getattr(sections, name).SIDEBAR_MENU
                      if e.checkable]
@@ -181,7 +148,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         return seen
 
     SPINE = ["Add Category", "Rename", "Remove", "----",
-             "Set Color", "Clear Color"]
+             "Set Color", "Clear Color", "----", "Export Category"]
 
     def test_the_three_asset_sidebars_render_the_same_spine(self):
         for key in ("material", "cop", "code"):
@@ -189,17 +156,17 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(self.SPINE, self._show(key))
 
     def test_asset_rename_greys_on_two_rows(self):
-        """Renaming acts on ONE category; Remove and the colours act on
-        the whole selection. The Grid's selection law, unchanged."""
+        """Renaming acts on ONE category; Remove and the colours act on the whole selection - the Grid's selection law, unchanged."""
         shown = self._show("material", (0, 1))
         self.assertEqual(
             ["Add Category", "Rename(off)", "Remove", "----",
-             "Set Color", "Clear Color"], shown)
+             "Set Color", "Clear Color", "----", "Export Category(off)"],
+            shown)
 
     def test_color_offers_only_add_on_the_All_row(self):
-        """Everything below All is a real user category; All is a view,
-        so the per-category entries do not exist on it."""
-        self.assertEqual(["Add Category"], self._show("gradient", (0,)))
+        """Everything below All is a real user category; All is a view, so the per-category entries do not exist on it - Export stays, exporting from All being the whole section."""
+        self.assertEqual(["Add Category", "----", "Export Category"],
+                         self._show("gradient", (0,)))
 
     def test_color_offers_the_whole_spine_on_a_category(self):
         self.assertEqual(self.SPINE, self._show("gradient", (1,)))
@@ -213,8 +180,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
             shown)
 
     def test_file_on_the_All_row(self):
-        """The per-location entries grey; Show All Files stays live,
-        because on All the tick IS the global preference."""
+        """The per-location entries grey; Show All Files stays live, because on All the tick IS the global preference."""
         shown = self._show("file", (0,))
         self.assertEqual(
             ["Add Location", "Remove", "Locate",
@@ -224,10 +190,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
             shown)
 
     def test_file_label_submenu_greys_remove(self):
-        """The regression the before/after recording caught: the first
-        version of this table HID Remove where the old menu greyed it.
-        An entry that vanishes moves the row under the cursor between
-        two right-clicks, which is the law the whole menu follows."""
+        """Remove GREYS in the Label submenu, never vanishes - an entry that vanishes moves the row under the cursor between two right-clicks."""
         for rows in ((0,), (1,)):
             with self.subTest(row=rows[0]):
                 label = [row for row in self._show("file", rows)
@@ -239,8 +202,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                     % label[0])
 
     def test_file_show_all_reflects_the_preference(self):
-        """A tick that does not read its own state is a switch showing
-        the wrong position - and this one is per location."""
+        """A tick that does not read its own state is a switch showing the wrong position - and this one is per location."""
         panel = self.panel
         before = bool(panel.prefs.file_show_unknown)
         shown = self._show("file", (0,))
@@ -266,9 +228,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
 
 
 class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
-    """The None-collision the three handlers each guarded by hand -
-    the Color menu carried `action_rename is not None and action ==
-    action_rename` three times over. Dispatch is a dict now."""
+    """Dismissal fires no verb - dispatch is a dict, so the None-collision the old handlers guarded by hand cannot come back."""
 
     @classmethod
     def setUpClass(cls):
@@ -310,14 +270,7 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
 
 
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
-    """`ui_helpers.relayout` is for DATA changes only - its own
-    docstring bans wrapping a structural insert or removal, because a
-    layout-change pair around begin/endInsert/RemoveRows hands attached
-    proxies dangling persistent indexes at the closing signal: a native
-    segfault, measured on H21 (research.md, 2026-08-04).
-    panel.assign_category_active hoisted `check_add_category` out for
-    exactly this reason; the sidebar's Add and Remove verbs re-created
-    the pairing."""
+    """`ui_helpers.relayout` is for DATA changes only: a layout-change pair around begin/endInsert/RemoveRows hands attached proxies dangling persistent indexes at the closing signal - a native H21 segfault (research.md, 2026-08-04)."""
 
     def test_no_relayout_wraps_a_categories_row_signal(self):
         import ast

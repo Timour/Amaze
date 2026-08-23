@@ -46,7 +46,7 @@ from amaze import branding
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
-    database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate,
+    database, dragengine, gallery_import, lop_assign, matx_icon, matx_translate, packages,
     tile_icons, users,
 )
 from amaze.render import (
@@ -124,6 +124,7 @@ _reload(matx_icon)
 _reload(matx_import)
 _reload(matx_library)
 _reload(gallery_import)    # reachable from the Online menu, and missing here meant editing it did nothing until a full restart
+_reload(packages)
 _reload(generator)
 
 
@@ -1797,6 +1798,26 @@ class MatLibPanel(QtWidgets.QWidget):
         if getattr(self, "menu_filter", None) is None:
             return
         self.build_filter_menu()
+
+    def ask_package_destination(self) -> str:
+        """The write-mode picker for an `.amazepkg` export - "" when headless or cancelled, the suffix appended when the user leaves it off."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return ""
+        picked = ui.selectFile(
+            title="Export Amaze Package",
+            file_type=hou.fileType.Any,
+            pattern="*" + packages.SUFFIX,
+            default_value="package" + packages.SUFFIX,
+            chooser_mode=hou.fileChooserMode.Write,
+        )
+        picked = (picked or "").strip()
+        if not picked:
+            return ""
+        picked = hou.text.expandString(picked)
+        if not picked.endswith(packages.SUFFIX):
+            picked += packages.SUFFIX
+        return picked
 
     def import_galleries(self) -> None:
         """Gallery Import: every material preset in a .gal file becomes a library material through the same save funnel a hand-saved one takes. Thumbnails are NOT rendered during the run - the summary says how to render them afterwards."""
