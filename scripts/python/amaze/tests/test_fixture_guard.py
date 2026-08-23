@@ -159,5 +159,32 @@ class TheStandInKeepsTheLengthAndChangesTheValue(unittest.TestCase):
                 self.assertEqual(replacement, gen.stand_in(replacement))
 
 
+class SuiteDebrisLandsInTheDesignatedFolder(unittest.TestCase):
+    """The Test Library preference EXISTS so test libraries have one home (settled 2026-08-23) - a machine that designates one gets every suite directory under `<test_dir>/suite/`, visible and deletable, never scattered."""
+
+    def test_the_fixture_library_lands_under_the_test_folder(self):
+        from amaze.helpers import hostos
+        if not test_support.SUITE_ROOT:
+            self.skipTest("this machine designates no Test Library "
+                          "folder, so tempfile decides")
+        path = test_support.fresh_library(self)
+        root = hostos.canonical_path_key(test_support.SUITE_ROOT)
+        self.assertTrue(
+            hostos.canonical_path_key(path).startswith(root),
+            "a fixture library landed outside the designated test "
+            "folder: %s" % path)
+
+    def test_every_support_scratch_comes_from_the_one_maker(self):
+        """A second bare `mkdtemp` in test_support is the leak coming back - every directory it mints goes through `scratch_dir`."""
+        import inspect
+        body = inspect.getsource(test_support)
+        calls = body.count("tempfile.mkdtemp(")
+        self.assertEqual(
+            1, calls,
+            "test_support calls tempfile.mkdtemp %d times - only "
+            "scratch_dir may, so the suite root cannot be bypassed"
+            % calls)
+
+
 if __name__ == "__main__":
     unittest.main()
