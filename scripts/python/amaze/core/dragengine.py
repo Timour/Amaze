@@ -66,12 +66,57 @@ def begin(section_key: str, ids=()) -> None:
     _hover["logged_hit"] = 0
     _hover["probes_left"] = 40
     _hover["explained"] = False
+    _reset_move()
 
 
 def end() -> None:
     """End of gesture - however it ended. Restores the highlight."""
     _restore_highlight()
     ghost_clear()
+    _reset_move()
+
+
+_move = {
+    "tick_at": 0.0,
+    "editor": None,
+    "blocked": False,
+    "target": (None, "", -1),
+    "type_name": "",
+}
+
+
+def _reset_move() -> None:
+    _move["tick_at"] = 0.0
+    _move["editor"] = None
+    _move["blocked"] = False
+    _move["target"] = (None, "", -1)
+    _move["type_name"] = ""
+
+
+def ghost_tick(editor, now=None) -> bool:
+    """True when the ghost's target answers are STALE - at most once per PICK_INTERVAL, immediately on a fresh gesture or another editor; the outline itself still follows every move. ▸p/drag-move-cost"""
+    now = time.time() if now is None else now
+    try:
+        same = _move["editor"] is not None and editor == _move["editor"]
+    except hou.ObjectWasDeleted:
+        same = False
+    if same and now - _move["tick_at"] < PICK_INTERVAL:
+        return False
+    _move["tick_at"] = now
+    _move["editor"] = editor
+    return True
+
+
+def set_ghost_answers(blocked, target, type_name) -> None:
+    """The tick's findings, held for the moves between ticks."""
+    _move["blocked"] = bool(blocked)
+    _move["target"] = target
+    _move["type_name"] = type_name or ""
+
+
+def ghost_answers():
+    """(blocked, wire_target, type_name) as of the last tick."""
+    return _move["blocked"], _move["target"], _move["type_name"]
 
 
 _ghosted: list = []
@@ -84,10 +129,16 @@ GHOST_ALPHA = 0.75
 GHOST_FALLBACK_SHAPE = "rect"
 
 
+_shape_cache: dict = {}
+
+
 def _shape_for(type_name: str) -> str:
-    """The node shape a created carrier would wear, or "" for a plain box, through the host's own `nodeType.defaultShape`. ▸r/overlay-shapes"""
+    """The node shape a created carrier would wear, or "" for a plain box, through the host's own `nodeType.defaultShape` - cached per type name, misses included, since a type's default shape cannot change within a session. ▸r/overlay-shapes"""
     if not type_name:
         return ""
+    if type_name in _shape_cache:
+        return _shape_cache[type_name]
+    found = ""
     for category in (hou.sopNodeTypeCategory(), hou.vopNodeTypeCategory(),
                      hou.lopNodeTypeCategory(), hou.cop2NodeTypeCategory()):
         try:
@@ -96,10 +147,12 @@ def _shape_for(type_name: str) -> str:
             node_type = None
         if node_type is not None:
             try:
-                return node_type.defaultShape() or ""
+                found = node_type.defaultShape() or ""
             except (AttributeError, hou.OperationFailed):
-                return ""
-    return ""
+                found = ""
+            break
+    _shape_cache[type_name] = found
+    return found
 
 
 def ghost_show(editor, position, type_name: str = "",
@@ -141,8 +194,10 @@ DROP_TARGET_RADIUS = 0.25
 
 
 def wire_under_cursor(editor, position, exclude=()):
-    """The connection a release at `position` would land on, as the triple `setDropTargetItem` wants - or (None, "", -1); the FIRST connection in the list wins and items in front of it are skipped, never a veto. ▸r/drop-targets"""
+    """The connection a release at `position` would land on, as the triple `setDropTargetItem` wants - or (None, "", -1); the FIRST connection in the list wins and items in front of it are skipped, never a veto. The preference gates the QUESTION: a network where the host forbids the insert pays no hit test. ▸r/drop-targets"""
     if editor is None or position is None:
+        return (None, "", -1)
+    if not _drop_on_wire_allowed(editor):
         return (None, "", -1)
     try:
         spot = editor.posToScreen(position)
@@ -152,8 +207,6 @@ def wire_under_cursor(editor, position, exclude=()):
             hou.Vector2(spot.x() + radius, spot.y() + radius),
             for_drop=True)
     except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
-        return (None, "", -1)
-    if not _drop_on_wire_allowed(editor):
         return (None, "", -1)
     for item, name, index in found:
         if isinstance(item, hou.NodeConnection):

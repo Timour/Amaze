@@ -375,7 +375,7 @@ class GridGestureMixin:
         return name or ""
 
     def _ghost_update(self, panel) -> None:
-        """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen. Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
+        """Per move: the outline where the payload would land, asking the SAME questions the release will, so what is drawn is what will happen - the outline's POSITION every move, the target questions on the engine's tick (a full per-move resolution saturated the loop at the mouse's own rate, ▸p/drag-move-cost). Over a node the editor's own drop-target highlight owns it and no ghost is drawn. ▸r/node-graph"""
         section = self._drag_section
         idx = self._drag_index
         if panel is None or idx is None:
@@ -390,23 +390,27 @@ class GridGestureMixin:
                     or pane_type != hou.paneTabType.NetworkEditor):
                 dragengine.ghost_clear()
                 return
-            if rule.on_node and panel._node_under_cursor() is not None:
+            spot = pane_tab.cursorPosition()
+            if dragengine.ghost_tick(pane_tab):
+                blocked = bool(
+                    rule.on_node
+                    and panel._node_under_cursor() is not None)
+                target = (None, "", -1)    # a wire under the cursor is an INSERT, asked only where the payload could BE a link in a chain: a created carrier or an imported network
+                type_name = ""
+                if not blocked:
+                    if rule.on_space or rule.resolve:
+                        target = dragengine.wire_under_cursor(
+                            pane_tab, spot)
+                    type_name = self._ghost_type(
+                        panel, rule, section, pane_tab.pwd(), idx)
+                dragengine.set_ghost_answers(blocked, target, type_name)
+                dragengine.wire_highlight(pane_tab, target)
+            blocked, target, type_name = dragengine.ghost_answers()
+            if blocked:
                 dragengine.ghost_clear()    # the host's own highlight owns this case
                 return
-            net = panel._network_under_release()
-            spot = panel._release_position_in(net) if net else None
-            if spot is None:
-                dragengine.ghost_clear()
-                return
-            target = (None, "", -1)    # a wire under the cursor is an INSERT, asked only where the payload could BE a link in a chain: a created carrier or an imported network
-            if rule.on_space or rule.resolve:
-                target = dragengine.wire_under_cursor(pane_tab, spot)
-                dragengine.wire_highlight(pane_tab, target)
-            dragengine.ghost_show(
-                pane_tab, spot,
-                self._ghost_type(panel, rule, section, net,
-                                 self._drag_index),
-                connection=target[0])
+            dragengine.ghost_show(pane_tab, spot, type_name,
+                                  connection=target[0])
         except (AttributeError, hou.OperationFailed):
             dragengine.ghost_clear()
 

@@ -1,14 +1,10 @@
-"""What a release over a network editor may wire itself to.
-
-Three defects shipped here in one afternoon, none visible to a suite
-that tested these two functions nowhere; the measurements behind every
-scripted sequence below are in research.md - Network editor drop
-targets.
-"""
+"""What a release over a network editor may wire itself to - every scripted sequence's measurements are ▸r/drop-targets."""
 
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -17,8 +13,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/.
-sys.path.insert(
+sys.path.insert(    # THREE dirnames: tests/ -> amaze/ -> python/.
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -26,8 +21,7 @@ from amaze.core import dragengine  # noqa: E402
 
 
 class ScriptedEditor(object):
-    """Answers exactly what it is told to, and keeps the box it was
-    asked with so a test can pin the RADIUS."""
+    """Answers exactly what it is told to, and keeps the box it was asked with so a test can pin the RADIUS."""
 
     def __init__(self, triples, rects, scale=100.0):
         self._triples = triples
@@ -128,9 +122,7 @@ class TestTheConnectorQuestion(DropTargetTest):
             (None, "", -1))
 
     def test_on_the_body_a_neighbours_stub_does_not_win(self):
-        # DEFECT THREE: released dead centre on a node, a neighbour's
-        # input sorted first and got wired, so containment has to
-        # outrank the whole list rather than the entries before it.
+        # released dead centre, a neighbour's input sorting first must not get wired: containment outranks the whole list ▸r/drop-targets
         body = self.node("crowded_body")
         neighbour = self.node("crowded_neighbour")
         point = hou.Vector2(0.0, 0.0)
@@ -142,8 +134,7 @@ class TestTheConnectorQuestion(DropTargetTest):
             (None, "", -1))
 
     def test_a_neighbour_sorting_first_does_not_steal_the_target(self):
-        # A node body in the list vetoes only where the cursor is
-        # INSIDE it; a neighbour standing nearby is stepped over.
+        # a node body vetoes only where the cursor is INSIDE it; a neighbour standing nearby is stepped over
         aimed = self.node("aimed_at")
         neighbour = self.node("standing_nearby")
         point = hou.Vector2(0.0, -0.30)
@@ -185,9 +176,7 @@ class TestTheConnectorQuestion(DropTargetTest):
 class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
 
     def test_the_landed_node_does_not_answer_about_itself(self):
-        # DEFECT TWO: placement runs before this question, so the
-        # fresh node is under the cursor and its own body used to make
-        # the rule read an ordinary drop and refuse to wire anything.
+        # placement runs before this question, so the fresh node under the cursor must not answer about itself ▸r/drop-targets
         landed = self.node("just_landed")
         target = self.node("real_target")
         point = hou.Vector2(0.0, -0.30)
@@ -200,8 +189,7 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
             (target, "output", 0))
 
     def test_the_landed_node_never_wires_to_itself(self):
-        # Its stubs sit OUTSIDE its body, so a release near its own
-        # edge would wire it to itself with nothing else in reach.
+        # its stubs sit OUTSIDE its body, so a release near its own edge would wire it to itself
         landed = self.node("landed_with_stubs")
         point = hou.Vector2(0.0, -0.30)
         editor = ScriptedEditor(
@@ -213,8 +201,7 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
             (None, "", -1))
 
     def test_without_the_exclusion_it_still_refuses(self):
-        # The guard is the CALLER's to pass; a call site that forgets
-        # it fails here rather than silently in someone's network.
+        # the guard is the CALLER's to pass; a forgotten one fails here rather than silently in someone's network
         landed = self.node("unexcluded")
         target = self.node("unreachable_target")
         point = hou.Vector2(0.0, -0.30)
@@ -226,12 +213,86 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
             (None, "", -1))
 
 
+class TestTheGhostTick(DropTargetTest):
+    """The outline follows every move; the expensive target questions run on the engine's tick - a saturated loop reads as an outline that freezes and then leaps. ▸p/drag-move-cost"""
+
+    def setUp(self):
+        super().setUp()
+        dragengine.begin("material")
+
+    def tearDown(self):
+        dragengine.end()
+        super().tearDown()
+
+    def test_the_tick_passes_once_per_interval(self):
+        editor = ScriptedEditor([], {})
+        t0 = 1000.0
+        self.assertTrue(dragengine.ghost_tick(editor, now=t0),
+                        "a fresh gesture's first move must resolve")
+        self.assertFalse(dragengine.ghost_tick(editor, now=t0 + 0.001),
+                         "the second move re-asked inside the interval")
+        self.assertTrue(dragengine.ghost_tick(    # 1.01: float subtraction lands a hair under the interval at the exact boundary, and the pin is the cadence, not the boundary
+            editor, now=t0 + dragengine.PICK_INTERVAL * 1.01))
+
+    def test_an_editor_change_forces_a_fresh_resolve(self):
+        one = ScriptedEditor([], {})
+        two = ScriptedEditor([], {})
+        t0 = 1000.0
+        self.assertTrue(dragengine.ghost_tick(one, now=t0))
+        self.assertTrue(
+            dragengine.ghost_tick(two, now=t0 + 0.001),
+            "crossing into another editor must not serve the old "
+            "editor's answers for the rest of the interval")
+
+    def test_a_new_gesture_forgets_the_previous_answers(self):
+        editor = ScriptedEditor([], {})
+        dragengine.ghost_tick(editor, now=1000.0)
+        dragengine.set_ghost_answers(True, (None, "x", 3), "copnet")
+        dragengine.begin("material")
+        blocked, target, type_name = dragengine.ghost_answers()
+        self.assertFalse(blocked)
+        self.assertEqual((None, "", -1), tuple(target))
+        self.assertEqual("", type_name)
+        self.assertTrue(
+            dragengine.ghost_tick(ScriptedEditor([], {}), now=1000.001),
+            "a fresh gesture must resolve on its first move")
+
+    def test_forbidden_drop_on_wire_skips_the_hit_test(self):
+        editor = ScriptedEditor([], {})
+        stub = types.SimpleNamespace(
+            allowDropOnWireNetworkSpecific=lambda _e, _i: False)
+        with mock.patch.dict(sys.modules, {"nodegraphprefs": stub}):
+            found = dragengine.wire_under_cursor(
+                editor, hou.Vector2(0.0, 0.0))
+        self.assertEqual((None, "", -1), found)
+        self.assertIsNone(
+            editor.asked_with,
+            "the box was queried for an answer the preference had "
+            "already refused")
+
+    def test_the_node_shape_is_resolved_once_per_type(self):
+        calls = []
+        real = hou.nodeType
+
+        def counting(category, name):
+            calls.append(name)
+            return real(category, name)
+
+        with mock.patch.object(hou, "nodeType", side_effect=counting):
+            first = dragengine._shape_for("amaze_ghost_cache_probe")
+            before = len(calls)
+            second = dragengine._shape_for("amaze_ghost_cache_probe")
+        self.assertEqual(first, second)
+        self.assertEqual(
+            before, len(calls),
+            "the second ask went back to the host for a shape that "
+            "cannot change within a session")
+
+
 class TestTheReachIsTheHostsOwn(DropTargetTest):
 
     def test_it_asks_at_the_drop_radius(self):
-        # DEFECT ONE: the connector snap radius reaches over twice as
-        # far as the drop radius the host's own node drop uses, which
-        # put a neighbour's stub in the answer.
+        # the connector snap radius reaches twice the drop radius and put a neighbour's stub in the answer ▸r/drop-targets
         target = self.node("radius_probe")
         editor = ScriptedEditor([(target, "output", 0)],
                                 {target: _rect(0.0, 0.0)})
@@ -256,8 +317,7 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
             places=6)
 
     def test_the_engine_does_not_reach_for_the_snap_radius(self):
-        # Source-derived: the snap radius is the obvious-looking call
-        # and the wrong one, so it must not creep back.
+        # source-derived: the snap radius is the obvious-looking call and the wrong one, so it must not creep back
         path = dragengine.__file__.replace(".pyc", ".py")
         with open(path, encoding="utf-8") as handle:
             source = handle.read()
