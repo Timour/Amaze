@@ -1092,5 +1092,39 @@ class TheCellDelegatesDoNotACCUMULATE(unittest.TestCase):
             "while the table still points at it")
 
 
+class TheHeaderTakesTheClick(unittest.TestCase):
+    """Click a heading to sort - the whole reason the painted strip was replaced by a real header. A REPLACEMENT QHeaderView never becomes clickable through `setSortingEnabled(True)` (measured, Qt 6.8.3), so the list showed the arrow and answered nothing."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        self.header = self.panel.thumbtable.horizontalHeader()
+
+    def test_the_sections_answer_the_pointer(self):
+        self.assertTrue(
+            self.header.sectionsClickable(),
+            "the header shows a sort arrow but no section takes a "
+            "click, so the promise in the strip is a lie")
+
+    def test_a_sort_indicator_change_reorders_the_rows(self):
+        """The indicator drives the proxy end to end: pointing it the other way must reorder what the table shows."""
+        name_col = grid_columns.KEYS.index("name")
+        model = self.panel.thumbtable.model()
+        self.assertGreater(model.rowCount(), 1,
+                           "one row cannot witness an order")
+        original = (self.header.sortIndicatorSection(),
+                    self.header.sortIndicatorOrder())
+        self.addCleanup(self.header.setSortIndicator, *original)
+        self.header.setSortIndicator(
+            name_col, QtCore.Qt.SortOrder.DescendingOrder)
+        descending = [model.index(r, name_col).data()
+                      for r in range(model.rowCount())]
+        self.assertEqual(
+            sorted(descending, key=str.lower, reverse=True), descending,
+            "the arrow flipped and the rows did not")
+
+
 if __name__ == "__main__":
     unittest.main()
