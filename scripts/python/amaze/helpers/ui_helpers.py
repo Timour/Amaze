@@ -822,6 +822,22 @@ class IconMenuButton(QtWidgets.QWidget):
         if menu is not None:
             menu.aboutToHide.connect(self._on_menu_closed)
 
+    def set_menu(self, menu) -> None:
+        """Swap the popped menu - the stuck-highlight guard's `aboutToHide` hook follows it."""
+        if menu is self._menu:
+            return
+        if self._menu is not None:
+            try:
+                self._menu.aboutToHide.disconnect(self._on_menu_closed)
+            except (RuntimeError, TypeError):
+                pass
+        self._menu = menu
+        if menu is not None:
+            menu.aboutToHide.connect(self._on_menu_closed)
+
+    def menu(self):
+        return self._menu
+
     def _on_menu_closed(self) -> None:
         self._open = False
         self._hovered = self.rect().contains(   # the cursor is read DIRECTLY, because Qt does not reliably resend hover/leave events across a popup closing

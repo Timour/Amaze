@@ -642,6 +642,27 @@ class AmazeSourceTest(unittest.TestCase):
         self.assertEqual("assets/material/x/x.png",
                          record.payload.get("thumb_member"))
 
+    def test_a_chosen_tile_icon_outranks_thumbnail_and_swatch(self):
+        entry = {"type": "asset", "section": "gradient", "id": "a" * 32,
+                 "record": {"id": "a" * 32, "name": "Customized",
+                            "categories": ["X"],
+                            "colors": [{"hex": "#101010"}]},
+                 "note": {},
+                 "files": {"thumbnail": "assets/gradient/a/a.png",
+                           "tile_icon": "assets/gradient/a/a_icon.png"}}
+        pkg = _manifest_zip(self, [entry],
+                            members={"assets/gradient/a/a.png": b"p",
+                                     "assets/gradient/a/a_icon.png": b"i"})
+        url = self.URL + "defaults/c.amazepkg"
+        source = _canned_amaze_source(
+            [("defaults", "c.amazepkg", url)], {url: pkg})
+        record = source.list_materials(limit=10)[0]
+        self.assertEqual(
+            "assets/gradient/a/a_icon.png",
+            record.payload.get("thumb_member"),
+            "the chosen icon must outrank the thumbnail online, the "
+            "way every local section ranks it")
+
     def test_search_filters_by_title(self):
         source = self._two_package_folder()
         hits = source.list_materials(search="palette 4", limit=100)
@@ -715,6 +736,50 @@ class RangedFileTest(unittest.TestCase):
             len(requests), 8,
             "the block cache is not working - %d range requests for a "
             "%d-byte zip" % (len(requests), len(blob)))
+
+    def test_a_known_small_package_is_fetched_whole_in_one_request(self):
+        from unittest import mock
+
+        from amaze.core import matx_sources, packages
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)])
+        blob = _bytes(pkg)
+        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
+               "main/packages/defaults/tiny.amazepkg")
+        tree_json = {"tree": [{"type": "blob",
+                               "path": "packages/defaults/tiny.amazepkg",
+                               "size": len(blob)}]}
+        calls = []
+
+        class _Resp:
+            def __init__(self, data):
+                self._data, self.headers = data, {}
+
+            def read(self):
+                return self._data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+        def counting(url_, headers=None):
+            calls.append(headers or {})
+            return _Resp(blob)
+
+        source = matx_sources.AmazeSource()
+        with mock.patch.object(matx_sources, "get_json",
+                               return_value=tree_json):
+            with mock.patch.object(matx_sources, "_request", counting):
+                records = source.list_materials(limit=10)
+        self.assertEqual(3, len(records))
+        self.assertEqual(
+            1, len(calls),
+            "the tree already NAMES the size - a package under one "
+            "block must be fetched whole in ONE request, not probe-"
+            "416-refetch (%s)" % calls)
+        self.assertNotIn("Range", calls[0],
+                         "the single fetch must be plain, not ranged")
 
     def test_a_package_smaller_than_a_block_survives_a_416(self):
         from unittest import mock
@@ -1057,6 +1122,66 @@ class TexturePackingTest(unittest.TestCase):
             "a package minted a policy file for the library")
 
 
+class OnlineKindFilterTest(unittest.TestCase):
+    """The online eye: All / Materials / Colors / Nodes / Code narrows the grid by tile KIND - non-Amaze sources count as Materials, the choice holds for the session."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _mixed_records(self):
+        from amaze.core import matx_sources
+
+        def store(section, n):
+            return matx_sources.MatxRecord(
+                source="Amaze", uid="d/p.amazepkg#%d" % n, title="T%d" % n,
+                category="Defaults", kind="amazepkg",
+                payload={"package": "https://x", "section": section,
+                         "entry": {}})
+        return [store("gradient", 1), store("code", 2), store("cop", 3),
+                store("material", 4),
+                matx_sources.MatxRecord(source="GPUOpen", uid="g1",
+                                        title="Brick", category="Stone",
+                                        kind="package", payload={})]
+
+    def test_the_kind_filter_narrows_by_what_a_tile_is(self):
+        from amaze.core import matx_library
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        model._all = self._mixed_records()
+        model._loaded = True
+        model.set_kind_filter("gradient")
+        self.assertEqual(["T1"], [r.title for r in model._records])
+        model.set_kind_filter("material")
+        self.assertEqual(["T4", "Brick"],
+                         [r.title for r in model._records],
+                         "a non-Amaze source tile IS a material and "
+                         "must survive the Materials filter")
+        model.set_kind_filter(None)
+        self.assertEqual(5, len(model._records))
+
+    def test_the_online_eye_offers_the_five_kinds(self):
+        panel = self.panel
+        panel.enter_online_world()
+        try:
+            menu = panel.btn_view.menu()
+            self.assertEqual(["All", "Materials", "Colors", "Nodes",
+                              "Code"],
+                             [a.text() for a in menu.actions()])
+            checked = [a.text() for a in menu.actions() if a.isChecked()]
+            self.assertEqual(["All"], checked)
+            colors = next(a for a in menu.actions()
+                          if a.text() == "Colors")
+            colors.trigger()
+            self.assertEqual("gradient",
+                             panel.matx_online_model._kind_filter)
+        finally:
+            panel.leave_online_world()
+        self.assertNotIn(
+            "Colors", [a.text() for a in panel.btn_view.menu().actions()],
+            "leaving the world must hand the eye its section menu back")
+
+
 class OnlineTilePaintingTest(unittest.TestCase):
     """The browser's tile pictures without full downloads: palette swatches DRAWN from the record's colours, material thumbnails fetched per member through a callable preview job."""
 
@@ -1070,6 +1195,77 @@ class OnlineTilePaintingTest(unittest.TestCase):
                            "the first band is not the first colour")
         self.assertGreater(right.blue(), 200,
                            "the second band is not the second colour")
+
+    def test_a_thumb_member_outranks_the_swatch_and_the_code_paint(self):
+        from amaze.core import matx_library, matx_sources, thumbnails
+        record = matx_sources.MatxRecord(
+            source="Amaze", uid="defaults/c.amazepkg#a",
+            title="Customized", category="Defaults", kind="amazepkg",
+            payload={"package": "https://x", "entry": {}, "section":
+                     "gradient", "colors": ["#101010"],
+                     "thumb_member": "assets/gradient/a/a_icon.png"})
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        key = model._preview_key(record)
+        thumbnails.engine.discard(key)
+        model._queue_previews([record])
+        self.assertIsNone(
+            thumbnails.engine.peek(key),
+            "a swatch was painted over a record that NAMES its icon - "
+            "the chosen icon must outrank the drawn preview, the way "
+            "every local section ranks it")
+
+    def test_store_tiles_are_labelled_by_what_they_are(self):
+        from amaze.core import matx_library, matx_sources
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        cases = [("material", {"renderer": "Redshift"}, "Redshift"),
+                 ("material", {"renderer": "Karma"}, "Karma"),
+                 ("material", {}, "Material"),
+                 ("gradient", {}, "Color"),
+                 ("cop", {}, "Node"),
+                 ("code", {"renderer": "VEX"}, "Code")]
+        for section, record, wanted in cases:
+            rec = matx_sources.MatxRecord(
+                source="Amaze", uid="d/p.amazepkg#x", title="T",
+                category="Defaults", kind="amazepkg",
+                payload={"package": "https://x", "section": section,
+                         "entry": {"record": record}})
+            model._records = [rec]
+            got = model.data(model.index(0, 0),
+                             model.RendererLabelRole)
+            self.assertEqual(
+                wanted, got,
+                "a %s store tile must say what it IS, not "
+                "'Amaze (values)'" % section)
+
+    def test_a_snippet_tile_paints_its_code(self):
+        from amaze.core import matx_library, matx_sources, thumbnails
+        from amaze.helpers import vex_syntax
+        entry = {"type": "asset", "section": "code", "id": "b" * 32,
+                 "record": {"id": "b" * 32, "name": "Jitter",
+                            "categories": ["Toolbox"], "renderer": "VEX",
+                            "code": "@P += rand(@ptnum);"},
+                 "note": {}, "files": {}}
+        record = matx_sources.MatxRecord(
+            source="Amaze", uid="defaults/t.amazepkg#b", title="Jitter",
+            category="Defaults", kind="amazepkg",
+            payload={"package": "https://x", "entry": entry,
+                     "section": "code"})
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        key = model._preview_key(record)
+        thumbnails.engine.discard(key)
+        model._queue_previews([record])
+        image = thumbnails.engine.peek(key)
+        self.assertIsNotNone(
+            image, "a code snippet tile stayed BLANK - 15 invisible "
+                   "tiles in a grid of colours is a package that "
+                   "'does not show up'")
+        self.assertEqual(image.pixelColor(2, 2).name(),
+                         vex_syntax.BACKGROUND.name(),
+                         "the snippet preview is not the wrangle-"
+                         "editor field the Code section paints")
 
     def test_a_preview_job_may_be_a_callable(self):
         from amaze.core import matx_library

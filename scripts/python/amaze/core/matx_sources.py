@@ -1005,12 +1005,13 @@ class AmazeSource(MatxSource):
         self._paths = None
         self._bundles = {}
         self._manifests = {}
+        self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
 
     PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
 
     @classmethod
     def _tree_rows(cls, nodes) -> list:
-        """(category, filename, url) for every `packages/<category>/<file>.amazepkg` blob - anything shaped otherwise is invisible."""
+        """(category, filename, url, size) for every `packages/<category>/<file>.amazepkg` blob - anything shaped otherwise is invisible."""
         rows = []
         for node in nodes:
             path = str(node.get("path") or "")
@@ -1020,30 +1021,40 @@ class AmazeSource(MatxSource):
             parts = path.split("/")
             if len(parts) != 3 or parts[0] != cls.PACKAGES_ROOT:
                 continue
-            rows.append((parts[1], parts[2], cls.RAW_BASE + path))
+            rows.append((parts[1], parts[2], cls.RAW_BASE + path,
+                         int(node.get("size") or 0)))
         return rows
 
     def _tree(self) -> list:
-        return self._tree_rows(get_json(self.TREE_URL).get("tree", ()))
+        rows = self._tree_rows(get_json(self.TREE_URL).get("tree", ()))
+        self._sizes = {url: size for _f, _n, url, size in rows}
+        return [(folder, name, url) for folder, name, url, _s in rows]    # canned test sources override this whole method with 3-tuples, so sizes stay an optional accelerant
 
     def _open_package(self, url: str):
         """A zipfile over ranged reads of the hosted package, cached until Refresh."""
         if url not in self._bundles:
             checked = _checked_url(url)
-            try:
-                with _request(checked, headers={"Range": "bytes=-%d"
-                                                % RANGED_BLOCK}) as response:
-                    tail = response.read()
-                    spread = str(response.headers.get("Content-Range")
-                                 or "")
-                size = int(spread.rsplit("/", 1)[-1]) if "/" in spread \
-                    else len(tail)
-            except urllib.error.HTTPError as exc:
-                if exc.code != 416:
-                    raise
-                with _request(checked) as response:    # the suffix exceeded the object and the CDN answered 416, not the RFC's whole file (▸r/github-ranged-store) - a package this small IS its own tail
+            known = getattr(self, "_sizes", {}).get(url)
+            if known and known <= RANGED_BLOCK:    # the tree already named the size - one plain fetch, no probe-416-refetch round-trip
+                with _request(checked) as response:
                     tail = response.read()
                 size = len(tail)
+            else:
+                try:
+                    with _request(checked,
+                                  headers={"Range": "bytes=-%d"
+                                           % RANGED_BLOCK}) as response:
+                        tail = response.read()
+                        spread = str(response.headers.get("Content-Range")
+                                     or "")
+                    size = int(spread.rsplit("/", 1)[-1]) if "/" in spread \
+                        else len(tail)
+                except urllib.error.HTTPError as exc:
+                    if exc.code != 416:
+                        raise
+                    with _request(checked) as response:    # the suffix exceeded the object and the CDN answered 416, not the RFC's whole file (▸r/github-ranged-store) - a package this small IS its own tail
+                        tail = response.read()
+                    size = len(tail)
 
             def get_range(start, end, _url=checked):
                 with _request(_url, headers={
@@ -1078,6 +1089,7 @@ class AmazeSource(MatxSource):
         self._paths = None
         self._manifests = {}
         self._bundles = {}
+        self._sizes = {}
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
         if self._paths is None:
@@ -1103,7 +1115,8 @@ class AmazeSource(MatxSource):
                           if isinstance(c, dict)]
                 if colors:
                     payload["colors"] = colors
-                thumb = (entry.get("files") or {}).get("thumbnail")
+                files = entry.get("files") or {}
+                thumb = files.get("tile_icon") or files.get("thumbnail")    # the CHOSEN icon outranks the render, the way every local section ranks it
                 if thumb:
                     payload["thumb_member"] = thumb
                 rows.append(MatxRecord(

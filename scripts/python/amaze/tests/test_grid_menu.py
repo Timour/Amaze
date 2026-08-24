@@ -151,6 +151,7 @@ class NoMenuIsWrittenInThePanelAnyMore(unittest.TestCase):
     MAY_BUILD_A_MENU = {  # the menus panel.py may still build - NAMED, not counted: a count says one too many without saying which, and deleting a hand menu has to come back here and delete its line
         "init_ui",                      # the toolbar's Filter menu
         "_material_lop_viewport_drop",  # the Drag & Drop Engine's
+        "_build_menus",                 # the online eye's kind filter (All/Materials/Colors/Nodes/Code) - a toolbar menu, not a grid route
     }
 
     def test_ONE_builder_constructs_the_GRID_menu(self):

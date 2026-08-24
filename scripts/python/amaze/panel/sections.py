@@ -61,6 +61,7 @@ class Section:
     takes_comments = True    # a comment needs a library asset; online has none
     takes_favourites = True  # online rows answer False, so the star empties it
     takes_filter_menu = True  # the entries describe the LOCAL section under it
+    kind_filter_menu = False  # the online world answers True: the eye offers All/Materials/Colors/Nodes/Code there
     takes_capture = False    # Capture acts on the open SCENE
 
     empty_noun = "items"  # what the shared empty-state blanks call these
@@ -1580,6 +1581,7 @@ class OnlineContext(Section):
     takes_comments = False    # the three the online world does not offer, declared here rather than as _is_online() branches in the panel, and the toolbar reads them
     takes_favourites = False
     takes_filter_menu = False
+    kind_filter_menu = True
 
 
 class GradientSection(AssetSection):

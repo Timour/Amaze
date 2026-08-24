@@ -858,10 +858,26 @@ class MatLibPanel(QtWidgets.QWidget):
             self.toolbar_layout.addWidget(self.btn_filter)
             if menu_view is not None:
                 self.toolbar_layout.addSpacing(theme.ui_px(2))
-                btn_view = self._make_menu_button(menu_view)
-                btn_view.setToolTip(ui_helpers.tooltip_text(
+                self.menu_view_local = menu_view
+                self.btn_view = self._make_menu_button(menu_view)    # held on self: the online world swaps its menu for the kind filter (_sync_toolbar)
+                self.btn_view.setToolTip(ui_helpers.tooltip_text(
                     "Import a gallery file, or generate a material."))
-                self.toolbar_layout.addWidget(btn_view)
+                self.toolbar_layout.addWidget(self.btn_view)
+                self.online_view_menu = QtWidgets.QMenu(self.ui)
+                kind_group = QtGui.QActionGroup(self.online_view_menu)
+                kind_group.setExclusive(True)
+                for label, section in (("All", None),
+                                       ("Materials", "material"),
+                                       ("Colors", "gradient"),
+                                       ("Nodes", "cop"),
+                                       ("Code", "code")):
+                    act = self.online_view_menu.addAction(label)
+                    act.setCheckable(True)
+                    kind_group.addAction(act)
+                    act.triggered.connect(
+                        lambda _c=False, s=section:
+                        self.matx_online_model.set_kind_filter(s))
+                self.online_view_menu.actions()[0].setChecked(True)
             self.toolbar_layout.addSpacing(theme.ui_px(2))
             btn_prefs = ui_helpers.IconMenuButton(
                 None,
@@ -2234,6 +2250,16 @@ class MatLibPanel(QtWidgets.QWidget):
                 control.setVisible(offered)
             else:
                 control.setEnabled(offered)
+        btn_view = getattr(self, "btn_view", None)
+        if btn_view is not None:    # the eye's MENU follows the context: the online world offers the kind filter, every section its one-shot actions
+            wants_kinds = bool(getattr(context, "kind_filter_menu",
+                                       False))
+            btn_view.set_menu(self.online_view_menu if wants_kinds
+                              else self.menu_view_local)
+            btn_view.setToolTip(ui_helpers.tooltip_text(
+                "Show one kind of tile."
+                if wants_kinds else
+                "Import a gallery file, or generate a material."))
         self._sync_filter_placeholder()
 
     def _sync_toolbar_for_mode(self) -> None:

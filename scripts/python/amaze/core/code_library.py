@@ -24,6 +24,59 @@ PREVIEW_FONT_PX = 48  # font size on the PREVIEW_SIZE canvas: 48 on 512 is the s
 PREVIEW_MARGIN = 20  # text inset, also 2x the 256-canvas value so the layout is unchanged
 
 
+def paint_code_preview(code: str) -> QtGui.QImage:
+    """The Code section's tile face for a snippet: a syntax-colored monospace preview on a PREVIEW_SIZE square, soft-wrapping long source lines and stopping at the bottom margin - shared with the online browser's amazepkg snippet tiles."""
+    image = QtGui.QImage(
+        PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
+    )
+    image.fill(vex_syntax.BACKGROUND)  # black field like Houdini's wrangle editor, same palette
+    painter = QtGui.QPainter(image)
+    try:
+        font = QtGui.QFont("Courier New")
+        font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
+        font.setPixelSize(PREVIEW_FONT_PX)
+        font.setBold(True)
+        painter.setFont(font)
+        metrics = QtGui.QFontMetrics(font)
+        line_h = metrics.height()
+        margin = PREVIEW_MARGIN
+        y = margin + metrics.ascent()
+        bottom = PREVIEW_SIZE - margin
+        char_w = max(1, metrics.horizontalAdvance("m"))  # monospace, so one column width fits every glyph
+        cols = max(1, (PREVIEW_SIZE - 2 * margin) // char_w)  # long source lines wrap onto more visual rows (soft-wrap) instead of truncating at the right edge
+        default = vex_syntax.DEFAULT
+        for line in str(code or "").split("\n"):
+            if y > bottom:
+                break
+            expanded = line.replace("\t", "    ")
+            if not expanded:
+                y += line_h  # blank line still takes a row
+                continue
+            char_colors = [default] * len(expanded)  # per-character color from the syntax spans, so coloring survives the wrap
+            for start, length, color in vex_syntax.spans(expanded):
+                for i in range(start, min(start + length, len(expanded))):
+                    char_colors[i] = color
+            for cstart in range(0, len(expanded), cols):  # emit the line in cols-wide chunks, one visual row each
+                if y > bottom:
+                    break
+                chunk = expanded[cstart:cstart + cols]
+                cc = char_colors[cstart:cstart + cols]
+                i = 0  # draw consecutive same-color runs in one go
+                while i < len(chunk):
+                    j = i
+                    while j < len(chunk) and cc[j] == cc[i]:
+                        j += 1
+                    painter.setPen(cc[i])
+                    painter.drawText(
+                        margin + i * char_w, y, chunk[i:j]
+                    )
+                    i = j
+                y += line_h
+    finally:
+        painter.end()
+    return image
+
+
 class CodeCategories(category.Categories):
     """The Code section's category sidebar - same model, own database."""
 
@@ -235,56 +288,7 @@ class CodeLibrary(library.AssetLibrary):
         return image
 
     def _paint_preview(self, asset) -> QtGui.QImage:
-        """Paint a syntax-colored monospace preview of the snippet onto a PREVIEW_SIZE square, soft-wrapping long source lines and stopping at the bottom margin."""
-        image = QtGui.QImage(
-            PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
-        )
-        image.fill(vex_syntax.BACKGROUND)  # black field like Houdini's wrangle editor, same palette
-        painter = QtGui.QPainter(image)
-        try:
-            font = QtGui.QFont("Courier New")
-            font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
-            font.setPixelSize(PREVIEW_FONT_PX)
-            font.setBold(True)
-            painter.setFont(font)
-            metrics = QtGui.QFontMetrics(font)
-            line_h = metrics.height()
-            margin = PREVIEW_MARGIN
-            y = margin + metrics.ascent()
-            bottom = PREVIEW_SIZE - margin
-            char_w = max(1, metrics.horizontalAdvance("m"))  # monospace, so one column width fits every glyph
-            cols = max(1, (PREVIEW_SIZE - 2 * margin) // char_w)  # long source lines wrap onto more visual rows (soft-wrap) instead of truncating at the right edge
-            default = vex_syntax.DEFAULT
-            for line in asset.code.split("\n"):
-                if y > bottom:
-                    break
-                expanded = line.replace("\t", "    ")
-                if not expanded:
-                    y += line_h  # blank line still takes a row
-                    continue
-                char_colors = [default] * len(expanded)  # per-character color from the syntax spans, so coloring survives the wrap
-                for start, length, color in vex_syntax.spans(expanded):
-                    for i in range(start, min(start + length, len(expanded))):
-                        char_colors[i] = color
-                for cstart in range(0, len(expanded), cols):  # emit the line in cols-wide chunks, one visual row each
-                    if y > bottom:
-                        break
-                    chunk = expanded[cstart:cstart + cols]
-                    cc = char_colors[cstart:cstart + cols]
-                    i = 0  # draw consecutive same-color runs in one go
-                    while i < len(chunk):
-                        j = i
-                        while j < len(chunk) and cc[j] == cc[i]:
-                            j += 1
-                        painter.setPen(cc[i])
-                        painter.drawText(
-                            margin + i * char_w, y, chunk[i:j]
-                        )
-                        i = j
-                    y += line_h
-        finally:
-            painter.end()
-        return image
+        return paint_code_preview(asset.code)
 
     def apply_to_node(self, row: int, node: hou.Node):
         """Set the snippet onto a node's code parm. Returns (ok, reason) so the panel can report a node with no code parm."""

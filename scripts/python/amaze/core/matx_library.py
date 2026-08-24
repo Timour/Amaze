@@ -161,6 +161,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         self._key_rows = {}      # preview key -> row (delivery lookup)
         self._search = ""
         self._source_filter = None   # show only this source (View submenu)
+        self._kind_filter = None     # the online eye's choice (material/gradient/cop/code, None = All) - session-held, resets with the panel
         self._generation = 0
         self._loaded = False
         self._loading = False
@@ -204,11 +205,27 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         self._source_filter = source_name
         self._apply_filter()
 
+    def set_kind_filter(self, section) -> None:
+        """Narrow the grid to one tile KIND by section key; None shows all - a non-Amaze tile IS a material."""
+        if section == self._kind_filter:
+            return
+        self._kind_filter = section
+        self._apply_filter()
+
+    @staticmethod
+    def _record_kind(r) -> str:
+        if getattr(r, "kind", "") == "amazepkg":
+            return str((r.payload or {}).get("section") or "material")
+        return "material"
+
     def _in_source(self, r):
         return self._source_filter is None or r.source == self._source_filter
 
     def _apply_filter(self):
         rows = [r for r in self._all if self._in_source(r)]
+        if self._kind_filter:
+            rows = [r for r in rows
+                    if self._record_kind(r) == self._kind_filter]
         needle, tags_only = split_search(self._search)
         if needle:
             def hit(r):
@@ -407,6 +424,15 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
             if thumbnails.engine.peek(key) is not None:
                 continue
             if rec.kind == "amazepkg":
+                member = rec.payload.get("thumb_member")    # FIRST: a named member is the chosen icon or the real render - it outranks every drawn stand-in, the way local sections rank it
+                source = next((s for s in self.sources
+                               if s.name == rec.source), None)
+                if member and source is not None:
+                    reader = (lambda path, s=source, r=rec:
+                              s.read_thumb_to(r, path))
+                    reader.label = str(rec.uid)    # folder/file#id - what a failure log names instead of a lambda repr
+                    jobs.append((key, reader, self._cache_path(rec)))
+                    continue
                 colors = rec.payload.get("colors")
                 if colors:
                     try:    # drawn like the values branch below, same marker semantics
@@ -418,15 +444,20 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                         continue
                     self._requested.discard(key)
                     continue
-                member = rec.payload.get("thumb_member")
-                source = next((s for s in self.sources
-                               if s.name == rec.source), None)
-                if member and source is not None:
-                    reader = (lambda path, s=source, r=rec:
-                              s.read_thumb_to(r, path))
-                    reader.label = str(rec.uid)    # folder/file#id - what a failure log names instead of a lambda repr
-                    jobs.append((key, reader, self._cache_path(rec)))
-                continue    # no colours, no thumbnail member (a snippet): the engine's no-preview tile stands
+                code = str(((rec.payload.get("entry") or {})
+                            .get("record") or {}).get("code") or "")
+                if code:
+                    from amaze.core import code_library
+                    try:    # the CODE SECTION's own painter, exactly as palettes reuse their swatch - a snippet tile must not stand blank
+                        thumbnails.engine.deposit(
+                            key, code_library.paint_code_preview(code))
+                    except Exception as exc:              # noqa: BLE001
+                        debug.event("online", "snippet tile not drawn",
+                                    title=rec.title, error=str(exc))
+                        continue
+                    self._requested.discard(key)
+                    continue
+                continue    # no icon member, no colours, no code: the engine's no-preview tile stands
             if rec.kind == "values":
                 try:    # no render to download - the tile is DRAWN from the measured numbers, cheap enough on the spot, no worker
                     thumbnails.engine.deposit(
@@ -512,7 +543,15 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                 bits.append("measured values - no textures")
             return ui_helpers.tooltip_text("\n".join(bits))
         if role == self.RendererLabelRole:
-            # the Type column: the source, plus that value-sources produce a preset rather than a textured material
+            # the Type column: the source, plus that value-sources produce a preset rather than a textured material; a STORE tile says what it IS
+            if rec.kind == "amazepkg":
+                section = str(rec.payload.get("section") or "")
+                if section == "material":
+                    row = ((rec.payload.get("entry") or {})
+                           .get("record") or {})
+                    return str(row.get("renderer") or "Material")
+                return {"gradient": "Color", "cop": "Node",
+                        "code": "Code", "file": "File"}.get(section, "Amaze")    # the section display names, lockstep with sections.py's (key, label) list
             return rec.source if rec.kind == "package" else rec.source + " (values)"
         if role == self.RendererRole:
             return "Karma"    # what an import becomes - so the Karma renderer filter behaves the same over the online grid as over the library
