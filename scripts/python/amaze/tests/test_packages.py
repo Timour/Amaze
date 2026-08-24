@@ -1160,6 +1160,34 @@ class OnlineKindFilterTest(unittest.TestCase):
         model.set_kind_filter(None)
         self.assertEqual(5, len(model._records))
 
+    def test_build_filter_menu_leaves_the_online_eye_alone(self):
+        panel = self.panel
+        panel.enter_online_world()
+        try:
+            panel.build_filter_menu()
+            self.assertIn(
+                "Show one kind of tile", panel.btn_filter.toolTip(),
+                "build_filter_menu clobbered the kind filter's tooltip "
+                "- two owners of one control")
+            self.assertEqual(
+                ["All", "Materials", "Colors", "Nodes", "Code"],
+                [a.text() for a in panel.btn_filter.menu().actions()])
+        finally:
+            panel.leave_online_world()
+
+    def test_the_tile_labels_are_the_sections_own(self):
+        from amaze.core import matx_library
+        from amaze.panel import sections
+        labels = matx_library.SECTION_TILE_LABELS
+        self.assertEqual({"gradient", "cop", "code", "file"},
+                         set(labels))
+        for cls in sections.SECTION_CLASSES:
+            if cls.key in labels:
+                self.assertEqual(
+                    cls.label, labels[cls.key],
+                    "the online subtitle for %r drifted from the "
+                    "section's own label" % cls.key)
+
     def test_the_online_eye_offers_the_five_kinds(self):
         panel = self.panel
         panel.enter_online_world()

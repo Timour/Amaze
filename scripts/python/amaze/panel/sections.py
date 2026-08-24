@@ -8,7 +8,8 @@ import os
 import hou
 from PySide6 import QtCore, QtWidgets
 
-from amaze.core import (debug, dragengine, file_library, grid_columns, packages,
+from amaze.core import (debug, dragengine, file_library, grid_columns,
+                        multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -525,15 +526,16 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        if text.startswith(":"):    # NEITHER invalidate() NOR sort() around these calls: setFilter/removeFilter invalidate the proxy and re-sort inside GridProxyModel.refilter(), which is the whole reason that method exists (core/grid_proxy.py), so a caller-side pair runs the filter pass 2-3x and sorts every row twice per keystroke
-            st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)    # ":tag" searches the TagRole instead of the name
-            if len(text) > 1:
-                st.proxy.setFilter(st.model.TagRole, text[1:])
+        needle, tags_only = multifilterproxy_model.split_search(text)    # the colon rules' ONE home; NEITHER invalidate() NOR sort() around these calls - setFilter/removeFilter refilter inside GridProxyModel.refilter(), so a caller-side pair runs the pass 2-3x per keystroke
+        if tags_only:
+            st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
+            if needle:
+                st.proxy.setFilter(st.model.TagRole, needle)
             else:
-                st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must narrow nothing; falling through here instead leaves the grid on the previous tag while the box shows only a colon, which is what backspacing a tag search one character at a time does
+                st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must narrow nothing
         else:
             st.proxy.removeFilter(st.model.TagRole)
-            st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, text)
+            st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, needle)
 
     def filter_favorites(self, on: bool) -> None:
         st = self.stack()

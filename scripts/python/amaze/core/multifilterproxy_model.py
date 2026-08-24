@@ -7,6 +7,14 @@ from PySide6 import QtCore
 from amaze.core import grid_proxy
 
 
+def split_search(text) -> tuple:
+    """(needle, tags_only) from the filter box - the ONE home of the colon rules: a LEADING ":" means tags only, a bare ":" is the moment before the tag, not a search. Both the local sections and the online model split through here."""
+    needle = (text or "").strip().lower()
+    if needle.startswith(":"):
+        return needle[1:].strip(), True
+    return needle, False
+
+
 class MultiFilterProxyModel(grid_proxy.GridProxyModel):
     """
     Provides a Model for filtering multiple Parameters at the same time

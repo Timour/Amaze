@@ -17,18 +17,16 @@ from amaze.core import grid_columns
 PREVIEW_DIR_NAME = "matx_previews"    # a NAME only - where it lives resolves per call in preview_cache(), like CATALOGUE_NAME below
 
 
-def split_search(text) -> tuple:
-    """(needle, tags_only) from the filter box: a LEADING ":" means tags only (the prefix the Materials box teaches), and a bare ":" is the moment before the tag, not a search - pure and module-level so the edge cases test without a Qt model."""
-    needle = (text or "").strip().lower()
-    if needle.startswith(":"):
-        return needle[1:].strip(), True
-    return needle, False
+from amaze.core.multifilterproxy_model import split_search  # noqa: E402,F401 - the colon rules' ONE home; re-exported because this module's callers and tests reach it here
 
 
 def preview_cache() -> str:
     """Where downloaded previews are cached right now - local only, never the cloud-synced library folder."""
     return os.path.join(hostos.cache_root(), PREVIEW_DIR_NAME)
 
+
+SECTION_TILE_LABELS = {"gradient": "Color", "cop": "Node",
+                       "code": "Code", "file": "File"}    # what a store tile's subtitle says per section; held equal to the sections' own labels by test_the_tile_labels_are_the_sections_own (a direct import would invert the core->panel layering)
 
 CATALOGUE_NAME = "matx_catalogue_v3.json"    # the on-disk catalogue that makes Online open instantly; _v3 is the record-shape version (v3: per-tile Amaze records, uid folder/file#id). Its PATH resolves per call - frozen at import it missed both the Preferences cache move and the suite's redirection, one branch from writing the real cache from a test
 
@@ -542,8 +540,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                     row = ((rec.payload.get("entry") or {})
                            .get("record") or {})
                     return str(row.get("renderer") or "Material")
-                return {"gradient": "Color", "cop": "Node",
-                        "code": "Code", "file": "File"}.get(section, "Amaze")    # the section display names, lockstep with sections.py's (key, label) list
+                return SECTION_TILE_LABELS.get(section, "Amaze")
             return rec.source if rec.kind == "package" else rec.source + " (values)"
         if role == self.RendererRole:
             return "Karma"    # what an import becomes - so the Karma renderer filter behaves the same over the online grid as over the library

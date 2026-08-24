@@ -3598,7 +3598,8 @@ class MatLibPanel(QtWidgets.QWidget):
                 button.setVisible(True)    # offered-but-off is the toolbar table's business, and it DISABLES the button (half opacity, like Favourites and Comments beside it) rather than hiding it - one owner for the control
             else:
                 button.setVisible(bool(entries))    # no entries, no menu: a button that opens an empty popup is worse than no button (nothing shipped hits this - all five sections filter - but a new section gets it free)
-            if section is not None:
+            if section is not None and not getattr(
+                    section, "kind_filter_menu", False):    # online the eye belongs to the KIND filter - _sync_toolbar owns its menu and tooltip there, and this function must not be a second owner
                 button.setToolTip(ui_helpers.tooltip_text(
                     section.filter_tooltip))
         if not entries:
