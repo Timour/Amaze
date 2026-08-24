@@ -4227,7 +4227,8 @@ class MatLibPanel(QtWidgets.QWidget):
                             showing=pane_tab.pwd().path(),
                             destination=net.path())
                 return None
-            spot = pane_tab.cursorPosition()
+            spot = dragengine.ghost_snap_position() \
+                or pane_tab.cursorPosition()    # the ghost promised the SNAPPED point, so the release lands there
             debug.event("interact", "drop point",
                         at=[round(spot.x(), 3), round(spot.y(), 3)],
                         net=net.path())

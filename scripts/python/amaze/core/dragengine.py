@@ -159,19 +159,42 @@ def ghost_answers():
 
 _ghosted: list = []
 
-GHOST_SIZE = (1.1296, 0.2824)         # the standard node tile, measured (▸r/overlay-shapes)
-GHOST_SIZE_VOP = (1.7706, 0.83)       # VOP tiles are LARGER - a materialbuilder measured 2026-08-24; nodegraph.py's own comment says Vop/Shop/Cop2 "can be larger"
+NEW_NODE_HALF = (0.5, 0.15)    # the host's own placement-ghost half size (nodegraphutils.theNewNodeHalfSize); the TAB-menu ghost is the look users compare against
 
 
-def _ghost_size_for(editor) -> tuple:
-    """The tile size the ghost wears in THIS editor: the VOP size inside a Vop-holding network - where a dropped material becomes a VOP - the standard tile everywhere else."""
+def _is_vop_network(editor) -> bool:
     from amaze.core import cop_library
     try:
         pwd = editor.pwd()
     except (AttributeError, hou.OperationFailed):
-        return GHOST_SIZE
-    return GHOST_SIZE_VOP if cop_library.accepts_context(pwd, "Vop") \
-        else GHOST_SIZE
+        return False
+    return cop_library.accepts_context(pwd, "Vop")
+
+
+def _snap_delta(editor, rect):
+    """The host's own placement snap (nodegraphselectpos.py:302): `nodegraphsnap.snap` against `allVisibleRects` - None when it does not apply, and ALWAYS None headless, where the module's own `hou.ui` import refuses."""
+    try:
+        import nodegraphsnap
+        result = nodegraphsnap.snap(editor, None, rect,
+                                    editor.allVisibleRects([]))
+        if result.isValid():
+            return result.delta()
+    except Exception:                                     # noqa: BLE001
+        pass
+    return None
+
+
+def ghost_snap_position():
+    """The last drawn ghost's SNAPPED centre, or None - the release places the carrier here, so what was promised is what lands."""
+    return _move.get("snap_pos")
+
+
+def _ghost_half_for(editor) -> tuple:
+    """The placement ghost's half-extent, the host's own recipe (nodegraphselectpos.py:286-301): a 0.5 SQUARE for non-VOP contexts - the NodeShape keeps its natural proportions inside it, which is what makes it match a standard node exactly - and the flat half for VOP contexts. ▸r/overlay-shapes"""
+    if _is_vop_network(editor):
+        return NEW_NODE_HALF
+    half = max(NEW_NODE_HALF)
+    return (half, half)
 
 GHOST_COLOUR = (0.988, 0.725, 0.0)
 GHOST_ALPHA = 0.75
@@ -211,12 +234,16 @@ def ghost_show(editor, position, type_name: str = "",
     if editor is None or position is None:
         return
     try:
-        size = _ghost_size_for(editor)
+        half = _ghost_half_for(editor)
         rect = hou.BoundingRect(
-            position.x() - size[0] / 2.0,
-            position.y() - size[1] / 2.0,
-            position.x() + size[0] / 2.0,
-            position.y() + size[1] / 2.0)
+            position.x() - half[0], position.y() - half[1],
+            position.x() + half[0], position.y() + half[1])
+        _move["snap_pos"] = None
+        delta = _snap_delta(editor, rect)
+        if delta is not None:    # aligned to neighbours the way the host's own placement ghost aligns - and the release lands on the same snapped point
+            rect.translate(delta)
+            _move["snap_pos"] = hou.Vector2(position.x() + delta.x(),
+                                            position.y() + delta.y())
         colour = hou.Color(GHOST_COLOUR)
         drawn = hou.NetworkShapeNodeShape(
             rect, _shape_for(type_name) or GHOST_FALLBACK_SHAPE,
@@ -232,6 +259,7 @@ def ghost_show(editor, position, type_name: str = "",
 
 def ghost_clear() -> None:
     """Give every borrowed overlay back - on EVERY exit path."""
+    _move["snap_pos"] = None
     while _ghosted:
         editor = _ghosted.pop()
         try:

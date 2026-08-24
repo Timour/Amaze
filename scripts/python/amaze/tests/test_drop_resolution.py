@@ -277,19 +277,30 @@ class MaterialNetworkGateTest(unittest.TestCase):
             "the verb and the live ghost both read the declaration - "
             "an empty context gates nothing")
 
-    def test_the_ghost_wears_the_destinations_size(self):
+    def test_the_snap_degrades_to_none_headless(self):
+        matnet = hou.node("/obj").createNode("matnet")
+        self.addCleanup(matnet.destroy)
+        rect = hou.BoundingRect(0, 0, 1, 0.3)
+        self.assertIsNone(
+            dragengine._snap_delta(_fake_editor(matnet), rect),
+            "headless there is no nodegraphsnap (its import needs "
+            "hou.ui) - the ghost must simply not snap, never raise")
+        self.assertIsNone(dragengine.ghost_snap_position())
+
+    def test_the_ghost_uses_the_hosts_placement_recipe(self):
         matnet = hou.node("/obj").createNode("matnet")
         self.addCleanup(matnet.destroy)
         lopnet = hou.node("/obj").createNode("lopnet")
         self.addCleanup(lopnet.destroy)
         self.assertEqual(
-            (1.7706, 0.83),
-            dragengine._ghost_size_for(_fake_editor(matnet)),
-            "a VOP-bound ghost must wear the VOP tile size the host "
-            "draws (measured: a materialbuilder is 1.7706 x 0.83)")
+            (0.5, 0.5), dragengine._ghost_half_for(_fake_editor(lopnet)),
+            "non-VOP contexts hand the NodeShape a SQUARE, the host's "
+            "own trick (nodegraphselectpos.py) - the shape keeps its "
+            "natural proportions inside it, matching a standard node")
         self.assertEqual(
-            (1.1296, 0.2824),
-            dragengine._ghost_size_for(_fake_editor(lopnet)))
+            (0.5, 0.15),
+            dragengine._ghost_half_for(_fake_editor(matnet)),
+            "VOP contexts use the flat new-node half, as the host does")
 
 
 if __name__ == "__main__":

@@ -644,7 +644,7 @@ class MaterialSection(AssetSection):
     def copy_to_targets(self, indexes, current) -> tuple:
         """WHERE the saved material lands; the entries name the destination the way Houdini writes the PATH - /stage, not the Solaris marketing name."""
         return (("/mat", "mat", "", True),
-                ("/stage", "lop", "", True))
+                ("/stage/materiallibrary", "lop", "", True))
 
     def menu_info(self, indexes, current, payload=None) -> None:
         self.edit_dialog()    # through the Section API's own hook for it, never past it into the panel

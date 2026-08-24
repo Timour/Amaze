@@ -242,7 +242,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_material_with_one_selected(self):
         self.assertEqual(
-            ["Info", "Copy To > [/mat, /stage]", "----",
+            ["Info", "Copy To > [/mat, /stage/materiallibrary]", "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
             self._show("material", (0,)))
@@ -250,7 +250,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_material_with_two_selected(self):
         """Info acts on one item and greys; everything else acts on the whole selection and stays live."""
         self.assertEqual(
-            ["Info(off)", "Copy To > [/mat, /stage]", "----",
+            ["Info(off)", "Copy To > [/mat, /stage/materiallibrary]",
+             "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
             self._show("material", (0, 1)))
@@ -258,7 +259,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_material_with_nothing_selected(self):
         """CHANGED 2026-08-03: it used to open this menu with every entry but Info LIVE, over no selection at all."""
         self.assertEqual(
-            ["Info(off)", "Copy To > [/mat, /stage](off)", "----",
+            ["Info(off)",
+             "Copy To > [/mat, /stage/materiallibrary](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
              "Export Package(off)", "Delete(off)"],
             self._show("material"))
