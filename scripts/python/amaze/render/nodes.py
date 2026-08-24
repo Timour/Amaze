@@ -10,6 +10,7 @@ import voptoolutils
 
 from amaze.render import thumbs
 from amaze.core import material
+from amaze.core import texstore
 from amaze.prefs import prefs
 from amaze.core import debug
 from amaze.helpers import helpers
@@ -997,6 +998,8 @@ class NodeHandler:
         if problem:
             raise hou.OperationFailed(problem)
 
+        texstore.resolve_parms(self._builder_node, self._preferences)    # BEFORE the move, on the whole container - the no-builder branch moves every child, so resolving after would cover only the first sibling
+
         if move_builder:
             new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
             if not new_mat:
@@ -1033,6 +1036,7 @@ class NodeHandler:
                 'nothing could be loaded for "%s" - its .mat file looks '
                 "corrupt or empty (%s)" % (mat.name, file_name)
             )
+        texstore.resolve_parms(self._builder_node, self._preferences)    # before any move, on both exits below - scenes get plain absolute paths
 
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
             inner = hou.moveNodesTo((loaded[0],), self._import_path)[0]  # type: ignore
@@ -1503,6 +1507,7 @@ class NodeHandler:
 
     def save_node(self, node: hou.Node, asset_id: str, update: bool) -> bool:
         """Save Node wrapper for different Material Types"""
+        self.texture_inventory = []    # filled by the staged save paths; add_asset/update copy it onto the row
         ui = getattr(hou, "ui", None)  # both refusals below return False on their own, so a missing screen costs the SENTENCE and never the refusal ▸r/status-bar
         if hou.getenv("OCIO") is None:
             if ui is not None:
@@ -1569,6 +1574,9 @@ class NodeHandler:
             if path_map:
                 self.rewrite_cop_refs((sub_tmp,), path_map)
 
+            self.texture_inventory = texstore.adopt(
+                sub_tmp, self._preferences,
+                texstore.asset_folder(node.name(), asset_id))
 
             self.save_asset_pair(
                 parms_file_name, file_name, sub_tmp.asCode(),
@@ -1607,6 +1615,9 @@ class NodeHandler:
             if path_map:
                 self.rewrite_cop_refs((copied[0],), path_map)
 
+            self.texture_inventory = texstore.adopt(    # on the COPY, before asCode - the scene node stays untouched and .interface agrees with .mat
+                copied[0], self._preferences,
+                texstore.asset_folder(node.name(), asset_id))
 
             self.save_asset_pair(      # EVERY part from the staging COPY
                 parms_file_name, file_name, copied[0].asCode(),
@@ -1648,15 +1659,16 @@ class NodeHandler:
             self._preferences, str(asset_id), ".interface"
         )
         path_map = self.prepare_cop_companion((node,), str(asset_id), node.name())
-        tmp_parent = None
-        save_node = node
-        if path_map:
-            with hou.undos.disabler():
-                tmp_parent = hou.node("/obj").createNode("matnet")
+        with hou.undos.disabler():    # ALWAYS staged now: adoption rewrites parms, and that must land on a copy, never the scene node
+            tmp_parent = hou.node("/obj").createNode("matnet")
+        try:    # everything after the create is inside the try, or an adoption OSError leaves an un-undoable copy of the network in /obj, saved into the hip
             save_node = hou.copyNodesTo((node,), tmp_parent)[0]
-            self.rewrite_cop_refs((save_node,), path_map)
+            if path_map:
+                self.rewrite_cop_refs((save_node,), path_map)
+            self.texture_inventory = texstore.adopt(
+                save_node, self._preferences,
+                texstore.asset_folder(node.name(), asset_id))
 
-        try:
             children = save_node.children()
 
             self.save_asset_pair(
@@ -1668,9 +1680,8 @@ class NodeHandler:
                 builder_node=save_node, asset_id=str(asset_id),
             )
         finally:
-            if tmp_parent is not None:
-                with hou.undos.disabler():
-                    tmp_parent.destroy()
+            with hou.undos.disabler():
+                tmp_parent.destroy()
 
         self.after_save_thumbnail(
             update, renderer, asset_id, node.path(),

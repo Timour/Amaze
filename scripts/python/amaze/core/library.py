@@ -1240,6 +1240,10 @@ class MaterialLibrary(AssetLibrary):
         )
         if saved:
             new_mat.cop_net = handler.cop_info
+            inventory = getattr(handler, "texture_inventory", None)
+            if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
+                new_mat._extra = dict(getattr(new_mat, "_extra", None) or {})
+                new_mat._extra["textures"] = list(inventory)
             row = len(self._assets)  # per-row insert signals, not a batch-wide layout pair in the caller, so each tile appears AS ITS SAVE FINISHES during a multi-save
             self.beginInsertRows(QtCore.QModelIndex(), row, row)
             self._assets.append(new_mat)
@@ -1329,6 +1333,11 @@ class MaterialLibrary(AssetLibrary):
                 shutil.rmtree(os.path.dirname(
                     next(iter(pre_edit.values()))), ignore_errors=True)
         mat.cop_net = handler.cop_info
+        mat._extra = dict(getattr(mat, "_extra", None) or {})
+        mat._extra.pop("textures", None)    # replaced whole - the new content's references are the inventory now
+        inventory = getattr(handler, "texture_inventory", None)
+        if isinstance(inventory, (list, tuple)) and inventory:
+            mat._extra["textures"] = list(inventory)
         if renderer:
             mat.renderer = renderer
         mat.node_color = nodes.custom_node_color(node)

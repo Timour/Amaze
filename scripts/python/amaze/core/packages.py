@@ -1,4 +1,4 @@
-"""The `.amazepkg` container, format 1: one zip whose `package.json` lists ASSET entries (a library record verbatim, every existing family file, the note page) and plain FILE entries with a kind - the unit of sharing between libraries and the online store's payload."""
+"""The `.amazepkg` container, format 2: one zip whose `package.json` lists ASSET entries (a library record verbatim, every existing family file, the token-keyed textures, the note page) and plain FILE entries with a kind - the unit of sharing between libraries and the online store's payload."""
 
 import json
 import os
@@ -7,10 +7,10 @@ import zipfile
 from PySide6 import QtCore
 
 from amaze import branding
-from amaze.core import debug, notes
+from amaze.core import debug, notes, texstore
 from amaze.helpers import hostos
 
-FORMAT = 1
+FORMAT = 2    # 2: entries may carry {token: arc} textures - a format-1 build must refuse rather than import silently bare
 SUFFIX = ".amazepkg"
 MANIFEST = "package.json"
 DERIVED = ("stamp",)    # regenerated from the record on every save, so packing one ships an instantly-stale copy
@@ -31,11 +31,23 @@ def collect_asset(model, mat_id) -> dict:
     sources = {kind: path
                for kind, path in model.asset_files(mat_id).items()
                if kind not in DERIVED and os.path.exists(path)}
+    record = asset.get_as_dict()
+    textures = {}
+    for token in (record.get("textures") or ()):
+        source = texstore.resolve(str(token), model.preferences)
+        if os.path.isfile(source):
+            textures[str(token)] = source
+        else:
+            debug.event("packages", "inventory texture missing",
+                        token=str(token), mat_id=mat_id)
+    if len(textures) != len(record.get("textures") or ()):
+        record = dict(record)    # the packed record must not promise a texture the package does not carry
+        record["textures"] = sorted(textures)
     page = notes.note_for(model.preferences,
                           notes.note_key(model.NOTES_SECTION, mat_id))
     return {"type": "asset", "section": model.NOTES_SECTION,
-            "id": mat_id, "record": asset.get_as_dict(),
-            "note": page, "sources": sources}
+            "id": mat_id, "record": record,
+            "note": page, "sources": sources, "textures": textures}
 
 
 def collect_file(path: str, kind: str) -> dict:
@@ -62,6 +74,16 @@ def write_package(out_path: str, items) -> int:
                 arcs[kind] = arc
                 payload.append((arc, source))
             entry["files"] = arcs
+            texarcs = {}
+            for t, (token, source) in enumerate(
+                    sorted(entry.pop("textures", {}).items())):
+                arc = "assets/%s/%s/textures/%d_%s" % (    # the index keeps shared-store basenames apart; landing goes by TOKEN, never by arc
+                    entry["section"], entry["id"], t,
+                    os.path.basename(source))
+                texarcs[token] = arc
+                payload.append((arc, source))
+            if texarcs:
+                entry["textures"] = texarcs
         elif entry.get("type") == "file":
             arc = "files/%d_%s" % (n, entry["name"])    # the index keeps two exports of one basename apart
             entry["arc"] = arc
@@ -182,6 +204,24 @@ def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
         with hostos.scratch_beside(target) as scratch:
             with open(scratch, "wb") as handle:
                 handle.write(bundle.read(arcname))
+    store_prefix = texstore.TOKEN_PREFIX + texstore.STORE_DIR_NAME + "/"
+    for token, arcname in (entry.get("textures") or {}).items():
+        if not str(token).startswith(store_prefix):    # contained is not enough - a token aimed anywhere but the store could mint the library's own control files (policy.json, a file named matX)
+            raise PackageError("not a store texture token: %r" % token)
+        target = hostos.contained_join(    # the token comes off a manifest nobody vouches for - PathEscape refuses `..` and the whole entry counts refused
+            prefs.dir, *str(token)[len(texstore.TOKEN_PREFIX):].split("/"))
+        data = bundle.read(arcname)
+        if os.path.exists(target):
+            with open(target, "rb") as handle:
+                if handle.read() == data:
+                    continue    # byte-identical - another asset already shares the file
+            debug.event("packages", "texture member replaced",    # the folder name carries the OWNING asset's identity, so an updated package updates it; a copy-to sharer drifts with it
+                        token=str(token))
+        hostos.check_sandbox(target)
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with hostos.scratch_beside(target) as scratch:
+            with open(scratch, "wb") as handle:
+                handle.write(data)
     at = len(model._assets)
     model.beginInsertRows(QtCore.QModelIndex(), at, at)
     try:
@@ -235,7 +275,8 @@ def verify_package(path: str) -> list:
         held = set(bundle.namelist())
     for entry in read_manifest(path).get("entries", ()):
         arcs = ([entry.get("arc")] if entry.get("type") == "file"
-                else list((entry.get("files") or {}).values()))
+                else list((entry.get("files") or {}).values())
+                + list((entry.get("textures") or {}).values()))
         for arc in arcs:
             if arc and arc not in held:
                 problems.append("missing member %s" % arc)

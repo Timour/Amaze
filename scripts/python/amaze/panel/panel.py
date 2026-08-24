@@ -19,6 +19,7 @@ from amaze.core import scene_captures
 from amaze.core import (
     folders,
     material,
+    texstore,
     thumbnails,
     library,
     category,
@@ -79,6 +80,7 @@ _reload(versions)
 _reload(notes)
 _reload(users)    # before versions and the dialogs showing a user: both resolve a UID through it, so a stale one answers from the previous library's people
 _reload(material)
+_reload(texstore)    # before nodes and library, which adopt and resolve through it
 if _DEV_RELOAD:
     preview.reload_engine()    # the package RELOADS ITSELF: reloading a package re-runs only __init__.py, which hands back the cached submodules, so the chain would look complete and refresh nothing
 _reload(material_converter)
@@ -166,6 +168,7 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.configure(self.prefs.debug_mode)    # configured before anything else runs: a crash during setup() is precisely the case a debug log has to survive
         debug.prefs_snapshot(self.prefs)
         hostos.set_cache_override(self.prefs.cache_dir)    # custom thumbnail-cache location, set before any cache is touched - everything downstream resolves hostos.cache_root()
+        texstore.publish_env(self.prefs)    # $AMAZELIB, so thumbnails and previews resolve store references natively
         if loaded:
             self.init_ui()
             try:
@@ -1776,6 +1779,7 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.configure(self.prefs.debug_mode)
         hostos.set_cache_override(self.prefs.cache_dir)
         if self.prefs.dir != old_dir:    # only a changed library DIRECTORY needs the models rebuilt: rebuilding unconditionally re-reads the json, drops the per-id usd/shader caches and re-loads every thumbnail PNG, well over a thousand file reads per Preferences close
+            texstore.publish_env(self.prefs)
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)

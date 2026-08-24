@@ -891,6 +891,123 @@ class OnlinePackageImportTest(unittest.TestCase):
                          "Restore must hide for material sources")
 
 
+class TexturePackingTest(unittest.TestCase):
+    """Format 2: an asset's adopted textures travel in the package - packed from the row's token inventory, landed at the same tokens in the receiving library, and a token that escapes the library is refused."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _material_with_texture(self, name):
+        import hou
+
+        from amaze.tests import make_library_fixture
+        outside = tempfile.mkdtemp(prefix="amaze_outside_")
+        self.addCleanup(
+            __import__("shutil").rmtree, outside, ignore_errors=True)
+        source = os.path.join(outside, "weave_diff.png")
+        with open(source, "wb") as handle:
+            handle.write(b"weavebytes")
+        builder = make_library_fixture.build_material(
+            hou.node("/mat"), name, (0.4, 0.4, 0.4))
+        self.addCleanup(builder.destroy)
+        image = builder.createNode("mtlximage")
+        image.parm("file").set(source)
+        model = self.panel.material_model
+        self.assertTrue(model.add_asset(builder, "Fabrics", "", False),
+                        "premise: the save went through")
+        return model, model.assets[-1]
+
+    def test_export_packs_the_texture_inventory(self):
+        from amaze.core import packages
+        model, row = self._material_with_texture("Packed_Weave")
+        entry = packages.collect_asset(model, str(row.mat_id))
+        textures = entry.get("textures") or {}
+        self.assertEqual(1, len(textures),
+                         "the token inventory was not collected")
+        token = next(iter(textures))
+        self.assertTrue(token.startswith("$AMAZELIB/matX/"), token)
+        out = _out_path(self, "weave.amazepkg")
+        packages.write_package(out, [entry])
+        with zipfile.ZipFile(out) as bundle:
+            manifest = json.loads(bundle.read(packages.MANIFEST))
+            self.assertEqual(2, manifest["format"],
+                             "textures need format 2 - a format-1 "
+                             "reader would import silently bare")
+            arc = manifest["entries"][0]["textures"][token]
+            self.assertEqual(b"weavebytes", bundle.read(arc))
+
+    def test_import_lands_textures_at_their_tokens(self):
+        from amaze.core import packages, texstore
+        model, row = self._material_with_texture("Landed_Weave")
+        out = _out_path(self, "landed.amazepkg")
+        packages.write_package(
+            out, [packages.collect_asset(model, str(row.mat_id))])
+        adopted = texstore.resolve(
+            (row.get_as_dict().get("textures") or [""])[0],
+            model.preferences)
+        os.remove(adopted)    # the package must be the only source, as in a foreign library - same-library resolve would green this vacuously
+        before = model.rowCount()
+        summary = self.panel.import_package_file(out)
+        self.assertEqual(1, summary["imported"], summary)
+        self.assertEqual(before + 1, model.rowCount())
+        newborn = model.assets[-1]
+        tokens = newborn.get_as_dict().get("textures") or []
+        self.assertEqual(1, len(tokens),
+                         "the imported row lost its inventory")
+        landed = texstore.resolve(tokens[0], model.preferences)
+        self.assertTrue(os.path.isfile(landed),
+                        "the texture member did not land at its token")
+
+    def test_a_token_escaping_the_library_is_refused(self):
+        from amaze.core import packages
+        model = self.panel.material_model
+        entry = {"type": "asset", "section": "material", "id": "d" * 32,
+                 "record": {"id": "d" * 32, "name": "Escape",
+                            "categories": ["X"],
+                            "textures": ["$AMAZELIB/../outside.png"]},
+                 "note": {}, "files": {},
+                 "textures": {"$AMAZELIB/../outside.png":
+                              "assets/material/d/textures/0_outside.png"}}
+        pkg = _manifest_zip(
+            self, [entry],
+            members={"assets/material/d/textures/0_outside.png": b"evil"})
+        before = model.rowCount()
+        summary = packages.import_package(
+            self.panel._package_models(), self.panel.prefs, pkg)
+        self.assertEqual(1, summary["refused"], summary)
+        self.assertEqual(before, model.rowCount(),
+                         "the escaping entry still landed a row")
+        outside = os.path.normpath(os.path.join(
+            str(model.preferences.dir), os.pardir, "outside.png"))
+        self.assertFalse(os.path.exists(outside),
+                         "a token walked out of the library")
+
+    def test_a_token_outside_the_store_is_refused(self):
+        from amaze.core import packages
+        model = self.panel.material_model
+        entry = {"type": "asset", "section": "material", "id": "c" * 32,
+                 "record": {"id": "c" * 32, "name": "Control",
+                            "categories": ["X"]},
+                 "note": {}, "files": {},
+                 "textures": {"$AMAZELIB/policy.json":
+                              "assets/material/c/textures/0_policy.json"}}
+        pkg = _manifest_zip(
+            self, [entry],
+            members={"assets/material/c/textures/0_policy.json": b"{}"})
+        before = model.rowCount()
+        summary = packages.import_package(
+            self.panel._package_models(), self.panel.prefs, pkg)
+        self.assertEqual(1, summary["refused"],
+                         "a token aimed at the library's own control "
+                         "files must refuse - contained is not enough, "
+                         "it must land under matX/")
+        self.assertEqual(before, model.rowCount())
+        self.assertFalse(os.path.exists(os.path.join(
+            str(model.preferences.dir), "policy.json")),
+            "a package minted a policy file for the library")
+
+
 class OnlineTilePaintingTest(unittest.TestCase):
     """The browser's tile pictures without full downloads: palette swatches DRAWN from the record's colours, material thumbnails fetched per member through a callable preview job."""
 
