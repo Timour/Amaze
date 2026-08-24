@@ -1025,7 +1025,12 @@ class TheRealLibraryRehearsalTest(unittest.TestCase):
         for folder in (live.asset_dir, live.img_dir):
             os.makedirs(os.path.join(self.dir, folder), exist_ok=True)
             for entry in os.listdir(os.path.join(live.dir, folder)):
-                open(os.path.join(self.dir, folder, entry), "wb").close()
+                if entry.endswith(".stamp.json"):    # stamps ride WHOLE: the census spares by READING them, and a 0-byte stand-in reads as unreadable and gets swept
+                    shutil.copy2(os.path.join(live.dir, folder, entry),
+                                 os.path.join(self.dir, folder, entry))
+                else:
+                    open(os.path.join(self.dir, folder, entry),
+                         "wb").close()
         self.prefs = prefs_mod.Prefs()
         self.prefs.dir = self.dir
         self.prefs.path = tempfile.mkdtemp(prefix="amaze_repair_real_prefs_")

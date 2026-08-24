@@ -1535,6 +1535,8 @@ class OnlineContext(Section):
                   count_suffix=True),
         MenuEntry("Import to Scene", verb="menu_import_to_scene",
                   count_suffix=True),
+        MenuEntry("Restore", verb="menu_restore_packages",
+                  shown="selection_is_amaze_packages", count_suffix=True),
         MenuEntry("Refresh", verb="menu_refresh", needs="always"),
     )
 
@@ -1556,6 +1558,15 @@ class OnlineContext(Section):
         with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
             self.panel._import_online_records_to_scene(
                 self._records(indexes))
+
+    def selection_is_amaze_packages(self, indexes, current) -> bool:
+        """Every selected record is an amazepkg - Restore means nothing for a material source."""
+        records = self._records(indexes)
+        return bool(records) and all(
+            getattr(r, "kind", "") == "amazepkg" for r in records)
+
+    def menu_restore_packages(self, indexes, current, payload=None) -> None:
+        self.panel.restore_amaze_packages(self._records(indexes))
 
     def menu_refresh(self, indexes, current, payload=None) -> None:
         """Refresh is the user asking us to go and LOOK: sources that browse from a shipped table (RGL, PhysicallyBased) only query the live site on this path."""

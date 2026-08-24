@@ -1,12 +1,4 @@
-"""The Generator Engine: the invariants a generated material must hold.
-
-Generation is random, so these tests assert PROPERTIES over a large
-sample rather than exact values: every generated material must be
-physically coherent (no transmissive metal), in range, renderable (not
-black), and honest about where its numbers came from.
-
-The facts themselves are shipped tables, so this needs no network.
-"""
+"""The Generator Engine's invariants, asserted as PROPERTIES over a large random sample: physically coherent (no transmissive metal), in range, renderable (never black), honest about where the numbers came from - the facts are shipped tables, so no network."""
 
 import collections
 import colorsys
@@ -23,14 +15,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/, the directory that
-# holds the `amaze` package. The original had four, which lands on
-# scripts/ - where amaze is NOT importable - so every one of these
-# files silently imported amaze through Houdini's own package path,
-# i.e. the INSTALL. The sync-before-test discipline masked it for the
-# suite's whole life; it surfaced when a deliberately-unsynced
-# sabotage edit failed to change a test's behaviour.
-sys.path.insert(
+sys.path.insert(    # THREE dirnames land on python/, where amaze imports from the REPO - four landed on scripts/ and silently imported the INSTALL (▸p/checkout-not-install)
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
@@ -38,8 +23,7 @@ from amaze.core import matx_sources  # noqa: E402
 from amaze.render import generator, nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
-#: Enough samples that a 1-in-100 rule (emission) is exercised.
-SAMPLES = 400
+SAMPLES = 400    # enough that a 1-in-100 rule (emission) is exercised
 
 
 class TestFacts(unittest.TestCase):
@@ -59,18 +43,13 @@ class TestFacts(unittest.TestCase):
             self.assertGreater(kinds[kind], 0, "no %s facts" % kind)
 
     def test_metals_carry_a_measured_finish(self):
-        """The reference set lists metals as perfect mirrors; the
-        measured set is what gives a generated metal its surface. If
-        that half ever goes missing, metals silently become mirrors."""
+        """The reference set lists metals as perfect mirrors - the measured half is what gives a generated metal its surface, and losing it makes metals silently mirrors."""
         rough = [f["roughness"] for f in generator.online_facts()
                  if generator.fact_kind(f) == "metal" and f["roughness"] > 0]
         self.assertGreaterEqual(len(rough), 5)
 
     def test_classifier_rejects_the_substring_trap(self):
-        """The CLASSIFIER, not a pre-classified dict: "tin" is a
-        substring of "satin", which made the whole TeckWrap vinyl range
-        metal. (The earlier version of this test fed _normalise a dict
-        that already said metalness 0 and could never fail.)"""
+        """The CLASSIFIER, never a pre-classified dict that cannot fail - the tin-in-satin case, ▸r/rgl-values."""
         infer = matx_sources.RGLSource.infer_metal
         self.assertFalse(infer("satin_blue",
                                "TeckWrap vinyl wrapping film"))
@@ -80,9 +59,7 @@ class TestFacts(unittest.TestCase):
                               "Brushed aluminium sheet"))
 
     def test_classifier_trusts_the_measurement_over_the_name(self):
-        """No bare conductor is dark: a "metallic" coating measuring
-        0.09 is a dark paint, not a metal (as a conductor it renders as
-        an almost black mirror)."""
+        """No bare conductor is dark - a metallic-named coating measuring 0.09 is a dark paint, and as a conductor it renders as an almost black mirror. ▸r/rgl-values"""
         infer = matx_sources.RGLSource.infer_metal
         self.assertFalse(infer("ilm_solo_m_68", "Blue metallic material",
                                [0.022, 0.033, 0.091]))
@@ -90,9 +67,7 @@ class TestFacts(unittest.TestCase):
                               [0.95, 0.63, 0.53]))
 
     def test_paint_is_a_dielectric_whatever_it_is_sprayed_on(self):
-        """"flake paint ON TOP OF ALUMINIUM" matched the substrate and
-        came out metal, while its identical sibling came out
-        dielectric."""
+        """Flake paint on top of aluminium once matched the SUBSTRATE and came out metal while its identical sibling came out dielectric. ▸r/rgl-values"""
         infer = matx_sources.RGLSource.infer_metal
         self.assertFalse(infer(
             "irid_flake_paint1",
@@ -100,15 +75,13 @@ class TestFacts(unittest.TestCase):
             "primer", [0.3, 0.2, 0.4]))
 
     def test_no_negative_colour_channels(self):
-        """Measurement noise around black produced negative channels;
-        a negative base_color is not a colour."""
+        """Measurement noise around black produced negative channels, and a negative base_color is not a colour."""
         for fact in generator.online_facts():
             for channel in fact["color"]:
                 self.assertGreaterEqual(channel, 0.0, fact["name"])
 
     def test_metal_finish_pool_excludes_saturated_fits(self):
-        """A GGX alpha of exactly 1.0 is the ceiling of the fit, not a
-        measurement - a metal must not inherit it as its finish."""
+        """A GGX alpha of exactly 1.0 is the ceiling of the fit, not a measurement - a metal must not inherit it as its finish."""
         rng = random.Random(4)
         facts = generator.online_facts()
         values = [generator._measured_roughness(facts, "metal", rng, 0.2)
@@ -152,16 +125,13 @@ class TestGeneratedSpecs(unittest.TestCase):
                                              "%s: %s" % (key, prov))
 
     def test_never_black(self):
-        """A black material renders as a hole - the one result that is
-        never worth generating."""
+        """A black material renders as a hole - the one result never worth generating."""
         for spec, prov in self.samples:
             self.assertGreater(sum(spec.get("base_color", [0, 0, 0])), 0.0,
                                prov)
 
     def test_metals_keep_a_metal_spectrum(self):
-        """A metal's colour is its reflectance spectrum. Hue-rotating
-        copper produces a metal that exists nowhere, so generated
-        metals stay inside the gamut the measurements occupy."""
+        """A metal's colour is its reflectance spectrum - hue-rotating copper makes a metal that exists nowhere, so generated metals stay inside the measured gamut."""
         measured = [colorsys.rgb_to_hsv(*[min(1.0, c) for c in f["color"]])[1]
                     for f in generator.online_facts()
                     if generator.fact_kind(f) == "metal"]
@@ -173,10 +143,7 @@ class TestGeneratedSpecs(unittest.TestCase):
             self.assertLessEqual(sat, ceiling, "oversaturated metal: " + prov)
 
     def test_transmissive_keeps_its_measured_ior(self):
-        """Water is 1.333 or it is not water: the IOR is copied, never
-        varied. The ONE exception is a source IOR of 1.0 - Soap Bubble
-        refracts nothing and its look is the thin film, so copying 1.0
-        "exactly" generates an invisible material."""
+        """Water is 1.333 or it is not water - the IOR is copied, never varied; the ONE exception is a source IOR of 1.0 (Soap Bubble), where copying exactly generates an invisible material."""
         known = {round(f["ior"], 4) for f in generator.online_facts()
                  if f["ior"] > 1.0}
         for spec, prov in self.samples:
@@ -188,9 +155,7 @@ class TestGeneratedSpecs(unittest.TestCase):
                 self.assertIn(ior, known, prov)
 
     def test_subsurface_radius_is_a_distance_in_scene_units(self):
-        """The unit bug this codebase has already been bitten by: the
-        radius is a mean free path in CENTIMETRES and reaches the
-        shader with subsurface_scale converting it to scene metres."""
+        """The radius is a mean free path in CENTIMETRES and reaches the shader with subsurface_scale converting it to scene metres."""
         checked = 0
         for spec, prov in self.samples:
             if spec.get("subsurface", 0.0) <= 0.0:
@@ -218,16 +183,13 @@ class TestGeneratedSpecs(unittest.TestCase):
                 self.assertLessEqual(delta, 0.06, fact["name"])
 
     def test_character_rates_come_from_the_authored_corpus(self):
-        """The module's headline claim: clearcoat on about a third,
-        emission on almost none - measured, not invented."""
+        """Clearcoat on about a third, emission on almost none - measured rates, not invented."""
         rates = generator.character_rates()
         self.assertGreater(rates["coat"], 0.2)
         self.assertLess(rates["coat"], 0.5)
         self.assertLess(rates["emission"], 0.05)
         coated = [s for s, _ in self.samples if s.get("coat", 0.0) > 0.0]
-        share = len(coated) / float(len(self.samples))
-        # Metals and opaque dielectrics are the eligible classes, so the
-        # observed share is the rate scaled by their share of the corpus.
+        share = len(coated) / float(len(self.samples))    # metals and opaque dielectrics are the eligible classes, so the observed share is the rate scaled by their corpus share
         self.assertGreater(share, 0.1)
         self.assertLess(share, rates["coat"] + 0.1)
 
@@ -241,8 +203,7 @@ class TestGeneratedSpecs(unittest.TestCase):
                 self.assertEqual(spec.get("sheen", 0.0), 0.0, prov)
 
     def test_vinyl_film_is_not_classified_as_fabric(self):
-        """The satin trap once more, in the generator's OWN class
-        table: a colourway name must not beat the description."""
+        """The satin trap in the generator's OWN class table: a colourway name must not beat the description."""
         fact = generator._normalise("RGL", "satin_blue", {
             "color": [0.68, 0.74, 0.75], "metalness": 0.0,
             "roughness": 0.3,
@@ -252,8 +213,7 @@ class TestGeneratedSpecs(unittest.TestCase):
         self.assertFalse(generator._is_fabric(fact))
 
     def test_every_spec_key_exists_on_the_shader(self):
-        """A key the shader does not have is set silently into
-        nothing."""
+        """A key the shader does not have is set silently into nothing."""
         staging = hou.node("/obj").createNode("matnet")
         probe = staging.createNode("mtlxstandard_surface")
         try:
@@ -310,14 +270,7 @@ class TestGeneratedMaterials(unittest.TestCase):
 
 
 class TestCatalogueFreshness(unittest.TestCase):
-    """New materials on the sites must simply APPEAR - browsing a
-    catalogue should behave like browsing the website, not like
-    software with an update prompt. And with no network, the shipped
-    tables ARE the catalogue, so browsing keeps working on a plane.
-
-    Both are safe to do eagerly because list_materials is only ever
-    called from the catalogue worker thread (core/matx_library).
-    """
+    """New materials on the sites simply APPEAR and, with no network, the shipped tables ARE the catalogue - both safe eagerly because only the catalogue worker thread calls list_materials."""
 
     def _sources(self):
         return [s for s in matx_sources.all_sources()
@@ -351,10 +304,7 @@ class TestCatalogueFreshness(unittest.TestCase):
                 source.refresh()
 
     def test_a_bad_live_payload_never_replaces_the_table(self):
-        """Reachable is not correct. A captive portal, a proxy error
-        page or a schema change all return valid JSON; accepting one
-        blindly replaced 86 measured materials with whatever came
-        back, and the browser showed a handful of grey tiles."""
+        """Reachable is not correct - accepting a portal's valid JSON blindly once replaced the measured set with grey tiles. ▸r/matx-source-quirks"""
         pb = [s for s in self._sources() if s.name == "PhysicallyBased"][0]
         real = matx_sources.get_json
         try:
@@ -375,17 +325,14 @@ class TestCatalogueFreshness(unittest.TestCase):
             matx_sources.get_json = real
             pb.refresh()
 
-    #: A response that _usable() should ACCEPT: a list of entries that
-    #: each carry a name and a three-channel colour.
-    GOOD_PAYLOAD = [{"name": "live%d" % i, "color": [0.4, 0.4, 0.4]}
+    GOOD_PAYLOAD = [{"name": "live%d" % i, "color": [0.4, 0.4, 0.4]}    # a response _usable() should ACCEPT: name + three-channel colour per entry
                     for i in range(30)]
 
     def _pb(self):
         return [s for s in self._sources() if s.name == "PhysicallyBased"][0]
 
     def _without_the_shipped_table(self, pb):
-        """Point _table_path at a file that does not exist, and return the
-        real bound method so the caller can put it back."""
+        """Point _table_path at a file that does not exist, answering the real bound method so the caller can put it back."""
         real = pb._table_path
         missing = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                "no_such_physicallybased_table.json")
@@ -397,16 +344,7 @@ class TestCatalogueFreshness(unittest.TestCase):
         return real
 
     def test_a_bad_payload_is_refused_with_no_table_to_fall_back_on(self):
-        """The path the test above cannot reach.
-
-        With the shipped table READABLE a bad payload is simply ignored,
-        so the fallback's own re-fetch was never exercised - and that
-        re-fetch assigned the response with no shape check at all, the
-        one way around the gate. A missing table plus a captive portal is
-        enough: the portal's JSON became the catalogue, and because
-        everything downstream slices it as a list, a JSON object surfaced
-        as a TypeError several calls from its cause.
-        """
+        """The unreadable-table re-fetch goes THROUGH the shape gate - it once assigned a portal's JSON as the catalogue and surfaced as a TypeError several calls from its cause. ▸r/matx-source-quirks"""
         pb = self._pb()
         real_json = matx_sources.get_json
         real_table = self._without_the_shipped_table(pb)
@@ -439,12 +377,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             pb.refresh()
 
     def test_a_transient_failure_still_gets_its_second_chance(self):
-        """The ACCEPT path of the same branch.
-
-        The case that makes the re-fetch worth keeping: the first request
-        fails transiently and there is no table to fall back on. Gating
-        the retry must not have turned that into a refusal.
-        """
+        """The ACCEPT path of the same branch: a transient first failure with no table to fall back on is the case the re-fetch exists for, and gating it must not have become a refusal."""
         pb = self._pb()
         real_json = matx_sources.get_json
         real_table = self._without_the_shipped_table(pb)
@@ -462,11 +395,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             try:
                 records = pb.list_materials(limit=1000)
             except Exception as exc:                    # noqa: BLE001
-                # Caught and turned into a NAMED failure on purpose: an
-                # over-strict gate raises here, and a bare traceback
-                # would report "something threw" rather than the claim
-                # this test is making.
-                self.fail("a good response on the retry was refused (%s), "
+                self.fail("a good response on the retry was refused (%s), "    # NAMED on purpose: an over-strict gate raises here, and a bare traceback says only that something threw
                           "so a transient failure with no shipped table "
                           "loses the catalogue" % exc)
             self.assertEqual(
@@ -482,8 +411,7 @@ class TestCatalogueFreshness(unittest.TestCase):
             pb.refresh()
 
     def test_rgl_unions_the_live_list_with_the_table(self):
-        """A material the site lists and the table does not must still
-        appear - that is what "new materials just show up" means."""
+        """A material the site lists and the table does not must still appear - that is what new-materials-just-show-up means."""
         rgl = [s for s in self._sources() if s.name == "RGL"][0]
         real_text = matx_sources.get_text
         matx_sources.get_text = lambda *a, **k: (
@@ -503,12 +431,7 @@ class TestCatalogueFreshness(unittest.TestCase):
 
 
 class TestDownloadIntegrity(unittest.TestCase):
-    """Anything fetched from the network is data, not truth.
-
-    The live catalogue now lists RGL materials the shipped table has
-    never seen, so importing one DOWNLOADS a measurement - and a cached
-    file is never re-fetched, which makes one bad response permanent.
-    """
+    """Anything fetched from the network is data, not truth - a cached measurement is never re-fetched, so one bad response would be permanent."""
 
     def setUp(self):
         import tempfile
@@ -523,12 +446,7 @@ class TestDownloadIntegrity(unittest.TestCase):
             title="Not A Real Material", kind="values", payload={})
         real_download = matx_sources.download
 
-        # THE REAL SIGNATURE, positional third argument included.
-        # `download(url, dest, on_bytes=None)` is called positionally by
-        # the RGL fetch, and a **kwargs-only stub took the call as an
-        # arity error - a stub that does not match the thing it stands
-        # in for fails on the day the real call grows an argument.
-        def fake_download(url, target, on_bytes=None, **kwargs):
+        def fake_download(url, target, on_bytes=None, **kwargs):    # THE REAL SIGNATURE - a stub that does not match the thing it stands in for fails the day the real call grows an argument
             with open(target, "wb") as handle:
                 handle.write(b"<html>404 Not Found</html>")
 
@@ -572,18 +490,7 @@ class TestDownloadIntegrity(unittest.TestCase):
 
 
 class ThirdPartyHostTest(unittest.TestCase):
-    """Third-party URLs are not ours to rename.
-
-    A blind matlib->amaze substring replace on 2026-07-27 rewrote AMD's
-    api.matlib.gpuopen.com to api.amaze.gpuopen.com, a host that does
-    not resolve. Browsing still worked - it reads the shipped offline
-    table - so nothing looked wrong until an import failed with "no
-    downloadable package", because the catalogue fetch died inside an
-    `except Exception: continue`.
-
-    These assert the LITERAL hosts. If a future rename touches them the
-    test fails immediately, instead of a feature failing quietly weeks
-    later."""
+    """Third-party URLs are not ours to rename - the LITERAL hosts are asserted so a future rename fails immediately instead of a feature failing quietly weeks later. ▸r/matx-source-quirks"""
 
     def test_the_gpuopen_api_host_is_amds(self):
         from amaze.core import matx_sources
@@ -600,30 +507,18 @@ class ThirdPartyHostTest(unittest.TestCase):
         source = inspect.getsource(matx_sources)
         offenders = re.findall(
             r"https?://[^\s\"']*amaze[^\s\"']*", source, re.I)
-        offenders = [u for u in offenders if "github.com/Timour" not in u]
+        offenders = [u for u in offenders
+                     if "github.com/Timour" not in u
+                     and "githubusercontent.com/Timour" not in u]    # our own repos, GitHub-hosted - the pin is about OUR name inside a third party's domain
         self.assertEqual([], offenders,
                          "a third-party URL contains our app name")
 
 
 class TruncatedDownloadTest(unittest.TestCase):
-    """A short transfer must never be promoted as a finished file.
-
-    download() streams into a .part and os.replace()s it, and the
-    docstring took that to mean a cut-off transfer could not leave a
-    truncated file. It could: CPython's HTTPResponse.readinto does NOT
-    raise on a short body - it closes the connection and returns 0 - so
-    the read loop exits NORMALLY and os.replace promotes the fragment.
-
-    Nothing downstream catches it. A truncated .bsdf still passes RGL's
-    12-byte "tensor_file" magic check, so it lands in the cache and is
-    never re-fetched: that material is dead permanently, which is the
-    exact poisoning TestDownloadIntegrity above exists to prevent. A
-    truncated PolyHaven texture lands in the library and renders wrong.
-    All four hosts send Content-Length, so one check covers them all."""
+    """A short transfer must never be promoted as a finished file - HTTPResponse does not raise on a short body, so the read loop exits normally and the promote would land the fragment. ▸r/matx-source-quirks"""
 
     def _serve_once(self, body: bytes, declared_length=None) -> str:
-        """A one-shot HTTP server that can lie about Content-Length.
-        Returns its URL."""
+        """A one-shot HTTP server that can lie about Content-Length, answering its URL."""
         import socket
         import threading
 
@@ -650,13 +545,7 @@ class TruncatedDownloadTest(unittest.TestCase):
         thread = threading.Thread(target=serve, daemon=True)
         thread.start()
         self.addCleanup(thread.join, 5)
-        # PLAIN HTTP ON LOOPBACK, said out loud. The fetcher is
-        # https-only, because every URL it opens comes out of a remote
-        # catalogue; this server is a real socket on 127.0.0.1 serving
-        # bytes this test wrote, so the scheme rule is widened for its
-        # lifetime rather than the product's rule being loosened to
-        # make a test pass.
-        widened = matx_sources.ALLOWED_SCHEMES + ("http",)
+        widened = matx_sources.ALLOWED_SCHEMES + ("http",)    # plain http on loopback, said out loud: widened for this test's lifetime, never the product's rule loosened
         original = matx_sources.ALLOWED_SCHEMES
         matx_sources.ALLOWED_SCHEMES = widened
         self.addCleanup(
@@ -694,8 +583,7 @@ class TruncatedDownloadTest(unittest.TestCase):
         self.assertEqual(5000, os.path.getsize(dest))
 
     def test_no_content_length_is_not_read_as_truncated(self):
-        """A server that sends no Content-Length is not lying, and the
-        progress bar already treats total=0 as unknown."""
+        """A server that sends no Content-Length is not lying, and the bar already treats total=0 as unknown."""
         url = self._serve_once(b"z" * 300, declared_length=None)
         dest = self._dest()
         matx_sources.download(url, dest)
@@ -703,23 +591,7 @@ class TruncatedDownloadTest(unittest.TestCase):
 
 
 class SilentOnlineFailureTest(unittest.TestCase):
-    """An unreachable host must never look like an empty catalogue.
-
-    This is the bug class that hid a corrupted API hostname for a day:
-    browsing kept working off the shipped offline table, and every
-    failure produced the same message a genuinely empty result does.
-    GPUOpen's _packages got the "say WHY" treatment then; these three
-    did not.
-
-    Asserted on the LOG, through test_support.captured_log(). These
-    diagnostics were prints when the tests were written and are
-    debug.note() now, and note() returns before its print on Windows -
-    research.md ▸ *Debug log*, because any print pops the Houdini
-    Console. Asserting on captured stdout therefore made a test of
-    HONESTY into a test of the platform: forcing hostos.is_windows()
-    True turned this class red for messages that were recorded either
-    way. The log is the channel both platforms share, so it is the one
-    the assertion belongs on."""
+    """An unreachable host must never look like an empty catalogue (the bug class that hid a corrupted hostname for a day, ▸r/matx-source-quirks) - asserted on the LOG via captured_log(), the one channel both platforms share, because note() returns before its print on Windows (research.md ▸ Debug log)."""
 
     def setUp(self):
         self.real_json = matx_sources.get_json
@@ -745,10 +617,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
             said,
             "a dead host produced an empty resolution list and said "
             "nothing - indistinguishable from a material with no mtlx")
-        # ONE record, and the assertions are on IT - not on every note
-        # the block wrote joined together, which is how a sentence can be
-        # deleted with the test still green (practice.md ▸ Testing).
-        self.assertIn("PolyHaven", said[0],
+        self.assertIn("PolyHaven", said[0],    # ONE record and the assertions are on IT, or a sentence can be deleted with the test still green (practice.md ▸ Testing)
                       "the message does not name the site that is down, "
                       "so it cannot be told from any other failure: %r"
                       % said[0])
@@ -757,9 +626,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
                       "clicked: %r" % said[0])
 
     def test_gpuopen_does_not_cache_a_failed_category_lookup(self):
-        """self._categories = {} before the try cached the FAILURE for
-        the whole run: all 454 materials came back Uncategorized, the
-        sidebar collapsed to one row, and nothing ever retried."""
+        """A failure cached as {} filed every material under Uncategorized for the run with nothing retrying. ▸r/matx-source-quirks"""
         source = self._source("GPUOpen")
         source._categories = None
         matx_sources.get_json = self._dead
@@ -771,8 +638,7 @@ class SilentOnlineFailureTest(unittest.TestCase):
             "a failed category lookup was cached - every later call "
             "returns Uncategorized without retrying")
 
-        # Recovery: the next call, with the API back, must work.
-        matx_sources.get_json = lambda *a, **k: {
+        matx_sources.get_json = lambda *a, **k: {    # recovery: the next call, with the API back, must work
             "results": [{"id": "u1", "title": "Metal"}]}
         self.assertEqual({"u1": "Metal"}, source._category_map())
 
@@ -793,23 +659,13 @@ class SilentOnlineFailureTest(unittest.TestCase):
 
 
 class MtlxRepairHonestyTest(unittest.TestCase):
-    """A repair that could not be WRITTEN is not a repair.
-
-    PolyHaven's API is internally inconsistent - the manifest ships
-    ..._rough_1k.jpg while the .mtlx references ..._rough_1k.exr - so the
-    document is rewritten to point at what was actually fetched. The
-    rewrite was wrapped in `except OSError: pass`, but `repairs` already
-    listed every entry as fixed_to: <path>, and matx_import logs "mtlx
-    references repaired" on that basis. A read-only library or a full
-    disk therefore produced a material whose textures all render BLACK
-    while the log said the repair succeeded."""
+    """A repair that could not be WRITTEN is not a repair - the swallowed rewrite once logged success while every texture rendered black. ▸r/matx-source-quirks"""
 
     def setUp(self):
         import tempfile
         self.dest = tempfile.mkdtemp(prefix="amaze_mtlx_")
         self.addCleanup(__import__("shutil").rmtree, self.dest, True)
-        # The document references .exr; only .jpg was fetched.
-        self.mtlx = os.path.join(self.dest, "material.mtlx")
+        self.mtlx = os.path.join(self.dest, "material.mtlx")    # the document references .exr; only .jpg was fetched
         with open(self.mtlx, "w", encoding="utf-8") as handle:
             handle.write('<materialx><input value="tex_rough_1k.exr"/>'
                          "</materialx>")
@@ -833,10 +689,7 @@ class MtlxRepairHonestyTest(unittest.TestCase):
             repairs[0]["fixed_to"],
             "a repair that could not be written was reported as done - "
             "the material renders black while the log says success")
-        # The CAUSE is what this function owes. It used to say "render
-        # black" too, but matx_import's caller says that - with the count
-        # and the material's name - and both are notes, so the user got
-        # the same bad news twice for one import.
+        # the CAUSE is what this function owes; the caller owns the consequence, or the user gets the same bad news twice
         self.assertTrue(
             log.matching("could not be updated"),
             "a failed rewrite was marked unrepaired but never said why, "
@@ -845,14 +698,7 @@ class MtlxRepairHonestyTest(unittest.TestCase):
 
 
 class PartialCatalogueTest(unittest.TestCase):
-    """A catalogue missing a whole source must not become the baseline.
-
-    The existing guard only protects an EXISTING cache: on a COLD one
-    self._all is empty, so a fetch with GPUOpen down (934 records
-    instead of 1388) sailed past it and was written to disk. Every later
-    run then fetched 934, matched the cache, and accepted it - GPUOpen
-    permanently absent while View > Online Materials still lists it,
-    because that menu is built from the static SOURCES tuple."""
+    """A catalogue missing a whole source must not become the baseline - a COLD cache once adopted a GPUOpen-down fetch and every later run matched and accepted it, the source permanently absent while the menu still listed it."""
 
     def setUp(self):
         from amaze.core import matx_library
@@ -860,9 +706,7 @@ class PartialCatalogueTest(unittest.TestCase):
         self.matx_library = matx_library
         self.model = matx_library.MatxOnlineLibrary.__new__(
             matx_library.MatxOnlineLibrary)
-        # Only what _on_catalogue touches - constructing the real model
-        # starts threads and hits the network.
-        self.model._loading = True
+        self.model._loading = True    # only what _on_catalogue touches - constructing the real model starts threads and hits the network
         self.model._generation = 0
         self.model._all = []
         self.model._error = ""
@@ -901,8 +745,7 @@ class PartialCatalogueTest(unittest.TestCase):
             1, len(self.saved), "a complete catalogue was not cached")
 
     def test_a_partial_fetch_is_still_shown(self):
-        """Not caching must not mean not displaying - the user should
-        still see what did load."""
+        """Not caching must not mean not displaying - the user still sees what did load."""
         with test_support.captured_log():
             self.model._on_catalogue(
                 self._records(934), ["GPUOpen: URLError: down"], 0)
@@ -910,8 +753,7 @@ class PartialCatalogueTest(unittest.TestCase):
         self.assertTrue(self.model._loaded)
 
     def test_the_error_carries_a_reason(self):
-        """errors used to record only the exception TYPE, which cannot
-        be told apart from a dozen causes."""
+        """errors once recorded only the exception TYPE, which a dozen causes share."""
         worker = self.matx_library._CatalogueWorker([], 0)
 
         class _Dead:
@@ -932,17 +774,7 @@ class PartialCatalogueTest(unittest.TestCase):
 
 
 class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
-    """Deciding whether to SHOW a progress bar must not cost requests.
-
-    _needs_download used to route through _online_source_for, which also
-    resolves the download RESOLUTION - one HTTP GET per package, on the
-    main thread, before the bar is even shown. Measured live: 254 of
-    GPUOpen's 454 materials carry 6 packages and 170 carry 4, so a
-    ten-material selection blocked Houdini on ~50 serial requests, each
-    able to stall for TIMEOUT (30s).
-
-    Measured here with a stubbed transport: 60 requests for ten
-    materials, against 0 for the question actually being asked."""
+    """Deciding whether to SHOW a progress bar must not cost requests - routing through the resolution lookup once blocked Houdini on ~50 serial GETs for a ten-material selection, measured here as 60 stubbed requests against the 0 the question needs."""
 
     def setUp(self):
         self.real_json = matx_sources.get_json
@@ -969,8 +801,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                 % (source.name, len(self.calls)))
 
     def test_the_panel_asks_the_cheap_question(self):
-        """Derived from the source, so a future edit cannot quietly put
-        the expensive lookup back."""
+        """Derived from the source, so a future edit cannot quietly put the expensive lookup back."""
         import re
 
         path = os.path.join(
@@ -983,9 +814,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
             r"def _needs_download\(self, records\).*?\n    def ",
             source, re.S)
         self.assertIsNotNone(match, "_needs_download not found")
-        # CODE only: the comment above the fix names the call it removed,
-        # and the docstring explains the whole thing.
-        body = "\n".join(
+        body = "\n".join(    # CODE only - the docstring and comments legitimately name the removed call
             line for line in match.group(0).splitlines()
             if not line.strip().startswith("#"))
         body = re.sub(r'"""[\s\S]*?"""', "", body)
@@ -997,19 +826,7 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
 
 
 class CertificateVerificationTest(unittest.TestCase):
-    """Online requests must VERIFY, not just connect.
-
-    _request used to retry with check_hostname=False / CERT_NONE on any
-    ssl.SSLError - and ssl.SSLCertVerificationError is a SUBCLASS of it,
-    so certificate-verification failure, the precise signal of an
-    interception, is what switched verification off.
-
-    That was not a rare fallback. Houdini's bundled Python carries no
-    system CA chain at all (measured on 22.0.390: the default context
-    has no CA certs and get_default_verify_paths().cafile is None), so
-    the default context fails EVERY time and the unverified retry was
-    the normal path for every catalogue fetch, preview and download.
-    Houdini does ship certifi, which verifies these hosts correctly."""
+    """Online requests must VERIFY, not just connect - the CERT_NONE retry keyed on the parent class fired on certificate failure itself, and with no system CA chain in Houdini's Python that was the NORMAL path. ▸r/matx-network-hardening"""
 
     def test_the_shared_context_verifies(self):
         import ssl
@@ -1022,23 +839,16 @@ class CertificateVerificationTest(unittest.TestCase):
             "hostname checking is off - any valid certificate would pass")
 
     def test_the_context_actually_has_certificates(self):
-        """A verifying context with an empty trust store verifies
-        nothing - it just fails. This is what the bare default context
-        does under Houdini, and why certifi is used instead."""
+        """A verifying context with an empty trust store verifies nothing - it just fails, which is the bare default under Houdini and why certifi is used."""
         self.assertTrue(
             matx_sources._ssl_context().get_ca_certs(),
             "the SSL context trusts no certificate authorities, so every "
             "https request will fail into the unverified retry")
 
     def test_a_non_ssl_error_is_not_retried_unverified(self):
-        """A 404 or a timeout must not reach the relaxed retry."""
+        """A 404 or a timeout must not reach a relaxed retry - counted at the OPENER, because the seam moved there with the redirect handler and a urlopen patch counts zero while passing for the wrong reason."""
         import urllib.error
 
-        # THE SEAM MOVED WITH THE REDIRECT HANDLER. `_request` builds an
-        # opener now instead of calling `urlopen`, so a patch on urlopen
-        # intercepts nothing and this counted zero attempts while
-        # passing for the wrong reason. Counting at the opener asks the
-        # same question - how many times did it try?
         real = matx_sources.urllib.request.build_opener
         calls = []
 

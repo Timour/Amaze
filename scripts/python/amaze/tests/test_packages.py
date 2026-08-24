@@ -543,5 +543,192 @@ class CuratedKeysTest(unittest.TestCase):
         self.assertEqual(before + 1, model.rowCount())
 
 
+class _CannedAmazeSource:
+    """The AmazeSource with its one network door overridden - built lazily inside tests so the class import happens after the module exists."""
+
+    def __new__(cls, index_bytes, files):
+        from amaze.core import matx_sources
+
+        class Source(matx_sources.AmazeSource):
+            calls = []
+
+            def _get(self, url):
+                Source.calls.append(url)
+                if url.endswith("index.json"):
+                    return index_bytes
+                return files[url]
+
+        return Source()
+
+
+class AmazeSourceTest(unittest.TestCase):
+    """The fifth online source: the index is the catalogue, folders are categories, fetch verifies the checksum, and Refresh drops the cache."""
+
+    def _store(self):
+        import hashlib
+        from amaze.core import packages
+        folder = tempfile.mkdtemp(prefix="amaze_store_src_")
+        self.addCleanup(
+            __import__("shutil").rmtree, folder, ignore_errors=True)
+        source_file = os.path.join(folder, "a.txt")
+        with open(source_file, "w") as handle:
+            handle.write("x")
+        pkg = os.path.join(folder, "mini.amazepkg")
+        packages.write_package(
+            pkg, [packages.collect_file(source_file, "other")])
+        blob = _bytes(pkg)
+        base = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
+        index = {
+            "format": 1, "base": base,
+            "categories": [{"name": "defaults", "packages": [{
+                "name": "mini", "file": "defaults/mini.amazepkg",
+                "bytes": len(blob), "entries": 1,
+                "kinds": {"other": 1}, "package_format": 1,
+                "sha256": hashlib.sha256(blob).hexdigest()}]}]}
+        return (json.dumps(index).encode("utf-8"),
+                {base + "defaults/mini.amazepkg": blob})
+
+    def test_the_index_lists_as_records_with_folder_categories(self):
+        index_bytes, files = self._store()
+        source = _CannedAmazeSource(index_bytes, files)
+        records = source.list_materials()
+        self.assertEqual(1, len(records))
+        record = records[0]
+        self.assertEqual("mini", record.title)
+        self.assertEqual("Defaults", record.category)
+        self.assertEqual("amazepkg", record.kind)
+        self.assertTrue(record.payload.get("url", "").startswith("https://"))
+
+    def test_fetch_verifies_the_checksum_and_lands_the_file(self):
+        index_bytes, files = self._store()
+        source = _CannedAmazeSource(index_bytes, files)
+        record = source.list_materials()[0]
+        dest = tempfile.mkdtemp(prefix="amaze_store_dl_")
+        self.addCleanup(
+            __import__("shutil").rmtree, dest, ignore_errors=True)
+        got = source.fetch(record, None, dest)
+        self.assertTrue(got["amazepkg"].endswith(".amazepkg"))
+        self.assertEqual(files[record.payload["url"]],
+                         _bytes(got["amazepkg"]))
+
+    def test_a_record_without_a_checksum_is_refused(self):
+        from amaze.core import matx_sources
+        record = matx_sources.MatxRecord(
+            source="Amaze", uid="defaults/x.amazepkg", title="x",
+            category="Defaults", kind="amazepkg",
+            payload={"url": "https://raw.githubusercontent.com/x"})
+        source = matx_sources.AmazeSource()
+        dest = tempfile.mkdtemp(prefix="amaze_store_nosha_")
+        self.addCleanup(
+            __import__("shutil").rmtree, dest, ignore_errors=True)
+        with self.assertRaises(Exception) as caught:
+            source.fetch(record, None, dest)
+        self.assertIn("checksum", str(caught.exception).lower())
+        self.assertEqual([], os.listdir(dest),
+                         "an unverifiable download still landed")
+
+    def test_a_corrupt_download_is_refused_by_name(self):
+        index_bytes, files = self._store()
+        url = next(iter(files))
+        files = dict(files, **{url: files[url] + b"tampered"})
+        source = _CannedAmazeSource(index_bytes, files)
+        record = source.list_materials()[0]
+        dest = tempfile.mkdtemp(prefix="amaze_store_bad_")
+        self.addCleanup(
+            __import__("shutil").rmtree, dest, ignore_errors=True)
+        with self.assertRaises(Exception) as caught:
+            source.fetch(record, None, dest)
+        self.assertIn("checksum", str(caught.exception).lower())
+
+    def test_refresh_drops_the_cached_index(self):
+        index_bytes, files = self._store()
+        source = _CannedAmazeSource(index_bytes, files)
+        source.list_materials()
+        source.list_materials()
+        index_calls = [u for u in type(source).calls
+                       if u.endswith("index.json")]
+        self.assertEqual(1, len(index_calls),
+                         "browsing twice fetched the index twice")
+        source.refresh()
+        source.list_materials()
+        index_calls = [u for u in type(source).calls
+                       if u.endswith("index.json")]
+        self.assertEqual(2, len(index_calls))
+
+    def test_amaze_is_a_registered_source(self):
+        from amaze.core import matx_sources
+        names = [cls.name for cls in matx_sources.SOURCES]
+        self.assertIn("Amaze", names)
+
+
+class OnlinePackageImportTest(unittest.TestCase):
+    """The world's one import door routes amazepkg records into the package import - fresh through the Import entries, adopt-only through Restore."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _record_over(self, blob):
+        import hashlib
+        from amaze.core import matx_sources
+        url = "https://raw.githubusercontent.com/Timour/AmazePackages/x.amazepkg"
+
+        class Source(matx_sources.AmazeSource):
+            def _get(self, _url):
+                return blob
+
+        record = matx_sources.MatxRecord(
+            source="Amaze", uid="defaults/x.amazepkg", title="x",
+            category="Defaults", kind="amazepkg",
+            payload={"url": url,
+                     "sha256": hashlib.sha256(blob).hexdigest()})
+        return Source(), record
+
+    def _gradient_blob(self):
+        from amaze.core import packages
+        model = self.panel.gradient_model
+        item = packages.collect_asset(model, model.assets[0].mat_id)
+        out = _out_path(self, "online.amazepkg")
+        packages.write_package(out, [item])
+        return _bytes(out)
+
+    def test_the_library_door_imports_a_package_record_fresh(self):
+        from unittest import mock
+        source, record = self._record_over(self._gradient_blob())
+        model = self.panel.gradient_model
+        before = model.rowCount()
+        with mock.patch.object(self.panel, "_online_source_for",
+                               return_value=(source, None, "")):
+            ok, reason = self.panel.import_online_material(record)
+        self.assertTrue(ok, reason)
+        self.assertEqual(before + 1, model.rowCount(),
+                         "the package record never reached the library")
+        cats = model._assets[-1].categories
+        self.assertEqual(
+            ["Import"], [cats] if isinstance(cats, str) else list(cats))
+
+    def test_restore_from_online_unions_instead_of_copying(self):
+        from unittest import mock
+        source, record = self._record_over(self._gradient_blob())
+        model = self.panel.gradient_model
+        before = model.rowCount()
+        with mock.patch.object(self.panel, "_online_source_for",
+                               return_value=(source, None, "")):
+            summary = self.panel.restore_amaze_packages([record])
+        self.assertEqual(before, model.rowCount(),
+                         "a still-present palette was duplicated by "
+                         "restore")
+        self.assertEqual(1, summary["skipped"])
+
+    def test_the_online_menu_offers_restore_on_packages_only(self):
+        from amaze.panel import sections
+        labels = [e.label for e in sections.OnlineContext.GRID_MENU]
+        self.assertIn("Restore", labels)
+        entry = [e for e in sections.OnlineContext.GRID_MENU
+                 if e.label == "Restore"][0]
+        self.assertEqual("selection_is_amaze_packages", entry.shown,
+                         "Restore must hide for material sources")
+
+
 if __name__ == "__main__":
     unittest.main()

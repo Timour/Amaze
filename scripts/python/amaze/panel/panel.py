@@ -2424,6 +2424,9 @@ class MatLibPanel(QtWidgets.QWidget):
             return (False, error)
         if source is None:
             return (False, "Unknown source")
+        if getattr(record, "kind", "") == "amazepkg":
+            return self._import_amaze_package_record(
+                record, source, restore=False, on_progress=on_progress)
         with ui_helpers.relayout(self.material_model):
             ok, reason = matx_import.import_record(
                 record, source, resolution, self.material_model, self.prefs,
@@ -2434,6 +2437,60 @@ class MatLibPanel(QtWidgets.QWidget):
         self.category_model.check_add_category(record.category)    # no relayout wrapper here: check_add_category announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md)
         self._refresh_sidebar_categories()
         return (True, "")
+
+    def _import_amaze_package_record(self, record, source, restore,
+                                     on_progress=None):
+        """One amazepkg record into the library through the package door - fresh or restore - answering (ok, reason) like the material path beside it."""
+        import shutil as _shutil
+        import tempfile as _tempfile
+        scratch = _tempfile.mkdtemp(prefix="amaze_pkg_dl_")
+        try:
+            fetched = source.fetch(record, None, scratch,
+                                   progress=on_progress)
+            path = fetched.get("amazepkg", "")
+            if not path:
+                return (False, "the source answered no package file")
+            self.import_package_file(path, restore=restore)
+            return (True, "")
+        except Exception as exc:                          # noqa: BLE001
+            debug.exception("package import", exc, record=record.title)
+            return (False, str(exc))
+        finally:
+            _shutil.rmtree(scratch, ignore_errors=True)
+
+    def restore_amaze_packages(self, records) -> dict:
+        """Restore-mode import for amazepkg records: adopt-only by curated tag / original id, one summary for the batch."""
+        totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
+        failures = []
+        for record in records:
+            source, _resolution, error = self._online_source_for(record)
+            if error or source is None:
+                failures.append("%s: %s" % (record.title,
+                                            error or "Unknown source"))
+                continue
+            import shutil as _shutil
+            import tempfile as _tempfile
+            scratch = _tempfile.mkdtemp(prefix="amaze_pkg_restore_")
+            try:
+                fetched = source.fetch(record, None, scratch)
+                summary = self.import_package_file(
+                    fetched.get("amazepkg", ""), restore=True)
+                for key in totals:
+                    totals[key] += summary.get(key, 0)
+            except Exception as exc:                      # noqa: BLE001
+                debug.exception("package restore", exc,
+                                record=record.title)
+                failures.append("%s: %s" % (record.title, exc))
+            finally:
+                _shutil.rmtree(scratch, ignore_errors=True)
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            lines = ["Restored %d, %d already present."
+                     % (totals["imported"], totals["skipped"])]
+            if failures:
+                lines += [""] + failures[:10]
+            ui.displayMessage("\n".join(lines))
+        return totals
 
     def _needs_download(self, records) -> bool:
         """True when importing these records will actually fetch bytes, answered WITHOUT touching the network - the source is looked up DIRECTLY here, never through _online_source_for, which also resolves the download RESOLUTION at one main-thread HTTP GET per package. Asked because the progress bar sits ABOVE the grid, so showing it for a value source (RGL, PhysicallyBased) that carries its numbers in the catalogue and downloads nothing shifts every tile down and back for no work at all."""
@@ -2474,7 +2531,13 @@ class MatLibPanel(QtWidgets.QWidget):
         return (source, resolution, "")
 
     def _import_online_records_to_scene(self, records) -> None:
-        """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library."""
+        """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a package being many assets with no single scene material."""
+        packages_only = [r for r in records
+                         if getattr(r, "kind", "") == "amazepkg"]
+        if packages_only:
+            self._import_online_records(packages_only)
+            records = [r for r in records
+                       if getattr(r, "kind", "") != "amazepkg"]
         total = len(records)
         if not total:
             return
