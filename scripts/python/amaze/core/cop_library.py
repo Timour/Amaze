@@ -7,6 +7,13 @@ from amaze.core import debug, library, category, material
 from amaze.render import nodes, thumbs
 
 
+def default_face(renderer: str):
+    """The Node section's face for a row with no thumbnail: the node icon for anything unrenderable (see RENDERABLE), the base missing face otherwise - the one rule, shared with the online browser."""
+    if str(renderer or "").upper() not in CopLibrary.RENDERABLE:
+        return CopLibrary._placeholder_image("icon_nodes.svg")
+    return CopLibrary._placeholder_image("missing_thumbnail.svg")
+
+
 class CopCategories(category.Categories):
     """The Cop section's category sidebar - same model, own database."""
 
@@ -170,11 +177,8 @@ class CopLibrary(library.AssetLibrary):
         if self.tile_icon(row):
             return super()._missing_thumb_image(row)
         if 0 <= row < len(self._assets):
-            context = str(
-                getattr(self._assets[row], "renderer", "") or ""
-            ).upper()
-            if context not in self.RENDERABLE:
-                return self._placeholder_image("icon_nodes.svg")
+            return default_face(
+                getattr(self._assets[row], "renderer", ""))
         return super()._missing_thumb_image(row)
 
     def import_asset_to_scene(

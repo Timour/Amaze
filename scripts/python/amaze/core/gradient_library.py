@@ -45,6 +45,27 @@ def _palette_ramp_data(colors: list) -> dict:
     return {"keys": keys, "values": values, "bases": ["Constant"] * n}
 
 
+def paint_swatch(colors: list, ramp: dict) -> QtGui.QImage:
+    """The Color section's tile face, THUMB_SIZE square: stacked horizontal bands when the palette is banded, the saved ramp otherwise - the one palette painter, shared with the online browser."""
+    image = QtGui.QImage(
+        THUMB_SIZE, THUMB_SIZE, QtGui.QImage.Format.Format_RGB32
+    )
+    painter = QtGui.QPainter(image)
+    try:
+        if GradientLibrary._is_banded(colors or [], ramp or {}):
+            band_h = THUMB_SIZE / max(len(colors or []), 1)  # stacked horizontal bands - the dictionary's own presentation
+            for i, color in enumerate(colors or []):
+                painter.fillRect(
+                    QtCore.QRectF(0, i * band_h, THUMB_SIZE, band_h + 1),
+                    QtGui.QColor(color["hex"]),
+                )
+        else:
+            GradientLibrary._paint_ramp(painter, ramp or {})
+    finally:
+        painter.end()
+    return image
+
+
 class GradientCategories(category.Categories):
     """The Colors section's category sidebar - same model, own database."""
 
@@ -370,22 +391,7 @@ class GradientLibrary(library.AssetLibrary):
             if composed is not None:
                 thumbnails.engine.deposit(key, composed)
                 return composed
-        colors = self._colors_of(asset)
-        ramp = self._ramp_of(asset)
-        image = QtGui.QImage(
-            THUMB_SIZE, THUMB_SIZE, QtGui.QImage.Format.Format_RGB32
-        )
-        painter = QtGui.QPainter(image)
-        if self._is_banded(colors, ramp):
-            band_h = THUMB_SIZE / max(len(colors), 1)  # stacked horizontal bands - the dictionary's own presentation
-            for i, color in enumerate(colors):
-                painter.fillRect(
-                    QtCore.QRectF(0, i * band_h, THUMB_SIZE, band_h + 1),
-                    QtGui.QColor(color["hex"]),
-                )
-        else:
-            self._paint_ramp(painter, ramp)
-        painter.end()
+        image = paint_swatch(self._colors_of(asset), self._ramp_of(asset))
         thumbnails.engine.deposit(key, image)
         return image
 

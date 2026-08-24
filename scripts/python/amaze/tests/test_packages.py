@@ -1164,7 +1164,11 @@ class OnlineKindFilterTest(unittest.TestCase):
         panel = self.panel
         panel.enter_online_world()
         try:
-            menu = panel.btn_view.menu()
+            self.assertTrue(
+                panel.btn_filter.isEnabled(),
+                "the EYE (the Filter button - icon_view.svg is its "
+                "face) stayed disabled online, which is the whole ask")
+            menu = panel.btn_filter.menu()
             self.assertEqual(["All", "Materials", "Colors", "Nodes",
                               "Code"],
                              [a.text() for a in menu.actions()])
@@ -1178,23 +1182,82 @@ class OnlineKindFilterTest(unittest.TestCase):
         finally:
             panel.leave_online_world()
         self.assertNotIn(
-            "Colors", [a.text() for a in panel.btn_view.menu().actions()],
-            "leaving the world must hand the eye its section menu back")
+            "Colors",
+            [a.text() for a in panel.btn_filter.menu().actions()],
+            "leaving the world must hand the eye its section filter "
+            "menu back")
 
 
 class OnlineTilePaintingTest(unittest.TestCase):
     """The browser's tile pictures without full downloads: palette swatches DRAWN from the record's colours, material thumbnails fetched per member through a callable preview job."""
 
-    def test_a_swatch_paints_the_palettes_own_colours(self):
-        from amaze.core import matx_library
-        image = matx_library.swatch_image(["#ff0000", "#0000ff"], 64)
-        self.assertEqual((64, 64), (image.width(), image.height()))
-        left = image.pixelColor(16, 32)
-        right = image.pixelColor(48, 32)
-        self.assertGreater(left.red(), 200,
-                           "the first band is not the first colour")
-        self.assertGreater(right.blue(), 200,
-                           "the second band is not the second colour")
+    def test_a_swatch_is_the_color_sections_own_face(self):
+        from amaze.core import gradient_library
+        image = gradient_library.paint_swatch(
+            [{"hex": "#ff0000"}, {"hex": "#0000ff"}], {})
+        size = gradient_library.THUMB_SIZE
+        self.assertEqual((size, size), (image.width(), image.height()))
+        top = image.pixelColor(size // 2, size // 4)
+        bottom = image.pixelColor(size // 2, 3 * size // 4)
+        self.assertGreater(top.red(), 200,
+                           "the top band is not the first colour - the "
+                           "Color section stacks HORIZONTAL bands")
+        self.assertGreater(bottom.blue(), 200)
+
+    def test_an_online_palette_paints_the_local_face(self):
+        from amaze.core import (gradient_library, matx_library,
+                                matx_sources, thumbnails)
+        record = matx_sources.MatxRecord(
+            source="Amaze", uid="d/p.amazepkg#s", title="Two",
+            category="Defaults", kind="amazepkg",
+            payload={"package": "https://x", "section": "gradient",
+                     "entry": {"record": {
+                         "colors": [{"hex": "#ff0000"},
+                                    {"hex": "#0000ff"}]}},
+                     "colors": ["#ff0000", "#0000ff"]})
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        key = model._preview_key(record)
+        thumbnails.engine.discard(key)
+        model._queue_previews([record])
+        image = thumbnails.engine.peek(key)
+        self.assertIsNotNone(image)
+        self.assertEqual(
+            gradient_library.paint_swatch(
+                [{"hex": "#ff0000"}, {"hex": "#0000ff"}], {}),
+            image,
+            "the online palette face differs from the Color section's "
+            "for the same colours - a second painter has crept in")
+
+    def test_a_thumbless_tile_shows_its_sections_own_face(self):
+        from amaze.core import cop_library, matx_library, matx_sources, \
+            thumbnails
+        from amaze.helpers import ui_helpers
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+
+        def face_of(section, record):
+            rec = matx_sources.MatxRecord(
+                source="Amaze", uid="d/p.amazepkg#" + section,
+                title="T", category="Defaults", kind="amazepkg",
+                payload={"package": "https://x", "section": section,
+                         "entry": {"record": record}})
+            key = model._preview_key(rec)
+            thumbnails.engine.discard(key)
+            model._queue_previews([rec])
+            return thumbnails.engine.peek(key)
+
+        node = face_of("cop", {"name": "domelight1", "renderer": "LOP"})
+        self.assertIsNotNone(
+            node, "a node tile with no packed thumbnail stayed BLANK")
+        self.assertEqual(
+            cop_library.default_face("LOP"), node,
+            "an unrenderable node must wear the Node section's own "
+            "node icon online, not a hand-picked face")
+        self.assertEqual(
+            ui_helpers.svg_image("missing_thumbnail.svg"),
+            face_of("material", {"name": "bare"}),
+            "a thumbless material wears the base missing face")
 
     def test_a_thumb_member_outranks_the_swatch_and_the_code_paint(self):
         from amaze.core import matx_library, matx_sources, thumbnails

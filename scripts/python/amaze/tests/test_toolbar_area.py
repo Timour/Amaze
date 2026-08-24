@@ -164,7 +164,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                         "%s does not match %s.%s in the %s tab"
                         % (control, type(context).__name__, fact, key))
 
-    def test_the_online_world_disables_the_three_local_controls(self):
+    def test_the_online_world_disables_the_local_controls_except_the_eye(self):
         from amaze.panel.panel import MatLibPanel
 
         panel = self.panel
@@ -180,6 +180,12 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                               "nothing")
         for control, fact, verb in MatLibPanel.TOOLBAR_CONTROLS:
             with self.subTest(control=control):
+                if control == "btn_filter":    # the one exception since 2026-08-24: online the eye carries the KIND filter, so the sync block re-enables it after its table row disables
+                    self.assertTrue(
+                        self._state(control, verb),
+                        "the eye is dead in the online world - the "
+                        "kind filter lives on it there")
+                    continue
                 self.assertEqual(
                     getattr(context, fact), self._state(control, verb),
                     "%s is live in the online world, where it has "

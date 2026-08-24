@@ -858,12 +858,11 @@ class MatLibPanel(QtWidgets.QWidget):
             self.toolbar_layout.addWidget(self.btn_filter)
             if menu_view is not None:
                 self.toolbar_layout.addSpacing(theme.ui_px(2))
-                self.menu_view_local = menu_view
-                self.btn_view = self._make_menu_button(menu_view)    # held on self: the online world swaps its menu for the kind filter (_sync_toolbar)
-                self.btn_view.setToolTip(ui_helpers.tooltip_text(
+                btn_view = self._make_menu_button(menu_view)
+                btn_view.setToolTip(ui_helpers.tooltip_text(
                     "Import a gallery file, or generate a material."))
-                self.toolbar_layout.addWidget(self.btn_view)
-                self.online_view_menu = QtWidgets.QMenu(self.ui)
+                self.toolbar_layout.addWidget(btn_view)
+                self.online_view_menu = QtWidgets.QMenu(self.ui)    # the ONLINE eye's menu: _sync_toolbar swaps it onto btn_filter when the context offers the kind filter
                 kind_group = QtGui.QActionGroup(self.online_view_menu)
                 kind_group.setExclusive(True)
                 for label, section in (("All", None),
@@ -2250,16 +2249,15 @@ class MatLibPanel(QtWidgets.QWidget):
                 control.setVisible(offered)
             else:
                 control.setEnabled(offered)
-        btn_view = getattr(self, "btn_view", None)
-        if btn_view is not None:    # the eye's MENU follows the context: the online world offers the kind filter, every section its one-shot actions
-            wants_kinds = bool(getattr(context, "kind_filter_menu",
-                                       False))
-            btn_view.set_menu(self.online_view_menu if wants_kinds
-                              else self.menu_view_local)
-            btn_view.setToolTip(ui_helpers.tooltip_text(
-                "Show one kind of tile."
-                if wants_kinds else
-                "Import a gallery file, or generate a material."))
+        btn_filter = getattr(self, "btn_filter", None)
+        if btn_filter is not None:    # THE EYE IS THE FILTER BUTTON (icon_view.svg): online it carries the KIND filter and overrides the table row's disable; every section keeps its own filter menu and tooltip machinery
+            if getattr(context, "kind_filter_menu", False):
+                btn_filter.set_menu(self.online_view_menu)
+                btn_filter.setEnabled(True)
+                btn_filter.setToolTip(ui_helpers.tooltip_text(
+                    "Show one kind of tile."))
+            else:
+                btn_filter.set_menu(self.menu_filter)
         self._sync_filter_placeholder()
 
     def _sync_toolbar_for_mode(self) -> None:

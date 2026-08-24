@@ -51,25 +51,6 @@ def _purge_legacy_caches():
             pass
 
 
-def swatch_image(colors, size: int) -> QtGui.QImage:
-    """A palette's tile, drawn: equal vertical bands of its own hex colours - the whole preview an online palette needs, no download."""
-    image = QtGui.QImage(size, size, QtGui.QImage.Format.Format_RGB32)
-    image.fill(QtGui.QColor("#2d2d2d"))
-    good = [c for c in colors if QtGui.QColor(str(c)).isValid()]
-    if good:
-        band = size / float(len(good))
-        painter = QtGui.QPainter(image)
-        try:
-            for n, colour in enumerate(good):
-                painter.fillRect(
-                    int(n * band), 0,
-                    int((n + 1) * band) - int(n * band), size,
-                    QtGui.QColor(str(colour)))
-        finally:
-            painter.end()
-    return image
-
-
 class _CatalogueWorker(QtCore.QThread):
     """Fetches EVERY source's full catalogue off the UI thread - ~1800 records over FIVE sources (GPUOpen 454 and PolyHaven 783 by API, Amaze by ranged manifest reads, PhysicallyBased 86 and RGL 62 from shipped tables in ~1ms); no paging, one flat list the filter box narrows."""
 
@@ -433,19 +414,22 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                     reader.label = str(rec.uid)    # folder/file#id - what a failure log names instead of a lambda repr
                     jobs.append((key, reader, self._cache_path(rec)))
                     continue
-                colors = rec.payload.get("colors")
+                row = ((rec.payload.get("entry") or {})
+                       .get("record") or {})
+                colors = row.get("colors") or []
                 if colors:
-                    try:    # drawn like the values branch below, same marker semantics
+                    from amaze.core import gradient_library
+                    try:    # the COLOR SECTION's own painter - banded stacks or the saved ramp, exactly the local face; same marker semantics as the values branch below
                         thumbnails.engine.deposit(
-                            key, swatch_image(colors, self._icon_size()))
+                            key, gradient_library.paint_swatch(
+                                colors, row.get("ramp") or {}))
                     except Exception as exc:              # noqa: BLE001
                         debug.event("online", "swatch not drawn",
                                     title=rec.title, error=str(exc))
                         continue
                     self._requested.discard(key)
                     continue
-                code = str(((rec.payload.get("entry") or {})
-                            .get("record") or {}).get("code") or "")
+                code = str(row.get("code") or "")
                 if code:
                     from amaze.core import code_library
                     try:    # the CODE SECTION's own painter, exactly as palettes reuse their swatch - a snippet tile must not stand blank
@@ -457,7 +441,15 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                         continue
                     self._requested.discard(key)
                     continue
-                continue    # no icon member, no colours, no code: the engine's no-preview tile stands
+                if str(rec.payload.get("section") or "") == "cop":
+                    from amaze.core import cop_library
+                    face = cop_library.default_face(row.get("renderer"))    # the Node section's own rule - node icon for unrenderable contexts
+                else:
+                    from amaze.helpers import ui_helpers
+                    face = ui_helpers.svg_image("missing_thumbnail.svg")
+                thumbnails.engine.deposit(key, face)    # no icon member, no colours, no code: the LOCAL section's face, never a blank tile
+                self._requested.discard(key)
+                continue
             if rec.kind == "values":
                 try:    # no render to download - the tile is DRAWN from the measured numbers, cheap enough on the spot, no worker
                     thumbnails.engine.deposit(
