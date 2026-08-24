@@ -228,5 +228,82 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
                 self.assertEqual([], self.clicked)
 
 
+NOTES_ROLE = QtCore.Qt.ItemDataRole.UserRole + 33
+
+
+class _NotedRow(QtCore.QAbstractListModel):
+    """One row carrying a comment."""
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else 1
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            return "asset"
+        if role == NOTES_ROLE:
+            return True
+        if role == SUBTITLE_ROLE:
+            return "Karma"
+        return None
+
+
+class TheCommentBadgeIsAButton(unittest.TestCase):
+    """Clicking the comment badge OPENS the Comments pane - one-way, never closing - through the toolbar chip, one path to one state."""
+
+    def test_a_wired_comment_badge_takes_the_click(self):
+        clicked = []
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        model = _NotedRow()
+        view.setModel(model)
+        delegate = delegates.AssetItemDelegate(
+            SUBTITLE_ROLE, notes_role=NOTES_ROLE)
+        delegate.set_badge_click("comment", clicked.append)
+        view.setItemDelegate(delegate)
+        option = _view_option(view, list_mode=False)
+        index = model.index(0, 0)
+        rect = delegate._badge_rect(option.rect, True,
+                                    delegates.LOWER_RIGHT)
+        handled = delegate.editorEvent(
+            _release(rect.center()), model, option, index)
+        self.assertTrue(handled, "the comment badge swallowed nothing")
+        self.assertEqual([index], clicked)
+
+    def test_the_comment_art_pair_is_75_rest_100_hover(self):
+        row = next(b for b in delegates.BADGES if b.name == "comment")
+        self.assertEqual(
+            "badge_comment_75", row.art,
+            "the rest state is 75 percent - same as the rest of the "
+            "family's buttons")
+        self.assertEqual("badge_comment", row.hover_art,
+                         "hover is the full-opacity mark")
+        self.assertFalse(row.off_art,
+                         "no badge on a commentless tile - the button "
+                         "exists only where a comment does")
+
+    def test_the_click_opens_the_pane_one_way(self):
+        from amaze.tests import test_support
+        panel = test_support.fixture_panel(test_support.class_scope(
+            type(self)))
+        panel.btn_notes.setChecked(False)
+        index = panel.material_sorted_model.index(0, 0)
+        panel._open_comments_from_badge(index)
+        self.assertTrue(panel.btn_notes.isChecked(),
+                        "the badge click did not open the pane")
+        panel._open_comments_from_badge(index)
+        self.assertTrue(panel.btn_notes.isChecked(),
+                        "a second click CLOSED the pane - the badge "
+                        "only ever opens")
+        import amaze.panel.grid as grid_mod
+        current = grid_mod.visible_view(panel).selectionModel() \
+            .currentIndex()
+        self.assertEqual(index.row(), current.row(),
+                         "the clicked tile did not become the "
+                         "selection, so the pane shows the wrong "
+                         "comments")
+
+
 if __name__ == "__main__":
     unittest.main()

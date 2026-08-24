@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- badge_comment.svg at 75% - the button's rest; hover draws the full-opacity original -->
+<svg viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+    <g id="Notes-copy" opacity="0.75">
+        <path id="Rounded-Rectangle-copy" fill="#000000" fill-opacity="0.75" fill-rule="evenodd" stroke="none" d="M 0 34 C 0 39.522846 4.477152 44 10 44 L 34 44 C 39.522846 44 44 39.522846 44 34 L 44 10 C 44 4.477154 39.522846 0 34 0 L 10 0 C 4.477152 0 0 4.477154 0 10 Z"/>
+        <path id="message-circle" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M 32.999992 20.388893 C 33.0042 22.002064 32.6273 23.593416 31.899994 25.033335 C 30.141167 28.552513 26.545326 30.776257 22.611107 30.777779 C 20.997936 30.781982 19.406584 30.405083 17.966665 29.67778 L 11 32 L 13.322222 25.033335 C 12.594915 23.593416 12.218016 22.002064 12.222222 20.388893 C 12.223744 16.454674 14.447487 12.858833 17.966665 11.100006 C 19.406584 10.3727 20.997936 9.9958 22.611107 10.000008 L 23.222219 10.000008 C 28.497095 10.291016 32.708984 14.502905 32.999992 19.777781 L 32.999992 20.388893 Z"/>
+    </g>
+</svg>

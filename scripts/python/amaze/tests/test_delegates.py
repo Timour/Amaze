@@ -411,7 +411,8 @@ class PaintCostTest(unittest.TestCase):
 class BadgeFamilyTest(unittest.TestCase):
     """The four tile badges are ONE drawn family: one art set (each glyph on its own dark disc), one rasteriser (`_badge_pixmap`), one size rule (`_badge_side`) and rendered AS DRAWN with no re-tinting - four accreted looks with three size formulas made the corners hard to read on busy thumbnails."""
 
-    NAMES = ("badge_open", "badge_star", "badge_versions", "badge_comment")
+    NAMES = ("badge_open", "badge_star", "badge_versions",
+             "badge_comment", "badge_comment_75")
 
     def test_all_four_arts_exist_and_render(self):
         for name in self.NAMES:
@@ -470,7 +471,7 @@ class BadgeFamilyTest(unittest.TestCase):
             ("open_role", True, "badge_open"),
             ("favorite_role", True, "badge_star"),
             ("versions_role", 3, "badge_versions"),
-            ("notes_role", True, "badge_comment"),
+            ("notes_role", True, "badge_comment_75"),
         )
         expected = delegates.AssetItemDelegate._badge_side(128)
         self.assertEqual(
@@ -490,7 +491,7 @@ class BadgeFamilyTest(unittest.TestCase):
             "badge_open": QtGui.QColor(255, 0, 0),
             "badge_star": QtGui.QColor(0, 255, 0),
             "badge_versions": QtGui.QColor(0, 0, 255),
-            "badge_comment": QtGui.QColor(255, 255, 0),
+            "badge_comment_75": QtGui.QColor(255, 255, 0),
         }
 
         def flat(name, side, dpr=1.0):
@@ -536,7 +537,7 @@ class BadgeFamilyTest(unittest.TestCase):
             "badge_open": (middle, middle),
             "badge_star": (far, middle),
             "badge_versions": (middle, far),
-            "badge_comment": (far, far),
+            "badge_comment_75": (far, far),
         }
         for name, (x, y) in corners.items():
             self.assertEqual(

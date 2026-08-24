@@ -43,7 +43,8 @@ BADGES = (      # THE TABLE, in paint order; no two share a corner, and the art 
           off_art="badge_star_40", off_hover_art="badge_star_75"),       # a BUTTON: dim star at rest, brighter under the pointer, amber when favourite - and amber answers no hover, because a state carried by COLOUR does not lighten (the toolbar chips' rule)
     Badge("versions", "badge_versions", LOWER_LEFT, "_versions_role",
           minimum=2, hover_art="badge_versions_hover"),                  # more than one version - a BUTTON: click opens the Versions dialog
-    Badge("comment", "badge_comment", LOWER_RIGHT, "_notes_role"),       # carries a comment
+    Badge("comment", "badge_comment_75", LOWER_RIGHT, "_notes_role",
+          hover_art="badge_comment"),                                    # carries a comment - a BUTTON: 75% at rest, full under the pointer, no open-state look; click OPENS the Comments pane, one-way
 )
 
 
@@ -453,6 +454,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """The words a button badge shows on hover - state-aware, so the star names the ACTION a click would take, not the state it is in."""
         if badge.name == "versions":
             return "Click to select version"
+        if badge.name == "comment":
+            return "Show comments"
         if badge.name == "favourite":
             role = getattr(self, badge.role_attr)
             return ("Remove from favorites"

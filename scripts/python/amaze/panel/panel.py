@@ -312,6 +312,7 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self.thumb_delegate.set_badge_click("versions", self._open_versions_dialog)    # a click on the versions badge opens the Versions dialog: the delegate only detects the hit, the panel owns the dialog
         self.thumb_delegate.set_badge_click("favourite", self._favourite_badge_clicked)    # wiring the click is what makes the star a BUTTON with a visible rest state; the online delegate wires neither, so its corner stays empty
+        self.thumb_delegate.set_badge_click("comment", self._open_comments_from_badge)
 
         self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
             self.material_model.RendererLabelRole,
@@ -325,6 +326,8 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self.asset_delegate.set_badge_click(
             "favourite", self._favourite_badge_clicked)
+        self.asset_delegate.set_badge_click(
+            "comment", self._open_comments_from_badge)
 
         self.file_folders_model = file_library.FileFolders(self.prefs)    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered through TextureFilterProxyModel for the search box and favourites star; see core/file_library.py
         self.file_files_model = file_library.FileFiles(self.prefs)
@@ -345,6 +348,8 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self.file_delegate.set_badge_click(
             "favourite", self._favourite_badge_clicked)
+        self.file_delegate.set_badge_click(
+            "comment", self._open_comments_from_badge)
         self._sync_notes_button_pixmaps()    # the star preference colours the NOTES surfaces (chip lit + pane accent); tile badges render as drawn and take no colour push. The accent sweep for the tile delegates runs at the END of setup() instead, because tile_delegates() derives from self.sections, which do not exist yet here - a sweep at this point walks an empty tuple. The "Type" header label follows the same accent as the type entries the delegates paint
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
@@ -377,6 +382,8 @@ class MatLibPanel(QtWidgets.QWidget):
         )    # no per-delegate accent is set here: the one sweep at the end of setup() covers every tile delegate, and a hand-set on this one masked the dead early sweep for exactly one of five
         self.gradient_delegate.set_badge_click(
             "favourite", self._favourite_badge_clicked)
+        self.gradient_delegate.set_badge_click(
+            "comment", self._open_comments_from_badge)
 
         self.cop_model = cop_library.CopLibrary(preferences=self.prefs)    # the Cop section is standalone COP-network assets: a second, fully independent material-style stack over its own cops.json (core/cop_library.py), mirroring the material model/proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
         self.cop_category_model = cop_library.CopCategories(preferences=self.prefs)
@@ -1674,6 +1681,17 @@ class MatLibPanel(QtWidgets.QWidget):
         for name in names:
             context.set_sidebar_colour(name, colour)    # what a colour IS - which store, which models repaint - is the context's (Section.set_sidebar_colour)
 
+
+    def _open_comments_from_badge(self, index) -> None:
+        """The comment badge's click: the tile becomes the selection, then the Comments pane OPENS if closed - through the toolbar chip, one path to one state, and one-way (the badge never closes)."""
+        view = grid.visible_view(self)
+        sel = view.selectionModel() if view is not None else None
+        if sel is not None and index is not None and index.isValid():
+            sel.setCurrentIndex(
+                index,
+                QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        if not self.btn_notes.isChecked():
+            self.btn_notes.setChecked(True)
 
     def _favourite_badge_clicked(self, index) -> None:
         """The tile's star button: flip the whole SELECTION when the clicked tile is in it - the press that preceded this release has already selected a lone tile, so one gesture stars a multi-selection - and just the clicked tile when it somehow is not."""
