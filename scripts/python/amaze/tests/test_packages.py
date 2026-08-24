@@ -543,182 +543,343 @@ class CuratedKeysTest(unittest.TestCase):
         self.assertEqual(before + 1, model.rowCount())
 
 
-class _CannedAmazeSource:
-    """The AmazeSource with its one network door overridden - built lazily inside tests so the class import happens after the module exists."""
+def _canned_amaze_source(tree, bundles):
+    """An AmazeSource whose two network doors are canned: `tree` rows and {url: local zip path} - counters on the class."""
+    from amaze.core import matx_sources
 
-    def __new__(cls, index_bytes, files):
-        from amaze.core import matx_sources
+    class Source(matx_sources.AmazeSource):
+        tree_calls = 0
+        open_calls = []
 
-        class Source(matx_sources.AmazeSource):
-            calls = []
+        def _tree(self):
+            type(self).tree_calls += 1
+            return list(tree)
 
-            def _get(self, url):
-                Source.calls.append(url)
-                if url.endswith("index.json"):
-                    return index_bytes
-                return files[url]
+        def _open_package(self, url):
+            type(self).open_calls.append(url)
+            return zipfile.ZipFile(bundles[url])
 
-        return Source()
+    return Source()
+
+
+def _manifest_zip(testcase, entries, members=None,
+                  name="pkg.amazepkg", fmt=None) -> str:
+    """A local package from raw manifest entries plus optional {arcname: bytes} members; `fmt` overrides the manifest format number."""
+    from amaze.core import packages
+    folder = tempfile.mkdtemp(prefix="amaze_store_pkg_")
+    testcase.addCleanup(
+        __import__("shutil").rmtree, folder, ignore_errors=True)
+    path = os.path.join(folder, name)
+    with zipfile.ZipFile(path, "w") as bundle:
+        bundle.writestr(packages.MANIFEST, json.dumps(
+            {"format": packages.FORMAT if fmt is None else fmt,
+             "entries": entries}))
+        for arc, data in (members or {}).items():
+            bundle.writestr(arc, data)
+    return path
+
+
+def _palette_entry(n, tag=None):
+    return {"type": "asset", "section": "gradient",
+            "id": "%032x" % n,
+            "record": {"id": "%032x" % n, "name": "Palette %d" % n,
+                       "categories": ["Wada 2 Colors"],
+                       "colors": [{"hex": "#101010"}, {"hex": "#f0f0f0"}],
+                       "curated": tag or "wada/t%d" % n},
+            "note": {}, "files": {}}
 
 
 class AmazeSourceTest(unittest.TestCase):
-    """The fifth online source: the index is the catalogue, folders are categories, fetch verifies the checksum, and Refresh drops the cache."""
+    """The store source, per-TILE: every entry in every package of a folder is one record, palette colours ride the record for client-side swatches, material thumbnails are named members, a NEWER-format package is refused whole, and Refresh drops every cache."""
 
-    def _store(self):
-        import hashlib
-        from amaze.core import packages
-        folder = tempfile.mkdtemp(prefix="amaze_store_src_")
-        self.addCleanup(
-            __import__("shutil").rmtree, folder, ignore_errors=True)
-        source_file = os.path.join(folder, "a.txt")
-        with open(source_file, "w") as handle:
-            handle.write("x")
-        pkg = os.path.join(folder, "mini.amazepkg")
-        packages.write_package(
-            pkg, [packages.collect_file(source_file, "other")])
-        blob = _bytes(pkg)
-        base = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
-        index = {
-            "format": 1, "base": base,
-            "categories": [{"name": "defaults", "packages": [{
-                "name": "mini", "file": "defaults/mini.amazepkg",
-                "bytes": len(blob), "entries": 1,
-                "kinds": {"other": 1}, "package_format": 1,
-                "sha256": hashlib.sha256(blob).hexdigest()}]}]}
-        return (json.dumps(index).encode("utf-8"),
-                {base + "defaults/mini.amazepkg": blob})
+    URL = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
-    def test_the_index_lists_as_records_with_folder_categories(self):
-        index_bytes, files = self._store()
-        source = _CannedAmazeSource(index_bytes, files)
-        records = source.list_materials()
-        self.assertEqual(1, len(records))
-        record = records[0]
-        self.assertEqual("mini", record.title)
-        self.assertEqual("Defaults", record.category)
-        self.assertEqual("amazepkg", record.kind)
-        self.assertTrue(record.payload.get("url", "").startswith("https://"))
+    def _two_package_folder(self):
+        a = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
+                                 _palette_entry(3)], name="a.amazepkg")
+        b = _manifest_zip(self, [_palette_entry(4), _palette_entry(5),
+                                 _palette_entry(6)], name="b.amazepkg")
+        tree = [("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg"),
+                ("defaults", "b.amazepkg", self.URL + "defaults/b.amazepkg")]
+        bundles = {tree[0][2]: a, tree[1][2]: b}
+        return _canned_amaze_source(tree, bundles)
 
-    def test_fetch_verifies_the_checksum_and_lands_the_file(self):
-        index_bytes, files = self._store()
-        source = _CannedAmazeSource(index_bytes, files)
-        record = source.list_materials()[0]
-        dest = tempfile.mkdtemp(prefix="amaze_store_dl_")
-        self.addCleanup(
-            __import__("shutil").rmtree, dest, ignore_errors=True)
-        got = source.fetch(record, None, dest)
-        self.assertTrue(got["amazepkg"].endswith(".amazepkg"))
-        self.assertEqual(files[record.payload["url"]],
-                         _bytes(got["amazepkg"]))
+    def test_every_asset_in_every_package_is_a_tile(self):
+        source = self._two_package_folder()
+        records = source.list_materials(limit=100)
+        self.assertEqual(6, len(records),
+                         "two packages of three assets must show six "
+                         "tiles, the package invisible")
+        self.assertEqual({"Defaults"}, {r.category for r in records})
+        self.assertEqual({"amazepkg"}, {r.kind for r in records})
+        self.assertEqual(6, len({r.uid for r in records}),
+                         "tile uids collide across packages")
 
-    def test_a_record_without_a_checksum_is_refused(self):
-        from amaze.core import matx_sources
-        record = matx_sources.MatxRecord(
-            source="Amaze", uid="defaults/x.amazepkg", title="x",
-            category="Defaults", kind="amazepkg",
-            payload={"url": "https://raw.githubusercontent.com/x"})
-        source = matx_sources.AmazeSource()
-        dest = tempfile.mkdtemp(prefix="amaze_store_nosha_")
-        self.addCleanup(
-            __import__("shutil").rmtree, dest, ignore_errors=True)
-        with self.assertRaises(Exception) as caught:
-            source.fetch(record, None, dest)
-        self.assertIn("checksum", str(caught.exception).lower())
-        self.assertEqual([], os.listdir(dest),
-                         "an unverifiable download still landed")
+    def test_palette_records_carry_their_colours(self):
+        source = self._two_package_folder()
+        record = source.list_materials(limit=100)[0]
+        self.assertEqual(["#101010", "#f0f0f0"],
+                         record.payload.get("colors"),
+                         "the swatch cannot be drawn client-side")
+        self.assertTrue(record.payload.get("entry"),
+                        "the manifest entry does not ride the record, "
+                        "so importing needs a second manifest read")
 
-    def test_a_corrupt_download_is_refused_by_name(self):
-        index_bytes, files = self._store()
-        url = next(iter(files))
-        files = dict(files, **{url: files[url] + b"tampered"})
-        source = _CannedAmazeSource(index_bytes, files)
-        record = source.list_materials()[0]
-        dest = tempfile.mkdtemp(prefix="amaze_store_bad_")
-        self.addCleanup(
-            __import__("shutil").rmtree, dest, ignore_errors=True)
-        with self.assertRaises(Exception) as caught:
-            source.fetch(record, None, dest)
-        self.assertIn("checksum", str(caught.exception).lower())
+    def test_material_records_name_their_thumbnail_member(self):
+        entry = {"type": "asset", "section": "material", "id": "f" * 32,
+                 "record": {"id": "f" * 32, "name": "Brick",
+                            "categories": ["Import"]},
+                 "note": {},
+                 "files": {"mat": "assets/material/x/x.mat",
+                           "thumbnail": "assets/material/x/x.png"}}
+        pkg = _manifest_zip(self, [entry],
+                            members={"assets/material/x/x.mat": b"payload",
+                                     "assets/material/x/x.png": b"png"})
+        url = self.URL + "defaults/m.amazepkg"
+        source = _canned_amaze_source(
+            [("defaults", "m.amazepkg", url)], {url: pkg})
+        record = source.list_materials(limit=10)[0]
+        self.assertEqual("assets/material/x/x.png",
+                         record.payload.get("thumb_member"))
 
-    def test_refresh_drops_the_cached_index(self):
-        index_bytes, files = self._store()
-        source = _CannedAmazeSource(index_bytes, files)
-        source.list_materials()
-        source.list_materials()
-        index_calls = [u for u in type(source).calls
-                       if u.endswith("index.json")]
-        self.assertEqual(1, len(index_calls),
-                         "browsing twice fetched the index twice")
+    def test_search_filters_by_title(self):
+        source = self._two_package_folder()
+        hits = source.list_materials(search="palette 4", limit=100)
+        self.assertEqual(["Palette 4"], [r.title for r in hits])
+
+    def test_refresh_drops_the_tree_and_manifest_caches(self):
+        source = self._two_package_folder()
+        source.list_materials(limit=100)
+        source.list_materials(limit=100)
+        self.assertEqual(1, type(source).tree_calls,
+                         "browsing twice fetched the tree twice")
+        self.assertEqual(2, len(type(source).open_calls),
+                         "manifests were re-read on the second browse")
         source.refresh()
-        source.list_materials()
-        index_calls = [u for u in type(source).calls
-                       if u.endswith("index.json")]
-        self.assertEqual(2, len(index_calls))
+        source.list_materials(limit=100)
+        self.assertEqual(2, type(source).tree_calls)
+        self.assertEqual(4, len(type(source).open_calls),
+                         "refresh did not drop the manifest cache - "
+                         "the re-browse never re-opened the packages")
 
     def test_amaze_is_a_registered_source(self):
         from amaze.core import matx_sources
         names = [cls.name for cls in matx_sources.SOURCES]
         self.assertIn("Amaze", names)
 
+    def test_a_newer_format_package_lists_no_tiles(self):
+        new = _manifest_zip(self, [_palette_entry(7)],
+                            name="future.amazepkg", fmt=99)
+        old = _manifest_zip(self, [_palette_entry(1), _palette_entry(2),
+                                   _palette_entry(3)], name="a.amazepkg")
+        tree = [("defaults", "future.amazepkg",
+                 self.URL + "defaults/future.amazepkg"),
+                ("defaults", "a.amazepkg", self.URL + "defaults/a.amazepkg")]
+        source = _canned_amaze_source(tree, {tree[0][2]: new,
+                                             tree[1][2]: old})
+        records = source.list_materials(limit=100)
+        self.assertEqual(
+            3, len(records),
+            "a package of a NEWER format than this build reads must "
+            "list no tiles - importing it would silently misread it - "
+            "while the readable package beside it still shows")
+
+
+class RangedFileTest(unittest.TestCase):
+    """zipfile over ranged reads: a block-cached RangedFile reads a MULTI-block zip whole and cheap, and _open_package's suffix-range seeding survives contact with a Range-speaking server."""
+
+    PAYLOAD = bytes(range(256)) * 800    # 204,800 bytes - four blocks, so boundary crossings and the block cache are real, not vacuously green on a one-block fixture
+
+    def test_a_zip_reads_whole_and_cheap_through_ranges(self):
+        from amaze.core import matx_sources
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(40)],
+                            members={"files/0_big.bin": self.PAYLOAD})
+        blob = _bytes(pkg)
+        self.assertGreater(len(blob), 3 * matx_sources.RANGED_BLOCK,
+                           "premise: the fixture must span blocks")
+        requests = []
+
+        def get_range(start, end):
+            requests.append((start, end))
+            return blob[start:end + 1]
+
+        remote = matx_sources.RangedFile(len(blob), get_range)
+        with zipfile.ZipFile(remote) as bundle:
+            from amaze.core import packages
+            manifest = json.loads(bundle.read(packages.MANIFEST))
+            self.assertEqual(self.PAYLOAD, bundle.read("files/0_big.bin"),
+                             "a member spanning block boundaries did "
+                             "not read back byte-identical")
+        self.assertEqual(40, len(manifest["entries"]))
+        self.assertLessEqual(
+            len(requests), 8,
+            "the block cache is not working - %d range requests for a "
+            "%d-byte zip" % (len(requests), len(blob)))
+
+    def test_open_package_seeds_from_a_suffix_range_and_caches(self):
+        from unittest import mock
+
+        from amaze.core import matx_sources, packages
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
+                            members={"files/0_big.bin": self.PAYLOAD})
+        blob = _bytes(pkg)
+        calls = []
+
+        class _Resp:
+            def __init__(self, data, headers):
+                self._data, self.headers = data, headers
+
+            def read(self):
+                return self._data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+        def fake_request(url, headers=None):
+            spec = str((headers or {}).get("Range") or "")
+            calls.append(spec)
+            lo, _, hi = spec.replace("bytes=", "").partition("-")
+            if not lo:    # suffix range, the tail probe: bytes=-N
+                start = max(0, len(blob) - int(hi))
+                end = len(blob) - 1
+            else:
+                start, end = int(lo), min(int(hi), len(blob) - 1)
+            return _Resp(blob[start:end + 1],
+                         {"Content-Range": "bytes %d-%d/%d"
+                          % (start, end, len(blob))})
+
+        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
+               "main/packages/defaults/big.amazepkg")
+        source = matx_sources.AmazeSource()
+        with mock.patch.object(matx_sources, "_request", fake_request):
+            bundle = source._open_package(url)
+            manifest = json.loads(bundle.read(packages.MANIFEST))
+            self.assertEqual(self.PAYLOAD, bundle.read("files/0_big.bin"))
+            opened_in = len(calls)
+            self.assertIs(bundle, source._open_package(url),
+                          "the bundle was not cached")
+        self.assertEqual(3, len(manifest["entries"]))
+        self.assertTrue(calls[0].startswith("bytes=-"),
+                        "the first request must be the suffix probe "
+                        "that seeds the last block")
+        self.assertLessEqual(opened_in, 8, calls)
+        source.refresh()
+        self.assertEqual({}, source._bundles,
+                         "Refresh left a stale remote zip open")
+
 
 class OnlinePackageImportTest(unittest.TestCase):
-    """The world's one import door routes amazepkg records into the package import - fresh through the Import entries, adopt-only through Restore."""
+    """Selected TILES import - only their members, fresh into Import or restore adopt-only - and a corrupt member counts refused without abandoning the batch (CRC is corruption detection; authenticity rides TLS)."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
-    def _record_over(self, blob):
-        import hashlib
-        from amaze.core import matx_sources
-        url = "https://raw.githubusercontent.com/Timour/AmazePackages/x.amazepkg"
+    URL = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
-        class Source(matx_sources.AmazeSource):
-            def _get(self, _url):
-                return blob
-
-        record = matx_sources.MatxRecord(
-            source="Amaze", uid="defaults/x.amazepkg", title="x",
-            category="Defaults", kind="amazepkg",
-            payload={"url": url,
-                     "sha256": hashlib.sha256(blob).hexdigest()})
-        return Source(), record
-
-    def _gradient_blob(self):
+    def _source_over(self, *fixture_ids):
         from amaze.core import packages
         model = self.panel.gradient_model
-        item = packages.collect_asset(model, model.assets[0].mat_id)
-        out = _out_path(self, "online.amazepkg")
-        packages.write_package(out, [item])
-        return _bytes(out)
+        items = [packages.collect_asset(model, mat_id)
+                 for mat_id in fixture_ids]
+        out = _out_path(self, "tiles.amazepkg")
+        packages.write_package(out, items)
+        url = self.URL + "defaults/tiles.amazepkg"
+        return _canned_amaze_source(
+            [("defaults", "tiles.amazepkg", url)], {url: out})
 
-    def test_the_library_door_imports_a_package_record_fresh(self):
+    def test_importing_one_selected_tile_lands_only_it(self):
         from unittest import mock
-        source, record = self._record_over(self._gradient_blob())
         model = self.panel.gradient_model
+        ids = [str(a.mat_id) for a in model.assets[:3]]
+        source = self._source_over(*ids)
+        records = source.list_materials(limit=10)
+        self.assertEqual(3, len(records), "premise: three tiles listed")
+        chosen = records[1]
         before = model.rowCount()
-        with mock.patch.object(self.panel, "_online_source_for",
-                               return_value=(source, None, "")):
-            ok, reason = self.panel.import_online_material(record)
+        with mock.patch.object(self.panel.matx_online_model, "_sources",
+                               [source]):    # the REAL _online_source_for runs - mocking it once hid a door that refused every amazepkg record over resolutions
+            ok, reason = self.panel.import_online_material(chosen)
         self.assertTrue(ok, reason)
         self.assertEqual(before + 1, model.rowCount(),
-                         "the package record never reached the library")
-        cats = model._assets[-1].categories
+                         "one selected tile did not import as one asset")
+        newborn = model.assets[-1]
+        self.assertEqual(chosen.title, newborn.name)
+        cats = newborn.categories
         self.assertEqual(
             ["Import"], [cats] if isinstance(cats, str) else list(cats))
 
-    def test_restore_from_online_unions_instead_of_copying(self):
+    def test_a_failed_note_write_still_counts_the_imported_asset(self):
         from unittest import mock
-        source, record = self._record_over(self._gradient_blob())
+
+        from amaze.core import notes, packages
         model = self.panel.gradient_model
+        items = [packages.collect_asset(model,
+                                        str(model.assets[0].mat_id))]
+        items[0]["note"] = {"items": [{"type": "text", "text": "kept"}]}
+        out = _out_path(self, "noted.amazepkg")
+        packages.write_package(out, items)
+        url = self.URL + "defaults/noted.amazepkg"
+        source = _canned_amaze_source(
+            [("defaults", "noted.amazepkg", url)], {url: out})
+        record = source.list_materials(limit=10)[0]
         before = model.rowCount()
-        with mock.patch.object(self.panel, "_online_source_for",
-                               return_value=(source, None, "")):
+        with mock.patch.object(self.panel.matx_online_model, "_sources",
+                               [source]):
+            with mock.patch.object(notes, "set_note",
+                                   side_effect=OSError("notes full")):
+                ok, reason = self.panel.import_online_material(record)
+        self.assertTrue(
+            ok, "the asset was imported and SAVED before its note page "
+                "failed - reporting the tile as failed while it sits in "
+                "the library lies twice (reason: %s)" % reason)
+        self.assertEqual(before + 1, model.rowCount())
+
+    def test_restore_selected_is_adopt_only(self):
+        from unittest import mock
+        model = self.panel.gradient_model
+        present = str(model.assets[0].mat_id)
+        source = self._source_over(present)
+        record = source.list_materials(limit=10)[0]
+        before = model.rowCount()
+        with mock.patch.object(self.panel.matx_online_model, "_sources",
+                               [source]):
             summary = self.panel.restore_amaze_packages([record])
         self.assertEqual(before, model.rowCount(),
-                         "a still-present palette was duplicated by "
-                         "restore")
+                         "a still-present tile was duplicated by restore")
         self.assertEqual(1, summary["skipped"])
+
+    def test_a_corrupt_member_counts_refused_not_fatal(self):
+        from unittest import mock
+        entry = {"type": "asset", "section": "material", "id": "e" * 32,
+                 "record": {"id": "e" * 32, "name": "Broken",
+                            "categories": ["X"]},
+                 "note": {},
+                 "files": {"mat": "assets/material/e/e.mat"}}
+        pkg = _manifest_zip(self, [entry],
+                            members={"assets/material/e/e.mat": b"gooddata"})
+        with open(pkg, "r+b") as handle:    # flip one payload byte so the member's own CRC refuses the read
+            data = handle.read()
+            at = data.index(b"gooddata")
+            handle.seek(at)
+            handle.write(b"baddata!")
+        url = self.URL + "defaults/broken.amazepkg"
+        source = _canned_amaze_source(
+            [("defaults", "broken.amazepkg", url)], {url: pkg})
+        record = source.list_materials(limit=10)[0]
+        material_model = self.panel.material_model
+        before = material_model.rowCount()
+        with mock.patch.object(self.panel.matx_online_model, "_sources",
+                               [source]):
+            ok, reason = self.panel.import_online_material(record)
+        self.assertFalse(ok, "a corrupt payload imported as good")
+        self.assertIn("did not read back whole", reason,    # the COUNTED refusal, not a crash: an unbound `debug` in the handler once produced the same False through the catch-all
+                      reason)
+        self.assertEqual(before, material_model.rowCount(),
+                         "the refused tile still changed the library")
 
     def test_the_online_menu_offers_restore_on_packages_only(self):
         from amaze.panel import sections
@@ -728,6 +889,43 @@ class OnlinePackageImportTest(unittest.TestCase):
                  if e.label == "Restore"][0]
         self.assertEqual("selection_is_amaze_packages", entry.shown,
                          "Restore must hide for material sources")
+
+
+class OnlineTilePaintingTest(unittest.TestCase):
+    """The browser's tile pictures without full downloads: palette swatches DRAWN from the record's colours, material thumbnails fetched per member through a callable preview job."""
+
+    def test_a_swatch_paints_the_palettes_own_colours(self):
+        from amaze.core import matx_library
+        image = matx_library.swatch_image(["#ff0000", "#0000ff"], 64)
+        self.assertEqual((64, 64), (image.width(), image.height()))
+        left = image.pixelColor(16, 32)
+        right = image.pixelColor(48, 32)
+        self.assertGreater(left.red(), 200,
+                           "the first band is not the first colour")
+        self.assertGreater(right.blue(), 200,
+                           "the second band is not the second colour")
+
+    def test_a_preview_job_may_be_a_callable(self):
+        from amaze.core import matx_library
+        folder = tempfile.mkdtemp(prefix="amaze_prevjob_")
+        self.addCleanup(
+            __import__("shutil").rmtree, folder, ignore_errors=True)
+        path = os.path.join(folder, "tile.png")
+
+        def fetch(target):
+            image = QtWidgets.QApplication.instance()    # any small valid png
+            from PySide6 import QtGui
+            canvas = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
+            canvas.fill(QtGui.QColor("#123456"))
+            canvas.save(target, "PNG")
+
+        worker = matx_library._PreviewWorker([("k", fetch, path)])
+        seen = []
+        worker.ready.connect(lambda key, img: seen.append((key, img)))
+        worker.run()
+        self.assertEqual(1, len(seen),
+                         "the callable job never produced an image")
+        self.assertFalse(seen[0][1].isNull())
 
 
 if __name__ == "__main__":

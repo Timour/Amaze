@@ -1,4 +1,4 @@
-"""Online sources, one adapter per library, plain stdlib HTTP + JSON (no `hou`): a `package` source ships `.mtlx` + textures translated into VOPs, a `values` source ships measured shader parameters, and the `amazepkg` source ships whole Amaze packages; categories are each source's own, capitalised, unsuffixed (`_cat`). Network hardening: ▸r/matx-network-hardening."""
+"""Online sources, one adapter per library, plain stdlib HTTP + JSON (no `hou`): a `package` source ships `.mtlx` + textures translated into VOPs, a `values` source ships measured shader parameters, and the `amazepkg` source lists every entry of every store package as its own tile, read remotely by ranged requests; categories are each source's own, capitalised, unsuffixed (`_cat`). Network hardening: ▸r/matx-network-hardening."""
 
 from __future__ import annotations
 
@@ -91,11 +91,12 @@ class _HttpsOnlyRedirects(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _request(url: str):
+def _request(url: str, headers=None):
     if not _checked_url(url):
         raise urllib.error.URLError(
             "refused a URL that is not https")
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    req = urllib.request.Request(
+        url, headers=dict({"User-Agent": USER_AGENT}, **(headers or {})))
     try:
         opener = urllib.request.build_opener(    # an opener for the redirect handler alone; the scheme checks keep the default FileHandler unreachable rather than removed - ▸r/matx-network-hardening
             urllib.request.HTTPSHandler(context=_ssl_context()),
@@ -285,7 +286,7 @@ class MatxSource:
         return []
 
     def fetch(self, record, resolution, dest_dir, progress=None) -> dict:
-        """Package sources download+extract and answer {"mtlx": path}, value sources {"values": {...}}, the Amaze source {"amazepkg": path}; progress(frac) gets 0..1 for THIS record's whole download when given."""
+        """Package sources download+extract and answer {"mtlx": path}, value sources {"values": {...}}; the Amaze source does not fetch - its tiles import by ranged member reads (`read_thumb_to`, `packages.import_entries`). progress(frac) gets 0..1 for THIS record's whole download when given."""
         raise NotImplementedError
 
     def _cat(self, name):
@@ -944,83 +945,178 @@ def _find_mtlx(root):
     return None
 
 
+RANGED_BLOCK = 1 << 16
+
+
+class RangedFile:
+    """A seekable read-only file over `get_range(start, end) -> bytes`, block-cached so zipfile's seeks cost a handful of requests - integrity per member is the zip's own CRC under TLS."""
+
+    def __init__(self, size: int, get_range):
+        self.size = int(size)
+        self._get = get_range
+        self._blocks = {}
+        self._pos = 0
+
+    def seekable(self):
+        return True
+
+    def seek(self, offset, whence=0):
+        self._pos = (offset if whence == 0
+                     else self._pos + offset if whence == 1
+                     else self.size + offset)
+        return self._pos
+
+    def tell(self):
+        return self._pos
+
+    def _block(self, index: int) -> bytes:
+        if index not in self._blocks:
+            start = index * RANGED_BLOCK
+            end = min(self.size, start + RANGED_BLOCK) - 1
+            self._blocks[index] = self._get(start, end)
+        return self._blocks[index]
+
+    def read(self, n=-1) -> bytes:
+        if n < 0:
+            n = self.size - self._pos
+        out = []
+        while n > 0 and self._pos < self.size:
+            index, at = divmod(self._pos, RANGED_BLOCK)
+            chunk = self._block(index)[at:at + n]
+            if not chunk:
+                break
+            out.append(chunk)
+            self._pos += len(chunk)
+            n -= len(chunk)
+        return b"".join(out)
+
+
 class AmazeSource(MatxSource):
-    """Amaze packages from the official store: `index.json` IS the catalogue (fetched once, cached until Refresh drops it), categories are the index's own category names (the store's folder convention), and `fetch` refuses a record without a checksum and verifies the one it has - records carry kind `amazepkg`, which the panel routes into the package import instead of the material pipeline."""
+    """Amaze packages from the official store, per TILE: the store is folders of `.amazepkg` and nothing else, each package a small remote database read with ranged requests - the folder is the category, every ENTRY in every package is one record (palette colours and the manifest entry ride the payload; a plain-file entry becomes a bare tile that lands in the library's import folder), and importing reads only the chosen tiles' members."""
 
     name = "Amaze"
     licence = ""
     kind = "amazepkg"
-    INDEX_URL = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-                 "main/index.json")
+    TREE_URL = ("https://api.github.com/repos/Timour/AmazePackages/"
+                "git/trees/main?recursive=1")
+    RAW_BASE = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
     def __init__(self):
-        self._index = None
+        self._paths = None
+        self._bundles = {}
+        self._manifests = {}
 
-    def _get(self, url: str) -> bytes:
-        with _request(url) as response:
-            return response.read()
+    PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
 
-    def _catalogue(self) -> dict:
-        if self._index is None:
-            self._index = json.loads(
-                self._get(self.INDEX_URL).decode("utf-8"))
-        return self._index
+    @classmethod
+    def _tree_rows(cls, nodes) -> list:
+        """(category, filename, url) for every `packages/<category>/<file>.amazepkg` blob - anything shaped otherwise is invisible."""
+        rows = []
+        for node in nodes:
+            path = str(node.get("path") or "")
+            if node.get("type") != "blob" \
+                    or not path.endswith(".amazepkg"):
+                continue
+            parts = path.split("/")
+            if len(parts) != 3 or parts[0] != cls.PACKAGES_ROOT:
+                continue
+            rows.append((parts[1], parts[2], cls.RAW_BASE + path))
+        return rows
+
+    def _tree(self) -> list:
+        return self._tree_rows(get_json(self.TREE_URL).get("tree", ()))
+
+    def _open_package(self, url: str):
+        """A zipfile over ranged reads of the hosted package, cached until Refresh."""
+        if url not in self._bundles:
+            checked = _checked_url(url)
+            with _request(checked, headers={"Range": "bytes=-%d"
+                                            % RANGED_BLOCK}) as response:
+                tail = response.read()
+                spread = str(response.headers.get("Content-Range") or "")
+            size = int(spread.rsplit("/", 1)[-1]) if "/" in spread \
+                else len(tail)
+
+            def get_range(start, end, _url=checked):
+                with _request(_url, headers={
+                        "Range": "bytes=%d-%d" % (start, end)}) as resp:
+                    return resp.read()
+
+            remote = RangedFile(size, get_range)
+            last = (size - 1) // RANGED_BLOCK
+            remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
+            self._bundles[url] = zipfile.ZipFile(remote)
+        return self._bundles[url]
+
+    def _manifest(self, url: str) -> dict:
+        if url not in self._manifests:
+            from amaze.core import packages
+            bundle = self._open_package(url)
+            manifest = json.loads(bundle.read(packages.MANIFEST))
+            got = manifest.get("format")
+            if not isinstance(got, int) or got > packages.FORMAT:    # the same gate as read_manifest, HERE because the remote store is where an old build is guaranteed to meet a newer package
+                raise packages.PackageError(
+                    "package format %s is newer than the %s this build "
+                    "reads" % (got, packages.FORMAT))
+            self._manifests[url] = manifest
+        return self._manifests[url]
 
     def refresh(self):
-        self._index = None
+        self._paths = None
+        self._manifests = {}
+        self._bundles = {}
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
-        catalogue = self._catalogue()
-        base = str(catalogue.get("base") or "")
+        if self._paths is None:
+            self._paths = self._tree()
         rows = []
-        for category in catalogue.get("categories", ()):
-            for pkg in category.get("packages", ()):
-                title = str(pkg.get("name") or "")
+        for folder, filename, url in self._paths:
+            try:
+                entries = self._manifest(url).get("entries", ())
+            except Exception as exc:                      # noqa: BLE001
+                debug.event("online", "package manifest unreadable",
+                            url=url, error=str(exc))
+                continue
+            for n, entry in enumerate(entries):
+                record = entry.get("record") or {}
+                title = str(record.get("name")
+                            or entry.get("name") or "")
                 if search and search.lower() not in title.lower():
                     continue
+                payload = {"package": url, "entry": entry,
+                           "section": str(entry.get("section") or "")}
+                colors = [str(c.get("hex") or "")
+                          for c in (record.get("colors") or ())
+                          if isinstance(c, dict)]
+                if colors:
+                    payload["colors"] = colors
+                thumb = (entry.get("files") or {}).get("thumbnail")
+                if thumb:
+                    payload["thumb_member"] = thumb
                 rows.append(MatxRecord(
                     source=self.name,
-                    uid=str(pkg.get("file") or title),
+                    uid="%s/%s#%s" % (folder, filename,
+                                      entry.get("id") or n),
                     title=title,
-                    category=self._cat(category.get("name")),
+                    category=self._cat(folder),
                     kind="amazepkg",
-                    payload={
-                        "url": (str(pkg.get("url") or "")
-                                or base + str(pkg.get("file") or "")),
-                        "sha256": str(pkg.get("sha256") or ""),
-                        "bytes": pkg.get("bytes"),
-                        "entries": pkg.get("entries"),
-                        "kinds": pkg.get("kinds") or {},
-                    }))
+                    payload=payload))
         return rows[offset:offset + limit]
 
-    def fetch(self, record, resolution, dest_dir, progress=None) -> dict:
-        import hashlib
-        url = _checked_url(str(record.payload.get("url") or ""))
-        if not url:
-            raise ValueError("the record carries no https URL")
-        want = str(record.payload.get("sha256") or "")
-        if not want:
-            raise ValueError(    # the checksum is also the truncation guard here - _get does not ride download()'s length check
-                "the store's index carries no checksum for %s - refusing "
-                "an unverifiable download" % record.title)
-        data = self._get(url)
-        got = hashlib.sha256(data).hexdigest()
-        if got != want:
-            raise ValueError(
-                "checksum mismatch for %s - the download does not match "
-                "the store's index" % record.title)
-        path = os.path.join(
-            dest_dir, hostos.safe_filename(record.title) + ".amazepkg")
+    def read_thumb_to(self, record, path: str) -> None:
+        """One tile's thumbnail member into `path` - a single ranged member read."""
+        member = str(record.payload.get("thumb_member") or "")
+        if not member:
+            raise ValueError("no thumbnail member for " + record.title)
+        bundle = self._open_package(record.payload["package"])
+        data = bundle.read(member)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "wb") as handle:
             handle.write(data)
-        if progress is not None:
-            progress(1.0)
-        return {"amazepkg": path}
 
 
-SOURCES = (GPUOpenSource, PolyHavenSource, PhysicallyBasedSource,    # menu order; ambientCG deliberately absent - probed: JPG/PNG zips only, no .mtlx, so it would be a FOURTH source kind (a standard_surface from conventionally-named maps), a v2
-           RGLSource, AmazeSource)
+SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,
+           PhysicallyBasedSource, RGLSource)
 
 
 def all_sources():

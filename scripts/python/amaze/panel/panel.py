@@ -1806,26 +1806,11 @@ class MatLibPanel(QtWidgets.QWidget):
         self.build_filter_menu()
 
     def import_package_file(self, path: str, restore: bool = False) -> dict:
-        """ACT half of the package import: every asset lands in its own section (fresh ids, `Import` category; `restore=True` adopts by original id), plain files land in the library's `import/` folder which registers as a location - answering the core summary."""
-        models = {}
-        for cls in sections.SECTION_CLASSES:
-            attr = getattr(cls, "model_attr", "")
-            model = getattr(self, attr, None) if attr else None
-            if model is not None and getattr(cls, "key", "") != "file":
-                models[cls.key] = model
-        summary = packages.import_package(models, self.prefs, path,
+        """ACT half of the whole-package import: every asset lands in its own section (fresh ids, `Import` category; `restore=True` adopts by original id), plain files land in the library's `import/` folder which registers as a location - answering the core summary."""
+        summary = packages.import_package(self._package_models(),
+                                          self.prefs, path,
                                           restore=restore)
-        for key, names in summary.get("categories", {}).items():
-            section = self.sections.get(key)
-            st = section.stack() if section is not None else None
-            if st is None:
-                continue
-            for name in sorted(names):
-                st.categories.check_add_category(name)
-        if summary.get("files"):
-            folder = os.path.join(self.prefs.dir, "import")
-            self.prefs.add_file_folder(folder)
-            self.prefs.set_file_folder_name(folder, "Import")
+        self._absorb_package_summary(summary)
         return summary
 
     def import_amaze_package(self) -> None:
@@ -2438,28 +2423,58 @@ class MatLibPanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
         return (True, "")
 
+    def _package_models(self) -> dict:
+        """{section key: library model} for every asset section that has one."""
+        models = {}
+        for cls in sections.SECTION_CLASSES:
+            attr = getattr(cls, "model_attr", "")
+            model = getattr(self, attr, None) if attr else None
+            if model is not None and getattr(cls, "key", "") != "file":
+                models[cls.key] = model
+        return models
+
+    def _absorb_package_summary(self, summary) -> None:
+        """The panel's half of a package import: register the touched categories on their sidebars, and the import folder as a location when files landed."""
+        for key, names in summary.get("categories", {}).items():
+            section = self.sections.get(key)
+            st = section.stack() if section is not None else None
+            if st is None:
+                continue
+            for name in sorted(names):
+                st.categories.check_add_category(name)
+        if summary.get("files"):
+            folder = os.path.join(self.prefs.dir, "import")
+            self.prefs.add_file_folder(folder)
+            self.prefs.set_file_folder_name(folder, "Import")
+
     def _import_amaze_package_record(self, record, source, restore,
                                      on_progress=None):
-        """One amazepkg record into the library through the package door - fresh or restore - answering (ok, reason) like the material path beside it."""
-        import shutil as _shutil
-        import tempfile as _tempfile
-        scratch = _tempfile.mkdtemp(prefix="amaze_pkg_dl_")
+        """One TILE into the library - its entry read straight out of the hosted package by member, fresh or restore - answering (ok, reason) like the material path beside it."""
         try:
-            fetched = source.fetch(record, None, scratch,
-                                   progress=on_progress)
-            path = fetched.get("amazepkg", "")
-            if not path:
-                return (False, "the source answered no package file")
-            self.import_package_file(path, restore=restore)
+            entry = record.payload.get("entry")
+            if not entry:
+                return (False, "the record carries no manifest entry")
+            bundle = source._open_package(record.payload["package"])
+            summary = packages.import_entries(
+                self._package_models(), self.prefs, bundle, [entry],
+                restore=restore)
+            self._absorb_package_summary(summary)
+            if on_progress is not None:
+                on_progress(1.0)
+            if summary.get("refused"):
+                return (False, "; ".join(summary.get("problems") or ())
+                               or "the tile could not be imported")
+            if restore and summary.get("skipped"):
+                return (True, "")
+            if not summary.get("imported") and not summary.get("files"):
+                return (False, "nothing in this tile could be imported")
             return (True, "")
         except Exception as exc:                          # noqa: BLE001
             debug.exception("package import", exc, record=record.title)
             return (False, str(exc))
-        finally:
-            _shutil.rmtree(scratch, ignore_errors=True)
 
     def restore_amaze_packages(self, records) -> dict:
-        """Restore-mode import for amazepkg records: adopt-only by curated tag / original id, one summary for the batch."""
+        """Restore-mode import for the SELECTED tiles: adopt-only by curated tag / original id, one summary for the batch."""
         totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
         failures = []
         for record in records:
@@ -2468,21 +2483,21 @@ class MatLibPanel(QtWidgets.QWidget):
                 failures.append("%s: %s" % (record.title,
                                             error or "Unknown source"))
                 continue
-            import shutil as _shutil
-            import tempfile as _tempfile
-            scratch = _tempfile.mkdtemp(prefix="amaze_pkg_restore_")
             try:
-                fetched = source.fetch(record, None, scratch)
-                summary = self.import_package_file(
-                    fetched.get("amazepkg", ""), restore=True)
+                entry = record.payload.get("entry")
+                if not entry:
+                    raise ValueError("no manifest entry on the record")
+                bundle = source._open_package(record.payload["package"])
+                summary = packages.import_entries(
+                    self._package_models(), self.prefs, bundle, [entry],
+                    restore=True)
+                self._absorb_package_summary(summary)
                 for key in totals:
                     totals[key] += summary.get(key, 0)
             except Exception as exc:                      # noqa: BLE001
                 debug.exception("package restore", exc,
                                 record=record.title)
                 failures.append("%s: %s" % (record.title, exc))
-            finally:
-                _shutil.rmtree(scratch, ignore_errors=True)
         ui = getattr(hou, "ui", None)
         if ui is not None:
             lines = ["Restored %d, %d already present."
@@ -2520,8 +2535,8 @@ class MatLibPanel(QtWidgets.QWidget):
             return (None, None, "Unknown source %s" % record.source)
         if not source.needs_download(record):    # ASK THE SOURCE, never re-spell its answer as `record.kind == "values"`: that is the BASE class's answer and RGL overrides it, because a uid its shipped table has never seen still costs a measurement download
             return (source, None, "")     # nothing to download
-        if record.kind == "values":
-            return (source, None, "")     # downloads, but picks no package
+        if record.kind in ("values", "amazepkg"):
+            return (source, None, "")     # downloads, but picks no RESOLUTION - store tiles fetch exact members; the mocked-away version of this line refused every Amaze tile in production
         resolution = matx_sources.pick_resolution(
             source.resolutions(record), self.prefs.matx_resolution
         )
@@ -2531,7 +2546,7 @@ class MatLibPanel(QtWidgets.QWidget):
         return (source, resolution, "")
 
     def _import_online_records_to_scene(self, records) -> None:
-        """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a package being many assets with no single scene material."""
+        """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a store tile being library data of ANY section (palette, snippet, material row) with no scene-build path of its own."""
         packages_only = [r for r in records
                          if getattr(r, "kind", "") == "amazepkg"]
         if packages_only:

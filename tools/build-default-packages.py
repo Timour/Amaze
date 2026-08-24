@@ -1,5 +1,5 @@
 #!/usr/bin/env hython
-"""Build the official default packages: seed a THROWAWAY library with the shipped def files, then export one `.amazepkg` per curated set through the product's own collectors. Usage: hython tools/build-default-packages.py <out-dir>."""
+"""Build the official default packages: seed a THROWAWAY library with the shipped def files, then export one `.amazepkg` per curated set through the product's own collectors. Usage: hython tools/build-default-packages.py <out-dir> - point <out-dir> at the store's `packages/<category>/` folder (the browser only lists that exact shape; a package written elsewhere is silently invisible)."""
 
 import os
 import shutil

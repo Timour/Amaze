@@ -7,7 +7,7 @@ import zipfile
 from PySide6 import QtCore
 
 from amaze import branding
-from amaze.core import notes
+from amaze.core import debug, notes
 from amaze.helpers import hostos
 
 FORMAT = 1
@@ -105,7 +105,7 @@ def read_manifest(path: str) -> dict:
 
 
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
-    """Bring one package into the library - FRESH by default (ids minted, every asset filed under `Import`), adopt-only by the package's ORIGINAL ids with `restore=True` - refusing whole on a missing member or no library, and answering {imported, skipped, files, refused, categories}."""
+    """Bring one package into the library - FRESH by default (ids minted, every asset filed under `Import`), adopt-only by the package's ORIGINAL ids with `restore=True` - refusing whole on a missing member or no library, and answering {imported, skipped, files, refused, problems, categories}."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
     problems = verify_package(path)
@@ -114,15 +114,38 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
                            % (os.path.basename(path),
                               "; ".join(problems)))
     manifest = read_manifest(path)
-    summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
-               "categories": {}}
     with zipfile.ZipFile(path) as bundle:
-        for entry in manifest.get("entries", ()):
+        return import_entries(models, prefs, bundle,
+                              manifest.get("entries", ()), restore)
+
+
+def import_entries(models, prefs, bundle, entries,
+                   restore: bool = False) -> dict:
+    """SELECTED entries out of an open package (local or remote-ranged) into the library - the whole-package door above and the per-tile online door share this one loop; a member whose zip CRC refuses counts `refused` without abandoning the batch."""
+    if not getattr(prefs, "dir", ""):
+        raise PackageError("no library set - nowhere to import into")
+    summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
+               "categories": {}, "problems": []}
+    for entry in entries:
+        name = str((entry.get("record") or {}).get("name")
+                   or entry.get("name") or "?")
+        try:
             if entry.get("type") == "asset":
                 _import_asset(models, prefs, bundle, entry, restore,
                               summary)
             elif entry.get("type") == "file":
                 _import_file(prefs, bundle, entry, summary)
+        except zipfile.BadZipFile as exc:
+            debug.event("packages", "entry refused", error=str(exc),
+                        name=name)
+            summary["refused"] += 1
+            summary["problems"].append(
+                "%s did not read back whole" % name)
+        except Exception as exc:                          # noqa: BLE001
+            debug.event("packages", "entry refused", error=str(exc),
+                        name=name)
+            summary["refused"] += 1
+            summary["problems"].append("%s: %s" % (name, exc))    # the REAL cause, not re-costumed as a data failure: a sandbox refusal or a full disk is not a corrupt package
     return summary
 
 
@@ -175,8 +198,12 @@ def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
         return
     page = entry.get("note") or {}
     if page.get("items"):
-        notes.set_note(prefs, notes.note_key(section, asset.mat_id),
-                       page["items"])
+        try:    # the asset is already saved - a failed note page must not recount a landed import as refused
+            notes.set_note(prefs, notes.note_key(section, asset.mat_id),
+                           page["items"])
+        except Exception as exc:                          # noqa: BLE001
+            debug.event("packages", "note not written", error=str(exc),
+                        name=str(asset.mat_id))
     cats = row.get("categories") or []
     summary["categories"].setdefault(section, set()).update(
         [cats] if isinstance(cats, str) else cats)
