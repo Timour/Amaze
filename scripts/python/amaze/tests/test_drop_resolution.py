@@ -198,5 +198,99 @@ class TheNodeDropLandsWhereItWasReleased(_ReleaseCase):
                          "the refusal did not record WHICH network refused")
 
 
+class MaterialNetworkGateTest(unittest.TestCase):
+    """A material release in a network editor lands ONLY where the network accepts a VOP - the one gate `accepts_context` shared with the Node section - and a wrong network is a strict miss creating NOTHING."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+        cls.section = cls.panel.sections["material"]
+
+    def _sorted_index(self):
+        idx = self.panel.material_sorted_model.index(0, 0)
+        self.assertTrue(idx.isValid(), "premise: a material exists")
+        return idx
+
+    def test_accepts_context_is_the_one_gate(self):
+        from amaze.core import cop_library
+        matnet = hou.node("/obj").createNode("matnet")
+        self.addCleanup(matnet.destroy)
+        lopnet = hou.node("/obj").createNode("lopnet")
+        self.addCleanup(lopnet.destroy)
+        light = hou.node("/obj").createNode("hlight")
+        self.addCleanup(light.destroy)
+        self.assertTrue(cop_library.accepts_context(matnet, "Vop"))
+        self.assertFalse(cop_library.accepts_context(lopnet, "Vop"))
+        self.assertFalse(cop_library.accepts_context(light, "Vop"),
+                         "a childless node must answer False, not raise")
+
+    def test_a_wrong_network_release_creates_nothing(self):
+        index = self._sorted_index()
+        obj = hou.node("/obj")
+        mat = hou.node("/mat")
+        before_obj = len(obj.children())
+        before_mat = len(mat.children())
+        with mock.patch.object(dragengine, "viewport_release_target",
+                               return_value=None):
+            with mock.patch.object(self.panel,
+                                   "_drop_context_under_cursor",
+                                   return_value=obj):
+                ok = self.section.drop_material_at_release(index)
+        self.assertFalse(
+            ok, "a release in /obj imported - Houdini's own nodes "
+                "refuse the wrong context and so must ours")
+        self.assertEqual(before_obj, len(obj.children()),
+                         "something was created in /obj")
+        self.assertEqual(before_mat, len(mat.children()),
+                         "the refusal fell back to /mat - strictly "
+                         "nothing was the ruling")
+
+    def test_a_matlib_release_builds_inside_it(self):
+        from amaze.core import material as material_mod
+        model = self.panel.material_model
+        karma_row = next(
+            (i for i, a in enumerate(model.assets)
+             if material_mod.is_karma_renderer(str(a.renderer))), None)
+        self.assertIsNotNone(karma_row,
+                             "premise: a Karma material exists - a "
+                             "Redshift one is refused at a LOP library "
+                             "by design")
+        index = self.panel.material_sorted_model.mapFromSource(
+            model.index(karma_row, 0))
+        lib = hou.node("/stage").createNode("materiallibrary")
+        self.addCleanup(lib.destroy)
+        before = len(lib.children())
+        with mock.patch.object(dragengine, "viewport_release_target",
+                               return_value=None):
+            with mock.patch.object(self.panel,
+                                   "_drop_context_under_cursor",
+                                   return_value=lib):
+                ok = self.section.drop_material_at_release(index)
+        self.assertTrue(ok)
+        self.assertGreater(len(lib.children()), before,
+                           "the accepted release built nothing")
+
+    def test_the_material_rule_declares_its_context(self):
+        from amaze.panel import sections
+        self.assertEqual(
+            "Vop", sections.MaterialSection.DROP.context,
+            "the verb and the live ghost both read the declaration - "
+            "an empty context gates nothing")
+
+    def test_the_ghost_wears_the_destinations_size(self):
+        matnet = hou.node("/obj").createNode("matnet")
+        self.addCleanup(matnet.destroy)
+        lopnet = hou.node("/obj").createNode("lopnet")
+        self.addCleanup(lopnet.destroy)
+        self.assertEqual(
+            (1.7706, 0.83),
+            dragengine._ghost_size_for(_fake_editor(matnet)),
+            "a VOP-bound ghost must wear the VOP tile size the host "
+            "draws (measured: a materialbuilder is 1.7706 x 0.83)")
+        self.assertEqual(
+            (1.1296, 0.2824),
+            dragengine._ghost_size_for(_fake_editor(lopnet)))
+
+
 if __name__ == "__main__":
     unittest.main()

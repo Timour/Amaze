@@ -159,7 +159,19 @@ def ghost_answers():
 
 _ghosted: list = []
 
-GHOST_SIZE = (1.1296, 0.2824)
+GHOST_SIZE = (1.1296, 0.2824)         # the standard node tile, measured (▸r/overlay-shapes)
+GHOST_SIZE_VOP = (1.7706, 0.83)       # VOP tiles are LARGER - a materialbuilder measured 2026-08-24; nodegraph.py's own comment says Vop/Shop/Cop2 "can be larger"
+
+
+def _ghost_size_for(editor) -> tuple:
+    """The tile size the ghost wears in THIS editor: the VOP size inside a Vop-holding network - where a dropped material becomes a VOP - the standard tile everywhere else."""
+    from amaze.core import cop_library
+    try:
+        pwd = editor.pwd()
+    except (AttributeError, hou.OperationFailed):
+        return GHOST_SIZE
+    return GHOST_SIZE_VOP if cop_library.accepts_context(pwd, "Vop") \
+        else GHOST_SIZE
 
 GHOST_COLOUR = (0.988, 0.725, 0.0)
 GHOST_ALPHA = 0.75
@@ -199,11 +211,12 @@ def ghost_show(editor, position, type_name: str = "",
     if editor is None or position is None:
         return
     try:
+        size = _ghost_size_for(editor)
         rect = hou.BoundingRect(
-            position.x() - GHOST_SIZE[0] / 2.0,
-            position.y() - GHOST_SIZE[1] / 2.0,
-            position.x() + GHOST_SIZE[0] / 2.0,
-            position.y() + GHOST_SIZE[1] / 2.0)
+            position.x() - size[0] / 2.0,
+            position.y() - size[1] / 2.0,
+            position.x() + size[0] / 2.0,
+            position.y() + size[1] / 2.0)
         colour = hou.Color(GHOST_COLOUR)
         drawn = hou.NetworkShapeNodeShape(
             rect, _shape_for(type_name) or GHOST_FALLBACK_SHAPE,

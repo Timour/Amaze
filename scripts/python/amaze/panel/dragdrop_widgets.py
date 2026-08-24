@@ -3,7 +3,7 @@
 from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
-from amaze.core import debug, dragengine, file_library
+from amaze.core import cop_library, debug, dragengine, file_library
 from amaze.helpers import helpers
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
@@ -388,9 +388,18 @@ class GridGestureMixin:
         if rule is None:
             dragengine.ghost_clear()
             return
+        preview = getattr(self, "_preview", None)
+        if preview is not None:
+            preview.setVisible(
+                pane_type != hou.paneTabType.NetworkEditor)
         try:
             if (pane_tab is None
                     or pane_type != hou.paneTabType.NetworkEditor):
+                dragengine.ghost_clear()
+                return
+            if getattr(rule, "context", "") and not \
+                    cop_library.accepts_context(pane_tab.pwd(),
+                                                rule.context):    # the network refuses this payload, so no outline promises a landing - the same declaration the release verb reads
                 dragengine.ghost_clear()
                 return
             spot = pane_tab.cursorPosition()

@@ -7,6 +7,14 @@ from amaze.core import debug, library, category, material
 from amaze.render import nodes, thumbs
 
 
+def accepts_context(node, context: str) -> bool:
+    """Does `node`'s interior hold `context` children - the ONE creation gate (▸r/node-graph: creation succeeding proves nothing; a childless node answers None and .name() raises AttributeError)."""
+    try:
+        return node.childTypeCategory().name() == context
+    except (AttributeError, hou.OperationFailed):
+        return False
+
+
 def default_face(renderer: str):
     """The Node section's face for a row with no thumbnail: the node icon for anything unrenderable (see RENDERABLE), the base missing face otherwise - the one rule, shared with the online browser."""
     if str(renderer or "").upper() not in CopLibrary.RENDERABLE:
@@ -52,10 +60,7 @@ class CopLibrary(library.AssetLibrary):
     @staticmethod
     def load_target_in(container: hou.Node, context: str) -> hou.Node:
         """Where inside `container` the saved nodes actually go - the container itself, or the editable network a wrapper HDA declares, which for a SOP Create is `sopnet/create`, two levels down. It never answers None: `container` is the answer when nothing better is found, and the asset stays LOCKED either way. ▸r/hda-wrappers"""
-        try:
-            if container.childTypeCategory().name() == context:
-                return container
-        except (AttributeError, hou.OperationFailed):
+        if accepts_context(container, context):
             return container
 
         for section in ("EditableNodes", "DiveTarget"):    # what the wrapper says about itself, in preference order

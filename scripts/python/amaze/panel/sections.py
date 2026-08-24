@@ -8,8 +8,8 @@ import os
 import hou
 from PySide6 import QtCore, QtWidgets
 
-from amaze.core import (debug, dragengine, file_library, grid_columns,
-                        multifilterproxy_model, packages,
+from amaze.core import (cop_library, debug, dragengine, file_library,
+                        grid_columns, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -30,9 +30,9 @@ FileLocation = collections.namedtuple(
 DropRule = collections.namedtuple(
     "DropRule",
     "on_node on_space resolve outside click_on_node click_resolve "
-    "carrier_type",
-    defaults=(None, None, None, None, None, None, ""),
-)
+    "carrier_type context",
+    defaults=(None, None, None, None, None, None, "", ""),
+)    # context: the childTypeCategory a network must hold for this drag to land there ("" gates nothing) - ONE declaration read by the release verb AND the live ghost
 
 
 MenuEntry = collections.namedtuple(
@@ -597,7 +597,8 @@ class MaterialSection(AssetSection):
     ) + GRID_MENU_TAIL
 
     DROP = DropRule(resolve="drop_material_at_release",    # a material import finds its own landing: the verb checks the release for a material library node or a network itself
-                    click_resolve="click_import_material")
+                    click_resolve="click_import_material",
+                    context="Vop")    # a material becomes a VOP, so only a Vop-holding network accepts the release - Houdini's own tab-menu gate
 
     def click_import_material(self, _index) -> bool:
         """Materials aim themselves - the context-aware import reads the selection and the network under the cursor."""
@@ -626,8 +627,10 @@ class MaterialSection(AssetSection):
                     return bool(panel.assign_material_to_obj(ids, data))    # propagated, never a hard True: the call returns False when the picked object has no shop_materialpath, and success feedback for an assignment that did not happen is a lie
             return False
         context = panel._drop_context_under_cursor("materiallibrary")
-        if context is None:
-            debug.event("drag", "material release", target="miss")
+        if context is None or not cop_library.accepts_context(
+                context, self.DROP.context):
+            debug.event("drag", "material release", target="miss",
+                        context=context.path() if context else "")
             return False
         debug.event("drag", "material release", target="network",
                     context=context.path(), count=len(ids))
