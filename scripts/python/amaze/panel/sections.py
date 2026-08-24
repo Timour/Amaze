@@ -327,6 +327,9 @@ class AssetSection(Section):
         MenuEntry("Rename", verb="menu_rename_category", needs="one"),
         MenuEntry("Remove", verb="menu_remove_category"),
         SEPARATOR,
+        MenuEntry("Sort by name", verb="menu_sort_categories",
+                  needs="always"),
+        SEPARATOR,
         MenuEntry("Set Color", verb="menu_set_colour"),
         MenuEntry("Clear Color", verb="menu_clear_colour"),
         SEPARATOR,
@@ -429,6 +432,12 @@ class AssetSection(Section):
             st.categories.remove_category(name)    # OUTSIDE the relayout wrapper: this announces itself with begin/endRemoveRows and pairing the two segfaults H21 (research.md, measured 2026-08-04). The asset rows changed inside the wrapper; the sidebar rows change here, bracketed by their own signals
         self.panel._ensure_sidebar_selection(self.key)    # the row is gone and the filter is not: without this the grid stays narrowed to a category that no longer exists - zero tiles, nothing highlighted, no message - because the sidebar must never sit with an empty selection
         self._refilter_from_sidebar()    # covers the case where the fallback lands somewhere other than All
+
+    def menu_sort_categories(self, indexes, current, payload=None) -> None:
+        """The one-off Sort by name: the whole list below All, regardless of the clicked row."""
+        _proxy, source = self._sidebar_categories()
+        if source is not None:
+            source.sort_categories()
 
     def tile_models(self):
         st = self.stack()
@@ -1718,6 +1727,9 @@ class GradientSection(AssetSection):
                   shown="on_a_category"),
         MenuEntry("Remove", verb="menu_remove_category",
                   shown="on_a_category"),
+        SEPARATOR,
+        MenuEntry("Sort by name", verb="menu_sort_categories",
+                  needs="always"),
         SEPARATOR,
         MenuEntry("Set Color", verb="menu_set_colour",
                   shown="on_a_category"),

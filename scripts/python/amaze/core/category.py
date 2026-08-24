@@ -178,6 +178,17 @@ class Categories(QtCore.QAbstractListModel):
             self.endMoveRows()
         return True
 
+    def sort_categories(self) -> None:
+        """The menu's one-off Sort by name: everything below `_All` lands alphabetically (case-insensitive) through the same restore/save pair the drag gesture uses - manual drags carry on from there."""
+        head = [c for c in self._categories if c == "_All"]
+        rest = sorted((c for c in self._categories if c != "_All"),
+                      key=str.lower)
+        ordered = head + rest
+        if ordered == self._categories:
+            return
+        self.restore_order(ordered)
+        self.save()
+
     def order_snapshot(self) -> list:
         """The order as it stands, copied - what Esc puts back."""
         return list(self._categories)

@@ -33,6 +33,34 @@ def _categories(testcase, entries):
     return model
 
 
+class SortByNameTest(unittest.TestCase):
+    """The menu's one-off Sort by name: everything below All lands alphabetically, saved at once - and the user drags on from there, so it is not a mode."""
+
+    def test_the_categories_land_alphabetically_below_All(self):
+        model = _categories(self, ["_All", "b", "Zed", "a"])
+        with mock.patch.object(model, "save") as save:
+            model.sort_categories()
+        self.assertEqual(["_All", "a", "b", "Zed"], model._categories)
+        save.assert_called_once_with()
+
+    def test_an_already_sorted_list_still_saves_nothing_twice(self):
+        model = _categories(self, ["_All", "a", "b"])
+        with mock.patch.object(model, "save") as save:
+            model.sort_categories()
+        self.assertEqual(["_All", "a", "b"], model._categories)
+        self.assertLessEqual(save.call_count, 1)
+
+    def test_the_menu_verb_sorts_through_the_live_model(self):
+        panel = test_support.fixture_panel(test_support.class_scope(
+            type(self)))
+        section = panel.sections["material"]
+        _proxy, source = section._sidebar_categories()
+        self.assertIsNotNone(source, "no Categories behind the sidebar")
+        source._categories[:] = ["_All", "b", "a"]
+        section.menu_sort_categories((), None)
+        self.assertEqual(["_All", "a", "b"], source._categories)
+
+
 class MoveCategoryTest(unittest.TestCase):
     """One row-move on the shared model, with All immovable."""
 

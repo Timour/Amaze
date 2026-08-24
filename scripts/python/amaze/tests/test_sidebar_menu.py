@@ -148,6 +148,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         return seen
 
     SPINE = ["Add Category", "Rename", "Remove", "----",
+             "Sort by name", "----",
              "Set Color", "Clear Color", "----", "Export Category"]
 
     def test_the_three_asset_sidebars_render_the_same_spine(self):
@@ -160,13 +161,16 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         shown = self._show("material", (0, 1))
         self.assertEqual(
             ["Add Category", "Rename(off)", "Remove", "----",
+             "Sort by name", "----",
              "Set Color", "Clear Color", "----", "Export Category(off)"],
             shown)
 
     def test_color_offers_only_add_on_the_All_row(self):
         """Everything below All is a real user category; All is a view, so the per-category entries do not exist on it - Export stays, exporting from All being the whole section."""
-        self.assertEqual(["Add Category", "----", "Export Category"],
-                         self._show("gradient", (0,)))
+        self.assertEqual(
+            ["Add Category", "----", "Sort by name", "----",
+             "Export Category"],
+            self._show("gradient", (0,)))
 
     def test_color_offers_the_whole_spine_on_a_category(self):
         self.assertEqual(self.SPINE, self._show("gradient", (1,)))
