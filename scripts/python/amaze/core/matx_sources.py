@@ -1030,12 +1030,20 @@ class AmazeSource(MatxSource):
         """A zipfile over ranged reads of the hosted package, cached until Refresh."""
         if url not in self._bundles:
             checked = _checked_url(url)
-            with _request(checked, headers={"Range": "bytes=-%d"
-                                            % RANGED_BLOCK}) as response:
-                tail = response.read()
-                spread = str(response.headers.get("Content-Range") or "")
-            size = int(spread.rsplit("/", 1)[-1]) if "/" in spread \
-                else len(tail)
+            try:
+                with _request(checked, headers={"Range": "bytes=-%d"
+                                                % RANGED_BLOCK}) as response:
+                    tail = response.read()
+                    spread = str(response.headers.get("Content-Range")
+                                 or "")
+                size = int(spread.rsplit("/", 1)[-1]) if "/" in spread \
+                    else len(tail)
+            except urllib.error.HTTPError as exc:
+                if exc.code != 416:
+                    raise
+                with _request(checked) as response:    # the suffix exceeded the object and the CDN answered 416, not the RFC's whole file (▸r/github-ranged-store) - a package this small IS its own tail
+                    tail = response.read()
+                size = len(tail)
 
             def get_range(start, end, _url=checked):
                 with _request(_url, headers={
@@ -1043,8 +1051,13 @@ class AmazeSource(MatxSource):
                     return resp.read()
 
             remote = RangedFile(size, get_range)
-            last = (size - 1) // RANGED_BLOCK
-            remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
+            if len(tail) == size:    # the whole object arrived - seed every block, not just the last
+                for n in range(0, size, RANGED_BLOCK):
+                    remote._blocks[n // RANGED_BLOCK] = \
+                        tail[n:n + RANGED_BLOCK]
+            else:
+                last = (size - 1) // RANGED_BLOCK
+                remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
             self._bundles[url] = zipfile.ZipFile(remote)
         return self._bundles[url]
 

@@ -716,6 +716,55 @@ class RangedFileTest(unittest.TestCase):
             "the block cache is not working - %d range requests for a "
             "%d-byte zip" % (len(requests), len(blob)))
 
+    def test_a_package_smaller_than_a_block_survives_a_416(self):
+        from unittest import mock
+        from urllib import error as uerror
+
+        from amaze.core import matx_sources, packages
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)])
+        blob = _bytes(pkg)
+        self.assertLess(len(blob), matx_sources.RANGED_BLOCK,
+                        "premise: the package must be under one block")
+
+        class _Resp:
+            def __init__(self, data):
+                self._data, self.headers = data, {}
+
+            def read(self):
+                return self._data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+        def strict_cdn(url, headers=None):
+            spec = str((headers or {}).get("Range") or "")
+            if spec.startswith("bytes=-"):
+                if int(spec.split("-", 1)[1]) >= len(blob):    # raw.githubusercontent answers 416, not the RFC's whole file ▸r/github-ranged-store
+                    raise uerror.HTTPError(url, 416,
+                                           "Range Not Satisfiable",
+                                           {}, None)
+                start = len(blob) - int(spec.split("-", 1)[1])
+                return _Resp(blob[start:])
+            if spec:
+                lo, _, hi = spec.replace("bytes=", "").partition("-")
+                return _Resp(blob[int(lo):min(int(hi), len(blob) - 1)
+                                  + 1])
+            return _Resp(blob)
+
+        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
+               "main/packages/defaults/tiny.amazepkg")
+        source = matx_sources.AmazeSource()
+        with mock.patch.object(matx_sources, "_request", strict_cdn):
+            bundle = source._open_package(url)
+            manifest = json.loads(bundle.read(packages.MANIFEST))
+        self.assertEqual(3, len(manifest["entries"]),
+                         "a sub-block package must survive the CDN's "
+                         "416 on the oversized suffix probe - all five "
+                         "store defaults are this size")
+
     def test_open_package_seeds_from_a_suffix_range_and_caches(self):
         from unittest import mock
 
