@@ -43,22 +43,80 @@ class SortByNameTest(unittest.TestCase):
         self.assertEqual(["_All", "a", "b", "Zed"], model._categories)
         save.assert_called_once_with()
 
-    def test_an_already_sorted_list_still_saves_nothing_twice(self):
+    def test_an_already_sorted_list_saves_nothing(self):
         model = _categories(self, ["_All", "a", "b"])
         with mock.patch.object(model, "save") as save:
             model.sort_categories()
         self.assertEqual(["_All", "a", "b"], model._categories)
-        self.assertLessEqual(save.call_count, 1)
+        save.assert_not_called()
 
-    def test_the_menu_verb_sorts_through_the_live_model(self):
-        panel = test_support.fixture_panel(test_support.class_scope(
-            type(self)))
-        section = panel.sections["material"]
+    def test_All_keeps_row_zero_even_under_a_name_that_beats_it(self):
+        """The head/rest split, pinned: `abc` sorts before `All`, so a plain sorted() over the whole list would push the All row out of row 0 - the one place the database loader and move_category both refuse to allow."""
+        model = _categories(self, ["_All", "abc", "b"])
+        with mock.patch.object(model, "save"):
+            model.sort_categories()
+        self.assertEqual(["_All", "abc", "b"], model._categories)
+
+    def test_a_category_sorts_where_its_LABEL_reads(self):
+        """The sidebar strips a leading underscore for display, so `_WIP` reads WIP and belongs after Apple - sorting the stored spelling put it first."""
+        model = _categories(self, ["_All", "Apple", "_WIP"])
+        with mock.patch.object(model, "save"):
+            model.sort_categories()
+        self.assertEqual(["_All", "Apple", "_WIP"], model._categories)
+
+    def test_a_non_string_row_does_not_raise(self):
+        """`_categories` comes straight off library.json and normalize_categories only runs from Clean Library, so the sort must survive what the file can hold."""
+        model = _categories(self, ["_All", "b", 3])
+        with mock.patch.object(model, "save"):
+            model.sort_categories()
+        self.assertEqual(["_All", 3, "b"], model._categories)
+
+
+class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
+    """Sort by name lands through a model RESET, which clears the selection and the current index with signals blocked - so the verb has to put the user back where they were, or the grid stays filtered with nothing highlighted."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _section(self):
+        section = self.panel.sections["material"]
         _proxy, source = section._sidebar_categories()
         self.assertIsNotNone(source, "no Categories behind the sidebar")
+        return section, source
+
+    def test_the_menu_verb_sorts_through_the_live_model(self):
+        section, source = self._section()
         source._categories[:] = ["_All", "b", "a"]
         section.menu_sort_categories((), None)
         self.assertEqual(["_All", "a", "b"], source._categories)
+
+    def test_the_row_you_were_standing_on_stays_under_you(self):
+        section, source = self._section()
+        source._categories[:] = ["_All", "b", "a"]
+        source.layoutChanged.emit()
+        cat_list = self.panel.cat_list
+        proxy = cat_list.model()
+        standing = None
+        for row in range(proxy.rowCount()):
+            if proxy.index(row, 0).data() == "b":
+                standing = proxy.index(row, 0)
+        self.assertIsNotNone(standing, "the fixture sidebar has no b row")
+        cat_list.setCurrentIndex(standing)
+        cat_list.selectionModel().select(
+            standing,
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+
+        section.menu_sort_categories((), None)
+
+        self.assertTrue(
+            cat_list.selectionModel().selectedIndexes(),
+            "the sort left the sidebar with nothing selected while the "
+            "grid kept its filter")
+        self.assertEqual(
+            "b", cat_list.currentIndex().data(),
+            "the sort moved the user off the category they were "
+            "standing in")
 
 
 class MoveCategoryTest(unittest.TestCase):

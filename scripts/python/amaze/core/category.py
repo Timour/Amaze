@@ -10,6 +10,12 @@ SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY decla
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
 
 
+def display_name(stored: Any) -> str:
+    """The sidebar label for a STORED category - the one home for the leading-underscore strip, so what a row is sorted by cannot drift from what it reads."""
+    text = str(stored)
+    return text[1:] if text.startswith("_") else text
+
+
 class Categories(QtCore.QAbstractListModel):
     """The category list for one library, backed by DB_FILENAME."""
 
@@ -44,10 +50,7 @@ class Categories(QtCore.QAbstractListModel):
             return self._categories[index.row()]
 
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
-            elem = self._categories[index.row()]
-            if elem.startswith("_"):
-                elem = elem[1:]
-            return elem
+            return display_name(self._categories[index.row()])
 
         if role == SIDEBAR_COUNT_ROLE:
             return self._category_count(self._categories[index.row()])
@@ -179,10 +182,10 @@ class Categories(QtCore.QAbstractListModel):
         return True
 
     def sort_categories(self) -> None:
-        """The menu's one-off Sort by name: everything below `_All` lands alphabetically (case-insensitive) through the same restore/save pair the drag gesture uses - manual drags carry on from there."""
+        """The menu's one-off Sort by name: everything below `_All` lands alphabetically by LABEL, written through `restore_order` and saved at once - which resets the model, so a caller holding a selection has to put it back (the drag's own path is `move_category`, which does not)."""
         head = [c for c in self._categories if c == "_All"]
         rest = sorted((c for c in self._categories if c != "_All"),
-                      key=str.lower)
+                      key=lambda c: display_name(c).lower())    # by the LABEL, not the stored spelling: `_WIP` reads WIP and must sort there, and str() keeps a non-str row out of the raiser normalize_categories exists for
         ordered = head + rest
         if ordered == self._categories:
             return

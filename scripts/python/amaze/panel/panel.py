@@ -333,6 +333,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.file_files_model = file_library.FileFiles(self.prefs)
         self.file_sorted_model = texture_library.TextureFilterProxyModel()
         self.file_sorted_model.setSourceModel(self.file_files_model)
+        self.file_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
         self.file_selection_model = QtCore.QItemSelectionModel(
             self.file_sorted_model
         )
@@ -369,6 +370,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.prefs.hide_empty_categories)
         self.gradient_sorted_model = gradient_library.GradientFilterProxyModel()
         self.gradient_sorted_model.setSourceModel(self.gradient_model)
+        self.gradient_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
         self.gradient_selection_model = QtCore.QItemSelectionModel(
             self.gradient_sorted_model
         )
@@ -664,6 +666,7 @@ class MatLibPanel(QtWidgets.QWidget):
             view.setModel(proxy)
             if selection is not None:
                 view.setSelectionModel(selection)
+        grid.sync_sort_indicator(self)    # the arrow is one header's state and the sort is this proxy's, so they only agree if a bind says so
         if delegate is not None:
             self.thumblist.setItemDelegate(delegate)
             grid.bind_table_cell_delegates(self, delegate)    # THE TABLE DOES NOT WEAR THE TILE DELEGATE: that one paints a whole TILE per index, right where an index is a tile and catastrophic where a row is ten of them. Qt paints every text cell itself; only the picture and the tick columns get a delegate, and those are per COLUMN
@@ -1684,14 +1687,16 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _open_comments_from_badge(self, index) -> None:
         """The comment badge's click: the tile becomes the selection, then the Comments pane OPENS if closed - through the toolbar chip, one path to one state, and one-way (the badge never closes)."""
-        view = grid.visible_view(self)
-        sel = view.selectionModel() if view is not None else None
+        sel = self.thumblist.selectionModel()
         if sel is not None and index is not None and index.isValid():
+            flag = QtCore.QItemSelectionModel.SelectionFlag
+            inside = index in grid_columns.selected_rows(sel)    # a badge inside a MULTI-selection moves the current row only: the pane reads the current index alone, so clearing would throw away a hand-built selection to show what it shows either way - the star button's law, one badge over
             sel.setCurrentIndex(
-                index,
-                QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+                index, flag.NoUpdate if inside else flag.ClearAndSelect)
         if not self.btn_notes.isChecked():
             self.btn_notes.setChecked(True)
+        else:
+            self._refresh_notes_subject()    # NoUpdate emits no selectionChanged, and that signal is the pane's only wire
 
     def _favourite_badge_clicked(self, index) -> None:
         """The tile's star button: flip the whole SELECTION when the clicked tile is in it - the press that preceded this release has already selected a lone tile, so one gesture stars a multi-selection - and just the clicked tile when it somehow is not."""
@@ -3722,15 +3727,20 @@ class MatLibPanel(QtWidgets.QWidget):
         self._stand_on_all_category()
 
     def _stand_on_all_category(self) -> None:
-        """Point the sidebar at All and refilter - one owner for the row walk, shared by the hidden-category fallback above and the empty state's Show All button."""
+        """Point the sidebar at All and refilter - the hidden-category fallback and the empty state's Show All button."""
+        self._stand_on_category("All")
+
+    def _stand_on_category(self, label: str) -> bool:
+        """Point the sidebar at the row reading `label` and refilter, answering whether that row exists - ONE owner for the row walk, so the All fallback and the sort's restore cannot drift. The label is the DISPLAYED name, which is what a sidebar row answers."""
         view = getattr(self, "cat_list", None)
         proxy = view.model() if view is not None else None
         if proxy is None:
-            return
+            return False
         selection_model = view.selectionModel()
+        found = False
         for row in range(proxy.rowCount()):
             idx = proxy.index(row, 0)
-            if idx.data() == "All":
+            if idx.data() == label:
                 view.setCurrentIndex(idx)
                 if selection_model is not None:
                     selection_model.select(
@@ -3738,8 +3748,10 @@ class MatLibPanel(QtWidgets.QWidget):
                         QtCore.QItemSelectionModel.SelectionFlag
                         .ClearAndSelect,
                     )
+                found = True
                 break
         self.update_selected_cat()
+        return found
 
     def show_all_categories(self) -> None:
         """The empty state's Show All button."""

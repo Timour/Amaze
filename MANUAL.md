@@ -90,8 +90,10 @@ squeezing the rest.
 The **sidebar** holds categories (Material, Node, Code), registered
 folders (File) or palette groups (Color). Right-click to
 add, rename, remove — or give a category a
-[colour](#category-colors). It can show per-category counts and hide empty
-categories — Preferences ▸ Look.
+[colour](#category-colors). **Sort by name** puts the categories in
+alphabetical order once, with All staying on top; drag them where you
+like afterwards, and sort again whenever. It can show per-category
+counts and hide empty categories — Preferences ▸ Look.
 
 The sidebar keeps the order **you** give it. Press and hold a row for
 about half a second and it picks up — drag it where you want, let go
@@ -112,7 +114,7 @@ on a dark backdrop so it stays readable on any thumbnail:
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="18"> | top-left | the scene you currently have open (File) |
 | <img src="scripts/python/amaze/ui/badge_star.svg" width="18"> | top-right | the favorite button — on every tile: dim when not a favorite, brighter under the cursor, amber when favorited. Click to toggle; with several tiles selected, clicking a selected tile's star toggles them all |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="18"> | lower-left | has more than one [version](#versions) — click it to browse them |
-| <img src="scripts/python/amaze/ui/badge_comment.svg" width="18"> | lower-right | carries a [comment](#comments) |
+| <img src="scripts/python/amaze/ui/badge_comment_75.svg" width="18"> | lower-right | carries a [comment](#comments) — click it to open the Comments pane on that asset |
 
 ---
 
@@ -475,8 +477,8 @@ Comments live **in the library** (`notes.json` beside the index, a
 filename that kept its old spelling), so they
 travel across machines and survive a folder being removed and
 re-added. A tile that carries a comment shows the
-<img src="scripts/python/amaze/ui/badge_comment.svg" width="14"> badge in
-its lower-right corner.
+<img src="scripts/python/amaze/ui/badge_comment_75.svg" width="14"> badge in
+its lower-right corner; click it to open this pane on that asset.
 
 Every section takes comments — materials, palettes, nodes, snippets and
 File rows alike.

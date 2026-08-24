@@ -607,6 +607,19 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
             "Node/Code wired the versions click their sections cannot "
             "serve")
 
+    def test_every_delegate_that_DRAWS_the_comment_badge_wires_it(self):
+        """Derived from the delegates the sections actually built, so a section arriving with a delegate of its own joins by existing rather than by somebody remembering a fifth registration line."""
+        drawn = [d for d in self.panel.tile_delegates()
+                 if "comment" in d.badges()]
+        self.assertTrue(
+            drawn, "no delegate draws a comment badge, so this proves "
+                   "nothing")
+        for delegate in drawn:
+            self.assertIn(
+                "comment", delegate._badge_clicks,
+                "a delegate reads the notes role but wires no comment "
+                "click, so the badge paints and hovers dead")
+
 
 if __name__ == "__main__":
     unittest.main()

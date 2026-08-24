@@ -872,6 +872,20 @@ class IconAssetsTest(unittest.TestCase):
             "rest and hover are painted identically, so the resting "
             "star shows no answer to the pointer")
 
+    def test_the_comment_button_states_draw_the_same_bubble(self):
+        """The third state-pair button: rest and hover are one geometry differing only in paint, so the badge cannot jump shape as the pointer crosses it."""
+        base = self._paths("badge_comment_75.svg")
+        self.assertTrue(base, "the comment badge's rest art draws nothing")
+        self.assertEqual(
+            base, self._paths("badge_comment.svg"),
+            "the comment badge's hover art no longer draws the same "
+            "marks as its rest art - one state changed shape")
+        self.assertNotEqual(
+            self._paint("badge_comment_75.svg"),
+            self._paint("badge_comment.svg"),
+            "rest and hover are painted identically, so the resting "
+            "comment badge shows no answer to the pointer")
+
     @staticmethod
     def _effective_paint(tag):
         """The fill and fill-opacity that actually PAINT a tag: a style attribute outranks the presentation attributes beside it. ▸r/svg-style-wins"""

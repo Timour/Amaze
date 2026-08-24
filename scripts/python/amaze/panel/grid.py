@@ -134,14 +134,14 @@ def _open(panel, context, entries, indexes, view) -> None:
     menu, verbs = build_menu(panel, context, entries, indexes, current)
     chosen = menu.exec_(QtGui.QCursor.pos())
     verb, payload = verbs.get(chosen, ("", None))    # a dismissed menu and a never-built entry are both None - a dict lookup, never `==` chains
-    menu.deleteLater()    # after the lookup (the dict is keyed by the menu's own QActions); parented menus otherwise live forever - research.md ▸ Qt widgets, FORTY QMenus
+    menu.deleteLater()    # after the lookup (the dict is keyed by the menu's own QActions); parented menus otherwise live forever ▸r/menu-lifetime
     if not verb:
         return
     getattr(context, verb)(indexes, current, payload)
 
 
 def restore_drag_mode(panel) -> None:
-    """Re-arm Qt's native file-path drag after any setViewMode() - setMovement(Static) silently sets dragEnabled(False). research.md ▸ Qt widgets"""
+    """Re-arm Qt's native file-path drag after any setViewMode() - setMovement(Static) silently sets dragEnabled(False). ▸r/static-kills-drag"""
     panel.thumblist.setDragEnabled(True)
     panel.thumblist.setDragDropMode(
         QtWidgets.QAbstractItemView.DragDropMode.DragOnly
@@ -189,14 +189,14 @@ def show_table(panel, showing: bool) -> None:
         model = table.model()
         if model is not None and model.rowCount():
             hint = sidebar_row_height(panel, table)    # the CATEGORY list decides the row height - two delegates measuring independently sat 2px apart
-            header.setMinimumSectionSize(hint)    # the minimum FIRST, or the default is silently clamped to the style's 19 - research.md ▸ Qt widgets
+            header.setMinimumSectionSize(hint)    # the minimum FIRST, or the default is silently clamped to the style's 19 ▸r/min-section-first
             header.setDefaultSectionSize(hint)
         table_palette = QtGui.QPalette(panel.thumblist.palette())    # a QTableView brings the platform's palette: white rows on a dark panel without this
         table_palette.setColor(
             QtGui.QPalette.ColorRole.Text, AssetItemDelegate.TEXT_COLOR)
         table.setPalette(table_palette)
         table.setFont(panel.thumblist.font())
-        table.viewport().setAutoFillBackground(True)    # no QProxyStyle for the padding: setStyle hands over a pointer nobody owns and bus-errored - research.md ▸ Qt widgets
+        table.viewport().setAutoFillBackground(True)    # no QProxyStyle for the padding: setStyle hands over a pointer nobody owns and bus-errored ▸r/no-proxystyle
         sync_table_columns(panel)
     page = getattr(panel, "empty_page", None)    # a blank showing must survive a view-mode change, so ask what is up rather than assume
     blank_up = page is not None and not page.isHidden()
@@ -235,7 +235,7 @@ def bind_table_cell_delegates(panel, tile_delegate) -> None:
     if table is None:
         return
 
-    for previous in getattr(table, "_amaze_cell_delegates", ()):    # the previous set goes first: setItemDelegate* takes no ownership, and rebinding leaves orphans alive - research.md ▸ Qt widgets, ELEVEN delegates
+    for previous in getattr(table, "_amaze_cell_delegates", ()):    # the previous set goes first: setItemDelegate* takes no ownership, and rebinding leaves orphans alive ▸r/delegate-orphans
         try:
             previous.setParent(None)    # leaves the child list at once; deleteLater then frees it under the real event loop
             previous.deleteLater()
@@ -308,13 +308,31 @@ def sync_table_columns(panel) -> None:
     if not getattr(table, "_widths_seeded", False):    # seeded ONCE per view: re-applying defaults per call snapped a dragged width back - widths are the USER's, visibility the section's
         table._widths_seeded = True
         header.setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeMode.Interactive)    # never ResizeToContents as a MODE: it re-measures for the view's life and forbids dragging - research.md ▸ Qt widgets
+            QtWidgets.QHeaderView.ResizeMode.Interactive)    # never ResizeToContents as a MODE: it re-measures for the view's life and forbids dragging ▸r/resize-mode-forbids-drag
         header.setMinimumSectionSize(theme.ui_px(panel.COLUMN_MIN_WIDTH))
         for column, key in enumerate(grid_columns.KEYS):
             width = panel.COLUMN_DEFAULT_WIDTH.get(key)
             if width:
                 header.resizeSection(column, theme.ui_px(width))
         header.setStretchLastSection(True)    # the LAST column takes the slack; overrides the mode on that section alone, so the others stay draggable
+
+
+def sync_sort_indicator(panel) -> None:
+    """Point the arrow at the order the bound proxy is actually in - one header serves every section and `setModel` re-applies no sorting, so without this it names a column the rows are not in. Call it on a BIND, not on a view-mode switch: it can re-sort, and a model signal is how the empty state learns rows arrived. ▸r/one-header-many-proxies"""
+    table = getattr(panel, "thumbtable", None)
+    proxy = table.model() if table is not None else None
+    if proxy is None:
+        return
+    header = table.horizontalHeader()
+    name = grid_columns.KEYS.index("name")
+    column, order = proxy.sortColumn(), proxy.sortOrder()
+    if column < 0:
+        order = QtCore.Qt.SortOrder.AscendingOrder
+        table.sortByColumn(name, order)    # never sorted at all (File and Colors): the arrow claimed Name over rows in source order, and a first click there would have flipped straight to descending
+        column = name
+    elif column == 0:
+        column = name    # column 0 is the hidden picture column and answers the same display name, so the arrow belongs on Name; setting it re-sorts to an identical order ONCE and then converges
+    header.setSortIndicator(column, order)
 
 
 def style_table_header(panel) -> None:
@@ -329,7 +347,7 @@ def style_table_header(panel) -> None:
         grid_columns.KEYS.index("name"),
         QtCore.Qt.SortOrder.AscendingOrder)    # the indicator starts on section 0, the HIDDEN picture column - point it at Name so the arrow is drawn somewhere
     panel.thumbtable.setSortingEnabled(True)    # a user's chosen column survives filter changes and inserts: GridProxyModel re-sorts by sortColumn()
-    header.setSectionsClickable(True)    # explicitly: a REPLACEMENT header is not clickable and setSortingEnabled does not repair it (measured, Qt 6.8.3) - without this the arrow shows and every click is swallowed. research.md ▸ Qt widgets
+    header.setSectionsClickable(True)    # explicitly: a REPLACEMENT header is not clickable and setSortingEnabled does not repair it - without this the arrow shows and every click is swallowed ▸r/replacement-header-clickable
     header.setDefaultAlignment(
         QtCore.Qt.AlignmentFlag.AlignLeft
         | QtCore.Qt.AlignmentFlag.AlignVCenter)

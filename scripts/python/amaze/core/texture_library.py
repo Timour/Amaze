@@ -300,7 +300,8 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
 
     def watched_roles(self):
         """Exactly what filterAcceptsRow reads - favourite, kind, the display name - plus the sort role, so a role emitted over every row (a sidebar colour, a comment badge) does not buy a whole re-filter through the blacklist fallback."""
-        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole()}
+        watched = {QtCore.Qt.ItemDataRole.DisplayRole, self.sortRole(),
+                   self.sort_column_role()}    # the sort COLUMN's role too: a later column orders on a UserRole this set would otherwise drop
         model = self.sourceModel()
         for name in ("FavoriteRole", "KindRole"):
             role = getattr(model, name, None)

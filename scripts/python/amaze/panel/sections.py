@@ -434,10 +434,15 @@ class AssetSection(Section):
         self._refilter_from_sidebar()    # covers the case where the fallback lands somewhere other than All
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
-        """The one-off Sort by name: the whole list below All, regardless of the clicked row."""
+        """The one-off Sort by name: the whole list below All, regardless of the clicked row, and the row you were standing on stays under you."""
         _proxy, source = self._sidebar_categories()
-        if source is not None:
-            source.sort_categories()
+        if source is None:
+            return
+        cat_list = getattr(self.panel, "cat_list", None)
+        standing = cat_list.currentIndex().data() if cat_list is not None else None    # captured BEFORE the reorder: it lands through a model reset, which clears the selection and the current index with signals blocked, so nothing downstream can recover the row by itself
+        source.sort_categories()
+        if not self.panel._stand_on_category(standing or "All"):
+            self.panel._ensure_sidebar_selection(self.key)    # the row is gone or was never one: fall back the way the remove verb does, rather than leaving the sidebar empty while the grid stays filtered
 
     def tile_models(self):
         st = self.stack()

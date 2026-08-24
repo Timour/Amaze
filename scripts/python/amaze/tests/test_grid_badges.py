@@ -283,10 +283,18 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
                          "no badge on a commentless tile - the button "
                          "exists only where a comment does")
 
-    def test_the_click_opens_the_pane_one_way(self):
+
+class TheCommentBadgeOpensThePane(unittest.TestCase):
+    """The handler behind the badge: it opens the Comments pane, never closes it, and leaves a multi-selection standing."""
+
+    @classmethod
+    def setUpClass(cls):
         from amaze.tests import test_support
-        panel = test_support.fixture_panel(test_support.class_scope(
-            type(self)))
+        cls.panel = test_support.fixture_panel(
+            test_support.class_scope(cls))
+
+    def test_the_click_opens_the_pane_one_way(self):
+        panel = self.panel
         panel.btn_notes.setChecked(False)
         index = panel.material_sorted_model.index(0, 0)
         panel._open_comments_from_badge(index)
@@ -296,13 +304,50 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
         self.assertTrue(panel.btn_notes.isChecked(),
                         "a second click CLOSED the pane - the badge "
                         "only ever opens")
-        import amaze.panel.grid as grid_mod
-        current = grid_mod.visible_view(panel).selectionModel() \
-            .currentIndex()
+        current = panel.thumblist.selectionModel().currentIndex()
         self.assertEqual(index.row(), current.row(),
                          "the clicked tile did not become the "
-                         "selection, so the pane shows the wrong "
+                         "current row, so the pane shows the wrong "
                          "comments")
+
+    def test_a_badge_inside_a_multi_selection_keeps_it(self):
+        """The star button's law, one badge over: the pane reads the CURRENT row, so collapsing a hand-built selection buys nothing and costs the user the selection."""
+        panel = self.panel
+        model = panel.material_sorted_model
+        if model.rowCount() < 3:
+            self.skipTest("the fixture library has fewer than 3 rows")
+        flags = QtCore.QItemSelectionModel.SelectionFlag
+        selection = panel.thumblist.selectionModel()
+        rows = [model.index(r, 0) for r in range(3)]
+        selection.clearSelection()
+        for index in rows:
+            selection.select(index, flags.Select)
+
+        panel._open_comments_from_badge(rows[2])
+
+        self.assertEqual(
+            3, len(selection.selectedIndexes()),
+            "clicking the comment badge on a selected tile threw away "
+            "the rest of the selection")
+        self.assertEqual(
+            rows[2].row(), selection.currentIndex().row(),
+            "the clicked tile did not become the current row")
+
+    def test_a_badge_OUTSIDE_the_selection_takes_it_over(self):
+        panel = self.panel
+        model = panel.material_sorted_model
+        if model.rowCount() < 3:
+            self.skipTest("the fixture library has fewer than 3 rows")
+        flags = QtCore.QItemSelectionModel.SelectionFlag
+        selection = panel.thumblist.selectionModel()
+        selection.select(model.index(0, 0), flags.ClearAndSelect)
+
+        panel._open_comments_from_badge(model.index(2, 0))
+
+        self.assertEqual(
+            [2], [i.row() for i in selection.selectedIndexes()],
+            "a badge on a tile outside the selection must select that "
+            "tile, the way a plain click does")
 
 
 if __name__ == "__main__":
