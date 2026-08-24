@@ -133,6 +133,8 @@ class GradientLibrary(library.AssetLibrary):
                         "categories": [cat_name],
                         "colors": colors,
                         "ramp": _palette_ramp_data(colors),
+                        "curated": "%s/%s" % (curated["key"],    # the stable identity a restore matches on - ids are minted per library, this tag is not
+                                              combo.get("id") or name),
                     })
                     text = str(combo.get("note", "") or "").strip()
                     if text:

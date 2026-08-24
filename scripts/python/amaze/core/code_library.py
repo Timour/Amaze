@@ -153,6 +153,9 @@ class CodeLibrary(library.AssetLibrary):
                 )
                 mat.code = code
                 mat.description = snip.get("description", "")
+                mat._extra = dict(getattr(mat, "_extra", None) or {},    # the stable identity a restore matches on, riding the record's extra-keys courtesy
+                                  curated="starter/%s"
+                                          % snip.get("name", "Snippet"))
                 row = len(self._assets)
                 self.beginInsertRows(QtCore.QModelIndex(), row, row)
                 try:

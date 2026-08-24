@@ -8,7 +8,7 @@ import unittest
 import zipfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -348,7 +348,9 @@ class PackageImportTest(unittest.TestCase):
         self.assertEqual(before, model.rowCount())
         with_new_id = _out_path(self, "minted.amazepkg")
         item = packages.collect_asset(model, original.mat_id)
-        item = dict(item, record=dict(item["record"], id="f" * 32))
+        record = dict(item["record"], id="f" * 32)
+        record.pop("curated", None)    # a USER asset: fixture palettes are born tagged since the seeder stamps, and a tagged record would union by the tag instead of the id this test pins
+        item = dict(item, record=record)
         packages.write_package(with_new_id, [item])
         summary = self.panel.import_package_file(with_new_id, restore=True)
         self.assertEqual(1, summary["imported"])
@@ -419,6 +421,126 @@ class PackageImportTest(unittest.TestCase):
                             "the %s payload never landed" % kind)
             self.assertEqual(_bytes(source), _bytes(target),
                              "the %s payload does not byte-match" % kind)
+
+
+class _Cats:
+    _categories = []    # the rename helper reads the sidebar list; empty means nothing to rename
+
+    def check_add_category(self, name):
+        pass
+
+
+class CuratedKeysTest(unittest.TestCase):
+    """The stable identity under the defaults: every seeded row carries a `curated` tag (riding `_extra`, no schema work), and restore unions by the TAG where one exists - the same palette in two libraries has two ids but one tag."""
+
+    def _fresh_prefs(self, marker):
+        p = test_support.fixture_prefs(self)
+        for name in (marker, marker.replace("amaze", "assetlib")):
+            try:
+                os.remove(os.path.join(p.dir, name))
+            except OSError:
+                pass
+        return p
+
+    def test_the_gradient_seeder_stamps_curated_keys(self):
+        from amaze.core import gradient_library
+        p = self._fresh_prefs(".amaze_gradient_seed_v1")
+        model = gradient_library.GradientLibrary(p)
+        before = model.rowCount()
+        model.seed_curated_palettes(_Cats())
+        self.assertGreater(model.rowCount(), before,
+                           "premise: the seed never ran")
+        fresh = model._assets[before:]
+        untagged = [a.name for a in fresh
+                    if not (getattr(a, "_extra", None) or {}).get("curated")]
+        self.assertEqual([], untagged[:5],
+                         "seeded palettes carry no curated tag")
+        sets_seen = {str((getattr(a, "_extra", None) or {})
+                         .get("curated", "")).split("/")[0]
+                     for a in fresh}
+        self.assertLessEqual({"wada", "klee", "albers", "itten"},
+                             sets_seen)
+
+    def test_the_code_seeder_stamps_curated_keys(self):
+        from amaze.core import code_library
+        p = self._fresh_prefs(".amaze_code_starter_v1")
+        model = code_library.CodeLibrary(p)
+        before = model.rowCount()
+        model.seed_starter_snippets(_Cats())
+        self.assertGreater(model.rowCount(), before,
+                           "premise: the seed never ran")
+        fresh = model._assets[before:]
+        untagged = [a.name for a in fresh
+                    if not str((getattr(a, "_extra", None) or {})
+                               .get("curated", "")).startswith("starter/")]
+        self.assertEqual([], untagged[:5],
+                         "seeded snippets carry no starter/ tag")
+
+    def test_a_deleted_default_comes_back_from_the_set_package(self):
+        from amaze.core import gradient_library, packages
+        p = self._fresh_prefs(".amaze_gradient_seed_v1")
+        model = gradient_library.GradientLibrary(p)
+        model.seed_curated_palettes(_Cats())
+        wada = [a for a in model._assets
+                if str((getattr(a, "_extra", None) or {})
+                       .get("curated", "")).startswith("wada/")]
+        self.assertGreater(len(wada), 100, "premise: the Wada set seeded")
+        out = _out_path(self, "wada.amazepkg")
+        packages.write_package(
+            out, [packages.collect_asset(model, a.mat_id) for a in wada])
+        victim = wada[3]
+        gone_tag = victim._extra["curated"]
+        gone_cat = victim.categories
+        at = model._assets.index(victim)
+        model.beginRemoveRows(QtCore.QModelIndex(), at, at)
+        try:
+            model._assets.pop(at)
+        finally:
+            model.endRemoveRows()
+        self.assertTrue(model.save(), "premise: the delete never landed")
+        before = model.rowCount()
+        summary = packages.import_package({"gradient": model}, p, out,
+                                          restore=True)
+        self.assertEqual(1, summary["imported"],
+                         "the deleted palette did not come back")
+        self.assertEqual(len(wada) - 1, summary["skipped"],
+                         "palettes still present were re-imported")
+        self.assertEqual(before + 1, model.rowCount())
+        returned = model._assets[-1]
+        self.assertEqual(gone_tag, returned._extra.get("curated"))
+        self.assertEqual(gone_cat, returned.categories,
+                         "the restored palette lost its own category")
+
+    def test_restore_unions_by_the_curated_key(self):
+        from amaze.core import gradient_library, packages
+        p = test_support.fixture_prefs(self)
+        model = gradient_library.GradientLibrary(p)
+        models = {"gradient": model}
+
+        def _package(record_id):
+            out = _out_path(self, "curated_%s.amazepkg" % record_id[0])
+            record = {"id": record_id, "name": "Combination X",
+                      "categories": ["Wada 3 Colors"],
+                      "curated": "wada/x-999"}
+            with zipfile.ZipFile(out, "w") as bundle:
+                bundle.writestr(packages.MANIFEST, json.dumps({
+                    "format": packages.FORMAT,
+                    "entries": [{"type": "asset", "section": "gradient",
+                                 "id": record_id, "record": record,
+                                 "note": {}, "files": {}}]}))
+            return out
+
+        before = model.rowCount()
+        first = packages.import_package(models, p, _package("a" * 32),
+                                        restore=True)
+        self.assertEqual(1, first["imported"],
+                         "an absent curated row was not restored")
+        second = packages.import_package(models, p, _package("b" * 32),
+                                         restore=True)
+        self.assertEqual(1, second["skipped"],
+                         "the same curated tag under a DIFFERENT id was "
+                         "restored again - the union keyed on the id")
+        self.assertEqual(before + 1, model.rowCount())
 
 
 if __name__ == "__main__":
