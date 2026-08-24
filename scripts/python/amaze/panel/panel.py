@@ -2477,15 +2477,28 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def _import_amaze_package_record(self, record, source, restore,
                                      on_progress=None):
-        """One TILE into the library - its entry read straight out of the hosted package by member, fresh or restore - answering (ok, reason) like the material path beside it."""
+        """One TILE into the library - its entry read straight out of the hosted package by member, fresh or restore - answering (ok, reason) like the material path beside it. The ranged reads report per-block progress into `on_progress`, whose pump is what keeps Houdini ALIVE through a slow transfer."""
+        url = record.payload.get("package")
+        debug.event("import", "package tile start", title=record.title,
+                    package=str(url), restore=bool(restore))
+        self._last_package_summary = None    # the restore batch reads its totals here - one import door, one summary shape
         try:
             entry = record.payload.get("entry")
             if not entry:
                 return (False, "the record carries no manifest entry")
-            bundle = source._open_package(record.payload["package"])
-            summary = packages.import_entries(
-                self._package_models(), self.prefs, bundle, [entry],
-                restore=restore)
+            bundle = source._open_package(url)
+            if on_progress is not None:
+                source.progress_hook(
+                    url, lambda done, total:
+                    on_progress(min(done / float(max(total, 1)), 1.0)))
+            try:
+                summary = packages.import_entries(
+                    self._package_models(), self.prefs, bundle, [entry],
+                    restore=restore)
+            finally:
+                if on_progress is not None:
+                    source.progress_hook(url, None)
+            self._last_package_summary = summary
             self._absorb_package_summary(summary)
             if on_progress is not None:
                 on_progress(1.0)
@@ -2502,30 +2515,31 @@ class MatLibPanel(QtWidgets.QWidget):
             return (False, str(exc))
 
     def restore_amaze_packages(self, records) -> dict:
-        """Restore-mode import for the SELECTED tiles: adopt-only by curated tag / original id, one summary for the batch."""
+        """Restore-mode import for the SELECTED tiles: adopt-only by curated tag / original id, one summary for the batch - inside the download bar, whose pump keeps the UI alive through the ranged reads."""
         totals = {"imported": 0, "skipped": 0, "files": 0, "refused": 0}
         failures = []
-        for record in records:
-            source, _resolution, error = self._online_source_for(record)
-            if error or source is None:
-                failures.append("%s: %s" % (record.title,
-                                            error or "Unknown source"))
-                continue
-            try:
-                entry = record.payload.get("entry")
-                if not entry:
-                    raise ValueError("no manifest entry on the record")
-                bundle = source._open_package(record.payload["package"])
-                summary = packages.import_entries(
-                    self._package_models(), self.prefs, bundle, [entry],
-                    restore=True)
-                self._absorb_package_summary(summary)
+        with self._download_bar(records) as progress_for:
+            for i, record in enumerate(records):
+                source, _resolution, error = self._online_source_for(
+                    record)
+                if error or source is None:
+                    failures.append("%s: %s" % (record.title,
+                                                error or "Unknown source"))
+                    continue
+                try:
+                    ok, reason = self._import_amaze_package_record(
+                        record, source, restore=True,
+                        on_progress=progress_for(i))
+                except Exception as exc:                  # noqa: BLE001
+                    debug.exception("package restore", exc,
+                                    record=record.title)
+                    failures.append("%s: %s" % (record.title, exc))
+                    continue
+                summary = self._last_package_summary or {}
                 for key in totals:
                     totals[key] += summary.get(key, 0)
-            except Exception as exc:                      # noqa: BLE001
-                debug.exception("package restore", exc,
-                                record=record.title)
-                failures.append("%s: %s" % (record.title, exc))
+                if not ok and reason:
+                    failures.append("%s: %s" % (record.title, reason))
         ui = getattr(hou, "ui", None)
         if ui is not None:
             lines = ["Restored %d, %d already present."

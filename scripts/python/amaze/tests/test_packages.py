@@ -830,6 +830,31 @@ class RangedFileTest(unittest.TestCase):
                          "416 on the oversized suffix probe - all five "
                          "store defaults are this size")
 
+    def test_ranged_reads_report_block_progress(self):
+        from amaze.core import matx_sources
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
+                            members={"files/0_big.bin": self.PAYLOAD})
+        blob = _bytes(pkg)
+        seen = []
+
+        def get_range(start, end):
+            return blob[start:end + 1]
+
+        remote = matx_sources.RangedFile(
+            len(blob), get_range,
+            notify=lambda done, total: seen.append((done, total)))
+        with zipfile.ZipFile(remote) as bundle:
+            bundle.read("files/0_big.bin")
+        self.assertGreater(
+            len(seen), 1,
+            "a multi-block read reported no per-block progress - the "
+            "UI freezes for the whole transfer with nothing pumping")
+        dones = [d for d, _t in seen]
+        self.assertEqual(sorted(set(dones)), dones,
+                         "block progress must be non-decreasing")
+        self.assertTrue(all(t == seen[0][1] for _d, t in seen),
+                        "the block total drifted mid-read")
+
     def test_open_package_seeds_from_a_suffix_range_and_caches(self):
         from unittest import mock
 
@@ -965,6 +990,71 @@ class OnlinePackageImportTest(unittest.TestCase):
         self.assertEqual(before, model.rowCount(),
                          "a still-present tile was duplicated by restore")
         self.assertEqual(1, summary["skipped"])
+
+    def test_a_store_tile_import_drives_the_download_bar(self):
+        from unittest import mock
+
+        from amaze.core import matx_sources
+        payload = RangedFileTest.PAYLOAD
+        entry = {"type": "asset", "section": "material", "id": "9" * 32,
+                 "record": {"id": "9" * 32, "name": "Big",
+                            "categories": ["X"]},
+                 "note": {},
+                 "files": {"mat": "assets/material/9/9.mat"}}
+        pkg = _manifest_zip(self, [entry],
+                            members={"assets/material/9/9.mat": payload})
+        blob = _bytes(pkg)
+
+        class _Resp:
+            def __init__(self, data, headers):
+                self._data, self.headers = data, headers
+
+            def read(self):
+                return self._data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+        def serve(url, headers=None):
+            spec = str((headers or {}).get("Range") or "")
+            if spec.startswith("bytes=-"):
+                n = int(spec.split("-", 1)[1])
+                start = max(0, len(blob) - n)
+                return _Resp(blob[start:], {
+                    "Content-Range": "bytes %d-%d/%d"
+                    % (start, len(blob) - 1, len(blob))})
+            if spec:
+                lo, _, hi = spec.replace("bytes=", "").partition("-")
+                return _Resp(blob[int(lo):min(int(hi), len(blob) - 1) + 1],
+                             {})
+            return _Resp(blob, {})
+
+        tree_json = {"tree": [{"type": "blob",
+                               "path": "packages/defaults/big.amazepkg",
+                               "size": len(blob)}]}
+        source = matx_sources.AmazeSource()
+        fractions = []
+        with mock.patch.object(matx_sources, "get_json",
+                               return_value=tree_json):
+            with mock.patch.object(matx_sources, "_request", serve):
+                record = source.list_materials(limit=10)[0]
+                with mock.patch.object(
+                        self.panel.matx_online_model, "_sources",
+                        [source]):
+                    ok, reason = self.panel.import_online_material(
+                        record, on_progress=fractions.append)
+        self.assertTrue(ok, reason)
+        self.assertGreater(
+            len(fractions), 1,
+            "the import reported only its end - the bar sat at zero "
+            "and nothing pumped while the network ran, which is the "
+            "")
+        self.assertEqual(1.0, fractions[-1])
+        self.assertEqual(sorted(fractions), fractions,
+                         "fractions must be non-decreasing")
 
     def test_a_corrupt_member_counts_refused_not_fatal(self):
         from unittest import mock

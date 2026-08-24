@@ -951,11 +951,15 @@ RANGED_BLOCK = 1 << 16
 class RangedFile:
     """A seekable read-only file over `get_range(start, end) -> bytes`, block-cached so zipfile's seeks cost a handful of requests - integrity per member is the zip's own CRC under TLS."""
 
-    def __init__(self, size: int, get_range):
+    def __init__(self, size: int, get_range, notify=None):
         self.size = int(size)
         self._get = get_range
         self._blocks = {}
         self._pos = 0
+        self.notify = notify    # notify(blocks_held, blocks_total) after every fetched block - what keeps a UI pumping through a long transfer instead of freezing
+
+    def _total_blocks(self) -> int:
+        return max(1, (self.size - 1) // RANGED_BLOCK + 1)
 
     def seekable(self):
         return True
@@ -974,6 +978,8 @@ class RangedFile:
             start = index * RANGED_BLOCK
             end = min(self.size, start + RANGED_BLOCK) - 1
             self._blocks[index] = self._get(start, end)
+            if self.notify is not None:
+                self.notify(len(self._blocks), self._total_blocks())
         return self._blocks[index]
 
     def read(self, n=-1) -> bytes:
@@ -1005,6 +1011,7 @@ class AmazeSource(MatxSource):
         self._paths = None
         self._bundles = {}
         self._manifests = {}
+        self._remotes = {}    # url -> the RangedFile under the bundle, for progress_hook
         self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
 
     PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
@@ -1069,8 +1076,15 @@ class AmazeSource(MatxSource):
             else:
                 last = (size - 1) // RANGED_BLOCK
                 remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
+            self._remotes[url] = remote
             self._bundles[url] = zipfile.ZipFile(remote)
         return self._bundles[url]
+
+    def progress_hook(self, url: str, callback) -> None:
+        """Attach (or detach with None) a per-block progress callback to the hosted package's reader - what the import doors use to keep the download bar moving and the UI pumping."""
+        remote = self._remotes.get(url)
+        if remote is not None:
+            remote.notify = callback
 
     def _manifest(self, url: str) -> dict:
         if url not in self._manifests:
@@ -1089,6 +1103,7 @@ class AmazeSource(MatxSource):
         self._paths = None
         self._manifests = {}
         self._bundles = {}
+        self._remotes = {}
         self._sizes = {}
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
