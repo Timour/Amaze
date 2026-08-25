@@ -1258,5 +1258,52 @@ class StarButtonPaintTest(unittest.TestCase):
                          "the amber star changes under the cursor")
 
 
+class AnUndoNeverEatsALoadedNote(unittest.TestCase):
+    """Loading a note is not an edit: left on the undo stack it comes apart under one Ctrl+Z, and the debounced save writes the emptied page over the real one. ▸r/programmatic-load-is-undoable"""
+
+    def setUp(self):
+        notes.forget_notes()
+        self.addCleanup(notes.forget_notes)
+        self.prefs = _Prefs(self)
+        from amaze.panel import notes_panel
+        self.widget = notes_panel.NotesPanel(self.prefs)
+        self.addCleanup(self.widget.deleteLater)
+
+    def _loaded(self):
+        editor = self.widget.text_edit
+        editor.load_items([{"t": "text", "text": "first line\nsecond line"},
+                           {"t": "todo", "done": False, "label": "a task"}])
+        return editor
+
+    def test_a_loaded_page_is_not_undoable(self):
+        editor = self._loaded()
+        self.assertFalse(
+            editor.document().isUndoAvailable(),
+            "the load sits on the undo stack, so Ctrl+Z takes the note "
+            "apart and the debounced save writes the remains to disk")
+
+    def test_the_text_survives_an_undo(self):
+        editor = self._loaded()
+        before = editor.toPlainText()
+        editor.undo()
+        editor.undo()
+        self.assertEqual(
+            before, editor.toPlainText(),
+            "two undos changed a note the user never edited")
+
+    def test_the_user_s_OWN_typing_is_still_undoable(self):
+        """The stack is cleared at LOAD, not disabled - an edit the user makes must still come back."""
+        editor = self._loaded()
+        loaded = editor.toPlainText()
+        cursor = editor.textCursor()
+        cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
+        cursor.insertText(" typed by hand")
+        self.assertTrue(editor.document().isUndoAvailable(),
+                        "the user's own edit is not undoable")
+        editor.undo()
+        self.assertEqual(loaded, editor.toPlainText(),
+                         "undo did not take back what was typed")
+
+
 if __name__ == "__main__":
     unittest.main()

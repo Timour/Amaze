@@ -291,6 +291,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
             first = False
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
         self.setTextCursor(cursor)
+        self.document().clearUndoRedoStacks()    # the LOAD is not an edit: left undoable, one Ctrl+Z peels the page apart block by block, each step fires textChanged, and the debounced save then writes the emptied note over the real one ▸r/programmatic-load-is-undoable
 
     def serialize(self) -> list:
         """The document, in order, as the store's item flow: adjacent plain lines join into one text item, and blank lines between content survive inside it."""
