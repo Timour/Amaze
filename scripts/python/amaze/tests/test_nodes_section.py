@@ -19,6 +19,8 @@ sys.path.insert(        # THREE dirnames: tests/ -> amaze/ -> python/. Four land
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import cop_library  # noqa: E402
+from amaze.core import material  # noqa: E402
+from amaze.render import nodes  # noqa: E402
 from amaze.render import thumbs  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -666,6 +668,134 @@ class PlaceNodesTest(unittest.TestCase):
         helpers.place_nodes([node], None)
         self.assertAlmostEqual(3.0, node.position().x())
         self.assertAlmostEqual(-1.0, node.position().y())
+
+
+class WhatCountsAsAFailure(unittest.TestCase):
+    """Three points where `render/nodes.py` decides whether something went wrong: a load that raised only WARNINGS, an asset name that is not a legal node name, and an `$OCIO` that exists but is empty. Each wrong answer reaches the artist as a refusal or a traceback."""
+
+    WARNING_TYPE = "amaze_warned_probe"
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.addCleanup(self._clear_scene)
+
+    def _clear_scene(self):
+        for child in hou.node("/obj").children():
+            try:
+                child.destroy()
+            except hou.OperationFailed:
+                pass
+
+    def _asset_that_warns_on_load(self, name: str):
+        """An asset whose saved file holds an instance of an HDA that is then UNINSTALLED: Houdini rebuilds it as a substituted node type and raises `hou.LoadWarning` saying so, which is the manual's load-that-SUCCEEDED-with-warnings."""
+        otl = os.path.join(self.prefs.path, "amaze_warned_probe.hda")
+        source = hou.node("/obj").createNode("geo", "warn_src")
+        packaged = source.createNode("subnet", "packaged")
+        instance = packaged.createDigitalAsset(
+            name=self.WARNING_TYPE, hda_file_name=otl,
+            description="Amaze suite probe")
+        mat = material.Material(name=name, renderer="SOP")
+        payload = material.payload_path(
+            self.prefs, mat.mat_id, self.prefs.ext)
+        os.makedirs(os.path.dirname(payload), exist_ok=True)
+        source.saveItemsToFile([instance], payload,
+                               save_hda_fallbacks=False)    # WITH fallbacks the definition rides along in the file and the load has nothing to warn about
+        source.destroy()
+        hou.hda.uninstallFile(otl)
+        return mat
+
+    def _pin_ocio(self, value: str):
+        """Set `$OCIO` for one test and put the session's own back after it."""
+        previous = hou.getenv("OCIO")
+        if previous is None:
+            self.addCleanup(hou.unsetenv, "OCIO")
+        else:
+            self.addCleanup(hou.putenv, "OCIO", previous)
+        hou.putenv("OCIO", value)
+
+    def _collect_node(self, home: str):
+        return hou.node("/obj").createNode("matnet", home).createNode("collect")
+
+    def test_a_network_that_only_warned_is_not_thrown_away(self):
+        """`loadItemsFromFile` raises `hou.LoadWarning` when the load SUCCEEDED with warnings, so refusing it costs the artist a network Houdini has already rebuilt in front of them."""
+        mat = self._asset_that_warns_on_load("warned_direct")
+        dest = hou.node("/obj").createNode("geo", "warn_dest")
+        handler = nodes.NodeHandler(self.prefs)
+
+        with mock.patch.object(nodes.debug, "event") as recorded:
+            ok, reason, created = handler.import_cop_asset(
+                mat, context_node=dest)
+
+        self.assertTrue(
+            ok, "a load that only WARNED was reported as a failure: %s"
+            % reason)
+        self.assertTrue(created,
+                        "the import reported success but created nothing")
+        self.assertTrue(dest.children(),
+                        "the rebuilt network never reached the destination")
+        self.assertTrue(
+            [call for call in recorded.call_args_list
+             if "warning" in str(call).lower()],
+            "the warning was swallowed instead of noted through debug.event: "
+            "%r" % recorded.call_args_list)
+
+    def test_the_container_a_warned_load_filled_is_kept(self):
+        """The boxed path builds a container, fills it, and then destroyed it on the warning - the same successful load, thrown away along with its home."""
+        mat = self._asset_that_warns_on_load("warned_boxed")
+        handler = nodes.NodeHandler(self.prefs)
+
+        ok, reason, created = handler.import_cop_asset(
+            mat, context_node=hou.node("/obj"))
+
+        self.assertTrue(
+            ok, "the boxed path refused a load that only WARNED: %s" % reason)
+        self.assertTrue(created,
+                        "the import reported success but created nothing")
+        self.assertTrue(created[0].children(),
+                        "the container came back empty")
+
+    def test_a_display_name_that_is_no_node_name_still_rebuilds(self):
+        """An asset's display name is the artist's own text and `hou.Node.setName` answers `Invalid name` for a space, so it reaches the node through `helpers.sanitize_usd_path` - the sanitiser every other name site in this package already uses."""
+        handler = nodes.NodeHandler(self.prefs)
+        handler._hou_parent = hou.node("/obj").createNode(
+            "matnet", "iface_home")
+        handler._import_path = handler._hou_parent
+        mat = material.Material(name="Rough Metal 01", renderer="Redshift")
+
+        handler.load_interface_other("", mat, "subnet")
+
+        self.assertEqual(
+            "Rough_Metal_01", handler.builder_node.name(),
+            "the display name did not reach the node through the sanitiser")
+
+    def test_an_ocio_set_to_nothing_is_no_colour_config(self):
+        """`houdini.env`'s documented way to unset a default is `OCIO =`, which leaves the variable EXISTING and empty - so an `is None` gate reads it as configured and the save runs with no colour config at all."""
+        handler = nodes.NodeHandler(self.prefs)
+        handler._renderer = "Karma"
+        collect = self._collect_node("ocio_empty")
+        self._pin_ocio("")
+
+        with mock.patch.object(handler, "save_node_collect",
+                               return_value=True) as saver:
+            saved = handler.save_node(collect, "asset1", False)
+
+        self.assertFalse(saved, "the save ran with $OCIO set to nothing")
+        saver.assert_not_called()
+
+    def test_an_ocio_that_is_set_still_saves(self):
+        """The other half of the same gate: refusing empty must not start refusing a configured one."""
+        handler = nodes.NodeHandler(self.prefs)
+        handler._renderer = "Karma"
+        collect = self._collect_node("ocio_set")
+        self._pin_ocio("/dev/null")
+
+        with mock.patch.object(handler, "save_node_collect",
+                               return_value=True) as saver:
+            saved = handler.save_node(collect, "asset1", False)
+
+        self.assertTrue(saved, "a configured $OCIO was refused")
+        saver.assert_called_once_with(collect, "asset1", False)
 
 
 if __name__ == "__main__":

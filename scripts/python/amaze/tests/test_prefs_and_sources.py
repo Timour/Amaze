@@ -5,7 +5,9 @@ import os
 import shutil
 import sys
 import tempfile
+import types
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -962,6 +964,91 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
                          "until picked is the ASK rule")
         self.assertFalse(dlg._btn_edit_user.isEnabled())
         self.assertFalse(dlg._btn_delete_user.isEnabled())
+
+
+class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
+    """`hou.ui.displayConfirmation` defaults `suppress` to `hou.confirmType.OverwriteFile` - Houdini's GLOBAL do-not-ask-again flag for file overwrites - so left at the default this destructive wipe stops asking the moment that box is ticked anywhere in the application."""
+
+    def _asked_with(self, dlg):
+        seen = {}
+
+        def confirm(text, *_args, **kwargs):
+            seen["text"] = text
+            seen["kwargs"] = kwargs
+            return False   # Cancel, so the method returns before any cache is touched and the fixture library survives
+
+        with mock.patch.object(
+                hou, "ui",
+                types.SimpleNamespace(displayConfirmation=confirm),
+                create=True):
+            dlg.clear_texture_cache()
+        return seen
+
+    def test_the_wipe_asks_with_the_non_suppressable_type(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        seen = self._asked_with(dlg)
+        self.assertIn("kwargs", seen, "the wipe never asked at all")
+        self.assertEqual(
+            hou.confirmType.NoConfirmType, seen["kwargs"].get("suppress"),
+            "the cache wipe rides on a SUPPRESSABLE confirmation: with "
+            "`suppress` at its default of `hou.confirmType.OverwriteFile`, "
+            "one tick of do-not-ask-again anywhere in Houdini deletes every "
+            "cached thumbnail with no question asked")
+
+
+class ThePickersStartInAForwardSlashPath(unittest.TestCase):
+    """`hou.ui.selectFile` documents `start_directory` as forward slashes on Windows, and `os.path.join` there hands out backslashes - so an os.sep-flavoured path has to be canonicalised before it is passed."""
+
+    def _started_in(self, method):
+        seen = {}
+
+        def select_file(*_args, **kwargs):
+            seen.update(kwargs)
+            return ""   # Cancel, so the method returns before writing a preference
+
+        # os.sep is the ONLY difference between the two platforms inside `hostos.canonical_path_key`, so patching it runs this host through the Windows reading of the same code.
+        with mock.patch.object(os, "sep", "\\"), mock.patch.object(
+                hou, "ui",
+                types.SimpleNamespace(selectFile=select_file),
+                create=True):
+            method()
+        return seen.get("start_directory", "")
+
+    def _dialog(self, prefs_obj):
+        from amaze.dialogs import prefs_dialog
+        dlg = prefs_dialog.PrefsDialog(prefs_obj, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        return dlg
+
+    def test_the_cache_picker_starts_in_a_forward_slash_path(self):
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        p.cache_dir = ""   # unset, which is the branch that falls through to the machine's own convention - the one `os.path.join` builds
+        dlg = self._dialog(p)
+        from amaze.dialogs import prefs_dialog
+        native = "C:\\scratch\\AppData\\Local\\Amaze\\Cache"
+        with mock.patch.object(prefs_dialog.hostos, "cache_root",   # the dialog's OWN reference, since a fixture panel reloads hostos and this module's import can be the older object
+                               lambda: native):
+            start = self._started_in(dlg.change_cache_path)
+        self.assertEqual(
+            "C:/scratch/AppData/Local/Amaze/Cache", start,
+            "the cache picker opens on a native Windows path; selectFile "
+            "requires forward slashes there and ignores the rest")
+
+    def test_the_test_folder_picker_starts_in_a_forward_slash_path(self):
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        p.test_dir = "D:\\shots\\amaze_test"   # a stored absolute comes back from settings.json in the spelling it was written in, backslashes and all
+        dlg = self._dialog(p)
+        start = self._started_in(dlg.change_test_path)
+        self.assertEqual(
+            "D:/shots/amaze_test", start,
+            "the test-folder picker opens on a native Windows path; "
+            "selectFile requires forward slashes there and ignores the rest")
 
 
 if __name__ == "__main__":

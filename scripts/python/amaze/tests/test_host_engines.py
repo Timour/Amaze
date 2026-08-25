@@ -313,6 +313,35 @@ class AFailedWriteSaysWhichFailure(unittest.TestCase):
         _cause, sentence = self._cause(errno.EACCES)
         self.assertIn("folder", sentence)
 
+    def _windows_cause(self, winerror):
+        """A held file the way WINDOWS raises it, which no POSIX host can produce."""
+        import errno
+
+        from amaze.helpers import hostos
+
+        exc = OSError(errno.EACCES, os.strerror(errno.EACCES))
+        exc.winerror = winerror  # the constructor DROPS a winerror off Windows (probed: the attribute does not exist), so the shape is built by hand or this test cannot run on the machines that have it
+        return hostos.why_failed(exc, "/lib/notes.json")
+
+    def test_a_held_file_is_recognised_in_its_WINDOWS_spelling(self):
+        """Windows is the ONLY platform where a held destination is real, and there it arrives as EACCES - so an EBUSY-only branch is dead exactly where it was needed."""
+        from amaze.helpers import hostos
+
+        for winerror in (32, 33):
+            cause, sentence = self._windows_cause(winerror)
+            self.assertEqual(hostos.FAILED_HELD, cause,
+                             "winerror %d was not read as a held file"
+                             % winerror)
+            self.assertIn("another program", sentence)
+
+    def test_a_windows_permission_failure_is_still_the_FOLDER(self):
+        """The guard against overcorrecting: EACCES is ambiguous on Windows, so keying on the errno alone would call every read-only folder a held file."""
+        from amaze.helpers import hostos
+
+        cause, sentence = self._windows_cause(5)
+        self.assertEqual(hostos.FAILED_READ_ONLY, cause)
+        self.assertNotIn("another program", sentence)
+
     def test_an_unmeasured_errno_claims_no_cause(self):
         """Saying nothing specific is the right answer to an unmeasured cause - guessing is what this replaced."""
         from amaze.helpers import hostos

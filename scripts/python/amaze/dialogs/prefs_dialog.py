@@ -65,6 +65,11 @@ def _logo_image(widget=None):
     return image
 
 
+def _picker_start(path: str) -> str:
+    """A `start_directory` in the spelling `hou.ui.selectFile` requires: forward slashes on every OS, since on Windows the documented form is `D:/temp` while `os.path.join` there hands out backslashes."""
+    return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
+
+
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
@@ -802,7 +807,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
-        start = self._prefs.cache_dir or hostos.cache_root()
+        start = _picker_start(self._prefs.cache_dir or hostos.cache_root())
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
         )
@@ -822,7 +827,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_test_path(self) -> None:
         """Pick the folder holding the test lib and cache, SEEDED on the way in: a directory with no index does not load, so an empty folder would answer with a traceback."""
-        start = self._prefs.test_dir or self._prefs.dir
+        start = _picker_start(self._prefs.test_dir or self._prefs.dir)
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
         )
@@ -869,7 +874,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         if not hou.ui.displayConfirmation(
             "This deletes all cached image and geometry thumbnails "
             "from disk. They will regenerate automatically next time "
-            "each folder is browsed. Scene captures are kept. Continue?"
+            "each folder is browsed. Scene captures are kept. Continue?",
+            suppress=hou.confirmType.NoConfirmType,   # NOT the default, which is `hou.confirmType.OverwriteFile` - Houdini's GLOBAL do-not-ask-again flag for file overwrites, so one tick of that box anywhere would let this delete every thumbnail unasked
         ):
             return
         if self._file_files_model is not None:

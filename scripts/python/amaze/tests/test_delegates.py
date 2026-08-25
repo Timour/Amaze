@@ -736,5 +736,77 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
                          "the two lines measure differently")
 
 
+class TheFontCacheTellsFontsApart(unittest.TestCase):
+    """`fonts_for` hands back a SHARED font, so two option fonts that differ in anything Qt draws by - size, weight, style, family - must land on different cache entries, or a caller paints in the font of whoever asked first. Watch the PIXEL-sized cases especially: they all answer `pointSizeF() == -1`, so nothing about their size survives into a key built from point size ▸r/font-sizing"""
+
+    def _isolated_cache(self):
+        delegates.AssetItemDelegate._font_cache.clear()
+        self.addCleanup(delegates.AssetItemDelegate._font_cache.clear)
+
+    @staticmethod
+    def _at_pixel_size(pixels):
+        font = QtGui.QFont("Source Sans 3")
+        font.setPixelSize(pixels)
+        return font
+
+    def test_two_pixel_sizes_do_not_collide(self):
+        self._isolated_cache()
+        small = delegates.AssetItemDelegate.fonts_for(
+            self._at_pixel_size(9), False)
+        large = delegates.AssetItemDelegate.fonts_for(
+            self._at_pixel_size(13), False)
+        self.assertEqual(9, small[0].pixelSize(),
+                         "the 9px caller lost its own size")
+        self.assertEqual(13, large[0].pixelSize(),
+                         "a 13px option font was served the 9px cache "
+                         "entry - every pixel font keys the same")
+        self.assertEqual(13, large[1].pixelSize(),
+                         "the sub-line was served the 9px cache entry")
+        self.assertGreater(large[2].height(), small[2].height(),
+                           "both sizes measure the same, so the tile "
+                           "lays out at the wrong height too")
+
+    def test_two_weights_do_not_collide(self):
+        """Asserted on the SUB-line: `setBold(True)` is `setWeight(Bold)` and overwrites a heavier weight outright (measured: Black 900 -> 700), so the name line cannot carry the option font's own weight and the unbolded sub-line is the only place it shows."""
+        self._isolated_cache()
+        regular = QtGui.QFont("Source Sans 3")
+        regular.setPointSizeF(12.0)
+        black = QtGui.QFont(regular)
+        black.setWeight(QtGui.QFont.Weight.Black)
+        plain = delegates.AssetItemDelegate.fonts_for(regular, False)
+        heavy = delegates.AssetItemDelegate.fonts_for(black, False)
+        self.assertEqual(QtGui.QFont.Weight.Normal, plain[1].weight())
+        self.assertEqual(QtGui.QFont.Weight.Black, heavy[1].weight(),
+                         "a Black option font was served the regular "
+                         "cache entry - the key ignores weight")
+
+    def test_italic_does_not_collide_with_upright(self):
+        self._isolated_cache()
+        upright = QtGui.QFont("Source Sans 3")
+        upright.setPointSizeF(12.0)
+        slanted = QtGui.QFont(upright)
+        slanted.setItalic(True)
+        plain = delegates.AssetItemDelegate.fonts_for(upright, False)
+        oblique = delegates.AssetItemDelegate.fonts_for(slanted, False)
+        self.assertFalse(plain[0].italic())
+        self.assertTrue(oblique[0].italic(),
+                        "an italic option font was served the upright "
+                        "cache entry - the key ignores style")
+
+    def test_it_is_still_a_CACHE(self):
+        """Telling fonts apart is worth nothing if it costs the HIT: two separately built but equal fonts must land on one entry, or every row rebuilds its fonts and metrics on every repaint while scrolling."""
+        self._isolated_cache()
+        first = delegates.AssetItemDelegate.fonts_for(
+            self._at_pixel_size(11), False)
+        second = delegates.AssetItemDelegate.fonts_for(
+            self._at_pixel_size(11), False)
+        self.assertIs(first, second, "an equal font missed the cache")
+        self.assertEqual(1, len(delegates.AssetItemDelegate._font_cache))
+        selected = delegates.AssetItemDelegate.fonts_for(
+            self._at_pixel_size(11), True)
+        self.assertIsNot(first, selected,
+                         "selection shares the unselected entry")
+
+
 if __name__ == "__main__":
     unittest.main()

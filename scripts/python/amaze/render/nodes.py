@@ -983,7 +983,8 @@ class NodeHandler:
         else:
             builder = self._import_path.createNode(builder_name)
 
-        builder.setName(mat.name, unique_name=True)
+        builder.setName(      # a display name is the artist's text and `setName` takes node names only, answering `Invalid name` for a space
+            helpers.sanitize_usd_path(mat.name), unique_name=True)
         builder.setGenericFlag(hou.nodeFlag.Material, True)
 
         self._builder_node = builder
@@ -1432,6 +1433,10 @@ class NodeHandler:
                 before = set(dest.children())
                 try:
                     dest.loadItemsFromFile(file_name)
+                except hou.LoadWarning as warning:    # BEFORE hou.Error below - it is a subclass, and this one means the load SUCCEEDED with warnings (a substituted node type, a missing texture) ▸r/node-items
+                    debug.event("import", "network load warning (non-fatal)",
+                                file=file_name, node=dest.path(),
+                                warning=str(warning)[:300])
                 except (OSError, hou.Error) as exc:
                     return (
                         False,
@@ -1488,6 +1493,10 @@ class NodeHandler:
                 pass
             cop_library.CopLibrary.load_target_in(      # ▸r/hda-wrappers
                 container, context).loadItemsFromFile(file_name)
+        except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason: the load succeeded, so destroying the container it filled throws away a rebuild that worked
+            debug.event("import", "network load warning (non-fatal)",
+                        file=file_name, node=container.path(),
+                        warning=str(warning)[:300])
         except (OSError, hou.Error) as exc:
             container.destroy()
             return (
@@ -1509,7 +1518,7 @@ class NodeHandler:
         """Save Node wrapper for different Material Types"""
         self.texture_inventory = []    # filled by the staged save paths; add_asset/update copy it onto the row
         ui = getattr(hou, "ui", None)  # both refusals below return False on their own, so a missing screen costs the SENTENCE and never the refusal ▸r/status-bar
-        if hou.getenv("OCIO") is None:
+        if not hou.getenv("OCIO"):    # not `is None`: `OCIO =` in `houdini.env` is the documented way to unset a default and it leaves the variable EXISTING and empty
             if ui is not None:
                 ui.displayMessage("Please set $OCIO first")
             return False

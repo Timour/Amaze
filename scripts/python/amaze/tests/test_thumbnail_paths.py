@@ -421,6 +421,126 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
                 scene.get_node().destroy()
 
 
+class _KarmaRopStub:
+    """Enough usdrender ROP for the per-material path to be walked with no licence and no Karma cook - `execute` is the only parm `render_karma_into` presses on it."""
+
+    def __init__(self):
+        self.pressed = []
+
+    def parm(self, name):
+        return _Parm(self.pressed, name)
+
+    def path(self):
+        return "/obj/karma_rop_stub"
+
+
+class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
+    """A Karma thumbnail borrows the artist's scene: nothing of its own on their undo stack, their selection back where it was, and the samples preference on the dial the engine it selects actually reads. ▸r/undo-groups"""
+
+    OCIO = {"display": "sRGB - Display", "view": "ACES 1.0 - SDR Video",
+            "space": "ACEScg"}
+
+    def setUp(self):
+        module = preview.thumbnail_scene    # the SUBMODULE, which karma_scene calls through: headless there is no Scene Viewer to read OCIO from and the build answers None
+        real = module.ocio_from_viewer
+        module.ocio_from_viewer = lambda: dict(self.OCIO)
+        self.addCleanup(setattr, module, "ocio_from_viewer", real)
+        self.prefs = test_support.fixture_prefs(self)
+        self.out = tempfile.mkdtemp(prefix="amaze_karma_probe_")
+        self.addCleanup(shutil.rmtree, self.out, True)
+        self.addCleanup(hou.undos.clear)
+
+    @staticmethod
+    def _drop(node):
+        with hou.undos.disabler():    # the teardown is not the thing under measurement
+            try:
+                node.destroy()
+            except hou.ObjectWasDeleted:
+                pass
+
+    def _scaffold(self):
+        scaffold = preview.build_karma_scaffold(self.prefs)
+        self.assertIsNotNone(
+            scaffold,
+            "no scaffold was built although the OCIO seam is patched - "
+            "this test can no longer see its subject")
+        self.addCleanup(self._drop, scaffold["net"])
+        scaffold["rop"] = _KarmaRopStub()    # a real `execute` would start a Karma render; every node operation around it stays real
+        return scaffold
+
+    def _material(self):
+        mat = hou.node("/mat").createNode("subnet", "AmazeKarmaProbe")
+        self.addCleanup(self._drop, mat)
+        mat.createNode("mtlxstandard_surface")
+        return mat
+
+    def test_the_two_sample_dials_belong_to_different_engines(self):
+        """The premise the samples check below rests on, asked of the node itself rather than of the manual."""
+        render_props = self._scaffold()["render_props"]
+        hides = {}
+        for name in ("samplesperpixel", "pathtracedsamples"):
+            parm = render_props.parm(name)
+            self.assertIsNotNone(
+                parm, "`karmarenderproperties` no longer carries `%s`" % name)
+            hides[name] = parm.parmTemplate().conditionals().get(
+                hou.parmCondType.HideWhen, "")
+        self.assertIn(
+            "engine != cpu", hides["samplesperpixel"],
+            "`samplesperpixel` is no longer the CPU-only dial")
+        self.assertIn(
+            "engine != xpu", hides["pathtracedsamples"],
+            "`pathtracedsamples` is no longer the XPU-only dial")
+
+    def test_the_samples_preference_reaches_the_engine_that_renders(self):
+        self.prefs.karma_rendersamples = 23    # not 9: the pref default and the parm default are both 9, so an equal pair proves nothing
+        render_props = self._scaffold()["render_props"]
+        self.assertEqual(
+            "cpu", render_props.parm("engine").eval(),
+            "the scaffold no longer selects the CPU engine, so which "
+            "samples dial it must write is no longer settled")
+        self.assertEqual(
+            23, render_props.parm("samplesperpixel").eval(),
+            "the Karma-samples preference went to the XPU dial, so on "
+            "these CPU renders it changes nothing: the artist raises "
+            "samples and the thumbnail comes back just as noisy")
+
+    def test_the_scaffold_build_adds_no_undo_entries(self):
+        hou.undos.clear()
+        self._scaffold()
+        self.assertEqual(
+            (), hou.undos.undoLabels(),
+            "building the scaffold left entries on the live undo stack, "
+            "so the artist's next Ctrl+Z undoes thumbnail scaffolding "
+            "instead of their own last edit")
+
+    def test_a_render_adds_no_undo_entries(self):
+        scaffold = self._scaffold()
+        mat = self._material()
+        hou.undos.clear()
+        preview.render_karma_into(
+            scaffold, mat, "UNDO_PROBE", os.path.join(self.out, "u.png"))
+        self.assertEqual(
+            (), hou.undos.undoLabels(),
+            "rendering one material left entries on the live undo "
+            "stack; destroying the per-material nodes does not remove "
+            "them, so one Ctrl+Z after a thumbnail is spent on noise")
+
+    def test_a_render_puts_the_selection_back(self):
+        scaffold = self._scaffold()
+        mat = self._material()
+        with hou.undos.disabler():
+            keeper = hou.node("/obj").createNode("null")
+        self.addCleanup(self._drop, keeper)
+        keeper.setSelected(True, True)
+        preview.render_karma_into(
+            scaffold, mat, "SEL_PROBE", os.path.join(self.out, "s.png"))
+        self.assertEqual(
+            [keeper], list(hou.selectedNodes()),
+            "the render ate the artist's selection: `hou.copyNodesTo` "
+            "selects the copies it makes, the copies are destroyed at "
+            "the end, and nothing puts back what was selected before")
+
+
 class _CamStub:
     """Enough node for build_cam to run with no licence and no viewer: every parm exists and accepts every set."""
 

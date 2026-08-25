@@ -141,7 +141,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     SELECTED_TEXT = QtGui.QColor("#000000")     # selection turns EVERY column black - the palette's highlightedText was not reliably dark against the amber highlight
 
     _badge_cache = {}    # rendered badge per (art, size, dpr) - every tile badge comes through here, one SVG rasterisation each for the whole app
-    _font_cache = {}     # (family, pointsize, selected) -> (name_font, rend_font, fm, fm)
+    _font_cache = {}     # (`QFont.key()`, selected) -> (name_font, rend_font, fm, fm)
 
     @classmethod
     def grid_cell_size(cls, ts, base_font):
@@ -212,7 +212,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     @classmethod
     def fonts_for(cls, option_font, selected):
         """Cached `(name_font, subtitle_font, name_metrics, subtitle_metrics)` for an option font and selection state - building fonts and metrics per row per repaint is measurable churn while scrolling, and nothing here is mutated after creation (`painter.setFont` copies), so the sidebar delegate shares the cache safely."""
-        key = (option_font.family(), option_font.pointSizeF(), selected)
+        key = (option_font.key(), selected)    # `QFont.key()` is Qt's OWN key for a font cache and carries everything the font draws by - family, point size AND pixel size, weight, style, stretch. Nothing narrower will do: `pointSizeF()` answers -1 for every PIXEL-sized font, so a key built from it reads 9px and 13px as one font and serves the second caller the first one's size ▸r/font-sizing
         cached = cls._font_cache.get(key)
         if cached is None:
             name_font = QtGui.QFont(option_font)
