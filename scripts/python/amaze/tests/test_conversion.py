@@ -1,5 +1,6 @@
 """The Conversion Engine: the DECODE/FIT split and the guard. The split: resampling while converting is a property of an image too big for Qt's allocation limit, never of a foreign format - `sips -Z` on a Radiance .hdr returns EXIT 0 and a solid black PNG, which turned 178 HDR tiles black with not one line in the log. The guard: an engine verifies its own output, an adapter is never trusted. A test for the guard would pass with the fix reverted and a test for the fix would pass with the guard removed - both are here."""
 
+import inspect
 import os
 import shutil
 import sys
@@ -866,6 +867,27 @@ class TheThumbnailEngineStoppedBeingTheConverter(unittest.TestCase):
             "ext", signature.parameters,
             "the caller still says which decoder family a file needs, "
             "from its NAME - that is the guess the engine replaced")
+
+
+class TheWatchdogNeverSignalsOnWindows(unittest.TestCase):
+    """`os.kill(pid, 0)` probes liveness on POSIX and TERMINATES on Windows, setting the exit code to the signal - so a 0 there kills the converter and reports success. ▸r/os-kill-windows"""
+
+    def test_the_source_gates_the_signal_on_the_platform(self):
+        source = inspect.getsource(conversion)
+        head = source[:source.index("os.kill(pid, 0)")]
+        gate = head.rindex("hostos.is_windows()")
+        guard = head.rindex("if (pid")
+        self.assertLess(
+            guard, gate,
+            "os.kill is reached without asking the platform first, so on "
+            "Windows the watchdog terminates the process it is checking")
+
+    def test_the_probe_is_reachable_on_posix(self):
+        """The gate must not disable the probe everywhere - POSIX is where it does real work."""
+        source = inspect.getsource(conversion)
+        self.assertIn("not hostos.is_windows()", source,
+                      "the gate reads as `is_windows()`, which would "
+                      "disable the probe on the platform that needs it")
 
 
 if __name__ == "__main__":
