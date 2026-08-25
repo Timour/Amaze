@@ -1318,6 +1318,10 @@ class NodeHandler:
             pass
         try:
             copnet.loadItemsFromFile(file_name)
+        except hou.LoadWarning as warning:    # BEFORE hou.Error below, same reason as the two sites above - and this one runs FIRST, so destroying a companion that loaded leaves the material's `op:` references pointing at nothing
+            debug.event("import", "cop companion load warning (non-fatal)",
+                        material=mat.name, node=copnet.path(),
+                        warning=str(warning)[:300])
         except (OSError, hou.Error) as exc:
             debug.event("import", "cop companion load failed",
                         material=mat.name, error=str(exc))
