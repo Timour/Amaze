@@ -1207,7 +1207,7 @@ class MatLibPanel(QtWidgets.QWidget):
             filter_icon_path = self._ui_icon_path("icon_search.svg")
             if filter_icon_path and os.path.exists(filter_icon_path):
                 icon_size = theme.ui_px(13)    # ~25px rendered magnifier, ~9px in from the box edge, at a 4px pin margin
-                pixmap = ui_helpers.render_svg_pixmap(    # QSvgRenderer straight onto a transparent pixmap - QIcon's own SVG engine produced an opaque black background here
+                pixmap = ui_helpers.render_svg_pixmap(    # through the package's one SVG rasteriser, so this icon obeys the same size and dpr rule as the rest ▸r/qicon-svg-engine
                     filter_icon_path, icon_size
                 )
                 self.filter_icon_label = QtWidgets.QLabel(self.line_filter)

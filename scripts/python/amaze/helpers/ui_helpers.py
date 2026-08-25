@@ -159,7 +159,7 @@ def render_svg_pixmap(path, size, color_replacements=None):
         for old, new in (color_replacements or {}).items():
             text = text.replace(old, new)
         painter = QtGui.QPainter(pixmap)
-        QtSvg.QSvgRenderer(QtCore.QByteArray(text.encode("utf-8"))).render(painter)   # QSvgRenderer onto our OWN transparent pixmap, never QIcon's SVG engine, whose rasteriser lays an opaque black ground even on a transparent destination ▸r/qicon-svg-engine
+        QtSvg.QSvgRenderer(QtCore.QByteArray(text.encode("utf-8"))).render(painter)   # QSvgRenderer onto our OWN transparent pixmap: ONE size, dpr and cache rule for every icon in the package - not because QIcon's engine is broken, which was measured and is not ▸r/qicon-svg-engine
         painter.end()
     _SVG_CACHE[key] = pixmap
     return pixmap.copy()

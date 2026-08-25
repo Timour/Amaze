@@ -155,7 +155,7 @@ class Categories(QtCore.QAbstractListModel):
                 changed += 1
             cleaned.append(c2)
         if changed:
-            self.beginResetModel()  # a whole-row-set replacement outside a reset pair reads out of range natively ▸r/model-contracts
+            self.beginResetModel()  # a whole-row-set replacement outside a reset pair leaves proxies and the selection describing rows that are gone ▸r/model-contracts
             try:
                 self._categories[:] = cleaned  # IN PLACE: this list aliases the connector's document; a rebind detaches it
             finally:

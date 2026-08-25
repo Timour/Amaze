@@ -146,7 +146,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def switch_model_data(self):
         """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""
-        self.beginResetModel()  # NOT bookkeeping - replacing the row set without it leaves proxies on their old count and the selection on an index into rows that are gone, which segfaults on the next repaint ▸r/model-contracts
+        self.beginResetModel()  # NOT bookkeeping - replacing the row set without it leaves proxies on their old count and the selection on an index into rows that are gone, so the next gesture acts on the wrong row ▸r/model-contracts
         try:
             self.preferences.load()
             db = database.DatabaseConnector(self.DB_FILENAME)
