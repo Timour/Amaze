@@ -30,6 +30,13 @@ AMAZE_SYNC_NO_VERIFY=1 AMAZE_SCRATCH_INSTALL="$scratch" \
     "$repo/tools/sync-install.sh" >/dev/null
 export AMAZE="$scratch"
 export HOUDINI_PACKAGE_SKIPLIST="Amaze"
+# The whole run is headless, decided HERE rather than by whichever
+# module happens to import first: the first QApplication built picks
+# the Qt platform for the process, and on the native one the host
+# style answers different fonts and geometry per widget class, so a
+# subset led by an unguarded module failed asserts in OTHER modules
+# (twice - practice.md > first-app-picks-the-platform).
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 # `;` is portable; `:` is Unix-only and on Windows swallows the whole
 # string as one entry, so `&` never expands and `$HH` leaves the path
 # (research.md - the portable HOUDINI_PATH separator).
