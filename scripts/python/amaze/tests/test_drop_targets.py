@@ -313,8 +313,8 @@ class TestTheGhostTick(DropTargetTest):
 
     def test_forbidden_drop_on_wire_skips_the_hit_test(self):
         editor = ScriptedEditor([], {})
-        stub = types.SimpleNamespace(
-            allowDropOnWireNetworkSpecific=lambda _e, _i: False)
+        stub = types.ModuleType("nodegraphprefs")    # a real module object, NOT SimpleNamespace: shiboken's import hook reads `__name__` on H21 and an AttributeError there is swallowed by the gate's own fallback, so the fake silently stopped faking ▸r/module-fakes-need-a-name
+        stub.allowDropOnWireNetworkSpecific = lambda _e, _i: False
         with mock.patch.dict(sys.modules, {"nodegraphprefs": stub}):
             found = dragengine.wire_under_cursor(
                 editor, hou.Vector2(0.0, 0.0))
