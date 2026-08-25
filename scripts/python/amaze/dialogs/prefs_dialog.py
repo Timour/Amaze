@@ -813,7 +813,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         if not path:
             return
-        self._prefs.cache_dir = hou.expandString(path).rstrip("/")
+        self._prefs.cache_dir = hou.text.expandString(path).rstrip("/")
         self._prefs.save()
         hostos.set_cache_override(self._prefs.cache_dir)
         self.line_cache.setText(self._prefs.cache_dir)
@@ -833,7 +833,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         if not path:
             return
-        folder = hou.expandString(path).rstrip("/")
+        folder = hou.text.expandString(path).rstrip("/")
         ok, what = prefs_mod.seed_test_folder(folder)
         if not ok:
             hou.ui.displayMessage(  # type: ignore

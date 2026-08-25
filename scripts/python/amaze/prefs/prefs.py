@@ -153,7 +153,7 @@ class Prefs(_Persistence):
                                      title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled
                     return False
-                self.dir = hou.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below
+                self.dir = hou.text.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below; the chooser hands back the `$HOME/...` spelling, which is what makes a path portable, so it expands here
             else:
                 debug.event("session", "library set", dir=self._directory)
                 self.save()

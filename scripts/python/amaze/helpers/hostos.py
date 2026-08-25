@@ -641,7 +641,7 @@ def storage_path_key(path: str) -> str:
     path = canonical_path_key(path)
     amaze = os.environ.get("AMAZE", "")  # a Houdini package's `env` entries land in `os.environ`, so $AMAZE resolves here without `hou`
     for var, root in (("$AMAZE", canonical_path_key(amaze) if amaze else ""),  # $AMAZE FIRST: the install lives under home on every current machine, so home-first would mean the $AMAZE spelling can never fire
-                      ("~", _home_root())):  # PYTHON's home, expanded by `expand_storage_path` and nothing else - NOT Houdini's `$HOME`, which on a stock Windows machine is Documents
+                      ("~", _home_root())):  # PYTHON's home, expanded by `expand_storage_path` and nothing else - and on Windows that is a DIFFERENT root from Houdini's `$HOME`, which defaults to Documents, so a path under Documents matches neither variable and stores as a machine-specific absolute ▸p/home-spelling-unproven
         if not root or root in ("/", "."):
             continue
         trimmed = root.rstrip("/")
