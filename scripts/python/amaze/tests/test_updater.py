@@ -140,6 +140,31 @@ class TheCheckTest(_FeedMixin):
                          "unauthenticated limit is 60 an hour")
 
 
+class TheVersionIsThreePart(unittest.TestCase):
+    """MAJOR.MINOR.PATCH from 1.0.0 on: PATCH for a fix, MINOR for a capability, MAJOR when an existing library or workflow breaks. ▸p/version-scheme"""
+
+    def test_the_app_version_has_all_three_parts(self):
+        pieces = branding.APP_VERSION.split(".")
+        self.assertEqual(
+            3, len(pieces),
+            "APP_VERSION is %r - the scheme is MAJOR.MINOR.PATCH, and a "
+            "two-part string cannot say whether a release was a fix or "
+            "a feature" % branding.APP_VERSION)
+        for piece in pieces:
+            self.assertTrue(piece.isdigit(),
+                            "%r is not a number" % piece)
+            self.assertEqual(
+                str(int(piece)), piece,
+                "%r is zero-padded - `parts()` reads it as %d, so it "
+                "compares equal to the unpadded form while looking "
+                "different" % (piece, int(piece)))
+
+    def test_the_app_version_is_at_least_the_first_release(self):
+        self.assertFalse(
+            updater.is_newer("1.0.0", branding.APP_VERSION),
+            "APP_VERSION went backwards past the first tagged release")
+
+
 class TheDownloadTest(_FeedMixin):
 
     def setUp(self):

@@ -1,20 +1,4 @@
-"""Gallery Import: Houdini .gal gallery entries -> Amaze library.
-
-A gallery entry is a node preset (parameters, channels, spare parms and
-- for subnet types - the whole child network), instantiated by
-hou.GalleryEntry.createChildNode. Every material a user built before
-Amaze lives in these files: the Material Palette's own galleries under
-$HOUDINI_USER_PREF_DIR/gallery plus whatever ships with Houdini.
-
-The import runs each entry through the SAME save funnel a hand-saved
-material takes (MaterialLibrary.add_asset), so a gallery material is
-indistinguishable from one saved by hand afterwards.
-
-Thumbnails are deliberately NOT rendered during a bulk run (hundreds of
-Karma renders would take hours): the caller restores its own
-render_on_import preference and the user renders a selection
-afterwards, which is also interruptible and resumable.
-"""
+"""Gallery Import: Houdini .gal gallery entries -> Amaze library, each run through the SAME save funnel a hand-saved material takes. ▸r/gallery-entries"""
 
 import os
 
@@ -22,16 +6,11 @@ import hou
 
 from amaze.core import debug
 
-#: Node-type categories whose entries can become library materials.
-#: Everything else in a gallery (lsystem SOP presets, for example) is
-#: reported as skipped rather than silently ignored.
-_MATERIAL_CATEGORIES = ("Vop", "Lop")
+_MATERIAL_CATEGORIES = ("Vop", "Lop")    # everything else in a gallery is reported as SKIPPED, never silently ignored ▸r/gallery-entries
 
 
 def default_gallery_dir() -> str:
-    """Where Houdini keeps the user's own galleries - the sensible
-    place to open a file dialog, since most users have never seen the
-    path."""
+    """Where Houdini keeps the user's own galleries - the sensible place to open a file dialog, since most users have never seen the path."""
     pref_dir = hou.getenv("HOUDINI_USER_PREF_DIR") or ""
     if pref_dir:
         candidate = os.path.join(pref_dir, "gallery")
@@ -42,36 +21,20 @@ def default_gallery_dir() -> str:
 
 
 def entries_from_file(gallery_path: str) -> list:
-    """Material entries from ONE .gal file, as (entry, type_name,
-    category_label).
-
-    Houdini reads galleries by PATH REGISTRATION, and a freshly
-    installed gallery is appended LAST to hou.galleries.galleries()
-    (verified on both installs) - so the file is re-registered
-    (removed first, in case it was already on the path, which also
-    makes the append position deterministic), read from the last
-    gallery object, and left registered exactly as it was found.
-    """
+    """Material entries from ONE .gal file, as (entry, type_name, category_label) - the file is left registered exactly as it was found, on every path out. ▸r/gallery-entries"""
     gallery_path = os.path.abspath(os.path.expanduser(gallery_path))
     was_installed = False
     try:
         hou.galleries.removeGallery(gallery_path)
         was_installed = True
-    except (AttributeError, hou.OperationFailed, hou.Error):
-        pass          # not previously registered - nothing to restore
+    except (AttributeError, hou.Error):
+        pass          # not previously registered - nothing to restore; `hou.OperationFailed` is a SUBCLASS of hou.Error and naming it added nothing ▸r/gallery-entries
     try:
         hou.galleries.installGallery(gallery_path)
     except (AttributeError, hou.Error) as exc:
         debug.event("gallery", "install failed",
                     file=gallery_path, error=str(exc))
-        # PUT IT BACK. removeGallery above already succeeded, so
-        # returning here left a gallery the user HAD registered off
-        # their path for the rest of the Houdini session - from a
-        # browse operation whose docstring promises to leave it
-        # "registered exactly as it was found". The restoring finally
-        # below is never entered on this path, and only covers the
-        # opposite case anyway.
-        if was_installed:
+        if was_installed:    # PUT IT BACK: removeGallery already succeeded, and the finally below never runs on this path ▸r/gallery-entries
             try:
                 hou.galleries.installGallery(gallery_path)
             except (AttributeError, hou.Error) as restore_exc:
@@ -95,8 +58,7 @@ def entries_from_file(gallery_path: str) -> list:
         return found
     finally:
         if not was_installed:
-            # Leave the user's gallery path as it was found.
-            try:
+            try:    # leave the user's gallery path as it was found
                 hou.galleries.removeGallery(gallery_path)
             except (AttributeError, hou.Error):
                 pass
@@ -110,10 +72,7 @@ def _best_type(entry):
 
 
 def _category_of(entry) -> str:
-    """The Amaze category for an entry: the LAST component of its own
-    gallery category ("Redshift/Materials/Fabric" -> "Fabric"), which
-    is how the palette already organised them. "Gallery" when an entry
-    carries none."""
+    """The Amaze category for an entry: the LAST component of its own gallery category, as the palette already organised them, or `Gallery` when it carries none."""
     try:
         cats = entry.categories()
     except hou.Error:
@@ -127,22 +86,11 @@ def _category_of(entry) -> str:
 
 def import_entries(model, entries, staging_parent=None,
                    progress=None) -> dict:
-    """Import (entry, type_name, category) tuples into `model` (a
-    MaterialLibrary). Returns a summary dict.
-
-    Each entry is instantiated in a throwaway staging network, saved
-    through model.add_asset, then destroyed - the scene is left exactly
-    as it was found. Undo is disabled for the whole run: nothing
-    user-visible remains to undo, and hundreds of node creations would
-    otherwise bury the user's own undo history.
-    """
+    """Import (entry, type_name, category) tuples into `model`, returning a summary dict - staged in a throwaway network, undo disabled for the whole run. ▸r/gallery-entries"""
     summary = {"imported": 0, "skipped": 0, "failed": 0, "categories": {}}
     if model is None or not entries:
         return summary
-    # The container joins the disabler below at BOTH ends: created or
-    # destroyed on the live stack, one Ctrl+Z resurrects it (#278) -
-    # this pair sat just outside the block the docstring promises.
-    with hou.undos.disabler():
+    with hou.undos.disabler():    # the container joins the disabler at BOTH ends, or one Ctrl+Z resurrects it ▸r/undo-groups
         parent = staging_parent or hou.node("/obj").createNode("matnet")
     owns_parent = staging_parent is None
     try:
@@ -157,17 +105,10 @@ def import_entries(model, entries, staging_parent=None,
                         debug.event("gallery", "entry not instantiable",
                                     entry=entry.name(), type=type_name)
                         continue
-                    node = entry.createChildNode(parent)
-                    if node is None:
-                        summary["skipped"] += 1
-                        continue
+                    node = entry.createChildNode(parent)    # documented `-> Node` and measured so on 25 real entries: it returns a node or RAISES, never None ▸r/gallery-entries
                     node.setGenericFlag(hou.nodeFlag.Material, True)
                     if not model.add_asset(node, category, "gallery", False):
-                        # "" is the refused-save answer. The summary
-                        # this returns is the only thing the user reads
-                        # after a gallery import, so a refused entry
-                        # has to land in failed, not in imported.
-                        summary["failed"] += 1
+                        summary["failed"] += 1    # a refused save lands in failed, never imported: the summary is all the user reads after a bulk run ▸r/gallery-entries
                         debug.event("gallery", "entry was not saved",
                                     entry=entry.name(), type=type_name)
                         continue
@@ -175,7 +116,7 @@ def import_entries(model, entries, staging_parent=None,
                     summary["categories"][category] = summary[
                         "categories"
                     ].get(category, 0) + 1
-                except hou.Error as exc:
+                except (AttributeError, hou.Error) as exc:    # AttributeError too: if a build ever DID hand back None, one entry fails instead of the whole run aborting ▸r/gallery-entries
                     summary["failed"] += 1
                     debug.event("gallery", "entry import failed",
                                 entry=entry.name(), type=type_name,

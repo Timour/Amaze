@@ -798,6 +798,36 @@ class AGalleryIsLeftAsItWasFound(unittest.TestCase):
             before_finally.count("installGallery"), 2,
             "nothing re-installs it on the failure path")
 
+    def test_OperationFailed_really_is_covered_by_hou_Error(self):
+        """The premise for dropping it from the except tuple - if Houdini ever unhooks the two, the narrowed clause stops catching it. ▸r/gallery-entries"""
+        self.assertTrue(
+            issubclass(hou.OperationFailed, hou.Error),
+            "hou.OperationFailed is no longer a hou.Error, so the "
+            "removeGallery clause silently stopped catching it")
+
+    def _function_source(self, relative, name):
+        """The source of ONE function - a whole-file grep matches an identical clause on another path and proves nothing."""
+        body = source_of(relative)
+        lines = body.splitlines()
+        for node in ast.walk(ast.parse(body)):
+            if isinstance(node, ast.FunctionDef) and node.name == name:
+                return "\n".join(lines[node.lineno - 1:node.end_lineno])
+        self.fail("%s has no %s" % (relative, name))
+
+    def test_the_unreachable_None_check_is_gone_but_the_guard_widened(self):
+        """`createChildNode` is documented `-> Node` and returns one or raises, so the None branch was dead - deleting it must not let an undocumented None abort the whole run. ▸r/gallery-entries"""
+        target = self._function_source(
+            "core/gallery_import.py", "import_entries")
+        self.assertNotIn(
+            "if node is None:", target,
+            "the unreachable branch is back - createChildNode returns a "
+            "node or raises, so nothing reaches it")
+        self.assertIn(
+            "except (AttributeError, hou.Error) as exc:", target,
+            "import_entries no longer catches AttributeError per entry, "
+            "so a None from createChildNode would abort the whole "
+            "import instead of failing one entry")
+
 
 class OneTooltipEngine(unittest.TestCase):
 
