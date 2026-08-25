@@ -130,15 +130,21 @@ def tooltip_text(text: str, max_px: int = 800) -> str:
     """A tooltip that never draws wider than `max_px` REAL screen pixels - Qt renders a PLAIN-text tooltip as one line however long, and a width-capped table is the one rich-text width control QTextDocument honours; the cap is in DEVICE pixels, a ruler on a screenshot."""
     from PySide6 import QtWidgets as _QtWidgets
 
+    import html
+
     cap = max(1, int(max_px / _screen_dpr()))
     metrics = QtGui.QFontMetrics(_QtWidgets.QToolTip.font())
     if metrics.horizontalAdvance(text) <= cap:
-        return text
-    import html
+        return html.escape(text) if _might_be_rich(text) else text    # Qt AUTO-DETECTS rich text, so remote catalogue text renders as markup unless this branch escapes too ▸r/tooltip-autodetect
 
     body = html.escape(text).replace("\n", "<br>")   # rich text eats newlines, and the multi-paragraph tooltips keep their breaks or become one undifferentiated wall
     return '<qt><table width="%d"><tr><td>%s</td></tr></table></qt>' % (
         cap, body)
+
+
+def _might_be_rich(text: str) -> bool:
+    """Whether Qt would treat `text` as rich rather than plain. ▸r/tooltip-autodetect"""
+    return QtGui.Qt.mightBeRichText(str(text or ""))
 
 
 _SVG_CACHE: dict = globals().get("_SVG_CACHE", {})   # rasterised SVGs keyed by (path, size, tint), read back out of `globals()` because panel.py reloads this module on every panel open and a plain literal would throw the cache away exactly when a reopen is paying for it

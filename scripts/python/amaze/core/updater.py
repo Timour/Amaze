@@ -1,16 +1,6 @@
-"""Is there a newer Amaze, and can this one become it?
+"""Is there a newer Amaze, and can this one become it? Asked only when the user asks - nothing here is fetched at launch and nothing polls. ▸p/updater-shape ▸r/tls-http"""
 
-Never runs by itself: the shelf tool, the About tab and the
-format-ahead refusal all ask. Nothing is fetched at launch.
-
-Four facts this rests on are measured, not assumed
-(research.md > TLS & HTTP under Houdini): Houdini's Python has no CA
-chain so every https request fails without certifi, the verification
-error subclasses the generic one so no downgrade may key on it, a
-truncated body does NOT raise, and contexts are expensive so there is
-exactly one - `matx_sources._ssl_context`.
-"""
-
+import hashlib
 import json
 import os
 import shutil
@@ -20,20 +10,9 @@ import urllib.request
 from amaze import branding
 from amaze.core import debug
 
-#: The release feed. The repo is public, so this is unauthenticated and
-#: rate-limited per IP; a check the user asked for costs one call.
-RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"
+RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP; no timeout or user-agent constants belong beside it ▸p/updater-shape
 
-#: NO TIMEOUT OR USER-AGENT HERE. Every request goes out through
-#: `matx_sources._request`, which applies its own; the two constants
-#: that used to sit here were read by nothing, so the 20 seconds they
-#: named was never the budget that ran and editing them changed
-#: nothing. If a user-initiated check should have a shorter budget
-#: than a texture download, that is an argument to _request, not a
-#: second pair of constants beside it.
-
-#: Verdicts `check` can answer with.
-UP_TO_DATE = "up-to-date"
+UP_TO_DATE = "up-to-date"    # the verdicts `check` can answer with
 NEWER = "newer"
 NO_RELEASE = "no-release"
 UNREACHABLE = "unreachable"
@@ -42,11 +21,14 @@ UNREACHABLE = "unreachable"
 class Update:
     """One verdict, with everything a caller needs to act or explain."""
 
-    def __init__(self, verdict, version="", url="", sentence=""):
+    def __init__(self, verdict, version="", url="", sentence="",
+                 digest="", size=0):
         self.verdict = verdict
         self.version = version
         self.url = url
         self.sentence = sentence
+        self.digest = digest    # `sha256:<hex>` when an UPLOADED asset was chosen; "" for the generated zipball, which GitHub publishes no digest for ▸r/release-digest
+        self.size = size        # the asset's declared byte count, 0 when unknown
 
     def __bool__(self):
         return self.verdict == NEWER
@@ -76,13 +58,7 @@ def is_newer(candidate: str, current: str) -> bool:
 
 
 def _open(url):
-    """THE package's single `urlopen`, not a second one.
-
-    `fixture_panel` blocks `matx_sources._request` to keep the suite
-    off the network (practice.md), so a private door here would be
-    unblocked - a constructed panel could reach GitHub from a test.
-    It also inherits the verified context and the no-downgrade rule.
-    """
+    """THE package's single `urlopen`, not a second one - a private door here would be unblocked in the suite. ▸p/updater-shape"""
     from amaze.core import matx_sources
     return matx_sources._request(url)
 
@@ -94,9 +70,7 @@ def check(current: str = "") -> Update:
         with _open(RELEASES_URL) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            # NOT an error: the repo is public and simply has no
-            # tagged release yet, which is true until 1.0 ships.
+        if exc.code == 404:    # NOT an error: the repo is public and simply has no tagged release yet
             return Update(NO_RELEASE, sentence=(
                 "No release has been published yet, so there is nothing "
                 "to update to. You are running %s." % current))
@@ -109,20 +83,19 @@ def check(current: str = "") -> Update:
         return Update(NO_RELEASE, sentence=(
             "The newest release did not say which version it is, so it "
             "cannot be compared with the %s you are running." % current))
-    # AN UPLOADED ZIP IF THERE IS ONE, ELSE THE SOURCE ARCHIVE GitHub
-    # generates for every tag. Measured: `assets` is empty on plenty of
-    # real releases, so looking only there offers an update with no
-    # download (research.md > GitHub's release feed).
-    url = ""
+    url, digest, size = "", "", 0    # an uploaded zip if there is one - it is the only kind carrying a digest - else the archive GitHub generates ▸r/release-digest
     for asset in payload.get("assets") or []:
         if str(asset.get("name") or "").endswith(".zip"):
             url = str(asset.get("browser_download_url") or "")
+            digest = str(asset.get("digest") or "")
+            size = int(asset.get("size") or 0)
             break
     url = url or str(payload.get("zipball_url") or "")
     if not is_newer(tag, current):
         return Update(UP_TO_DATE, version=tag, sentence=(
             "You are running %s, which is the newest release." % current))
-    return Update(NEWER, version=tag, url=url, sentence=(
+    return Update(NEWER, version=tag, url=url, digest=digest, size=size,
+                  sentence=(
         "Amaze %s is available. You are running %s." % (tag, current)))
 
 
@@ -133,19 +106,41 @@ def _unreachable_sentence(exc) -> str:
             "again; nothing has been changed.")
 
 
-def download(url: str, into: str) -> str:
-    """Stream a release to `into`, returning the file written.
+MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024    # what a release may weigh on the wire, and below once unpacked - the tracked tree is ~41MB, so both are headroom, not a budget ▸r/release-digest
+MAX_UNPACKED_BYTES = 512 * 1024 * 1024
 
-    Two guards, neither covering the other's half. A short body ends
-    the read loop normally (research.md), so only the length check
-    sees it; a transfer that RAISES reaches no check at all, so the
-    bytes land on a scratch and promote only on a completed block.
-    A missing Content-Length is UNKNOWN, never zero.
-    """
+
+def _verify_digest(path: str, digest: str) -> None:
+    """Refuse `path` unless it hashes to `digest` (`sha256:<hex>`) - an absent or unknown algorithm REFUSES rather than passing. ▸r/release-digest"""
+    algorithm, _, expected = str(digest or "").partition(":")
+    if not expected:
+        raise OSError(
+            "the release did not say what the download should hash to, so "
+            "it cannot be verified. Nothing has been changed.")
+    try:
+        hasher = hashlib.new(algorithm)
+    except (ValueError, TypeError):
+        raise OSError(
+            "the release names a checksum this Amaze cannot compute (%s). "
+            "Nothing has been changed." % algorithm)
+    with open(path, "rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(block)
+    actual = hasher.hexdigest()
+    if actual != expected.strip().lower():
+        raise OSError(
+            "the download does not match the checksum the release "
+            "published, so it is not the file that was released. Nothing "
+            "has been changed.")
+
+
+def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
+    """Stream a release to `into`, returning the file written - raises OSError with a finished sentence on any of short, empty, oversized, wrong-sized or wrong-hashed, and promotes nothing unless all pass. ▸r/release-digest ▸p/updater-shape"""
     from amaze.helpers import hostos
 
     os.makedirs(into, exist_ok=True)
     target = os.path.join(into, "amaze-update.zip")
+    ceiling = min(size, MAX_DOWNLOAD_BYTES) if size else MAX_DOWNLOAD_BYTES
     read = 0
     with hostos.scratch_beside(target) as scratch:
         with _open(url) as response:
@@ -157,6 +152,11 @@ def download(url: str, into: str) -> str:
                         break
                     handle.write(chunk)
                     read += len(chunk)
+                    if read > ceiling:
+                        raise OSError(
+                            "the download is larger than a release should "
+                            "be (over %d bytes). Nothing has been changed."
+                            % ceiling)
         if declared is not None and read != int(declared):
             raise OSError(
                 "the download stopped early - %d bytes of %s. Nothing has "
@@ -164,43 +164,27 @@ def download(url: str, into: str) -> str:
         if not read:
             raise OSError(
                 "the download was empty. Nothing has been changed.")
+        if size and read != size:
+            raise OSError(
+                "the download is %d bytes but the release said %d, so it "
+                "is not the file that was released. Nothing has been "
+                "changed." % (read, size))
+        if digest:
+            _verify_digest(scratch, digest)
     return target
 
 
-#: What the INSTALL holds, and therefore what a staged update must
-#: contain. A release zip is the whole repo - docs, tools, LICENSE,
-#: README - and the install is these four entries of it, the same four
-#: `tools/sync-install.sh` places. Renaming the archive's own top-level
-#: folder into place would put the repo where the install goes.
-#:
-#: Stated here in Python and there in shell; `test_updater` reads the
-#: shell script and fails when the two drift.
-INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")
+INSTALL_ENTRIES = ("scripts", "python_panels", "toolbar", "OPmenu.xml")    # what the INSTALL holds, so what a staged update must contain - stated again in `tools/sync-install.sh`, and `test_updater` fails when the two drift ▸p/updater-shape
 
 
 def _archive_root(names) -> str:
-    """The single top-level folder a GitHub zipball wraps everything in
-    (`<owner>-<repo>-<sha>/`), or "" when the archive is already flat.
-
-    Read from the member names rather than assumed, because a zip
-    somebody attached to the release by hand may have either shape.
-    """
+    """The single top-level folder a zipball wraps everything in, or "" when the archive is flat - read from the members, since a hand-attached zip may be either. ▸p/updater-shape"""
     tops = {name.split("/", 1)[0] for name in names if name.strip("/")}
     return tops.pop() if len(tops) == 1 else ""
 
 
 def stage_release(archive: str, into: str) -> str:
-    """Extract `archive` and build the directory `apply_update` swaps in.
-
-    Returns the staged path. Raises OSError naming what is wrong when
-    the archive is not an Amaze release, so the caller has a sentence
-    to show rather than a traceback.
-
-    MEMBERS ARE CONTAINED. This is a file fetched from a URL a remote
-    catalogue named, so a member called `../../../.bashrc` would
-    otherwise be written wherever it points - the same rule the online
-    import path already follows through `hostos.contained_join`.
-    """
+    """Extract `archive` and build the directory `apply_update` swaps in, returning the staged path - members are contained and the expanded size is capped before anything is written. ▸p/updater-shape ▸r/release-digest"""
     import zipfile
 
     from amaze.helpers import hostos
@@ -214,9 +198,13 @@ def stage_release(archive: str, into: str) -> str:
         with zipfile.ZipFile(archive) as bundle:
             names = bundle.namelist()
             for name in names:
-                # Refused rather than skipped: a release that cannot be
-                # unpacked whole is not one to install half of.
-                hostos.contained_join(unpacked, name)
+                hostos.contained_join(unpacked, name)    # refused rather than skipped: a release that cannot be unpacked whole is not one to install half of
+            expanded = sum(info.file_size for info in bundle.infolist())
+            if expanded > MAX_UNPACKED_BYTES:    # the header's own claim, read BEFORE extracting - a few compressed MB can declare gigabytes ▸r/release-digest
+                raise OSError(
+                    "the release archive unpacks to more than a release "
+                    "should (%d bytes). Nothing has been changed."
+                    % expanded)
             bundle.extractall(unpacked)
     except zipfile.BadZipFile as exc:
         shutil.rmtree(unpacked, ignore_errors=True)
@@ -253,20 +241,13 @@ def stage_release(archive: str, into: str) -> str:
     return into
 
 
-def fetch_and_stage(url: str, workspace: str) -> str:
-    """Download a release and stage it, in one call.
-
-    The two halves shipped with nothing between them for months - a zip
-    on one side, a function demanding a directory on the other - which
-    is how a flow with no entry point survived: nothing ever tried to
-    run it end to end.
-    """
-    archive = download(url, workspace)
+def fetch_and_stage(url: str, workspace: str,
+                    digest: str = "", size: int = 0) -> str:
+    """Download a release and stage it, in one call - `digest` and `size` are the feed's, carried on the `Update`, and skipping them leaves the download unverified. ▸r/release-digest"""
+    archive = download(url, workspace, digest=digest, size=size)
     try:
         return stage_release(archive, os.path.join(workspace, "staged"))
-    finally:
-        # The archive is a means, not a result; keeping it would leave a
-        # zip the size of the repo in the cache after every update.
+    finally:    # the archive is a means, not a result - keeping it leaves a repo-sized zip in the cache after every update
         try:
             os.remove(archive)
         except OSError:
@@ -274,13 +255,7 @@ def fetch_and_stage(url: str, workspace: str) -> str:
 
 
 def apply_update(staged: str, install: str) -> str:
-    """Put `staged` where `install` is, keeping the old one as .backup.
-
-    The previous install is MOVED aside rather than deleted, so a bad
-    release is undone by moving it back. Houdini caches modules per
-    session, so nothing here takes effect until a restart - the caller
-    says so.
-    """
+    """Put `staged` where `install` is, keeping the old one as `.backup` so a bad release is undone by moving it back - nothing takes effect until Houdini restarts, and the caller says so."""
     if not os.path.isdir(staged):
         raise OSError("the staged update is not there: %s" % staged)
     backup = install.rstrip("/\\") + ".backup"
@@ -290,10 +265,7 @@ def apply_update(staged: str, install: str) -> str:
     try:
         os.rename(staged, install)
     except OSError:
-        # PUT IT BACK. The window between the two renames is the only
-        # moment this is not whole, and leaving it open would cost the
-        # user a working install for a failed update.
-        os.rename(backup, install)
+        os.rename(backup, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
         raise
     debug.event("updater", "update applied", install=install, backup=backup)
     return backup

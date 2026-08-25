@@ -934,7 +934,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
-            staged = updater.fetch_and_stage(result.url, workspace)
+            staged = updater.fetch_and_stage(
+                result.url, workspace,
+                digest=getattr(result, "digest", ""),
+                size=getattr(result, "size", 0))
             backup = updater.apply_update(staged, install)
         except OSError as exc:
             self._lbl_update.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one

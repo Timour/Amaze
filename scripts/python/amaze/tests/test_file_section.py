@@ -1670,6 +1670,35 @@ class TooltipWidthTest(unittest.TestCase):
         self.assertEqual("Short and sweet",
                          ui_helpers.tooltip_text("Short and sweet"))
 
+    def test_markup_in_a_SHORT_tooltip_draws_as_text_not_as_html(self):
+        """A catalogue entry's title is remote text, and Qt auto-detects rich text - so a short one used to reach the tooltip as live markup. ▸r/tooltip-autodetect"""
+        from PySide6 import QtGui
+        from amaze.helpers import ui_helpers
+        hostile = '<img src="http://evil.invalid/beacon.png">'
+        out = ui_helpers.tooltip_text(hostile)
+
+        document = QtGui.QTextDocument()
+        document.setHtml(out)
+        self.assertEqual(
+            hostile, document.toPlainText(),
+            "the tooltip renders the catalogue's markup instead of "
+            "showing it, so an <img> reaches a URL the catalogue chose")
+
+    def test_arithmetic_in_a_tooltip_is_left_alone(self):
+        """Escaping everything would turn `5 < 6` into `5 &lt; 6` on screen; Qt reads it as plain, so it must pass through."""
+        from amaze.helpers import ui_helpers
+        self.assertEqual("5 < 6 and 7 > 2",
+                         ui_helpers.tooltip_text("5 < 6 and 7 > 2"))
+
+    def test_a_catalogue_record_s_tooltip_is_escaped(self):
+        """The real sink: title, author and licence all come off the wire. ▸r/tooltip-autodetect"""
+        from PySide6 import QtGui
+        from amaze.helpers import ui_helpers
+        record = "\n".join(["<b>Free</b> Brick", "by <i>nobody</i>", "CC0"])
+        document = QtGui.QTextDocument()
+        document.setHtml(ui_helpers.tooltip_text(record))
+        self.assertIn("<b>Free</b> Brick", document.toPlainText())
+
     def test_a_long_tooltip_becomes_a_width_capped_table(self):
         from amaze.helpers import ui_helpers
         self._with_dpr(1.0)
