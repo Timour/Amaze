@@ -37,7 +37,7 @@ Save a material and get a real rendered thumbnail back. Drop a texture onto a pa
 ## Requirements
 
 - Houdini **21.0+** (developed and tested on 21.0 and 22.0, macOS/Apple Silicon; theme-following requires 22)
-- Renderers: **Redshift** and **Karma/MaterialX** are the primary targets; **Octane** supported. Mantra is not supported — SideFX is retiring it in favour of Karma
+- Renderers: **Redshift** and **Karma/MaterialX** are the primary targets; **Octane** supported.
 - `$OCIO` must be set for material saves (thumbnail rendering)
 - Python 3, unrestricted Houdini licensing (Commercial/Indie)
 - Linux/Windows: nothing intentionally platform-specific beyond the texture-thumbnail fast path (which falls back automatically), but untested
