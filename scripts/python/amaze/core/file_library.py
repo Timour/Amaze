@@ -48,7 +48,7 @@ def houdini_path(path: str, style: str = "home") -> str:
         return path
     var = _STYLE_VARS.get(style, "$HOME")
     try:
-        expanded = hostos.canonical_path_key(hou.expandString(var))
+        expanded = hostos.canonical_path_key(hou.text.expandString(var))
     except Exception:                                    # noqa: BLE001
         return path
     if not expanded or expanded in ("/", "."):
@@ -393,7 +393,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         import hou
 
         thumbnails.engine.configure_convert(
-            hou.expandString("$HFS"),
+            hou.text.expandString("$HFS"),
             self.preferences.texture_parallel_conversions,
         )
 

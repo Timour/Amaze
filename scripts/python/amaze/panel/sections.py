@@ -935,7 +935,7 @@ class CodeSection(AssetSection):
             description=asset.description,
             title="Edit Snippet",
         )
-        dialog.exec_()
+        dialog.exec()
         if dialog.canceled:
             return
         if dialog.category:

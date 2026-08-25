@@ -410,14 +410,14 @@ class ClickSlider(QtWidgets.QSlider):
     def mousePressEvent(self, e: QtGui.QMouseEvent):
         if e.button() == QtCore.Qt.LeftButton:
             e.accept()
-            self._apply_mouse_value(e.pos().x())
+            self._apply_mouse_value(e.position().toPoint().x())   # ROUNDED, not the raw QPointF: `_snap` turns x into a whole slider value, and handing it the sub-pixel float moves which mark a click at a magnet-zone edge lands on
         else:
             return super().mousePressEvent(e)
 
     @debug.guarded("ClickSlider.mouseMoveEvent")
     def mouseMoveEvent(self, ev: QtGui.QMouseEvent) -> None:
         ev.accept()
-        self._apply_mouse_value(ev.pos().x())
+        self._apply_mouse_value(ev.position().toPoint().x())   # the press path's rounding, so a click and a drag to the same pixel still settle on the same value
 
 
 class ThinProgressBar(QtWidgets.QWidget):
@@ -468,6 +468,11 @@ class GridHeaderView(QtWidgets.QHeaderView):
             QtWidgets.QStyle.PixelMetric.PM_HeaderMargin, option, self)
         return QtCore.QSize(
             max(size.width() - size.height() - margin, 1), size.height())
+
+
+def _event_point(event) -> QtCore.QPointF:
+    """A mouse event's widget-local position for a QRectF hit test - the QPointF that Qt 6's deprecated `pos()` produced, ROUNDED to whole pixels, so a chip answers a cursor exactly where it always did."""
+    return QtCore.QPointF(event.position().toPoint())   # `toPoint` rounds half AWAY FROM ZERO, which is exactly what `pos()` returned; passing the raw sub-pixel `position()` through instead flips a hit at a chip edge, and `int()` truncates rather than rounds
 
 
 class SectionTabBar(QtWidgets.QWidget):
@@ -576,20 +581,21 @@ class SectionTabBar(QtWidgets.QWidget):
     def mousePressEvent(self, event: QtGui.QMouseEvent) -> None:
         if event.button() != QtCore.Qt.MouseButton.LeftButton:
             return
+        point = _event_point(event)
         cancel = self._cancel_rect()
-        if cancel is not None and cancel.contains(QtCore.QPointF(event.pos())):
+        if cancel is not None and cancel.contains(point):
             self.cancelClicked.emit()
             return
-        key = self._key_at(event.pos())
+        key = self._key_at(point)
         if key is not None:
             self.setChecked(key)
 
     @debug.guarded("SectionTabBar.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
-        key = self._key_at(event.pos())
+        point = _event_point(event)
+        key = self._key_at(point)
         cancel = self._cancel_rect()
-        over_cancel = (cancel is not None
-                       and cancel.contains(QtCore.QPointF(event.pos())))
+        over_cancel = cancel is not None and cancel.contains(point)
         if key != self._hover_key or over_cancel != self._cancel_hover:
             self._hover_key = key
             self._cancel_hover = over_cancel

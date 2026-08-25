@@ -110,15 +110,16 @@ class GridGestureMixin:
             getattr(panel, "current_section", None) if panel is not None else None
         )
         online = bool(panel is not None and panel._is_online())    # an online row is a catalogue entry with no node and no file, and arming here drags whichever LOCAL asset sits at that row
+        point = event.position().toPoint()    # WHOLE PIXELS, converted once and kept: `position()` answers a QPointF, while `indexAt`, the stored start point and the threshold in `mouseMoveEvent` are all integer geometry - a QPointF reaching them makes the drag arm at a different distance
         if (
             event.button() == QtCore.Qt.MouseButton.LeftButton
             and not online
             and section in self.ARMED_SECTIONS
-            and self.indexAt(event.pos()).isValid()    # only over a real item: empty grid space armed a ghost drag whose invalid index reached the release handlers
+            and self.indexAt(point).isValid()    # only over a real item: empty grid space armed a ghost drag whose invalid index reached the release handlers
         ):
-            self._drag_start = event.pos()
+            self._drag_start = point
             self._drag_section = section
-            self._drag_index = self.indexAt(event.pos()).siblingAtColumn(0)    # THE ROW, not the pressed cell: in list mode a cell >= 1 answers None for KindRole/PathRole ▸r/row-selection
+            self._drag_index = self.indexAt(point).siblingAtColumn(0)    # THE ROW, not the pressed cell: in list mode a cell >= 1 answers None for KindRole/PathRole ▸r/row-selection
             self._drag_panel = panel
         else:
             self._drag_start = None
@@ -131,7 +132,8 @@ class GridGestureMixin:
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """The gesture stays in our hands so WE resolve the target at release; a File row crossing a Parameters pane hands off to a real QDrag, because only mime fills a field. Never call super() during the gesture, even before the threshold - that lets the view fall back to rubber-band selection. ▸r/pick-boundary"""
         if self._drag_start is not None:
-            moved = (event.pos() - self._drag_start).manhattanLength()
+            moved = (event.position().toPoint()
+                     - self._drag_start).manhattanLength()
             if not self._dragging and moved >= (
                 QtWidgets.QApplication.startDragDistance()
             ):

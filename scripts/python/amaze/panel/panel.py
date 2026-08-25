@@ -1584,7 +1584,8 @@ class MatLibPanel(QtWidgets.QWidget):
         path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
         if not path:
             return
-        rewritten = folders_model.relocate_folder(row, hou.expandString(path))    # the model rewrites its favorites onto the new path so they survive the move; a negative answer means the location is not a folder
+        rewritten = folders_model.relocate_folder(
+            row, hou.text.expandString(path))    # the model rewrites its favorites onto the new path so they survive the move; a negative answer means the location is not a folder
         if rewritten < 0:
             if ui is not None:
                 ui.displayMessage(
@@ -1654,7 +1655,7 @@ class MatLibPanel(QtWidgets.QWidget):
     def ask_category_name(self, title: str):
         """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""
         dialog = gradient_dialog.CategoryDialog(title)
-        dialog.exec_()
+        dialog.exec()
         if dialog.canceled:
             return None
         return dialog.name or ""    # "" is a real answer: File's Label clears a location's custom label back to the path with it, so folding it into Cancel would make Cancel wipe the label
@@ -2115,7 +2116,7 @@ class MatLibPanel(QtWidgets.QWidget):
         path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
         if not path:
             return
-        self.file_folders_model.add_folder(hou.expandString(path))
+        self.file_folders_model.add_folder(hou.text.expandString(path))
 
     def remove_file_folder_user(self) -> None:
         """Unregister the selected folder pointer(s). Only removes the pointer from the list - never touches anything on disk."""
@@ -2818,7 +2819,7 @@ class MatLibPanel(QtWidgets.QWidget):
             category=self._current_code_category(),
             code=code,
         )
-        dialog.exec_()
+        dialog.exec()
         if dialog.canceled:
             return
         if dialog.category:
@@ -2942,7 +2943,7 @@ class MatLibPanel(QtWidgets.QWidget):
         dialog = save_dialog.SaveDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
             self.get_cop_category_names(), current_cat, name=node.name()
         )
-        r = dialog.exec_()
+        r = dialog.exec()
         if dialog.canceled or not r:
             return
         if dialog.categories:
@@ -3262,7 +3263,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 cmenu.addSeparator()
             actions[cmenu.addAction(label)] = (kind, payload)
             previous_kind = kind
-        chosen = cmenu.exec_(QtGui.QCursor.pos())
+        chosen = cmenu.exec(QtGui.QCursor.pos())    # `QCursor.pos()` is a static screen-coordinate read, not the deprecated mouse-event `pos()`
         cmenu.deleteLater()    # a QMenu parented to the panel outlives the gesture and the panel outlives the session - the same measured leak `grid._open` pays a deleteLater() for. The choice is read out FIRST because the dict is keyed by the menu's own QActions
         if chosen is None:
             return False    # menu dismissed, so nothing happens and no outcome icon either way: the dispatcher reports "menu" for this whole path, the menu itself having been the feedback
@@ -3482,7 +3483,7 @@ class MatLibPanel(QtWidgets.QWidget):
         dialog = gradient_dialog.GradientDialog(
             self.gradient_model.user_categories(), default_name=node.name()
         )
-        dialog.exec_()
+        dialog.exec()
         if dialog.canceled:
             return
         self.gradient_model.add_user_gradient(
@@ -4148,7 +4149,7 @@ class MatLibPanel(QtWidgets.QWidget):
         current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 
         dialog = save_dialog.SaveDialog(cats, current_cat)
-        r = dialog.exec_()
+        r = dialog.exec()
 
         debug.event(
             "save", "save dialog closed",
