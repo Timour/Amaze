@@ -12,7 +12,7 @@ Materials, colour palettes, node setups, code, and the files on your disk — im
 Save a material and get a real rendered thumbnail back. Drop a texture onto a parameter like it came from Finder. Pull a free material from PolyHaven without ever leaving Houdini. Lift a colour straight out of a Josef Albers study or a Sanzo Wada plate. Keep the wrangle you keep rewriting. Assign a shader by dragging it onto the object in your viewport — done.
 
 
-[![Interface](scripts/python/amaze/res/img/assetlib_ui.png)](scripts/python/amaze/res/img/assetlib_ui.png)
+[![Interface](scripts/python/amaze/res/img/assetlib_ui.png)](scripts/python/amaze/res/img/interface.png)
 
 **→ [Read the manual](MANUAL.md)** — every function, section by section.
 
