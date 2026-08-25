@@ -60,9 +60,6 @@ Save a material and get a real rendered thumbnail back. Drop a texture onto a pa
 }
 ```
 
-(Older installs that define `ASSETLIB` instead keep working — the plugin
-accepts either name.)
-
 3. Launch Houdini and add an **Amaze** pane tab (New Pane Tab Type → Misc → Amaze). Your preferences are stored in the OS preferences folder (`~/Library/Preferences/Amaze`, `%APPDATA%\Amaze`, `$XDG_CONFIG_HOME/Amaze`), never inside this repo — so updating with `git pull` can never clobber them.
 4. First launch asks you to pick a library folder — that's where your saved assets live (keep it outside the plugin folder; changeable later in Preferences).
 

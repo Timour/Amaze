@@ -1,27 +1,4 @@
-"""The gate: no module may USE a sibling module it never imported.
-
-2026-08-02. Three model modules did `from amaze.helpers import helpers`
-and then called `ui_helpers.tooltip_text(...)` - a rename that moved the
-CALL SITES and left the import lines behind. Every one of them compiles
-perfectly and raises `NameError` only when the line actually runs, which
-here is inside `QAbstractListModel.data()`: so every hover tooltip on an
-Online, Code or Colour tile threw, five times in one session, and the
-feature read as "occasionally stretches across the screen" rather than
-as broken.
-
-practice.md already records the family - *moving code between modules
-loses its imports, and only RUNNING finds out* - and the reason it keeps
-costing sessions is that neither `py_compile` nor a green suite can see
-it. A behaviour test only catches the line it happens to execute, and
-these lines are in tooltip handlers nothing clicks.
-
-So this reads the SOURCE, per practice.md's rule that a source-derived
-test must parse STRUCTURE rather than match prose: it resolves the names
-this package actually contains, then asserts that any module referring to
-one of them by name has bound it. It is deliberately narrow - only the
-project's OWN module names - because that is the whole class, and a
-general undefined-name linter would drown it in false positives.
-"""
+"""The gate: no module may USE a sibling or stdlib module it never imported - read from the SOURCE, because neither `py_compile` nor a green suite can see it. ▸p/code-motion"""
 
 import ast
 import os
@@ -32,23 +9,7 @@ _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _watched_module_names() -> set:
-    """Every module name this gate will hold a file to: the amaze
-    package's own, plus the standard library's.
-
-    WIDENED 2026-08-10 to the stdlib. This was the project's own module
-    names alone, on the reasoning that a general undefined-name linter
-    would drown the real class in false positives - which is still
-    true, and `sys.stdlib_module_names` is not that. It is a fixed,
-    finite list of 290 names the interpreter ships, so asking whether a
-    file that says `shutil.rmtree(...)` has imported `shutil` is the
-    SAME question the gate already asks about `hostos`, with the same
-    answer available.
-
-    What earned it: `prefs_dialog.install_update` gained a
-    `shutil.rmtree` with no import. It is a Qt slot nothing exercises,
-    so the suite could not see it either - it would have raised on the
-    first click of a button shipped the same day.
-    """
+    """Every module name this gate will hold a file to: the amaze package's own, plus the standard library's. ▸p/code-motion"""
     names = set(sys.stdlib_module_names)
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d != "__pycache__"]
@@ -59,8 +20,7 @@ def _watched_module_names() -> set:
 
 
 def _source_files() -> list:
-    """The shipped modules. Tests are excluded: a test binds names
-    through the harness and is not what ships to a user's Houdini."""
+    """The shipped modules - tests excluded, since a test binds names through the harness and is not what ships. ▸p/code-motion"""
     found = []
     for root, dirs, files in os.walk(_AMAZE):
         dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
@@ -71,14 +31,7 @@ def _source_files() -> list:
 
 
 def _bound_names(tree: ast.AST) -> set:
-    """Every name this module gives a meaning to, by ANY route.
-
-    Imports are the interesting one, but a name can equally be a local,
-    a parameter, a def or a class - and counting only imports would
-    report a module that legitimately has a local called `library`. A
-    function-local import counts: `ast.walk` reaches it, which is
-    correct, because that is exactly how these three modules import.
-    """
+    """Every name this module gives a meaning to by ANY route - import, local, parameter, def or class, function-local imports included. ▸p/code-motion"""
     bound = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -124,9 +77,7 @@ class NoModuleUsesAnUnboundSibling(unittest.TestCase):
 
     def test_every_referenced_module_is_imported(self):
         package = _watched_module_names()
-        # The gate is only meaningful if the tree resolved - an empty
-        # set would pass every file without testing anything, which is
-        # the vacuous-pin shape practice.md warns about.
+        # an empty set would pass every file without testing anything - the vacuous-pin shape ▸p/code-motion
         self.assertIn("ui_helpers", package)
         self.assertIn("hostos", package)
 
@@ -147,6 +98,36 @@ class NoModuleUsesAnUnboundSibling(unittest.TestCase):
             "a module calls into a sibling it never imported - this "
             "compiles, and raises NameError only when the line runs:\n  "
             + "\n  ".join(offences))
+
+
+class TheProjectsOldNameIsGoneFromTheCode(unittest.TestCase):
+    """`$ASSETLIB` was the plugin root before the rename to Amaze; every install now sets `$AMAZE`, so no source may still read the old spelling. ▸p/updater-shape"""
+
+    def test_no_module_reads_the_legacy_environment_variable(self):
+        offenders = []
+        for path in _source_files():
+            with open(path, "r", encoding="utf-8") as handle:
+                for number, line in enumerate(handle, 1):
+                    if "ASSETLIB" in line:
+                        offenders.append("%s:%d" % (
+                            os.path.relpath(path, _AMAZE), number))
+        self.assertEqual(
+            [], offenders,
+            "the pre-rename plugin root is read again in: %s - every "
+            "package sets $AMAZE, so a fallback here is a second name "
+            "for one thing" % ", ".join(offenders))
+
+    def test_the_userdata_key_is_NOT_swept_up_with_it(self):
+        """`assetlib_id` is stamped into node userdata on every saved material, so it is a contract with data on disk and keeps its spelling."""
+        stamped = []
+        for path in _source_files():
+            with open(path, "r", encoding="utf-8") as handle:
+                if "assetlib_id" in handle.read():
+                    stamped.append(path)
+        self.assertTrue(
+            stamped,
+            "assetlib_id vanished from the source - if it was renamed, "
+            "every material already on disk lost its re-save recognition")
 
 
 if __name__ == "__main__":

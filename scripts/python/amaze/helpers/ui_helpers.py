@@ -82,7 +82,7 @@ def ui_asset(name: str) -> str:
     root = ""
     try:
         import hou
-        root = hou.getenv("AMAZE") or hou.getenv("ASSETLIB") or ""
+        root = hou.getenv("AMAZE") or ""
     except Exception:                                    # noqa: BLE001
         root = ""                  # the module-relative return below is for a genuinely undefined $AMAZE only - tests, and the offline tools that run without hou; preferring it would let a dev tree and an installed $AMAZE disagree silently
     if root:

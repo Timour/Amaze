@@ -403,7 +403,7 @@ def _write_session_header() -> None:
         "amaze_version": _app_version(),
         "python": sys.version.split()[0],
         "platform": platform.platform(),
-        "assetlib_env": os.environ.get("AMAZE", os.environ.get("ASSETLIB", "")),
+        "amaze_env": os.environ.get("AMAZE", ""),
     }
     try:
         import hou
