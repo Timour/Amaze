@@ -1,10 +1,4 @@
-"""
-The library's own settings - the ones that must not live in prefs.
-
-prefs.Prefs is per-user and per-machine and never synced, so a safety
-switch kept there protects its owner and nobody else while looking like
-protection. These live beside library.json and travel with the library.
-"""
+"""The library's own settings, the ones that must NOT live in prefs: prefs.Prefs is per-user, per-machine and never synced, so a safety switch kept there protects its owner and nobody else while looking like protection - these live beside library.json and travel with the library."""
 
 import json
 import os
@@ -17,6 +11,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -34,13 +29,8 @@ class PolicyFileTest(unittest.TestCase):
         self.path = library_policy.path_for(self.dir)
 
     def test_a_byte_order_mark_is_read_not_fail_closed(self):
-        """policy.json is the one library file a user is INVITED to
-        hand-edit, and Windows Notepad prepends a BOM - which made the
-        parse raise, and fail-closed then read a healthy permissive
-        policy as the most restrictive one: Update Existing refused
-        library-wide over three invisible bytes. utf-8-sig, like every
-        other reader in the package (keyed_store says why)."""
-        with open(self.path, "w", encoding="utf-8-sig") as handle:
+        """A hand-edited policy.json still parses when the editor left a BOM behind, instead of failing closed library-wide over three invisible bytes."""
+        with open(self.path, "w", encoding="utf-8-sig") as handle:   # a Windows editor leaves a BOM; utf-8-sig is what every reader in the package uses, and keyed_store says why
             json.dump({"allow_overwrite": True,
                        "version": library_policy.POLICY_VERSION}, handle)
         self.assertTrue(
@@ -51,7 +41,6 @@ class PolicyFileTest(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(text)
 
-    # -- the absent case ------------------------------------------------
     def test_absent_means_allow(self):
         """A library written before this existed must keep working."""
         self.assertTrue(library_policy.allow_overwrite(self.dir))
@@ -68,7 +57,6 @@ class PolicyFileTest(unittest.TestCase):
         self._write('["allow_overwrite"]')
         self.assertFalse(library_policy.allow_overwrite(self.dir))
 
-    # -- ordinary round trip --------------------------------------------
     def test_it_round_trips(self):
         self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
         self.assertFalse(library_policy.allow_overwrite(self.dir))
@@ -83,12 +71,11 @@ class PolicyFileTest(unittest.TestCase):
             "per-user copy protects nobody else")
 
     def test_it_is_its_own_file_not_a_key_in_library_json(self):
-        """Flipping a boolean must not mean rewriting 548 asset
-        records, and reading it must not mean parsing 355KB."""
+        """The policy is its OWN file: flipping a boolean must not mean rewriting 548 asset records, and reading it must not mean parsing 355KB."""
         library_policy.set_allow_overwrite(self.dir, False)
         self.assertNotEqual(
             library_policy.path_for(self.dir),
-            os.path.join(self.dir, "library.json"))
+            os.path.join(self.dir, "library.json"))   # 355KB parsed to answer one bool
 
     def test_it_records_a_version(self):
         library_policy.set_allow_overwrite(self.dir, False)
@@ -118,8 +105,7 @@ class PolicyFileTest(unittest.TestCase):
 
 
 class OverwriteIsGatedInTheMODELTest(unittest.TestCase):
-    """The dialog also stops offering Overwrite, but the refusal has to
-    be where every caller passes - a UI check is a suggestion."""
+    """The refusal has to sit where every caller passes: the dialog also stops offering Overwrite, but a UI check is only a suggestion."""
 
     def test_update_asset_content_consults_the_policy(self):
         import re
@@ -153,10 +139,7 @@ class OverwriteIsGatedInTheMODELTest(unittest.TestCase):
 
 
 class BrokenPolicyShapesFailClosedTest(unittest.TestCase):
-    """A dangling symlink, a directory in the file's place, and the
-    string "false" all read as the PERMISSIVE default before this -
-    contradicting the module's own fail-closed contract, reproduced
-    live against the real module."""
+    """Every broken shape of policy.json - a dangling symlink, a directory in its place, a hand-typed string - must read as the STRICTEST setting, not the permissive default."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_policy_shape_")
@@ -189,9 +172,7 @@ class BrokenPolicyShapesFailClosedTest(unittest.TestCase):
         self.assertFalse(library_policy.allow_overwrite(self.dir))
 
     def test_genuinely_absent_still_allows(self):
-        """The permissive default is CORRECT for a library that predates
-        the mechanism - failing closed there would freeze every old
-        library for no reason."""
+        """The permissive default is CORRECT for a library that predates the mechanism - failing closed there would freeze every old library for no reason."""
         self.assertTrue(library_policy.allow_overwrite(self.dir))
 
     def test_a_real_false_still_works(self):
@@ -200,52 +181,33 @@ class BrokenPolicyShapesFailClosedTest(unittest.TestCase):
         self.assertFalse(library_policy.allow_overwrite(self.dir))
 
     def test_a_write_leaves_a_restore_point(self):
-        # TWO writes: the second is what snapshots the first. The
-        # write-ONCE case is its own test below, because that is the
-        # one the product actually produces - a policy is set and then
-        # left alone - and this test passed throughout the years it
-        # was broken.
+        """A policy rewritten a second time leaves a restore point - the write-ONCE case, which is what the product actually produces, has its own test below."""
         self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
-        self.assertTrue(library_policy.set_allow_overwrite(self.dir, True))
+        self.assertTrue(library_policy.set_allow_overwrite(self.dir, True))   # THIS write is the one that snapshots the first
         self.assertTrue(
             os.path.exists(self.path + ".bak-first"),
             "policy.json still has no backup tier")
 
     def test_a_policy_written_ONCE_leaves_a_restore_point(self):
-        """The normal case: turn Overwrite off, never touch it again.
-
-        snapshot_before_write copies what is already on disk and rightly
-        declines when there is nothing there, so the first write left no
-        trace of any kind - which is the evidence the absence guard
-        below has to find."""
-        self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
+        """The normal case - turn Overwrite off, never touch it again - must still leave a restore point, even though there was nothing on disk to snapshot."""
+        self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))   # the only write the product usually makes
         self.assertTrue(
             os.path.exists(self.path + ".bak-first"),
             "a policy set once has no restore point and nothing saying "
-            "it was ever here")
+            "it was ever here")   # snapshot_before_write declines an empty copy, so this trace is also the evidence the absence guard below looks for
 
     def test_a_policy_that_is_momentarily_ABSENT_stays_restrictive(self):
-        """Absence means the library predates the mechanism only when
-        nothing says otherwise. Every other branch of read() fails
-        CLOSED; this one returned the permissive defaults, so the one
-        protection whose whole point is being enforced at the library
-        layer turned itself off the instant the file was late.
-
-        The second machine's sync placeholder is the case: the file is
-        gone for the moment the panel reads it, and comes back."""
+        """Absence means the library predates the mechanism ONLY when nothing says otherwise: with a trace on disk, a policy that is merely late still reads as restrictive, like every other branch of read()."""
         self.assertTrue(library_policy.set_allow_overwrite(self.dir, False))
-        os.remove(self.path)
+        os.remove(self.path)   # a shared library's file can be late - a sync placeholder still arriving, gone the moment the panel reads it and back after
         self.assertFalse(
             library_policy.allow_overwrite(self.dir),
             "an append-only library became writable because its policy "
             "file was not there for an instant")
 
     def test_a_library_that_never_had_a_policy_is_still_permissive(self):
-        """The accept path beside it: absence with NO trace is a
-        library written before this mechanism existed, and it must keep
-        working exactly as it did. A guard that fires when there is
-        nothing to protect is an outage."""
-        self.assertTrue(library_policy.allow_overwrite(self.dir),
+        """The accept path beside the guard above: absence with NO trace is a library written before the mechanism existed, and it must keep working exactly as it did."""
+        self.assertTrue(library_policy.allow_overwrite(self.dir),   # a guard that fires when there is nothing to protect is an outage
                         "a library that never had a policy was refused "
                         "an overwrite")
 
