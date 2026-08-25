@@ -709,6 +709,24 @@ class ThereIsOneFontTable(unittest.TestCase):
         self.assertEqual(9, theme_mod.ui_font(pixel).pixelSize(),
                          "a pixel-sized font was converted to points")
 
+    def test_a_ROLE_leaves_a_pixel_sized_font_alone_as_well(self):
+        """The floor's `> 0` gate has to hold on the SCALE too: -1 times any role factor is still a size Qt refuses, so the role hands it one and Qt drops it with a warning per call."""
+        from amaze.helpers import theme as theme_mod
+        pixel = QtGui.QFont()
+        pixel.setPixelSize(9)
+        refused = []
+        QtCore.qInstallMessageHandler(
+            lambda mode, ctx, message: refused.append(message))
+        self.addCleanup(QtCore.qInstallMessageHandler, None)
+        title = theme_mod.font("comments_title", pixel)
+        QtCore.qInstallMessageHandler(None)
+        self.assertEqual(
+            [], [line for line in refused if "setPointSizeF" in line],
+            "the role scaled -1 and handed Qt a size it refuses")
+        self.assertEqual(9, title.pixelSize(),
+                         "a pixel-sized font was converted to points")
+        self.assertTrue(title.bold(), "the role lost its weight")
+
 
 class PaintingTheSidebarNeverTouchesTheDisk(unittest.TestCase):
 

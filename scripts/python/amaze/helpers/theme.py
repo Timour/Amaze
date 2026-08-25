@@ -56,12 +56,19 @@ FONT_ROLES = {       # a role is a SCALE and a weight, never a literal size; til
 }
 
 
+def point_size(source, scale: float = 1.0):
+    """THE ONE GATE on deriving a size from a font: `scale` times `source`'s own point size, or None where it has none to scale. A caller skips `setPointSizeF` entirely on a None. ▸r/font-sizing"""
+    points = source.pointSizeF()
+    return points * scale if points > 0 else None   # `> 0` because a font sized in PIXELS answers -1, and Qt refuses any size at or below zero
+
+
 def ui_font(source=None) -> QtGui.QFont:
     """THE BASE FONT: the host's, with ONE floor applied once; `source` defaults to the application font, which is what a headless run gets. ▸r/font-sizing"""
     font = QtGui.QFont(source if source is not None
                        else QtGui.QGuiApplication.font())
     floor = float(ui_px(MIN_UI_POINTS))
-    if 0 < font.pointSizeF() < floor:   # `> 0` because a font sized in PIXELS answers -1, and clamping that would convert it to points ▸r/linux-live-facts
+    points = point_size(font)   # None where the font is sized in PIXELS, and clamping that would convert it to points ▸r/linux-live-facts
+    if points is not None and points < floor:
         font.setPointSizeF(floor)
     return font
 
@@ -75,7 +82,9 @@ def font(role: str, source=None) -> QtGui.QFont:
             "%r is not a font role - the roles are %s"
             % (role, ", ".join(sorted(FONT_ROLES)))) from None
     derived = ui_font(source)
-    derived.setPointSizeF(derived.pointSizeF() * spec["scale"])
+    points = point_size(derived, spec["scale"])
+    if points is not None:
+        derived.setPointSizeF(points)   # a pixel-sized base keeps its own size: the role's weight still applies, its scale cannot
     if spec.get("bold"):
         derived.setBold(True)
     return derived

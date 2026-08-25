@@ -226,6 +226,47 @@ class TestWhatJustLandedIsNeverTheTarget(DropTargetTest):
             (None, "", -1))
 
 
+class TestTheWiringSurvivesAStaleConnectorIndex(DropTargetTest):
+    """A connector index is picked during the hover and spent at the RELEASE, so the network has a whole gesture in which to lose it - `setInput` answers a gone index with `hou.InvalidInput`, and a drop that lets that out dies mid-gesture instead of landing quietly. ▸r/drop-targets"""
+
+    def test_a_live_output_index_still_wires(self):
+        # the degrade tests below mean nothing unless this path really reaches `setInput`
+        target = self.node("live_output_target")
+        landed = self.node("live_output_landed")
+        self.assertTrue(
+            dragengine.connect_to_neighbour((target, "output", 0), [landed]))
+        self.assertEqual(landed.inputs(), (target,))
+
+    def test_a_live_input_index_still_wires(self):
+        target = self.node("live_input_target")
+        landed = self.node("live_input_landed")
+        self.assertTrue(
+            dragengine.connect_to_neighbour((target, "input", 0), [landed]))
+        self.assertEqual(target.inputs(), (landed,))
+
+    def test_a_stale_output_index_drops_without_wiring(self):
+        target = self.node("stale_output_target")
+        landed = self.node("stale_output_landed")
+        stale = len(target.outputConnectors())    # one past the end - the index the hit test reported before the node lost an output
+        with self.assertRaises(hou.InvalidInput):
+            landed.setInput(0, target, stale)    # the host's own documented answer, pinned here so this cannot pass for want of a raise
+        self.assertFalse(
+            dragengine.connect_to_neighbour((target, "output", stale),
+                                            [landed]))
+        self.assertEqual(landed.inputs(), ())
+
+    def test_a_stale_input_index_drops_without_wiring(self):
+        target = self.node("stale_input_target")
+        landed = self.node("stale_input_landed")
+        stale = len(target.inputConnectors())
+        with self.assertRaises(hou.InvalidInput):
+            target.setInput(stale, landed)
+        self.assertFalse(
+            dragengine.connect_to_neighbour((target, "input", stale),
+                                            [landed]))
+        self.assertEqual(target.inputs(), ())
+
+
 class TestTheGhostTick(DropTargetTest):
     """The outline follows every move; the expensive target questions run on the engine's tick - a saturated loop reads as an outline that freezes and then leaps. ▸p/drag-move-cost"""
 

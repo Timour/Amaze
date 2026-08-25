@@ -294,11 +294,12 @@ class ThumbNailScene:
             previous = self._user_selection
             try:
                 self.cam.setSelected(True, True)
-                try:
-                    hou.hscript("Redshift_cameraSpareParameters -C 1")
-                except hou.OperationFailed as e:
+                _, errors = hou.hscript(                 # `hscript` returns (output, error) and never raises - a failed command is reported HERE, in the second string
+                    "Redshift_cameraSpareParameters -C 1")
+                if errors:
                     debug.event("thumb", "Redshift_cameraSpareParameters "
-                                "unavailable - skipping", error=str(e))
+                                "unavailable - skipping",
+                                error=errors.strip())
                 self.geo_node.setSelected(True, True)
             finally:
                 try:

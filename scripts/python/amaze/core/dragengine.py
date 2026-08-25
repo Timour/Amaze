@@ -348,7 +348,8 @@ def connect_to_neighbour(target, nodes, editor=None) -> bool:
                     node.setInput(index, last)
                 else:
                     return False
-    except (AttributeError, hou.OperationFailed, hou.PermissionError,
+    except (AttributeError, hou.InvalidInput,    # the index was picked during the hover and spent at the release, so a connector the node has since lost arrives here - `setInput` documents this one beside the two below, and it is a SIBLING of them, never caught by naming them
+            hou.OperationFailed, hou.PermissionError,
             hou.ObjectWasDeleted):
         return False
     _fit_after_wiring(nodes, editor)

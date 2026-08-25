@@ -712,6 +712,29 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
             [], [m for m in magic if "pointSizeF()" not in m],
             "a hard-coded point size is back in fonts_for: %s" % magic)
 
+    def test_a_PIXEL_sized_option_font_still_derives(self):
+        """A view whose font is set in PIXELS answers -1 to `pointSizeF`, and Qt refuses that as a size - so the derivation is dropped, loudly, once per cache miss."""
+        delegates.AssetItemDelegate._font_cache.clear()
+        self.addCleanup(delegates.AssetItemDelegate._font_cache.clear)
+        base = QtGui.QFont("Source Sans 3")
+        base.setPixelSize(9)
+        refused = []
+        QtCore.qInstallMessageHandler(
+            lambda mode, ctx, message: refused.append(message))
+        self.addCleanup(QtCore.qInstallMessageHandler, None)
+        name, rend, fm_name, fm_rend = \
+            delegates.AssetItemDelegate.fonts_for(base, False)
+        QtCore.qInstallMessageHandler(None)
+        self.assertEqual(
+            [], [line for line in refused if "setPointSizeF" in line],
+            "the sub-line handed Qt a size it refuses")
+        self.assertEqual(9, rend.pixelSize(),
+                         "the sub-line left the option font's pixel size")
+        self.assertEqual(name.pixelSize(), rend.pixelSize(),
+                         "one row, two sizes")
+        self.assertEqual(fm_name.height(), fm_rend.height(),
+                         "the two lines measure differently")
+
 
 if __name__ == "__main__":
     unittest.main()

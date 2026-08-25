@@ -218,7 +218,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             name_font = QtGui.QFont(option_font)
             rend_font = QtGui.QFont(option_font)
             name_font.setBold(True)    # the NAME is what you are looking for and the type under it is context, so bold separates them by WEIGHT and the two lines keep one baseline rhythm
-            rend_font.setPointSizeF(name_font.pointSizeF())    # the sub-line reads as secondary through the grey COLOUR, never by size - it DERIVES the name's size, because an absolute 12pt floor here against a 9pt name drew a subtitle LARGER than the thing it describes wherever Houdini's UI font is small (measured on Windows 2026-08-04); the panel already floors its own font, and two independent floors agreeing by coincidence was the whole defect
+            points = theme.point_size(name_font)    # None where the option font is sized in PIXELS: it answers -1, Qt refuses that, and the copy above already carries the size anyway ▸r/font-sizing
+            if points is not None:
+                rend_font.setPointSizeF(points)    # the sub-line reads as secondary through the grey COLOUR, never by size - it DERIVES the name's size, because an absolute 12pt floor here against a 9pt name drew a subtitle LARGER than the thing it describes wherever Houdini's UI font is small (measured on Windows 2026-08-04); the panel already floors its own font, and two independent floors agreeing by coincidence was the whole defect
             if selected:
                 name_font.setBold(True)    # black-on-yellow reads too thin at regular weight, so bold everything on the highlight
                 rend_font.setBold(True)

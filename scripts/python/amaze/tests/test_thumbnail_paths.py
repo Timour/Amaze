@@ -421,6 +421,75 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
                 scene.get_node().destroy()
 
 
+class _CamStub:
+    """Enough node for build_cam to run with no licence and no viewer: every parm exists and accepts every set."""
+
+    def __init__(self):
+        self.sets = []
+
+    def createNode(self, kind):
+        return _CamStub()
+
+    def parm(self, name):
+        return _Parm(self.sets, name)
+
+    def setName(self, name, *args):
+        pass
+
+    def setInput(self, *args):
+        pass
+
+    def setSelected(self, *args):
+        pass
+
+    def path(self):
+        return "/obj/CamStub"
+
+
+class TheSpareParmCommandIsCheckedByItsReturnValue(unittest.TestCase):
+    """`hou.hscript` reports failure in the SECOND string of the tuple it returns and never raises, so a guard written as `except` alone reads every failure as a success."""
+
+    def _build_cam(self, answer):
+        module = preview.thumbnail_scene
+        scene = module.ThumbNailScene.__new__(module.ThumbNailScene)
+        scene.renderer = "Redshift"
+        scene.geo_node = _CamStub()
+        scene._user_selection = hou.selectedNodes()   # build_cam puts it back
+        asked = []
+
+        def fake_hscript(command):
+            asked.append(command)
+            return answer
+
+        with mock.patch.object(module.hou, "hscript", fake_hscript), \
+                mock.patch.object(module.debug, "event") as recorded:
+            scene.build_cam()
+        return asked, [call for call in recorded.call_args_list
+                       if "Redshift_cameraSpareParameters" in str(call)]
+
+    def test_a_command_that_failed_is_recorded(self):
+        asked, said = self._build_cam(
+            ("", "Unknown command: RS_camera_spare\n"))
+        self.assertEqual(
+            1, len(asked),
+            "build_cam never ran the spare-parm command, so this test "
+            "cannot say anything about how its failure is read")
+        self.assertTrue(
+            said,
+            "the command answered an error and the build recorded "
+            "nothing: hou.hscript returns (output, error) and never "
+            "raises, so an except clause around it catches nothing and "
+            "the failure passes silently")
+
+    def test_a_command_that_worked_is_not_recorded_as_a_failure(self):
+        asked, said = self._build_cam(("", ""))
+        self.assertEqual(1, len(asked))
+        self.assertEqual(
+            [], said,
+            "an empty error string means the command WORKED - a skip "
+            "logged here buries the real ones")
+
+
 class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
 
     def test_the_light_rig_sets_no_parm_raw(self):
