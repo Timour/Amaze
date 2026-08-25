@@ -959,5 +959,91 @@ class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
                          "so the window stops honouring its 500")
 
 
+class ABlockCommentSurvivesTheLineBreak(unittest.TestCase):
+    """`spans()` sees ONE line, so a `/* */` crossing lines used to leave every line after the opener highlighted as code. ▸p/vex-block-comments"""
+
+    def _painted(self, lines):
+        """Run the highlighter over `lines`, returning [(text, [(start, length, colour)])] and the block state each line ends in."""
+        from amaze.helpers import vex_syntax
+
+        painted = []
+
+        class _Recorder(vex_syntax.VexHighlighter):
+            def __init__(self):
+                self.state = -1
+                self.runs = []
+
+            def previousBlockState(self):
+                return self.state
+
+            def setCurrentBlockState(self, value):
+                self.state = value
+
+            def setFormat(self, start, length, fmt):
+                self.runs.append(
+                    (start, length, fmt.foreground().color().name()))
+
+        recorder = _Recorder()
+        for line in lines:
+            recorder.runs = []
+            recorder.highlightBlock(line)
+            painted.append((line, list(recorder.runs), recorder.state))
+        return painted
+
+    def _all_comment(self, runs, text):
+        from amaze.helpers import vex_syntax
+        covered = set()
+        for start, length, colour in runs:
+            if colour == vex_syntax.COMMENT.name():
+                covered.update(range(start, start + length))
+        return covered >= set(range(len(text)))
+
+    def test_the_lines_inside_a_block_comment_are_all_comment(self):
+        rows = self._painted([
+            "int a = 1;   /* opens here",
+            "still inside the comment",
+            "and closes */ int b = 2;",
+        ])
+        self.assertTrue(
+            self._all_comment(rows[1][1], rows[1][0]),
+            "a line wholly inside /* */ was highlighted as code")
+        from amaze.helpers import vex_syntax
+        opener_tail = [run for run in rows[0][1] if run[0] >= 13]
+        self.assertTrue(opener_tail, "nothing was painted after the /*")
+        self.assertTrue(
+            all(colour == vex_syntax.COMMENT.name()
+                for _start, _length, colour in opener_tail),
+            "the text after /* on the opening line is not comment-coloured")
+
+    def test_the_state_carries_and_then_clears(self):
+        rows = self._painted([
+            "/* open",
+            "inside",
+            "close */ int b;",
+            "int c;",
+        ])
+        self.assertEqual(1, rows[0][2], "the opener did not set the state")
+        self.assertEqual(1, rows[1][2], "the state did not carry")
+        self.assertEqual(0, rows[2][2], "the closer did not clear the state")
+        self.assertEqual(0, rows[3][2], "a later line is still in comment")
+
+    def test_a_slash_star_inside_a_string_opens_nothing(self):
+        from amaze.helpers import vex_syntax
+        self.assertIsNone(
+            vex_syntax.open_comment_at('string s = "not /* a comment";'),
+            "a /* inside a string opened a block comment")
+        self.assertIsNone(
+            vex_syntax.open_comment_at("// /* after a line comment"),
+            "a /* after // opened a block comment")
+
+    def test_a_comment_closed_on_its_own_line_opens_nothing(self):
+        from amaze.helpers import vex_syntax
+        self.assertIsNone(
+            vex_syntax.open_comment_at("/* closed on one line */ int b;"))
+        self.assertEqual(
+            14, vex_syntax.open_comment_at("a /* one */ b /* two"),
+            "a second, unterminated /* on the same line was missed")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 """The material/COP save dialog - category, tags and (for COP saves) a name, its rows loaded from `ui/material_dialog.ui`, the shell inherited from the house base."""
 
-from PySide6 import QtWidgets, QtCore, QtUiTools
+from PySide6 import QtWidgets, QtCore
 
 import amaze
 from amaze import branding
@@ -25,11 +25,8 @@ class SaveDialog(base_dialog.AssetDialog):
         self.fav = False
         self.name = name or ""
 
-        loader = QtUiTools.QUiLoader()
-        file = QtCore.QFile(self.script_path + "/ui/material_dialog.ui")
-        file.open(QtCore.QFile.ReadOnly)
-        self.ui = loader.load(file)
-        file.close()
+        self.ui = ui_helpers.load_ui(
+            self.script_path + "/ui/material_dialog.ui")
 
         self.ui.setMinimumSize(0, 0)
         statusbar = self.ui.findChild(QtWidgets.QStatusBar)

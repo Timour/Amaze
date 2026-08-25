@@ -5,7 +5,7 @@ import importlib
 import time
 import contextlib
 
-from PySide6 import QtWidgets, QtGui, QtCore, QtUiTools
+from PySide6 import QtWidgets, QtGui, QtCore
 import hou
 
 import amaze
@@ -1057,14 +1057,10 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def init_ui(self) -> None:
         """Creates the panel-view on load"""
-        loader = QtUiTools.QUiLoader()
-        file = QtCore.QFile(self.script_path + "/ui/amaze.ui")
-        loader.registerCustomWidget(dragdrop_widgets.DragDropCentralWidget)    # the .ui names these, so they must be registered before load
-        loader.registerCustomWidget(dragdrop_widgets.DragDropListView)
-
-        file.open(QtCore.QFile.ReadOnly)  # type: ignore
-        self.ui = loader.load(file)
-        file.close()
+        self.ui = ui_helpers.load_ui(
+            self.script_path + "/ui/amaze.ui",
+            dragdrop_widgets.DragDropCentralWidget,
+            dragdrop_widgets.DragDropListView)
 
         try:
             self.ui.setStyleSheet(hou.qt.styleSheet())    # SideFX's documented way to make standard widgets render as native Houdini; the toolbar's own controls are hand-painted and ignore it

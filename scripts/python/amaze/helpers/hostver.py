@@ -5,9 +5,6 @@ import hou
 from amaze.helpers import hostos
 
 
-RETINA_PICK_FIX_CHANGELOG = (22, 0, 391)  # the SideFX changelog build that fixed retina lasso/contained picking in the new UI on macOS - documentation, NOT a boundary (see OBJ_PICK_DEVICE_PIXELS)
-
-
 class Env(object):
     """The environment an opinion is judged against - `scale` is passed in by the caller rather than re-derived, so the value that DECIDES is the value that gets APPLIED."""
 
@@ -112,7 +109,11 @@ OBJ_PICK_DEVICE_PIXELS = Capability(  # whether GeometryViewport.queryNodeAtPixe
         "under H22, where picking works in both OBJ and Stage with no "
         "opinion applied at all. Two platforms, no workaround - which "
         "is what a base should look like. Unknown and future builds "
-        "compose against this rather than against a workaround."),
+        "compose against this rather than against a workaround. "
+        "SideFX's changelog records 22.0.391 as the build that fixed "
+        "retina lasso and contained picking in the new UI on macOS - "
+        "documentation for a reader of this report, NOT a boundary "
+        "this engine tests against."),
     opinions=(
         Opinion(
             value=True,

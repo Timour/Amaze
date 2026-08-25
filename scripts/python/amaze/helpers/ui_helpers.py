@@ -1032,6 +1032,28 @@ class SideIconPinner(QtCore.QObject):
         y = (self._line_edit.height() - h) // 2
         self._icon_label.move(max(x, 0), max(y, 0))
 
+def load_ui(path: str, *custom_widgets):
+    """THE `.ui` loader - raises OSError NAMING the file when it cannot be opened or does not parse, where Qt raises a filename-less RuntimeError. ▸r/ui-loader"""
+    from PySide6 import QtUiTools
+
+    loader = QtUiTools.QUiLoader()
+    for widget in custom_widgets:
+        loader.registerCustomWidget(widget)    # the .ui names these, so they must be registered BEFORE the load
+    handle = QtCore.QFile(path)
+    if not handle.open(QtCore.QFile.OpenModeFlag.ReadOnly):    # measured False for a missing file; without this the load below raises without naming it ▸r/ui-loader
+        raise OSError("the interface file could not be opened: %s" % path)
+    try:
+        built = loader.load(handle)
+    except RuntimeError as exc:    # a malformed .ui RAISES rather than returning None, and the message carries no filename ▸r/ui-loader
+        raise OSError("the interface file did not parse: %s (%s)"
+                      % (path, exc))
+    finally:
+        handle.close()
+    if built is None:
+        raise OSError("the interface file produced no widget: %s" % path)
+    return built
+
+
 def pick_color(initial, parent=None, title="Select Color"):
     """One colour picker for the whole app - Houdini's when it can be shown, Qt's when it cannot, returning a QColor or None; a NATIVE modal raised while a Qt exec loop is active lands UNDER it, invisible, so `activeModalWidget()` decides at call time and no call site needs to know."""
     from PySide6 import QtGui, QtWidgets

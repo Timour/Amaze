@@ -1257,7 +1257,7 @@ class MaterialLibrary(AssetLibrary):
                 self.report_refused_index_write(new_mat)
             try:  # stamp the scene node with its library id, so a later Save to Amaze on the same node can offer update-instead-of-duplicate
                 node.setUserData("assetlib_id", str(new_mat.mat_id))
-            except hou.OperationFailed:
+            except (hou.OperationFailed, hou.ObjectWasDeleted):    # the files are already on disk: a node deleted mid-save must not turn a SAVE THAT SUCCEEDED into a reported failure ▸r/node-vanished
                 pass
             return renderer
         debug.event("save", "add_asset refused - the node was not saved",
@@ -1363,7 +1363,7 @@ class MaterialLibrary(AssetLibrary):
         self.save()
         try:
             node.setUserData("assetlib_id", str(mat.mat_id))
-        except hou.OperationFailed:
+        except (hou.OperationFailed, hou.ObjectWasDeleted):    # same: the update has already been written, so a vanished node costs the stamp, never the save ▸r/node-vanished
             pass
         return renderer
 
