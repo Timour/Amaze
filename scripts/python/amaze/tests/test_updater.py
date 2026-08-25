@@ -1,5 +1,6 @@
 """The updater, driven end to end with the single network door mocked - nothing here reaches GitHub, and the feed's real answers are reproduced as fixtures. ▸p/updater-shape ▸r/release-digest"""
 
+import errno
 import hashlib
 import io
 import json
@@ -239,15 +240,82 @@ class TheSwapTest(unittest.TestCase):
                 raise OSError("the second move failed")
             return real(src, dst)
 
+        real_move = shutil.move
+
+        def no_copy_either(src, dst):
+            raise OSError("and the copy failed too")
+
         os.rename = failing
+        shutil.move = no_copy_either
+        self.addCleanup(setattr, shutil, "move", real_move)
         self.addCleanup(setattr, os, "rename", real)
         with self.assertRaises(OSError):
             updater.apply_update(self.staged, self.install)
         os.rename = real
+        shutil.move = real_move
         self.assertTrue(
             os.path.isdir(self.install),
             "the install is GONE - the first move succeeded, the second "
             "failed, and nothing put it back")
+        self.assertEqual("old", self._which(self.install))
+
+    def test_a_cache_on_ANOTHER_VOLUME_still_installs(self):
+        """`os.rename` raises EXDEV across a filesystem and only a copy crosses - the staged tree lives in the cache, which need not share a disk with the install. ▸r/cross-volume-move"""
+        real = os.rename
+        calls = []
+
+        def cross_volume(src, dst):
+            calls.append(src)
+            if len(calls) == 2:                  # the staged -> install move
+                raise OSError(errno.EXDEV, "Cross-device link")
+            return real(src, dst)
+
+        os.rename = cross_volume
+        self.addCleanup(setattr, os, "rename", real)
+        backup = updater.apply_update(self.staged, self.install)
+        os.rename = real
+
+        self.assertEqual(
+            "new", self._which(self.install),
+            "a cache on another volume left the update uninstalled")
+        self.assertEqual("old", self._which(backup),
+                         "the rollback copy was lost crossing the volume")
+
+    def test_a_copy_that_dies_part_way_leaves_no_half_install(self):
+        """Once the install has been renamed aside its path is free, so a copy that fails part way populates it with a fragment. ▸r/cross-volume-move"""
+        real = os.rename
+        real_move = shutil.move
+        calls = []
+
+        def cross_volume(src, dst):
+            calls.append(src)
+            if len(calls) == 2:
+                raise OSError(errno.EXDEV, "Cross-device link")
+            return real(src, dst)
+
+        def half_a_copy(src, dst):
+            os.makedirs(dst, exist_ok=True)
+            with open(os.path.join(dst, "fragment.txt"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("half")
+            raise OSError("the volume filled up")
+
+        os.rename = cross_volume
+        shutil.move = half_a_copy
+        self.addCleanup(setattr, shutil, "move", real_move)
+        self.addCleanup(setattr, os, "rename", real)
+        with self.assertRaises(OSError):
+            updater.apply_update(self.staged, self.install)
+        os.rename = real
+        shutil.move = real_move
+
+        self.assertEqual(
+            "old", self._which(self.install),
+            "the fragment was left where the install goes, so Houdini "
+            "loads half a release")
+        self.assertFalse(
+            os.path.exists(os.path.join(self.install, "fragment.txt")),
+            "the half-copied file survived the rollback")
         self.assertEqual("old", self._which(self.install))
 
     def test_a_missing_staged_update_leaves_the_install_alone(self):

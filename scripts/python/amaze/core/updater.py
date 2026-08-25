@@ -261,10 +261,14 @@ def apply_update(staged: str, install: str) -> str:
     backup = install.rstrip("/\\") + ".backup"
     if os.path.exists(backup):
         shutil.rmtree(backup)
-    os.rename(install, backup)
+    os.rename(install, backup)    # same parent as the install, so this one never crosses a volume
     try:
-        os.rename(staged, install)
+        try:
+            os.rename(staged, install)
+        except OSError:
+            shutil.move(staged, install)    # the cache and the install can be on DIFFERENT volumes, where rename raises EXDEV and only a copy crosses ▸r/cross-volume-move
     except OSError:
+        shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
         os.rename(backup, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
         raise
     debug.event("updater", "update applied", install=install, backup=backup)
