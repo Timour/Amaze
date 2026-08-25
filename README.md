@@ -1,11 +1,7 @@
 <img src="docs/LightLogo.svg#gh-dark-mode-only" alt="logo" width="200">
 <img src="docs/DarkLogo.svg#gh-light-mode-only" alt="logo" width="200">
 
-### Turn on, Drag in, Drag out
-
-
-
-> **⚠️ Work in progress.** Amaze is under active, rapid development and `main` is a moving target. The app reports a version (`branding.APP_VERSION`, shown in Preferences ▸ About and in the debug log's session header), but releases are not tagged — assume the tip. It runs in daily production use by its author, but if you found this repo in the wild, expect rough edges.
+### A library manager for Houdini
 
 Materials, colour palettes, node setups, code, and the files on your disk — images, geometry, scenes, all of it — the things you dig through folders and old scenes to find, gathered into one place and always a click away. Browse it, save to it, drag it straight into your scene.
 
