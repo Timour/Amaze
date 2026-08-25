@@ -2041,6 +2041,8 @@ class MatLibPanel(QtWidgets.QWidget):
     @staticmethod
     def _volume_unreachable(path: str) -> bool:
         """The path's VOLUME is not mounted - unreachable, as opposed to the path being gone from a volume that is right here, which os.path.isdir cannot tell apart. A path under an absent /Volumes/<name> root, or on an absent Windows drive letter, is unreachable."""
+        if hostos.foreign_path(path):
+            return True    # the OTHER platform's spelling, from a shared library: this one cannot judge it - `abspath` grafts a POSIX root onto the current drive and calls the share mounted - and an unjudgeable pointer must read as unreachable, never as gone
         path = os.path.abspath(path)
         if hostos.is_windows():
             drive = os.path.splitdrive(path)[0]

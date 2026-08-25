@@ -52,6 +52,19 @@ def migrate_legacy_file(directory: str, old_name: str, new_name: str) -> bool:
 _HOME_PREFIX_RE = re.compile(r"^(?:[A-Za-z]:)?/(?:Users|home)/[^/]+(?=/)")  # where each OS puts a user's home, and THE ONLY place in the package that may know it
 
 
+_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")    # `C:\` or `C:/`, the Windows absolute; a UNC `\\server\share` is caught by the backslash test beside it
+
+
+def foreign_path(path: str) -> bool:
+    """Whether `path` is spelled for a DIFFERENT platform than the one running - a shared library carries both spellings, and `os.path` silently answers nonsense about the other one rather than refusing."""
+    raw = str(path or "")
+    if not raw:
+        return False
+    if is_windows():
+        return raw.startswith("/") and not _DRIVE_RE.match(raw)
+    return bool(_DRIVE_RE.match(raw)) or raw.startswith("\\\\")
+
+
 def rehome(path: str) -> str:
     """A foreign absolute path re-pointed at THIS machine's home, or the path unchanged when the rewrite does not exist here."""
     clean = (path or "").replace("\\", "/")

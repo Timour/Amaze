@@ -1682,13 +1682,13 @@ class NodeHandler:
                 save_node, self._preferences,
                 texstore.asset_folder(node.name(), asset_id))
 
-            children = save_node.children()
+            items = save_node.allItems()    # NOT children(): a network DOT is not a child, so a children() save drops every wire routed through one - and boxes and sticky notes with them ▸r/node-items
 
             self.save_asset_pair(
                 parms_file_name, file_name, save_node.asCode(),
                 lambda path: save_node.saveItemsToFile(
-                    children, path,
-                    save_hda_fallbacks=hda_fallbacks_needed(children),
+                    items, path,
+                    save_hda_fallbacks=hda_fallbacks_needed(items),
                 ),
                 builder_node=save_node, asset_id=str(asset_id),
             )

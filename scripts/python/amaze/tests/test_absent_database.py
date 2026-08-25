@@ -1079,6 +1079,22 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
                 "absent volume to point at")
         return "/Volumes/NoSuchShare-xyzzy/textures"
 
+    def test_a_macOS_pointer_read_on_WINDOWS_is_left_alone(self):
+        """A shared library carries the other machine's spelling: on Windows `abspath` grafts `/Volumes/...` onto the current drive, whose root always exists, so the guard called an unmounted share reachable and the pruner then read the missing directory as a deleted folder."""
+        with patch.object(hostos, "is_windows", lambda:True):
+            self.assertTrue(
+                self._check("/Volumes/StudioShare/textures"),
+                "a pointer written on macOS was judged on Windows and "
+                "unregistered")
+
+    def test_a_windows_pointer_read_on_POSIX_is_left_alone(self):
+        """The same defect mirrored - neither platform can judge the other's spelling, and a guess either way drops the row."""
+        with patch.object(hostos, "is_windows", lambda:False):
+            self.assertTrue(
+                self._check("C:\\StudioShare\\textures"),
+                "a pointer written on Windows was judged on this "
+                "platform and unregistered")
+
     def test_a_path_on_an_absent_volume_is_unreachable(self):
         self.assertTrue(
             self._check(self._absent_volume_path()),
