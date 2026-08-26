@@ -6,25 +6,25 @@ from __future__ import annotations
 LIBRARY_NOT_SAVED_ANOTHER_PANEL = 'The library was not saved because another Amaze panel is currently linked to a different library.\n\nClose the other panel, or reopen this one, and saving will resume normally.'
 
 # core/database.py:288
-SECTION_UNREADABLE_SAVING_DISABLED = 'Your saved %s could not be read, so Amaze will not save over them.\n\nNothing has been lost - the file is untouched. Changes you make there now will not be kept.\n\nClose Houdini and put back a recent copy with the Repair tool in the Amaze shelf.'
+SECTION_UNREADABLE_SAVING_DISABLED = 'Your saved %s could not be read, so Amaze has disabled saving to avoid overwriting them.\n\nTo resolve this, close Houdini and restore a recent backup using the Repair tool on the Amaze shelf.'
 
 # core/database.py:369
 LIBRARY_FORMAT_AHEAD_READ_ONLY = 'This library was saved by a newer version of Amaze. To prevent data loss, it has been opened in read-only mode. Update Amaze to restore full functionality.'
 
 # core/database.py:668
-LIBRARY_WRITE_FAILED = 'Could not save the library - %s\n\nNothing already saved has been lost. This change is still here in Amaze, and saving anything else writes it too - but it is NOT on disk yet, so it will not survive closing Houdini.'
+LIBRARY_WRITE_FAILED = 'The library could not be saved - %s\n\nThis change is still in memory and will be included in the next successful save, but it is not yet on disk and will not persist if Houdini is closed.'
 
 # core/gradient_library.py:292
-PALETTE_NOT_SAVED = 'Amaze could not save "%s".\n\nNothing else has been lost - your other colors are exactly as they were.\n\nClose any other Amaze panel, or restart Houdini, then try again.'
+PALETTE_NOT_SAVED = 'Amaze was unable to save "%s".\n\nTo resolve this, close any other Amaze panel, or restart Houdini, and then try again.'
 
 # core/gradient_library.py:328
-PALETTE_NOT_DELETED = '"%s" was not deleted, because Amaze could not update your colors.\n\nNothing was removed - the palette is exactly as it was.\n\nClose any other Amaze panel, or restart Houdini, then try again.'
+PALETTE_NOT_DELETED = '"%s" was not deleted because Amaze could not update your colors.\n\nTo resolve this, close any other Amaze panel, or restart Houdini, and then try again.'
 
 # core/keyed_store.py:744
 SAVE_DENIED_WITH_CAUSE = '%s\n\nThis happened because %s'
 
 # core/library.py:600
-ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED = '"%s" was written to disk, but Amaze could not update the library list.\n\nNothing is lost - the files are there. It will not appear in the grid until the list is written.\n\nRestart Houdini, then run Repair Library from the Amaze shelf to put it back in the list.'
+ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED = '"%s" was written to disk, but Amaze could not update the library index.\n\nThe item will not appear in the grid until the index is updated.\n\nTo resolve this, restart Houdini and run Repair Library from the Amaze shelf.'
 
 # core/library.py:609
 ASSET_NOT_SAVED_LIST_NOT_UPDATED = '"%s" was not saved because Amaze could not update the library index.\n\nRestart Houdini and try saving again.'
@@ -45,7 +45,7 @@ UNSAFE_ARCHIVE_PATHS_SKIPPED = '%d file(s) in this download attempted to write o
 NO_LIBRARY_FOLDER_CONFIGURED = 'No library folder has been configured for Amaze.\n\nTo resolve this, open Amaze, select a library folder in Preferences, and then run Repair again.'
 
 # core/repair.py:602
-LIBRARY_FOLDER_UNREACHABLE = 'Amaze cannot reach the library folder it is set to use:\n\n%s\n\nNothing was changed. If it is on a drive or in a synced folder, connect it and run Repair again. If you moved the library, open Amaze and point Preferences at the new place.'
+LIBRARY_FOLDER_UNREACHABLE = 'Amaze cannot reach the library folder it is set to use:\n\n%s\n\nIf it is on a drive or in a synced folder, connect it and run Repair again. If you moved the library, open Amaze and point Preferences at the new location.'
 
 # core/repair.py:616
 AMAZE_OPEN_STOPS_REPAIR = 'Amaze is open, so Repair stopped before reading anything.\n\nAn open Amaze saves the library while you work. Quit Houdini, start it again, and run Repair before you open Amaze.'
@@ -66,10 +66,10 @@ CONFIRM_MOVE_FILES_ASIDE = 'Move %s aside?'
 NOTHING_MOVED_ASIDE_REASON = 'Amaze moved nothing: %s.'
 
 # core/repair.py:774
-FILES_MOVED_ASIDE_SOME_FAILED = "%s moved into Amaze's holding folder on this computer - outside your library, kept for 30 days. %s could not be moved and are still where they were - nothing was lost either way."
+FILES_MOVED_ASIDE_SOME_FAILED = "%s moved into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days.\n\n%s could not be moved and remain in place."
 
 # core/repair.py:783
-FILES_MOVED_ASIDE_DONE = "%s moved into Amaze's holding folder on this computer - outside your library, kept for 30 days. Nothing was deleted, and Clean Library will run again now."
+FILES_MOVED_ASIDE_DONE = "%s moved into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days.\n\nClean Library will now run again."
 
 # core/repair.py:807
 CONFIRM_ADD_UNLISTED_TO_SECTION = 'Add %d unlisted %s to %s?'
@@ -78,7 +78,7 @@ CONFIRM_ADD_UNLISTED_TO_SECTION = 'Add %d unlisted %s to %s?'
 SECTION_LIST_UNCHANGED_REASON = 'Amaze did not change the %s list: %s.'
 
 # core/repair.py:833
-UNLISTED_FILES_ADDED_BACK_DONE = '%d %s came back into %s. Open Amaze to see them - they are in the %s category, ready to be renamed.'
+UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. They are in the %s category and ready to be renamed.'
 
 # core/tile_icons.py:207
 TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has been lost — only this icon selection. The tile will retain its previous icon.\n\nThis occurred because %s'
@@ -102,7 +102,7 @@ PICTURE_NOT_COPIED_TO_LIBRARY = 'That picture could not be copied into your libr
 PICTURE_COPIED_BUT_UNREADABLE = 'That file was copied but could not be shown as a picture, so it was not added.'
 
 # panel/panel.py:221
-LIBRARY_INDEX_UNREADABLE = "Your library's list could not be read.\n\nRepair puts back the newest saved copy - or, if none reads, rebuilds the list from what each asset itself remembers. Categories keep their names; their order and colours may not survive a rebuild. The broken file is kept beside itself either way.\n\nOpen Without Library leaves the folder untouched."
+LIBRARY_INDEX_UNREADABLE = "The library index could not be read.\n\nRepair will restore the most recent backup. If no backup is available, the index will be rebuilt from each asset's embedded metadata. Category names are preserved, but their order and colors may change during a rebuild. The corrupted file is retained as a backup in either case.\n\nOpen Without Library leaves the folder unchanged."
 
 # panel/panel.py:239
 REPAIR_COULD_NOT_FIX_THE_LIST = 'Repair was unable to restore the index: %s.\n\nAmaze will open without a library. For more details, use the Repair tool on the Amaze shelf.'
@@ -150,7 +150,7 @@ SCENE_BUILD_PARTIAL_FAILURE = '%d of %d items could not be built:\n\n%s'
 TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Please verify that the library folder is writable.'
 
 # 4 sites - panel/panel.py:2744, panel/panel.py:2852, panel/panel.py:3395
-NO_LIBRARY_CONFIGURED_2 = 'Please set a library first - open Preferences and pick one under Library Path.'
+NO_LIBRARY_CONFIGURED_2 = 'Please configure a library first. Open Preferences and select one under Library Path.'
 
 # panel/panel.py:2780
 NO_NODE_WITH_CODE_SELECTED = 'To save a snippet, right-click a wrangle or other node that has a code parameter.'
@@ -246,7 +246,7 @@ TITLE_AMAZE = 'Amaze'
 TITLE_AMAZE_REPAIR = 'Amaze Repair'
 
 # dialogs/prefs_dialog.py:1002
-TITLE_LOG_NOT_SAVED = 'Amaze - log not saved'
+TITLE_LOG_NOT_SAVED = 'Amaze - Log not saved'
 
 # dialogs/code_dialog.py:178
 TITLE_EMPTY_SNIPPET = 'Empty snippet'

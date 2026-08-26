@@ -847,7 +847,8 @@ class TheWholeFlowTest(_Case):
         told = str(ui.displayMessage.call_args_list[-1])
         self.assertIn("holding folder", told,
                       "the user is not told where the files went")
-        self.assertIn("Nothing was deleted", told)
+        self.assertIn("30 days", told,    # the RETENTION, not the words: a destructive-sounding step must promise the files are kept, and saying so positively is the wording rule ▸p/messages-need-one-home
+                      "the user is not told the files are kept")
 
 
 class TheRouteFromCleanLibraryTest(_Case):
