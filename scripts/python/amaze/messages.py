@@ -236,6 +236,21 @@ NODE_IS_NOT_A_MATERIAL_BUILDER = 'The selected node is not a Material Builder.'
 # utils/rc_calls.py:20
 PANEL_NOT_OPEN = 'Please open the %s panel first.'
 
+# core/updater.py
+NO_RELEASE_TO_INSTALL = 'There is no release to install. Check for updates first.'
+
+# core/updater.py
+INSTALL_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it cannot replace itself.\n\nNothing has been changed. Check that $AMAZE points at the install.'
+
+# toolbar/Amaze.shelf - the offer, with the feed's own sentence as %s
+UPDATE_OFFER = '%s\n\nInstalling replaces this Amaze. Your library and your settings are not touched, and nothing changes until Houdini restarts.'
+
+# 2 sites - toolbar/Amaze.shelf, dialogs/prefs_dialog.py
+UPDATE_INSTALLED = 'Amaze %s is installed.\n\nRestart Houdini to run it - this session keeps the old one in memory. Your library and your settings were not touched.'
+
+# 2 sites - toolbar/Amaze.shelf, dialogs/prefs_dialog.py
+UPDATE_FAILED_UNEXPECTED = 'The update could not be installed (%s).\n\nNothing has been changed.'
+
 
 # ── Dialog TITLES ────────────────────────────────────────────────────
 
@@ -280,6 +295,9 @@ BUTTONS_DELETE_USER = ('Delete User', 'Cancel')
 
 # dialogs/prefs_dialog.py:207
 BUTTONS_TURN_ON = ('Turn On', 'Cancel')
+
+# toolbar/Amaze.shelf
+BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 
 # ── HELP text, shown under a Houdini dialog's question ───────────────
 

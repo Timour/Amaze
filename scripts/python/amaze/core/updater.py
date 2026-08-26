@@ -254,14 +254,42 @@ def fetch_and_stage(url: str, workspace: str,
             pass
 
 
-def apply_update(staged: str, install: str) -> str:
-    """Put `staged` where `install` is, keeping the old one as `.backup` so a bad release is undone by moving it back - nothing takes effect until Houdini restarts, and the caller says so."""
+def install_root() -> str:
+    """Where this Amaze is installed, from `$AMAZE`; `""` when it cannot be told."""
+    try:
+        import hou
+    except ImportError:
+        return os.environ.get("AMAZE", "")
+    return hou.getenv("AMAZE") or ""    # inside Houdini `hou` is the ONLY authority; an environment fallback here would install into whatever $AMAZE happened to hold
+
+
+def install(found, into: str = "") -> None:
+    """Fetch, verify, stage and swap in the release `found` names - every failure raises OSError carrying a FINISHED sentence, and nothing is changed unless the swap completes. ▸p/updater-shape"""
+    from amaze import messages
+    from amaze.helpers import hostos
+
+    if not found or not getattr(found, "url", ""):
+        raise OSError(messages.NO_RELEASE_TO_INSTALL)
+    into = into or install_root()
+    if not into or not os.path.isdir(into):
+        raise OSError(messages.INSTALL_LOCATION_UNKNOWN)
+    workspace = os.path.join(hostos.cache_root(), "updates")
+    try:
+        staged = fetch_and_stage(found.url, workspace,
+                                 digest=getattr(found, "digest", ""),
+                                 size=getattr(found, "size", 0))
+        return apply_update(staged, into)
+    finally:    # the workspace is a means, not a result, and a failed install leaves a repo-sized tree in the cache without this
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
+def apply_update(staged: str, install: str) -> None:
+    """Put `staged` where `install` is. The old install is moved aside only for the length of the swap and then DELETED - every previous version is on the releases page, and a copy left beside a synced install is 49MB of someone else's disk, per update, forever."""
     if not os.path.isdir(staged):
         raise OSError("the staged update is not there: %s" % staged)
-    backup = install.rstrip("/\\") + ".backup"
-    if os.path.exists(backup):
-        shutil.rmtree(backup)
-    os.rename(install, backup)    # same parent as the install, so this one never crosses a volume
+    aside = install.rstrip("/\\") + ".replacing"
+    shutil.rmtree(aside, ignore_errors=True)    # a leftover from a run that died mid-swap
+    os.rename(install, aside)    # same parent as the install, so this one never crosses a volume
     try:
         try:
             os.rename(staged, install)
@@ -269,7 +297,7 @@ def apply_update(staged: str, install: str) -> str:
             shutil.move(staged, install)    # the cache and the install can be on DIFFERENT volumes, where rename raises EXDEV and only a copy crosses ▸r/cross-volume-move
     except OSError:
         shutil.rmtree(install, ignore_errors=True)    # a half-copied install is not one to leave in place
-        os.rename(backup, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
+        os.rename(aside, install)    # PUT IT BACK - the window between the two renames is the only moment this is not whole
         raise
-    debug.event("updater", "update applied", install=install, backup=backup)
-    return backup
+    shutil.rmtree(aside, ignore_errors=True)    # only once the new one is IN PLACE, so the rollback above is still reachable until here
+    debug.event("updater", "update applied", install=install)

@@ -240,10 +240,18 @@ class TheSwapTest(unittest.TestCase):
             return fh.read()
 
     def test_the_new_install_takes_the_place_of_the_old(self):
-        backup = updater.apply_update(self.staged, self.install)
+        updater.apply_update(self.staged, self.install)
         self.assertEqual("new", self._which(self.install))
-        self.assertEqual("old", self._which(backup),
-                         "the previous install must survive as .backup")
+
+    def test_no_copy_of_the_old_install_is_left_behind(self):
+        """Every previous version is on the releases page, so a copy beside a synced install is only someone else's disk - 49MB per update, forever."""
+        updater.apply_update(self.staged, self.install)
+        beside = os.path.dirname(self.install)
+        leftovers = [name for name in os.listdir(beside)
+                     if name.startswith(os.path.basename(self.install))
+                     and name != os.path.basename(self.install)]
+        self.assertEqual([], leftovers,
+                         "the update left a copy of the old install behind")
 
     def test_a_second_update_does_not_trip_on_the_old_backup(self):
         updater.apply_update(self.staged, self.install)
@@ -297,14 +305,12 @@ class TheSwapTest(unittest.TestCase):
 
         os.rename = cross_volume
         self.addCleanup(setattr, os, "rename", real)
-        backup = updater.apply_update(self.staged, self.install)
+        updater.apply_update(self.staged, self.install)
         os.rename = real
 
         self.assertEqual(
             "new", self._which(self.install),
             "a cache on another volume left the update uninstalled")
-        self.assertEqual("old", self._which(backup),
-                         "the rollback copy was lost crossing the volume")
 
     def test_a_copy_that_dies_part_way_leaves_no_half_install(self):
         """Once the install has been renamed aside its path is free, so a copy that fails part way populates it with a fragment. ▸r/cross-volume-move"""
@@ -563,15 +569,14 @@ class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
 
         staged = updater.stage_release(self._release_zip(),
                                        os.path.join(self.dir, "staged"))
-        backup = updater.apply_update(staged, install)
+        updater.apply_update(staged, install)
 
         self.assertTrue(
             os.path.exists(os.path.join(install, "scripts", "marker.txt")),
             "the release did not land in the install")
-        self.assertTrue(
-            os.path.exists(os.path.join(backup, "scripts", "old.txt")),
-            "the previous install was not kept, so a bad release cannot "
-            "be undone")
+        self.assertFalse(
+            os.path.exists(install + ".backup"),
+            "a copy of the old install was left beside the new one")
 
     def test_the_install_entries_match_the_ship_script(self):
         """Two homes for one list, so a source-derived guard rather than a promise. ▸p/updater-shape"""

@@ -926,45 +926,27 @@ class PrefsDialog(base_dialog.AssetDialog):
         result = getattr(self, "_last_update", None)
         if not result or not getattr(result, "url", ""):
             return
-        install = hou.getenv("AMAZE") or ""
-        if not install or not os.path.isdir(install):
-            self._lbl_update.setText(
-                "Amaze cannot tell where it is installed, so it cannot "
-                "replace itself. Nothing has been changed.")
-            return
 
-        workspace = os.path.join(hostos.cache_root(), "updates")
         self._btn_install.setEnabled(False)
         self._btn_install.setText("Installing...")
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
-            staged = updater.fetch_and_stage(
-                result.url, workspace,
-                digest=getattr(result, "digest", ""),
-                size=getattr(result, "size", 0))
-            backup = updater.apply_update(staged, install)
+            updater.install(result)    # the SAME call the shelf tool makes, so the two cannot drift
         except OSError as exc:
             self._lbl_update.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one
             return
         except Exception as exc:                              # noqa: BLE001
             debug.exception("update install", exc)
-            self._lbl_update.setText(
-                "The update could not be installed (%s). Nothing has "
-                "been changed." % exc)
+            self._lbl_update.setText(messages.UPDATE_FAILED_UNEXPECTED % exc)
             return
         finally:
             self._btn_install.setEnabled(True)
             self._btn_install.setText("Install Update")
-            shutil.rmtree(workspace, ignore_errors=True)
 
         self._btn_install.setVisible(False)
         self._lbl_update.setText(
-            "Amaze %s is installed. Restart Houdini to run it - this "
-            "session keeps the old one in memory. Your library and your "
-            "settings were not touched, and the previous version is "
-            "beside the new one at %s."
-            % (result.version, backup))
+            messages.UPDATE_INSTALLED % result.version)
 
     def set_debug_mode(self, checked: bool) -> None:
         """Takes effect IMMEDIATELY: the engine is reconfigured here as well as on close, so a session can be captured without restarting Houdini."""
