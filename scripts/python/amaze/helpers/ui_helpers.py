@@ -5,6 +5,7 @@ import os
 
 from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 
+from amaze import amazetheme
 from amaze.core import debug
 from amaze.helpers import theme
 
@@ -182,16 +183,16 @@ def device_pixmap(path, side, dpr, color_replacements=None):
 class DesignedDialog(QtWidgets.QDialog):
     """A dialog in the shape the designs describe: NO header block - the name rides the WINDOW TITLE, so a caller sets `setWindowTitle` - over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
 
-    FRAME = (256, 158)      # the design's 512 x 316
-    INSET = 18              # 35, both sides, leaving a 220-wide body column
-    FIRST_FIELD_Y = 15      # 30, the first field's top under the title bar
-    BODY_BG = theme.color_hex("surface")   # the SURFACE follows Houdini's theme, because a value kept equal to another value by hand is a value that drifts
-    LABEL_INK = "#93b9e7"   # the INK stays literal: not a theme colour but the design's own answer
-    FIELD_H = 30            # 60
-    BUTTON = (101, 21)      # 202 x 42
-    BUTTON_GAP = 19         # 38
-    RADIUS = 5              # 10
-    LABEL_PX, BUTTON_PX = 10, 12
+    FRAME = amazetheme.D01_FRAME    # every number and ink below is the DESIGN's, declared once in `amazetheme` ▸p/one-design-document
+    INSET = amazetheme.D01_INSET
+    FIRST_FIELD_Y = amazetheme.D01_FIRST_FIELD_Y
+    BODY_BG = theme.color_hex("surface")   # the SURFACE follows Houdini's theme, which is why it is the one value here that is NOT the design's
+    LABEL_INK = amazetheme.D01_LABEL_INK
+    FIELD_H = amazetheme.D01_FIELD_H
+    BUTTON = amazetheme.D01_BUTTON
+    BUTTON_GAP = amazetheme.D01_BUTTON_GAP
+    RADIUS = amazetheme.D01_RADIUS
+    LABEL_PX, BUTTON_PX = amazetheme.D01_LABEL_PX, amazetheme.D01_BUTTON_PX
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -256,11 +257,11 @@ def apply_disabled_opacity(painter, widget) -> None:
 class ClickSlider(QtWidgets.QSlider):
     """A slider that updates continuously, jumps to the click, and locks onto a SNAP_MARK within SNAP_RADIUS of it - a magnet zone per mark, not a grid; it paints its own groove and handle, because QSlider's sub-page/add-page stylesheet selectors render unpredictably across styles and platforms."""
 
-    LEFT_COLOR = QtGui.QColor("#5d7abd")   # also the project accent default, which `set_accent_color` overrides from prefs at runtime regardless
+    LEFT_COLOR = QtGui.QColor(amazetheme.SLIDER_LEFT)   # also the project accent default, which `set_accent_color` overrides from prefs at runtime regardless
     LEFT_WIDTH = theme.ui_px(3)
     RIGHT_COLOR = QtGui.QColor(theme.color_hex("field"))   # was #434343, byte-identical to this role, so the groove follows the Houdini theme like the rest of the panel
     RIGHT_WIDTH = theme.ui_px(3)
-    HANDLE_COLOR = QtGui.QColor("#777f95")
+    HANDLE_COLOR = QtGui.QColor(amazetheme.SLIDER_HANDLE)
     HANDLE_DIAMETER = theme.ui_px(11)   # 11 not 10: Qt centres an ellipse pen on the geometric edge, so the border eats inward into the fill by half its width rather than sitting outside it
     HANDLE_BORDER_COLOR = QtGui.QColor(theme.color_hex("surface"))   # was #2d2d2d, the toolbar row's own grey, so the handle border reads as punched out of the bar
     HANDLE_BORDER_WIDTH = theme.ui_px(1)
@@ -396,7 +397,7 @@ class ThinProgressBar(QtWidgets.QWidget):
     """A minimal hand-painted progress bar - no text, just a filled strip against a track; deliberately not QProgressBar plus a stylesheet, which this project's Qt/macOS combination has repeatedly proven unreliable at honouring on built-in widgets."""
 
     FILL_COLOR = ClickSlider.LEFT_COLOR
-    TRACK_COLOR = QtGui.QColor("#1a1a1a")   # its OWN constant, not ClickSlider.RIGHT_COLOR: that coupling meant a slider-only colour tweak silently recoloured this track too
+    TRACK_COLOR = QtGui.QColor(amazetheme.SLIDER_TRACK)   # its OWN constant, not ClickSlider.RIGHT_COLOR: that coupling meant a slider-only colour tweak silently recoloured this track too
     BAR_HEIGHT = theme.ui_px(4)
 
     def __init__(self) -> None:
@@ -471,7 +472,7 @@ class SectionTabBar(QtWidgets.QWidget):
     CHIP_RING = theme.color("tab_ring")
     TEXT_SELECTED = theme.color("text_bright")
     TEXT_UNSELECTED = theme.color("text")
-    TEXT_HOVER = QtGui.QColor("#cccdcd")   # not in the design, which draws no tab hover state - a modest text-whitening matching the toolbar icons' hover colour
+    TEXT_HOVER = QtGui.QColor(amazetheme.TAB_TEXT_HOVER)   # not in the design, which draws no tab hover state - a modest text-whitening matching the toolbar icons' hover colour
 
     def __init__(self, segments: list) -> None:
         """segments: list of (key, label) pairs, left to right."""
@@ -740,19 +741,19 @@ class ToggleSwitch(QtWidgets.QCheckBox):
 class IconMenuButton(QtWidgets.QWidget):
     """The toolbar's icon button that pops a QMenu, fully hand-painted because Houdini's own button chrome shows NO visible open state in this panel; hover and open are tracked explicitly and cleared on the menu's `aboutToHide`, which is what avoids Qt's stuck-highlight-after-popup quirk."""
 
-    IDLE_BODY = "#5d7abd"
-    LIT_BODY = "#cccdcd"
-    IDLE_TRIANGLE = "#7f807f"
-    LIT_TRIANGLE = "#a5b3d4"
-    PUNCH_OUT = "#2d2d2d"
-    OPEN_PUNCH_OUT = "#2d4075"
-    HOVER_PUNCH_OUT = "#424142"
-    CHIP_FILL = QtGui.QColor("#2d4075")
-    CHIP_BORDER = QtGui.QColor("#1e2c50")
-    CHIP_RING = QtGui.QColor("#707ca3")
-    HOVER_CHIP_FILL = QtGui.QColor("#424142")
-    HOVER_CHIP_RING = QtGui.QColor("#555455")
-    TEXT_COLOR = QtGui.QColor("#e6e6e6")
+    IDLE_BODY = amazetheme.MENU_IDLE_BODY
+    LIT_BODY = amazetheme.MENU_LIT_BODY
+    IDLE_TRIANGLE = amazetheme.MENU_IDLE_TRIANGLE
+    LIT_TRIANGLE = amazetheme.MENU_LIT_TRIANGLE
+    PUNCH_OUT = amazetheme.MENU_PUNCH_OUT
+    OPEN_PUNCH_OUT = amazetheme.MENU_OPEN_PUNCH_OUT
+    HOVER_PUNCH_OUT = amazetheme.MENU_HOVER_PUNCH_OUT
+    CHIP_FILL = QtGui.QColor(amazetheme.MENU_CHIP_FILL)
+    CHIP_BORDER = QtGui.QColor(amazetheme.MENU_CHIP_BORDER)
+    CHIP_RING = QtGui.QColor(amazetheme.MENU_CHIP_RING)
+    HOVER_CHIP_FILL = QtGui.QColor(amazetheme.MENU_HOVER_CHIP_FILL)
+    HOVER_CHIP_RING = QtGui.QColor(amazetheme.MENU_HOVER_CHIP_RING)
+    TEXT_COLOR = QtGui.QColor(amazetheme.MENU_TEXT)
     RENDER_SCALE = 4    # icons render at 4x the icon size, so painting scales a sharp pixmap DOWN on a retina display rather than a soft one up
 
     def __init__(
@@ -1060,7 +1061,7 @@ def pick_color(initial, parent=None, title="Select Color"):
 
     picked = QtWidgets.QColorDialog.getColor(
         initial if initial is not None and initial.isValid()
-        else QtGui.QColor("#4af2a1"),
+        else QtGui.QColor(amazetheme.SIDEBAR_PICKER_START),
         parent, title)
     return picked if picked.isValid() else None
 

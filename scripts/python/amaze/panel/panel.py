@@ -43,6 +43,7 @@ from amaze.dialogs import (
     icon_dialog,
     user_dialog,
 )
+from amaze import amazetheme
 from amaze import branding
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
@@ -93,6 +94,7 @@ _reload(category)
 _reload(repair)
 _reload(folders)
 _reload(prefs)
+_reload(amazetheme)    # before theme and ui_helpers: their class bodies read the DESIGN's values at definition time, so a stale one draws yesterday's design ▸p/one-design-document
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
 _reload(ui_helpers)
@@ -664,9 +666,9 @@ class MatLibPanel(QtWidgets.QWidget):
             grid.bind_table_cell_delegates(self, delegate)    # THE TABLE DOES NOT WEAR THE TILE DELEGATE: that one paints a whole TILE per index, right where an index is a tile and catastrophic where a row is ten of them. Qt paints every text cell itself; only the picture and the tick columns get a delegate, and those are per COLUMN
 
     CELL_PAD = theme.ui_px(5)    #: air either side of a cell's text; ONE home, named here only because the header must start its label where the rows start theirs. NOT a `QTableView::item` sheet (that hands item drawing to QStyleSheetStyle and takes the font and selection colours with it) and not a QProxyStyle (setStyle does not own it)
-    HEADER_BG = QtGui.QColor("#2a2a2a")    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
-    HEADER_DIVIDER = QtGui.QColor("#454545")
-    HEADER_HEIGHT = theme.ui_px(20)
+    HEADER_BG = QtGui.QColor(amazetheme.LIST_HEADER_BG)    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
+    HEADER_DIVIDER = QtGui.QColor(amazetheme.LIST_HEADER_DIVIDER)
+    HEADER_HEIGHT = theme.ui_px(amazetheme.LIST_HEADER_HEIGHT)
 
     def sync_list_columns(self) -> None:
         """Re-fit list mode's columns for the context now showing - THE SECTIONS' entry point, called from every `activate()`."""
@@ -1427,16 +1429,16 @@ class MatLibPanel(QtWidgets.QWidget):
         name_field.setToolTip(ui_helpers.tooltip_text(
             "Pick the active version in the list, rename it in the "
             "field. Versions are made automatically when you save."))
-        name_field.setPlaceholderText("Rename this version")
+        name_field.setPlaceholderText(amazetheme.PLACEHOLDER_VERSION_NAME)
         name_field.setText(listed[current_row].get("name") or "")
-        dialog.add_field(name_field, label="Change Name")
+        dialog.add_field(name_field, label=amazetheme.LABEL_CHANGE_NAME)
 
         def _sync_field(combo_row):
             name_field.setText(listed[combo_row].get("name") or "")
 
         picker.currentIndexChanged.connect(_sync_field)
 
-        dialog.add_buttons("Cancel", "Apply")
+        dialog.add_buttons(amazetheme.BTN_CANCEL, amazetheme.BTN_APPLY)
 
         try:
             if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
@@ -1574,7 +1576,7 @@ class MatLibPanel(QtWidgets.QWidget):
         name = self._raw_category_name(index)
         return "" if name in ("All", "_All") else name
 
-    DEFAULT_SIDEBAR_COLOUR = "#4af2a1"    # the picker's starting colour when a row has none; one place
+    DEFAULT_SIDEBAR_COLOUR = amazetheme.SIDEBAR_PICKER_START
 
     def ask_category_name(self, title: str):
         """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""

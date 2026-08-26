@@ -4,6 +4,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import category, debug
 from amaze.helpers import theme, ui_helpers
 
@@ -126,8 +127,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     PAD = theme.ui_px(4)
     GAP = theme.ui_px(8)
-    TEXT_COLOR = QtGui.QColor("#cdc8bc")
-    DIM = QtGui.QColor("#5d7abd")    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
+    TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
+    DIM = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
     THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
 
     GRID_NAME_COLOR = theme.color("text")           # GRID tiles are quieter than list mode - the name in the neutral grey the design system already uses for unselected tabs
@@ -136,9 +137,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     GRID_BOTTOM_PAD = theme.ui_px(5)      # text to card bottom: 16R, the same as the margins between cards, expressed as 5c because the spec measures the GLYPH bottom and the font descent (~5R) sits inside the QRect
     GRID_IMG_TEXT_GAP = theme.ui_px(8)    # image bottom to text top; `grid_cell_size` sizes the cell to this exact layout, so there is no leftover slack making tiles read tall
 
-    CATEGORY_COLOR = QtGui.QColor("#d8d6d4")    # list mode's Category column where the category carries no colour of its own - a fixed yellow competing with the user's choice says the wrong thing about which one means something
-    LIST_INK = QtGui.QColor("#d8d6d4")          # LIST MODE'S ONE INK: a table is read down its columns, so everything paints in this except Category, which paints in its own category's colour
-    SELECTED_TEXT = QtGui.QColor("#000000")     # selection turns EVERY column black - the palette's highlightedText was not reliably dark against the amber highlight
+    CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # list mode's Category column where the category carries no colour of its own - a fixed yellow competing with the user's choice says the wrong thing about which one means something
+    LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # LIST MODE'S ONE INK: a table is read down its columns, so everything paints in this except Category, which paints in its own category's colour
+    SELECTED_TEXT = QtGui.QColor(amazetheme.LIST_SELECTED_TEXT)     # selection turns EVERY column black - the palette's highlightedText was not reliably dark against the amber highlight
 
     _badge_cache = {}    # rendered badge per (art, size, dpr) - every tile badge comes through here, one SVG rasterisation each for the whole app
     _font_cache = {}     # (`QFont.key()`, selected) -> (name_font, rend_font, fm, fm)
@@ -160,8 +161,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         )
         return QtCore.QSize(width, height)
 
-    BAND_TEXT_DARK = QtGui.QColor("#262626")     # text on a coloured band, not the palette's greys: those are tuned for the dark card, and a category colour can be any lightness at all
-    BAND_TEXT_LIGHT = QtGui.QColor("#f0eeee")
+    BAND_TEXT_DARK = QtGui.QColor(amazetheme.BAND_TEXT_DARK)     # text on a coloured band, not the palette's greys: those are tuned for the dark card, and a category colour can be any lightness at all
+    BAND_TEXT_LIGHT = QtGui.QColor(amazetheme.BAND_TEXT_LIGHT)
 
     @staticmethod
     def _relative_luminance(color):

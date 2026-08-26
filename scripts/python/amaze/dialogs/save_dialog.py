@@ -2,6 +2,7 @@
 
 from PySide6 import QtWidgets
 
+from amaze import amazetheme
 from amaze import branding
 from amaze.dialogs import base_dialog
 from amaze.helpers import theme, ui_helpers
@@ -10,7 +11,7 @@ from amaze.helpers import theme, ui_helpers
 class SaveDialog(base_dialog.AssetDialog):
 
     FORM_WIDTH = base_dialog.SAVE_WIDTH
-    FIELD_WIDTH = 276    # the drawn field width ▸p/save-dialog-rows
+    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH    # the drawn field width ▸p/save-dialog-rows
 
     def __init__(
         self,

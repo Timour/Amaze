@@ -8,6 +8,7 @@ import hou
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
+from amaze import amazetheme
 from amaze import branding
 from amaze.core import debug, library_policy, texture_library, users
 from amaze.dialogs import base_dialog, user_dialog
@@ -19,7 +20,7 @@ from amaze.panel import sections as sections_module
 from amaze.prefs import prefs as prefs_mod
 
 
-LINK_COLOR = "#8e8a85"   # About-tab links, a step darker than body text so they read as secondary
+LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 

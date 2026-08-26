@@ -1,6 +1,7 @@
 """THE EMPTY STATE ENGINE - which blank the grid is showing: a SIBLING of the two grid views whose visibilities `grid.apply_grid_face` owns (nothing here positions anything), words in the UI text register, and every `SHARED` row is (headline, sentence, button label, verb) with a blank verb meaning no button (devlog 480)."""
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.helpers import theme
 from amaze.panel import grid
 
@@ -12,24 +13,7 @@ UNREACHABLE = "unreachable"
 
 MAX_QUOTED = 24                 # the quoted search is unbounded input
 
-SHARED = {
-    NO_MATCH: (
-        'Nothing matches "%s"',
-        "No saved %s has that in its name, tags or category.",
-        "Clear Search", "clear_filter_box"),
-    NOTHING_HERE: (
-        '"%s" is empty',
-        "Drag and drop to add a %s to this category.",
-        "Show All", "show_all_categories"),
-    NO_FAVOURITES: (
-        "No favorites yet",
-        "Click the star on a tile to favorite it.",
-        "Show All", "clear_favourites_filter"),
-    UNREACHABLE: (
-        "Can't find the folder",
-        "“%s” is not available at the current location.",
-        "Locate", "locate_unreadable_folder"),
-}
+SHARED = amazetheme.EMPTY_SHARED    # the WORDS are the design's, declared once ▸p/one-design-document
 
 
 def _elide(text: str) -> str:

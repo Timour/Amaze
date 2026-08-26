@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import tile_icons
 from amaze.dialogs import base_dialog
 from amaze.helpers import theme, ui_helpers
 
-CELL = 34            # one icon button in the chooser grid
-COLUMNS = 10         # how wide the grid runs before wrapping
-SIDE_WIDTH = 150     # preview, swatches and buttons all measure this, so the side reads as one block
+CELL = amazetheme.D02_CELL            # one icon button in the chooser grid ▸p/one-design-document
+COLUMNS = amazetheme.D02_COLUMNS      # how wide the grid runs before wrapping
+SIDE_WIDTH = amazetheme.D02_SIDE_WIDTH   # preview, swatches and buttons all measure this, so the side reads as one block
 
 
 class IconDialog(base_dialog.AssetDialog):
@@ -20,7 +21,7 @@ class IconDialog(base_dialog.AssetDialog):
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
-                         else "Tile Icon",    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
+                         else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
                          fixed_size=False, parent=parent)
         self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
@@ -69,7 +70,7 @@ class IconDialog(base_dialog.AssetDialog):
             return row
         self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)   # no "Name" label: the field's own content says what it is
         self.tile_name_edit.setEnabled(self._tile_name_enabled)
-        self.tile_name_edit.setPlaceholderText("Name")
+        self.tile_name_edit.setPlaceholderText(amazetheme.LABEL_NAME)
         self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
             "Rename this tile. The name is what the grid, the "
             "sidebar count and every search look at."))
@@ -168,7 +169,8 @@ class IconDialog(base_dialog.AssetDialog):
             self._swatches.append(swatch)
         column.addLayout(swatches)
 
-        self.custom_button = QtWidgets.QPushButton("Custom Color...")
+        self.custom_button = QtWidgets.QPushButton(
+            amazetheme.BTN_CUSTOM_COLOR)
         self.custom_button.setToolTip(ui_helpers.tooltip_text(
             "Pick any color, with Houdini's color picker."))
         self.custom_button.clicked.connect(self._pick_custom)
@@ -187,30 +189,30 @@ class IconDialog(base_dialog.AssetDialog):
         self.ink_combo.setCurrentIndex(
             max(self.ink_combo.findData(self._ink), 0))
         self.ink_combo.currentIndexChanged.connect(self._set_ink)
-        fields.addRow("Icon Color", self.ink_combo)
+        fields.addRow(amazetheme.LABEL_ICON_COLOR, self.ink_combo)
 
         if self._tile_tags is None:
             self.tags_edit = None
         else:
             self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)
             self.tags_edit.setEnabled(self._tile_name_enabled)    # the SAME rule the name field wears: a multi-selection greys it, because one field cannot say what several rows carry
-            self.tags_edit.setPlaceholderText("metal, rough")
+            self.tags_edit.setPlaceholderText(amazetheme.PLACEHOLDER_TAGS)
             self.tags_edit.setToolTip(ui_helpers.tooltip_text(
                 "Tags for this tile, separated by commas. What is in "
                 "the field replaces the tags it already has."))
-            fields.addRow("Tags", self.tags_edit)
+            fields.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
         column.addLayout(fields)
         column.addStretch(1)
 
         actions = QtWidgets.QHBoxLayout()   # two buttons, no Cancel: closing IS cancelling, and Remove is the way back so an icon is never a one-way door
         actions.setSpacing(6)
-        self.clear_button = QtWidgets.QPushButton("Remove")
+        self.clear_button = QtWidgets.QPushButton(amazetheme.BTN_REMOVE)
         self.clear_button.setToolTip(
             "Show this tile's own thumbnail again")
         self.clear_button.clicked.connect(self._clear)
         actions.addWidget(self.clear_button)
 
-        self.accept_button = QtWidgets.QPushButton("Apply")
+        self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)

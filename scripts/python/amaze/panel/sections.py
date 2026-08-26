@@ -8,6 +8,7 @@ import os
 import hou
 from PySide6 import QtCore, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import (cop_library, debug, dragengine, file_library,
                         grid_columns, multifilterproxy_model, packages,
                         scene_captures, notes)
@@ -579,16 +580,8 @@ class MaterialSection(AssetSection):
     key = "material"
     label = "Material"
     empty_noun = "material"
-    EMPTY = {    # no button: save_asset needs a selected node and says so when there is none, which is the normal state on an empty library
-        "nothing-yet": (
-            "No materials saved yet",
-            "Right-click a material in the network editor and choose "
-            "Save to Amaze.",
-            "", ""),
-    }
-    QUOTE = ("Kunst gibt nicht das Sichtbare wieder, sondern macht "
-             "sichtbar.",
-             "Paul Klee, Schöpferische Konfession, 1920")
+    EMPTY = amazetheme.EMPTY_MATERIAL    # no button: save_asset needs a selected node and says so when there is none ▸p/one-design-document
+    QUOTE = amazetheme.QUOTE_MATERIAL
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -716,15 +709,8 @@ class CopSection(AssetSection):
     key = "cop"
     label = "Node"
     empty_noun = "node asset"
-    EMPTY = {    # no button, for the same reason as Material
-        "nothing-yet": (
-            "No node assets saved yet",
-            "Select nodes in a network, right-click and choose Save to "
-            "Amaze.",
-            "", ""),
-    }
-    QUOTE = ('"I have nothing to say and I am saying it."',
-             "John Cage, Lecture on Nothing, 1949")
+    EMPTY = amazetheme.EMPTY_NODE    # no button, for the same reason as Material
+    QUOTE = amazetheme.QUOTE_NODE
     GRID_MENU = (    # the material menu's essentials without the renderer-specific entries (Copy To targets, Karma conversion) that mean nothing for a saved network; LOAD rather than Import, matching the File section's word for "bring the saved thing into Houdini", but live on a multi-selection because any number of networks can be built
         MenuEntry("Load", verb="menu_load"),
         SEPARATOR,
@@ -812,12 +798,7 @@ class CodeSection(AssetSection):
     key = "code"
     label = "Code"
     empty_noun = "snippet"
-    EMPTY = {    # a button here because New File acts on NOTHING and so always works, the same reason its menu entry stays live over an empty selection
-        "nothing-yet": (
-            "No code saved yet",
-            "Right-click a wrangle and choose Save to Amaze.",
-            "New File", "new_code_snippet"),
-    }
+    EMPTY = amazetheme.EMPTY_CODE    # a button here because New File acts on NOTHING and so always works, the same reason its menu entry stays live over an empty selection
     GRID_MENU = (    # Apply and Edit act on one snippet and grey out beside New File, which acts on nothing and stays live; no Update Preview, per offers_preview_update above
         MenuEntry("New File", verb="menu_new_snippet", needs="always"),
         SEPARATOR,
@@ -1228,12 +1209,7 @@ class FileSection(FolderSection):
     label = "File"
     filter_tooltip = "Show one kind of file."
     empty_noun = "file"
-    EMPTY = {  # a button: registering a folder needs nothing selected
-        "nothing-yet": (
-            "No locations added yet",
-            "Add folders of images, geometry or .hip files.",
-            "Add Folder", "add_file_folder_user"),
-    }
+    EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
 
     FILTER_CHOICES = (  # the kinds it KNOWS, in the order kind_for tests them; KIND_OTHER is the absence of a kind, not a fourth to browse by
         ("Images", file_library.KIND_IMAGE),
@@ -1610,14 +1586,8 @@ class GradientSection(AssetSection):
     key = "gradient"
     label = "Color"
     empty_noun = "palette"
-    EMPTY = {  # no button: the gesture belongs to the network editor
-        "nothing-yet": (
-            "No palettes saved yet",
-            "Right-click a color ramp and choose Save to Amaze.",
-            "", ""),
-    }
-    QUOTE = ('"I\'m profoundly optimistic about nothing."',
-             "Francis Bacon")
+    EMPTY = amazetheme.EMPTY_COLOR    # no button: the gesture belongs to the network editor
+    QUOTE = amazetheme.QUOTE_COLOR
     library_model_attrs = ("gradient_model", "gradient_categories_model")    # the raw MODELS, where sidebar_attr below names the proxy over them, which is why this cannot be derived from it
     model_attr = "gradient_model"
     category_attr = "gradient_categories_model"

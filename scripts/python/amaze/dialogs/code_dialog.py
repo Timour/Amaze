@@ -5,6 +5,7 @@ from PySide6 import QtWidgets, QtGui, QtCore
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 
+from amaze import amazetheme
 from amaze import branding
 from amaze.dialogs import base_dialog
 from amaze.helpers import vex_syntax
@@ -27,8 +28,8 @@ class _LineNumberArea(QtWidgets.QWidget):
 class CodeEditor(QtWidgets.QPlainTextEdit):
     """A wrangle-style code editor: black background, monospace, a grey line-number gutter, and the shared VEX syntax highlighter - the standard Qt CodeEditor pattern, coloured to match Houdini."""
 
-    GUTTER_BG = QtGui.QColor("#1a1a1a")
-    GUTTER_FG = QtGui.QColor("#7a7a7a")
+    GUTTER_BG = QtGui.QColor(amazetheme.GUTTER_BG)
+    GUTTER_FG = QtGui.QColor(amazetheme.GUTTER_FG)
     BG = vex_syntax.BACKGROUND
     FG = vex_syntax.DEFAULT
 

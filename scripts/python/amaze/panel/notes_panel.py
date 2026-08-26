@@ -6,15 +6,16 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+from amaze import amazetheme
 from amaze.core import debug, notes
 from amaze.helpers import theme, ui_helpers
 
-COMMENT_INK = "#5cc9f5"   # Comments has its OWN colour, not the accent, so button, header icon and to-do glyphs read as one thing; the tile badge stays untinted
+COMMENT_INK = amazetheme.COMMENT_INK    # the design's, declared once ▸p/one-design-document
 
 SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not a write per key
 
-HEADER_BG = "#22232b"     # designed constants, NOT theme tokens - the exact values were specified
-PAGE_BG = "#2b2c34"
+HEADER_BG = amazetheme.COMMENT_HEADER_BG
+PAGE_BG = amazetheme.COMMENT_PAGE_BG
 
 
 def _fill(widget, hex_color: str) -> None:

@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtWidgets
 
+from amaze import amazetheme
 from amaze.helpers import theme
 
-SAVE_WIDTH = 350    # every small save dialog is this wide, whatever its labels - the drawn format ▸p/save-dialog-rows
+SAVE_WIDTH = amazetheme.SAVE_WIDTH    # every small save dialog is this wide, whatever its labels ▸p/save-dialog-rows
 
 
 class AssetDialog(QtWidgets.QDialog):
