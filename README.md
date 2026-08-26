@@ -54,7 +54,7 @@ Houdini 21.0 or newer — developed and tested on 21.0 and 22.0, macOS (Apple Si
 }
 ```
 
-3. Launch Houdini and add an **Amaze** pane tab (New Pane Tab Type → Misc → Amaze).
+3. Launch Houdini and add an **Amaze** pane tab.
 4. Open Preferences (the gear) and pick a library folder — that's where your saved assets live. Keep it outside the plugin folder.
 
 Preferences are stored per user, outside this repo — updating with `git pull` never touches them.
