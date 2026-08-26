@@ -209,6 +209,18 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.panel.apply_view_mode()
         QtWidgets.QApplication.processEvents()
 
+    HOUSE_FONT = "SideFX Source Sans Pro"
+
+    def _wear_the_host_font(self, table):
+        """Wear the host font, PIXEL-sized through `ui_px` ▸p/headless-host-font"""
+        if self.HOUSE_FONT not in QtGui.QFontDatabase.families():
+            self.skipTest("%s is not installed, so the panel's real font "
+                          "cannot be measured here" % self.HOUSE_FONT)
+        font = QtGui.QFont(self.HOUSE_FONT)
+        font.setPixelSize(theme.ui_px(12))
+        table.setFont(font)
+        QtWidgets.QApplication.processEvents()
+
     def test_the_grid_slider_runs_64_to_512(self):
         self.assertEqual(
             (64, 512),
@@ -308,6 +320,7 @@ class TheRealPanelInListMode(unittest.TestCase):
         self.panel.sync_list_columns()
         QtWidgets.QApplication.processEvents()
         table = self.panel.thumbtable
+        self._wear_the_host_font(table)
         proxy = table.model()
         self.assertTrue(proxy.rowCount(), "no rows to measure")
         checked = 0
