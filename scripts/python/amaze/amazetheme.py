@@ -89,6 +89,7 @@ PLACEHOLDER_TAGS = "metal, rough"
 PLACEHOLDER_VERSION_NAME = "Rename this version"
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
+BAND_UNTITLED = "Untitled"       # what D11's band says for a snippet that has no name yet
 
 EMPTY_SHARED = {    # ▸ E06-E08, the blanks EVERY section shares. Each row is (headline, sentence, button label, verb); a blank verb means no button, and `%s` takes the section's own noun
     "nothing-matches": (

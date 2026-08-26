@@ -905,7 +905,6 @@ class CodeSection(AssetSection):
             category=asset.categories[0] if asset.categories else "",
             tags=", ".join(asset.tags),
             code=asset.code,
-            description=asset.description,
             title="Edit Snippet",
             parent=panel,
         )
@@ -918,7 +917,7 @@ class CodeSection(AssetSection):
                                  panel.code_category_model):
             panel.code_model.update_asset(
                 row, dialog.code, dialog.name, dialog.language,
-                dialog.category, dialog.tags, dialog.description,
+                dialog.category, dialog.tags,
             )
         panel._refresh_sidebar_categories()
     library_model_attrs = ("code_model", "code_category_model")

@@ -125,34 +125,38 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
         self.rebuild_thumbs()
-        self.adopt_about_into_notes()
+        self.adopt_retired_text_into_notes()
 
-    def adopt_about_into_notes(self) -> int:
-        """Move every record's About credit into its COMMENT and clear the field - the About block retired with the Material Info dialog, and its text is a comment now. Returns how many moved: ONE pass over the assets already in memory, and it reaches the notes store only for a row that still carries About. ▸p/d03-retired"""
+    RETIRED_TEXT_FIELDS = ("about", "description")    #: record fields whose text is a COMMENT now, because the dialog that showed each one is gone ▸p/d03-retired
+
+    def adopt_retired_text_into_notes(self) -> int:
+        """Move every retired text field into its asset's COMMENT and clear it. Returns how many fields moved: ONE pass over the assets already in memory, reaching the notes store only for a row that still carries one. ▸p/d03-retired"""
         if not self.NOTES_SECTION:
             return 0
         from amaze.core import notes
         moved = 0
         for asset in self._assets:
-            about = getattr(asset, "about", "")
-            if not isinstance(about, str) or not about.strip():
-                continue    # a hand-edited record can carry any type here, and only TEXT is a credit worth moving
-            about = about.strip()
             key = notes.note_key(self.NOTES_SECTION, str(asset.mat_id))
-            items = list(notes.note_for(self.preferences, key).get(
-                "items", []))
-            if not any(item.get("t") == "text"    # already carried across on an earlier open, or by another machine through the synced store
-                       and item.get("text", "").strip() == about
-                       for item in items):
-                if not notes.set_note(self.preferences, key,
-                                      [{"t": "text", "text": about}] + items):
-                    continue    # a read-only library: leave the field alone rather than clear text nothing kept
-            asset.about = ""
-            moved += 1
+            for field in self.RETIRED_TEXT_FIELDS:
+                text = getattr(asset, field, "")
+                if not isinstance(text, str) or not text.strip():
+                    continue    # a hand-edited record can carry any type here, and only TEXT is worth moving
+                text = text.strip()
+                items = list(notes.note_for(self.preferences, key).get(
+                    "items", []))
+                if not any(item.get("t") == "text"    # already carried across on an earlier open, or by another machine through the synced store
+                           and item.get("text", "").strip() == text
+                           for item in items):
+                    if not notes.set_note(
+                            self.preferences, key,
+                            [{"t": "text", "text": text}] + items):
+                        continue    # a read-only library: leave the field alone rather than clear text nothing kept
+                setattr(asset, field, "")
+                moved += 1
         if moved:
             self.save()
-            debug.event("library", "about moved into comments",
-                        section=self.NOTES_SECTION, assets=moved)
+            debug.event("library", "retired text moved into comments",
+                        section=self.NOTES_SECTION, fields=moved)
         return moved
 
     @staticmethod

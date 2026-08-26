@@ -602,6 +602,51 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             code.width(), theme.ui_px(amazetheme.D11_FORM_WIDTH),
             "the code dialog opens narrower than its drawn floor")
 
+    def test_only_the_drawn_three_wear_a_header_band(self):
+        """D01, D02 and D11 carry the drawn strip; the save family and Preferences do not, and a band appearing on one of those is the misreading that put it there in the first place. ▸p/one-design-document"""
+        from amaze.dialogs import (code_dialog, gradient_dialog,
+                                   icon_dialog, prefs_dialog, save_dialog)
+        wants = (
+            ("D02 Customize", lambda: icon_dialog.IconDialog(
+                None, 0.0, None, tile_name="rocks1"), True),
+            ("D11 Save Code",
+             lambda: code_dialog.CodeDialog(["Metal"]), True),
+            ("D09 Save", lambda: save_dialog.SaveDialog(
+                ["Metal"], "Metal", name="rocks1"), False),
+            ("D12 Gradient", lambda: gradient_dialog.GradientDialog(
+                ["Metal"], "ramp1"), False),
+            ("D13 Name", gradient_dialog.CategoryDialog, False),
+        )
+        for label, build, wanted in wants:
+            with self.subTest(dialog=label):
+                dialog = self._shown(build())
+                band = dialog.findChild(QtWidgets.QWidget,
+                                        "amaze_header_band")
+                self.assertEqual(
+                    wanted, band is not None,
+                    "%s %s a header band" % (
+                        label, "has lost" if wanted else "has grown"))
+        self.assertFalse(
+            hasattr(prefs_dialog.PrefsDialog, "HEADER_BAND")
+            and prefs_dialog.PrefsDialog.HEADER_BAND,
+            "Preferences declares a header band, which no D04-D08 "
+            "frame draws")
+
+    def test_the_code_dialog_band_names_the_SNIPPET(self):
+        """Its window title is a verb, so the band takes the name field - and says `Untitled` while there is none."""
+        from amaze import amazetheme
+        from amaze.dialogs import code_dialog
+        for tag, name, expect in (
+                ("new", "", amazetheme.BAND_UNTITLED),
+                ("named", "helper", "helper")):
+            with self.subTest(snippet=tag):
+                dialog = self._shown(
+                    code_dialog.CodeDialog(["Metal"], name=name))
+                label = dialog.findChild(QtWidgets.QLabel,
+                                         "amaze_header_band_text")
+                self.assertIsNotNone(label, "the band carries no text")
+                self.assertEqual(expect, label.text())
+
     def test_the_family_renders_ONE_width_whatever_that_width_is(self):
         """The structural property, and it is stronger than the value: four dialogs reading ONE constant must AGREE, so a broken mechanism shows up as one wrong number rather than four different ones. Four different widths is proof the constant never reached them. ▸p/shared-means-it-fails-together"""
         seen = {}

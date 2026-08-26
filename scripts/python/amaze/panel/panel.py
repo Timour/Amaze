@@ -2766,7 +2766,6 @@ class MatLibPanel(QtWidgets.QWidget):
             dialog.category,
             dialog.tags,
             False,
-            dialog.description,
         )
         self._refresh_sidebar_categories()
 

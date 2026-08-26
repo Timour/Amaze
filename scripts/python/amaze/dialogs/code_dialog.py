@@ -119,6 +119,10 @@ class CodeDialog(base_dialog.AssetDialog):
     FORM_WIDTH = amazetheme.D11_FORM_WIDTH
     HEADER_BAND = True    # D11 wears the drawn name strip ▸p/one-design-document
 
+    def header_band_text(self) -> str:
+        """The SNIPPET's name, not the window title, which here is a verb - and `Untitled` while it has none, the programming world's own word for it."""
+        return self._line_name.text().strip() or amazetheme.BAND_UNTITLED
+
     def __init__(
         self,
         categories: list,
@@ -127,7 +131,6 @@ class CodeDialog(base_dialog.AssetDialog):
         category: str = "",
         tags: str = "",
         code: str = "",
-        description: str = "",
         title: str = "Save Code to " + branding.APP_NAME,
         parent=None,
     ) -> None:
@@ -137,7 +140,6 @@ class CodeDialog(base_dialog.AssetDialog):
         self.category = ""
         self.tags = ""
         self.code = ""
-        self.description = ""
 
         self._line_name = QtWidgets.QLineEdit(name)
         self._line_name.setToolTip(ui_helpers.tooltip_text(
@@ -160,13 +162,6 @@ class CodeDialog(base_dialog.AssetDialog):
 
         self._line_tags = self.add_row("Tags", QtWidgets.QLineEdit(tags))
 
-        self._text_desc = QtWidgets.QPlainTextEdit(description)   # shown on hover over the tile - a short note on what the snippet does (the curated starter snippets ship one)
-        self._text_desc.setPlaceholderText(
-            "Optional - shown on hover (what it does, sliders to add...)"
-        )
-        self._text_desc.setFixedHeight(theme.ui_px(amazetheme.D11_DESC_H))
-        self.add_row("Description", self._text_desc)
-
         self._editor = CodeEditor(code)
         self._editor.setMinimumHeight(theme.ui_px(amazetheme.D11_EDITOR_H))    # HEIGHT only: the editor's width is the field column, which the dialog's own width already decides ▸p/one-design-document
         self.add_row("Code", self._editor)
@@ -178,7 +173,6 @@ class CodeDialog(base_dialog.AssetDialog):
         self.language = self._combo_lang.currentText().strip()
         self.category = self._combo_category.currentText().strip()
         self.tags = self._line_tags.text().strip()
-        self.description = self._text_desc.toPlainText().strip()
         self.code = self._editor.toPlainText()
         if not self.code.strip():
             QtWidgets.QMessageBox.warning(

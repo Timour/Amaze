@@ -37,6 +37,10 @@ class AssetDialog(QtWidgets.QDialog):
         self._buttons = None
         self._content = None
 
+    def header_band_text(self) -> str:
+        """What the drawn band says - the window title by default, since for most dialogs that already IS the asset's name. A dialog whose title is a verb rather than a name overrides this. ▸p/one-design-document"""
+        return self.windowTitle()
+
     def add_row(self, label, widget):
         """Add a labelled row; returns the widget for wiring. A dialog declaring `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
         if self.FIELD_WIDTH:
@@ -101,10 +105,11 @@ class AssetDialog(QtWidgets.QDialog):
             return
 
         from amaze.helpers import ui_helpers    # HERE, not at module scope: `ui_helpers` is the widget library and importing it at the top makes the shell depend on it for every dialog, band or no band
+        band_text = self.header_band_text()
         outer = QtWidgets.QVBoxLayout()    # the band is FULL WIDTH, so the house margins move inside it rather than around it
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
-        outer.addWidget(ui_helpers.header_band(self, self.windowTitle()))
+        outer.addWidget(ui_helpers.header_band(self, band_text))
         outer.addLayout(layout)
         if self._fixed_size:
             outer.setSizeConstraint(

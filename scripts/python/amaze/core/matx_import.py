@@ -321,7 +321,7 @@ def import_record(record, source, resolution, library, preferences,
             if measurement_note:
                 credited.description = measurement_note
             library.save()
-            library.adopt_about_into_notes()    # the credit lands in the COMMENT through the one door that moves it, so an import and an old library reach the same place ▸p/d03-retired
+            library.adopt_retired_text_into_notes()    # the credit lands in the COMMENT through the one door that moves it, so an import and an old library reach the same place ▸p/d03-retired
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))

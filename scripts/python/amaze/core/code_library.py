@@ -108,7 +108,6 @@ class CodeLibrary(library.AssetLibrary):
         cats: str,
         tags: str,
         fav: bool,
-        description: str = "",
     ) -> str:
         """Register a code snippet. Returns the language string on success (the renderer-string contract add_asset has), "" on failure (empty code)."""
         if not code.strip():
@@ -119,7 +118,6 @@ class CodeLibrary(library.AssetLibrary):
             name.strip() or "Snippet", cats, tags, fav, language or "Code"
         )
         new_mat.code = code
-        new_mat.description = description
         row = len(self._assets)
         self.beginInsertRows(QtCore.QModelIndex(), row, row)  # proper insert signals - without them rowsInserted never fires, and the dataChanged that follows names a row attached views do not know exists
         try:
@@ -141,7 +139,6 @@ class CodeLibrary(library.AssetLibrary):
         language: str,
         cats: str,
         tags: str,
-        description: str = "",
     ) -> bool:
         """Overwrite an existing snippet's content and metadata (the Edit flow). Keeps the id and favorite."""
         if not 0 <= row < len(self._assets):
@@ -155,7 +152,6 @@ class CodeLibrary(library.AssetLibrary):
             language or "Code",
         )
         asset.code = code
-        asset.description = description
         thumbnails.engine.discard(self._preview_key(asset))  # content changed -> the preview key changes; drop the old one
         self.rebuild_thumbs()
         self.save()
@@ -163,12 +159,19 @@ class CodeLibrary(library.AssetLibrary):
         return True
 
     def data(self, index, role=0):
-        """Hover tooltip: the snippet's description when it has one (curated starter snippets ship with a description; user snippets can be given one in the Edit dialog). Everything else falls through to the material machinery."""
+        """Hover tooltip: the snippet's own COMMENT, which is where its description went when the Description field retired ▸p/d03-retired. Everything else falls through to the material machinery."""
         if role == QtCore.Qt.ItemDataRole.ToolTipRole:
+            from amaze.core import notes
             from amaze.helpers import ui_helpers
 
-            desc = self._assets[index.row()].description
-            return ui_helpers.tooltip_text(desc) if desc else None  # just the description (no name - it's already on the tile), word-wrapped in a max-width box
+            page = notes.note_for(
+                self.preferences,
+                notes.note_key(self.NOTES_SECTION,
+                               str(self._assets[index.row()].mat_id)))
+            said = "\n".join(item.get("text", "")    # TEXT blocks only: a to-do or a picture is not a description of the snippet
+                             for item in page.get("items", [])
+                             if item.get("t") == "text").strip()
+            return ui_helpers.tooltip_text(said) if said else None  # no name - it is already on the tile - and word-wrapped in a max-width box
         return super().data(index, role)
 
     def seed_starter_snippets(self, category_model) -> None:
@@ -218,6 +221,7 @@ class CodeLibrary(library.AssetLibrary):
                 added += 1
             if added:
                 self.rebuild_thumbs()
+                self.adopt_retired_text_into_notes()    # the curated snippets ship a description, which is a COMMENT now - moved here so it lands this session rather than on the next open ▸p/d03-retired
                 if not self.save():  # the marker below may only be written if the snippets actually REACHED disk: save() reports its refusals (a held file, a blocked write, a refused merge) by returning False rather than raising, and the exists() gate further down cannot see those, because in every one of them code.json is still sitting there from before
                     debug.event("session", "starter snippets not marked "
                                 "- the save did not reach disk")

@@ -1622,7 +1622,7 @@ class AboutBecomesAComment(unittest.TestCase):
         asset_id = str(model.assets[0].mat_id)
         model.save()
 
-        self.assertEqual(1, model.adopt_about_into_notes())
+        self.assertEqual(1, model.adopt_retired_text_into_notes())
         key = notes.note_key(model.NOTES_SECTION, asset_id)
         self.assertEqual(
             [{"t": "text", "text": credit}],
@@ -1643,13 +1643,13 @@ class AboutBecomesAComment(unittest.TestCase):
         notes.set_note(self.prefs, key, [{"t": "text", "text": credit}])
         model.assets[0].about = credit
 
-        model.adopt_about_into_notes()
+        model.adopt_retired_text_into_notes()
         self.assertEqual(
             [{"t": "text", "text": credit}],
             notes.note_for(self.prefs, key).get("items"),
             "the credit was written into the comment a second time")
         self.assertEqual("", model.assets[0].about)
-        self.assertEqual(0, model.adopt_about_into_notes(),
+        self.assertEqual(0, model.adopt_retired_text_into_notes(),
                          "a swept library still had something to move")
 
     def test_it_lands_above_whatever_the_user_already_wrote(self):
@@ -1663,7 +1663,7 @@ class AboutBecomesAComment(unittest.TestCase):
         notes.set_note(self.prefs, key, [mine])
         model.assets[0].about = "From Ambient CG. CC0."
 
-        model.adopt_about_into_notes()
+        model.adopt_retired_text_into_notes()
         self.assertEqual(
             [{"t": "text", "text": "From Ambient CG. CC0."}, mine],
             notes.note_for(self.prefs, key).get("items"),
@@ -1679,7 +1679,7 @@ class AboutBecomesAComment(unittest.TestCase):
         notes.set_note = lambda *a, **k: False
         self.addCleanup(setattr, notes, "set_note", real_set)
 
-        self.assertEqual(0, model.adopt_about_into_notes())
+        self.assertEqual(0, model.adopt_retired_text_into_notes())
         self.assertEqual("From Ambient CG. CC0.", model.assets[0].about,
                          "the credit was cleared off the record after "
                          "the comment refused it - the text is gone")
