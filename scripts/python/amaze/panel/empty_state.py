@@ -18,8 +18,8 @@ SHARED = {
         "No saved %s has that in its name, tags or category.",
         "Clear Search", "clear_filter_box"),
     NOTHING_HERE: (
-        'Nothing in "%s"',
-        "Your other categories still have %s in them.",
+        '"%s" is empty',
+        "Drag and drop to add a %s to this category.",
         "Show All", "show_all_categories"),
     NO_FAVOURITES: (
         "No favorites yet",

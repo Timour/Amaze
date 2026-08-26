@@ -6,9 +6,13 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze.helpers import theme
 
+SAVE_WIDTH = 350    # every small save dialog is this wide, whatever its labels - the drawn format ▸p/save-dialog-rows
+
 
 class AssetDialog(QtWidgets.QDialog):
     """Base modal form dialog in the house style. - `canceled` is True until the user accepts; subclasses read their fields in `_on_accept()` and call super()._on_accept()."""
+
+    FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
 
     def __init__(self, title: str = "", fixed_size: bool = True,
                  parent=None) -> None:
@@ -86,6 +90,8 @@ class AssetDialog(QtWidgets.QDialog):
                 QtWidgets.QLayout.SizeConstraint.SetFixedSize
             )
         self.setLayout(layout)
+        if self.FORM_WIDTH:
+            self.setFixedWidth(theme.ui_px(self.FORM_WIDTH))    # AFTER the constraint above: `SetFixedSize` writes the layout's own hint into minimumWidth, so a width set before this is overwritten ▸p/save-dialog-rows
 
     def _on_accept(self) -> None:
         """Override to read fields, then call super()._on_accept()."""
@@ -95,6 +101,8 @@ class AssetDialog(QtWidgets.QDialog):
 
 class NameDialog(AssetDialog):
     """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""
+
+    FORM_WIDTH = SAVE_WIDTH
 
     def __init__(self, title: str = "Name", default: str = "",
                  parent=None) -> None:

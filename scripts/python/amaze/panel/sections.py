@@ -983,6 +983,7 @@ class FolderSection(Section):
     delegate_attr = ""
     folders_pref = ""
     search_hint = ""    # these tiles are files on disk with no tags and no categories, so the file name is genuinely all there is to match
+    library_model_attrs = ("file_folders_model",)    # the registered folders live in the LIBRARY's locations.json, so a library switch has to re-point them like every other library-backed model ▸p/folders-follow-the-library
 
     def filter_text(self, text: str) -> None:
         proxy = self._p(self.files_proxy_attr)

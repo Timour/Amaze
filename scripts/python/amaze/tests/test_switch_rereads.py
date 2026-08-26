@@ -48,5 +48,55 @@ class SwitchRereadsCase(unittest.TestCase):
             "Houdini restarts")
 
 
+class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
+    """Every registered File location vanished from the pane after a library switch: the rows were never lost, the File section simply declared no `library_model_attrs` and nothing repainted. ▸p/folders-follow-the-library"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def test_the_file_section_declares_its_library_model(self):
+        from amaze.panel import sections
+        self.assertIn(
+            "file_folders_model",
+            sections.FileSection.library_model_attrs,
+            "the File section's folders are not re-pointed on a library "
+            "switch, so the pane keeps showing the previous library's")
+
+    def test_every_declared_model_can_actually_switch(self):
+        """Declaring the attribute is only half - `switch_all_models` calls `switch_model_data()` on each, so a model without one turns the switch into an AttributeError."""
+        panel = self.panel
+        missing = []
+        for model in panel.library_models():
+            if not hasattr(model, "switch_model_data"):
+                missing.append(type(model).__name__)
+        self.assertEqual([], missing, "declared but cannot switch: %s"
+                         % ", ".join(missing))
+
+    def test_the_folder_model_resets_so_the_view_repaints(self):
+        """The folders read THROUGH to prefs, so the rows are right the moment the store is dropped - what was missing is the reset that tells the view."""
+        panel = self.panel
+        model = panel.file_folders_model
+        self.assertIsNotNone(model)
+        seen = []
+        model.modelReset.connect(lambda: seen.append(True))
+        model.switch_model_data()
+        QtWidgets.QApplication.processEvents()
+        self.assertTrue(
+            seen, "switch_model_data emitted no reset, so a view showing "
+                  "the old library's folders is never told to redraw")
+
+    def test_a_switch_reaches_the_folder_model(self):
+        """End to end through the panel's own door, which is what the library toggle runs."""
+        panel = self.panel
+        seen = []
+        panel.file_folders_model.modelReset.connect(lambda: seen.append(True))
+        panel.switch_all_models()
+        QtWidgets.QApplication.processEvents()
+        self.assertTrue(
+            seen, "switch_all_models never reached the File section's "
+                  "folders, so the pane keeps the previous library's")
+
+
 if __name__ == "__main__":
     unittest.main()

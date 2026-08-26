@@ -6,6 +6,9 @@ from amaze.dialogs.base_dialog import AssetDialog
 
 
 class GradientDialog(AssetDialog):
+
+    FORM_WIDTH = base_dialog.SAVE_WIDTH
+
     def __init__(self, categories: list, default_name: str = "",
                  parent=None) -> None:
         super().__init__("Save Gradient to " + branding.APP_NAME,
