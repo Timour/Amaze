@@ -122,6 +122,11 @@ ATTRIBUTION = (
                 r"verdict|ask|framing|diagnosis|instruction|instructions|"
                 r"follow-up)\b", re.I),
      "a decision credited to a person"),
+    (re.compile(r"\b(?:someone|somebody|anyone|anybody|whoever)\b", re.I),
+     "an unnamed person described instead of the change"),
+    (re.compile(r"\b(?:unsure|stressed|confused|worried|anxious|nervous|"
+                r"frustrated|scared|reassur\w+|comforting|alarming)\b", re.I),
+     "a reader's state of mind, which is not what the code does"),
     (re.compile(r"\bas (?:he|she|they) (?:put it|said|described)\b"
                 r"|\bper (?:his|her|their) (?:call|chat|instruction|request)\b"
                 r"|\bI (?:told|asked)\b"
@@ -574,7 +579,7 @@ def main():
             "  ADDED lines only, so the history already in these files\n"
             "  does not block you - only what this commit puts there.\n\n"
             "  Genuine false positive (a credit, curated content):\n"
-            "      AMAZE_ALLOW_PRIVATE=$(git rev-parse HEAD) git commit ...\n"
+            "      AMAZE_ALLOW_MESSAGE=$(git rev-parse HEAD) git commit ...   (message only)\n"
             % MAX_COMMENT_SENTENCES)
         return 1
 
@@ -617,5 +622,5 @@ if __name__ == "__main__":
             "  quotation marks.\n\n"
             "  Fix the lines above, or - for a genuine false positive -\n"
             "  bypass with:\n"
-            "      AMAZE_ALLOW_PRIVATE=$(git rev-parse HEAD) git commit ...\n")
+            "      AMAZE_ALLOW_MESSAGE=$(git rev-parse HEAD) git commit ...   (message only)\n")
     sys.exit(code)

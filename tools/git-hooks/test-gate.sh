@@ -105,6 +105,21 @@ printf 'Fix the capture stall\n\n<p>By %s<br>\n' "$probe" > msg.txt
 "$here/commit-msg" msg.txt >/dev/null 2>&1
 check "the About-box shape does not excuse a commit message" 1 $?
 
+# The body of 1.0.18, which every pattern missed: no pronoun, no name.
+printf '1.0.18 - the update messages say what happens\n\nThe offer carried reassurance about the library not being touched,\nwhich is noise in front of someone who is already unsure.\n' > unnamed.txt
+"$here/commit-msg" unnamed.txt >/dev/null 2>&1
+check "an unnamed person in the body is refused" 1 $?
+printf 'Fix the capture stall\n\nThe capture blocked 22s on one scene and never returned on the next,\nconsuming 86GB. Suite 2649 green.\n' > plain.txt
+"$here/commit-msg" plain.txt >/dev/null 2>&1
+check "      a body of pure function still passes" 0 $?
+
+# ITS OWN BYPASS: pre-commit's must not reach the message gate.
+head_now="$(git rev-parse HEAD)"
+AMAZE_ALLOW_PRIVATE="$head_now" "$here/commit-msg" unnamed.txt >/dev/null 2>&1
+check "AMAZE_ALLOW_PRIVATE does NOT disarm the message gate" 1 $?
+AMAZE_ALLOW_MESSAGE="$head_now" "$here/commit-msg" unnamed.txt >/dev/null 2>&1
+check "      AMAZE_ALLOW_MESSAGE does" 0 $?
+
 # B4b: the credit pattern was wide enough to swallow prose.
 printf '    "<p>By %s and he said the render stalled again<br>"\n' "$probe" > wide.py
 git add -A

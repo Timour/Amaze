@@ -19,9 +19,16 @@
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# ITS OWN VARIABLE. `AMAZE_ALLOW_PRIVATE` is pre-commit's, for the staged
+# CONTENT, and using it for a comment-cap false positive silently switched
+# this gate off too - which is how 1.0.18 shipped a body describing a
+# reader's state of mind. One bypass must never disarm two gates.
 head_sha="$(git rev-parse HEAD 2>/dev/null || true)"
-if [ -n "${AMAZE_ALLOW_PRIVATE:-}" ] && [ "${AMAZE_ALLOW_PRIVATE}" = "$head_sha" ]; then
+if [ -n "${AMAZE_ALLOW_MESSAGE:-}" ] && [ "${AMAZE_ALLOW_MESSAGE}" = "$head_sha" ]; then
+    echo "commit-msg: AMAZE_ALLOW_MESSAGE matches HEAD - message scan skipped" >&2
     exit 0
+elif [ -n "${AMAZE_ALLOW_MESSAGE:-}" ]; then
+    echo "commit-msg: AMAZE_ALLOW_MESSAGE set but does not match HEAD - scanning anyway" >&2
 fi
 
 exec python3 "$here/amaze_name_scan.py" --message "${1:-}"
