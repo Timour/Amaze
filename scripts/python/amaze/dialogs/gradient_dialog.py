@@ -1,9 +1,4 @@
-"""
-Save dialog for gradients ("Save Gradient to Amaze" on a node with a
-color ramp) and the minimal category-name dialog. Both are AssetDialog
-subclasses - the house form style (right-aligned labels, 5px margins,
-content-hugging fixed size, OK/Cancel) lives in dialogs/base_dialog.py.
-"""
+"""Save dialog for gradients, and the minimal category-name dialog - both AssetDialog subclasses, so the house form style lives in `dialogs/base_dialog.py`. ▸r/dialog-parents"""
 
 from amaze import branding
 from amaze.dialogs import base_dialog
@@ -11,8 +6,10 @@ from amaze.dialogs.base_dialog import AssetDialog
 
 
 class GradientDialog(AssetDialog):
-    def __init__(self, categories: list, default_name: str = "") -> None:
-        super().__init__("Save Gradient to " + branding.APP_NAME)
+    def __init__(self, categories: list, default_name: str = "",
+                 parent=None) -> None:
+        super().__init__("Save Gradient to " + branding.APP_NAME,
+                         parent=parent)
         self.name = ""
         self.category = ""
 
@@ -33,9 +30,8 @@ class GradientDialog(AssetDialog):
 
 
 class CategoryDialog(base_dialog.NameDialog):
-    """The shared name input, with this section's default title. The
-    body moved to `base_dialog.NameDialog` unchanged so Preferences
-    could ask for a name without importing the Colors dialogs."""
+    """The shared name input, with this section's default title - the body lives in `base_dialog.NameDialog`."""
 
-    def __init__(self, title: str = "Add Gradient Category") -> None:
-        super().__init__(title)
+    def __init__(self, title: str = "Add Gradient Category",
+                 parent=None) -> None:
+        super().__init__(title, parent=parent)

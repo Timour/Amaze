@@ -1,9 +1,4 @@
-"""Which user is this machine, on a library that already has some.
-
-Asked once, and only in the case that earns it: the library has people
-in it and this machine's pointer names none of them (ROADMAP line 21).
-A library with nobody yet mints silently and never reaches here.
-"""
+"""Which user is this machine, on a library that already has some - asked ONCE, and only when the library has people in it and this machine's pointer names none of them. A library with nobody yet mints silently and never reaches here."""
 
 from __future__ import annotations
 
@@ -13,18 +8,12 @@ from amaze.dialogs.base_dialog import AssetDialog
 
 
 class UserPickerDialog(AssetDialog):
-    """Pick an existing user, or create one.
+    """Pick an existing user, or create one - `uid` is set when an existing one was picked, `new_name` when a new one was named, and both stay empty on cancel."""
 
-    `uid` is set when an existing user was picked, `new_name` when a new
-    one was named; both stay empty if the dialog was cancelled.
-    """
+    CREATE = "\x00create"    # itemData for the create row: not a name and not a UID, so it can never be mistaken for either
 
-    #: itemData for the create row. Not a name and not a UID, so it can
-    #: never be mistaken for either.
-    CREATE = "\x00create"
-
-    def __init__(self, known: dict) -> None:
-        super().__init__("Who is using this library?")
+    def __init__(self, known: dict, parent=None) -> None:
+        super().__init__("Who is using this library?", parent=parent)
         self.uid = ""
         self.new_name = ""
 
@@ -36,11 +25,7 @@ class UserPickerDialog(AssetDialog):
         self.add_row("You are", self._combo)
         self._line = self.add_line("New name")
 
-        # Connected AFTER populating: the first `addItem` on an empty
-        # combo emits `currentIndexChanged(0)` (research.md ▸ Qt
-        # widgets, measured), which would run this before the field
-        # exists.
-        self._combo.currentIndexChanged.connect(self._sync_new_name)
+        self._combo.currentIndexChanged.connect(self._sync_new_name)    # connected AFTER populating: the first `addItem` on an empty combo emits `currentIndexChanged(0)`, which would run this before the field exists
         self.finish()
         self._sync_new_name()
 

@@ -15,9 +15,10 @@ class SaveDialog(base_dialog.AssetDialog):
         cat_list: list[str],
         default_cat: str = "",
         name: str | None = None,
+        parent=None,
     ) -> None:
         """`name`: when given, an editable Name row is built above Category, prefilled (COP saves pick category AND name; materials pass nothing and keep node-derived naming, since one field cannot serve their multi-selection saves). `default_cat` pre-selects the category active in the panel. The .ui's root is a full QMainWindow embedded as a plain widget - its 350x200 minimum and status bar are neutralized at runtime so the shell's fixed size hugs the content; the Favorite row is removed while `cb_fav` stays alive unchecked, so `fav` is always False here; the tags field's minimum width is what keeps the content-hugging dialog from coming out cramped; and the button box lives INSIDE the .ui, so the shell adds none and it is wired to the base accept instead of a local copy."""
-        super().__init__("Save to " + branding.APP_NAME)
+        super().__init__("Save to " + branding.APP_NAME, parent=parent)
         self.script_path = amaze.PACKAGE_ROOT   # the package locates its own bundled files ONE way
 
         self.categories = ""

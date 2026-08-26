@@ -73,9 +73,10 @@ def _picker_start(path: str) -> str:
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
-    def __init__(self, prefs, panel=None, file_files_model=None) -> None:
+    def __init__(self, prefs, panel=None, file_files_model=None,
+                 parent=None) -> None:
         super().__init__(branding.APP_NAME + " Preferences",
-                         fixed_size=False)
+                         fixed_size=False, parent=parent)
         self._prefs = prefs
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
@@ -152,7 +153,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         if not uid:
             return
         dialog = base_dialog.NameDialog(
-            "Rename User", users.name_for(self._prefs, uid))
+            "Rename User", users.name_for(self._prefs, uid), parent=self)
         dialog.exec()
         if not dialog.canceled:
             self.rename_library_user(dialog.name)
@@ -165,7 +166,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._reload_library_users()
 
     def _ask_create_library_user(self) -> None:
-        dialog = base_dialog.NameDialog("Create User", "")
+        dialog = base_dialog.NameDialog("Create User", "", parent=self)
         dialog.exec()
         if dialog.canceled:
             self._reload_library_users()    # the combo is sitting on the create row; put the real selection back

@@ -125,8 +125,9 @@ class CodeDialog(base_dialog.AssetDialog):
         code: str = "",
         description: str = "",
         title: str = "Save Code to " + branding.APP_NAME,
+        parent=None,
     ) -> None:
-        super().__init__(title, fixed_size=False)
+        super().__init__(title, fixed_size=False, parent=parent)
         self.name = ""
         self.language = ""
         self.category = ""

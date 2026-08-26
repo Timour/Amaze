@@ -96,8 +96,9 @@ class AssetDialog(QtWidgets.QDialog):
 class NameDialog(AssetDialog):
     """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""
 
-    def __init__(self, title: str = "Name", default: str = "") -> None:
-        super().__init__(title)
+    def __init__(self, title: str = "Name", default: str = "",
+                 parent=None) -> None:
+        super().__init__(title, parent=parent)
         self.name = ""
         self._line_name = self.add_line("Name", default)
         self.finish()

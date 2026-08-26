@@ -934,6 +934,7 @@ class CodeSection(AssetSection):
             code=asset.code,
             description=asset.description,
             title="Edit Snippet",
+            parent=panel,
         )
         dialog.exec()
         if dialog.canceled:

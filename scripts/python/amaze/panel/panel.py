@@ -720,7 +720,7 @@ class MatLibPanel(QtWidgets.QWidget):
         known = users.all_users(preferences)
         if chooser is None:
             def chooser(entries):
-                dialog = user_dialog.UserPickerDialog(entries)
+                dialog = user_dialog.UserPickerDialog(entries, parent=self)
                 dialog.exec()
                 if dialog.canceled:
                     return ("", "")
@@ -1650,7 +1650,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def ask_category_name(self, title: str):
         """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""
-        dialog = gradient_dialog.CategoryDialog(title)
+        dialog = gradient_dialog.CategoryDialog(title, parent=self)
         dialog.exec()
         if dialog.canceled:
             return None
@@ -2816,6 +2816,7 @@ class MatLibPanel(QtWidgets.QWidget):
             language=language or "VEX",
             category=self._current_code_category(),
             code=code,
+            parent=self,
         )
         dialog.exec()
         if dialog.canceled:
@@ -2939,7 +2940,8 @@ class MatLibPanel(QtWidgets.QWidget):
             current_cat = self._selected_category_name()
 
         dialog = save_dialog.SaveDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
-            self.get_cop_category_names(), current_cat, name=node.name()
+            self.get_cop_category_names(), current_cat, name=node.name(),
+            parent=self
         )
         r = dialog.exec()
         if dialog.canceled or not r:
@@ -3479,7 +3481,8 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
         dialog = gradient_dialog.GradientDialog(
-            self.gradient_model.user_categories(), default_name=node.name()
+            self.gradient_model.user_categories(), default_name=node.name(),
+            parent=self
         )
         dialog.exec()
         if dialog.canceled:
@@ -4146,7 +4149,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
         current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 
-        dialog = save_dialog.SaveDialog(cats, current_cat)
+        dialog = save_dialog.SaveDialog(cats, current_cat, parent=self)
         r = dialog.exec()
 
         debug.event(

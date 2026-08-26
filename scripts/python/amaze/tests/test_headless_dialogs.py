@@ -457,5 +457,94 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
         self.panel.save_asset.assert_called_once_with()
 
 
+class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
+    """A parented dialog inherits its parent's SCREEN; a parentless one goes to the primary. With the panel torn off to another monitor that is the wrong one. ▸r/dialog-parents"""
+
+    DIALOGS = {"NameDialog", "CategoryDialog", "GradientDialog",
+               "SaveDialog", "CodeDialog", "UserPickerDialog",
+               "IconDialog", "PrefsDialog", "DesignedDialog"}
+
+    EXEMPT = {("panel/panel.py", "PrefsDialog")}    # parented to the main window AFTER construction and kept NON-modal on purpose ▸r/dialog-parents
+
+    def _package_root(self):
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    def _constructions(self):
+        """(relative path, line, dialog name, passes_a_parent) for every dialog built outside the tests."""
+        root = self._package_root()
+        found = []
+        for dirpath, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs
+                       if d not in ("__pycache__", "tests")]
+            for filename in files:
+                if not filename.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, filename)
+                with open(path, "r", encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                relative = os.path.relpath(path, root)
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Call):
+                        continue
+                    name = (node.func.attr
+                            if isinstance(node.func, ast.Attribute)
+                            else getattr(node.func, "id", ""))
+                    if name not in self.DIALOGS:
+                        continue
+                    keywords = {k.arg for k in node.keywords}
+                    parented = (
+                        "parent" in keywords
+                        or (name == "IconDialog" and len(node.args) >= 3)
+                        or (name == "DesignedDialog" and bool(node.args)))
+                    found.append((relative, node.lineno, name, parented))
+        return found
+
+    def test_the_scan_actually_finds_the_dialogs(self):
+        """A scan that matches nothing would pass forever. ▸p/vacuous-register"""
+        found = self._constructions()
+        self.assertGreaterEqual(
+            len(found), 8,
+            "the dialog scan found %d construction sites - it has stopped "
+            "matching, so its silence means nothing" % len(found))
+
+    def test_no_dialog_is_built_without_a_parent(self):
+        offenders = [
+            "%s:%d %s" % (path, line, name)
+            for path, line, name, parented in self._constructions()
+            if not parented and (path, name) not in self.EXEMPT
+        ]
+        self.assertEqual(
+            [], offenders,
+            "these dialogs are built with no parent, so they open on the "
+            "primary screen rather than on the panel that opened them: %s"
+            % ", ".join(offenders))
+
+    def test_every_dialog_class_accepts_a_parent(self):
+        """`NameDialog` could not take one at all - it called `super().__init__(title)` and dropped the argument."""
+        import inspect
+        from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
+                                   icon_dialog, save_dialog, user_dialog)
+        classes = [base_dialog.AssetDialog, base_dialog.NameDialog,
+                   gradient_dialog.GradientDialog,
+                   gradient_dialog.CategoryDialog, code_dialog.CodeDialog,
+                   icon_dialog.IconDialog, save_dialog.SaveDialog,
+                   user_dialog.UserPickerDialog]
+        for cls in classes:
+            args = inspect.signature(cls.__init__).parameters
+            self.assertIn(
+                "parent", args,
+                "%s cannot be given a parent at all" % cls.__name__)
+
+    def test_a_parent_really_does_decide_the_screen(self):
+        """The premise, measured - if Qt ever stops inheriting the parent's screen, threading parents stops buying anything."""
+        host = QtWidgets.QWidget()
+        self.addCleanup(host.deleteLater)
+        parented = QtWidgets.QDialog(host)
+        self.addCleanup(parented.deleteLater)
+        self.assertIs(
+            parented.screen(), host.screen(),
+            "a parented dialog no longer inherits its parent's screen")
+
+
 if __name__ == "__main__":
     unittest.main()
