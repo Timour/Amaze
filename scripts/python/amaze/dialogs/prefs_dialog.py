@@ -192,7 +192,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                  "from this library everywhere it syncs. A machine "
                  'signed in as "%s" will ask who is using the library '
                  "the next time it opens. This cannot be undone." % name,
-            buttons=("Delete User", "Cancel"),
+            buttons=messages.BUTTONS_DELETE_USER,
             default_choice=1, close_choice=1,
             severity=hou.severityType.Warning,
             title=branding.APP_NAME,
@@ -212,7 +212,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                      "With it on, saving over an existing material "
                      "offers Save Version: the old version is kept and "
                      "the tile's badge switches between them.",
-                buttons=("Turn On", "Cancel"),
+                buttons=messages.BUTTONS_TURN_ON,
                 default_choice=1, close_choice=1,
                 severity=hou.severityType.Warning,
                 title=branding.APP_NAME,
@@ -1000,12 +1000,12 @@ class PrefsDialog(base_dialog.AssetDialog):
             target = debug.export_log(folder)
         except debug.ExportRefused as exc:
             QtWidgets.QMessageBox.information(   # SAY WHY: nothing-happened is the one outcome that teaches nothing
-                self, "Amaze - log not saved", str(exc))
+                self, messages.TITLE_LOG_NOT_SAVED, str(exc))
             debug.event("prefs", "log export refused", reason=str(exc))
             return
         except Exception as exc:                         # noqa: BLE001
             QtWidgets.QMessageBox.warning(
-                self, "Amaze - log not saved",
+                self, messages.TITLE_LOG_NOT_SAVED,
                 "Unexpected error: %s" % exc)
             return
         box = QtWidgets.QMessageBox(self)

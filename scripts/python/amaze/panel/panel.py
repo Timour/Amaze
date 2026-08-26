@@ -222,10 +222,10 @@ class MatLibPanel(QtWidgets.QWidget):
             return False
         choice = ui.displayMessage(
             messages.LIBRARY_INDEX_UNREADABLE,
-            buttons=("Repair", "Open Without Library"),
+            buttons=messages.BUTTONS_REPAIR_OR_OPEN_WITHOUT,
             severity=hou.severityType.Warning,
             default_choice=0, close_choice=1,
-            title="Amaze")
+            title=messages.TITLE_AMAZE)
         if choice != 0:
             debug.event("session", "index repair declined")
             return False
@@ -235,7 +235,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui.displayMessage(
                 messages.REPAIR_COULD_NOT_FIX_THE_LIST % how,
                 severity=hou.severityType.Warning,
-                title="Amaze")
+                title=messages.TITLE_AMAZE)
             return False
         try:
             self.load()
@@ -246,7 +246,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui.displayMessage(
                 messages.INDEX_UNREADABLE_AFTER_REPAIR,
                 severity=hou.severityType.Warning,
-                title="Amaze")
+                title=messages.TITLE_AMAZE)
             return False
         ui.setStatusMessage("Amaze: %s." % how)
         debug.event("session", "index repaired at open", how=how)
@@ -1847,7 +1847,7 @@ class MatLibPanel(QtWidgets.QWidget):
         choice = ui.displayMessage(
             messages.IMPORT_MATERIAL_PRESETS_FROM
             % (len(entries), os.path.basename(picked), listing),
-            buttons=("Import", "Cancel"),
+            buttons=messages.BUTTONS_IMPORT,
             default_choice=0, close_choice=1,
         ) if ui is not None else 1    # no screen to ask, so the answer is the close_choice - Cancel
         if choice != 0:
@@ -1892,14 +1892,11 @@ class MatLibPanel(QtWidgets.QWidget):
 
         if ui is None or ui.displayMessage(
             messages.CLEAN_LIBRARY_CONFIRM,
-            help="Removes index rows whose files are gone, deletes "
-                 "orphaned files that no library references, and drops "
-                 "folder pointers and favourites that no longer exist.\n\n"
-                 "Files are deleted from disk. This cannot be undone.",
-            buttons=("Clean Library", "Cancel"),    # confirm BEFORE, because this DELETES: it unlinks .mat/.interface/.png files and drops folder pointers and favourites, and two one-click entry points reach it
+            help=messages.HELP_CLEAN_LIBRARY,
+            buttons=messages.BUTTONS_CLEAN_LIBRARY,    # confirm BEFORE, because this DELETES: it unlinks .mat/.interface/.png files and drops folder pointers and favourites, and two one-click entry points reach it
             default_choice=1, close_choice=1,
             severity=hou.severityType.Warning,
-            title="Amaze",
+            title=messages.TITLE_AMAZE,
         ) != 0:
             debug.event("cleanup", "cancelled at the confirm dialog")
             return
@@ -2719,7 +2716,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2
                 )
             return
         dialog = code_dialog.CodeDialog(
@@ -2825,7 +2822,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.cop_model:
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2
                 )
             return
         if node is None:
@@ -3362,7 +3359,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2
                 )
             return
         if node is None:
@@ -3719,7 +3716,7 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if ui is None or ui.displayMessage(
             context.delete_prompt(len(sources), name),
-            buttons=("Delete", "Cancel"),
+            buttons=messages.BUTTONS_DELETE,
             default_choice=1, close_choice=1,
         ) != 0:
             return
@@ -3807,7 +3804,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             if ui is not None:
                 ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2
                 )
             return
         existing = []    # which of the dropped nodes already exist, so the choice is offered ONCE for the whole drop rather than per node or not at all

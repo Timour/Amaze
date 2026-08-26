@@ -711,7 +711,7 @@ class TheGuardsTest(_Case):
             repair.run(preferences=_NoLibraryPrefs())
             said = " ".join(str(call) for call in hou.ui.displayMessage
                             .call_args_list)
-        self.assertIn("no library folder", said)
+        self.assertIn("no library folder", said.lower())    # case-insensitive: the WORDING is the design's to change, and only the sense is this test's ▸p/messages-need-one-home
         self.assertIn("Preferences", said,
                       "the user is not told where to set one")
 

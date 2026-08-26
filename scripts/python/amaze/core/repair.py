@@ -595,13 +595,13 @@ def run(preferences=None) -> None:
     if not configured:
         hou.ui.displayMessage(                           # type: ignore
             messages.NO_LIBRARY_FOLDER_CONFIGURED,
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         return
     if not os.path.isdir(configured):
         hou.ui.displayMessage(                           # type: ignore
             messages.LIBRARY_FOLDER_UNREACHABLE
             % configured,
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         debug.event("repair", "refused - the library folder is not there",
                     path=configured)
         return
@@ -611,7 +611,7 @@ def run(preferences=None) -> None:
     if panel is not None:
         hou.ui.displayMessage(                           # type: ignore
             messages.AMAZE_OPEN_STOPS_REPAIR,
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         debug.event("repair", "refused - a panel is open")
         return
 
@@ -640,7 +640,7 @@ def run(preferences=None) -> None:
         buttons=tuple(choices),
         default_choice=len(choices) - 1,
         close_choice=len(choices) - 1,
-        title="Amaze Repair",
+        title=messages.TITLE_AMAZE_REPAIR,
     )
     action = actions[picked] if 0 <= picked < len(actions) else None
     if action == "restore":
@@ -677,7 +677,7 @@ def _do_restore(findings: dict) -> None:
                            _copy_named_by_what_it_holds(filename, snap))
               for filename, _tier, snap, _current in offers]
     chosen = hou.ui.selectFromList(                       # type: ignore
-        labels, exclusive=True, title="Amaze Repair",
+        labels, exclusive=True, title=messages.TITLE_AMAZE_REPAIR,
         message="Which saved copy should Amaze put back?",
         column_header="Saved copies")
     if not chosen:
@@ -687,7 +687,7 @@ def _do_restore(findings: dict) -> None:
     if snap["error"]:
         hou.ui.displayMessage(                            # type: ignore
             messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label,
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         return
     # Name the gain and the loss, and do the subtraction for the reader.
     held = snap["count"] or 0
@@ -708,16 +708,16 @@ def _do_restore(findings: dict) -> None:
              "run Repair again and it offers that copy back."
              % (snap["when"], held, database.section_noun(filename, held),
                 change, database.section_noun(filename, 2)),
-        buttons=("Put This Copy Back", "Cancel"),
+        buttons=messages.BUTTONS_PUT_COPY_BACK,
         default_choice=1, close_choice=1,
         severity=hou.severityType.Warning,                # type: ignore
-        title="Amaze Repair",
+        title=messages.TITLE_AMAZE_REPAIR,
     ) != 0:
         return
     try:
         done = put_back(findings, filename, tier)
     except restore_lib.RestoreRefused as exc:
-        hou.ui.displayMessage(str(exc), title="Amaze Repair")  # type: ignore
+        hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE_REPAIR)  # type: ignore
         return
     undo = (restore_lib.info(os.path.join(findings["directory"],
                                           done["undo"]))
@@ -731,7 +731,7 @@ def _do_restore(findings: dict) -> None:
                      "go back to.")
     hou.ui.displayMessage(                                # type: ignore
         messages.SAVED_COPY_PUT_BACK_DONE % (label, snap["when"], went_back),
-        title="Amaze Repair")
+        title=messages.TITLE_AMAZE_REPAIR)
 
 
 def _do_quarantine(findings: dict) -> None:
@@ -748,9 +748,9 @@ def _do_quarantine(findings: dict) -> None:
              "these files belongs to a material whose list was lost, "
              "restoring the list is what brings it back."
              % _files_by_folder(findings),
-        buttons=("Move Them Aside", "Cancel"),
+        buttons=messages.BUTTONS_MOVE_ASIDE,
         default_choice=1, close_choice=1,
-        title="Amaze Repair",
+        title=messages.TITLE_AMAZE_REPAIR,
     ) != 0:
         return
     try:
@@ -759,19 +759,19 @@ def _do_quarantine(findings: dict) -> None:
         # Unreachable through the buttons, and handled anyway.
         hou.ui.displayMessage(                            # type: ignore
             messages.NOTHING_MOVED_ASIDE_REASON % exc,             # a sentence
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         return
     if result["failed"]:
         hou.ui.displayMessage(                            # type: ignore
             messages.FILES_MOVED_ASIDE_SOME_FAILED
             % (_files(len(result["moved"])),
                _files(len(result["failed"]))),
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
     else:
         hou.ui.displayMessage(                            # type: ignore
             messages.FILES_MOVED_ASIDE_DONE
             % _files(len(result["moved"])),
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
 
 
 def _do_reattach(findings: dict) -> None:
@@ -779,7 +779,7 @@ def _do_reattach(findings: dict) -> None:
     owners = database.ASSET_FILE_OWNERS
     labels = [database.section_label(name) for name in owners]
     chosen = hou.ui.selectFromList(                       # type: ignore
-        labels, exclusive=True, title="Amaze Repair",
+        labels, exclusive=True, title=messages.TITLE_AMAZE_REPAIR,
         message="Which section do these %s belong in? Amaze cannot tell "
                 "from the files themselves - a saved material and a saved "
                 "node look the same in the folder."
@@ -804,9 +804,9 @@ def _do_reattach(findings: dict) -> None:
              "and categories with it. Nothing here is deleted or "
              "overwritten either way."
              % (RECOVERED_CATEGORY, RECOVERED_CATEGORY, label),
-        buttons=("Add Them Back", "Cancel"),
+        buttons=messages.BUTTONS_ADD_BACK,
         default_choice=1, close_choice=1,
-        title="Amaze Repair",
+        title=messages.TITLE_AMAZE_REPAIR,
     ) != 0:
         return
     try:
@@ -814,11 +814,11 @@ def _do_reattach(findings: dict) -> None:
     except ValueError as exc:
         hou.ui.displayMessage(                            # type: ignore
             messages.SECTION_LIST_UNCHANGED_REASON % (label, exc),
-            title="Amaze Repair")
+            title=messages.TITLE_AMAZE_REPAIR)
         return
     hou.ui.displayMessage(                                # type: ignore
         messages.UNLISTED_FILES_ADDED_BACK_DONE
         % (len(result["added"]),
            database.section_noun(filename, len(result["added"])),
            label, RECOVERED_CATEGORY),
-        title="Amaze Repair")
+        title=messages.TITLE_AMAZE_REPAIR)

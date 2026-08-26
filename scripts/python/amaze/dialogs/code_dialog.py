@@ -7,6 +7,7 @@ from amaze.helpers import ui_helpers
 
 from amaze import amazetheme
 from amaze import branding
+from amaze import messages
 from amaze.dialogs import base_dialog
 from amaze.helpers import vex_syntax
 
@@ -176,7 +177,7 @@ class CodeDialog(base_dialog.AssetDialog):
         self.code = self._editor.toPlainText()
         if not self.code.strip():
             QtWidgets.QMessageBox.warning(
-                self, "Empty snippet", "There is no code to save."
+                self, messages.TITLE_EMPTY_SNIPPET, messages.SNIPPET_HAS_NO_CODE
             )
             return
         super()._on_accept()

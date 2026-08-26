@@ -13,6 +13,7 @@ import time
 import traceback
 from contextlib import contextmanager
 
+from amaze import messages    # constants only, importing nothing itself - safe from the lowest module in the tree ▸p/messages-need-one-home
 from amaze.helpers import hostos
 
 DEFAULT_DIR = os.environ.get("AMAZE_LOG_DIR", "").strip() or hostos.log_root()
@@ -515,7 +516,7 @@ def alert(message: str, /, key: str = "", **data) -> bool:
             raise AttributeError("no hou.ui in this session")
         QtCore.QTimer.singleShot(0, lambda: hou.ui.displayMessage(
             message, severity=hou.severityType.Warning,  # type: ignore
-            title="Amaze",
+            title=messages.TITLE_AMAZE,
         ))
         return True
     except Exception:                                    # noqa: BLE001
@@ -544,7 +545,7 @@ def refuse(reason: str, /, **data) -> bool:
         if damage:
             QtCore.QTimer.singleShot(0, lambda: hou.ui.displayMessage(
                 str(reason), severity=hou.severityType.Warning,  # type: ignore
-                title="Amaze",
+                title=messages.TITLE_AMAZE,
             ))
         else:
             hou.ui.setStatusMessage(    # the bar is Houdini's, so it says who is speaking ▸r/status-bar
