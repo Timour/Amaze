@@ -47,7 +47,7 @@ fi
 # DATED because it tracks the test count and nothing updates it: 130s was
 # true at roughly half this many tests and understated the wait by 2x by
 # the time anybody noticed. Re-measure when it misleads, and move the date.
-echo "pre-push: running the suite (about 5 min at 2269 tests, measured 2026-08-18)..."
+echo "pre-push: running the suite (minutes, not seconds - the Mac and the stick differ by 2.5x) ▸p/suite-timing"
 output="$("$repo/tools/run-tests.sh" 2>&1)"
 status=$?
 
