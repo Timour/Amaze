@@ -240,16 +240,16 @@ PANEL_NOT_OPEN = 'Please open the %s panel first.'
 NO_RELEASE_TO_INSTALL = 'There is no release to install. Check for updates first.'
 
 # core/updater.py
-INSTALL_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it cannot replace itself.\n\nNothing has been changed. Check that $AMAZE points at the install.'
+INSTALL_LOCATION_UNKNOWN = 'Amaze cannot tell where it is installed, so it cannot replace itself. Check that $AMAZE points at the install.'
 
 # toolbar/Amaze.shelf - the offer, with the feed's own sentence as %s
-UPDATE_OFFER = '%s\n\nInstalling replaces this Amaze. Your library and your settings are not touched, and nothing changes until Houdini restarts.'
+UPDATE_OFFER = '%s\n\nRestart Houdini after installing.'
 
 # 2 sites - toolbar/Amaze.shelf, dialogs/prefs_dialog.py
-UPDATE_INSTALLED = 'Amaze %s is installed.\n\nRestart Houdini to run it - this session keeps the old one in memory. Your library and your settings were not touched.'
+UPDATE_INSTALLED = 'Amaze %s is installed. Restart Houdini to use it.'
 
 # 2 sites - toolbar/Amaze.shelf, dialogs/prefs_dialog.py
-UPDATE_FAILED_UNEXPECTED = 'The update could not be installed (%s).\n\nNothing has been changed.'
+UPDATE_FAILED_UNEXPECTED = 'The update could not be installed (%s).'
 
 
 # ── Dialog TITLES ────────────────────────────────────────────────────

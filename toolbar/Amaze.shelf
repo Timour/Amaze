@@ -149,13 +149,11 @@ else:
     <helpText><![CDATA[Ask whether a newer Amaze has been released, and install it.
 
 Asking changes nothing. If there is a newer release you are offered it,
-and nothing is downloaded unless you choose Install Update. Until a
-release is published this reports that there is none, which is not an
-error.
+and nothing is downloaded unless you choose Install Update.
 
-Installing replaces this Amaze. Your library and your settings are not
-touched, and nothing takes effect until Houdini restarts. Every previous
-version stays on the releases page, so no copy is left on your disk.
+Installing replaces this Amaze and Houdini restarts afterwards. Every
+previous version stays on the releases page, so no copy is left on your
+disk.
 
 Nothing is ever checked on its own - no launch-time check, no
 background call. This tool and the button in Preferences are the only
