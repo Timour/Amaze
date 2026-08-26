@@ -9,6 +9,7 @@ from typing import Self
 from amaze import branding
 from amaze.core import debug
 from amaze.helpers import hostos
+from amaze import messages
 
 
 SCHEMA_VERSION = 8
@@ -286,12 +287,7 @@ def load_survivable(db, path: str, reload: bool = False):
         debug.event("database", "unreadable - saving disabled",
                     file=db._filename, error=str(exc))
         debug.alert(
-            "Your saved %s could not be read, so Amaze will not save "
-            "over them.\n\n"
-            "Nothing has been lost - the file is untouched. Changes "
-            "you make there now will not be kept.\n\n"
-            "Close Houdini and put back a recent copy with the Repair "
-            "tool in the Amaze shelf."
+            messages.SECTION_UNREADABLE_SAVING_DISABLED
             % section_noun(db._filename),
             key="unreadable-" + db._filename)
         return {"categories": ["_All"], "tags": [], "assets": []}
@@ -367,9 +363,7 @@ class DatabaseConnector:
                         file=self._filename, found=self._loaded_format,
                         known=branding.LIBRARY_FORMAT)
             debug.alert(
-                "This library was saved by a newer Amaze. To keep it "
-                "safe, this machine opens it read-only - update "
-                "Amaze, then everything works as normal.",
+                messages.LIBRARY_FORMAT_AHEAD_READ_ONLY,
                 key="format-ahead-%s" % self._filename)
         if version > SCHEMA_VERSION:
             debug.event(
@@ -666,11 +660,7 @@ class DatabaseConnector:
             debug.exception("database save", exc, file=full)
             cause, why = hostos.why_failed(exc, full)
             debug.alert(
-                "Could not save the library - %s\n\n"
-                "Nothing already saved has been lost. This change is "
-                "still here in Amaze, and saving anything else writes "
-                "it too - but it is NOT on disk yet, so it will not "
-                "survive closing Houdini." % why,
+                messages.LIBRARY_WRITE_FAILED % why,
                 key="database-write-failed-%s" % cause)
             self._save_outcome = "write-failed-%s" % cause
             return False

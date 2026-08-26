@@ -8,6 +8,7 @@ from collections import OrderedDict
 
 from PySide6 import QtCore, QtGui, QtSvg
 
+from amaze import messages
 from amaze.core import debug, keyed_store
 from amaze.helpers import hostos
 
@@ -205,10 +206,7 @@ def write(path: str, name: str, background: str, size: int = CANVAS,
                     path=path, error=str(exc))
     if why:
         debug.alert(
-            "Your tile icon could not be saved.\n\n"
-            "Nothing else has been lost - only this icon choice. The "
-            "tile keeps the icon it had.\n\n"
-            "This happened because %s" % why,
+            messages.TILE_ICON_NOT_SAVED % why,
             key="icons-not-saved")
         return False
     return True

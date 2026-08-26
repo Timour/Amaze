@@ -8,6 +8,7 @@ import hou
 import voptoolutils
 
 
+from amaze import messages
 from amaze.render import thumbs
 from amaze.core import material
 from amaze.core import texstore
@@ -850,8 +851,7 @@ class NodeHandler:
                             material=mat.name, reason=problem,
                             library=self._import_path.path())
                 hou.ui.displayMessage(  # type: ignore
-                    '"%s" was imported into %s but may not appear as a '
-                    "material: %s."
+                    messages.IMPORTED_MATERIAL_MAY_NOT_APPEAR
                     % (mat.name, self._import_path.path(), problem)
                 )
         except Exception as exc:
@@ -1366,14 +1366,14 @@ class NodeHandler:
             selection_nodes = [i for i in items if isinstance(i, hou.Node)]
             if not selection_nodes:
                 if ui is not None:
-                    ui.displayMessage("No nodes selected - nothing to save.")
+                    ui.displayMessage(messages.NO_NODES_SELECTED_TO_SAVE)
                 return False
         else:
             net = node
             selection_nodes = None
             if not node.children():
                 if ui is not None:
-                    ui.displayMessage("The network is empty - nothing to save.")
+                    ui.displayMessage(messages.NETWORK_EMPTY_NOTHING_TO_SAVE)
                 return False
         file_name = material.payload_path(
             self._preferences, str(asset_id), self._preferences.ext
@@ -1546,7 +1546,7 @@ class NodeHandler:
         ui = getattr(hou, "ui", None)  # both refusals below return False on their own, so a missing screen costs the SENTENCE and never the refusal ▸r/status-bar
         if not hou.getenv("OCIO"):    # not `is None`: `OCIO =` in `houdini.env` is the documented way to unset a default and it leaves the variable EXISTING and empty
             if ui is not None:
-                ui.displayMessage("Please set $OCIO first")
+                ui.displayMessage(messages.OCIO_NOT_SET)
             return False
         val = False
 
@@ -1576,7 +1576,7 @@ class NodeHandler:
                 ):
                     val = self.save_node_mtlx(node, asset_id, update)
         elif ui is not None:
-            ui.displayMessage("Selected Node is not a Material Builder")
+            ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
         return val
 
     def save_node_collect(self, node: hou.Node, asset_id: str, update: bool) -> bool:

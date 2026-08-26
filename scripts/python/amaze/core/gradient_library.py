@@ -17,6 +17,7 @@ from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
 from amaze.core import tile_icons
 from amaze.helpers import hostos
+from amaze import messages
 
 THUMB_SIZE = 256
 
@@ -290,11 +291,7 @@ class GradientLibrary(library.AssetLibrary):
                 self.endRemoveRows()
             self.rebuild_thumbs()
             debug.alert(
-                'Amaze could not save "%s".\n\n'
-                "Nothing else has been lost - your other colors are "
-                "exactly as they were.\n\n"
-                "Close any other Amaze panel, or restart Houdini, then "
-                "try again." % (name or "this palette"),
+                messages.PALETTE_NOT_SAVED % (name or "this palette"),
                 key="colors-not-saved")
             return
         self.row_changed(0)
@@ -326,12 +323,7 @@ class GradientLibrary(library.AssetLibrary):
                 debug.event("gradient", "could not take back a row "
                             "removal", error=str(exc))
             debug.alert(
-                '"%s" was not deleted, because Amaze could not update '
-                "your colors.\n\n"
-                "Nothing was removed - the palette is exactly as it "
-                "was.\n\n"
-                "Close any other Amaze panel, or restart Houdini, then "
-                "try again." % (asset.name or "That palette"),
+                messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
                 key="colors-delete-refused")
 
     def cleanup_db(self, show_dialog: bool = True) -> int:

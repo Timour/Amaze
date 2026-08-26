@@ -6,6 +6,7 @@ import copy
 import json
 import os
 
+from amaze import messages
 from amaze.core import database, debug
 from amaze.helpers import hostos
 
@@ -741,7 +742,7 @@ class Store:
             debug.event(spec.category, "could not save %s" % spec.filename,
                         path=self.path, error=str(exc), cause=cause)
             if spec.denied_alert:
-                debug.alert("%s\n\nThis happened because %s"
+                debug.alert(messages.SAVE_DENIED_WITH_CAUSE
                             % (spec.denied_alert, why),
                             key="%s-denied-%s" % (spec.filename, cause))
             return Written(False, REASON_DENIED, why, keys)

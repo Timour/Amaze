@@ -14,6 +14,7 @@ from amaze.core import (cop_library, debug, dragengine, file_library,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
+from amaze import messages
 from amaze.panel import grid
 
 
@@ -124,9 +125,7 @@ class Section:
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(
-                "This section browses files on disk - a scene node can't "
-                "be saved into it. Switch to Material, Color, Node or "
-                "Code first."
+                messages.SCENE_NODE_NEEDS_ASSET_SECTION
             )
 
     def stack(self):
@@ -1299,7 +1298,7 @@ class FileSection(FolderSection):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    "That scene file is no longer there:\n%s" % path,
+                    messages.SCENE_FILE_MISSING % path,
                     severity=hou.severityType.Warning)
             debug.event("hip", "scene missing", file=path)
             return
@@ -1311,7 +1310,7 @@ class FileSection(FolderSection):
                         warning=str(warn)[:400])
         except Exception as exc:                         # noqa: BLE001
             hou.ui.displayMessage(  # type: ignore
-                "Could not open that scene:\n%s\n\n%s" % (path, exc),
+                messages.SCENE_OPEN_FAILED % (path, exc),
                 severity=hou.severityType.Error)
             debug.event("hip", "open failed", file=path, error=str(exc))
             return

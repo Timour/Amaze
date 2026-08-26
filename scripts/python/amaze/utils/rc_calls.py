@@ -1,6 +1,7 @@
 import hou
 
 from amaze import branding
+from amaze import messages
 
 _PANEL_LABELS = (branding.APP_NAME, "AssetLib", "MatLib")
 
@@ -18,7 +19,7 @@ def _find_panel():
                 break
     if not panel:
         ui.displayMessage(
-            "Please open the %s panel first." % branding.APP_NAME
+            messages.PANEL_NOT_OPEN % branding.APP_NAME
         )
     return panel
 

@@ -1077,6 +1077,11 @@ amazetheme.py             THE DESIGN, in one document: every colour,
                           Houdini's theme does not own. Edit a Figma
                           change here and nowhere else; helpers/theme.py
                           holds what FOLLOWS Houdini's live theme
+messages.py               EVERY message Amaze shows in a dialog, in one
+                          document - `displayMessage` and `debug.alert`
+                          alike. Keyed by NAME, never a line number, so
+                          the Figma register cannot rot against it
+                          ▸p/messages-need-one-home
 dialogs/                  save / preferences / about / code / gradient dialogs
 dialogs/user_dialog.py    WHICH user this machine is, asked once and
                           only when the library has people in it and

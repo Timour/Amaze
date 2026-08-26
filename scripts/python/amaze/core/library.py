@@ -17,6 +17,7 @@ from amaze.core import versions
 from amaze.core import quarantine
 from amaze.helpers import helpers
 from amaze.helpers import hostos
+from amaze import messages
 from amaze.prefs import prefs
 from amaze.render import thumbs, nodes, material_converter
 
@@ -479,10 +480,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         "serves another library",
                         model=self.preferences.dir, connector=db._path)
             debug.alert(
-                "Amaze did not save this library, because another Amaze "
-                "panel has been pointed at a different one.\n\n"
-                "Nothing is lost. Close the other panel, or reopen this "
-                "one, and your changes will save again.",
+                messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL,
                 key="connector-moved")
             return False
         data = {}
@@ -598,20 +596,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                     model=self.DB_FILENAME)
         if self.CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE:
             debug.alert(
-                '"%s" was written to disk, but Amaze could not update '
-                "the library list.\n\n"
-                "Nothing is lost - the files are there. It will not "
-                "appear in the grid until the list is written.\n\n"
-                "Restart Houdini, then run Repair Library from the "
-                "Amaze shelf to put it back in the list." % name,
+                messages.ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED % name,
                 key="index-refused-after-content-write")
         else:
             debug.alert(
-                '"%s" was not saved, because Amaze could not update the '
-                "library list.\n\n"
-                "Nothing else was changed - everything already in the "
-                "library is untouched.\n\n"
-                "Restart Houdini and save it again." % name,
+                messages.ASSET_NOT_SAVED_LIST_NOT_UPDATED % name,
                 key="index-refused-inline-content")
 
     def asset_files(self, mat_id: str) -> dict:
@@ -692,12 +681,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         "could not be written", name=asset.name,
                         mat_id=str(asset.mat_id))
             debug.alert(
-                '"%s" was not deleted, because Amaze could not update the '
-                "library list.\n\n"
-                "Nothing was removed - the material and its files are "
-                "exactly as they were.\n\n"
-                "Close any other Amaze panel, or restart Houdini, then "
-                "try again." % asset.name,
+                messages.ASSET_NOT_DELETED_LIST_NOT_UPDATED % asset.name,
                 key="delete-refused-index-write")
             return
 
@@ -1077,7 +1061,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 closing.displayMessage(header + "\n\n- " + "\n- ".join(summary))
             else:
                 closing.displayMessage(
-                    "Library cleanup finished: nothing to clean.")
+                    messages.CLEANUP_FOUND_NOTHING_TO_CLEAN)
 
         return mark_rescued
 
@@ -1336,11 +1320,7 @@ class MaterialLibrary(AssetLibrary):
                         "changed since this session read them",
                         mat_id=str(mat.mat_id), name=mat.name)
             debug.alert(
-                'Someone else has updated "%s" since this Houdini read '
-                "it, so Amaze did not save over their version.\n\n"
-                "Nothing is lost - your network is still in the scene. "
-                "Save it as a new material, or reopen the Amaze panel "
-                "to load their version first." % mat.name,
+                messages.ASSET_CHANGED_ON_DISK_SINCE_LOAD % mat.name,
                 key="content-changed-on-disk")
             return ""
 

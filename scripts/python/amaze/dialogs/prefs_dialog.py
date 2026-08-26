@@ -16,6 +16,7 @@ from amaze.helpers import hostos
 from amaze.core import tile_icons
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
+from amaze import messages
 from amaze.panel import sections as sections_module
 from amaze.prefs import prefs as prefs_mod
 
@@ -186,7 +187,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         name = users.name_for(self._prefs, uid)
         answer = hou.ui.displayMessage(  # type: ignore
-            'Delete user "%s" from this library?' % name,
+            messages.USER_DELETE_CONFIRM % name,
             help="Their favorites and registered folders are removed "
                  "from this library everywhere it syncs. A machine "
                  'signed in as "%s" will ask who is using the library '
@@ -204,7 +205,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         library_dir = self._prefs.dir
         if checked and not library_policy.allow_overwrite(library_dir):
             answer = hou.ui.displayMessage(  # type: ignore
-                "Turn on Material Versions for this library?",
+                messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM,
                 help="This applies to EVERYONE who opens this library, "
                      "on every machine - it is stored with the library, "
                      "not in your preferences.\n\n"
@@ -223,8 +224,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                 return
         if not library_policy.set_allow_overwrite(library_dir, checked):
             hou.ui.displayMessage(  # type: ignore
-                "Could not write the setting to the library folder, so "
-                "it was not changed.")
+                messages.LIBRARY_SETTING_NOT_WRITTEN)
             self._cbx_allow_overwrite.blockSignals(True)
             self._cbx_allow_overwrite.setChecked(not checked)
             self._cbx_allow_overwrite.blockSignals(False)
@@ -841,7 +841,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ok, what = prefs_mod.seed_test_folder(folder)
         if not ok:
             hou.ui.displayMessage(  # type: ignore
-                "That folder could not be prepared:\n\n%s" % what)
+                messages.TEST_FOLDER_NOT_PREPARED % what)
             return
         self._prefs.test_dir = folder
         self._prefs.save()

@@ -10,6 +10,7 @@ from amaze import branding
 from amaze.core import database, debug, material
 from amaze.core.library import STAMP_SUFFIX
 from amaze.helpers import helpers, hostos, restore as restore_lib
+from amaze import messages
 from amaze.prefs import prefs as prefs_module
 
 
@@ -593,17 +594,12 @@ def run(preferences=None) -> None:
     configured = configured_library(preferences)
     if not configured:
         hou.ui.displayMessage(                           # type: ignore
-            "Amaze has no library folder yet.\n\n"
-            "Open Amaze and pick one in Preferences, then run Repair "
-            "again.",
+            messages.NO_LIBRARY_FOLDER_CONFIGURED,
             title="Amaze Repair")
         return
     if not os.path.isdir(configured):
         hou.ui.displayMessage(                           # type: ignore
-            "Amaze cannot reach the library folder it is set to use:\n\n%s"
-            "\n\nNothing was changed. If it is on a drive or in a synced "
-            "folder, connect it and run Repair again. If you moved the "
-            "library, open Amaze and point Preferences at the new place."
+            messages.LIBRARY_FOLDER_UNREACHABLE
             % configured,
             title="Amaze Repair")
         debug.event("repair", "refused - the library folder is not there",
@@ -614,10 +610,7 @@ def run(preferences=None) -> None:
     panel = open_panel_tab()
     if panel is not None:
         hou.ui.displayMessage(                           # type: ignore
-            "Amaze is open, so Repair stopped before reading anything.\n\n"
-            "An open Amaze saves the library while you work, and it would "
-            "write over anything Repair put back. Quit Houdini, start it "
-            "again, and run Repair before you open Amaze.",
+            messages.AMAZE_OPEN_STOPS_REPAIR,
             title="Amaze Repair")
         debug.event("repair", "refused - a panel is open")
         return
@@ -693,8 +686,7 @@ def _do_restore(findings: dict) -> None:
     label = database.section_label(filename)
     if snap["error"]:
         hou.ui.displayMessage(                            # type: ignore
-            "That copy of the %s list cannot be read, so Amaze left "
-            "everything alone. Try another copy." % label,
+            messages.CHOSEN_SAVED_COPY_CANNOT_BE_READ % label,
             title="Amaze Repair")
         return
     # Name the gain and the loss, and do the subtraction for the reader.
@@ -709,7 +701,7 @@ def _do_restore(findings: dict) -> None:
                   "is not in this copy and will not be there afterwards."
                   % (now_holds, now_holds, held, label, snap["when"]))
     if hou.ui.displayMessage(                             # type: ignore
-        "Put the %s list back to the copy from %s?" % (label, snap["when"]),
+        messages.CONFIRM_PUT_SAVED_COPY_BACK % (label, snap["when"]),
         help="That copy is from %s and holds %d %s. %s\n\nYour %s' own "
              "files and thumbnails are not touched either way, and the "
              "list you have now is saved in the library folder first - "
@@ -738,15 +730,14 @@ def _do_restore(findings: dict) -> None:
         went_back = ("There was no list here before, so there is nothing to "
                      "go back to.")
     hou.ui.displayMessage(                                # type: ignore
-        "The %s list is back to the copy from %s.\n\nOpen Amaze to look at "
-        "it. %s" % (label, snap["when"], went_back),
+        messages.SAVED_COPY_PUT_BACK_DONE % (label, snap["when"], went_back),
         title="Amaze Repair")
 
 
 def _do_quarantine(findings: dict) -> None:
     total = unaccounted_total(findings)
     if hou.ui.displayMessage(                             # type: ignore
-        "Move %s aside?" % _files(total),
+        messages.CONFIRM_MOVE_FILES_ASIDE % _files(total),
         help="The files no section lists: %s. They move into Amaze's "
              "own holding folder on this computer - outside your "
              "library, so they do not sync and do not travel. Nothing "
@@ -767,23 +758,18 @@ def _do_quarantine(findings: dict) -> None:
     except ValueError as exc:
         # Unreachable through the buttons, and handled anyway.
         hou.ui.displayMessage(                            # type: ignore
-            "Amaze moved nothing: %s." % exc,             # a sentence
+            messages.NOTHING_MOVED_ASIDE_REASON % exc,             # a sentence
             title="Amaze Repair")
         return
     if result["failed"]:
         hou.ui.displayMessage(                            # type: ignore
-            "%s moved into Amaze's holding folder on this computer - "
-            "outside your library, kept for 30 days. %s could not be "
-            "moved and are still where they were - nothing was lost "
-            "either way."
+            messages.FILES_MOVED_ASIDE_SOME_FAILED
             % (_files(len(result["moved"])),
                _files(len(result["failed"]))),
             title="Amaze Repair")
     else:
         hou.ui.displayMessage(                            # type: ignore
-            "%s moved into Amaze's holding folder on this computer - "
-            "outside your library, kept for 30 days. Nothing was "
-            "deleted, and Clean Library will run again now."
+            messages.FILES_MOVED_ASIDE_DONE
             % _files(len(result["moved"])),
             title="Amaze Repair")
 
@@ -806,7 +792,7 @@ def _do_reattach(findings: dict) -> None:
     noun = database.section_noun(filename, len(pairs))
     if hou.ui.displayMessage(                             # type: ignore
         # How a material is stored is not what it is.
-        "Add %d unlisted %s to %s?" % (len(pairs), noun, label),
+        messages.CONFIRM_ADD_UNLISTED_TO_SECTION % (len(pairs), noun, label),
         help="Each one comes back in a new category called %s, named %s "
              "plus the start of its file name - rename them afterwards. "
              "They come back without a renderer badge until you save them "
@@ -827,12 +813,11 @@ def _do_reattach(findings: dict) -> None:
         result = reattach(findings, filename)
     except ValueError as exc:
         hou.ui.displayMessage(                            # type: ignore
-            "Amaze did not change the %s list: %s." % (label, exc),
+            messages.SECTION_LIST_UNCHANGED_REASON % (label, exc),
             title="Amaze Repair")
         return
     hou.ui.displayMessage(                                # type: ignore
-        "%d %s came back into %s. Open Amaze to see them - they are in the "
-        "%s category, ready to be renamed."
+        messages.UNLISTED_FILES_ADDED_BACK_DONE
         % (len(result["added"]),
            database.section_noun(filename, len(result["added"])),
            label, RECOVERED_CATEGORY),

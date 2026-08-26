@@ -6,6 +6,7 @@ import hou
 
 import amaze
 from amaze import branding
+from amaze import messages
 from amaze.core import database
 from amaze.core import debug
 from amaze.helpers import hostos
@@ -148,7 +149,7 @@ class Prefs(_Persistence):
                     count += 1
                     continue
                 if count > 0:   # only a RETRY speaks - the first picker follows the user's own gesture, and the set-up preamble it used to carry was a dialog in front of the dialog ▸p/dialogs-are-a-bill; its context is the title below now
-                    ui.displayMessage("Invalid Path selected. Please try again")
+                    ui.displayMessage(messages.LIBRARY_PATH_INVALID)
                 path = ui.selectFile(file_type=hou.fileType.Directory,
                                      title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled

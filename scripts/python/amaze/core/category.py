@@ -3,6 +3,7 @@
 from typing import Any
 from PySide6 import QtCore
 
+from amaze import messages
 from amaze.prefs import prefs
 from amaze.core import database, debug, material
 
@@ -270,10 +271,7 @@ class Categories(QtCore.QAbstractListModel):
                         "connector now serves another library",
                         model=self.preferences.dir, connector=db._path)
             debug.alert(
-                "Amaze did not save this library, because another Amaze "
-                "panel has been pointed at a different one.\n\n"
-                "Nothing is lost. Close the other panel, or reopen this "
-                "one, and your changes will save again.",
+                messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL,
                 key="connector-moved")
             return False
         data = {}

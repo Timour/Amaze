@@ -45,6 +45,7 @@ from amaze.dialogs import (
 )
 from amaze import amazetheme
 from amaze import branding
+from amaze import messages
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
@@ -94,6 +95,7 @@ _reload(category)
 _reload(repair)
 _reload(folders)
 _reload(prefs)
+_reload(messages)      # the wording every dialog shows; reloaded like `branding`, so a reworded message reaches an already-open Houdini ▸p/messages-need-one-home
 _reload(amazetheme)    # before theme and ui_helpers: their class bodies read the DESIGN's values at definition time, so a stale one draws yesterday's design ▸p/one-design-document
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
@@ -219,13 +221,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if ui is None:
             return False
         choice = ui.displayMessage(
-            "Your library's list could not be read.\n\n"
-            "Repair puts back the newest saved copy - or, if none "
-            "reads, rebuilds the list from what each asset itself "
-            "remembers. Categories keep their names; their order and "
-            "colours may not survive a rebuild. The broken file is "
-            "kept beside itself either way.\n\n"
-            "Open Without Library leaves the folder untouched.",
+            messages.LIBRARY_INDEX_UNREADABLE,
             buttons=("Repair", "Open Without Library"),
             severity=hou.severityType.Warning,
             default_choice=0, close_choice=1,
@@ -237,9 +233,7 @@ class MatLibPanel(QtWidgets.QWidget):
                                       self.prefs.asset_dir)
         if not ok:
             ui.displayMessage(
-                "Repair could not fix the list: %s.\n\n"
-                "Amaze opens without a library. The Repair tool on "
-                "the Amaze shelf can tell you more." % how,
+                messages.REPAIR_COULD_NOT_FIX_THE_LIST % how,
                 severity=hou.severityType.Warning,
                 title="Amaze")
             return False
@@ -250,9 +244,7 @@ class MatLibPanel(QtWidgets.QWidget):
             debug.exception("index still unreadable after repair",
                             still)
             ui.displayMessage(
-                "The repaired list still could not be read.\n\n"
-                "Amaze opens without a library. The Repair tool on "
-                "the Amaze shelf can tell you more.",
+                messages.INDEX_UNREADABLE_AFTER_REPAIR,
                 severity=hou.severityType.Warning,
                 title="Amaze")
             return False
@@ -530,12 +522,7 @@ class MatLibPanel(QtWidgets.QWidget):
                             "directory has held a library",
                             dir=self.prefs.dir, evidence=held)
                 debug.alert(
-                    "This folder looks like a library whose list has not "
-                    "arrived yet, so Amaze did not set up a new one over "
-                    "it.\n\n"
-                    "If it lives in a synced folder, let the sync finish "
-                    "and reopen Amaze. If the list really is gone, run "
-                    "Repair Library from the Amaze shelf to rebuild it.",
+                    messages.STARTER_SEED_REFUSED_DIRECTORY_HELD_LIBRARY,
                     key="starter-refused")
                 return
             prefs.seed_starter_index(self.prefs.dir)    # the shipped starter carries no version key, so it is STAMPED on the way in rather than copied verbatim ▸p/library-creation-doors
@@ -1489,8 +1476,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if row <= 0:
             if ui is not None:
                 ui.displayMessage(
-                    "Select the registered folder to re-point first "
-                    '("All" is not a real folder).'
+                    messages.NO_FOLDER_SELECTED_TO_RELOCATE
                 )
             return
         path = ui.selectFile(file_type=hou.fileType.Directory) if ui else ""
@@ -1501,8 +1487,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if rewritten < 0:
             if ui is not None:
                 ui.displayMessage(
-                    "That location doesn't exist as a folder - nothing "
-                    "was changed."
+                    messages.RELOCATE_TARGET_NOT_A_FOLDER
                 )
             return
         if rewritten:
@@ -1785,7 +1770,7 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if not self.prefs.dir:
             if ui is not None:
-                ui.displayMessage("Please set a library first.")
+                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED)
             return
         picked = ui.selectFile(
             title="Import Amaze Package",
@@ -1805,8 +1790,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         if ui is not None:
             ui.displayMessage(
-                "Imported %d asset(s) and %d file(s) into the Import "
-                "category." % (summary["imported"], summary["files"]))
+                messages.PACKAGE_IMPORT_SUMMARY % (summary["imported"], summary["files"]))
 
     def ask_package_destination(self) -> str:
         """The write-mode picker for an `.amazepkg` export - "" when headless or cancelled, the suffix appended when the user leaves it off."""
@@ -1833,7 +1817,7 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if not self.material_model:
             if ui is not None:
-                ui.displayMessage("Please set a library first.")
+                ui.displayMessage(messages.NO_LIBRARY_CONFIGURED)
             return
         picked = ui.selectFile(
             start_directory=gallery_import.default_gallery_dir(),    # opens where Houdini keeps its galleries; a .gal picked anywhere else works just as well
@@ -1850,7 +1834,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not entries:
             if ui is not None:
                 ui.displayMessage(
-                    "No material presets found in:\n%s" % picked
+                    messages.MATERIAL_PRESETS_FOUND % picked
                 )
             return
         types = {}
@@ -1861,9 +1845,7 @@ class MatLibPanel(QtWidgets.QWidget):
             for name, count in sorted(types.items(), key=lambda x: -x[1])
         )
         choice = ui.displayMessage(
-            "Import %d material presets from\n%s\n\n%s\n\n"
-            "Thumbnails are NOT rendered during the import - select the "
-            "new materials afterwards and use Update Preview."
+            messages.IMPORT_MATERIAL_PRESETS_FROM
             % (len(entries), os.path.basename(picked), listing),
             buttons=("Import", "Cancel"),
             default_choice=0, close_choice=1,
@@ -1895,10 +1877,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._refresh_sidebar_categories()
         if ui is not None:
             ui.displayMessage(
-                "Gallery import finished.\n\n"
-                "Imported: %d\nSkipped: %d\nFailed: %d\n\n"
-                "Select the new materials and use Update Preview to "
-                "generate their previews."
+                messages.GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED
                 % (summary.get("imported", 0), summary.get("skipped", 0),
                    summary.get("failed", 0))
             )
@@ -1908,11 +1887,11 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if not self.material_model:
             if ui is not None:
-                ui.displayMessage("Please open a library first")
+                ui.displayMessage(messages.NO_LIBRARY_OPEN)
             return
 
         if ui is None or ui.displayMessage(
-            "Clean Library?",
+            messages.CLEAN_LIBRARY_CONFIRM,
             help="Removes index rows whose files are gone, deletes "
                  "orphaned files that no library references, and drops "
                  "folder pointers and favourites that no longer exist.\n\n"
@@ -2031,7 +2010,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             ui = getattr(hou, "ui", None)
             if ui is not None:
-                ui.displayMessage("Please open a library first")
+                ui.displayMessage(messages.NO_LIBRARY_OPEN)
             return
         lib_dir = self.prefs.dir
         hostos.open_path(lib_dir)
@@ -2374,7 +2353,7 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:    # ONE dialog for the batch, never one per record
             ui.displayMessage(
-                "Amaze: %d of %d could not be imported:\n\n%s"
+                messages.AMAZE_COULD_NOT
                 % (len(failures), total, "\n".join(failures[:10]))
             )
 
@@ -2556,8 +2535,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 if destination is None:
                     if ui is not None:
                         ui.displayMessage(
-                            "Amaze: no place to create the material - open a "
-                            "LOP or /mat network first."
+                            messages.NO_MATERIAL_DESTINATION_NETWORK
                         )
                     return
                 for i, rec in enumerate(records):
@@ -2589,7 +2567,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         if failures:
             ui.displayMessage(
-                "Amaze: %d of %d could not be built:\n\n%s"
+                messages.SCENE_BUILD_PARTIAL_FAILURE
                 % (len(failures), total, "\n".join(failures[:10]))
             )
         elif last is not None:
@@ -2692,8 +2670,7 @@ class MatLibPanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if failed and ui is not None:
             ui.displayMessage(
-                "%d tile icon%s could not be saved - check that the "
-                "library folder is writable."
+                messages.TILE_ICON_SAVE_FAILED
                 % (failed, "" if failed == 1 else "s")    # a real plural, never "icon(s)" - this one is a MODAL the user cannot look away from
             )
 
@@ -2742,8 +2719,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    "Please set a library first. Use the %s panel - "
-                    "Library/Open Dialog." % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
                 )
             return
         dialog = code_dialog.CodeDialog(
@@ -2778,15 +2754,14 @@ class MatLibPanel(QtWidgets.QWidget):
         if node is None:
             if ui is not None:
                 ui.displayMessage(
-                    "Right-click a wrangle (or other node with a code "
-                    "parameter) to save its snippet."
+                    messages.NO_NODE_WITH_CODE_SELECTED
                 )
             return
         parm = helpers.find_code_parm(node)
         if parm is None:
             if ui is not None:
                 ui.displayMessage(
-                    '"%s" has no code/snippet parameter.' % node.name()
+                    messages.NODE_HAS_NO_CODE_PARM % node.name()
                 )
             return
         self._add_code_snippet(
@@ -2850,8 +2825,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.cop_model:
             if ui is not None:
                 ui.displayMessage(
-                    "Please set a library first. Use the %s panel - "
-                    "Library/Open Dialog." % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
                 )
             return
         if node is None:
@@ -2860,7 +2834,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if node is None:
             if ui is not None:
                 ui.displayMessage(
-                    "Right-click the network - or the nodes - you want to save."
+                    messages.NO_NETWORK_SELECTED_TO_SAVE
                 )
             return
         net = node.parent()
@@ -2903,12 +2877,12 @@ class MatLibPanel(QtWidgets.QWidget):
         if save_error is not None:
             if ui is not None:
                 ui.displayMessage(
-                    '"%s" could not be saved: %s' % (node.name(), save_error)
+                    messages.NODE_SAVE_FAILED_WITH_REASON % (node.name(), save_error)
                 )
             return
         if not result and ui is not None:
             ui.displayMessage(
-                '"%s" could not be saved.' % node.name()
+                messages.NODE_SAVE_FAILED % node.name()
             )
 
     def _active_network_pwd(self) -> hou.Node | None:
@@ -3139,8 +3113,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    "'%s' has no material parameter - imported to /mat "
-                    "without assigning." % obj_node.name()
+                    messages.OBJECT_HAS_NO_MATERIAL_PARM % obj_node.name()
                 )
             return False
         parm.set(builder.path())
@@ -3173,8 +3146,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if stock is None:
             if ui is not None:
                 ui.displayMessage(
-                    "Amaze: could not load Houdini's material-assignment "
-                    "helpers - material not imported."
+                    messages.STOCK_LOP_HELPERS_UNAVAILABLE
                 )
             return False
         try:
@@ -3230,8 +3202,7 @@ class MatLibPanel(QtWidgets.QWidget):
                                 error=str(refusal))
                     if ui is not None:
                         ui.displayMessage(
-                            "Amaze: %s cannot take a Material Library, so "
-                            "the material was not imported.\n\n%s"
+                            messages.NETWORK_REFUSED_MATERIAL_LIBRARY
                             % (lopnet.name(), refusal)
                         )
                     return False
@@ -3258,9 +3229,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 pressed_vop = imported[0][1]
             elif imported and ui is not None:
                 ui.displayMessage(
-                    "The material you dropped could not be imported, so "
-                    "nothing was assigned. The others in the selection "
-                    "were still added to the library."
+                    messages.DROPPED_MATERIAL_IMPORT_FAILED
                 )
             debug.event("drag", "lop viewport drop", imported=len(vops),
                         amaze=liblop.path(), assign=str(assign_path),
@@ -3287,7 +3256,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     debug.event("drag", "lop assign failed", error=str(exc))
                     if ui is not None:
                         ui.displayMessage(
-                            "Amaze: imported, but assigning failed: %s" % exc
+                            messages.MATERIAL_ASSIGN_FAILED % exc
                         )
         return bool(vops)
 
@@ -3393,8 +3362,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model:
             if ui is not None:
                 ui.displayMessage(
-                    "Please set a library first. Use the %s panel - "
-                    "Library/Open Dialog." % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
                 )
             return
         if node is None:
@@ -3402,7 +3370,7 @@ class MatLibPanel(QtWidgets.QWidget):
             if len(sel) != 1:
                 if ui is not None:
                     ui.displayMessage(
-                        "Select a single node with a color ramp first."
+                        messages.SELECT_ONE_NODE_WITH_RAMP
                     )
                 return
             node = sel[0]
@@ -3767,8 +3735,7 @@ class MatLibPanel(QtWidgets.QWidget):
             if destination is None:
                 if ui is not None:
                     ui.displayMessage(
-                        "Amaze: no place to create the material - open a "
-                        "LOP or /mat network first."
+                        messages.NO_MATERIAL_DESTINATION_NETWORK
                     )
                 return
             staging = hou.node("/obj").createNode("matnet")    # built in /obj staging and moved in ONE step, because structure changes inside a live material library retranslate the whole thing (wiki)
@@ -3777,7 +3744,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 if builder is None:
                     if ui is not None:
                         ui.displayMessage(
-                            "Generation failed - see the debug log."
+                            messages.MATERIAL_GENERATION_FAILED
                         )
                     return
                 moved = hou.moveNodesTo((builder,), destination)
@@ -3787,8 +3754,7 @@ class MatLibPanel(QtWidgets.QWidget):
                                 destination=destination.path())
                     if ui is not None:
                         ui.displayMessage(
-                            "Amaze: the generated material could not be "
-                            "moved into %s." % destination.path()
+                            messages.GENERATED_MATERIAL_MOVE_FAILED % destination.path()
                         )
                     return
                 builder = moved[0]
@@ -3812,16 +3778,14 @@ class MatLibPanel(QtWidgets.QWidget):
                             provenance=builder.comment())
                 if not registered and ui is not None:
                     ui.displayMessage(
-                        '"%s" was created in %s but no material entry '
-                        "covers it - check the library node's material "
-                        "list." % (builder.name(), destination.path())
+                        messages.GENERATED_MATERIAL_NOT_REGISTERED % (builder.name(), destination.path())
                     )
             except hou.Error as exc:
                 builder = None
                 debug.event("generate", "failed", error=str(exc))
                 if ui is not None:
                     ui.displayMessage(
-                        "Amaze: generation failed (%s)." % exc
+                        messages.MATERIAL_GENERATION_ERROR % exc
                     )
             finally:
                 staging.destroy()
@@ -3838,13 +3802,12 @@ class MatLibPanel(QtWidgets.QWidget):
         debug.event("save", "save_asset entry", selected=len(sel))
         if not sel:
             if ui is not None:
-                ui.displayMessage("No material selected")
+                ui.displayMessage(messages.NO_MATERIAL_SELECTED)
             return
         if not self.material_model:
             if ui is not None:
                 ui.displayMessage(
-                    "Please set a library first. Use the %s panel - "
-                    "Library/Open Dialog." % branding.APP_NAME
+                    messages.NO_LIBRARY_CONFIGURED_2 % branding.APP_NAME
                 )
             return
         existing = []    # which of the dropped nodes already exist, so the choice is offered ONCE for the whole drop rather than per node or not at all
@@ -3918,7 +3881,7 @@ class MatLibPanel(QtWidgets.QWidget):
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(
-                    "Update failed - the library material was not changed."
+                    messages.MATERIAL_UPDATE_FAILED
                 )
             return
         self.enable_renderer_on_add(renderer)

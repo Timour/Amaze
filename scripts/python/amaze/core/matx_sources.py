@@ -16,6 +16,7 @@ import zipfile
 import amaze
 from amaze.core import debug
 from amaze.helpers import hostos
+from amaze import messages
 
 USER_AGENT = "Amaze/1.0 (Houdini material library)"
 TIMEOUT = 30
@@ -450,15 +451,7 @@ class GPUOpenSource(MatxSource):
                                 "the library", count=len(skipped),
                                 members=skipped[:20])
                     debug.alert(
-                        "%d file(s) in this download tried to write "
-                        "outside your library folder, so Amaze skipped "
-                        "them.\n\n"
-                        "Nothing outside your library was touched. The "
-                        "rest of the material was downloaded "
-                        "normally.\n\n"
-                        "This usually means the package is malformed. If "
-                        "the material looks wrong, delete it and download "
-                        "it again."
+                        messages.UNSAFE_ARCHIVE_PATHS_SKIPPED
                         % len(skipped),
                         key="online-unsafe-archive-paths")
                 zf.extractall(dest_dir, members=safe)
@@ -558,12 +551,7 @@ class PolyHavenSource(MatxSource):
             debug.event("online", "skipped include paths outside the "    # same shape and the same alert KEY as the archive case - one situation to the user, never two interruptions
                         "library", count=len(unsafe), paths=unsafe[:20])
             debug.alert(
-                "%d file(s) in this download tried to write outside your "
-                "library folder, so Amaze skipped them.\n\n"
-                "Nothing outside your library was touched. The rest of the "
-                "material was downloaded normally.\n\n"
-                "This usually means the package is malformed. If the "
-                "material looks wrong, delete it and download it again."
+                messages.UNSAFE_ARCHIVE_PATHS_SKIPPED
                 % len(unsafe),
                 key="online-unsafe-archive-paths")
         n = len(files)

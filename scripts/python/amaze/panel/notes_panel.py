@@ -9,6 +9,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 from amaze import amazetheme
 from amaze.core import debug, notes
 from amaze.helpers import theme, ui_helpers
+from amaze import messages
 
 COMMENT_INK = amazetheme.COMMENT_INK    # the design's, declared once ▸p/one-design-document
 
@@ -632,13 +633,11 @@ class NotesPanel(ui_helpers.HeldPane):
         src = notes.adopt_image(self.preferences, chosen)
         if not src:
             ui.displayMessage(
-                "That picture could not be copied into your library, so "
-                "it was not added. Nothing has been changed.")
+                messages.PICTURE_NOT_COPIED_TO_LIBRARY)
             return
         if not self.text_edit.insert_image(src):
             ui.displayMessage(
-                "That file was copied but could not be shown as a "
-                "picture, so it was not added.")
+                messages.PICTURE_COPIED_BUT_UNREADABLE)
             return
         self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save - the same route the + button relies on
 
