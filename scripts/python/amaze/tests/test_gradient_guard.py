@@ -1233,5 +1233,94 @@ class TheGradientEntryIsResolvedOnce(unittest.TestCase):
         self.assertIsNone(sections.GradientSection._entry_at(section, None))
 
 
+class ARampHelperIsTotal(unittest.TestCase):
+    """`hou.Ramp` raises `InvalidSize` when bases, keys and values disagree, and builds a FLOAT ramp when all three are empty - both reachable from a hand-edited or truncated gradient file. ▸r/ramp-and-walk-edges"""
+
+    def setUp(self):
+        import hou
+        from amaze.helpers import helpers
+        self.hou = hou
+        self.helpers = helpers
+
+    def test_an_empty_palette_gives_a_ramp_not_an_InvalidSize(self):
+        ramp = self.helpers.build_stepped_ramp([])
+        self.assertTrue(ramp.isColor())
+        self.assertEqual([0.0], list(ramp.keys()))
+
+    def test_the_two_builders_agree_on_an_empty_palette(self):
+        """They disagreed: one raised where the other returned black."""
+        stepped = self.helpers.build_stepped_ramp([])
+        basis = self.helpers.build_basis_ramp([], "Linear")
+        self.assertEqual(len(basis.keys()), len(stepped.keys()))
+        self.assertTrue(basis.isColor() and stepped.isColor())
+
+    def test_a_keyless_gradient_is_a_COLOUR_ramp(self):
+        """An empty `hou.Ramp` reports `isColor() == False`, so a gradient that lost its keys came back the wrong KIND of ramp instead of failing."""
+        ramp = self.helpers.data_to_ramp({})
+        self.assertTrue(
+            ramp.isColor(),
+            "a keyless gradient restored as a FLOAT ramp, which applies "
+            "silently wrong to a colour parm")
+
+    def test_mismatched_keys_and_values_are_truncated_not_fatal(self):
+        for data in ({"bases": ["Linear"], "values": [[1, 0, 0]]},
+                     {"bases": ["Linear"], "keys": [0.0]},
+                     {"bases": [], "keys": [0.0, 1.0], "values": [[1, 0, 0]]}):
+            ramp = self.helpers.data_to_ramp(data)
+            self.assertTrue(ramp.isColor(), data)
+            self.assertEqual(len(ramp.keys()), len(ramp.values()), data)
+
+    def test_a_real_gradient_still_round_trips_exactly(self):
+        """The degrading must not cost the ordinary case."""
+        source = self.hou.Ramp(
+            [self.hou.rampBasis.Linear] * 3, [0.0, 0.5, 1.0],
+            [(1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)])
+        back = self.helpers.data_to_ramp(self.helpers.ramp_to_data(source))
+        self.assertEqual(list(source.keys()), list(back.keys()))
+        self.assertEqual([list(v) for v in source.values()],
+                         [list(v) for v in back.values()])
+
+
+class TheNodeWalkIsNotRecursive(unittest.TestCase):
+    """One frame per node in a chain hit Python's limit; the visited set bounds re-walking, not depth. ▸r/ramp-and-walk-edges"""
+
+    def setUp(self):
+        import hou
+        from amaze.helpers import helpers
+        self.helpers = helpers
+        self.geo = hou.node("/obj").createNode("geo")
+        self.addCleanup(self.geo.destroy)
+
+    def _chain(self, length):
+        previous = self.geo.createNode("null", "n0")
+        for index in range(1, length):
+            node = self.geo.createNode("null", "n%d" % index)
+            node.setInput(0, previous)
+            previous = node
+        return previous
+
+    def test_a_chain_past_the_recursion_limit_still_walks(self):
+        deep = self._chain(1400)      # comfortably past the 1000-frame default
+        walked = self.helpers.get_connected_input_nodes([deep], [])
+        self.assertEqual(1400, len(walked))
+
+    def test_the_walk_still_visits_each_node_once(self):
+        """A diamond re-walked once per path, exponentially, before the visited set - the rewrite must not lose it."""
+        top = self.geo.createNode("null", "top")
+        left = self.geo.createNode("null", "left")
+        right = self.geo.createNode("null", "right")
+        merge = self.geo.createNode("merge", "merge")
+        left.setInput(0, top)
+        right.setInput(0, top)
+        merge.setInput(0, left)
+        merge.setInput(1, right)
+
+        walked = self.helpers.get_connected_input_nodes([merge], [])
+        paths = [n.path() for n in walked]
+        self.assertEqual(len(paths), len(set(paths)),
+                         "a node was collected twice: %s" % paths)
+        self.assertIn(top.path(), paths)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

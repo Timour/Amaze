@@ -148,13 +148,19 @@ def ramp_to_data(ramp: hou.Ramp) -> dict:
 
 
 def data_to_ramp(data: dict) -> hou.Ramp:
-    """Inverse of ramp_to_data - unknown basis names degrade to Linear rather than failing."""
+    """Inverse of ramp_to_data, and total: an unknown basis degrades to Linear, and missing or mismatched keys/values give a black COLOUR ramp rather than an InvalidSize or a float one. ▸r/ramp-and-walk-edges"""
     bases = [
         _RAMP_BASIS.get(name, hou.rampBasis.Linear)
         for name in data.get("bases", [])
     ]
+    keys = list(data.get("keys", []))
     values = [tuple(v) for v in data.get("values", [])]
-    return hou.Ramp(bases, list(data.get("keys", [])), values)
+    width = min(len(keys), len(values))    # hou.Ramp raises InvalidSize when the three disagree, and a hand-edited or truncated gradient file is exactly where they do
+    if not width:
+        return hou.Ramp([hou.rampBasis.Linear], [0.0], [(0.0, 0.0, 0.0)])
+    keys, values = keys[:width], values[:width]
+    bases = (bases + [hou.rampBasis.Linear] * width)[:width]
+    return hou.Ramp(bases, keys, values)
 
 
 def _hex_to_rgb(hex_color: str) -> tuple:
@@ -168,7 +174,9 @@ def _hex_to_rgb(hex_color: str) -> tuple:
 
 def build_stepped_ramp(hex_colors: list) -> hou.Ramp:
     """A constant-basis (stepped) color ramp from a list of hex strings - discrete bands, so the palette's colors stay readable."""
-    n = max(len(hex_colors), 1)
+    if not hex_colors:    # `max(len, 1)` made the bases and keys length 1 against no values at all, which is an InvalidSize - the same empty palette build_basis_ramp already survives ▸r/ramp-and-walk-edges
+        return hou.Ramp([hou.rampBasis.Constant], [0.0], [(0.0, 0.0, 0.0)])
+    n = len(hex_colors)
     bases = [hou.rampBasis.Constant] * n
     keys = [i / n for i in range(n)]
     values = [_hex_to_rgb(c) for c in hex_colors]
@@ -213,11 +221,15 @@ def _walk_connected(
     """Every node reachable from `nodes` by following `step` ("inputs" or "outputs") into `selected`, seeds included - ONE walker for both directions, visited-set bounded (a diamond graph re-walked once per path, exponentially, before). Not `inputAncestors()`: that EXCLUDES the seed, follows REFERENCE inputs, and HOM 22 has no output-side equivalent - checked."""
     if _visited is None:
         _visited = set()
-    for node in nodes:
-        if node is not None and node.path() not in _visited:
-            _visited.add(node.path())
-            selected.append(node)
-            _walk_connected(getattr(node, step)(), selected, step, _visited)
+    stack = [n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
+    while stack:
+        node = stack.pop()
+        if node is None or node.path() in _visited:
+            continue
+        _visited.add(node.path())
+        selected.append(node)
+        stack.extend(
+            n for n in reversed(list(getattr(node, step)())) if n is not None)
     return selected
 
 
