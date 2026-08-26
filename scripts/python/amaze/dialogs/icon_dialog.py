@@ -17,6 +17,9 @@ SIDE_WIDTH = amazetheme.D02_SIDE_WIDTH   # preview, swatches and buttons all mea
 class IconDialog(base_dialog.AssetDialog):
     """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel."""
 
+    FORM_WIDTH = amazetheme.D02_FORM_WIDTH
+    HEADER_BAND = True    # D02 wears the drawn name strip ▸p/one-design-document
+
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None) -> None:

@@ -6,7 +6,7 @@ import os
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -82,8 +82,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
 
 
     def _dialog(self):
-        dialog = ui_helpers.DesignedDialog(None)
-        dialog.setWindowTitle("brushed_steel")
+        dialog = ui_helpers.DesignedDialog(None, title="brushed_steel")
         combo = QtWidgets.QComboBox(dialog)
         combo.addItem("Version 2")
         dialog.add_field(combo)
@@ -142,36 +141,51 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                              "%s has been restyled" % name)
 
     def test_the_frame_is_the_designs_size(self):
-        """512 x 316 of the design, in the logical pixels Qt sizes with, at whatever Houdini's UI scale is."""
+        """512 x 370 of the design, in the logical pixels Qt sizes with, at whatever Houdini's UI scale is."""
         dialog, _c, _f = self._dialog()
-        self.assertEqual((_px(512), _px(316)),
+        self.assertEqual((_px(512), _px(370)),
                          (dialog.width(), dialog.height()))
 
     def test_the_constants_are_stored_at_the_CHROME_density(self):
         """A design number is HALVED at source, then scaled - the 2x rule every chrome constant follows (overview.md §8). Storing the raw 512 is what once opened it as a 1024 window. ▸p/designed-dialog"""
         self.assertEqual(
-            (256, 158), ui_helpers.DesignedDialog.FRAME,
+            (256, 185), ui_helpers.DesignedDialog.FRAME,
             "the frame is back at the design's raw pixels - halve it at "
             "source, the way every chrome constant is halved")
 
-    def test_the_dialog_NAMES_ITSELF_in_the_title_bar_alone(self):
-        """The drawn dialog has no header block: no icon, no title line, no kind line - the window title carries the name, and the first field sits at the frame's top. ▸p/designed-dialog"""
+    def test_it_wears_the_DRAWN_header_band(self):
+        """The band is drawn INSIDE the dialog and is not the window title bar - the design draws both, and reading one as the other is what deleted this header once. ▸p/one-design-document"""
+        from amaze import amazetheme
         dialog, combo, _f = self._dialog()
-        self.assertEqual("brushed_steel", dialog.windowTitle())
-        from PySide6 import QtSvgWidgets
-        self.assertFalse(
-            dialog.findChildren(QtSvgWidgets.QSvgWidget),
-            "the retired header icon is still being built")
-        drawn = {label.text() for label in
-                 dialog.findChildren(QtWidgets.QLabel) if label.text()}
+        band = dialog.findChild(QtWidgets.QWidget, "amaze_header_band")
+        self.assertIsNotNone(band, "the drawn header band is missing")
+        self.assertEqual(theme.ui_px(amazetheme.HEADER_BAND_H),    # ui_px, NOT `_px`: the design document's numbers are already at chrome density, where `_px` takes a design-density one and halves it
+                         band.height())
+        self.assertEqual(dialog.width(), band.width(),
+                         "the band does not span the dialog")
         self.assertEqual(
-            {"Change Name"}, drawn,
-            "the dialog draws a label the design does not - only the "
-            "field's own is left")
+            theme.color("surface_low").name(),
+            band.palette().color(QtGui.QPalette.ColorRole.Window).name(),
+            "the band is not on the design's ground")
+
+        label = dialog.findChild(QtWidgets.QLabel,
+                                 "amaze_header_band_text")
+        self.assertIsNotNone(label, "the band carries no name")
+        self.assertEqual("brushed_steel", label.text(),
+                         "the band shows something other than the "
+                         "asset's own name")
+        self.assertEqual("brushed_steel", dialog.windowTitle(),
+                         "the window title lost the name the band shows")
+
+    def test_the_first_field_sits_below_the_band(self):
+        dialog, combo, _f = self._dialog()
+        from amaze import amazetheme
         self.assertEqual(
-            _px(30), self._at(dialog, combo)[1],
-            "the first field is not at the design's top - a header's "
-            "worth of space is still reserved above it")
+            theme.ui_px(amazetheme.HEADER_BAND_H)
+            + theme.ui_px(amazetheme.D01_FIRST_FIELD_Y),
+            self._at(dialog, combo)[1],
+            "the first field is not the design's distance below the "
+            "band")
 
 
 class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):

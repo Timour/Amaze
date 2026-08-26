@@ -117,6 +117,7 @@ class CodeDialog(base_dialog.AssetDialog):
     """The snippet save form on the house shell - resizable, because the editor is the point of the window."""
 
     FORM_WIDTH = amazetheme.D11_FORM_WIDTH
+    HEADER_BAND = True    # D11 wears the drawn name strip ▸p/one-design-document
 
     def __init__(
         self,

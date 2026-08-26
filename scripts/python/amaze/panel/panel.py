@@ -1399,8 +1399,7 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         active = versions.active_version(self.prefs, mat.mat_id)
 
-        dialog = ui_helpers.DesignedDialog(self)
-        dialog.setWindowTitle(mat.name)    # the asset's own name IS the title bar, which is the only place the dialog names itself now ▸p/designed-dialog
+        dialog = ui_helpers.DesignedDialog(self, title=mat.name)    # the name goes in at CONSTRUCTION because it fills the drawn band as well as the title bar ▸p/one-design-document
         layout = dialog.body_layout
 
         picker = QtWidgets.QComboBox(dialog)

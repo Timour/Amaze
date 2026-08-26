@@ -15,6 +15,7 @@ class AssetDialog(QtWidgets.QDialog):
 
     FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
     FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
+    HEADER_BAND = False  # the drawn header strip carrying the asset's name - D01, D02 and D11 wear one, the save family and Preferences do not ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,
                  parent=None) -> None:
@@ -92,11 +93,23 @@ class AssetDialog(QtWidgets.QDialog):
         layout.setContentsMargins(_m, _m, _m, _m)
         if self.FORM_WIDTH:
             layout.addStrut(theme.ui_px(self.FORM_WIDTH) - 2 * _m)    # THE LAYOUT'S OWN HINT, never `setFixedWidth`: under `SetFixedSize` the hint IS the width and is re-imposed on every activation, so a hand-set width dies at `show()` ▸r/fixed-size-constraint
+        if not self.HEADER_BAND:
+            if self._fixed_size:
+                layout.setSizeConstraint(
+                    QtWidgets.QLayout.SizeConstraint.SetFixedSize)
+            self.setLayout(layout)
+            return
+
+        from amaze.helpers import ui_helpers    # HERE, not at module scope: `ui_helpers` is the widget library and importing it at the top makes the shell depend on it for every dialog, band or no band
+        outer = QtWidgets.QVBoxLayout()    # the band is FULL WIDTH, so the house margins move inside it rather than around it
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        outer.addWidget(ui_helpers.header_band(self, self.windowTitle()))
+        outer.addLayout(layout)
         if self._fixed_size:
-            layout.setSizeConstraint(
-                QtWidgets.QLayout.SizeConstraint.SetFixedSize
-            )
-        self.setLayout(layout)
+            outer.setSizeConstraint(
+                QtWidgets.QLayout.SizeConstraint.SetFixedSize)
+        self.setLayout(outer)
 
     def _on_accept(self) -> None:
         """Override to read fields, then call super()._on_accept()."""

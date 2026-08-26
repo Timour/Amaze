@@ -180,6 +180,34 @@ def device_pixmap(path, side, dpr, color_replacements=None):
     return pixmap
 
 
+def header_band(parent, text: str):
+    """The drawn header strip: a full-width band carrying the asset's OWN name, which D01, D02 and D11 all wear and nothing else does. It is NOT the window title bar - the design draws both. ▸p/one-design-document"""
+    band = QtWidgets.QWidget(parent)
+    band.setObjectName("amaze_header_band")
+    band.setFixedHeight(theme.ui_px(amazetheme.HEADER_BAND_H))
+    band.setAutoFillBackground(True)
+    palette = band.palette()
+    palette.setColor(QtGui.QPalette.ColorRole.Window,
+                     theme.color("surface_low"))
+    band.setPalette(palette)
+
+    row = QtWidgets.QHBoxLayout(band)
+    row.setContentsMargins(theme.ui_px(amazetheme.HEADER_BAND_INSET), 0,
+                           theme.ui_px(amazetheme.HEADER_BAND_INSET), 0)
+    label = QtWidgets.QLabel(text, band)
+    label.setObjectName("amaze_header_band_text")
+    font = QtGui.QFont(label.font())
+    font.setPixelSize(theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX))
+    label.setFont(font)
+    ink = label.palette()
+    ink.setColor(QtGui.QPalette.ColorRole.WindowText,
+                 theme.color("text_bright"))
+    label.setPalette(ink)
+    row.addWidget(label)
+    row.addStretch(1)
+    return band
+
+
 class DesignedDialog(QtWidgets.QDialog):
     """A dialog in the shape the designs describe: NO header block - the name rides the WINDOW TITLE, so a caller sets `setWindowTitle` - over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
 
@@ -194,8 +222,10 @@ class DesignedDialog(QtWidgets.QDialog):
     RADIUS = amazetheme.D01_RADIUS
     LABEL_PX, BUTTON_PX = amazetheme.D01_LABEL_PX, amazetheme.D01_BUTTON_PX
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, title: str = "") -> None:
         super().__init__(parent)
+        if title:
+            self.setWindowTitle(title)
         self.setFixedSize(theme.ui_px(self.FRAME[0]),
                           theme.ui_px(self.FRAME[1]))
         self.setStyleSheet("QDialog { background: %s; }" % self.BODY_BG)
@@ -203,6 +233,8 @@ class DesignedDialog(QtWidgets.QDialog):
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+        self._band = header_band(self, self.windowTitle())    # the drawn name strip, filled from the title set just above ▸p/one-design-document
+        outer.addWidget(self._band)
 
         body = QtWidgets.QWidget(self)
         outer.addWidget(body, 1)

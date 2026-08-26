@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-D01_FRAME = (256, 158)      # ▸ D01 Versions, no header block: the name rides the window title. The design's 512 x 316
+HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: a full-width strip carrying the asset's own name, on D01, D02 and D11 and nowhere else. Its fill and ink follow Houdini (`surface_low`, `text_bright`), so only the geometry is here
+HEADER_BAND_INSET = 18   # where the name starts
+HEADER_BAND_TEXT_PX = 12
+
+D01_FRAME = (256, 185)      # ▸ D01 Versions, header band included
 D01_INSET = 18              # 35, both sides, leaving a 220-wide column
 D01_FIRST_FIELD_Y = 15      # 30, the first field's top
 D01_FIELD_H = 30            # 60
@@ -13,7 +17,8 @@ D01_LABEL_PX = 10
 D01_BUTTON_PX = 12
 D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
 
-D02_CELL = 34            # ▸ D02 Customize (Tile Icon): one icon button in the chooser grid
+D02_FORM_WIDTH = 544     # ▸ D02 Customize (Tile Icon): the drawn width, band included
+D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 10         # how wide the grid runs before wrapping
 D02_SIDE_WIDTH = 150     # preview, swatches and buttons all measure this
 
