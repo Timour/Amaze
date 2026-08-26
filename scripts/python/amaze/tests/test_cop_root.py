@@ -184,5 +184,97 @@ class AWholeNetworkSaveKeepsItsDots(unittest.TestCase):
             "is gone from the restored network")
 
 
+class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
+    """`assetlib_id` on an INNER node survives save and reload, so an imported copy would offer to update whichever library entry that inner node was once saved as. ▸r/inherited-stamps"""
+
+    def setUp(self):
+        self.parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.parent.destroy)
+        self.scratch = test_support.scratch_dir("amaze_test_stamp_")
+        self.addCleanup(shutil.rmtree, self.scratch, True)
+
+    def _saved_with_a_stale_inner_stamp(self):
+        """A material file whose inner node carries another entry's id, two levels deep."""
+        builder = self.parent.createNode("subnet", "builder")
+        deep = builder.createNode("subnet", "deep")
+        leaf = deep.createNode("null", "leaf")
+        leaf.setUserData("assetlib_id", "SOMEBODY-ELSES-ID")
+        path = os.path.join(self.scratch, "stale.mat")
+        builder.saveItemsToFile(builder.allItems(), path)
+        builder.destroy()
+        return path
+
+    def test_the_premise_a_stamp_survives_the_round_trip(self):
+        """Measured rather than assumed - if Houdini ever stops carrying userData through a save, the sweep stops being needed."""
+        path = self._saved_with_a_stale_inner_stamp()
+        raw = self.parent.createNode("subnet", "raw")
+        raw.loadItemsFromFile(path)
+        stamps = [n.userData("assetlib_id") for n in raw.allSubChildren()
+                  if n.userData("assetlib_id")]
+        self.assertIn(
+            "SOMEBODY-ELSES-ID", stamps,
+            "the stamp no longer survives a save, so this guard is moot")
+
+    def test_a_strict_load_clears_every_inherited_stamp(self):
+        path = self._saved_with_a_stale_inner_stamp()
+        target = self.parent.createNode("subnet", "target")
+
+        problem = nodes.load_items_strict(target, path)
+        self.assertEqual("", problem, "the fixture did not load")
+
+        left = [n.path() for n in target.allSubChildren()
+                if n.userData("assetlib_id")]
+        self.assertEqual(
+            [], left,
+            "an imported material still carries another entry's id, so a "
+            "Save to Amaze on that inner node offers to overwrite it")
+
+    def test_the_sweep_reaches_a_NESTED_node(self):
+        """The stale stamp sits two subnets down; a children()-only sweep would miss it."""
+        path = self._saved_with_a_stale_inner_stamp()
+        target = self.parent.createNode("subnet", "nested")
+        nodes.load_items_strict(target, path)
+        depths = [n.path().count("/") for n in target.allSubChildren()]
+        self.assertTrue(
+            depths and max(depths) >= 5,
+            "the fixture is not actually nested, so this proves nothing")
+
+    def test_a_loose_node_has_its_OWN_stamp_cleared_too(self):
+        """A network-destination import drops loose nodes into the user's own network, and each carries whatever stamp it was saved with."""
+        loose = self.parent.createNode("subnet", "loose")
+        loose.setUserData("assetlib_id", "STALE-TOP")
+        inner = loose.createNode("null", "inner")
+        inner.setUserData("assetlib_id", "STALE-INNER")
+
+        nodes.clear_inherited_stamps(loose, include_self=True)
+
+        self.assertIsNone(loose.userData("assetlib_id"))
+        self.assertIsNone(inner.userData("assetlib_id"))
+
+    def test_a_container_keeps_its_own_stamp_by_default(self):
+        """The container sites stamp it themselves right after, so the default must not reach it - and must not touch the user's other nodes."""
+        keeper = self.parent.createNode("subnet", "keeper")
+        keeper.setUserData("assetlib_id", "THE-REAL-ONE")
+        inner = keeper.createNode("null", "inner")
+        inner.setUserData("assetlib_id", "STALE")
+
+        nodes.clear_inherited_stamps(keeper)
+
+        self.assertEqual("THE-REAL-ONE", keeper.userData("assetlib_id"))
+        self.assertIsNone(inner.userData("assetlib_id"))
+
+    def test_a_dot_in_the_network_does_not_stop_the_sweep(self):
+        """Dots carry no userData at all, so a walk that touches it must tolerate them. ▸r/inherited-stamps"""
+        holder = self.parent.createNode("subnet", "holder")
+        holder.createNetworkDot()
+        stamped = holder.createNode("null", "stamped")
+        stamped.setUserData("assetlib_id", "STALE")
+
+        cleared = nodes.clear_inherited_stamps(holder)
+
+        self.assertEqual(1, cleared)
+        self.assertIsNone(stamped.userData("assetlib_id"))
+
+
 if __name__ == "__main__":
     unittest.main()

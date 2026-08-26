@@ -297,6 +297,23 @@ def staged_asset(preferences, mat, loader) -> "object":
             staging.destroy()
 
 
+def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
+    """Strip `assetlib_id` from everything a load brought IN, returning how many were cleared - pass `include_self` for a loose node that IS the loaded item rather than a container the caller stamps afterwards. ▸r/inherited-stamps"""
+    cleared = 0
+    items = list(container.allSubChildren())
+    if include_self:
+        items.append(container)
+    for item in items:
+        try:
+            if item.userData("assetlib_id") is None:
+                continue
+            item.destroyUserData("assetlib_id")
+        except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+            continue    # a dot or box carries no userData at all, and a vanished node has nothing left to clear
+        cleared += 1
+    return cleared
+
+
 def load_items_strict(node: hou.Node, file_name: str) -> str:
     """Strict load: "" or the fatal reason. ▸r/node-items"""
     try:
@@ -317,6 +334,7 @@ def load_items_strict(node: hou.Node, file_name: str) -> str:
         return ("its material file could not be loaded (%s) - %s"
                 % (file_name, str(failure).strip()
                    or "Houdini gave no reason"))
+    clear_inherited_stamps(node)    # the file carries the stamps its inner nodes had when it was SAVED, and a later Save to Amaze on one of them would offer to update that unrelated entry ▸r/inherited-stamps
     return ""
 
 
@@ -1328,6 +1346,7 @@ class NodeHandler:
             copnet.destroy()
             self._drop_created_cop_root()
             return
+        clear_inherited_stamps(copnet)    # ▸r/inherited-stamps
         helpers.auto_place(copnet)
         debug.event("import", "cop restored",
                     name=info["name"], reused=False)
@@ -1451,6 +1470,8 @@ class NodeHandler:
                 new_children = [
                     c for c in dest.children() if c not in before
                 ]
+                for loaded in new_children:    # ONLY what this load added - sweeping `dest` would clear the stamps on the user's own nodes ▸r/inherited-stamps
+                    clear_inherited_stamps(loaded, include_self=True)
                 if new_children:
                     try:
                         dest.layoutChildren(items=new_children)
@@ -1509,6 +1530,7 @@ class NodeHandler:
                     '"%s": failed to load the saved network (%s).'
                     % (mat.name, exc)),
             )
+        clear_inherited_stamps(container)    # before the container's own stamp below ▸r/inherited-stamps
         helpers.auto_place(container)
         try:
             container.setUserData("assetlib_id", str(mat.mat_id))
