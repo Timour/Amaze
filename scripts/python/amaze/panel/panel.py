@@ -138,7 +138,6 @@ AssetItemDelegate = delegates.AssetItemDelegate
 
 _BODY_T0 = time.perf_counter()    #: when THIS module body began, so the chain above can be timed; NOT reload-survival state, every open runs it again
 
-MULTIPLE_VALUES = material.MULTIPLE_VALUES    #: the mixed-multi-selection sentinel, ONE home in material.py because it is compared against and a second spelling is a silent overwrite
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use. ONE constant, never computed: a floor that moves under the user is worse than a narrow grid, and THE GRID PANE CARRIES NO MINIMUM because a child minimum propagates into the window's own ▸r/qt-windows-macos
@@ -309,6 +308,8 @@ class MatLibPanel(QtWidgets.QWidget):
             versions_role=self.material_model.VersionsRole,
             notes_role=self.material_model.NotesRole,
             active_version_role=self.material_model.ActiveVersionRole,
+            date_role=self.material_model.DateRole,
+            id_role=self.material_model.IdRole,
         )
         self.thumb_delegate.set_badge_click("versions", self._open_versions_dialog)    # a click on the versions badge opens the Versions dialog: the delegate only detects the hit, the panel owns the dialog
         self.thumb_delegate.set_badge_click("favourite", self._favourite_badge_clicked)    # wiring the click is what makes the star a BUTTON with a visible rest state; the online delegate wires neither, so its corner stays empty
@@ -323,6 +324,8 @@ class MatLibPanel(QtWidgets.QWidget):
             licence_role=self.material_model.LicenceRole,
             category_color_role=self.material_model.CategoryColorRole,
             notes_role=self.material_model.NotesRole,
+            date_role=self.material_model.DateRole,
+            id_role=self.material_model.IdRole,
         )
         self.asset_delegate.set_badge_click(
             "favourite", self._favourite_badge_clicked)
@@ -451,7 +454,6 @@ class MatLibPanel(QtWidgets.QWidget):
         self.online_source = None
         self.online_context = sections.OnlineContext(self)    # the online world as a context object with a Section's interface. NOT in `sections` and not in `enabled_sections` - it is a parallel world, not a section - but every area path reaches it through `_section()` like any other
 
-        self.material_selection_model.selectionChanged.connect(self.update_details_view)
         for _notes_selection in (    # keyboard selection moves reach the Notes pane too, every section's selection model, guarded inside the handler: a no-op while the pane is hidden, and it reads only the ACTIVE section's current index. Connected HERE because the models are built in setup(), after init_ui
             self.material_selection_model,
             self.cop_selection_model,
@@ -642,16 +644,6 @@ class MatLibPanel(QtWidgets.QWidget):
         button.set_art(self._ui_icon_path("icon_categories.svg"),
                        lighten_on_hover=False)
 
-    def edit_material_info(self) -> None:
-        """Open the material info dialog for the current selection (right-click "Edit Info") - update_details_view already keeps the form populated from the selection, so this only shows and raises the floating dialog"""
-        if not self.material_model:
-            return
-        self.update_details_view()
-        self.details.setVisible(True)
-        self.details_dialog.show()
-        self.details_dialog.raise_()
-        self.details_dialog.activateWindow()
-
     def apply_view_state(self) -> None:
         """Apply the persisted category/details visibility from preferences"""
         self.action_catview.setChecked(self.prefs.show_categories)
@@ -684,7 +676,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
         "thumb": 24, "name": 176, "type": 59, "category": 76,
         "favorite": 69, "version": 66, "open": 54, "comments": 85,
-        "tags": 300, "license": 287,
+        "tags": 300, "license": 287, "date": 130, "id": 240,
     }
 
     COLUMN_MIN_WIDTH = 24    #: the floor for ANY column: `minimumSectionSize` is global rather than per-column, so License cannot be given one of its own; small enough that a tick column is not forced wide
@@ -1148,7 +1140,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.thumblist.viewport().setMouseTracking(True)    # list rows span the viewport and must re-fit when it resizes; the versions badge lights under the cursor, which needs button-free mouse moves, and a viewport does NOT track the mouse by default (measured). Both live in eventFilter
         self.thumblist.viewport().installEventFilter(self)
         self.thumblist.doubleClicked.connect(self.import_asset_auto)
-        self.thumblist.clicked.connect(self._refresh_notes_subject)    # update_details_view is deliberately NOT wired here: selectionChanged already fires for every click that changes the selection, and a click that changes nothing leaves the details correct - wired to both, each click rebuilt the form twice. Refresh-after-edit calls it explicitly (edit_material_info, user_update_asset); _refresh_notes_subject stays because it is idempotent
+        self.thumblist.clicked.connect(self._refresh_notes_subject)    # a click that changes nothing still has to reach the Notes pane, and this handler is idempotent
         thumblist_palette = self.thumblist.palette()    # grid and details unify on the `surface_high` token via QPalette (Base, the role QListView paints its viewport from) rather than setStyleSheet(), consistent with the cat_list fix above
         thumblist_palette.setColor(QtGui.QPalette.ColorRole.Base, theme.color("surface_high"))
         self.thumblist.setPalette(thumblist_palette)
@@ -1244,79 +1236,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.toolbar_layout.addWidget(self.cb_viewmode)
             self.toolbar_layout.addSpacing(theme.ui_px(2))    # fixed gap to the icon-menu cluster appended right after; the design right-anchors everything from the star outward
 
-        self.details = self.ui.details_widget  # type: ignore
-        self.details.setAutoFillBackground(True)    # matches the grid on `surface_high` via QPalette, NOT setStyleSheet: a sheet here knocked the Name/Category/Tags fields off their native box rendering, because palette changes do not cascade onto descendants the way a sheet does
-        details_palette = self.details.palette()
-        details_palette.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_high"))
-        self.details.setPalette(details_palette)
-        self.line_name = self.ui.line_name  # type: ignore
-        self.line_cat = self.ui.line_cat  # type: ignore
-
-        self.cat_combo = self.ui.cat_combo  # type: ignore  -- every asset has exactly ONE category, so this dropdown is the only category input; the multi-category tick box and its comma-separated textbox stay in the .ui and are never shown
-        self.box_multicat = self.ui.box_multicat  # type: ignore
-        self.cat_combo.setEnabled(True)
-        try:
-            form = self.ui.findChild(  # type: ignore
-                QtWidgets.QFormLayout, "details_form"
-            )
-            if form is not None:
-                form.setRowVisible(self.box_multicat, False)
-                form.setRowVisible(self.line_cat, False)
-        except Exception:
-            self.box_multicat.setVisible(False)
-            self.line_cat.setVisible(False)
-
-        self.line_tags = self.ui.line_tags  # type: ignore
-        self.line_tags.setStyleSheet(
-            "background-color: " + theme.color_hex("surface") + ";"
-        )
-        self.line_id = self.ui.line_id  # type: ignore
-        self.line_id.setDisabled(True)
-        self.line_id.setStyleSheet(
-            "QLineEdit:disabled { background-color: #333333; }"
-        )
-
-        self.line_date = self.ui.line_date  # type: ignore
-        self.line_date.setDisabled(True)
-        self.line_date.setStyleSheet(
-            "QLineEdit:disabled { background-color: #333333; }"
-        )
-
-        self.line_renderer = QtWidgets.QLineEdit()    # greyed renderer row under Name ("USD Redshift" / "Redshift" / "Karma"), inserted in code so the whole form need not be renumbered, and disabled so it reads as metadata
-        self.line_renderer.setReadOnly(True)
-        self.line_renderer.setDisabled(True)
-        self.line_renderer.setStyleSheet(
-            "QLineEdit:disabled { background-color: #333333; }"
-        )
-        self.line_license = QtWidgets.QLineEdit()    # provenance for downloaded online materials and empty for local ones: License in its own field, and a multi-line About/credit block at the bottom naming source, author and link. Both editable, both saved with the rest of the Material Info form
-        self.text_about = QtWidgets.QPlainTextEdit()
-        self.text_about.setFixedHeight(theme.ui_px(84))   # ~4 lines
-        try:
-            details_form = self.ui.findChild(  # type: ignore
-                QtWidgets.QFormLayout, "details_form"
-            )
-            name_row, _ = details_form.getWidgetPosition(self.line_name)
-            details_form.insertRow(name_row + 1, "Type", self.line_renderer)
-            details_form.addRow("License", self.line_license)    # appended, so the provenance rows sit at the bottom of the form
-            details_form.addRow("About", self.text_about)
-        except Exception:
-            pass
-
-        self.box_fav = self.ui.cb_set_fav  # type: ignore
-        self.box_fav.clicked.connect(self.box_fav_clicktoggle)
-
-        self.btn_update = self.ui.btn_update  # type: ignore
-        self.btn_update.setText("Update Info")    # the .ui's own "Update Material" collides with the real content-update in the save flow; this button saves name/category/tags/favourite alone. Changed as a runtime property, never a .ui edit, which is standing practice here
-        self.btn_update.clicked.connect(self.user_update_asset)
-
-        self.details_dialog = QtWidgets.QDialog(self)    # material metadata is a FLOATING dialog, not a docked panel - the panel ate grid width and only materials used it. Reparenting details_widget into a QDialog takes it out of the splitter so the grid gets the space; the edit form itself is unchanged
-        self.details_dialog.setWindowTitle("Material Info")
-        _dlg_layout = QtWidgets.QVBoxLayout(self.details_dialog)
-        _m = theme.ui_px(8)
-        _dlg_layout.setContentsMargins(_m, _m, _m, _m)
-        _dlg_layout.addWidget(self.details)  # reparents out of the splitter
-        self.details.setVisible(True)
-        self.details.setMinimumWidth(theme.ui_px(360))
+        self.ui.details_widget.setParent(None)  # type: ignore  -- the Material Info form retired with D03: its nine fields all have better homes. OUT OF THE SPLITTER, not merely hidden - a hidden pane is still a pane and still takes a stretch, which is the invariant `test_one_flexible_pane_is_the_construction` holds. The widget stays in the externally-maintained .ui rather than being cut out of it ▸p/d03-retired
 
         self.menu_filter = QtWidgets.QMenu("Filter", self.menu)    # lives in the hidden menubar and opens from a toolbar button; every section fills it with its own entries from panel/sections.py
         self._build_menus()
@@ -1477,15 +1397,8 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         active = versions.active_version(self.prefs, mat.mat_id)
 
-        dialog = ui_helpers.DesignedDialog(
-            self,
-            title="Versions",
-            subtitle="%s/%s" % (mat.name, ", ".join(
-                str(c) for c in (mat.categories or [])) or "Uncategorized"),
-            kind=model.renderer_label(mat),
-            icon=self._ui_icon_path("icon_versions_dialog.svg"),
-        )
-        dialog.setWindowTitle('Versions of "%s"' % mat.name)
+        dialog = ui_helpers.DesignedDialog(self)
+        dialog.setWindowTitle(mat.name)    # the asset's own name IS the title bar, which is the only place the dialog names itself now ▸p/designed-dialog
         layout = dialog.body_layout
 
         picker = QtWidgets.QComboBox(dialog)
@@ -1498,6 +1411,8 @@ class MatLibPanel(QtWidgets.QWidget):
                 extra.append(str(version["date"]))
             if extra:
                 label += "   (%s)" % ", ".join(extra)
+            if int(version.get("n", 0)) == active:
+                label += "   active"    # the drawn row says which one is live, so a closed dropdown answers it too
             picker.addItem(label, int(version.get("n", 0)))
         current_row = next(
             (i for i, v in enumerate(listed)
@@ -1514,14 +1429,14 @@ class MatLibPanel(QtWidgets.QWidget):
             "field. Versions are made automatically when you save."))
         name_field.setPlaceholderText("Rename this version")
         name_field.setText(listed[current_row].get("name") or "")
-        dialog.add_field(name_field, label="Name")
+        dialog.add_field(name_field, label="Change Name")
 
         def _sync_field(combo_row):
             name_field.setText(listed[combo_row].get("name") or "")
 
         picker.currentIndexChanged.connect(_sync_field)
 
-        dialog.add_buttons("cancel", "Apply")
+        dialog.add_buttons("Cancel", "Apply")
 
         try:
             if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
@@ -1593,6 +1508,19 @@ class MatLibPanel(QtWidgets.QWidget):
             debug.event("folders", "relocated", favorites=rewritten)
         self.update_selected_cat()    # rescan under the new path
 
+
+    def locate_unreadable_folder(self) -> None:
+        """The unreachable-folder blank's Locate button: re-point the folder the MESSAGE names. It selects that folder in the sidebar first, because the blank can be up while the sidebar sits on All - and then the shared picker would move whichever folder happened to be current, not the one the user was just told about."""
+        model = getattr(self, "file_folders_model", None)
+        path = empty_state.unreadable_folder(self)
+        if model is None or not path:
+            return
+        row = model.row_of(path)
+        view_model = self.cat_list.model() if self.cat_list else None
+        if row is None or view_model is None:
+            return
+        self.cat_list.setCurrentIndex(view_model.index(row, 0))
+        self._locate_folder_user(model)
 
     def capture_open_scene_thumbnail(self) -> None:
         """Toolbar button: capture the scene currently OPEN, not the grid selection - the capture photographs the viewport, so the only scene it can honestly be filed against is the one the viewport is showing."""
@@ -1705,12 +1633,11 @@ class MatLibPanel(QtWidgets.QWidget):
         self.grid_toggle_favourite(rows)
 
     def grid_toggle_favourite(self, indexes) -> None:
-        """Flip the star on the grid's selection - one entry point for every section's menu, and all it decides is which selection to act on and to refresh the details form."""
+        """Flip the star on the grid's selection - one entry point for every section's menu, and all it decides is which selection to act on."""
         context = self._section()
         if context is None:
             return
         context.toggle_favourite(list(indexes))    # the flip is the context's own verb, and re-mapping a favourites-only grid after it is the proxy's own invariant (grid_proxy.py) - nothing to force from here
-        self.update_details_view()
 
     def _selection_has_redshift(self) -> bool:
         """Whether any currently-selected material is Redshift - gates showing `Convert to Karma` in the right-click menu."""
@@ -2716,12 +2643,16 @@ class MatLibPanel(QtWidgets.QWidget):
         tile_name = None
         if hasattr(model, "set_tile_name"):
             tile_name = model.tile_name(rows[0]) if single else ""
+        tile_tags = None    # the same rule as the name, one row down: a section whose model cannot hold tags shows no field at all
+        if hasattr(model, "set_tile_tags"):
+            tile_tags = model.tile_tags(rows[0]) if single else ""
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
             tile_icons.stroke_for(self.prefs),
             self,
             tile_name=tile_name,
             tile_name_enabled=single,
+            tile_tags=tile_tags,
         )
         self._icon_dialog = dialog
 
@@ -2739,6 +2670,10 @@ class MatLibPanel(QtWidgets.QWidget):
                     if new_name and len(rows) == 1 and \
                             hasattr(model, "set_tile_name"):
                         model.set_tile_name(rows[0], new_name)
+                    new_tags = getattr(dialog, "new_tags", None)
+                    if new_tags is not None and len(rows) == 1 and \
+                            hasattr(model, "set_tile_tags"):    # `is not None`, never truth: "" is a real answer that CLEARS the tags
+                        model.set_tile_tags(rows[0], new_tags)
             finally:
                 dialog.deleteLater()    # the panel is its C++ parent and outlives every dialog, so dropping the Python name frees nothing - 287 buttons and ~6.5MB stay alive per open otherwise
 
@@ -3773,147 +3708,6 @@ class MatLibPanel(QtWidgets.QWidget):
         box.clear()
         self.filter_thumb_view()    # BY HAND and not redundant: the box is wired on `textEdited`, which Qt does not emit for a programmatic change (Qt's own clear button emits it explicitly for the same reason)
 
-    def user_update_asset(self) -> None:
-        """User modifies an assete in the detailview"""
-        if not self.material_model or not self.category_model:
-            return
-        indexes = grid_columns.selected_rows(self.material_selection_model)
-        single = len(indexes) == 1    # about/license are per-material provenance, so a multi-selection passes None for both (set_assetdata reads None as leave-alone) rather than stamping one material's credits over everyone's
-        about = self.text_about.toPlainText() if single else None
-        license_ = self.line_license.text() if single else None
-        name = self.line_name.text()
-        tags = self.line_tags.text()
-        cats = self.cat_combo.currentText()
-        state = self.box_fav.checkState()    # THE TRI-STATE, READ AS THREE: `isChecked()` is True for PartiallyChecked, the state update_details_view sets when the selected rows disagree, so a mixed selection must pass fav=None and set_assetdata reads that as leave-alone
-        fav = (None if state == QtCore.Qt.CheckState.PartiallyChecked
-               else state == QtCore.Qt.CheckState.Checked)
-        self.category_model.check_add_category(cats)    # OUTSIDE the relayout wrapper: this announces itself with begin/endInsertRows and pairing the two segfaults H21 (research.md, measured 2026-08-04). Hoisted out of the loop with the other widget reads, which are the same on every pass
-        with ui_helpers.relayout(self.material_model):
-            for index in indexes:
-                idx = self.material_model.index(
-                    self.material_sorted_model.mapToSource(index).row(), 0
-                )
-                self.material_model.set_assetdata(
-                    idx, name, cats, tags, fav, about=about,
-                    license=license_, save=False    # one index write after the loop, not one per selected row
-                )
-            self.material_model.save()
-
-    def _refresh_cat_combo(self) -> None:
-        """Repopulate the category dropdown from the current category list"""
-        current = self.cat_combo.currentText()
-        self.cat_combo.blockSignals(True)
-        self.cat_combo.clear()
-        self.cat_combo.addItems(self.get_category_names())
-        i = self.cat_combo.findText(current)
-        if i >= 0:
-            self.cat_combo.setCurrentIndex(i)
-        self.cat_combo.blockSignals(False)
-
-    def update_details_view(self) -> None:
-        """Update upon changes in Detail view"""
-        if self.current_section != "material":
-            return
-        if not self.material_model or not self.category_model:
-            return
-        if not self.material_selection_model.hasSelection():
-            self.line_name.setText("")
-            self.line_id.setText("")
-            self.line_date.setText("")
-            self.line_renderer.setText("")
-            self.line_tags.setText("")
-            self.line_license.setText("")
-            self.text_about.setPlainText("")
-            self.box_fav.setCheckState(QtCore.Qt.CheckState.Unchecked)
-            return
-
-        indexes = grid_columns.selected_rows(self.material_selection_model)
-
-        asset_id = ""
-        name = ""
-        date = ""
-        sel_cats = []
-        sel_tags = []
-        fav = []
-        for pos, idx in enumerate(indexes):
-            curr_asset = self.material_model.index(
-                self.material_sorted_model.mapToSource(idx).row(), 0
-            )
-            name = curr_asset.data(QtCore.Qt.ItemDataRole.DisplayRole)
-            asset_id = curr_asset.data(self.material_model.IdRole)
-            date = curr_asset.data(self.material_model.DateRole)
-
-            for cat in curr_asset.data(self.material_model.CategoryRole):
-                sel_cats.append(cat)
-            sel_tags.append(curr_asset.data(self.material_model.TagRole))
-
-            fav.append(curr_asset.data(self.material_model.FavoriteRole))
-
-        clean_name = name
-        msg = MULTIPLE_VALUES if len(indexes) > 1 else clean_name
-        self.line_name.setText(msg)
-
-        msg = MULTIPLE_VALUES if len(indexes) > 1 else asset_id
-        self.line_id.setText(msg)
-
-        msg = MULTIPLE_VALUES if len(indexes) > 1 else date
-        self.line_date.setText(msg)
-
-        if len(indexes) > 1:
-            self.line_renderer.setText(MULTIPLE_VALUES)
-        else:
-            self.line_renderer.setText(
-                curr_asset.data(self.material_model.RendererLabelRole) or ""
-            )
-
-        msg = (
-            QtCore.Qt.CheckState.Checked
-            if fav[0] is True
-            else QtCore.Qt.CheckState.Unchecked
-        )
-        for f in fav:
-            if f != fav[0]:
-                msg = QtCore.Qt.CheckState.PartiallyChecked
-                break
-        self.box_fav.setCheckState(msg)
-
-        self._refresh_cat_combo()
-        cats_clean = [str(c).strip() for c in sel_cats if c and str(c).strip()]
-        mixed = len(set(cats_clean)) > 1 or (    # a MIXED selection must SAY so, through the MULTIPLE_VALUES sentinel that name and tags use too and set_assetdata reads as leave-alone; otherwise pressing Update refiles every selected asset into the first one's category, with no undo
-            len(indexes) > 1 and len(cats_clean) != len(indexes)
-        )
-        if mixed:
-            if self.cat_combo.findText(MULTIPLE_VALUES) < 0:
-                self.cat_combo.addItem(MULTIPLE_VALUES)
-            self.cat_combo.setCurrentIndex(
-                self.cat_combo.findText(MULTIPLE_VALUES))
-        else:
-            single = cats_clean[0] if cats_clean else ""
-            i = self.cat_combo.findText(single)
-            if i >= 0:
-                self.cat_combo.setCurrentIndex(i)
-            else:
-                self.cat_combo.setCurrentIndex(-1)    # no stale text: the PREVIOUS asset's category left showing is how a single asset gets silently refiled
-
-        if sel_tags:
-            msg = ", ".join(dict.fromkeys(filter(None, sel_tags[0])))    # dict.fromkeys dedupes and KEEPS order, where a plain set() reshuffles the displayed tags
-            if len(sel_tags) > 1:
-                for elem in sel_tags:
-                    if elem != sel_tags[0]:
-                        msg = MULTIPLE_VALUES
-            self.line_tags.setText(msg)
-        else:
-            self.line_tags.setText("")
-
-        if len(indexes) == 1:    # provenance is per-material: shown for a single selection and blanked for many, so nothing reads as shared that isn't, and user_update_asset leaves it alone
-            src_row = self.material_sorted_model.mapToSource(indexes[0]).row()
-            asset = self.material_model.assets[src_row]
-            self.line_license.setText(asset.license)
-            self.text_about.setPlainText(asset.about)
-        else:
-            self.line_license.setText("")
-            self.text_about.setPlainText("")
-
     def update_selected_cat(self) -> None:
         """Update thumb view on change of category (Materials) or browse the selected folder's images (Textures)."""
         indexes = self.cat_list.selectedIndexes()
@@ -4368,6 +4162,3 @@ class MatLibPanel(QtWidgets.QWidget):
         self.apply_view_mode()    # sizing for the active mode - grid grows icons, list grows rows
         self.material_model.set_custom_iconsize(QtCore.QSize(value, value))    # and the images themselves
 
-    def box_fav_clicktoggle(self):
-        if self.box_fav.checkState() == QtCore.Qt.CheckState.PartiallyChecked:
-            self.box_fav.nextCheckState()

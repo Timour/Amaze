@@ -242,25 +242,23 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_material_with_one_selected(self):
         self.assertEqual(
-            ["Info", "Copy To > [/mat, /stage/materiallibrary]", "----",
+            ["Copy To > [/mat, /stage/materiallibrary]", "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
             self._show("material", (0,)))
 
     def test_material_with_two_selected(self):
-        """Info acts on one item and greys; everything else acts on the whole selection and stays live."""
+        """Every entry acts on the whole selection and stays live."""
         self.assertEqual(
-            ["Info(off)", "Copy To > [/mat, /stage/materiallibrary]",
+            ["Copy To > [/mat, /stage/materiallibrary]",
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
             self._show("material", (0, 1)))
 
     def test_material_with_nothing_selected(self):
-        """CHANGED 2026-08-03: it used to open this menu with every entry but Info LIVE, over no selection at all."""
         self.assertEqual(
-            ["Info(off)",
-             "Copy To > [/mat, /stage/materiallibrary](off)", "----",
+            ["Copy To > [/mat, /stage/materiallibrary](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
              "Export Package(off)", "Delete(off)"],
             self._show("material"))
@@ -423,9 +421,10 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
                     [row.split(" > ")[0].replace("(off)", "")
                      for row in self._show(key, (0,) if key != "cop" else ())])
 
-    def test_INFO_left_the_color_and_node_menus(self):
-        """It left 2026-08-01; Material alone keeps it."""
-        for key, rows in (("gradient", (0,)), ("cop", ())):
+    def test_INFO_left_every_menu(self):
+        """It left Color and Node 2026-08-01 and Material 2026-08-26, when the dialog behind it retired. ▸p/d03-retired"""
+        for key, rows in (("material", (0,)), ("gradient", (0,)),
+                          ("cop", ())):
             with self.subTest(section=key):
                 self.assertNotIn(
                     "Info", [row.replace("(off)", "")

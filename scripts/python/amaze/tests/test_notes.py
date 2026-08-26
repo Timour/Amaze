@@ -68,6 +68,29 @@ class StoreTest(unittest.TestCase):
                          "the flow lost its order or content")
         self.assertTrue(notes.has_note(self.prefs, key))
 
+    def test_a_picture_survives_the_store(self):
+        """A picture is a THIRD item type and the store has to know it - the editor inserts one, `serialize` writes `{"t": "image"}`, and a shape the store does not name is dropped on the way through. ▸p/comment-images"""
+        key = notes.note_key("material", "7")
+        flow = [
+            {"t": "text", "text": "the reference"},
+            {"t": "image", "src": "img/comments/abc.png",
+             "text": "[image: abc.png]"},
+            {"t": "todo", "label": "re-shoot", "done": False},
+        ]
+        self.assertTrue(notes.set_note(self.prefs, key, flow))
+        notes.forget_notes()                 # a fresh session reads disk
+        page = notes.note_for(self.prefs, key)
+        self.assertEqual(flow, page["items"],
+                         "the picture did not survive the store")
+
+    def test_a_picture_with_no_source_is_not_content(self):
+        """An image item pointing nowhere draws nothing, so it is junk like a blank to-do - and a page of nothing but junk deletes the key."""
+        key = notes.note_key("material", "8")
+        notes.set_note(self.prefs, key, [{"t": "image", "src": "  "}])
+        self.assertFalse(notes.has_note(self.prefs, key),
+                         "a picture pointing nowhere counted as content - "
+                         "the comment badge will never clear")
+
     def test_the_first_builds_shape_converts_on_read(self):
         """The first build's {text, todos} shape reads as a flow, lossless."""
         with open(self._path(), "w", encoding="utf-8") as handle:
@@ -1574,6 +1597,92 @@ class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
         self.assertEqual(
             [], os.listdir(folder) if os.path.isdir(folder) else [],
             "a half-copied picture was left where a note could point")
+
+
+class AboutBecomesAComment(unittest.TestCase):
+    """The About credit block retired with the Material Info dialog; its text is a comment now, and every existing library carries some. ▸p/d03-retired"""
+
+    def setUp(self):
+        notes.forget_notes()
+        self.addCleanup(notes.forget_notes)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+
+    def _model(self):
+        from amaze.core import library as library_mod
+        return library_mod.MaterialLibrary(preferences=self.prefs)
+
+    def test_an_existing_credit_moves_and_the_field_clears(self):
+        model = self._model()
+        if not model.rowCount():
+            self.skipTest("fixture library has no rows")
+        credit = "From Ambient CG, by the AmbientCG team. CC0."
+        model.assets[0].about = credit
+        asset_id = str(model.assets[0].mat_id)
+        model.save()
+
+        self.assertEqual(1, model.adopt_about_into_notes())
+        key = notes.note_key(model.NOTES_SECTION, asset_id)
+        self.assertEqual(
+            [{"t": "text", "text": credit}],
+            notes.note_for(self.prefs, key).get("items"),
+            "the credit did not become a comment")
+        self.assertEqual("", model.assets[0].about,
+                         "the About field kept a copy, so the two can "
+                         "now disagree")
+
+    def test_it_does_not_run_twice_over_the_same_credit(self):
+        """Every library open calls it, so a second pass must add nothing - and it must survive the same library being swept on another machine through the synced store."""
+        model = self._model()
+        if not model.rowCount():
+            self.skipTest("fixture library has no rows")
+        credit = "From Poly Haven, by Rob Tuytel. CC0."
+        asset_id = str(model.assets[0].mat_id)
+        key = notes.note_key(model.NOTES_SECTION, asset_id)
+        notes.set_note(self.prefs, key, [{"t": "text", "text": credit}])
+        model.assets[0].about = credit
+
+        model.adopt_about_into_notes()
+        self.assertEqual(
+            [{"t": "text", "text": credit}],
+            notes.note_for(self.prefs, key).get("items"),
+            "the credit was written into the comment a second time")
+        self.assertEqual("", model.assets[0].about)
+        self.assertEqual(0, model.adopt_about_into_notes(),
+                         "a swept library still had something to move")
+
+    def test_it_lands_above_whatever_the_user_already_wrote(self):
+        model = self._model()
+        if not model.rowCount():
+            self.skipTest("fixture library has no rows")
+        asset_id = str(model.assets[0].mat_id)
+        key = notes.note_key(model.NOTES_SECTION, asset_id)
+        mine = {"t": "todo", "label": "check the roughness",
+                "done": False}
+        notes.set_note(self.prefs, key, [mine])
+        model.assets[0].about = "From Ambient CG. CC0."
+
+        model.adopt_about_into_notes()
+        self.assertEqual(
+            [{"t": "text", "text": "From Ambient CG. CC0."}, mine],
+            notes.note_for(self.prefs, key).get("items"),
+            "the user's own comment was displaced or lost")
+
+    def test_a_library_that_cannot_be_written_keeps_its_field(self):
+        """A failed note write must leave About alone - clearing it there would delete text nothing kept."""
+        model = self._model()
+        if not model.rowCount():
+            self.skipTest("fixture library has no rows")
+        model.assets[0].about = "From Ambient CG. CC0."
+        real_set = notes.set_note
+        notes.set_note = lambda *a, **k: False
+        self.addCleanup(setattr, notes, "set_note", real_set)
+
+        self.assertEqual(0, model.adopt_about_into_notes())
+        self.assertEqual("From Ambient CG. CC0.", model.assets[0].about,
+                         "the credit was cleared off the record after "
+                         "the comment refused it - the text is gone")
 
 
 if __name__ == "__main__":

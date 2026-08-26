@@ -329,5 +329,99 @@ class OnlyOneFaceIsUp(unittest.TestCase):
         self.assertEqual(["blank"], self._shown())
 
 
+class TheQuoteRidesTheFirstRunBlankOnly(unittest.TestCase):
+    """A section may hang a quotation under its first-run sentence; nothing else carries one, and the page must clear it when moving to a blank that has none."""
+
+    def test_a_declared_quote_is_a_line_and_an_attribution(self):
+        for key, cls in sections.SECTION_INDEX.items():
+            quote = getattr(cls, "QUOTE", None)
+            if not quote:
+                continue
+            self.assertEqual(
+                2, len(quote),
+                "%s declares a QUOTE that is not (line, attribution)"
+                % key)
+            self.assertTrue(all(str(part).strip() for part in quote),
+                            "%s declares a QUOTE with a blank half"
+                            % key)
+
+    def test_only_the_first_run_blank_carries_it(self):
+        panel = test_support.fixture_panel(self)
+        for blank in (empty_state.NO_MATCH, empty_state.NOTHING_HERE,
+                      empty_state.NO_FAVOURITES,
+                      empty_state.UNREACHABLE):
+            self.assertEqual(("", ""),
+                             empty_state.quote_for(panel, blank),
+                             "%s drew a quotation" % blank)
+
+    def test_the_page_clears_it_between_blanks(self):
+        panel = test_support.fixture_panel(self)
+        page = empty_state.page(panel)
+        page.say(panel, empty_state.NOTHING_YET, "")
+        page.say(panel, empty_state.NO_MATCH, "brick")
+        self.assertTrue(page._quote.isHidden(),    # isHidden, never isVisible: a child of a never-shown parent answers False either way ▸r/qt-text-checklists
+                        "the quotation stayed up over a blank that "
+                        "declares none")
+        self.assertEqual("", page._quote.text())
+
+
+class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
+    """Only a SCAN of a folder clears its unreadable flag, so a folder that was located or removed would go on being named forever."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.current_section = "file"
+        self.model = self.panel.file_files_model
+
+    def test_a_folder_no_longer_registered_is_not_named(self):
+        self.model._unreadable_folders.add("/no/such/folder/")
+        self.addCleanup(self.model._unreadable_folders.discard,
+                        "/no/such/folder/")
+        self.assertEqual("", empty_state.unreadable_folder(self.panel),
+                         "a folder that is not in the sidebar at all "
+                         "was still blamed for the empty grid")
+
+    def test_a_registered_one_is(self):
+        folders = self.panel.file_folders_model
+        registered = folders._folders()
+        if not registered:
+            self.skipTest("the fixture registers no file folders")
+        self.model._unreadable_folders.add(registered[0])
+        self.addCleanup(self.model._unreadable_folders.discard,
+                        registered[0])
+        self.assertEqual(registered[0],
+                         empty_state.unreadable_folder(self.panel),
+                         "the blank cannot name the folder it is about")
+
+    def test_the_locate_button_moves_the_folder_the_message_names(self):
+        """The blank can be up while the sidebar sits on All, so the verb must SELECT the named folder before handing over to the shared picker."""
+        folders = self.panel.file_folders_model
+        target = test_support.fresh_files_folder(self)    # a SECOND registered folder, so a verb that simply used whatever was current would still be caught
+        folders.add_folder(target)
+        self.addCleanup(folders.remove_folder, folders.row_of(target))
+        self.assertIsNotNone(folders.row_of(target),
+                             "premise: the second folder registered")
+        self.model._unreadable_folders.add(target)
+        self.addCleanup(self.model._unreadable_folders.discard, target)
+        self.panel.cat_list.setCurrentIndex(
+            self.panel.cat_list.model().index(0, 0))    # the All row
+
+        seen = {}
+
+        def _picker(model, seen=seen, panel=self.panel):
+            rows = panel.cat_list.selectedIndexes()
+            seen["row"] = rows[0].row() if rows else -1
+
+        original = self.panel._locate_folder_user
+        self.panel._locate_folder_user = _picker
+        self.addCleanup(setattr, self.panel, "_locate_folder_user",
+                        original)
+        self.panel.locate_unreadable_folder()
+
+        self.assertEqual(folders.row_of(target), seen.get("row"),
+                         "the picker was handed a different folder "
+                         "from the one the message names")
+
+
 if __name__ == "__main__":
     unittest.main()

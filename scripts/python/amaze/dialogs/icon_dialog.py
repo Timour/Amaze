@@ -18,11 +18,15 @@ class IconDialog(base_dialog.AssetDialog):
 
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
-                 tile_name_enabled: bool = True) -> None:
-        super().__init__("Tile Icon", fixed_size=False, parent=parent)
+                 tile_name_enabled: bool = True, tile_tags=None) -> None:
+        super().__init__(tile_name if tile_name and tile_name_enabled
+                         else "Tile Icon",    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
+                         fixed_size=False, parent=parent)
         self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
+        self._tile_tags = tile_tags   # the same rule as the name: None = this section has no tags, and a multi-selection greys the field
         self.new_tile_name = None
+        self.new_tags = None
         self._stroke = stroke_units or tile_icons.STROKE_UNITS
         current = tile_icons.normalise(current)
         self.spec = dict(current)
@@ -34,26 +38,47 @@ class IconDialog(base_dialog.AssetDialog):
         gap = theme.ui_px(8)
 
         content = QtWidgets.QWidget()
-        root = QtWidgets.QHBoxLayout(content)
+        root = QtWidgets.QVBoxLayout(content)
         root.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
         root.setSpacing(gap)
-        root.addLayout(self._build_chooser(gap), 1)
-        root.addWidget(self._build_side(gap), 0)
+        root.addLayout(self._build_top_row(gap))    # search and name share the FULL width above both columns, as drawn - neither belongs to the column under it
+        body = QtWidgets.QHBoxLayout()
+        body.setSpacing(gap)
+        body.addLayout(self._build_chooser(gap), 1)
+        body.addWidget(self._build_side(gap), 0)
+        root.addLayout(body, 1)
         self.set_content(content)
         self.finish(ok_cancel=False)   # Accept lives in the side column, wired to _accept
         self._refresh_preview()
 
 
-    def _build_chooser(self, gap: int):
-        column = QtWidgets.QVBoxLayout()
-        column.setSpacing(gap // 2)
+    def _build_top_row(self, gap: int):
+        """Search and the asset's name, EQUAL HALVES of the whole dialog width - the search steers the grid below it and the name belongs to neither column."""
+        row = QtWidgets.QHBoxLayout()
+        row.setSpacing(gap)
 
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText("Search %d icons"
                                        % len(tile_icons.icon_names()))
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
-        column.addWidget(self.search)
+        row.addWidget(self.search, 1)
+
+        if self._tile_name is None:
+            self.tile_name_edit = None
+            return row
+        self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)   # no "Name" label: the field's own content says what it is
+        self.tile_name_edit.setEnabled(self._tile_name_enabled)
+        self.tile_name_edit.setPlaceholderText("Name")
+        self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
+            "Rename this tile. The name is what the grid, the "
+            "sidebar count and every search look at."))
+        row.addWidget(self.tile_name_edit, 1)
+        return row
+
+    def _build_chooser(self, gap: int):
+        column = QtWidgets.QVBoxLayout()
+        column.setSpacing(gap // 2)
 
         chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a light island in it
             QtGui.QPalette.ColorRole.Window).name()
@@ -114,18 +139,6 @@ class IconDialog(base_dialog.AssetDialog):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(gap // 2)
 
-        if self._tile_name is not None:
-            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)   # no "Name" label: the field fills the column and its own content says what it is
-            self.tile_name_edit.setEnabled(self._tile_name_enabled)
-            self.tile_name_edit.setPlaceholderText("Name")
-            self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
-                "Rename this tile. The name is what the grid, the "
-                "sidebar count and every search look at."))
-            column.addWidget(self.tile_name_edit)
-            column.addSpacing(gap // 2)
-        else:
-            self.tile_name_edit = None
-
         self.preview = QtWidgets.QLabel()
         self.preview.setFixedSize(side, side)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
@@ -161,17 +174,32 @@ class IconDialog(base_dialog.AssetDialog):
         self.custom_button.clicked.connect(self._pick_custom)
         column.addWidget(self.custom_button)
 
-        ink_row = QtWidgets.QHBoxLayout()   # ink sits next to the background it must work against; dark on dark is an invisible icon
-        ink_row.setSpacing(6)
-        ink_row.addWidget(QtWidgets.QLabel("Icon Color"))
+        fields = QtWidgets.QFormLayout()   # ink sits next to the background it must work against (dark on dark is an invisible icon), and Tags under it in the same two-column rhythm
+        fields.setContentsMargins(0, 0, 0, 0)
+        fields.setSpacing(6)
+        fields.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE, so an unstated form draws differently on macOS than under Houdini's own ▸r/form-layout-defaults
+            QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.ink_combo = QtWidgets.QComboBox()
         self.ink_combo.addItem("Dark", "dark")
         self.ink_combo.addItem("Light", "light")
         self.ink_combo.setCurrentIndex(
             max(self.ink_combo.findData(self._ink), 0))
         self.ink_combo.currentIndexChanged.connect(self._set_ink)
-        ink_row.addWidget(self.ink_combo, 1)
-        column.addLayout(ink_row)
+        fields.addRow("Icon Color", self.ink_combo)
+
+        if self._tile_tags is None:
+            self.tags_edit = None
+        else:
+            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)
+            self.tags_edit.setEnabled(self._tile_name_enabled)    # the SAME rule the name field wears: a multi-selection greys it, because one field cannot say what several rows carry
+            self.tags_edit.setPlaceholderText("metal, rough")
+            self.tags_edit.setToolTip(ui_helpers.tooltip_text(
+                "Tags for this tile, separated by commas. What is in "
+                "the field replaces the tags it already has."))
+            fields.addRow("Tags", self.tags_edit)
+        column.addLayout(fields)
         column.addStretch(1)
 
         actions = QtWidgets.QHBoxLayout()   # two buttons, no Cancel: closing IS cancelling, and Remove is the way back so an icon is never a one-way door
@@ -182,7 +210,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.clear_button.clicked.connect(self._clear)
         actions.addWidget(self.clear_button)
 
-        self.accept_button = QtWidgets.QPushButton("Accept")
+        self.accept_button = QtWidgets.QPushButton("Apply")
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)
@@ -267,6 +295,7 @@ class IconDialog(base_dialog.AssetDialog):
     def _clear(self) -> None:
         self.spec = {}
         self._harvest_tile_name()
+        self._harvest_tags()
         self._on_accept()
 
     def _harvest_tile_name(self) -> None:
@@ -278,8 +307,17 @@ class IconDialog(base_dialog.AssetDialog):
         if text and text != (self._tile_name or ""):
             self.new_tile_name = text
 
+    def _harvest_tags(self) -> None:
+        """On any accepting close: the tag line to write, or None when the field is absent, greyed or unchanged. An EMPTY field is a real answer - it clears the tags - so this cannot test for truth the way the name does."""
+        if self.tags_edit is None or not self.tags_edit.isEnabled():
+            return
+        text = self.tags_edit.text().strip()
+        if text != (self._tile_tags or "").strip():
+            self.new_tags = text
+
     def _accept(self) -> None:
         self.spec = tile_icons.normalise(
             {"name": self._name, "bg": self._bg, "ink": self._ink})
         self._harvest_tile_name()
+        self._harvest_tags()
         self._on_accept()

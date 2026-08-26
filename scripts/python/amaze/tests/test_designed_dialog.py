@@ -82,17 +82,14 @@ class TheShellMatchesTheDesign(unittest.TestCase):
 
 
     def _dialog(self):
-        ui = os.path.join(os.path.dirname(amaze.__file__), "ui")
-        dialog = ui_helpers.DesignedDialog(
-            None, title="Versions", subtitle="brushed_steel/Metals",
-            kind="Karma",
-            icon=os.path.join(ui, "icon_versions_dialog.svg"))
+        dialog = ui_helpers.DesignedDialog(None)
+        dialog.setWindowTitle("brushed_steel")
         combo = QtWidgets.QComboBox(dialog)
         combo.addItem("Version 2")
         dialog.add_field(combo)
         field = QtWidgets.QLineEdit(dialog)
-        dialog.add_field(field, label="Name")
-        dialog.add_buttons("cancel", "Apply")
+        dialog.add_field(field, label="Change Name")
+        dialog.add_buttons("Cancel", "Apply")
         dialog.show()
         self.addCleanup(dialog.deleteLater)
         self.addCleanup(dialog.hide)
@@ -110,7 +107,7 @@ class TheShellMatchesTheDesign(unittest.TestCase):
         self.assertEqual(2, len(buttons))
         left, right = sorted(
             (self._at(dialog, b) for b in buttons), key=lambda g: g[0])
-        for name, geom in (("cancel", left), ("Apply", right)):
+        for name, geom in (("Cancel", left), ("Apply", right)):
             self.assertEqual(
                 (_px(202), _px(42)), (geom[2], geom[3]),
                 "%s is not the design's size" % name)
@@ -145,43 +142,36 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                              "%s has been restyled" % name)
 
     def test_the_frame_is_the_designs_size(self):
-        """512 x 435 of the design, in the logical pixels Qt sizes with, at whatever Houdini's UI scale is."""
+        """512 x 316 of the design, in the logical pixels Qt sizes with, at whatever Houdini's UI scale is."""
         dialog, _c, _f = self._dialog()
-        self.assertEqual((_px(512), _px(435)),
+        self.assertEqual((_px(512), _px(316)),
                          (dialog.width(), dialog.height()))
 
     def test_the_constants_are_stored_at_the_CHROME_density(self):
         """A design number is HALVED at source, then scaled - the 2x rule every chrome constant follows (overview.md §8). Storing the raw 512 is what once opened it as a 1024 window. ▸p/designed-dialog"""
         self.assertEqual(
-            (256, 218), ui_helpers.DesignedDialog.FRAME,
+            (256, 158), ui_helpers.DesignedDialog.FRAME,
             "the frame is back at the design's raw pixels - halve it at "
             "source, the way every chrome constant is halved")
 
-    def test_the_header_carries_the_three_lines_and_the_icon(self):
-        dialog, _c, _f = self._dialog()
-        texts = {label.text() for label in dialog.findChildren(
-            QtWidgets.QLabel) if label.text()}
-        for line in ("brushed_steel/Metals", "Versions", "Karma"):
-            self.assertIn(line, texts, "the header lost %r" % line)
+    def test_the_dialog_NAMES_ITSELF_in_the_title_bar_alone(self):
+        """The drawn dialog has no header block: no icon, no title line, no kind line - the window title carries the name, and the first field sits at the frame's top. ▸p/designed-dialog"""
+        dialog, combo, _f = self._dialog()
+        self.assertEqual("brushed_steel", dialog.windowTitle())
         from PySide6 import QtSvgWidgets
-        glyphs = dialog.findChildren(QtSvgWidgets.QSvgWidget)
-        self.assertTrue(
-            glyphs,
-            "the header icon is not a live vector - it must not be "
-            "rasterised to a pixmap")
-        self.assertEqual((_px(60), _px(60)),
-                         (glyphs[0].width(), glyphs[0].height()))
-
-    def test_the_title_is_bigger_and_bolder_than_its_neighbours(self):
-        """The hierarchy is the design - 32px bold over 23px plain."""
-        dialog, _c, _f = self._dialog()
-        by_text = {label.text(): label for label in
-                   dialog.findChildren(QtWidgets.QLabel) if label.text()}
-        title = by_text["Versions"].font()
-        kind = by_text["Karma"].font()
-        self.assertTrue(title.bold(), "the title is not bold")
-        self.assertFalse(kind.bold(), "the kind line should not be bold")
-        self.assertGreater(title.pixelSize(), kind.pixelSize())
+        self.assertFalse(
+            dialog.findChildren(QtSvgWidgets.QSvgWidget),
+            "the retired header icon is still being built")
+        drawn = {label.text() for label in
+                 dialog.findChildren(QtWidgets.QLabel) if label.text()}
+        self.assertEqual(
+            {"Change Name"}, drawn,
+            "the dialog draws a label the design does not - only the "
+            "field's own is left")
+        self.assertEqual(
+            _px(30), self._at(dialog, combo)[1],
+            "the first field is not at the design's top - a header's "
+            "worth of space is still reserved above it")
 
 
 class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):

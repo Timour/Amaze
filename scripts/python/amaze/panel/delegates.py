@@ -241,6 +241,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         versions_role=None,
         notes_role=None,
         active_version_role=None,
+        date_role=None,
+        id_role=None,
     ):
         """Every role is optional and None means the delegate simply does not paint that thing, which is how one delegate serves sections that answer different questions."""
         super().__init__(parent)
@@ -254,6 +256,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._category_role = category_role    # list mode's Category column source - the asset's category, the containing folder, or a palette's curated set. None = the column stays empty
         self._tag_role = tag_role              # list mode's last two columns; a section with neither passes None and simply does not get them
         self._licence_role = licence_role
+        self._date_role = date_role            # list mode's last two columns, the pair the Material Info dialog used to show read-only ▸p/d03-retired
+        self._id_role = id_role
         self._category_color_role = category_color_role    # a category can carry a colour, which paints the text band under the tile. None = this section has no category colours (folders and palette groups do not)
         self._badge_clicks = {}       # badge name -> the panel's handler; wiring one is what MAKES that badge a button, so the online delegate's star stays an indicator that never draws its off state. Per instance, never a class default: a shared dict would wire every delegate at once
         self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge

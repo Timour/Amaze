@@ -276,6 +276,7 @@ def sync_table_columns(panel) -> None:
     roles = {
         "category": "_category_role", "tags": "_tag_role",
         "license": "_licence_role", "favorite": "_favorite_role",
+        "date": "_date_role", "id": "_id_role",
         "open": "_open_role", "comments": "_notes_role",
         "version": "_active_version_role",
         "thumb": NEVER_SHOWN,    # no picture column: a 16px thumbnail is a smudge, and hiding it took DecorationRole reads from 1668 to 0

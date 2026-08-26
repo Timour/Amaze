@@ -5,6 +5,7 @@ import inspect
 import json
 import os
 import sys
+import textwrap
 import unittest
 from unittest import mock
 
@@ -21,6 +22,7 @@ sys.path.insert(
 
 from amaze.core import cop_library, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
+from amaze.panel import panel as panel_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
@@ -791,6 +793,103 @@ class TileNameTest(unittest.TestCase):
         self.assertIsNone(fileish.tile_name_edit,
                           "no model rename = no field at all")
         fileish.deleteLater()
+
+    def test_the_window_is_titled_with_the_asset(self):
+        """The title band draws the asset's own name; a multi-selection has none, so it keeps the generic one."""
+        single = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="Rock", tile_name_enabled=True)
+        self.assertEqual("Rock", single.windowTitle())
+        single.deleteLater()
+        multi = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="", tile_name_enabled=False)
+        self.assertEqual("Tile Icon", multi.windowTitle())
+        multi.deleteLater()
+
+
+class TileTagsTest(unittest.TestCase):
+    """The Customize dialog's Tags field - a comma-separated line that REPLACES the asset's tags, greyed on a multi-selection exactly as the Name field above it is."""
+
+    def test_the_library_tag_write_is_narrow_and_real(self):
+        from amaze.core import library as library_mod
+        prefs_obj = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=prefs_obj)
+        if not model.rowCount():
+            self.skipTest("fixture library has no rows")
+        self.assertTrue(model.set_tile_tags(0, "metal, rough"))
+        self.assertEqual("metal, rough", model.tile_tags(0))
+        self.assertFalse(model.set_tile_tags(0, " metal ,rough "),
+                         "the same tags spelled with other spacing must "
+                         "be a no-op")
+        self.assertTrue(model.set_tile_tags(0, ""),
+                        "an empty line must CLEAR the tags, not be "
+                        "read as no answer")
+        self.assertEqual("", model.tile_tags(0))
+        test_support.reset_database_singletons()
+        again = library_mod.MaterialLibrary(preferences=prefs_obj)
+        self.assertEqual("", again.tile_tags(0),
+                         "the cleared tags did not reach disk")
+
+    def test_the_tags_field_obeys_the_selection_law(self):
+        single = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="Rock", tile_name_enabled=True,
+            tile_tags="metal")
+        self.assertIsNotNone(single.tags_edit,
+                             "a taggable tile grows no Tags field")
+        self.assertTrue(single.tags_edit.isEnabled())
+        single.tags_edit.setText("metal, rough")
+        single._accept()
+        self.assertEqual("metal, rough", single.new_tags)
+        single.deleteLater()
+
+        cleared = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="Rock", tile_name_enabled=True,
+            tile_tags="metal")
+        cleared.tags_edit.setText("")
+        cleared._accept()
+        self.assertEqual("", cleared.new_tags,
+                         "emptying the field must reach the model as a "
+                         "clear, never as None")
+        cleared.deleteLater()
+
+        multi = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="", tile_name_enabled=False,
+            tile_tags="")
+        self.assertIsNotNone(multi.tags_edit,
+                             "the field must grey out, not vanish")
+        self.assertFalse(multi.tags_edit.isEnabled())
+        multi.tags_edit.setText("metal")
+        multi._accept()
+        self.assertIsNone(multi.new_tags,
+                          "a greyed field may not rewrite the tags")
+        multi.deleteLater()
+
+        fileish = icon_dialog.IconDialog(None, 0.0, None)
+        self.assertIsNone(fileish.tags_edit,
+                          "a model with no tags = no field at all")
+        fileish.deleteLater()
+
+    def test_the_panel_applies_a_cleared_field(self):
+        """`new_tags` is harvested as "" for a clear, so the apply site must test `is not None` - a truth test drops exactly the clear."""
+        source = inspect.getsource(panel_mod.MatLibPanel.edit_tile_icon)
+        tree = ast.parse(textwrap.dedent(source))
+        calls = [node for node in ast.walk(tree)
+                 if isinstance(node, ast.Call)
+                 and isinstance(node.func, ast.Attribute)
+                 and node.func.attr == "set_tile_tags"]
+        self.assertTrue(calls, "the dialog's tags never reach the model")
+        guards = [node for node in ast.walk(tree)
+                  if isinstance(node, ast.Compare)
+                  and isinstance(node.left, ast.Name)
+                  and node.left.id == "new_tags"
+                  and any(isinstance(op, ast.IsNot) for op in node.ops)
+                  and any(isinstance(c, ast.Constant) and c.value is None
+                          for c in node.comparators)]
+        self.assertTrue(guards,
+                        "the tags apply is not guarded by `new_tags is "
+                        "not None` - an empty field will never clear "
+                        "the tags")
 
 
 if __name__ == "__main__":

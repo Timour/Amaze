@@ -1,5 +1,5 @@
 """THE EMPTY STATE ENGINE - which blank the grid is showing: a SIBLING of the two grid views whose visibilities `grid.apply_grid_face` owns (nothing here positions anything), words in the UI text register, and every `SHARED` row is (headline, sentence, button label, verb) with a blank verb meaning no button (devlog 480)."""
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze.helpers import theme
 from amaze.panel import grid
@@ -26,11 +26,9 @@ SHARED = {
         "Click the star on a tile to favorite it.",
         "Show All", "clear_favourites_filter"),
     UNREACHABLE: (
-        "Can't read that folder",
-        "%s did not answer. It may be a drive that is not mounted, or "
-        "a share that is offline. Nothing has been removed from your "
-        "library.",
-        "", ""),
+        "Can't find the folder",
+        "“%s” is not available at the current location.",
+        "Locate", "locate_unreadable_folder"),
 }
 
 
@@ -53,7 +51,7 @@ def verdict(panel) -> tuple:
     if proxy.rowCount() > 0:
         return (None, "")
 
-    unreadable = _unreadable_folder(panel)
+    unreadable = unreadable_folder(panel)
     if unreadable:
         return (UNREACHABLE, unreadable)
 
@@ -96,15 +94,19 @@ def _any_favourite(source) -> bool:
                for row in range(source.rowCount()))
 
 
-def _unreadable_folder(panel) -> str:
-    """The first folder the File model could not read, or "" - its only reader, and without it a dead drive looks like an empty one."""
+def unreadable_folder(panel) -> str:
+    """The first STILL-REGISTERED folder the File model could not read, or "" - without it a dead drive looks like an empty one, and without the registration test a folder that was located or removed goes on being complained about, since only a scan of it can clear the flag."""
     if getattr(panel, "current_section", "") != "file":
         return ""
     model = getattr(panel, "file_files_model", None)
     folders = getattr(model, "_unreadable_folders", None)
     if not folders:
         return ""
-    return sorted(folders)[0]
+    sidebar = getattr(panel, "file_folders_model", None)
+    for folder in sorted(folders):
+        if sidebar is None or sidebar.row_of(folder) is not None:
+            return folder
+    return ""
 
 
 def _current_category(panel) -> str:
@@ -121,6 +123,17 @@ def _current_category(panel) -> str:
         return ""
     name = str(name)
     return "" if name in ("All", "_All") else name
+
+
+def quote_for(panel, blank: str) -> tuple:
+    """(line, attribution) drawn under a section's FIRST-RUN sentence, or ("", "") - a section declares its own in `QUOTE`, and no other blank carries one."""
+    if blank != NOTHING_YET:
+        return ("", "")
+    section = panel._section() if hasattr(panel, "_section") else None
+    quote = getattr(section, "QUOTE", None) or ()
+    if len(quote) != 2:
+        return ("", "")
+    return (str(quote[0]), str(quote[1]))
 
 
 def words_for(panel, blank: str, detail: str) -> tuple:
@@ -164,6 +177,19 @@ class EmptyPage(QtWidgets.QWidget):
             outer.addWidget(label)
             outer.addSpacing(theme.ui_px(8))
 
+        self._quote = QtWidgets.QLabel("", self)    # the quotation and its attribution: italic, and the sentence's own ink at half strength, as drawn
+        self._quote.setFont(theme.font("empty_quote", base))
+        self._quote.setWordWrap(True)
+        self._quote.setAlignment(QtCore.Qt.AlignmentFlag.AlignHCenter
+                                 | QtCore.Qt.AlignmentFlag.AlignTop)
+        dim = QtGui.QColor(theme.color_hex("text"))
+        dim.setAlphaF(0.5)
+        quote_palette = self._quote.palette()    # a PALETTE, never a stylesheet: the alpha survives and the glyphs paint through it ▸r/palette-alpha
+        quote_palette.setColor(QtGui.QPalette.ColorRole.WindowText, dim)
+        self._quote.setPalette(quote_palette)
+        outer.addWidget(self._quote)
+        outer.addSpacing(theme.ui_px(8))
+
         self._btn = QtWidgets.QPushButton("", self)
         outer.addWidget(self._btn, 0,
                         QtCore.Qt.AlignmentFlag.AlignHCenter)
@@ -180,6 +206,10 @@ class EmptyPage(QtWidgets.QWidget):
         self._head.setVisible(bool(headline))
         self._text.setText(sentence)
         self._text.setVisible(bool(sentence))
+
+        line, attribution = quote_for(panel, blank)
+        self._quote.setText("%s\n%s" % (line, attribution) if line else "")
+        self._quote.setVisible(bool(line))
 
         handler = getattr(panel, verb, None) if verb else None
         wanted = bool(label) and callable(handler)

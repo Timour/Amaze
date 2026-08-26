@@ -1,35 +1,10 @@
-"""The Grid's COLUMNS - the one list, and the model half of it.
-
-List mode is a table: thumbnail, name, type, and up to seven more.
-Until 2026-08-04 it was a table COSTUME - a `QListView` in ListMode
-whose delegate painted ten regions inside one item's rect, with a
-hand-painted header strip above it. That cost 681 lines and gave no
-click-sorting and no drag-resizing, which is recorded in ROADMAP as
-the reason for this migration.
-
-**Why the list lives in `core/` and not beside the header widget.**
-The models have to answer per column now, and `core/` cannot import
-`helpers/ui_helpers` - `ui_helpers` imports `core.debug`, so it would
-cycle. The column order is DATA; only its rendering is a widget's
-business. The header reads it from here, and so does every model.
-
-**COLUMN 0 IS THE ROW.** It answers exactly what the model answered
-before any of this, for every role - the thumbnail, the display name,
-every UserRole the grid delegate reads. Columns 1..N are additive, so
-`QListView` (which shows `modelColumn()` 0 and nothing else) cannot
-tell the difference: **grid mode is untouched by construction**, which
-is the property that makes this migration safe to do in steps.
-"""
+"""The Grid's COLUMNS - the ONE order, and the model half of it. Column 0 IS the row and answers every role the grid delegate reads; 1..N are additive, so grid mode cannot tell they exist. ▸p/list-columns"""
 
 from __future__ import annotations
 
 from PySide6 import QtCore, QtGui
 
-#: THE COLUMN ORDER, once. (key, header label). The key is what a
-#: model maps to a role and what a width is filed under; the label is
-#: what the header paints. An empty label is a column with no heading -
-#: the thumbnail.
-COLUMNS = (
+COLUMNS = (    #: THE COLUMN ORDER, once: (key, header label). The key is what a model maps to a role and what a width is filed under; an empty label is a column with no heading ▸p/list-columns
     ("thumb", ""),
     ("name", "Name"),
     ("type", "Type"),
@@ -40,6 +15,8 @@ COLUMNS = (
     ("comments", "Comments"),
     ("tags", "Tags"),
     ("license", "License"),
+    ("date", "Date"),
+    ("id", "ID"),
 )
 
 KEYS = tuple(key for key, _label in COLUMNS)
@@ -47,20 +24,7 @@ LABELS = tuple(label for _key, label in COLUMNS)
 
 
 def selected_rows(selection) -> list:
-    """The grid selection as ONE index per row - column 0, THE row.
-
-    research.md ▸ *Row selection over a table view* (measured): under
-    `SelectRows` a selection model answers `selectedIndexes()` with one
-    index PER CELL, hidden columns included - ten for one selected row
-    of these models - while grid mode's `QListView` selects column 0
-    alone. Filtering to column 0 collapses both shapes to the same
-    answer, one index per row; `selectedRows()` would not, because a
-    grid-mode selection never spans the row.
-
-    Every reader of the grid selection comes through here - the Section
-    API's `grid_selection` and the panel's own material verbs - so the
-    collapse is one rule, not a per-caller memory.
-    """
+    """The grid selection as ONE index per row - column 0, THE row. EVERY reader of the grid selection comes through here, so a table's per-cell answer and a list's per-row one collapse to the same shape once. ▸p/list-columns"""
     if selection is None:
         return []
     return [index for index in selection.selectedIndexes()
@@ -68,38 +32,9 @@ def selected_rows(selection) -> list:
 
 
 class GridColumnsMixin:
-    """Makes a flat model answer as a TABLE.
+    """Makes a flat model answer as a TABLE - declare `COLUMN_ROLES` and the rest follows. The base must be `QAbstractTableModel`, and this must go FIRST in the bases. ▸p/list-columns"""
 
-    A model mixes this in and declares `COLUMN_ROLES` - {column key:
-    role} for the columns it can fill. A role is named by its ATTRIBUTE
-    NAME, because every model sets its roles in `__init__` (they are
-    per-instance numbers, not class constants), or given as a literal
-    int for Qt's own.
-
-    Everything else follows:
-
-    * `columnCount` is the shared list's length for every model, so the
-      header and the rows cannot disagree about how many there are;
-    * column 0 delegates to the model's own `data()` untouched;
-    * a column with no role in this model answers None - which is how
-      Color has no Tags and File has no Version, without either of them
-      knowing the other exists;
-    * `headerData` comes from the shared list.
-
-    **The base must be `QAbstractTableModel`, not `QAbstractListModel`.**
-    Measured 2026-08-04: a list model's `index(row, col)` returns an
-    INVALID index for any col > 0 even when `columnCount` says ten -
-    Qt hard-codes column 0 there - and PySide6 makes `columnCount`
-    itself a private, uncallable method on that base. A list model is
-    not a table with the columns switched off; it is a different model.
-
-    The mixin goes FIRST in the bases so its `data`, `columnCount` and
-    `headerData` win.
-    """
-
-    #: {column key: role attribute name, or a literal Qt role int}.
-    #: A model fills in only what it has.
-    COLUMN_ROLES: dict = {}
+    COLUMN_ROLES: dict = {}    #: {column key: role attribute name, or a literal Qt role int}; a model fills in only what it has ▸p/list-columns
 
     def columnCount(self, parent=QtCore.QModelIndex()) -> int:
         # A valid parent means a child of a row, and a table has none.
@@ -125,15 +60,7 @@ class GridColumnsMixin:
         return getattr(self, named, None)
 
     def last_column(self) -> int:
-        """The rightmost column, for a `dataChanged` range.
-
-        A row-repaint used to be `index(row, 0)` to `index(row, 0)`,
-        which was the whole row when the row WAS one column. With ten,
-        that range invalidates the thumbnail and nothing else - so
-        every later cell keeps its old text until something forces a
-        repaint. Found while migrating: the emit sites read correctly
-        and were quietly half-right.
-        """
+        """The rightmost column, for a `dataChanged` range - a repaint that stops at column 0 invalidates the thumbnail and nothing else. ▸p/list-columns"""
         return max(self.columnCount() - 1, 0)
 
     def row_changed(self, row: int, roles=None) -> None:
@@ -147,45 +74,12 @@ class GridColumnsMixin:
         else:
             self.dataChanged.emit(top, bottom, roles)
 
-    #: NO FONT ROLE (2026-08-04). A bold name column was asked for
-    #: earlier the same day and is gone again: `FontRole` is used by Qt
-    #: AS-IS, so returning a bare `QFont()` with bold set handed the
-    #: cell Qt's DEFAULT family and size instead of the panel's - a
-    #: different typeface, not the panel's font in bold. Same shape as
-    #: the absolute point-size floor in research.md. The rows wear the
-    #: view's font now, like every other list in the host.
+    COLOUR_COLUMNS = {"category": "CategoryColorRole"}    #: {column key: the role carrying that column's own INK}; NO FontRole anywhere ▸p/list-columns
 
-    #: {column key: the role carrying that column's own INK}. Category
-    #: is the one column with a colour of its own - the colour the user
-    #: gave that category, and the same one the grid paints under its
-    #: tiles, so the two views agree about what a category looks like.
-    COLOUR_COLUMNS = {"category": "CategoryColorRole"}
-
-    #: Columns drawn as a TICK, not typed as text
-    #: (`TickCellDelegate` paints them). `panel._bind_table_cell_
-    #: delegates` walks this list; which role and which colour each one
-    #: draws stays with the delegate that draws it.
-    #:
-    #: They ALIGN LIKE EVERY OTHER COLUMN. They were centred for one
-    #: build - a mark has no reading order to line up with - and the
-    #: centring was reverted after seeing it live (2026-08-04). A
-    #: `QHeaderView` label starts at the cell's left edge, so a centred
-    #: mark reads as a different table from the eight columns beside
-    #: it.
-    TICK_COLUMNS = ("favorite", "open", "comments")
+    TICK_COLUMNS = ("favorite", "open", "comments")    #: drawn as a TICK by `TickCellDelegate`, aligned like every other column; `grid.bind_table_cell_delegates` walks this ▸p/list-columns
 
     def column_data(self, index, role):
-        """What a LATER column shows. Returns None for column 0, for a
-        column this model cannot fill, and for any role but Display.
-
-        NOT called `data`. A mixin's `data` is a BASE method, and every
-        one of these models defines its own - so an inherited `data`
-        would never run at all. Measured the hard way: Color answered
-        the Tags column with its display name because `GradientLibrary.
-        data` won the MRO. Each model calls this from the top of its
-        own `data` instead, in two explicit lines, which is also the
-        version a reader can follow.
-        """
+        """What a LATER column shows - None for column 0, for a column this model cannot fill, and for any role but Display. NOT called `data`, and every model calls it from the top of its own. ▸p/list-columns"""
         column = index.column()
         if column <= 0 or column >= len(KEYS):
             return None
@@ -199,19 +93,11 @@ class GridColumnsMixin:
             colour = QtGui.QColor(str(value)) if value else None
             return colour if colour is not None and colour.isValid() else None
         if role != QtCore.Qt.ItemDataRole.DisplayRole:
-            # A cell shows TEXT. Decoration, tooltips and the rest stay
-            # column 0's business, where the delegate already reads
-            # them - answering them here would put the thumbnail in
-            # every column.
-            return None
+            return None    # a cell shows TEXT; decoration and tooltips stay column 0's ▸p/list-columns
         mapped = self._column_role(key)
         if mapped is None:
-            # This model has no such column. Not an error: Color has no
-            # Tags, File has no Version.
-            return None
-        # Ask for the ROW's answer: the roles live on column 0, which
-        # is where every existing reader put them.
-        value = self.data(index.siblingAtColumn(0), mapped)
+            return None    # this model has no such column - not an error ▸p/list-columns
+        value = self.data(index.siblingAtColumn(0), mapped)    # the ROW's answer: the roles live on column 0
         if isinstance(value, (list, tuple)):
             return ", ".join(str(item) for item in value)
         return value

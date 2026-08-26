@@ -315,12 +315,13 @@ def import_record(record, source, resolution, library, preferences,
                            "it was not added. Your scene is unchanged."
                            % name)
         try:
-            credited = library.assets[row]   # add_asset() derives the renderer from the NODE and a builder full of mtlx* nodes reads as Karma, which is exactly right since online imports ARE Karma materials rather than a renderer of their own - what is left is crediting the creators, the about text (source, author, link) and the license, shown and editable in the Material Info dialog
-            credited.about = _credit_text(record, source)
+            credited = library.assets[row]   # add_asset() derives the renderer from the NODE and a builder full of mtlx* nodes reads as Karma, which is exactly right since online imports ARE Karma materials rather than a renderer of their own - what is left is crediting the creators
+            credited.about = _credit_text(record, source)    # written to the record and moved into the asset's COMMENT by the sweep below, which is where the credit lives now ▸p/d03-retired
             credited.license = record.licence or ""
             if measurement_note:
                 credited.description = measurement_note
             library.save()
+            library.adopt_about_into_notes()    # the credit lands in the COMMENT through the one door that moves it, so an import and an old library reach the same place ▸p/d03-retired
         except Exception as exc:
             debug.exception("credit the import", exc)
             debug.event("import", "credit not written", error=str(exc))

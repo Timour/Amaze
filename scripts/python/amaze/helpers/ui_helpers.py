@@ -3,7 +3,7 @@
 import contextlib
 import os
 
-from PySide6 import QtWidgets, QtCore, QtGui, QtSvg, QtSvgWidgets
+from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 
 from amaze.core import debug
 from amaze.helpers import theme
@@ -180,25 +180,20 @@ def device_pixmap(path, side, dpr, color_replacements=None):
 
 
 class DesignedDialog(QtWidgets.QDialog):
-    """A dialog in the shape the HTML designs describe: a dark header band carrying icon, subtitle, title and kind line, over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
+    """A dialog in the shape the designs describe: NO header block - the name rides the WINDOW TITLE, so a caller sets `setWindowTitle` - over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
 
-    FRAME = (256, 218)      # the design's 512 x 435
-    HEADER_H = 66           # 132
+    FRAME = (256, 158)      # the design's 512 x 316
     INSET = 18              # 35, both sides, leaving a 220-wide body column
-    TEXT_X = 66             # 131, where the header's three lines start
-    FIRST_FIELD_Y = 82      # 163, the first field's top
-    HEADER_BG = theme.color_hex("surface_low")   # the two SURFACES follow Houdini's theme, because a value kept equal to another value by hand is a value that drifts
-    BODY_BG = theme.color_hex("surface")
-    LABEL_INK = "#93b9e7"   # the INK stays literal: this and TITLE_INK are not theme colours but the design's own answer
-    TITLE_INK = "#dddcdd"
+    FIRST_FIELD_Y = 15      # 30, the first field's top under the title bar
+    BODY_BG = theme.color_hex("surface")   # the SURFACE follows Houdini's theme, because a value kept equal to another value by hand is a value that drifts
+    LABEL_INK = "#93b9e7"   # the INK stays literal: not a theme colour but the design's own answer
     FIELD_H = 30            # 60
     BUTTON = (101, 21)      # 202 x 42
     BUTTON_GAP = 19         # 38
     RADIUS = 5              # 10
-    SUBTITLE_PX, TITLE_PX, KIND_PX, LABEL_PX, BUTTON_PX = 12, 16, 12, 10, 12
+    LABEL_PX, BUTTON_PX = 10, 12
 
-    def __init__(self, parent=None, title="", subtitle="", kind="",
-                 icon="") -> None:
+    def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setFixedSize(theme.ui_px(self.FRAME[0]),
                           theme.ui_px(self.FRAME[1]))
@@ -208,42 +203,13 @@ class DesignedDialog(QtWidgets.QDialog):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        header = QtWidgets.QWidget(self)
-        header.setFixedHeight(theme.ui_px(self.HEADER_H))
-        header.setStyleSheet("background: %s;" % self.HEADER_BG)
-        outer.addWidget(header)
-
-        if icon and os.path.exists(icon):   # ABSOLUTE placement through the header, because the design gives absolute positions and a layout would only approximate them; the body below is a layout, where the design gives a column
-            glyph = QtSvgWidgets.QSvgWidget(icon, header)   # a LIVE VECTOR, never a pixmap: QSvgWidget re-renders the file at whatever size and device resolution it is handed, so there is no raster step to get wrong on a 2.0 display
-            glyph.setStyleSheet("background: transparent;")
-            glyph.setGeometry(theme.ui_px(16), theme.ui_px(18),
-                              theme.ui_px(30), theme.ui_px(30))
-
-        for text, top, px, ink, bold in (   # the tops are the design's 15, 47 and 88
-            (subtitle, 8, self.SUBTITLE_PX, self.LABEL_INK, False),
-            (title, 24, self.TITLE_PX, self.TITLE_INK, True),
-            (kind, 44, self.KIND_PX, self.LABEL_INK, False),
-        ):
-            if not text:
-                continue
-            label = QtWidgets.QLabel(str(text), header)
-            font = QtGui.QFont(label.font())
-            font.setPixelSize(theme.ui_px(px))
-            font.setBold(bold)
-            label.setFont(font)
-            label.setStyleSheet("color: %s; background: transparent;" % ink)
-            label.setGeometry(
-                theme.ui_px(self.TEXT_X), theme.ui_px(top),
-                theme.ui_px(self.FRAME[0] - self.TEXT_X - self.INSET),
-                theme.ui_px(px + 4))
-
         body = QtWidgets.QWidget(self)
         outer.addWidget(body, 1)
         self.body_layout = QtWidgets.QVBoxLayout(body)
         inset = theme.ui_px(self.INSET)
         self.body_layout.setContentsMargins(
-            inset, theme.ui_px(self.FIRST_FIELD_Y - self.HEADER_H), inset, 0)
-        self.body_layout.setSpacing(0)   # ZERO: `add_field` places the design's own gaps, which differ above and below a label
+            inset, theme.ui_px(self.FIRST_FIELD_Y), inset, 0)
+        self.body_layout.setSpacing(0)   # ZERO: `add_field` places the design's own gaps, which differ above and below a label ▸p/designed-dialog
 
     def add_field(self, widget, label: str = "") -> None:
         """A standard Houdini control at the design's size and place - STANDARD is its LOOK only, since the grey boxes in the page are placeholders for real controls; the geometry is still the design's, and the uneven gaps live here."""

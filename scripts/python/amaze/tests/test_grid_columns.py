@@ -894,24 +894,15 @@ class TheSelectionSpeaksInROWS(unittest.TestCase):
             model.data(model.index(row, 0), model.CategoryRole),
             "Move to a category changed nothing")
 
-    def test_the_details_form_shows_ONE_value_for_one_row(self):
-        self._select_row(0)
-        self.panel.update_details_view()
-        self.assertNotEqual(
-            "Multiple Values...", self.panel.line_name.text(),
-            "one selected row reads as a multi-selection in the form")
-
-    def test_update_info_WRITES_the_edit(self):
-        """The Edit Info dialog's Update path - the second shipped one-argument `index(row)`."""
+    def test_a_rename_through_the_model_WRITES_the_edit(self):
+        """The rename path the Material Info form used to own, now D01's and D02's - the shipped defect was a one-argument `index(row)` on a table model, which raises before any row is edited."""
         proxy = self._select_row(0)
         model = self.panel.material_model
         row = proxy.mapToSource(proxy.index(0, 0)).row()
-        self.panel.update_details_view()          # populate the form
-        self.panel.line_name.setText("Renamed By Seam")
-        self.panel.user_update_asset()
+        self.assertTrue(model.set_tile_name(row, "Renamed By Seam"))
         self.assertEqual(
             "Renamed By Seam", model.assets[row].name,
-            "Update Info wrote nothing")
+            "the rename wrote nothing")
 
     def test_a_dragged_column_width_survives_a_tab_switch(self):
         """Widths are DEFAULTS the user can drag (overview.md §2) - but the seed ran on every activate and view-mode switch, so a dragged column snapped back to its default on the next tab click. The seed runs once per view; later syncs change visibility only."""

@@ -114,10 +114,6 @@ class Section:
             return []
         return list(cat_list.selectedIndexes())
 
-    def edit_dialog(self) -> None:
-        """Open this section's edit dialog, if it has one - a section owns its dialog like it owns its menu. Default: none."""
-        pass
-
     def prefs_changed(self) -> None:
         """Preferences just closed: a section showing live filesystem or render state re-scans here. Default: nothing."""
         pass
@@ -587,10 +583,12 @@ class MaterialSection(AssetSection):
         "nothing-yet": (
             "No materials saved yet",
             "Right-click a material in the network editor and choose "
-            "Save to Amaze. It is kept here, ready to drag back into "
-            "any scene.",
+            "Save to Amaze.",
             "", ""),
     }
+    QUOTE = ("Kunst gibt nicht das Sichtbare wieder, sondern macht "
+             "sichtbar.",
+             "Paul Klee, Schöpferische Konfession, 1920")
 
     @staticmethod
     def delete_prompt(count: int, name: str = "") -> str:
@@ -602,8 +600,7 @@ class MaterialSection(AssetSection):
                 "go for good. Materials already used in a scene are "
                 "not affected." % count)
 
-    GRID_MENU = (    # Info, the section's work, a divider, then the shared tail; Convert to Karma is the one CONDITIONAL entry, built only when the selection holds a Redshift material, and the builder dispatches through a dict rather than comparing the returned action - a dismissed menu and an unbuilt entry are both None, so a comparison runs the converter on every dismissed right-click
-        MenuEntry("Info", verb="menu_info", needs="one"),
+    GRID_MENU = (    # the section's work, a divider, then the shared tail; Convert to Karma is the one CONDITIONAL entry, built only when the selection holds a Redshift material, and the builder dispatches through a dict rather than comparing the returned action - a dismissed menu and an unbuilt entry are both None, so a comparison runs the converter on every dismissed right-click
         MenuEntry("Copy To", verb="menu_copy_to", children="copy_to_targets"),
         MenuEntry("Convert to Karma", verb="menu_convert_to_karma",
                   shown="selection_has_redshift"),
@@ -660,9 +657,6 @@ class MaterialSection(AssetSection):
         return (("/mat", "mat", "", True),
                 ("/stage/materiallibrary", "lop", "", True))
 
-    def menu_info(self, indexes, current, payload=None) -> None:
-        self.edit_dialog()    # through the Section API's own hook for it, never past it into the panel
-
     def menu_copy_to(self, indexes, current, payload=None) -> None:
         with helpers.preserving_selection_and_current():    # a menu import leaves the artist where they were, like a drop; the drag and click dispatchers wrap, the menu dispatcher does not, so the scene-importing verbs carry it themselves
             if payload == "lop":
@@ -704,9 +698,6 @@ class MaterialSection(AssetSection):
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
 
-    def edit_dialog(self) -> None:
-        self.panel.edit_material_info()
-
     def save_node(self, node) -> None:
         self.panel.save_asset()    # materials support multi-selection saves, so the flow is selection-based and the drop handler selects the node first
 
@@ -729,9 +720,11 @@ class CopSection(AssetSection):
         "nothing-yet": (
             "No node assets saved yet",
             "Select nodes in a network, right-click and choose Save to "
-            "Amaze. The whole network is kept, ready to build back in.",
+            "Amaze.",
             "", ""),
     }
+    QUOTE = ('"I have nothing to say and I am saying it."',
+             "John Cage, Lecture on Nothing, 1949")
     GRID_MENU = (    # the material menu's essentials without the renderer-specific entries (Copy To targets, Karma conversion) that mean nothing for a saved network; LOAD rather than Import, matching the File section's word for "bring the saved thing into Houdini", but live on a multi-selection because any number of networks can be built
         MenuEntry("Load", verb="menu_load"),
         SEPARATOR,
@@ -821,9 +814,8 @@ class CodeSection(AssetSection):
     empty_noun = "snippet"
     EMPTY = {    # a button here because New File acts on NOTHING and so always works, the same reason its menu entry stays live over an empty selection
         "nothing-yet": (
-            "No snippets yet",
-            "Right-click a wrangle and choose Save to Amaze to keep its "
-            "code — or start one here and paste into it.",
+            "No code saved yet",
+            "Right-click a wrangle and choose Save to Amaze.",
             "New File", "new_code_snippet"),
     }
     GRID_MENU = (    # Apply and Edit act on one snippet and grey out beside New File, which acts on nothing and stays live; no Update Preview, per offers_preview_update above
@@ -1238,10 +1230,8 @@ class FileSection(FolderSection):
     empty_noun = "file"
     EMPTY = {  # a button: registering a folder needs nothing selected
         "nothing-yet": (
-            "No folders added yet",
-            "Add a folder of images, models or scenes and they show up "
-            "here, ready to drag onto any parameter. Nothing is copied "
-            "or moved.",
+            "No locations added yet",
+            "Add folders of images, geometry or .hip files.",
             "Add Folder", "add_file_folder_user"),
     }
 
@@ -1623,10 +1613,11 @@ class GradientSection(AssetSection):
     EMPTY = {  # no button: the gesture belongs to the network editor
         "nothing-yet": (
             "No palettes saved yet",
-            "Right-click a node with a color ramp and choose Save to "
-            "Amaze. Apply it to any ramp later, in any scene.",
+            "Right-click a color ramp and choose Save to Amaze.",
             "", ""),
     }
+    QUOTE = ('"I\'m profoundly optimistic about nothing."',
+             "Francis Bacon")
     library_model_attrs = ("gradient_model", "gradient_categories_model")    # the raw MODELS, where sidebar_attr below names the proxy over them, which is why this cannot be derived from it
     model_attr = "gradient_model"
     category_attr = "gradient_categories_model"

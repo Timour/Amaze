@@ -87,6 +87,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         "comments": "NotesRole",
         "tags": "TagRole",
         "license": "LicenceRole",
+        "date": "DateRole",
+        "id": "IdRole",    # the two read-only rows the Material Info dialog used to carry, now list-mode columns ▸p/d03-retired
     }
     NOTES_SECTION = ""  # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
 
@@ -123,6 +125,35 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
         self.rebuild_thumbs()
+        self.adopt_about_into_notes()
+
+    def adopt_about_into_notes(self) -> int:
+        """Move every record's About credit into its COMMENT and clear the field - the About block retired with the Material Info dialog, and its text is a comment now. Returns how many moved: ONE pass over the assets already in memory, and it reaches the notes store only for a row that still carries About. ▸p/d03-retired"""
+        if not self.NOTES_SECTION:
+            return 0
+        from amaze.core import notes
+        moved = 0
+        for asset in self._assets:
+            about = getattr(asset, "about", "")
+            if not isinstance(about, str) or not about.strip():
+                continue    # a hand-edited record can carry any type here, and only TEXT is a credit worth moving
+            about = about.strip()
+            key = notes.note_key(self.NOTES_SECTION, str(asset.mat_id))
+            items = list(notes.note_for(self.preferences, key).get(
+                "items", []))
+            if not any(item.get("t") == "text"    # already carried across on an earlier open, or by another machine through the synced store
+                       and item.get("text", "").strip() == about
+                       for item in items):
+                if not notes.set_note(self.preferences, key,
+                                      [{"t": "text", "text": about}] + items):
+                    continue    # a read-only library: leave the field alone rather than clear text nothing kept
+            asset.about = ""
+            moved += 1
+        if moved:
+            self.save()
+            debug.event("library", "about moved into comments",
+                        section=self.NOTES_SECTION, assets=moved)
+        return moved
 
     @staticmethod
     def _asset_from_row(row: dict):
@@ -256,6 +287,25 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self.save()
         model_index = self.index(row, 0)
         self.row_changed(model_index.row())
+        return True
+
+    def tile_tags(self, row: int) -> str:
+        """This asset's tags as ONE comma-separated line - what the Customize dialog's Tags field shows and edits."""
+        if not 0 <= row < len(self._assets):
+            return ""
+        return ", ".join(self._assets[row].tags or [])
+
+    def set_tile_tags(self, row: int, line: str) -> bool:
+        """REPLACE one asset's tags from a comma-separated line: what is in the field becomes the tags, so an empty line clears them. A narrow write beside `set_tile_name`, then the ordinary save chain."""
+        if not 0 <= row < len(self._assets):
+            return False
+        asset = self._assets[row]
+        before = [tag for tag in (asset.tags or []) if tag]
+        asset.tags = line or ""    # the RECORD's own setter splits and drops the blanks - the one splitter, never a second copy of it here
+        if [tag for tag in (asset.tags or []) if tag] == before:
+            return False
+        self.save()
+        self.row_changed(row)
         return True
 
     def tile_icon(self, row: int) -> dict:

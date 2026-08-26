@@ -1,4 +1,4 @@
-"""The notes store: a notebook page per asset, in the library - one notes.json beside the index, keyed `<section>:<asset id>` for the asset sections and `file:<path>` for File rows. A note is `{"items": [...]}`, an ORDERED flow of `{"t": "text", "text": str}` and `{"t": "todo", "label": str, "done": bool}` (the older `{"text", "todos"}` shape converts on read); writing an EMPTY page removes the key, which is how a note is deleted. An ADAPTER over the Keyed Store Engine: it owns the note's SHAPE and nothing else (▸p/store-guards). A File key is the RAW `os.path.join`, NOT canonicalised - canonicalising would orphan every entry written before the 2026-07-31 merge."""
+"""The notes store: a notebook page per asset, in the library - one notes.json beside the index, keyed `<section>:<asset id>` for the asset sections and `file:<path>` for File rows. A note is `{"items": [...]}`, an ORDERED flow of `{"t": "text", "text": str}`, `{"t": "todo", "label": str, "done": bool}` and `{"t": "image", "src": str, "text": str}` (the older `{"text", "todos"}` shape converts on read); writing an EMPTY page removes the key, which is how a note is deleted. An ADAPTER over the Keyed Store Engine: it owns the note's SHAPE and nothing else (▸p/store-guards). A File key is the RAW `os.path.join`, NOT canonicalised - canonicalising would orphan every entry written before the 2026-07-31 merge."""
 
 from __future__ import annotations
 
@@ -40,6 +40,14 @@ def normalise(value) -> dict:
                 continue
             items.append({"t": "todo", "label": label.strip(),
                           "done": bool(item.get("done", False))})
+        elif kind == "image":
+            src = item.get("src", "")
+            if not isinstance(src, str) or not src.strip():
+                continue    # an image pointing nowhere draws nothing, so it is junk like a blank to-do ▸p/comment-images
+            fallback = item.get("text", "")
+            items.append({"t": "image", "src": src.strip(),
+                          "text": fallback if isinstance(fallback, str)
+                          else ""})
         elif kind == "text":
             text = item.get("text", "")
             if isinstance(text, str) and text.strip():

@@ -87,6 +87,7 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_material.renderer = "karma"
         self.mock_material.date = "2026-02-08"
         self.mock_material.mat_id = "mat_001"
+        self.mock_material.about = ""    # a real record's default, spelled out: a bare Mock answers a truthy object here and the About sweep would take it for credit text
         self.mock_material.get_as_dict.return_value = self.asset_data
         self.mock_material_cls.from_dict.return_value = self.mock_material
 
