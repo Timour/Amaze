@@ -93,8 +93,11 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
 
     def test_the_row_you_were_standing_on_stays_under_you(self):
         section, source = self._section()
-        source._categories[:] = ["_All", "b", "a"]
-        source.layoutChanged.emit()
+        source.beginResetModel()    # a whole-row-set replacement outside a reset pair leaves the proxy and the selection describing rows that are gone, and a bare layoutChanged is not that pair - it segfaults H21 natively in QItemSelectionModel::select ▸r/model-contracts
+        try:
+            source._categories[:] = ["_All", "b", "a"]
+        finally:
+            source.endResetModel()
         cat_list = self.panel.cat_list
         proxy = cat_list.model()
         standing = None
