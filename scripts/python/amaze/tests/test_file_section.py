@@ -2512,5 +2512,78 @@ class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):
             "the star reached the TEST library's store")
 
 
+class TheUserPickerFollowsTheLibrary(unittest.TestCase):
+    """The users live IN the library, so switching libraries makes the open picker a list of the previous library's people - it showed them until Preferences was closed and reopened."""
+
+    def _dialog_on_a_second_library(self):
+        """A dialog open on library A, plus a ready library B whose only user has a name A does not have."""
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+
+        first = test_support.fixture_prefs(self)
+        dialog = prefs_dialog.PrefsDialog(first, panel=None)
+        self.addCleanup(dialog.deleteLater)
+
+        second = test_support.fresh_library(self)
+        moved = test_support.fixture_prefs(self)
+        moved.dir = second
+        moved.library_user = ""
+        users.current(moved)          # mints library B's first user
+        theirs = users.name_for(moved, moved.library_user)
+        return dialog, first, second, moved.library_user, theirs
+
+    def test_the_premise_the_two_libraries_hold_different_people(self):
+        """If the fixture gave both libraries the same user this proves nothing."""
+        dialog, first, _second, uid_b, _name_b = self._dialog_on_a_second_library()
+        from amaze.core import users
+        self.assertNotIn(uid_b, users.all_users(first),
+                         "both fixture libraries hold the same user")
+
+    def test_changing_the_library_reloads_the_picker(self):
+        dialog, first, second, uid_b, name_b = self._dialog_on_a_second_library()
+
+        class _Panel:
+            def __init__(self, prefs, path):
+                self._prefs, self._path = prefs, path
+
+            def set_library(self):
+                self._prefs.dir = self._path      # what the real flow lands on
+
+        dialog._panel = _Panel(first, second)
+        dialog.change_library_path()
+
+        listed = [dialog.cbb_library_user.itemData(i)
+                  for i in range(dialog.cbb_library_user.count())]
+        self.assertIn(
+            uid_b, listed,
+            "the picker still lists the OLD library's users after a "
+            "switch - it only caught up when Preferences was reopened")
+
+    def test_every_method_that_swaps_the_library_reloads_the_picker(self):
+        """By AST over the whole dialog, so a THIRD way onto another library added later is caught too - not just the two known ones."""
+        import ast
+        import inspect
+        from amaze.dialogs import prefs_dialog
+
+        SWAPS = {"set_library", "switch_all_models"}
+        tree = ast.parse(inspect.getsource(prefs_dialog))
+        offenders = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.FunctionDef):
+                continue
+            called = {
+                inner.func.attr for inner in ast.walk(node)
+                if isinstance(inner, ast.Call)
+                and isinstance(inner.func, ast.Attribute)
+            }
+            if called & SWAPS and "_reload_library_users" not in called:
+                offenders.append(node.name)
+        self.assertEqual(
+            [], offenders,
+            "these change which library is live but leave the user "
+            "picker showing the previous library's people: %s"
+            % ", ".join(offenders))
+
+
 if __name__ == "__main__":
     unittest.main()
