@@ -176,6 +176,13 @@ class TheShellMatchesTheDesign(unittest.TestCase):
                          "asset's own name")
         self.assertEqual("brushed_steel", dialog.windowTitle(),
                          "the window title lost the name the band shows")
+        self.assertTrue(    # the LITERAL Figma reads, not the constant: comparing the constant with itself passes whatever it is set to
+            label.font().bold(),
+            "D01, D02 and D11 all draw the band's name BOLD")
+        self.assertEqual(
+            theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX),
+            label.font().pixelSize(),
+            "the band's name is not the size the design draws")
 
     def test_the_first_field_sits_below_the_band(self):
         dialog, combo, _f = self._dialog()

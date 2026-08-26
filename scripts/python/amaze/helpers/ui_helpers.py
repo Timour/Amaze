@@ -198,6 +198,7 @@ def header_band(parent, text: str):
     label.setObjectName("amaze_header_band_text")
     font = QtGui.QFont(label.font())
     font.setPixelSize(theme.ui_px(amazetheme.HEADER_BAND_TEXT_PX))
+    font.setBold(amazetheme.HEADER_BAND_TEXT_BOLD)
     label.setFont(font)
     ink = label.palette()
     ink.setColor(QtGui.QPalette.ColorRole.WindowText,

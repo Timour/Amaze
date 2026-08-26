@@ -5,6 +5,7 @@ from __future__ import annotations
 HEADER_BAND_H = 30       # ▸ THE DRAWN HEADER: a full-width strip carrying the asset's own name, on D01, D02 and D11 and nowhere else. Its fill and ink follow Houdini (`surface_low`, `text_bright`), so only the geometry is here
 HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
+HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D01, D02 and D11
 
 D01_FRAME = (256, 185)      # ▸ D01 Versions, header band included
 D01_INSET = 18              # 35, both sides, leaving a 220-wide column
