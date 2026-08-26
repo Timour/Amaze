@@ -145,7 +145,7 @@ else:
   </tool>
 
   <tool name="amaze_check_updates" label="Updates"
-        icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
+        icon="$AMAZE/scripts/python/amaze/ui/icon_update.svg">
     <helpText><![CDATA[Ask whether a newer Amaze has been released, and install it.
 
 Asking changes nothing. If there is a newer release you are offered it,
