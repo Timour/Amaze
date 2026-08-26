@@ -1,5 +1,6 @@
 """Save dialog for gradients, and the minimal category-name dialog - both AssetDialog subclasses, so the house form style lives in `dialogs/base_dialog.py`. ▸r/dialog-parents"""
 
+from amaze import amazetheme
 from amaze import branding
 from amaze.dialogs import base_dialog
 from amaze.dialogs.base_dialog import AssetDialog
@@ -8,6 +9,7 @@ from amaze.dialogs.base_dialog import AssetDialog
 class GradientDialog(AssetDialog):
 
     FORM_WIDTH = base_dialog.SAVE_WIDTH
+    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
 
     def __init__(self, categories: list, default_name: str = "",
                  parent=None) -> None:

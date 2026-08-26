@@ -546,5 +546,121 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
             "a parented dialog no longer inherits its parent's screen")
 
 
+class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
+    """The save dialogs are ONE drawn width, and the measurement is taken AFTER `show()` - `SetFixedSize` re-applies the layout's own hint on every activation, so a width that is right at construction can still be wrong on screen. ▸r/fixed-size-constraint"""
+
+    def _shown(self, dialog):
+        self.addCleanup(dialog.deleteLater)
+        dialog.show()
+        QtWidgets.QApplication.processEvents()
+        self.addCleanup(dialog.hide)
+        return dialog
+
+    def _dialogs(self):
+        from amaze.dialogs import base_dialog, gradient_dialog, save_dialog
+        return (
+            ("D09 Save to Amaze (Node)",
+             save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1")),
+            ("D10 Save to Amaze (Materials)",
+             save_dialog.SaveDialog(["Metal"], "Metal")),
+            ("D12 Save Gradient to Amaze",
+             gradient_dialog.GradientDialog(["Metal"], "ramp1")),
+            ("D13 Name Input",
+             gradient_dialog.CategoryDialog()),
+        )
+
+    def test_every_dialog_in_the_package_can_actually_be_BUILT(self):
+        """Constructing each one, which no test did before - `CodeDialog` referenced a design constant that had been renamed and nothing noticed, because every dialog test until now read source or signatures instead of building the widget."""
+        from amaze import amazetheme
+        from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
+                                   icon_dialog, save_dialog)
+        from amaze.helpers import theme
+        built = (
+            ("SaveDialog", lambda: save_dialog.SaveDialog(["Metal"], "Metal")),
+            ("GradientDialog",
+             lambda: gradient_dialog.GradientDialog(["Metal"], "ramp1")),
+            ("CategoryDialog", gradient_dialog.CategoryDialog),
+            ("NameDialog", base_dialog.NameDialog),
+            ("CodeDialog", lambda: code_dialog.CodeDialog(["Metal"])),
+            ("IconDialog", icon_dialog.IconDialog),
+        )
+        for name, build in built:
+            with self.subTest(dialog=name):
+                dialog = build()
+                self.addCleanup(dialog.deleteLater)
+                dialog.show()
+                QtWidgets.QApplication.processEvents()
+                self.addCleanup(dialog.hide)
+                self.assertGreater(dialog.width(), 0,
+                                   "%s built with no width" % name)
+        code = code_dialog.CodeDialog(["Metal"])
+        self.addCleanup(code.deleteLater)
+        code.show()
+        QtWidgets.QApplication.processEvents()
+        self.addCleanup(code.hide)
+        self.assertGreaterEqual(
+            code.width(), theme.ui_px(amazetheme.D11_FORM_WIDTH),
+            "the code dialog opens narrower than its drawn floor")
+
+    def test_the_family_renders_ONE_width_whatever_that_width_is(self):
+        """The structural property, and it is stronger than the value: four dialogs reading ONE constant must AGREE, so a broken mechanism shows up as one wrong number rather than four different ones. Four different widths is proof the constant never reached them. ▸p/shared-means-it-fails-together"""
+        seen = {}
+        for label, dialog in self._dialogs():
+            seen[label] = self._shown(dialog).width()
+        self.assertEqual(
+            1, len(set(seen.values())),
+            "the save dialogs render %d different widths, so they are "
+            "not sharing one: %s"
+            % (len(set(seen.values())),
+               ", ".join("%s=%d" % kv for kv in sorted(seen.items()))))
+
+    def test_every_one_of_them_is_the_shared_width_on_screen(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        want = theme.ui_px(amazetheme.SAVE_WIDTH)
+        for label, dialog in self._dialogs():
+            with self.subTest(dialog=label):
+                shown = self._shown(dialog)
+                self.assertEqual(
+                    want, shown.width(),
+                    "%s renders %dpx wide, not the drawn %d - the save "
+                    "family no longer shares one width"
+                    % (label, shown.width(), want))
+
+    def test_every_field_is_the_drawn_field_width(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        want = theme.ui_px(amazetheme.SAVE_FIELD_WIDTH)
+        for label, dialog in self._dialogs():
+            with self.subTest(dialog=label):
+                shown = self._shown(dialog)
+                fields = [w for w in shown.findChildren(QtWidgets.QWidget)
+                          if isinstance(w, (QtWidgets.QLineEdit,
+                                            QtWidgets.QComboBox))
+                          and w.parent() is shown]
+                self.assertTrue(fields, "%s built no fields at all" % label)
+                for field in fields:
+                    self.assertEqual(
+                        want, field.width(),
+                        "%s draws a %s %dpx wide, not the drawn %d"
+                        % (label, type(field).__name__, field.width(), want))
+
+    def test_the_width_survives_a_second_layout_pass(self):
+        """A `show()` is not the last activation a dialog sees - a re-show, a font change or a re-polish activates the layout again."""
+        from amaze import amazetheme
+        from amaze.dialogs import save_dialog
+        from amaze.helpers import theme
+        want = theme.ui_px(amazetheme.SAVE_WIDTH)
+        dialog = self._shown(
+            save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1"))
+        dialog.layout().activate()
+        dialog.adjustSize()
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(
+            want, dialog.width(),
+            "the width held on show and then collapsed to %d on the next "
+            "layout pass" % dialog.width())
+
+
 if __name__ == "__main__":
     unittest.main()

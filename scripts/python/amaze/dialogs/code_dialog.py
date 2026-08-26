@@ -116,6 +116,8 @@ class CodeEditor(QtWidgets.QPlainTextEdit):
 class CodeDialog(base_dialog.AssetDialog):
     """The snippet save form on the house shell - resizable, because the editor is the point of the window."""
 
+    FORM_WIDTH = amazetheme.D11_FORM_WIDTH
+
     def __init__(
         self,
         categories: list,
@@ -128,7 +130,7 @@ class CodeDialog(base_dialog.AssetDialog):
         title: str = "Save Code to " + branding.APP_NAME,
         parent=None,
     ) -> None:
-        super().__init__(title, fixed_size=False, parent=parent)
+        super().__init__(title, fixed_size=False, parent=parent)    # the ONE resizable dialog; `FORM_WIDTH` is a floor here rather than a pin, because no `SetFixedSize` constraint follows ▸p/one-design-document
         self.name = ""
         self.language = ""
         self.category = ""
@@ -140,7 +142,6 @@ class CodeDialog(base_dialog.AssetDialog):
         self._line_name.setToolTip(ui_helpers.tooltip_text(
             "Name it, pick a category, and add tags to find "
             "it again later."))
-        self._line_name.setMinimumWidth(theme.ui_px(360))
         self.add_row("Name", self._line_name)
 
         self._combo_lang = QtWidgets.QComboBox()
@@ -162,11 +163,11 @@ class CodeDialog(base_dialog.AssetDialog):
         self._text_desc.setPlaceholderText(
             "Optional - shown on hover (what it does, sliders to add...)"
         )
-        self._text_desc.setFixedHeight(theme.ui_px(56))
+        self._text_desc.setFixedHeight(theme.ui_px(amazetheme.D11_DESC_H))
         self.add_row("Description", self._text_desc)
 
         self._editor = CodeEditor(code)
-        self._editor.setMinimumSize(theme.ui_px(560), theme.ui_px(320))
+        self._editor.setMinimumHeight(theme.ui_px(amazetheme.D11_EDITOR_H))    # HEIGHT only: the editor's width is the field column, which the dialog's own width already decides ▸p/one-design-document
         self.add_row("Code", self._editor)
 
         self.finish()

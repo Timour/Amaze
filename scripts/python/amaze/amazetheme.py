@@ -17,8 +17,15 @@ D02_CELL = 34            # ▸ D02 Customize (Tile Icon): one icon button in the
 D02_COLUMNS = 10         # how wide the grid runs before wrapping
 D02_SIDE_WIDTH = 150     # preview, swatches and buttons all measure this
 
-SAVE_WIDTH = 350         # ▸ the save family D09-D13: every one is this wide, whatever its labels
+SAVE_WIDTH = 350         # ▸ the save family D09, D10, D12, D13: every one is this wide, whatever its labels
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
+
+D11_FORM_WIDTH = 638     # ▸ D11 Save Code: a FLOOR, not a pin - the only dialog that resizes, because it carries an editor. Its field column follows from this width, so there is no second number for it
+D11_EDITOR_H = 320       # the editor's minimum HEIGHT; its width is the field column above
+D11_DESC_H = 56          # the Description box, drawn in no Figma frame yet ▸p/one-design-document
+
+PREFS_FORM_WIDTH = 480   # ▸ D04-D08 Preferences, the one tabbed window
+PREFS_HEADROOM = 50      # rendered px added to the natural content height
 
 COMMENT_INK = "#5cc9f5"        # ▸ the Comments pane: its OWN colour, not the accent, so button, header icon and to-do glyphs read as one thing
 COMMENT_HEADER_BG = "#22232b"

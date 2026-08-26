@@ -4,7 +4,7 @@ APP_NAME = "Amaze"    # change this to rename the app
 
 APP_TAGLINE = "Browse it, save it, drag it."    # one-line subtitle, shown under the name in the panel and docs
 
-APP_VERSION = "1.0.8"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
+APP_VERSION = "1.0.9"    # the RELEASED version, MAJOR.MINOR.PATCH ▸p/version-scheme
 
 LIBRARY_FORMAT = 2    # the ON-DISK stamp: an older build opening a library stamped ahead of this latches read-only. Bump ONLY when the on-disk shape changes ▸p/branding-stamps
 

@@ -74,6 +74,8 @@ def _picker_start(path: str) -> str:
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
+    FORM_WIDTH = amazetheme.PREFS_FORM_WIDTH
+
     def __init__(self, prefs, panel=None, file_files_model=None,
                  parent=None) -> None:
         super().__init__(branding.APP_NAME + " Preferences",
@@ -96,10 +98,9 @@ class PrefsDialog(base_dialog.AssetDialog):
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.setMinimumWidth(theme.ui_px(480))
-        self.resize(   # natural content height plus 100 rendered px of headroom
-            theme.ui_px(480),
-            self.sizeHint().height() + theme.ui_px(50),
+        self.resize(   # the WIDTH is the shell's, from `FORM_WIDTH`; only the HEIGHT is this dialog's, being its natural content plus headroom ▸p/one-design-document
+            self.width(),
+            self.sizeHint().height() + theme.ui_px(amazetheme.PREFS_HEADROOM),
         )
 
 

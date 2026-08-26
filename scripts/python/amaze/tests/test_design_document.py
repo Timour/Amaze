@@ -1,4 +1,5 @@
 """The design lives in ONE document: no second home for a colour, a dialog size or a drawn word. ▸p/one-design-document"""
+import ast
 import os
 import re
 import unittest
@@ -78,6 +79,90 @@ class NoSecondHomeForAColour(unittest.TestCase):
                     os.path.exists(os.path.join(_ROOT, relative)),
                     "%s is listed as a chrome file and does not exist"
                     % relative)
+
+
+SIZERS = ("setFixedWidth", "setMinimumWidth", "setMaximumWidth",
+          "setFixedSize", "setMinimumSize", "setBaseSize")
+
+DIALOG_DIR = os.path.join(_ROOT, "dialogs")
+
+
+class NoDialogSetsItsOwnWidth(unittest.TestCase):
+    """A width every dialog reads from ONE place fails the SAME way in all of them; four dialogs rendering four different widths is proof the constant never reached any of them. So the width is the shell's to apply and no dialog may set its own. ▸p/shared-means-it-fails-together"""
+
+    def _self_sizing_calls(self, path):
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=path)
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute):
+                continue
+            if func.attr not in SIZERS:
+                continue
+            if isinstance(func.value, ast.Name) and func.value.id == "self":
+                found.append((node.lineno, func.attr))
+        return found
+
+    def test_only_the_shared_shell_sizes_a_dialog(self):
+        offenders = []
+        for name in sorted(os.listdir(DIALOG_DIR)):
+            if not name.endswith(".py") or name == "base_dialog.py":
+                continue        # the shell is the ONE place a width is applied
+            for line, call in self._self_sizing_calls(
+                    os.path.join(DIALOG_DIR, name)):
+                offenders.append("dialogs/%s:%d  self.%s(...)"
+                                 % (name, line, call))
+        self.assertEqual(
+            [], offenders,
+            "a dialog sizes ITSELF instead of declaring FORM_WIDTH and "
+            "letting the shell apply it - that is how four dialogs came "
+            "to render four different widths:\n  "
+            + "\n  ".join(offenders))
+
+    def test_the_scan_can_see_a_self_sizing_call(self):
+        """A scanner that matches nothing passes forever."""
+        tree = ast.parse("class D:\n"
+                         "    def f(self):\n"
+                         "        self.setFixedWidth(350)\n")
+        hits = [n for n in ast.walk(tree)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Attribute)
+                and n.func.attr in SIZERS
+                and isinstance(n.func.value, ast.Name)
+                and n.func.value.id == "self"]
+        self.assertEqual(1, len(hits),
+                         "the scanner cannot see a self-sizing call even "
+                         "in a sample written to contain one")
+
+    def test_every_dialog_width_is_a_named_constant(self):
+        """A FORM_WIDTH assigned a bare number is a second home for a size, however few characters it is."""
+        offenders = []
+        for name in sorted(os.listdir(DIALOG_DIR)):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(DIALOG_DIR, name)
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Assign):
+                    continue
+                names = [t.id for t in node.targets
+                         if isinstance(t, ast.Name)]
+                if not any(n in ("FORM_WIDTH", "FIELD_WIDTH")
+                           for n in names):
+                    continue
+                if isinstance(node.value, ast.Constant) and \
+                        node.value.value is not None:
+                    offenders.append(
+                        "dialogs/%s:%d  %s = %r"
+                        % (name, node.lineno, names[0], node.value.value))
+        self.assertEqual(
+            [], offenders,
+            "a dialog width is written as a bare number instead of a "
+            "name from amazetheme.py:\n  " + "\n  ".join(offenders))
 
 
 class TheDrawnWordsComeFromTheDocument(unittest.TestCase):

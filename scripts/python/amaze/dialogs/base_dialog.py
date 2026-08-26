@@ -14,6 +14,7 @@ class AssetDialog(QtWidgets.QDialog):
     """Base modal form dialog in the house style. - `canceled` is True until the user accepts; subclasses read their fields in `_on_accept()` and call super()._on_accept()."""
 
     FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
+    FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
 
     def __init__(self, title: str = "", fixed_size: bool = True,
                  parent=None) -> None:
@@ -36,13 +37,16 @@ class AssetDialog(QtWidgets.QDialog):
         self._content = None
 
     def add_row(self, label, widget):
-        """Add a labelled row; returns the widget for wiring."""
+        """Add a labelled row; returns the widget for wiring. A dialog declaring `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
+        if self.FIELD_WIDTH:
+            widget.setFixedWidth(theme.ui_px(self.FIELD_WIDTH))
         self._form.addRow(label, widget)
         return widget
 
-    def add_line(self, label: str, default: str = "", width: int = 280):
+    def add_line(self, label: str, default: str = "", width: int = 0):
         field = QtWidgets.QLineEdit(default)
-        field.setMinimumWidth(theme.ui_px(width))
+        if width:
+            field.setMinimumWidth(theme.ui_px(width))    # an explicit override; the shared width comes from `FIELD_WIDTH` through `add_row`
         return self.add_row(label, field)
 
     def add_combo(
@@ -86,13 +90,13 @@ class AssetDialog(QtWidgets.QDialog):
             layout.addLayout(self._form)
         _m = theme.ui_px(5 if margins is None else margins)
         layout.setContentsMargins(_m, _m, _m, _m)
+        if self.FORM_WIDTH:
+            layout.addStrut(theme.ui_px(self.FORM_WIDTH) - 2 * _m)    # THE LAYOUT'S OWN HINT, never `setFixedWidth`: under `SetFixedSize` the hint IS the width and is re-imposed on every activation, so a hand-set width dies at `show()` ▸r/fixed-size-constraint
         if self._fixed_size:
             layout.setSizeConstraint(
                 QtWidgets.QLayout.SizeConstraint.SetFixedSize
             )
         self.setLayout(layout)
-        if self.FORM_WIDTH:
-            self.setFixedWidth(theme.ui_px(self.FORM_WIDTH))    # AFTER the constraint above: `SetFixedSize` writes the layout's own hint into minimumWidth, so a width set before this is overwritten ▸p/save-dialog-rows
 
     def _on_accept(self) -> None:
         """Override to read fields, then call super()._on_accept()."""
@@ -104,6 +108,7 @@ class NameDialog(AssetDialog):
     """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""
 
     FORM_WIDTH = SAVE_WIDTH
+    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
 
     def __init__(self, title: str = "Name", default: str = "",
                  parent=None) -> None:
