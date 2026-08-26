@@ -462,8 +462,16 @@ is open or not — the state is carried by its background, not by the
 glyph changing colour.
 
 The page is one flowing document. Select a tile and write; click
-**+** to drop a to-do at your cursor — a framed line you type into —
-and keep writing above or below it. Enter inside a to-do adds
+**+** for what you can add at your cursor:
+
+- **Bullet point** — a framed line you type into, and keep writing
+  above or below it.
+- **Image** — pick a picture and it is copied into your library, at
+  `img/comments/`, so it travels with the library rather than pointing
+  at wherever you found it. It is scaled to the width of the pane, and
+  typing continues on the line below it.
+
+Enter inside a to-do adds
 another; Enter on an empty one returns to plain text; clicking a
 to-do's marker checks it off (struck through). Emptying a to-do's
 text removes it. Everything saves as you type.

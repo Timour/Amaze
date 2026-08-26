@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze.core import debug, notes
@@ -53,6 +55,14 @@ def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
 
 STATE_TODO = 1   # to-do state is each block's userState; it is NOT inherited across Enter, a fresh block reads -1 ▸r/qt-text-checklists
 STATE_DONE = 2
+STATE_IMAGE = 3   # a picture block: ONE image fragment, no text of its own ▸p/comment-images
+
+IMAGE_DIR = "img/comments"    # inside the library, beside the thumbnails `img/` already holds ▸p/comment-images
+
+ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding ONE line here ▸p/comment-images
+    ("Bullet point", "_add_todo"),
+    ("Image", "_add_image"),
+)
 
 
 class _NoteEdit(QtWidgets.QTextEdit):
@@ -68,13 +78,79 @@ class _NoteEdit(QtWidgets.QTextEdit):
         palette.setColor(QtGui.QPalette.ColorRole.Base,
                          QtGui.QColor(0, 0, 0, 0))
         self.setPalette(palette)
-        self.setAcceptRichText(False)
+        self.setAcceptRichText(False)    # PASTING only - a programmatic insertImage still works ▸r/qtextdocument-images
+        self.library_dir = ""            # set by the panel; what an image's relative `src` resolves against
         self.setPlaceholderText("Write a comment...")
         self.viewport().setMouseTracking(True)   # the hover cursor swap needs move events with no button held
 
     @staticmethod
     def is_todo_block(block) -> bool:
         return block.userState() in (STATE_TODO, STATE_DONE)
+
+    @staticmethod
+    def is_image_block(block) -> bool:
+        return block.userState() == STATE_IMAGE
+
+    @staticmethod
+    def image_src(block) -> str:
+        """The library-relative path an image block draws, or "" - read off the FRAGMENT, since the block's own text is only the object-replacement character. ▸p/comment-images"""
+        iterator = block.begin()
+        while not iterator.atEnd():
+            char_format = iterator.fragment().charFormat()
+            if char_format.isImageFormat():
+                return char_format.toImageFormat().name()
+            iterator += 1
+        return ""
+
+    def make_image_here(self, cursor, src: str) -> bool:
+        """Turn the cursor's block into a picture of `src` (library-relative); False when the file will not load, so the caller can say so instead of leaving a blank. ▸p/comment-images"""
+        image = QtGui.QImage(self.resolve_image(src))
+        if image.isNull():
+            return False
+        self.document().addResource(
+            QtGui.QTextDocument.ResourceType.ImageResource,
+            QtCore.QUrl(src), image)    # keyed by the RELATIVE path, so the same key works on every machine ▸r/qtextdocument-images
+        block = cursor.block()
+        block.setUserState(STATE_IMAGE)
+        self._restyle_block(block, False, False)
+        image_format = QtGui.QTextImageFormat()
+        image_format.setName(src)
+        width = self._image_width(image)
+        image_format.setWidth(width)
+        image_format.setHeight(image.height() * width / max(image.width(), 1))
+        cursor.insertImage(image_format)
+        self.setTextCursor(cursor)
+        return True
+
+    def insert_image(self, src: str) -> bool:
+        """The picture button: a picture at the cursor; an empty plain block becomes it in place, anything else gets a new block below - the same rule `insert_todo` follows."""
+        cursor = self.textCursor()
+        block = cursor.block()
+        if self.is_todo_block(block) or self.is_image_block(block) \
+                or block.text().strip():
+            cursor.movePosition(QtGui.QTextCursor.MoveOperation.EndOfBlock)
+            cursor.insertBlock(self._plain_format())
+        if not self.make_image_here(cursor, src):
+            return False
+        cursor = self.textCursor()    # LEAVE THE CURSOR BELOW THE PICTURE: it still carries the image char format, so typing here would land inside the picture's own block and `serialize` would drop every word ▸p/comment-images
+        cursor.insertBlock(self._plain_format())
+        cursor.block().setUserState(-1)
+        cursor.setCharFormat(self._label_format(False))
+        self.setTextCursor(cursor)
+        return True
+
+    def _image_width(self, image) -> float:
+        """Never wider than the pane, never upscaled - a screenshot dropped in at full size would otherwise force a horizontal scrollbar on every comment."""
+        room = max(self.viewport().width() - theme.ui_px(24), theme.ui_px(80))
+        return float(min(image.width(), room))
+
+    def resolve_image(self, src: str) -> str:
+        """A library-relative `src` as an absolute path; the stored form stays relative so a library opened on another machine still finds it. ▸p/comment-images"""
+        if not src:
+            return ""
+        if os.path.isabs(src):
+            return src
+        return os.path.join(self.library_dir or "", src)
 
     @staticmethod
     def block_done(block) -> bool:
@@ -271,6 +347,19 @@ class _NoteEdit(QtWidgets.QTextEdit):
         cursor = self.textCursor()
         first = True
         for item in items or []:
+            if item.get("t") == "image":
+                src = str(item.get("src", ""))
+                if not first:
+                    cursor.insertBlock(self._plain_format())
+                    first = True    # the block exists now, so the fallback below REUSES it rather than adding a second
+                if self.make_image_here(cursor, src):
+                    cursor = self.textCursor()
+                    first = False
+                    continue
+                cursor.block().setUserState(-1)    # the picture would not load, so this block carries the fallback text below instead
+                item = {"t": "text",    # the file is gone or unreadable: show the fallback the item already carries rather than a blank ▸p/comment-images
+                        "text": item.get("text")
+                        or "[image: %s]" % os.path.basename(src)}
             if item.get("t") == "todo":
                 done = bool(item.get("done"))
                 if not first:
@@ -306,7 +395,14 @@ class _NoteEdit(QtWidgets.QTextEdit):
 
         block = self.document().begin()
         while block.isValid():
-            if self.is_todo_block(block):
+            if self.is_image_block(block):
+                flush_text()
+                src = self.image_src(block)
+                if src:
+                    items.append({"t": "image", "src": src,
+                                  "text": "[image: %s]"    # what a build with no image support shows instead of a blank line ▸p/comment-images
+                                          % os.path.basename(src)})
+            elif self.is_todo_block(block):
                 flush_text()
                 label = self.block_label(block)
                 if label:
@@ -379,7 +475,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self.add_button.setToolTip("Add a to-do at the cursor")
         self.add_button.setCursor(
             QtCore.Qt.CursorShape.PointingHandCursor)
-        self.add_button.clicked.connect(self._add_todo_clicked)
+        self._build_add_menu()    # the + opens a menu now, so nothing connects to `clicked` - InstantPopup does not fire it ▸p/comment-images
         self._paint_accents()
         head.addWidget(self.add_button, 0,
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -454,6 +550,8 @@ class NotesPanel(ui_helpers.HeldPane):
             self.set_header(section, category, name, type_label,
                             category_color)
             note = notes.note_for(self.preferences, key)
+            self.text_edit.library_dir = str(    # re-read per page: a library switch moves where an image's relative src points ▸p/comment-images
+                getattr(self.preferences, "dir", "") or "")
             self.text_edit.load_items(note.get("items", []))
         finally:
             self._loading = False
@@ -501,11 +599,47 @@ class NotesPanel(ui_helpers.HeldPane):
         self._paint_accents()
 
 
-    def _add_todo_clicked(self) -> None:
+    def _build_add_menu(self) -> None:
+        """Hang the + button's menu on it ONCE, Qt's own way - `InstantPopup` opens it on press and adds no arrow, so the button looks exactly as it did. ▸p/comment-images"""
+        menu = QtWidgets.QMenu(self.add_button)    # a CHILD of the button: one menu for the session, not a new one per click ▸r/menu-lifetime
+        for label, handler in ADD_ITEMS:
+            menu.addAction(label).triggered.connect(    # addAction(str) returns the QAction despite the stub ▸r/menu-lifetime
+                getattr(self, handler))
+        self.add_button.setMenu(menu)
+        self.add_button.setPopupMode(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup)
+
+    def _add_todo(self) -> None:
         if self._key is None:
             return
         self.text_edit.insert_todo()
 
+    def _add_image(self) -> None:
+        """Pick a picture, COPY it into the library, and put it at the cursor - the note stores the library-relative path. ▸p/comment-images"""
+        import hou
+
+        ui = getattr(hou, "ui", None)    # absent headless, so every reach for it is guarded ▸p/refusal-sink
+        if ui is None:
+            return
+        chosen = ui.selectFile(
+            title="Add a picture to this comment",
+            pattern="*.png *.jpg *.jpeg *.gif *.bmp *.tif *.tiff",
+            chooser_mode=hou.fileChooserMode.Read)    # NOT the ReadAndWrite default, which offers to create a file that is not there ▸r/select-file-write
+        chosen = hou.text.expandString(chosen or "").strip()
+        if not chosen:
+            return
+        src = notes.adopt_image(self.preferences, chosen)
+        if not src:
+            ui.displayMessage(
+                "That picture could not be copied into your library, so "
+                "it was not added. Nothing has been changed.")
+            return
+        if not self.text_edit.insert_image(src):
+            ui.displayMessage(
+                "That file was copied but could not be shown as a "
+                "picture, so it was not added.")
+            return
+        self.text_edit.setFocus()    # the insert fires textChanged, which schedules the debounced save - the same route the + button relies on
 
     def _something_changed(self) -> None:
         if self._loading or self._key is None:

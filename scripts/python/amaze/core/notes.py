@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from amaze.core import keyed_store
+from amaze.core import debug, keyed_store
 
 NOTES_FILE = "notes.json"
 
@@ -88,3 +88,32 @@ def set_notes(preferences, pages: dict):
 def forget_notes() -> None:
     """Drop the cache - a test seam like its keyed-store siblings; the product's library switch drops every table through `keyed_store.release()` at the switch door."""
     keyed_store.release()
+
+
+IMAGE_DIR = "img/comments"    # ▸p/comment-images
+
+
+def adopt_image(preferences, source: str) -> str:
+    """Copy `source` into the library and return its LIBRARY-RELATIVE path, or "" when it cannot be read - the note stores that path, never the pixels. ▸p/comment-images"""
+    import os
+    import shutil
+    import uuid
+
+    from amaze.helpers import hostos
+
+    library = str(getattr(preferences, "dir", "") or "")
+    if not library or not source or not os.path.isfile(source):
+        return ""
+    extension = os.path.splitext(source)[1].lower() or ".png"
+    folder = os.path.join(library, *IMAGE_DIR.split("/"))
+    relative = "%s/%s%s" % (IMAGE_DIR, uuid.uuid4().hex, extension)
+    target = os.path.join(library, *relative.split("/"))
+    try:
+        os.makedirs(folder, exist_ok=True)
+        with hostos.scratch_beside(target) as scratch:    # the same promote-on-complete every library write uses, so a half-copied picture is never left where a note points ▸p/asset-write-unit
+            shutil.copyfile(source, scratch)
+    except OSError as exc:
+        debug.event("notes", "image not adopted",
+                    source=source, error=str(exc))
+        return ""
+    return relative

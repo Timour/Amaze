@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -22,6 +23,16 @@ sys.path.insert(
 from amaze.panel import sections  # noqa: E402
 from amaze.core import notes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
+
+
+def _plus_menu(widget, label):
+    """One entry of the + button's own menu, read off the button - `click()` would open it for real and block on the popup. ▸r/menu-lifetime"""
+    actions = widget.add_button.menu().actions()
+    for action in actions:
+        if action.text() == label:
+            return action
+    raise AssertionError("the + menu has no %r - it offers %s"
+                         % (label, [a.text() for a in actions]))
 
 
 class _Prefs:
@@ -179,7 +190,7 @@ class PanelWidgetTest(unittest.TestCase):
         cursor = edit.textCursor()
         cursor.insertText("intro line")
         edit.setTextCursor(cursor)
-        self.widget.add_button.click()
+        _plus_menu(self.widget, "Bullet point").trigger()    # the + opens a MENU now; clicking it would block on the popup
         cursor = edit.textCursor()
         cursor.insertText("the to-do")
         edit.setTextCursor(cursor)
@@ -538,7 +549,7 @@ class PanelWidgetTest(unittest.TestCase):
         cursor = edit.textCursor()
         cursor.insertText("keep me")
         edit.setTextCursor(cursor)
-        self.widget.add_button.click()          # frame left empty
+        _plus_menu(self.widget, "Bullet point").trigger()    # frame left empty
         self.widget.flush()
         page = notes.note_for(self.prefs, key)
         self.assertEqual([{"t": "text", "text": "keep me"}],
@@ -1303,6 +1314,266 @@ class AnUndoNeverEatsALoadedNote(unittest.TestCase):
         editor.undo()
         self.assertEqual(loaded, editor.toPlainText(),
                          "undo did not take back what was typed")
+
+
+class APictureIsATHIRDItemType(unittest.TestCase):
+    """A picture block is its own block carrying `STATE_IMAGE` and one image fragment, the same shape a to-do uses. ▸p/comment-images"""
+
+    def setUp(self):
+        from amaze.panel import notes_panel
+        from amaze.tests import test_support
+        self.notes_panel = notes_panel
+        self.prefs = test_support.fixture_prefs(self)
+        self.edit = notes_panel._NoteEdit()
+        self.addCleanup(self.edit.deleteLater)
+        self.edit.library_dir = self.prefs.dir
+
+    def _a_picture_in_the_library(self, name="shot.png", side=8):
+        """A real readable PNG at `img/comments/<name>`, returned as its library-relative path."""
+        folder = os.path.join(self.prefs.dir, "img", "comments")
+        os.makedirs(folder, exist_ok=True)
+        image = QtGui.QImage(side, side, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("tomato"))
+        self.assertTrue(image.save(os.path.join(folder, name), "PNG"))
+        return "img/comments/" + name
+
+    def test_a_picture_round_trips_through_the_store(self):
+        src = self._a_picture_in_the_library()
+        self.edit.load_items([{"t": "text", "text": "before"},
+                              {"t": "image", "src": src},
+                              {"t": "text", "text": "after"}])
+        back = self.edit.serialize()
+        kinds = [i.get("t") for i in back]
+        self.assertEqual(["text", "image", "text"], kinds)
+        self.assertEqual(src, back[1]["src"],
+                         "the picture came back pointing somewhere else")
+
+    def test_the_stored_path_stays_LIBRARY_RELATIVE(self):
+        """An absolute path would break the moment the library is opened on another machine."""
+        src = self._a_picture_in_the_library()
+        self.edit.load_items([{"t": "image", "src": src}])
+        stored = self.edit.serialize()[0]["src"]
+        self.assertFalse(os.path.isabs(stored), stored)
+        self.assertTrue(stored.startswith("img/comments/"), stored)
+
+    def test_the_item_carries_a_fallback_for_builds_without_pictures(self):
+        """An older build sends an unknown type down the TEXT branch, so the item ships the words it should show there. ▸p/comment-images"""
+        src = self._a_picture_in_the_library("holiday.png")
+        self.edit.load_items([{"t": "image", "src": src}])
+        item = self.edit.serialize()[0]
+        self.assertEqual("[image: holiday.png]", item.get("text"))
+
+    def test_that_fallback_is_what_an_older_build_actually_shows(self):
+        """Drives the real text branch with the item, which is what a build with no picture support does."""
+        src = self._a_picture_in_the_library("holiday.png")
+        self.edit.load_items([{"t": "image", "src": src}])
+        item = self.edit.serialize()[0]
+
+        plain = self.notes_panel._NoteEdit()
+        self.addCleanup(plain.deleteLater)
+        plain.library_dir = ""      # no library: the file cannot resolve, so it takes the fallback
+        plain.load_items([item])
+        self.assertEqual("[image: holiday.png]", plain.toPlainText())
+
+    def test_a_missing_file_shows_the_fallback_instead_of_a_blank(self):
+        self.edit.load_items([{"t": "image", "src": "img/comments/gone.png",
+                               "text": "[image: gone.png]"}])
+        self.assertEqual("[image: gone.png]", self.edit.toPlainText(),
+                         "a picture whose file is gone left an empty line")
+
+    def test_a_picture_is_not_mistaken_for_a_to_do(self):
+        src = self._a_picture_in_the_library()
+        self.edit.load_items([{"t": "image", "src": src}])
+        block = self.edit.document().begin()
+        self.assertTrue(self.edit.is_image_block(block))
+        self.assertFalse(self.edit.is_todo_block(block),
+                         "the picture block would draw a checkbox glyph")
+
+    def test_a_wide_picture_is_capped_to_the_pane(self):
+        """A screenshot at full size would force a horizontal scrollbar on every comment."""
+        src = self._a_picture_in_the_library("wide.png", side=4000)
+        self.edit.load_items([{"t": "image", "src": src}])
+        block = self.edit.document().begin()
+        fmt = block.begin().fragment().charFormat().toImageFormat()
+        self.assertLess(fmt.width(), 4000,
+                        "the picture went in at its full width")
+        self.assertGreater(fmt.width(), 0)
+
+
+class ThePictureButtonIsActuallyRun(unittest.TestCase):
+    """A Qt slot no test clicks is where a missing name hides - `_add_image_clicked` shipped calling a method that did not exist, and only clicking it found that. ▸p/mock-hides-the-door"""
+
+    def setUp(self):
+        from amaze.core import notes as notes_mod
+        from amaze.panel import notes_panel
+        from amaze.tests import test_support
+        notes_mod.forget_notes()
+        self.addCleanup(notes_mod.forget_notes)
+        self.notes = notes_mod
+        self.prefs = test_support.fixture_prefs(self)
+        self.widget = notes_panel.NotesPanel(self.prefs)
+        self.addCleanup(self.widget.deleteLater)
+        self.widget.set_subject(
+            sections.CommentSubject(notes_mod.note_key("material", "7"),
+                                    "material", "X", ""))
+        self.outside = test_support.scratch_dir("amaze_test_btn_")
+        self.addCleanup(shutil.rmtree, self.outside, True)
+
+    def _menu_entry(self, label):
+        return _plus_menu(self.widget, label)
+
+    def test_the_plus_offers_both_item_types(self):
+        """ONE + button whose menu lists the types, so a third joins the table without another button. ▸p/comment-images"""
+        labels = [a.text() for a in self.widget.add_button.menu().actions()]
+        self.assertEqual(["Bullet point", "Image"], labels)
+
+    def test_the_plus_opens_the_menu_rather_than_acting(self):
+        """`InstantPopup` shows the menu on press and does NOT fire the button's own action, so nothing is inserted by the click itself. ▸r/menu-lifetime"""
+        self.assertIs(
+            QtWidgets.QToolButton.ToolButtonPopupMode.InstantPopup,
+            self.widget.add_button.popupMode())
+        self.assertIsNotNone(self.widget.add_button.menu())
+
+    def test_typing_after_a_picture_is_KEPT(self):
+        """The cursor still carries the image char format after an insert, so typing landed inside the picture's own block and serialize threw the words away. ▸p/comment-images"""
+        picked = self._a_picture_on_disk()
+        with self._fake_ui(picked):
+            self._menu_entry("Image").trigger()
+        self.widget.text_edit.textCursor().insertText("what I wanted to say")
+
+        items = self.widget.text_edit.serialize()
+        kinds = [i.get("t") for i in items]
+        self.assertIn("image", kinds)
+        self.assertIn("text", kinds, "the typed words were lost: %s" % items)
+        self.assertIn("what I wanted to say",
+                      " ".join(i.get("text", "") for i in items))
+
+    def test_a_bullet_point_still_goes_in_from_the_menu(self):
+        """An EMPTY to-do serializes to nothing by design, so it has to be given a label before the round trip shows it."""
+        self._menu_entry("Bullet point").trigger()
+        self.widget.text_edit.textCursor().insertText("a task")
+        items = self.widget.text_edit.serialize()
+        self.assertEqual([{"t": "todo", "label": "a task", "done": False}],
+                         items)
+
+    def _a_picture_on_disk(self):
+        path = os.path.join(self.outside, "picked.png")
+        image = QtGui.QImage(10, 10, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("olive"))
+        image.save(path, "PNG")
+        return path
+
+    def _fake_ui(self, chosen, seen=None):
+        """`hou.ui` does not exist headless, so the picker has to be installed before a click can reach it."""
+        class _Ui:
+            @staticmethod
+            def selectFile(**kwargs):
+                if seen is not None:
+                    seen.update(kwargs)
+                return chosen
+
+            @staticmethod
+            def displayMessage(*args, **kwargs):
+                return 0
+
+        return mock.patch.object(hou, "ui", _Ui, create=True)
+
+    def test_clicking_it_adopts_and_inserts(self):
+        picked = self._a_picture_on_disk()
+        with self._fake_ui(picked):
+            self._menu_entry("Image").trigger()
+
+        items = self.widget.text_edit.serialize()
+        pictures = [i for i in items if i.get("t") == "image"]
+        self.assertEqual(1, len(pictures), items)
+        landed = os.path.join(self.prefs.dir, *pictures[0]["src"].split("/"))
+        self.assertTrue(os.path.isfile(landed),
+                        "the picture was not copied into the library")
+
+    def test_cancelling_the_picker_adds_nothing(self):
+        with self._fake_ui(""):
+            self._menu_entry("Image").trigger()
+        self.assertEqual([], self.widget.text_edit.serialize())
+
+    def test_the_picker_asks_for_READ_not_read_and_write(self):
+        """The default is ReadAndWrite, which offers to create a file that is not there. ▸r/select-file-write"""
+        seen = {}
+        with self._fake_ui("", seen):
+            self._menu_entry("Image").trigger()
+        self.assertEqual(hou.fileChooserMode.Read, seen.get("chooser_mode"))
+
+    def test_it_does_not_raise_where_there_is_no_hou_ui(self):
+        """Headless has none, and an unguarded reach would turn the click into an AttributeError. ▸p/refusal-sink"""
+        self.assertFalse(hasattr(hou, "ui"),
+                         "this host HAS hou.ui, so the guard is untested here")
+        self._menu_entry("Image").trigger()      # must not raise
+        self.assertEqual([], self.widget.text_edit.serialize())
+
+
+class APictureIsCOPIEDIntoTheLibrary(unittest.TestCase):
+    """The note stores a path, never pixels - `notes.json` is a keyed store that syncs and merges. ▸p/comment-images"""
+
+    def setUp(self):
+        from amaze.core import notes as notes_mod
+        from amaze.tests import test_support
+        self.notes = notes_mod
+        self.prefs = test_support.fixture_prefs(self)
+        self.outside = test_support.scratch_dir("amaze_test_pics_")
+        self.addCleanup(shutil.rmtree, self.outside, True)
+
+    def _a_picture_outside_the_library(self, name="from_desktop.png"):
+        path = os.path.join(self.outside, name)
+        image = QtGui.QImage(6, 6, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("steelblue"))
+        self.assertTrue(image.save(path, "PNG"))
+        return path
+
+    def test_the_file_is_copied_under_img_comments(self):
+        src = self.notes.adopt_image(self.prefs,
+                                     self._a_picture_outside_the_library())
+        self.assertTrue(src.startswith("img/comments/"), src)
+        landed = os.path.join(self.prefs.dir, *src.split("/"))
+        self.assertTrue(os.path.isfile(landed), "nothing was copied in")
+
+    def test_the_original_is_left_alone(self):
+        original = self._a_picture_outside_the_library()
+        self.notes.adopt_image(self.prefs, original)
+        self.assertTrue(os.path.isfile(original),
+                        "adopting a picture MOVED the user's own file")
+
+    def test_two_pictures_of_the_same_name_do_not_collide(self):
+        first = self.notes.adopt_image(
+            self.prefs, self._a_picture_outside_the_library("same.png"))
+        second = self.notes.adopt_image(
+            self.prefs, self._a_picture_outside_the_library("same.png"))
+        self.assertNotEqual(first, second,
+                            "the second picture overwrote the first")
+
+    def test_a_file_that_is_not_there_is_refused_not_guessed(self):
+        self.assertEqual(
+            "", self.notes.adopt_image(self.prefs,
+                                       os.path.join(self.outside, "nope.png")))
+
+    def test_no_half_copied_picture_is_left_where_a_note_points(self):
+        """The copy promotes on completion, so a failure leaves nothing at the target."""
+        original = self._a_picture_outside_the_library()
+        real_copy = shutil.copyfile
+
+        def dying_copy(source, target):
+            with open(target, "wb") as handle:
+                handle.write(b"half")
+            raise OSError("the disk filled up")
+
+        shutil.copyfile = dying_copy
+        self.addCleanup(setattr, shutil, "copyfile", real_copy)
+        src = self.notes.adopt_image(self.prefs, original)
+        shutil.copyfile = real_copy
+
+        self.assertEqual("", src, "a failed copy reported a path anyway")
+        folder = os.path.join(self.prefs.dir, "img", "comments")
+        self.assertEqual(
+            [], os.listdir(folder) if os.path.isdir(folder) else [],
+            "a half-copied picture was left where a note could point")
 
 
 if __name__ == "__main__":
