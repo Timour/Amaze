@@ -83,10 +83,11 @@ BTN_LOCATE = "Locate"
 BTN_NEW_FILE = "New File"
 
 LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
-LABEL_ICON_COLOR = "Icon Color"
+LABEL_LINES = "Lines"
 LABEL_TAGS = "Tags"
 LABEL_NAME = "Name"
 PLACEHOLDER_TAGS = "metal, rough"
+PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"
 
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show

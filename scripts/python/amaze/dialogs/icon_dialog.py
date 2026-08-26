@@ -62,8 +62,7 @@ class IconDialog(base_dialog.AssetDialog):
         row.setSpacing(gap)
 
         self.search = QtWidgets.QLineEdit()
-        self.search.setPlaceholderText("Search %d icons"
-                                       % len(tile_icons.icon_names()))
+        self.search.setPlaceholderText(amazetheme.PLACEHOLDER_SEARCH_ICONS)
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
         row.addWidget(self.search, 1)
@@ -186,13 +185,13 @@ class IconDialog(base_dialog.AssetDialog):
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
         fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE, so an unstated form draws differently on macOS than under Houdini's own ▸r/form-layout-defaults
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
-        self.ink_combo = QtWidgets.QComboBox()
+        self.ink_combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
         self.ink_combo.addItem("Dark", "dark")
         self.ink_combo.addItem("Light", "light")
         self.ink_combo.setCurrentIndex(
             max(self.ink_combo.findData(self._ink), 0))
         self.ink_combo.currentIndexChanged.connect(self._set_ink)
-        fields.addRow(amazetheme.LABEL_ICON_COLOR, self.ink_combo)
+        fields.addRow(amazetheme.LABEL_LINES, self.ink_combo)
 
         if self._tile_tags is None:
             self.tags_edit = None

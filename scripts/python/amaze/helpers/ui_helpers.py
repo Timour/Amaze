@@ -180,6 +180,17 @@ def device_pixmap(path, side, dpr, color_replacements=None):
     return pixmap
 
 
+class DesignedComboBox(QtWidgets.QComboBox):
+    """A combo whose POPUP is the width of the box, not of its longest item. Qt sizes the popup to its widest entry and neither `sizeAdjustPolicy`, a fixed view width nor a stylesheet changes it; reimplementing `showPopup` is the documented hook ▸r/combo-popup-width"""
+
+    def showPopup(self) -> None:
+        super().showPopup()
+        window = self.view().window()    # the WINDOW, not the view - the view alone is not the popup
+        window.setFixedWidth(self.width())
+        window.move(self.mapToGlobal(
+            QtCore.QPoint(0, self.height())))
+
+
 def header_band(parent, text: str):
     """The drawn header strip: a full-width band carrying the asset's OWN name, which D01, D02 and D11 all wear and nothing else does. It is NOT the window title bar - the design draws both. ▸p/one-design-document"""
     band = QtWidgets.QWidget(parent)

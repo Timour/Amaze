@@ -195,6 +195,42 @@ class TheShellMatchesTheDesign(unittest.TestCase):
             "band")
 
 
+class ADropdownIsAsWideAsItsBox(unittest.TestCase):
+    """Qt sizes a combo's dropdown to its WIDEST ITEM, so one long category name shoves the list out past the box it belongs to ▸r/combo-popup-width"""
+
+    LONG = "A category name a great deal longer than the box"
+
+    def _shown(self, combo):
+        holder = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(holder)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(combo)
+        combo.setFixedWidth(118)
+        holder.resize(400, 40)
+        holder.show()
+        self.addCleanup(holder.close)
+        combo.addItem("Dark")
+        combo.addItem(self.LONG)
+        combo.showPopup()
+        self.addCleanup(combo.hidePopup)
+        _app.processEvents()
+        return combo.view().window()
+
+    def test_a_plain_combo_lets_its_dropdown_run_wide(self):
+        """The behaviour being defended against - if Qt ever stops doing this, the guard below is no longer earning its place."""
+        popup = self._shown(QtWidgets.QComboBox())
+        self.assertGreater(
+            popup.width(), 118,
+            "a plain QComboBox no longer widens its dropdown, so "
+            "DesignedComboBox may no longer be needed")
+
+    def test_the_designed_one_holds_the_box_width(self):
+        popup = self._shown(ui_helpers.DesignedComboBox())
+        self.assertEqual(
+            118, popup.width(),
+            "the dropdown is not the width of the box it drops from")
+
+
 class ADialogIsSizedTheWayTheHostSizesEverything(unittest.TestCase):
     """One logical size per Houdini UI scale, on every machine; no screen enters the arithmetic. `PROFILES` is (machine, device ratio, UI scale, frame width) with the widths WRITTEN OUT, never derived from the code under test. ▸r/houdini-ui-scale, ▸p/designed-dialog"""
 

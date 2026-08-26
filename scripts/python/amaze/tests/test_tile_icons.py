@@ -265,7 +265,7 @@ class LineWeightTest(unittest.TestCase):
 
 
 class InkTest(unittest.TestCase):
-    """Icon Color, chosen per tile: dark ink on a light tile, light ink on a dark one. Per tile rather than global because the BACKGROUND is per tile, and dark-on-dark is an invisible icon."""
+    """`Lines`, chosen per tile: dark ink on a light tile, light ink on a dark one. Per tile rather than global because the BACKGROUND is per tile, and dark-on-dark is an invisible icon."""
 
     def test_the_tokens_map_to_the_design_colours(self):
         self.assertEqual("#262626", tile_icons.ink_colour("dark"))
