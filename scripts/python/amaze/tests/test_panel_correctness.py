@@ -301,6 +301,66 @@ class TheMapNamesEveryModule(unittest.TestCase):
 
 
 
+class TheSaveDialogOffersEveryCategory(unittest.TestCase):
+    """The dropdown's list comes from the one category-names home - a name-anchored filter once dropped every category merely STARTING with the pseudo-category's name."""
+
+    def test_a_category_starting_with_All_is_offered(self):
+        from unittest import mock
+
+        from amaze.panel import panel as panel_mod
+        panel = test_support.fixture_panel(self)
+        panel.category_model.check_add_category("Alloys")
+        offered = {}
+
+        class _Dialog:
+            canceled = True
+            categories = ""
+
+            def __init__(self, cats, current, parent=None):
+                offered["cats"] = list(cats)
+
+            def exec(self):
+                return 0
+
+        with mock.patch.object(panel_mod.save_dialog, "SaveDialog",
+                               _Dialog):
+            panel.get_material_info_user([])
+        self.assertIn(
+            "Alloys", offered.get("cats", []),
+            "a category starting with the pseudo-category's name is "
+            "missing from the save dialog's dropdown")
+
+
+class GridResolvesTheDelegateThroughTheModule(unittest.TestCase):
+
+    def test_no_module_level_delegate_binding(self):
+        """The dev-reload chain reloads grid BEFORE delegates, so a module-level binding keeps the previous session's class - every use goes through \x60delegates.\x60, which the reload rebinds."""
+        source = source_of("panel/grid.py")
+        self.assertNotIn(
+            "\nAssetItemDelegate =", source,
+            "grid.py binds the delegate at import time - under "
+            "AMAZE_DEV_RELOAD the reopened panel sizes and colours "
+            "tiles from the previous session's class")
+
+
+class AClickLeavesTheConfiguredStepsAlone(unittest.TestCase):
+    """The jump-sized step is for one jump - left in place, a press on the handle (distance 0) zeroes both steps and kills the wheel and arrow keys over the slider."""
+
+    def test_a_handle_press_does_not_zero_the_steps(self):
+        slider = ui_helpers.ClickSlider()
+        slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        slider.setRange(64, 512)
+        slider.setValue(128)
+        slider.resize(200, 24)
+        slider.setSingleStep(50)
+        slider.setPageStep(50)
+        slider._apply_mouse_value(slider._x_for_value(slider.value()))
+        self.assertEqual(
+            (50, 50), (slider.singleStep(), slider.pageStep()),
+            "the press clobbered the configured steps with the click "
+            "distance - a handle press leaves them 0")
+
+
 class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
     """Qt does not dim a pixmap a widget paints itself; each does it by hand."""
 
@@ -325,6 +385,31 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
             "in LIST mode it looks live, ignores every click because Qt "
             "withholds mouse events, and reads as broken")
 
+    def test_a_disabled_toggle_switch_neither_shines_nor_beckons(self):
+        """The Customize dialog greys its Light Icon switch - painted at full strength with a pointing hand, it reads as a live control that ignores clicks."""
+        switch = ui_helpers.ToggleSwitch("Light Icon")
+        switch.resize(switch.sizeHint())
+
+        def rendered(enabled):
+            switch.setEnabled(enabled)
+            image = QtGui.QImage(switch.size(),
+                                 QtGui.QImage.Format.Format_ARGB32)
+            image.fill(QtGui.QColor(0, 0, 0, 0))
+            switch.render(image)
+            return image
+
+        self.assertNotEqual(rendered(True), rendered(False),
+                            "the switch paints identically enabled "
+                            "and disabled")
+        switch.setEnabled(False)
+        self.assertNotEqual(
+            QtCore.Qt.CursorShape.PointingHandCursor,
+            switch.cursor().shape(),
+            "a disabled switch still shows the pointing hand")
+        switch.setEnabled(True)
+        self.assertEqual(QtCore.Qt.CursorShape.PointingHandCursor,
+                         switch.cursor().shape())
+
     def test_both_hand_painted_toolbar_widgets_use_the_shared_rule(self):
         source = source_of("helpers/ui_helpers.py")
         tree = ast.parse(source)
@@ -333,7 +418,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
             if not isinstance(node, ast.ClassDef):
                 continue
             if node.name not in ("ChipToggleButton", "IconMenuButton",
-                                 "ClickSlider"):
+                                 "ClickSlider", "ToggleSwitch"):
                 continue
             for child in ast.walk(node):
                 if isinstance(child, ast.FunctionDef) and \
@@ -342,7 +427,7 @@ class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):
                         ast.dump(child)
         self.assertEqual(
             {"ChipToggleButton": True, "IconMenuButton": True,
-             "ClickSlider": True}, applies,
+             "ClickSlider": True, "ToggleSwitch": True}, applies,
             "a self-painted widget skips the shared disabled rule - "
             "online, that means two chips dim and one stays bright "
             "while ignoring clicks")

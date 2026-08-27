@@ -413,15 +413,17 @@ class ClickSlider(QtWidgets.QSlider):
         painter.end()
 
     def _apply_mouse_value(self, x: float) -> None:
-        """Shared body of click and drag: snap the value under the cursor and jump straight there, with the step sized to the distance so it is one jump and not an animation."""
+        """Shared body of click and drag: snap the value under the cursor and jump straight there, with the step sized to the distance so it is one jump and not an animation - and the configured steps RESTORED after, or a handle press (distance 0) leaves the wheel and arrow keys dead ▸r/slider-steps."""
         value = self._snap(self._value_at_x(x))
+        single, page = self.singleStep(), self.pageStep()
         try:
             stepsize = int(abs(self.value() - value))
             self.setPageStep(stepsize)
             self.setSingleStep(stepsize)
-        except Exception:
-            pass
-        self.setValue(value)
+            self.setValue(value)
+        finally:
+            self.setSingleStep(single)
+            self.setPageStep(page)
 
     @debug.guarded("ClickSlider.mousePressEvent")
     def mousePressEvent(self, e: QtGui.QMouseEvent):
@@ -744,8 +746,16 @@ class ToggleSwitch(QtWidgets.QCheckBox):
         # The whole row (track + text) toggles, like a checkbox's text.
         return self.rect().contains(pos)
 
+    def changeEvent(self, event: QtCore.QEvent) -> None:
+        if event.type() == QtCore.QEvent.Type.EnabledChange:    # the pointing hand promises a click; a disabled switch must not wear it
+            self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor
+                           if self.isEnabled()
+                           else QtCore.Qt.CursorShape.ArrowCursor)
+        super().changeEvent(event)
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         p = QtGui.QPainter(self)
+        apply_disabled_opacity(p, self)    # a full paintEvent override dims by hand or a disabled switch reads as simply not working
         p.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         tw = theme.ui_px(self.TRACK_W)
         th = theme.ui_px(self.TRACK_H)

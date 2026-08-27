@@ -1,28 +1,4 @@
-"""The Generator Engine: materials from FACTS.
-
-A generation is a SPEC - a plain dict of named float/color values -
-turned into a material through `build_karma_material` and an adapter.
-The spec IS the interface: a parametric UI, a rule system or a learned
-model only has to produce the same dict.
-
-Numbers come from two shipped tables (res/*.json, written by
-tests/harvest_online.py), and generation reads BOTH:
-
-  * **PhysicallyBased** (86, CC0) - reference constants. Its metals are
-    idealised at roughness 0: a spectral identity, not a surface.
-  * **RGL / EPFL** (62, CC0) - measured surface roughness.
-
-So a metal takes its COLOUR from the reference set and its FINISH from
-the measured one.
-
-Generate IN CLASS. Metals keep their spectrum, transmissive materials
-keep their IOR exactly, scattering materials keep their measured mean
-free path. Only opaque dielectrics may take a free hue.
-
-Clearcoat, sheen and emission appear in no measurement - their rates
-come from the authored corpus (res/material_specs.json), so a generated
-material is dressed the way authored ones are.
-"""
+"""The Generator Engine, materials from FACTS: a generation is a SPEC - a plain dict of named float/color values - turned into a material through `build_karma_material` and an adapter, generated IN CLASS from the two shipped CC0 tables plus the authored corpus's rates. ▸r/generator-facts"""
 
 import colorsys
 import json
@@ -35,32 +11,16 @@ _RES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "res"
 )
 
-#: Parameter distributions measured from REAL AUTHORED materials
-#: (Houdini's shipped Karma corpus plus the user's converted library),
-#: written by tests/extract_specs.py. Used for the authored-character
-#: rates, and as the fallback corpus when the online tables are absent.
-_SPECS_FILE = os.path.join(_RES_DIR, "material_specs.json")
+_SPECS_FILE = os.path.join(_RES_DIR, "material_specs.json")    # parameter distributions measured from REAL AUTHORED materials (written by tests/extract_specs.py) - the authored-character rates, and the fallback corpus when the online tables are absent
 
-#: The shipped online tables: (source name, file).
-_ONLINE_TABLES = (
+_ONLINE_TABLES = (    # the shipped online tables: (source name, file)
     ("PhysicallyBased", "physicallybased_materials.json"),
     ("RGL", "rgl_materials.json"),
 )
 
-#: Scene units are metres; the measured scattering radii are in
-#: centimetres. Same constant, same reason as core/matx_import.
-CM_TO_SCENE_UNITS = 0.01
+CM_TO_SCENE_UNITS = 0.01    # scene units are metres, the measured scattering radii centimetres - same constant, same reason as core/matx_import
 
-#: RGL publishes no category, so the class comes from the material's
-#: own name and the lab's description. ORDER MATTERS: "acrylic felt" is
-#: a fabric, not a plastic, so Fabric is tested first.
-#: ORDER MATTERS, and it is the order of DECISIVENESS, not of taste:
-#: Film comes first because "satin_blue" is a TeckWrap vinyl wrapping
-#: film whose own description says so - exactly the trap that made the
-#: metal classifier call it a metal ("tin" inside "satin"), and a
-#: Fabric-first list would have made it a fabric and given it sheen.
-#: Fabric then beats Plastic so "acrylic felt" is cloth, not plastic.
-_RGL_CLASSES = (
+_RGL_CLASSES = (    # RGL publishes no category, so the class comes from the name and description, tested in order of DECISIVENESS: Film before Metal ("tin" inside "satin_blue", a wrapping film), Fabric before Plastic ("acrylic felt" is cloth) ▸r/generator-facts
     ("Film", ("vinyl", "wrap", "wrapping", "film")),
     ("Paint", ("paint", "lacquer", "coating", "varnish", "primer")),
     ("Fabric", ("felt", "silk", "satin", "velvet", "wool", "cotton",
@@ -71,9 +31,7 @@ _RGL_CLASSES = (
     ("Plastic", ("plastic", "acrylic", "pvc", "resin")),
 )
 
-#: Class labels that ask for sheen - the fabric look the measurement
-#: never states. Read from RGL keywords and PhysicallyBased tags alike.
-_FABRIC_WORDS = ("fabric", "cloth", "textile", "felt", "silk", "wool",
+_FABRIC_WORDS = ("fabric", "cloth", "textile", "felt", "silk", "wool",    # class labels that ask for sheen - the fabric look the measurement never states; read from RGL keywords and PhysicallyBased tags alike
                  "cotton", "velvet", "denim", "linen")
 
 _online_facts = None
@@ -94,8 +52,7 @@ def real_specs() -> list:
 
 
 def _classes_for(uid: str, entry: dict) -> list:
-    """The class labels a fact carries - the source's own where it
-    publishes them, keyword-derived where it does not."""
+    """The class labels a fact carries - the source's own where it publishes them, keyword-derived where it does not."""
     published = entry.get("category") or entry.get("classes")
     if published:
         return [str(c) for c in published]
@@ -135,8 +92,7 @@ def _normalise(source: str, uid: str, entry: dict):
 
 
 def online_facts() -> list:
-    """Every real online material as a fact dict. [] when no table
-    ships (the generator then falls back to the authored corpus)."""
+    """Every real online material as a fact dict; [] when no table ships, and the generator falls back to the authored corpus."""
     global _online_facts
     if _online_facts is not None:
         return _online_facts
@@ -157,19 +113,14 @@ def online_facts() -> list:
 
 
 def _is_fabric(fact: dict) -> bool:
-    """Cloth, however the source says it: RGL's keyword-derived class
-    or PhysicallyBased's own tags (which the class vocabulary -
-    Metal/Manmade/Organic/Human/Crystal/Liquid/Plastic - cannot
-    express)."""
+    """Cloth, however the source says it: RGL's keyword-derived class or PhysicallyBased's own tags, which its class vocabulary cannot express."""
     if any(c.lower() in _FABRIC_WORDS for c in fact.get("classes", [])):
         return True
     return any(t in _FABRIC_WORDS for t in fact.get("tags", []))
 
 
 def fact_kind(fact: dict) -> str:
-    """Which physical class a fact generates as. The order IS the
-    exclusivity: a metal is never transmissive, and a transmissive
-    material's scattering is its transmission depth, not subsurface."""
+    """Which physical class a fact generates as - the order IS the exclusivity: a metal is never transmissive, and a transmissive material's scattering is its transmission depth, not subsurface."""
     if fact["metalness"] >= 0.5:
         return "metal"
     if fact["transmission"] >= 0.5:
@@ -180,9 +131,7 @@ def fact_kind(fact: dict) -> str:
 
 
 def character_rates() -> dict:
-    """How often AUTHORED materials add what the measurements never
-    mention, measured from the authored corpus. The fallbacks are that
-    same corpus's numbers, so behaviour holds when it is absent."""
+    """How often AUTHORED materials add what the measurements never mention - the fallbacks are the same corpus's numbers, so behaviour holds when it is absent."""
     global _rates
     if _rates is not None:
         return _rates
@@ -199,10 +148,7 @@ def character_rates() -> dict:
               if isinstance(e["spec"].get(parm), (int, float))
               and e["spec"][parm] > 0.0]
         rates[parm] = len(on) / total
-    # Over the COATED materials only: taken over all 287, the median
-    # is the 0.0 that every uncoated material carries, which is not
-    # "what a clearcoat's roughness looks like".
-    coat_rough = sorted(
+    coat_rough = sorted(    # over the COATED materials only: over all of them the median is the 0.0 every uncoated one carries, which is not what a clearcoat's roughness looks like
         e["spec"]["coat_roughness"] for e in entries
         if isinstance(e["spec"].get("coat_roughness"), (int, float))
         and isinstance(e["spec"].get("coat"), (int, float))
@@ -220,35 +166,18 @@ def _clamp(value, low=0.0, high=1.0):
 
 
 def _own_roughness(fact):
-    """The fact's OWN measured roughness, or None when it published an
-    idealisation. Zero is not missing data - the reference set means it
-    (a perfect mirror) - but it is not a surface either, so it is
-    treated as "unstated" and filled from measurements of the same
-    class. `or`-style defaulting got this wrong in both directions."""
+    """The fact's OWN measured roughness, or None when it published an idealisation - a zero is "unstated", not a surface, and filled from measurements of the same class. ▸r/generator-facts"""
     roughness = fact.get("roughness")
     if roughness is None or roughness <= 0.0:
         return None
-    if roughness >= 0.99 and fact_kind(fact) == "metal":
-        # The same ceiling the borrow pool excludes: a GGX alpha of
-        # exactly 1.0 is the fit giving up, not a measurement, and a
-        # fully diffuse metal is not a thing. Excluded here too, or the
-        # one saturated metal sample hands its own materials the
-        # finish the pool refuses to lend.
+    if roughness >= 0.99 and fact_kind(fact) == "metal":    # the same saturated-fit ceiling the borrow pool excludes - a fully diffuse metal is not a thing
         return None
     return float(roughness)
 
 
 def _measured_roughness(facts, kind, rng, fallback):
-    """A roughness drawn from what was MEASURED for this class. The
-    reference set lists its metals as perfect mirrors (roughness 0) -
-    true of the metal, useless as a surface - so a generated metal
-    takes its finish from the measured set instead."""
-    # Excluded at the top end: a GGX alpha of exactly 1.0 is the
-    # CEILING of the NDF fit, not a measurement - it means the lobe was
-    # too wide to resolve. Fine for a felt, wrong for the one brushed
-    # steel sample that saturated, which would otherwise hand generated
-    # metals a fully diffuse finish.
-    pool = [f["roughness"] for f in facts
+    """A roughness drawn from what was MEASURED for this class - the reference set lists its metals as perfect mirrors, true of the metal and useless as a surface."""
+    pool = [f["roughness"] for f in facts    # the 0.99 ceiling excludes the saturated NDF fit - an alpha of exactly 1.0 means the lobe was too wide to resolve, and the one brushed-steel sample that saturated would hand generated metals a fully diffuse finish ▸r/generator-facts
             if fact_kind(f) == kind and 0.0 < f["roughness"] < 0.99]
     if not pool:
         return fallback
@@ -256,15 +185,13 @@ def _measured_roughness(facts, kind, rng, fallback):
 
 
 def _drift(color, rng, amount=0.04):
-    """A colour nudged per channel - enough to be its own material, not
-    enough to stop being the measured one."""
+    """A colour nudged per channel - enough to be its own material, not enough to stop being the measured one."""
     return [_clamp(c * rng.uniform(1.0 - amount, 1.0 + amount))
             for c in color]
 
 
 def _recolour(color, rng, hue_shift=1.0):
-    """Pigment: hue free (hue_shift 1.0) or bounded (a skin tone must
-    stay a skin tone), saturation and value nudged."""
+    """Pigment: hue free (hue_shift 1.0) or bounded (a skin tone must stay a skin tone), saturation and value nudged."""
     hue, sat, val = colorsys.rgb_to_hsv(*[_clamp(float(c)) for c in color])
     if hue_shift >= 1.0:
         hue = rng.random()
@@ -276,9 +203,7 @@ def _recolour(color, rng, hue_shift=1.0):
 
 
 def spec_from_fact(fact: dict, rng=None, facts=None):
-    """One real material -> one generated spec OF THE SAME CLASS.
-    Returns (spec, provenance) - the provenance being the sentence that
-    says what it was made from and what was varied."""
+    """One real material -> one generated spec OF THE SAME CLASS; returns (spec, provenance), the provenance being the sentence saying what it was made from and what was varied. ▸r/generator-facts"""
     rng = rng or random.Random()
     facts = facts if facts is not None else online_facts()
     rates = character_rates()
@@ -290,16 +215,10 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
         color = _drift([_clamp(c) for c in fact["color"]], rng)
         others = [f for f in facts
                   if fact_kind(f) == "metal" and f["name"] != fact["name"]]
-        if others and rng.random() < 0.4:
-            # Alloy-like: two measured metals interpolated stay inside
-            # the gamut real metals occupy, which a free hue does not.
+        if others and rng.random() < 0.4:    # alloy-like: two measured metals interpolated stay inside the gamut real metals occupy, which a free hue does not
             other = rng.choice(others)
             t = rng.uniform(0.15, 0.5)
-            # Clamped: the reference set publishes Gold as
-            # [1.059, 0.773, 0.307] - faithful to the spectral data and
-            # deliberately kept that way on IMPORT, but a GENERATED
-            # material with a base_color above 1 quietly adds energy.
-            color = [_clamp(a * (1.0 - t) + b * t)
+            color = [_clamp(a * (1.0 - t) + b * t)    # clamped: the reference set publishes above-1 spectra (Gold), kept on IMPORT - a GENERATED base_color above 1 quietly adds energy
                      for a, b in zip(color, other["color"])]
             varied.append("blended %d%% toward %s (%s)"
                           % (round(t * 100), other["name"], other["source"]))
@@ -316,12 +235,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             "base_color": color,
             "metalness": 1.0,
             "specular_roughness": roughness,
-            # specular_IOR is inert at metalness 1 (standard_surface
-            # mixes the whole dielectric specular layer out), so it is
-            # deliberately not set here. What DOES matter is the EDGE
-            # tint: with specular_color left white the artistic
-            # conductor Fresnel has no tint at grazing angles.
-            "transmission": 0.0,
+            "transmission": 0.0,    # specular_IOR is deliberately not set - inert at metalness 1; the EDGE tint (specular_color below) is what matters at grazing angles ▸r/generator-facts
         })
         if fact.get("specular_color"):
             spec["specular_color"] = [
@@ -330,9 +244,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             varied.append("measured edge tint")
     elif kind == "transmissive":
         spec.update({
-            # The measured IOR is this material's identity, so it is
-            # copied exactly: water is 1.333, diamond 2.417.
-            "base_color": _drift(fact["color"], rng, 0.08),
+            "base_color": _drift(fact["color"], rng, 0.08),    # the measured IOR below is this material's identity, copied exactly - water 1.333, diamond 2.417
             "metalness": 0.0,
             "transmission": 1.0,
             "transmission_color": _drift(fact["color"], rng, 0.08),
@@ -342,18 +254,13 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             spec["specular_IOR"] = fact["ior"]
             varied.append("IOR %.3f kept exactly" % fact["ior"])
         else:
-            # Soap Bubble publishes ior 1.0: it refracts nothing, its
-            # look IS the thin film. Copying 1.0 "exactly" generates an
-            # invisible material.
-            spec["specular_IOR"] = 1.33
+            spec["specular_IOR"] = 1.33    # a published 1.0 (Soap Bubble) refracts nothing - its look IS the thin film, and copying it exactly generates an invisible material
             varied.append("IOR raised off 1.0 (the source is a thin "
                           "film, not a lens)")
         if fact.get("transmission_dispersion"):
             spec["transmission_dispersion"] = fact["transmission_dispersion"]
         if fact.get("transmission_depth"):
-            # Beer-Lambert depth: without it the colour is a flat
-            # interface tint instead of absorption through the volume.
-            spec["transmission_depth"] = fact["transmission_depth"]
+            spec["transmission_depth"] = fact["transmission_depth"]    # Beer-Lambert depth: without it the colour is a flat interface tint instead of absorption through the volume
             varied.append("absorption depth kept")
         if fact.get("thin_film_thickness"):
             spec["thin_film_thickness"] = fact["thin_film_thickness"]
@@ -362,9 +269,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             varied.append("measured thin film")
     elif kind == "subsurface":
         radius = [float(r) for r in fact["subsurface_radius"][:3]]
-        # A scattering material's colour is bounded: skin that
-        # hue-rotates freely is no longer skin.
-        color = _recolour(fact["color"], rng, hue_shift=0.05)
+        color = _recolour(fact["color"], rng, hue_shift=0.05)    # a scattering material's colour is bounded: skin that hue-rotates freely is no longer skin
         spec.update({
             "base_color": color,
             "metalness": 0.0,
@@ -395,16 +300,12 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
                else "a measured surface of the same class")
         )
         if _is_fabric(fact):
-            # Sheen is what makes a fabric read as fabric; the
-            # measurement does not mention it, so this is an inference.
-            spec["sheen"] = _clamp(rng.uniform(0.3, 0.8))
+            spec["sheen"] = _clamp(rng.uniform(0.3, 0.8))    # sheen is what makes a fabric read as fabric; the measurement never mentions it, so this is an inference
+
             spec["sheen_roughness"] = _clamp(rng.uniform(0.2, 0.5))
             varied.append("sheen added (inferred from its fabric class)")
 
-    # What an artist adds on top, at the rate authored materials carry
-    # it. Never on a transmissive material - a clearcoat over glass is
-    # a second interface nobody authors by accident.
-    if kind in ("metal", "opaque") and rng.random() < rates["coat"]:
+    if kind in ("metal", "opaque") and rng.random() < rates["coat"]:    # what an artist adds on top, at the authored rate - never on a transmissive material, where a clearcoat is a second interface nobody authors by accident
         spec["coat"] = _clamp(rng.uniform(0.5, 1.0))
         spec["coat_roughness"] = _clamp(
             rates["coat_roughness"] + rng.uniform(0.0, 0.1))
@@ -425,11 +326,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
 
 
 def random_spec_with_provenance(rng=None, from_real=True):
-    """(spec, provenance). The preferred source is a REAL ONLINE
-    material generated in its own physical class; the authored corpus
-    is the fallback when no table ships, and invented ranges the
-    fallback after that (they produce materials that are plausible
-    individually but uniformly distributed, which real ones are not)."""
+    """(spec, provenance): a REAL ONLINE material generated in its own class, the authored corpus when no table ships, invented ranges last - those are plausible individually but uniformly distributed, which real materials are not."""
     rng = rng or random.Random()
     if from_real:
         facts = online_facts()
@@ -467,15 +364,7 @@ def random_spec_with_provenance(rng=None, from_real=True):
 
 
 def vary_spec(spec: dict, rng=None) -> dict:
-    """An authored spec, varied enough to be its own material: the hue
-    rotates, saturation/value and the scalar weights move within a
-    fraction of their own value. Bimodal parameters (metalness, coat,
-    transmission) keep their state - nudging a metal a little toward
-    dielectric produces something that exists nowhere in reality.
-
-    This is the AUTHORED-corpus path; the online path generates per
-    class instead (spec_from_fact), which can keep a metal's spectrum
-    because it knows the material IS a metal."""
+    """An authored spec varied enough to be its own material - hue rotates, weights move within a fraction of themselves, and bimodal parameters keep their STATE, since a metal nudged toward dielectric exists nowhere in reality. The authored-corpus path; the online path is spec_from_fact."""
     rng = rng or random.Random()
     out = {}
     keep_state = ("metalness", "transmission", "coat", "sheen",
@@ -526,9 +415,7 @@ def spec_name(spec, rng=None) -> str:
 
 
 def spec_adapter(spec):
-    """Material Engine adapter: produce(builder) -> surface shader with
-    the spec's values applied. The one funnel does everything else
-    (container contract, output wiring, invariant check)."""
+    """Material Engine adapter: produce(builder) -> surface shader with the spec's values applied; the one funnel does everything else (container contract, output wiring, invariant check)."""
 
     def produce(builder):
         from amaze.core import debug
@@ -557,13 +444,7 @@ def spec_adapter(spec):
 
 
 def generate_random_material(parent: hou.Node, rng=None):
-    """Build one generated material under `parent` (a matnet - use an
-    /obj staging matnet, never a live materiallibrary; wiki: amaze
-    retranslation model). Returns (builder, spec).
-
-    The provenance goes on the node's COMMENT: these numbers come from
-    measured CC0 datasets, and a material should still be able to say
-    where it came from long after the session that made it."""
+    """Build one generated material under `parent` (an /obj staging matnet, never a live materiallibrary) and return (builder, spec); the provenance goes on the node's COMMENT, so a material can still say where it came from long after the session that made it."""
     from amaze.core import debug
     from amaze.render import nodes
 
@@ -574,12 +455,8 @@ def generate_random_material(parent: hou.Node, rng=None):
         parent, name, spec_adapter(spec)
     )
     if not wired:
-        # A GENERATED material that renders black is a defect in the
-        # generator, not in the user's input - so it is named against
-        # the spec that produced it, which is the only thing that can
-        # be used to reproduce it.
-        debug.event("generate", "generated material is not wired",
-                    name=name, fact_kind=spec.get("fact_kind", ""))
+        debug.event("generate", "generated material is not wired",    # a black render here is the GENERATOR's defect, so the whole spec is logged - it is the only thing that reproduces it
+                    name=name, spec=dict(spec))
     if builder is not None:
         try:
             builder.setComment(provenance)

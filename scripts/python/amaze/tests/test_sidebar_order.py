@@ -311,9 +311,11 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
         self.assertIn(
-            "self.save_dialog_category_model.sort(0)", self.flat_source,
+            "cats=sorted(self.get_category_names(),key=str.lower)",
+            self.flat_source,
             "the dropdown's alphabetical sort was removed - that one "
-            "is deliberate (typing against an alphabetical list)")
+            "is deliberate (typing against an alphabetical list), and "
+            "the list must come from the ONE category-names home")
 
 
 class ReorderContractTest(unittest.TestCase):

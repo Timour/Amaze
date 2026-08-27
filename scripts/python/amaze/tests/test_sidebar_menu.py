@@ -187,7 +187,7 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
         """The per-location entries grey; Show All Files stays live, because on All the tick IS the global preference."""
         shown = self._show("file", (0,))
         self.assertEqual(
-            ["Add Location", "Remove", "Locate",
+            ["Add Location", "Remove(off)", "Locate(off)",
              "Label > [Add, Remove(off)](off)", "----",
              "Show Subfolders[ ](off)", "Show All Files[x]", "----",
              "Set Color(off)", "Clear Color(off)"],

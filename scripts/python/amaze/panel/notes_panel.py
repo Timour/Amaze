@@ -288,10 +288,11 @@ class _NoteEdit(QtWidgets.QTextEdit):
         return None
 
     def mousePressEvent(self, event) -> None:
-        block = self._glyph_zone_block(event.position().toPoint())
-        if block is not None and self.toggle_block(block):
-            self.textChanged.emit()
-            return
+        if event.button() == QtCore.Qt.MouseButton.LeftButton:    # only the left button toggles - a right-click aiming for the context menu must not flip the item done
+            block = self._glyph_zone_block(event.position().toPoint())
+            if block is not None and self.toggle_block(block):
+                self.textChanged.emit()
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
@@ -468,7 +469,9 @@ class NotesPanel(ui_helpers.HeldPane):
         self.name_label = QtWidgets.QLabel()
         self.name_label.setFont(   # THE ONE FONT TABLE owns the 1.4, not this line
             theme.font("comments_title", self.name_label.font()))
+        self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # the name is an on-disk filename - AutoText would render a tag-shaped one as HTML
         self.type_label = QtWidgets.QLabel()
+        self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
         _dim(self.type_label)
         for label in (self.section_label, self.name_label,
                       self.type_label):

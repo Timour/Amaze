@@ -8,7 +8,6 @@ from amaze.core import debug, grid_columns
 from amaze.helpers import theme, ui_helpers
 from amaze.panel import delegates
 
-AssetItemDelegate = delegates.AssetItemDelegate    # resolved through the module, which is reloaded per Houdini session - never bound at import
 
 
 
@@ -193,7 +192,7 @@ def show_table(panel, showing: bool) -> None:
             header.setDefaultSectionSize(hint)
         table_palette = QtGui.QPalette(panel.thumblist.palette())    # a QTableView brings the platform's palette: white rows on a dark panel without this
         table_palette.setColor(
-            QtGui.QPalette.ColorRole.Text, AssetItemDelegate.TEXT_COLOR)
+            QtGui.QPalette.ColorRole.Text, delegates.AssetItemDelegate.TEXT_COLOR)    # resolved through the module, which is reloaded per Houdini session - never bound at import
         table.setPalette(table_palette)
         table.setFont(panel.thumblist.font())
         table.viewport().setAutoFillBackground(True)    # no QProxyStyle for the padding: setStyle hands over a pointer nobody owns and bus-errored ▸r/no-proxystyle
@@ -386,7 +385,7 @@ def apply_view_mode(panel) -> None:
             panel.thumblist.setWrapping(True)
             panel.thumblist.setIconSize(QtCore.QSize(ts, ts))
             panel.thumblist.setGridSize(
-                AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
+                delegates.AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )    # extra height over the icon for the two text lines
             show_table(panel, False)
         panel.thumblist.setResizeMode(QtWidgets.QListView.ResizeMode.Adjust)
@@ -397,7 +396,7 @@ def apply_view_mode(panel) -> None:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
             restore_drag_mode(panel)
             panel.thumblist.setGridSize(
-                AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
+                delegates.AssetItemDelegate.grid_cell_size(ts, panel.thumblist.font())
             )
             show_table(panel, False)
         except Exception:

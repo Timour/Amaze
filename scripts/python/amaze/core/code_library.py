@@ -144,6 +144,7 @@ class CodeLibrary(library.AssetLibrary):
         if not 0 <= row < len(self._assets):
             return False
         asset = self._assets[row]
+        key_before = self._preview_key(asset)  # the OLD content's key, taken before the mutation - computed after, the discard targets the NEW key, a guaranteed miss, and the stale preview squats in the shared LRU
         asset.set_data(
             name.strip() or asset.name,
             cats,
@@ -152,7 +153,7 @@ class CodeLibrary(library.AssetLibrary):
             language or "Code",
         )
         asset.code = code
-        thumbnails.engine.discard(self._preview_key(asset))  # content changed -> the preview key changes; drop the old one
+        thumbnails.engine.discard(key_before)
         self.rebuild_thumbs()
         self.save()
         self.row_changed(row)

@@ -605,6 +605,58 @@ class ARemapOnAColourChainStillRemaps(unittest.TestCase):
             "new_min never reached the clamp's LIVE low variant")
 
 
+class VendorTransformsAreOpenPBRsAlone(unittest.TestCase):
+    """The fuzz^2.5 curve and the coat-roughness mix come from the OpenPBR translation graph - run on StandardMaterial or the classic shader they silently rewrite values the 1:1 maps copied correctly."""
+
+    def test_only_the_openpbr_door_runs_them(self):
+        from amaze.render import material_converter as mc
+        parent = hou.node("/mat")
+        if parent is None:
+            self.skipTest("no /mat context in this build")
+        dest = parent.createNode("subnet")
+        self.addCleanup(dest.destroy)
+
+        class _Type:
+            def name(self):
+                return "redshift::StandardMaterial"
+
+        class _RS:
+            def type(self):
+                return _Type()
+
+            def name(self):
+                return "shader1"
+
+            def path(self):
+                return "/stub/shader1"
+
+            def inputs(self):
+                return ()
+
+            def inputNames(self):
+                return ()
+
+            def parm(self, _name):
+                return None
+
+            def parmTuple(self, _name):
+                return None
+
+        report = mc.ConversionReport("uber fixture")
+        with mock.patch.object(mc, "_apply_vendor_transforms") as vendor:
+            mc.convert_standard_material(_RS(), dest, report)
+            self.assertEqual(0, vendor.call_count,
+                             "the OpenPBR-only transforms ran on a "
+                             "StandardMaterial conversion")
+            mc.convert_classic_material(_RS(), dest, report)
+            self.assertEqual(0, vendor.call_count,
+                             "the OpenPBR-only transforms ran on a "
+                             "classic-shader conversion")
+            mc.convert_openpbr_material(_RS(), dest, report)
+            self.assertEqual(1, vendor.call_count,
+                             "the OpenPBR door lost its own transforms")
+
+
 class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
     """The dispatcher hands `target_input` to every converter whose signature takes it, so a texture nested behind one still converts with its role."""
 

@@ -1121,6 +1121,7 @@ def convert_openpbr_material(
     return _convert_uber_shader(
         rs_node, dest_parent, report,
         OPENPBR_MATERIAL_PARM_MAP, _OPENPBR_HANDLED_INPUTS,
+        vendor_transforms=True,
     )
 
 
@@ -1332,8 +1333,9 @@ def _convert_uber_shader(
     report: ConversionReport,
     parm_map: list,
     handled_inputs: set,
+    vendor_transforms: bool = False,
 ) -> hou.Node:
-    """Build the mtlxstandard_surface equivalent of rs_node using parm_map: a mapped input with a live connection converts recursively, otherwise the constant copies across; handled_inputs are connected inputs dealt with elsewhere, so they are not reported as unmapped."""
+    """Build the mtlxstandard_surface equivalent of rs_node using parm_map: a mapped input with a live connection converts recursively, otherwise the constant copies across; handled_inputs are connected inputs dealt with elsewhere, so they are not reported as unmapped. vendor_transforms is OpenPBR's alone - its fuzz curve applied to Standard/classic sheen silently rewrites a value the 1:1 map copied correctly."""
     mtlx = dest_parent.createNode("mtlxstandard_surface")
     name_to_node = _named_inputs(rs_node)    # NOT inputConnections(): its outputNode() reported rs_node itself with output-sounding names for this node type; and the output index everywhere below is hardcoded 0, the primary output every proven wiring call in this codebase assumes
     debug.event("convert", "shader connected inputs",
@@ -1362,7 +1364,8 @@ def _convert_uber_shader(
         )
     _convert_thin_film(rs_node, mtlx, report)    # fidelity passes shared by every Redshift uber shader, verified against the vendor translation graph and the live plugin's own parameters
     _apply_glossiness_inversion(rs_node, mtlx, report)
-    _apply_vendor_transforms(rs_node, mtlx, report)
+    if vendor_transforms:
+        _apply_vendor_transforms(rs_node, mtlx, report)
     return mtlx
 
 

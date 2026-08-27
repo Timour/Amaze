@@ -1471,6 +1471,44 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         self.assertIn("what I wanted to say",
                       " ".join(i.get("text", "") for i in items))
 
+    def test_a_right_click_in_the_glyph_zone_toggles_nothing(self):
+        """A right-click aiming for the context menu must not flip the item done and schedule a save of the flip."""
+        self._menu_entry("Bullet point").trigger()
+        edit = self.widget.text_edit
+        edit.textCursor().insertText("a task")
+        block = edit.document().begin()
+        while block.isValid() and not edit.is_todo_block(block):
+            block = block.next()
+        self.assertTrue(block.isValid(), "premise: a to-do exists")
+        self.assertFalse(edit.block_done(block), "premise: not done yet")
+        from unittest import mock
+
+        def press(button):
+            with mock.patch.object(edit, "_glyph_zone_block",
+                                   return_value=block):    # the zone geometry needs a laid-out widget; the BUTTON filter is what this pins
+                edit.mousePressEvent(QtGui.QMouseEvent(
+                    QtCore.QEvent.Type.MouseButtonPress,
+                    QtCore.QPointF(1.0, 1.0), button, button,
+                    QtCore.Qt.KeyboardModifier.NoModifier))
+
+        press(QtCore.Qt.MouseButton.LeftButton)
+        self.assertTrue(edit.block_done(block),
+                        "premise: a left-click in the zone toggles")
+        press(QtCore.Qt.MouseButton.LeftButton)
+        self.assertFalse(edit.block_done(block), "premise: and back")
+
+        press(QtCore.Qt.MouseButton.RightButton)
+        self.assertFalse(edit.block_done(block),
+                         "a right-click completed the to-do")
+
+    def test_the_header_names_never_parse_as_markup(self):
+        """The name is an on-disk filename - a tag-shaped one must show literally, not render as HTML."""
+        for label in (self.widget.name_label, self.widget.type_label):
+            self.assertEqual(QtCore.Qt.TextFormat.PlainText,
+                             label.textFormat(),
+                             "a filename like <b>final</b>.png renders "
+                             "bold with its tags swallowed")
+
     def test_typing_INSIDE_a_picture_block_is_kept(self):
         """Clicking just right of a picture puts the caret in the picture's own block, and userState stays STATE_IMAGE - the words typed there must still reach the store. ▸p/comment-images"""
         picked = self._a_picture_on_disk()

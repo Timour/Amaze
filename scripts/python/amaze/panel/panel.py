@@ -1,8 +1,11 @@
 """Constructs the Python panel Widget for the MatLib and provides Views to the Models"""
 
+import time
+
+_BODY_T0 = time.perf_counter()    #: when THIS module body began - stamped BEFORE the import block and reload chain, which are what `module_body_ms` exists to measure; NOT reload-survival state, every open runs it again
+
 import os
 import importlib
-import time
 import contextlib
 
 from PySide6 import QtWidgets, QtGui, QtCore
@@ -139,8 +142,6 @@ from amaze.panel import delegates            # noqa: E402 - re-exported below be
 
 _reload(delegates)
 AssetItemDelegate = delegates.AssetItemDelegate
-
-_BODY_T0 = time.perf_counter()    #: when THIS module body began, so the chain above can be timed; NOT reload-survival state, every open runs it again
 
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
@@ -352,8 +353,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         self.file_files_model.progress_changed.connect(
-            lambda done, total: self._on_folder_progress(
-                "file", done, total))
+            self._on_file_folder_progress)    # a BOUND method, never a lambda: the model outlives a closed pane tab (it stays wired to the reload-stable thumbnails relay), and a lambda receiver survives the widget's death to drive a deleted progress bar
 
         self.gradient_model = gradient_library.GradientLibrary(    # the Gradients section is Sanzo Wada's colour combinations as curated, read-only content: painted thumbnails, no files and no workers, so the model trio is all there is to set up (core/gradient_library.py)
             preferences=self.prefs)
@@ -722,6 +722,10 @@ class MatLibPanel(QtWidgets.QWidget):
             pane = getattr(self, "notes_panel", None)
             if pane is not None:
                 pane.flush()
+            timer = getattr(self, "_thumbsize_save_timer", None)
+            if timer is not None and timer.isActive():    # the 500ms debounce dies with its parent - flushed, or the last slider/splitter change silently reverts on the next open (show_prefs flushes the same timer for the same reason)
+                timer.stop()
+                self.prefs.save()
         return super(MatLibPanel, self).event(event)
 
     def eventFilter(self, watched, event):
@@ -3489,6 +3493,10 @@ class MatLibPanel(QtWidgets.QWidget):
         else:
             panel.set_subject(subject)
 
+    def _on_file_folder_progress(self, done: int, total: int) -> None:
+        """The File model's progress, as the auto-disconnectable slot the connection needs."""
+        self._on_folder_progress("file", done, total)
+
     def _on_folder_progress(self, section: str, done: int, total: int) -> None:
         """The conversion bar, but only while its OWN section is showing and the local world is up: the bar sits ABOVE the grid, so drawing it for a batch whose section you have left shifts every tile of whatever is on screen down and back up again."""
         if self._is_online() or self.current_section != section:    # `current_section` deliberately keeps naming the LOCAL section while the online world is showing (see _is_online), so the section test alone cannot see that the user has left
@@ -3911,17 +3919,7 @@ class MatLibPanel(QtWidgets.QWidget):
         if not self.material_model or not self.category_model:
             return
         """Query user for input upon material-save"""
-        self.save_dialog_category_model = QtCore.QSortFilterProxyModel()
-        self.save_dialog_category_model.setSourceModel(self.category_model)    # the SOURCE model, never the sidebar proxy: the sidebar hides empty categories and the save dialog must offer every one of them (this proxy does its own sorting and All-filtering regardless)
-        usd_filter = "^(?!All).*$"
-        self.save_dialog_category_model.setFilterRegularExpression(usd_filter)
-        self.save_dialog_category_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.save_dialog_category_model.sort(0)
-
-        cats = []
-        for elem in range(self.save_dialog_category_model.rowCount()):
-            idx = self.save_dialog_category_model.index(elem, 0)
-            cats.append(self.save_dialog_category_model.data(idx))
+        cats = sorted(self.get_category_names(), key=str.lower)    # the ONE home for the complete list, empty categories included - a filter regex here once dropped every category merely STARTING with `All`, and `Alloys` vanished from the save dialog
 
         current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 

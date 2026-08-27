@@ -1359,8 +1359,10 @@ class FileSection(FolderSection):
     SIDEBAR_MENU = (  # a location's vocabulary. Per-location entries need a REAL row ("All" is synthetic, sidebar_key answers ""); Show All Files alone stays live there, where its tick IS the global preference
         MenuEntry("Add Location", verb="menu_add_location",
                   needs="always"),
-        MenuEntry("Remove", verb="menu_remove_location", needs="always"),
-        MenuEntry("Locate", verb="menu_locate_location", needs="always"),
+        MenuEntry("Remove", verb="menu_remove_location",
+                  needs="on_a_location"),
+        MenuEntry("Locate", verb="menu_locate_location",
+                  needs="on_a_location"),
         MenuEntry("Label", verb="menu_label", children="label_actions",
                   needs="on_a_location"),
         SEPARATOR,
