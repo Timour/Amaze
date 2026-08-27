@@ -219,12 +219,14 @@ class IconDialog(base_dialog.AssetDialog):
         if self._tile_tags is None:
             self.tags_edit = None
         else:
-            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)
-            self.tags_edit.setEnabled(self._tile_name_enabled)    # the SAME rule the name field wears: a multi-selection greys it, because one field cannot say what several rows carry
+            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection, like Category and unlike Name: tagging a whole selection at once is the point of it
             self.tags_edit.setPlaceholderText(amazetheme.PLACEHOLDER_TAGS)
             self.tags_edit.setToolTip(ui_helpers.tooltip_text(
                 "Tags for this tile, separated by commas. What is in "
-                "the field replaces the tags it already has."))
+                "the field replaces the tags it already has."
+                if self._tile_name_enabled else
+                "Tags to ADD to every tile you have selected, separated "
+                "by commas. Each tile keeps the tags it already has."))
             fields.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
         column.addLayout(fields)
         column.addStretch(1)

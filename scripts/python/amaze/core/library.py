@@ -294,6 +294,25 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self.row_changed(model_index.row())
         return True
 
+    def add_tile_tags(self, row: int, line: str) -> bool:
+        """ADD the tags in a comma-separated line to what this asset already has, keeping its own and dropping duplicates - the multi-selection write, where `set_tile_tags` would flatten every row to one line. A blank line adds nothing."""
+        if not 0 <= row < len(self._assets):
+            return False
+        asset = self._assets[row]
+        before = [tag for tag in (asset.tags or []) if tag]
+        wanted = [tag.strip() for tag in (line or "").split(",")
+                  if tag.strip()]
+        merged = list(before)
+        for tag in wanted:
+            if tag not in merged:
+                merged.append(tag)
+        if merged == before:
+            return False
+        asset.tags = ", ".join(merged)
+        self.save()
+        self.row_changed(row)
+        return True
+
     def tile_category(self, row: int) -> str:
         """This asset's category - what the Customize dialog's Category dropdown shows. One category per asset, so there is no rule about which of several wins."""
         if not 0 <= row < len(self._assets):

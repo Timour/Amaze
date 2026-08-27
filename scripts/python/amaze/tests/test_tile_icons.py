@@ -832,7 +832,7 @@ class TileNameTest(unittest.TestCase):
 
 
 class TileTagsTest(unittest.TestCase):
-    """The Customize dialog's Tags field - a comma-separated line that REPLACES the asset's tags, greyed on a multi-selection exactly as the Name field above it is."""
+    """The Customize dialog's Tags field - a comma-separated line that REPLACES the asset's tags, on EVERY selected row. Live on a multi-selection, like Category and unlike Name."""
 
     def test_the_library_tag_write_is_narrow_and_real(self):
         from amaze.core import library as library_mod
@@ -855,6 +855,28 @@ class TileTagsTest(unittest.TestCase):
         again = library_mod.MaterialLibrary(preferences=prefs_obj)
         self.assertEqual("", again.tile_tags(0),
                          "the cleared tags did not reach disk")
+
+    def test_adding_tags_keeps_what_each_row_already_had(self):
+        """The multi-selection write: `set_tile_tags` would flatten every row to one line, which is the opposite of what adding means."""
+        from amaze.core import library as library_mod
+        prefs_obj = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=prefs_obj)
+        if model.rowCount() < 2:
+            self.skipTest("fixture library has fewer than two rows")
+        model.set_tile_tags(0, "metal")
+        model.set_tile_tags(1, "wood")
+        self.assertTrue(model.add_tile_tags(0, "rough"))
+        self.assertTrue(model.add_tile_tags(1, "rough"))
+        self.assertEqual("metal, rough", model.tile_tags(0))
+        self.assertEqual("wood, rough", model.tile_tags(1),
+                         "adding flattened the row to the shared line")
+        self.assertFalse(model.add_tile_tags(0, "rough"),
+                         "adding a tag it already has must be a no-op")
+        self.assertFalse(model.add_tile_tags(0, ""),
+                         "a blank line must add nothing")
+        self.assertEqual("metal, rough", model.tile_tags(0))
 
     def test_the_tags_field_obeys_the_selection_law(self):
         single = icon_dialog.IconDialog(
@@ -882,13 +904,29 @@ class TileTagsTest(unittest.TestCase):
             None, 0.0, None, tile_name="", tile_name_enabled=False,
             tile_tags="")
         self.assertIsNotNone(multi.tags_edit,
-                             "the field must grey out, not vanish")
-        self.assertFalse(multi.tags_edit.isEnabled())
+                             "a taggable tile grows no Tags field")
+        self.assertTrue(multi.tags_edit.isEnabled(),
+                        "Tags greys on a multi-selection; it must stay "
+                        "editable, like Category and unlike Name")
+        self.assertEqual("", multi.tags_edit.text(),
+                         "a multi-selection must open with an EMPTY tag "
+                         "field - there is no one line that says what "
+                         "several rows carry")
         multi.tags_edit.setText("metal")
         multi._accept()
-        self.assertIsNone(multi.new_tags,
-                          "a greyed field may not rewrite the tags")
+        self.assertEqual("metal", multi.new_tags,
+                         "what is typed on a multi-selection must reach "
+                         "every selected row")
         multi.deleteLater()
+
+        untouched = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="", tile_name_enabled=False,
+            tile_tags="")
+        untouched._accept()
+        self.assertIsNone(untouched.new_tags,
+                          "an untouched multi-selection field must add "
+                          "nothing, never clear every row")
+        untouched.deleteLater()
 
         fileish = icon_dialog.IconDialog(None, 0.0, None)
         self.assertIsNone(fileish.tags_edit,

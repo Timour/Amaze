@@ -2619,7 +2619,7 @@ class MatLibPanel(QtWidgets.QWidget):
         tile_name = None
         if hasattr(model, "set_tile_name"):
             tile_name = model.tile_name(rows[0]) if single else ""
-        tile_tags = None    # the same rule as the name, one row down: a section whose model cannot hold tags shows no field at all
+        tile_tags = None    # a section whose model cannot hold tags shows no field at all; a multi-selection opens EMPTY but stays editable, and what is typed lands on every row
         if hasattr(model, "set_tile_tags"):
             tile_tags = model.tile_tags(rows[0]) if single else ""
         categories = None    # the same rule as the name and the tags: a section whose model cannot hold a category shows no field at all
@@ -2654,9 +2654,12 @@ class MatLibPanel(QtWidgets.QWidget):
                             hasattr(model, "set_tile_name"):
                         model.set_tile_name(rows[0], new_name)
                     new_tags = getattr(dialog, "new_tags", None)
-                    if new_tags is not None and len(rows) == 1 and \
-                            hasattr(model, "set_tile_tags"):    # `is not None`, never truth: "" is a real answer that CLEARS the tags
-                        model.set_tile_tags(rows[0], new_tags)
+                    if new_tags is not None and hasattr(model, "set_tile_tags"):
+                        if len(rows) == 1:
+                            model.set_tile_tags(rows[0], new_tags)    # `is not None`, never truth: "" is a real answer that CLEARS this tile's tags
+                        else:
+                            for row in rows:    # ADDS across a selection: each tile keeps its own tags and gains these, so one shared line cannot flatten them all
+                                model.add_tile_tags(row, new_tags)
                     new_category = getattr(dialog, "new_category", None)
                     if new_category and hasattr(model, "set_tile_category"):
                         for row in rows:    # EVERY selected row, unlike the name and the tags: moving a whole selection to one category is what the field is for
