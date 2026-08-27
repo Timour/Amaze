@@ -411,36 +411,42 @@ class DialogTest(unittest.TestCase):
         self.assertEqual({"name": "layers", "bg": "#5cc9f5",
                           "ink": "dark"}, dialog.spec)
 
-    def test_the_ink_dropdown_reaches_the_choice(self):
+    def test_the_light_icon_toggle_reaches_the_choice(self):
+        """The Lines dropdown became a switch in the overhaul: off is dark lines, on is light."""
         dialog = self._dialog({"name": "box", "bg": "#262626",
                                "ink": "light"})
-        self.assertEqual(
-            "light", dialog.ink_combo.itemData(dialog.ink_combo.currentIndex()),
-            "the dialog did not open on the tile's own ink")
-        dialog.ink_combo.setCurrentIndex(dialog.ink_combo.findData("dark"))
+        self.assertTrue(dialog.light_toggle.isChecked(),
+                        "the dialog did not open on the tile's own ink")
+        dialog.light_toggle.setChecked(False)
         dialog.accept_button.click()
         self.assertEqual("dark", dialog.spec["ink"])
 
-    def test_the_side_column_is_one_width(self):
-        """The preview, the swatch row, Custom Color and the two buttons all measure the same - fixed-size swatches with a trailing stretch left the column visibly ragged."""
-        dialog = self._dialog({"name": "box", "bg": "#ef8878"})
+    def test_the_chip_wears_the_current_colour_and_the_stack_lines_up(self):
+        """The chip beside Custom Color IS the picker and shows the current background; chip, switches and buttons all end flush right."""
+        dialog = self._dialog({"name": "box", "bg": "#e0523a"})
         dialog.show()
         self.addCleanup(dialog.hide)
         QtWidgets.QApplication.processEvents()
 
-        width = dialog.preview.width()
-        gaps = (theme.ui_px(amazetheme.D02_SWATCH_GAP)
-                * (len(dialog._swatches) - 1))
-        swatch_row = sum(s.width() for s in dialog._swatches) + gaps
-        self.assertEqual(width, swatch_row, "the swatch row is ragged")
-        self.assertEqual(    # Custom Color and Accept are both drawn flush right, so their right edges agree whatever the style's fonts do to the rows
-            dialog.custom_button.geometry().right(),
-            dialog.accept_button.geometry().right(),
-            "the toggle row and the button row end at different edges")
+        self.assertIn("#e0523a", dialog.custom_chip.styleSheet(),
+                      "the chip does not wear the current background")
+        dialog._set_bg("#b0d1df")
+        self.assertIn("#b0d1df", dialog.custom_chip.styleSheet(),
+                      "the chip did not follow a preset click")
+        self.assertEqual(theme.ui_px(amazetheme.D02_CHIP_W),
+                         dialog.custom_chip.width())
+        self.assertEqual(    # chip and Accept are both drawn flush right, so their edges agree whatever the style's fonts do
+            dialog.custom_chip.mapTo(dialog, QtCore.QPoint(
+                dialog.custom_chip.width(), 0)).x(),
+            dialog.accept_button.mapTo(dialog, QtCore.QPoint(
+                dialog.accept_button.width(), 0)).x(),
+            "the chip and the button row end at different edges")
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
                          dialog.apply_button.width())
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
                          dialog.accept_button.width())
+        self.assertEqual(4, len(dialog._swatches),
+                         "the overhaul draws FOUR presets plus the chip")
 
     def test_the_search_filters_without_losing_the_choice(self):
         dialog = self._dialog({"name": "layers", "bg": "#5cc9f5"})

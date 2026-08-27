@@ -11,7 +11,6 @@ from amaze.helpers import theme, ui_helpers
 
 CELL = amazetheme.D02_CELL            # one icon button in the chooser grid ▸p/one-design-document
 COLUMNS = amazetheme.D02_COLUMNS      # how wide the grid runs before wrapping
-SIDE_WIDTH = amazetheme.D02_SIDE_WIDTH   # preview, swatches and buttons all measure this, so the side reads as one block
 
 
 class IconDialog(base_dialog.AssetDialog):
@@ -48,17 +47,22 @@ class IconDialog(base_dialog.AssetDialog):
         self._ink = current.get("ink", "") or tile_icons.DEFAULT_INK
         self._buttons_by_name: dict = {}
 
-        gap = theme.ui_px(amazetheme.D02_SIDE_GAP)
-
         content = QtWidgets.QWidget()
-        body = QtWidgets.QHBoxLayout(content)
-        body.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
-        body.setSpacing(theme.ui_px(amazetheme.D02_BODY_GAP))
-        body.addLayout(self._build_chooser(gap), 1)
-        body.addWidget(self._build_side(gap), 0)
+        column = QtWidgets.QVBoxLayout(content)
+        column.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins
+        column.setSpacing(0)                    # every gap below is a DRAWN number, added explicitly
+        column.addLayout(self._build_fields())
+        column.addSpacing(theme.ui_px(amazetheme.D02_TOP_GAP))
+        column.addLayout(self._build_preview_block())
+        column.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        column.addWidget(self._build_search())
+        column.addSpacing(theme.ui_px(amazetheme.D02_GRID_GAP))
+        column.addWidget(self._build_chooser(), 1)   # the ONE part that grows on resize
+        column.addSpacing(theme.ui_px(amazetheme.D02_BUTTON_GAP))
+        column.addLayout(self._build_actions())
         self.set_content(content)
         margins = amazetheme.D02_MARGINS
-        self.finish(ok_cancel=False,   # Accept and Apply live in the side column
+        self.finish(ok_cancel=False,   # Apply and Accept are the drawn pair at the bottom
                     margins=(margins[0] + margins[2]) // 2)
         self._inner_layout.setContentsMargins(
             *(theme.ui_px(m) for m in margins))
@@ -68,19 +72,52 @@ class IconDialog(base_dialog.AssetDialog):
         self.resize(theme.ui_px(amazetheme.D02_FORM_WIDTH),   # the drawn OPENING size; the grid is the part that grows if the user resizes
                     theme.ui_px(amazetheme.D02_FRAME_H))
 
-    def _build_name_row(self, gap: int):
-        """The asset's name above the grid - as drawn; the side column holds Category and Tags."""
-        row = QtWidgets.QHBoxLayout()
-        row.setSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_NAME))
-        self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
-        self.tile_name_edit.setFixedHeight(theme.ui_px(amazetheme.D02_FIELD_H))
-        self.tile_name_edit.setEnabled(self._tile_name_enabled)
-        self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
-            "Rename this tile. The name is what the grid, the "
-            "sidebar count and every search look at."))
-        row.addWidget(self.tile_name_edit, 1)
-        return row
+    def _build_fields(self):
+        """Name, Category and Tags stacked full width - the drawn top form."""
+        field_h = theme.ui_px(amazetheme.D02_FIELD_H)
+        form = QtWidgets.QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.setHorizontalSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
+        form.setVerticalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        form.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                               | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        form.setFieldGrowthPolicy(    # AllNonFixed, so the combo fills like the line edits ▸r/form-layout-defaults
+            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        if self._tile_name is None:
+            self.tile_name_edit = None
+        else:
+            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
+            self.tile_name_edit.setFixedHeight(field_h)
+            self.tile_name_edit.setEnabled(self._tile_name_enabled)
+            self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
+                "Rename this tile. The name is what the grid, the "
+                "sidebar count and every search look at."))
+            form.addRow(amazetheme.LABEL_NAME, self.tile_name_edit)
+        if not self._categories:
+            self.category_combo = None
+        else:
+            self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
+            self.category_combo.setEditable(True)
+            self.category_combo.setFixedHeight(field_h)
+            for name in self._categories:
+                self.category_combo.addItem(name)
+            self.category_combo.setCurrentText(self._tile_category)
+            self.category_combo.setToolTip(ui_helpers.tooltip_text(
+                "Move to this category. Applies to every tile you "
+                "have selected."))
+            form.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
+        if self._tile_tags is None:
+            self.tags_edit = None
+        else:
+            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection: it opens empty and ADDS to every tile
+            self.tags_edit.setFixedHeight(field_h)
+            self.tags_edit.setToolTip(ui_helpers.tooltip_text(
+                "Tags for this tile, separated by commas."
+                if self._tile_name_enabled else
+                "Tags to ADD to every tile you have selected, separated "
+                "by commas. Each tile keeps the tags it already has."))
+            form.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
+        return form
 
     def _build_search(self):
         """The icon filter, drawn at the bottom under the grid."""
@@ -91,10 +128,8 @@ class IconDialog(base_dialog.AssetDialog):
         self.search.textChanged.connect(self._apply_filter)
         return self.search
 
-    def _build_chooser(self, gap: int):
-        column = QtWidgets.QVBoxLayout()
-        column.setSpacing(gap // 2)
-
+    def _build_chooser(self):
+        """The icon grid alone - the search sits ABOVE it since the overhaul, in the column that owns both."""
         chooser_bg = self.palette().color(   # the dialog's OWN window colour, so the grid is not a light island in it
             QtGui.QPalette.ColorRole.Window).name()
         icon_ink = theme.color_hex("text_bright")
@@ -140,72 +175,71 @@ class IconDialog(base_dialog.AssetDialog):
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
                            % chooser_bg)
         area.setWidget(holder)
-        area.setMinimumHeight(theme.ui_px(CELL * 8))    # HEIGHT only: the drawn 319 column is what the dialog's width leaves, and a width minimum here forced the whole window past the drawing
+        area.setMinimumHeight(theme.ui_px(CELL * 4))    # HEIGHT only, a floor: the drawn 250 comes from the frame height, and a width minimum here once forced the whole window past the drawing
         self._chooser_area = area
-        out = QtWidgets.QVBoxLayout()
-        out.setSpacing(theme.ui_px(amazetheme.D02_COL_GAP))
-        if self._tile_name is not None:
-            out.addLayout(self._build_name_row(gap))
-        else:
-            self.tile_name_edit = None
-        out.addLayout(column, 1)
-        column.setSpacing(theme.ui_px(amazetheme.D02_COL_GAP))
-        column.addWidget(area, 1)
-        column.addWidget(self._build_search())   # under the GRID it filters, not beside the buttons - as drawn
-        return out
+        return area
 
-    def _build_side(self, gap: int):
-        """The right-hand column: Category and Tags, preview, swatches, the Custom Icon toggle, Lines, buttons."""
-        side = theme.ui_px(SIDE_WIDTH)
-        panel = QtWidgets.QWidget()
-        panel.setFixedWidth(side)         # the ONE width preview, swatches and buttons all fill, so the column reads as a block
-        column = QtWidgets.QVBoxLayout(panel)
-        column.setContentsMargins(0, 0, 0, 0)
-        column.setSpacing(gap // 2)
-
-        field_h = theme.ui_px(amazetheme.D02_FIELD_H)
-        top = QtWidgets.QFormLayout()
-        top.setContentsMargins(0, 0, 0, 0)
-        top.setHorizontalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        top.setVerticalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        top.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
-                              | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        top.setFieldGrowthPolicy(    # AllNonFixed, so the combo fills like the line edit ▸r/form-layout-defaults
-            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        if not self._categories:
-            self.category_combo = None
-        else:
-            self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
-            self.category_combo.setEditable(True)
-            self.category_combo.setFixedHeight(field_h)
-            for name in self._categories:
-                self.category_combo.addItem(name)
-            self.category_combo.setCurrentText(self._tile_category)
-            self.category_combo.setToolTip(ui_helpers.tooltip_text(
-                "Move to this category. Applies to every tile you "
-                "have selected."))
-            top.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
-        if self._tile_tags is None:
-            self.tags_edit = None
-        else:
-            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection: it opens empty and ADDS to every tile
-            self.tags_edit.setFixedHeight(field_h)
-            self.tags_edit.setToolTip(ui_helpers.tooltip_text(
-                "Tags for this tile, separated by commas."
-                if self._tile_name_enabled else
-                "Tags to ADD to every tile you have selected, separated "
-                "by commas. Each tile keeps the tags it already has."))
-            top.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
-        if top.rowCount():
-            column.addLayout(top)
+    def _build_preview_block(self):
+        """The preview square with the switch stack beside it - Custom Icon, Light Icon, the current-colour chip, the four presets. The stack's fixed heights sum to the preview's own 150."""
+        block = QtWidgets.QHBoxLayout()
+        block.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
 
         self.preview = QtWidgets.QLabel()
-        self.preview.setFixedSize(side, side)
+        self.preview.setFixedSize(theme.ui_px(amazetheme.D02_PREVIEW),
+                                  theme.ui_px(amazetheme.D02_PREVIEW))
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        column.addWidget(self.preview)
-        column.addSpacing(theme.ui_px(3))    # the swatch row sits 9 under the preview, 3 past the column rhythm
+        block.addWidget(self.preview,
+                        alignment=QtCore.Qt.AlignmentFlag.AlignTop)
 
-        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the five share exactly the column width
+        stack = QtWidgets.QVBoxLayout()
+        stack.setSpacing(0)
+
+        def switch_row(label_text, tooltip):
+            row = QtWidgets.QHBoxLayout()
+            row.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
+            label = QtWidgets.QLabel(label_text)
+            label.setMinimumWidth(1)    # the label yields before the row overflows the column under a wide style's font
+            row.addWidget(label)        # labels sit LEFT, the slack before the switch
+            row.addStretch(1)
+            toggle = ui_helpers.ToggleSwitch()
+            toggle.setToolTip(ui_helpers.tooltip_text(tooltip))
+            row.addWidget(toggle)
+            return row, toggle
+
+        row, self.custom_toggle = switch_row(
+            amazetheme.LABEL_CUSTOM_ICON,
+            "Off shows the tile's own thumbnail; on uses the icon "
+            "chosen here.")
+        self.custom_toggle.setChecked(self._has_icon)
+        stack.addLayout(row)
+        stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+
+        row, self.light_toggle = switch_row(
+            amazetheme.LABEL_LIGHT_ICON,
+            "Draws the icon's lines light, for a dark background.")
+        self.light_toggle.setChecked(self._ink == "light")
+        self.light_toggle.toggled.connect(self._set_ink_light)
+        stack.addLayout(row)
+        stack.addSpacing(theme.ui_px(amazetheme.D02_SECTION_GAP))
+
+        colour_row = QtWidgets.QHBoxLayout()
+        colour_row.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
+        colour_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_COLOR)
+        colour_label.setMinimumWidth(1)
+        colour_row.addWidget(colour_label)
+        colour_row.addStretch(1)
+        self.custom_chip = QtWidgets.QToolButton()   # the chip IS the picker: it wears the current colour and opens Houdini's picker ▸r/houdini-colour-picker
+        self.custom_chip.setFixedSize(theme.ui_px(amazetheme.D02_CHIP_W),
+                                      theme.ui_px(amazetheme.D02_SWATCH_H))
+        self.custom_chip.setToolTip(ui_helpers.tooltip_text(
+            "The current background. Click to pick any color, with "
+            "Houdini's color picker."))
+        self.custom_chip.clicked.connect(self._pick_custom)
+        colour_row.addWidget(self.custom_chip)
+        stack.addLayout(colour_row)
+        stack.addSpacing(theme.ui_px(amazetheme.D02_PRESET_GAP))
+
+        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the four share exactly the stack width
         swatches.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         self._swatches = []
         for label, colour in tile_icons.PRESETS:
@@ -222,71 +256,42 @@ class IconDialog(base_dialog.AssetDialog):
                 lambda _checked=False, picked=colour: self._set_bg(picked))
             swatches.addWidget(swatch)
             self._swatches.append(swatch)
-        column.addLayout(swatches)
+        stack.addLayout(swatches)
+        stack.addStretch(1)
+        block.addLayout(stack, 1)
+        self._refresh_chip()
+        return block
 
-        toggle_row = QtWidgets.QHBoxLayout()   # Custom Icon OFF = the tile's own thumbnail; ON = the chooser applies
-        toggle_row.setSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        toggle_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_ICON)
-        toggle_label.setMinimumWidth(1)    # the label yields before the row overflows the column - a wide style's font otherwise shoves the fixed-size button past the drawn edge
-        toggle_row.addWidget(toggle_label)
-        toggle_row.addStretch(1)    # the slack sits BETWEEN label and switch, as drawn
-        self.custom_toggle = ui_helpers.ToggleSwitch()
-        self.custom_toggle.setChecked(self._has_icon)
-        self.custom_toggle.setToolTip(ui_helpers.tooltip_text(
-            "Off shows the tile's own thumbnail; on uses the icon "
-            "chosen here."))
-        toggle_row.addWidget(self.custom_toggle)
-        self.custom_button = QtWidgets.QPushButton(
-            amazetheme.BTN_CUSTOM_COLOR)
-        self.custom_button.setFixedSize(theme.ui_px(amazetheme.D02_CUSTOM_W),
-                                        field_h)
-        self.custom_button.setToolTip(ui_helpers.tooltip_text(
-            "Pick any color, with Houdini's color picker."))
-        self.custom_button.clicked.connect(self._pick_custom)
-        toggle_row.addWidget(self.custom_button)
-        column.addLayout(toggle_row)
+    def _refresh_chip(self) -> None:
+        self.custom_chip.setStyleSheet(
+            "background:%s; border:1px solid #222;" % self._bg)
 
-        fields = QtWidgets.QFormLayout()   # ink sits next to the background it must work against - dark on dark is an invisible icon
-        fields.setContentsMargins(0, 0, 0, 0)
-        fields.setHorizontalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        fields.setVerticalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
-        fields.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
-                                 | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        fields.setFieldGrowthPolicy(    # AllNonFixed, so the combo fills to the drawn right edge ▸r/form-layout-defaults
-            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
-        self.ink_combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
-        self.ink_combo.setFixedHeight(field_h)
-        self.ink_combo.addItem("Dark", "dark")
-        self.ink_combo.addItem("Light", "light")
-        self.ink_combo.setCurrentIndex(
-            max(self.ink_combo.findData(self._ink), 0))
-        self.ink_combo.currentIndexChanged.connect(self._set_ink)
-        fields.addRow(amazetheme.LABEL_LINES, self.ink_combo)
-        column.addLayout(fields)
-        column.addStretch(1)
+    def _set_ink_light(self, on: bool) -> None:
+        self._ink = "light" if on else "dark"
+        self._refresh_preview()
 
+    def _build_actions(self):
         actions = QtWidgets.QHBoxLayout()   # Apply commits and stays open, Accept commits and closes - Houdini's own pair (ref ▸ windows/optype); closing IS cancelling, so there is no Cancel
         actions.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         actions.addStretch(1)               # both drawn flush RIGHT at a fixed size, not spanning the column
         self.apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
         self.apply_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
-                                       field_h)
+                                       theme.ui_px(amazetheme.D02_FIELD_H))
         self.apply_button.clicked.connect(self._apply)
         actions.addWidget(self.apply_button)
 
         self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_ACCEPT)
         self.accept_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
-                                        field_h)
+                                        theme.ui_px(amazetheme.D02_FIELD_H))
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)
-        column.addLayout(actions)
-        return panel
+        return actions
 
     def _set_custom_enabled(self, on: bool) -> None:
         """The chooser follows the toggle; Name, Category and Tags do not - they are the asset's, not the icon's. The preview stays live either way: off, it shows the tile's current face."""
-        for widget in (self._chooser_area, self.search, self.custom_button,
-                       self.ink_combo, *self._swatches):
+        for widget in (self._chooser_area, self.search, self.custom_chip,
+                       self.light_toggle, *self._swatches):
             widget.setEnabled(bool(on))
         self._refresh_preview()
 
@@ -336,12 +341,7 @@ class IconDialog(base_dialog.AssetDialog):
     def _set_bg(self, colour: str) -> None:
         if tile_icons.is_valid_colour(colour):
             self._bg = colour
-            self._refresh_preview()
-
-    def _set_ink(self, index: int) -> None:
-        token = self.ink_combo.itemData(index)
-        if token:
-            self._ink = str(token)
+            self._refresh_chip()
             self._refresh_preview()
 
     def _pick_custom(self) -> None:
