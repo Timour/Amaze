@@ -3872,9 +3872,11 @@ class MatLibPanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                for row, node in existing:    # an overwrite neither inserts nor removes rows, so the collected row indexes stay valid through the loop
+                for row, node in existing:    # an overwrite neither inserts nor removes rows, so the collected row indexes stay valid through the loop - which is only true while the pump cannot deliver a click that removes one
                     self._update_existing_asset(row, node)
-                    QtWidgets.QApplication.processEvents()
+                    QtWidgets.QApplication.processEvents(
+                        QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+                    )
                 if new_nodes:
                     self.get_material_info_user(new_nodes)
                 return
@@ -3955,7 +3957,9 @@ class MatLibPanel(QtWidgets.QWidget):
                                 % asset.name())
                 continue
             renderers.append(renderer)
-            QtWidgets.QApplication.processEvents()    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
+            QtWidgets.QApplication.processEvents(    # lets the fresh tile PAINT before the next material's blocking render starts: with add_asset emitting real row-insert signals, this flush is what makes a long multi-save appear one material at a time
+                QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
+            )
 
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
