@@ -77,6 +77,14 @@ def api_owner(owner):
     return "api.%s/repos/%s" % (host, name) if host and name else None
 
 
+def raw_owner(owner):
+    """The same account prefix in the raw-content spelling, or None - a package-feed constant is our own url as much as the origin is. ▸p/name-gate"""
+    if not owner:
+        return None
+    host, _, name = owner.partition("/")
+    return "raw.githubusercontent.com/%s" % name if host == "github.com" and name else None
+
+
 def sanitize(line, allow_credit):
     """A line with our own url, owner and invisible marks removed. ▸p/name-gate"""
     line = INVISIBLE.sub("", line)
@@ -84,7 +92,7 @@ def sanitize(line, allow_credit):
     if url:
         line = re.sub(r"[a-z+]*://" + re.escape(url) + r"\S*", "", line)
         line = re.sub(re.escape(url) + r"\S*", "", line)
-    for owner in (sanitize.owner, sanitize.api_owner):
+    for owner in (sanitize.owner, sanitize.api_owner, sanitize.raw_owner):
         if owner:
             line = re.sub(re.escape(owner) + r"(?![A-Za-z0-9._-])", "", line)
     if allow_credit and CREDIT.match(line):
@@ -95,6 +103,7 @@ def sanitize(line, allow_credit):
 sanitize.url = None
 sanitize.owner = None
 sanitize.api_owner = None
+sanitize.raw_owner = None
 
 
 def scan_text(text, pattern, allow_credit):
@@ -496,6 +505,7 @@ def main():
     if sanitize.url and sanitize.url.count("/") >= 2:
         sanitize.owner = "/".join(sanitize.url.split("/")[:2])
         sanitize.api_owner = api_owner(sanitize.owner)
+        sanitize.raw_owner = raw_owner(sanitize.owner)
 
     if len(sys.argv) > 2 and sys.argv[1] == "--message":
         path = sys.argv[2]
