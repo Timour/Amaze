@@ -500,6 +500,13 @@ class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         return dialog
 
+    def test_a_single_selection_opens_showing_that_tile_s_own_tags(self):
+        """Through the PANEL's door, not the dialog's constructor: the constructor is already covered, and an empty field on a tagged tile is the failure being defended against."""
+        self.model.set_tile_tags(2, "granite, polished")
+        dialog = self._open_for(2)
+        self.assertEqual("granite, polished", dialog.tags_edit.text(),
+                         "a tagged tile opened with an EMPTY Tags field")
+
     def test_the_icon_lands_on_the_asset_that_was_SELECTED(self):
         target_id = str(self.model.assets[2].mat_id)
         bystander_id = str(self.model.assets[1].mat_id)

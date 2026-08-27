@@ -220,7 +220,6 @@ class IconDialog(base_dialog.AssetDialog):
             self.tags_edit = None
         else:
             self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection, like Category and unlike Name: tagging a whole selection at once is the point of it
-            self.tags_edit.setPlaceholderText(amazetheme.PLACEHOLDER_TAGS)
             self.tags_edit.setToolTip(ui_helpers.tooltip_text(
                 "Tags for this tile, separated by commas. What is in "
                 "the field replaces the tags it already has."

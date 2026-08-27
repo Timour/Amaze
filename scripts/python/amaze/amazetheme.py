@@ -87,7 +87,6 @@ LABEL_LINES = "Lines"
 LABEL_TAGS = "Tags"
 LABEL_CATEGORY = "Category"
 LABEL_NAME = "Name"
-PLACEHOLDER_TAGS = "metal, rough"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"
 
