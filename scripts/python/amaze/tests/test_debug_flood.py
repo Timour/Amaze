@@ -443,6 +443,18 @@ class TestExcepthookSurvivesReload(unittest.TestCase):
             "the crash recorder chained to itself after a panel reopen - "
             "the next uncaught exception recurses to RecursionError")
 
+    def test_the_flood_counters_survive_a_reopen_together(self):
+        """All three or none: a count reset against a persisted `recorded` writes a NEGATIVE suppressed figure into the log."""
+        self.addCleanup(debug._crash_counts.clear)
+        self.addCleanup(debug._crash_recorded.clear)
+        debug._crash_counts["k"] = 100
+        debug._crash_recorded["k"] = 7
+        self._reopen_the_panel()
+        self.assertEqual(
+            debug._crash_counts.get("k"), 100,
+            "the count reset on reload while its companions persisted - "
+            "the flood accounting disagrees with itself")
+
     def test_a_crash_still_records_after_a_reopen(self):
         """The sentinel is planted BEFORE the first install, or it overwrites the self-reference this detects."""
         forwarded = []

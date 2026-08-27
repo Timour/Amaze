@@ -37,7 +37,7 @@ _path = os.path.join(DEFAULT_DIR, DEFAULT_NAME)
 _session = ""
 _seq = 0
 _excepthook_installed = globals().get("_excepthook_installed", False)
-_crash_counts: dict = {}
+_crash_counts: dict = globals().get("_crash_counts", {})    # reload-persistent like its two companions below, or the three flood counters disagree after a dev reload and `suppressed` goes negative
 
 FLOOD_VERBATIM = 5
 FLOOD_MARKER_EVERY = 1000

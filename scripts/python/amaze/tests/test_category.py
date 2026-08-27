@@ -99,18 +99,19 @@ class TestCategories(unittest.TestCase):
 
         self.assertEqual(result, "Cat1")
 
-    def test_reload(self):
-        """Test reload method reloads categories from database."""
-        model = self.category_module.Categories(self.mock_prefs_instance)
-        self.mock_db_instance.load.reset_mock()
+    def test_a_junk_row_does_not_abort_the_counts(self):
+        """The model side skips non-dict rows; the sidebar's count pass walks the SAME document and must keep the same guard."""
         self.mock_db_instance.load.return_value = {
-            "categories": ["Reloaded1", "Reloaded2"]
+            "categories": ["Cat1"],
+            "assets": [
+                {"categories": ["Cat1"], "renderer": "Karma"},
+                "junk left by a hand edit",
+                {"categories": ["Cat1"], "renderer": "Karma"},
+            ],
         }
-
-        model.reload()
-
-        self.mock_db_instance.load.assert_called_once_with("/mock/path")
-        self.assertEqual(model._categories, ["Reloaded1", "Reloaded2"])
+        model = self.category_module.Categories(self.mock_prefs_instance)
+        self.assertEqual(2, model._category_count("Cat1"))
+        self.assertEqual(2, model._category_count("_All"))
 
     def test_switch_model_data(self):
         """Test switch_model_data reloads preferences and uses reload_with_path."""

@@ -135,6 +135,11 @@ ASSET_FILE_OWNERS = ("library.json", "cops.json")
 ID_CLAIMING_DATABASES = ("library.json", "cops.json", "code.json")
 
 
+def row_id(row: dict) -> str:
+    """The id a stored row claims, `mat_id` as the fallback spelling - the ONE home for reading a row's identity, shared with repair's survey."""
+    return str(row.get("id", row.get("mat_id", "")))
+
+
 def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
     """Returns `(by_file, unreadable)`: asset ids claimed per readable database in `directory`, plus filenames that exist but will not read; absent files appear in neither (newness is `absent_but_known` policy) - the one home for id ownership over the shared asset folders."""
     by_file, unreadable = {}, []
@@ -159,7 +164,7 @@ def ids_claimed_by(directory: str, filenames: tuple = ()) -> tuple:
                 debug.event("database", "skipped a non-record entry",
                             file=full, entry=repr(asset)[:80])
                 continue
-            found.add(str(asset.get("id", asset.get("mat_id", ""))))
+            found.add(row_id(asset))
         by_file[filename] = found
     return (by_file, unreadable)
 
@@ -329,7 +334,6 @@ class DatabaseConnector:
         try:
             with open(self._path + self._filename, "rb") as handle:
                 raw = handle.read()
-            import hashlib
             return (len(raw), hashlib.sha256(raw).hexdigest())
         except OSError:
             return None
@@ -642,7 +646,6 @@ class DatabaseConnector:
             branding.LIBRARY_FORMAT)
         serialised_stat = None
         try:
-            import hashlib
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
             serialised_stat = (len(serialised),
                                hashlib.sha256(serialised).hexdigest())
@@ -815,6 +818,8 @@ class DatabaseConnector:
                     getattr(self, "_format_ahead", False),
                     getattr(self, "_format_reported", False))
         self._data = None
+        self._disk_stat = None    # the OLD library's stat and baseline must not survive into the new load - the normalisation save inside load() would merge the new file against them, with itself
+        self._loaded_ids = set()
         self._write_blocked = False
         self._block_reported = False
         self._migration_incomplete = False

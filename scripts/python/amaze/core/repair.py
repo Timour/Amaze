@@ -110,7 +110,7 @@ def _survey_one(directory: str, filename: str) -> dict:
         return entry
     for row in (document.get("assets") or []):
         if isinstance(row, dict):
-            entry["ids"].add(str(row.get("id", row.get("mat_id", ""))))
+            entry["ids"].add(database.row_id(row))
     entry["state"] = "empty" if not facts["count"] else "ok"
     return entry
 

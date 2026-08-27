@@ -38,12 +38,6 @@ class Categories(QtCore.QAbstractListModel):
     ) -> int:
         return len(self._categories)
 
-    def reload(self):
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        self._data = db.load(self.preferences.dir)
-        self._categories = self._data["categories"]
-        self.drop_count_cache()
-
     def data(
         self, index: QtCore.QModelIndex | QtCore.QPersistentModelIndex, role: int = 0
     ) -> Any:
@@ -90,6 +84,8 @@ class Categories(QtCore.QAbstractListModel):
             counts = {}
             total = 0
             for asset in self._data.get("assets", []):
+                if not isinstance(asset, dict):    # the model side skips junk rows rather than abort (library.py) - the count pass walks the same document
+                    continue
                 if not self._asset_matches_renderer(asset):
                     continue
                 total += 1

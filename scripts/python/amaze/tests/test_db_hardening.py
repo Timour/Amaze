@@ -2675,6 +2675,30 @@ class ASnapshotOfTheWrongShapeDoesNotCostTheLoad(_Case):
             "a genuine shrink went unreported: %r" % (notes,))
 
 
+class ALibrarySwitchDropsTheOldBaseline(_Case):
+
+    def test_the_switch_does_not_merge_the_new_file_with_itself(self):
+        """The normalisation save inside load() must not run against the PREVIOUS library's disk stat - the merge then unions the new file with itself and re-appends what the normalisation just stripped."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+
+        other = tempfile.mkdtemp(prefix="amaze_dbhard_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        legacy = self._document(count=1)
+        legacy["categories"] = ["All", "Wood"]
+        other_path = os.path.join(other, self.FILENAME)
+        self._write(legacy, path=other_path)
+
+        db.reload_with_path(other + os.sep)
+
+        cats = self._on_disk(path=other_path)["categories"]
+        self.assertNotIn(
+            "All", cats,
+            "the retired plain category came back - the switch save "
+            "merged the new library against the old baseline: %s" % cats)
+        self.assertIn("_All", cats)
+
+
 class TheMembershipBaselineFollowsEverySave(_Case):
     """The baseline tells our deletion from their addition, so every save moves it."""
 
