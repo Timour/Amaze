@@ -451,5 +451,38 @@ class TestTheReachIsTheHostsOwn(DropTargetTest):
             "snap radius reaches a neighbour's stubs")
 
 
+class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
+    """A rename left `splice_preview` citing a module global that no longer exists, and NameError is not in its catch list - a drag over a wire raised."""
+
+    def test_the_splice_preview_reaches_its_shapes(self):
+        class _Editor:
+            def itemOutputPos(self, item, index):
+                return hou.Vector2(0, 0)
+
+            itemInputPos = itemOutputPos
+
+            def itemOutputDir(self, item, index):
+                return hou.Vector2(0, 1)
+
+            itemInputDir = itemOutputDir
+
+        class _Connection:
+            def inputItem(self):
+                return object()
+
+            outputItem = inputItem
+
+            def inputItemOutputIndex(self):
+                return 0
+
+            inputIndex = inputItemOutputIndex
+
+        shapes = dragengine.splice_preview(
+            _Editor(), _Connection(), hou.Vector2(1.0, 1.0), ())
+        self.assertEqual(2, len(shapes),
+                         "the preview built no wires - its body raised "
+                         "before reaching them")
+
+
 if __name__ == "__main__":
     unittest.main()

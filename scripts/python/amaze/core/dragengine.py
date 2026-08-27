@@ -410,7 +410,7 @@ def splice_preview(editor, connection, position, shapes=()) -> tuple:
             upstream, connection.inputItemOutputIndex())
         in_pos = editor.itemInputPos(downstream, connection.inputIndex())
         in_dir = editor.itemInputDir(downstream, connection.inputIndex())
-        half = hou.Vector2(0.0, GHOST_SIZE[1] / 2.0)
+        half = hou.Vector2(0.0, NEW_NODE_HALF[1])    # already a HALF size, the host's own
         top = position + half
         bottom = position - half
         return tuple(shapes) + (
