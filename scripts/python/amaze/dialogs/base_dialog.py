@@ -103,6 +103,7 @@ class AssetDialog(QtWidgets.QDialog):
                 layout.setSizeConstraint(
                     QtWidgets.QLayout.SizeConstraint.SetFixedSize)
             self.setLayout(layout)
+            self._pin_label_column(_m)
             return
 
         from amaze.helpers import ui_helpers    # HERE, not at module scope: `ui_helpers` is the widget library and importing it at the top makes the shell depend on it for every dialog, band or no band
@@ -116,6 +117,22 @@ class AssetDialog(QtWidgets.QDialog):
             outer.setSizeConstraint(
                 QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(outer)
+        self._pin_label_column(_m)
+
+    def _pin_label_column(self, margin: int) -> None:
+        """Pin every label to the slack the drawn numbers leave, clipping a long one as Houdini's own panes do - unpinned, a label 1px past the slack outgrows the strut and the whole family widens; AFTER setLayout, because `horizontalSpacing` answers -1 until the style resolves ▸p/save-dialog-rows"""
+        if not (self.FORM_WIDTH and self.FIELD_WIDTH):
+            return
+        slack = (theme.ui_px(self.FORM_WIDTH) - 2 * margin
+                 - self._form.horizontalSpacing()
+                 - theme.ui_px(self.FIELD_WIDTH))
+        if slack <= 0:
+            return
+        for row in range(self._form.rowCount()):
+            item = self._form.itemAt(
+                row, QtWidgets.QFormLayout.ItemRole.LabelRole)
+            if item is not None and item.widget() is not None:
+                item.widget().setFixedWidth(slack)
 
     def _on_accept(self) -> None:
         """Override to read fields, then call super()._on_accept()."""
