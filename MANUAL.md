@@ -415,16 +415,16 @@ there is nothing to render, and a grid of identical fallback tiles tells
 you nothing about what is in it.
 
 Right-click any tile ▸ **Customize**. The **Custom Icon** switch is the
-door: off, the tile shows its own thumbnail; on, pick one of 287
-Feather icons on a background colour — five presets, or any colour via
-**Custom Color**. The preview shows the actual tile, because the icon
-and the colour only make sense together. **Lines** switches the symbol
-between dark and light, for when the background needs it. The dialog
-also carries the asset's **Name**, its **Category**, and its **Tags**
-— on a multi-selection, Category moves every selected tile and Tags
-ADDS to what each tile already has. **Apply** commits and stays open,
-**Accept** commits and closes — closing the window any other way
-changes nothing.
+door: off, the tile keeps its own thumbnail; on, pick one of 287
+Feather icons on a background colour — four presets, or click the
+colour chip beside **Custom Color** to pick any colour. The preview
+shows the actual tile, because the icon and the colour only make sense
+together. **Light Icon** switches the symbol between dark and light,
+for when the background needs it. The dialog also carries the asset's
+**Name**, its **Category**, and its **Tags** — on a multi-selection,
+Category moves every selected tile and Tags ADDS to what each tile
+already has. **Apply** commits and stays open, **Accept** commits and
+closes — closing the window any other way changes nothing.
 
 - Works on **every section that has tiles** — Material, Node, Code and
   File, scenes included. Color keeps its own swatches.
