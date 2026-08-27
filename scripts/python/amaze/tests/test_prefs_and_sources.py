@@ -525,6 +525,71 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "a failed extract poisons the package folder permanently")
 
 
+class ARemapOnAColourChainStillRemaps(unittest.TestCase):
+    """mtlxremap and mtlxclamp are signature-polymorphic: wiring a color3 source flips the LIVE parm to the `_color3` variant, so the range values must go through `_set_poly_parm` or they land on the inert plain parm and the remap renders as a no-op."""
+
+    def test_the_range_values_reach_the_live_parm_variant(self):
+        from amaze.render import material_converter as mc
+        parent = hou.node("/mat")
+        if parent is None:
+            self.skipTest("no /mat context in this build")
+        dest = parent.createNode("subnet")
+        self.addCleanup(dest.destroy)
+        image = dest.createNode("mtlximage")
+        image.parm("signature").set("color3")
+
+        class _Parm:
+            def __init__(self, value):
+                self._value = value
+
+            def eval(self):
+                return self._value
+
+        class _Type:
+            def name(self):
+                return "redshift::RSMathRange"
+
+        class _RS:
+            def type(self):
+                return _Type()
+
+            def name(self):
+                return "range1"
+
+            def path(self):
+                return "/stub/range1"
+
+            def inputs(self):
+                return (object(),)
+
+            def inputNames(self):
+                return ("input",)
+
+            def parm(self, name):
+                return {"old_min": _Parm(0.25), "old_max": _Parm(0.75),
+                        "new_min": _Parm(0.1), "new_max": _Parm(0.9),
+                        "clamp": _Parm(1)}.get(name)
+
+        report = mc.ConversionReport("range fixture")
+        with mock.patch.object(mc, "convert_node", return_value=image):
+            out = mc.convert_math_range(_RS(), dest, report)
+
+        remap = next(n for n in dest.children()
+                     if n.type().name() == "mtlxremap")
+        self.assertEqual("color3", remap.parm("signature").evalAsString(),
+                         "premise: wiring the color3 image flipped the "
+                         "remap's signature")
+        self.assertEqual(
+            (0.25, 0.25, 0.25), tuple(remap.parmTuple("inlow_color3").eval()),
+            "old_min never reached the LIVE inlow variant - the remap "
+            "renders with its identity defaults")
+        self.assertEqual("mtlxclamp", out.type().name(),
+                         "premise: clamp on appends an mtlxclamp")
+        self.assertEqual(
+            (0.1, 0.1, 0.1), tuple(out.parmTuple("low_color3").eval()),
+            "new_min never reached the clamp's LIVE low variant")
+
+
 class ConvertNodeCarriesTheTargetInput(unittest.TestCase):
     """The dispatcher hands `target_input` to every converter whose signature takes it, so a texture nested behind one still converts with its role."""
 
@@ -994,6 +1059,32 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
                          "until picked is the ASK rule")
         self.assertFalse(dlg._btn_edit_user.isEnabled())
         self.assertFalse(dlg._btn_delete_user.isEnabled())
+
+
+class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):
+    """The switch is read from the policy file ONCE, at construction - a library switch under the open dialog must re-read it, or the switch shows the previous library's policy."""
+
+    def test_switching_libraries_rereads_the_overwrite_policy(self):
+        from amaze.core import library_policy
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        library_policy.set_allow_overwrite(p.dir, False)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        self.assertFalse(dlg._cbx_allow_overwrite.isChecked(),
+                         "premise: the first library forbids overwrite")
+        folder = test_support.scratch_dir("amaze_policy_switch_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        ok, _ = prefs_mod.seed_test_folder(folder)
+        self.assertTrue(ok, "premise: the test folder seeds")
+        p.test_dir = folder
+        p.test_mode = True
+        dlg._apply_test_mode()
+        self.assertTrue(
+            dlg._cbx_allow_overwrite.isChecked(),
+            "the switch still shows the PREVIOUS library's policy - a "
+            "library with no policy.json allows overwrite")
 
 
 class TheCacheWipeCannotBeSuppressed(unittest.TestCase):

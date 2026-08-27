@@ -808,6 +808,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._panel.set_library()
         self.line_workdir.setText(self._prefs.dir)
         self._reload_library_users()    # the users live IN the library, so the open picker is otherwise a list of the PREVIOUS one's people until Preferences is reopened
+        self._sync_overwrite_switch()   # and so does policy.json
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
@@ -873,6 +874,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         if self._panel is not None:
             self._panel.switch_all_models()   # NOT open(): that reloads the library already bound, so the connectors keep serving the previous one and every save is refused
         self._reload_library_users()    # a different library means different people, and the picker is open in front of them
+        self._sync_overwrite_switch()
+
+    def _sync_overwrite_switch(self) -> None:
+        """Re-read the overwrite switch from the library NOW bound - policy.json travels with the library, not with these preferences."""
+        self._cbx_allow_overwrite.blockSignals(True)
+        self._cbx_allow_overwrite.setChecked(
+            library_policy.allow_overwrite(self._prefs.dir))
+        self._cbx_allow_overwrite.blockSignals(False)
 
     def clear_texture_cache(self) -> None:
         """Delete every cached image and geometry thumbnail; they regenerate on the next browse. Scene CAPTURES are untouched - hand-framed, not regenerable, and stored under config_root for that reason."""
