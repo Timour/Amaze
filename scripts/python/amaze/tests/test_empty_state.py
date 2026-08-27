@@ -191,6 +191,26 @@ class TheFavouritesBlankIsItsOwnBlank(unittest.TestCase):
             "the star just set is invisible to the discriminator, so "
             "the favourites blank would claim no favourites exist")
 
+    def test_unstarring_a_multi_selection_lands_on_the_selected_rows(self):
+        """Under favourites-only, the first flip REMOVES its row from the proxy, so proxy indexes mapped inside the loop land on the wrong rows - every selected row must be mapped to source BEFORE any flip."""
+        self._unstar_everything()
+        self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
+                                          self.proxy.index(1, 0)])
+        QtWidgets.QApplication.processEvents()
+        self._favourites_only(True)
+        self.addCleanup(self._favourites_only, False)
+        self.assertEqual(2, self.proxy.rowCount(),
+                         "premise: two favourites showing")
+        self.panel.grid_toggle_favourite([self.proxy.index(0, 0),
+                                          self.proxy.index(1, 0)])
+        QtWidgets.QApplication.processEvents()
+        left = sum(1 for r in range(self.source.rowCount())
+                   if self.source.index(r, 0).data(self.role))
+        self.assertEqual(0, left,
+                         "unstarring both favourites left %d starred - "
+                         "the loop flipped through stale proxy rows"
+                         % left)
+
     def test_the_show_all_verb_alone_restores_the_rows(self):
         self._unstar_everything()
         before = self.proxy.rowCount()
