@@ -747,7 +747,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   records an incomplete chain, and is refused rather than stamped as
   current.
 - **`format` — whether this build may WRITE at all**
-  (`branding.LIBRARY_FORMAT`, **2**). A library stamped ahead of this
+  (`branding.LIBRARY_FORMAT`, **3** since the location-ID conversion). A library stamped ahead of this
   build opens read-only and points at the updater. It is the general
   answer to an old build meeting a new library, which is why per-field
   compatibility shims are not written.
