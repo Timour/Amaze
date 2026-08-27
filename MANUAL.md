@@ -49,8 +49,10 @@ archive per asset (`.mat` + `.interface`). These are plain Houdini
 files: **if Amaze ever dies, your assets still open in vanilla
 Houdini.**
 
-There is also an **Amaze shelf** carrying three tools: **Amaze** opens
-the panel, **Capture** takes a preview of the open scene, and
+There is also an **Amaze shelf** carrying four tools: **Amaze** opens
+the panel, **Capture** takes a preview of the open scene, **Updates**
+asks the release page whether a newer Amaze exists and installs it if
+you say so (nothing is ever checked or downloaded on its own), and
 **Repair** is the recovery tool described under Housekeeping — that one
 is on the shelf rather than in the panel because it has to work when
 the panel does not.
@@ -412,20 +414,25 @@ Not everything has a picture. A LOP setup, a DOP network, a snippet —
 there is nothing to render, and a grid of identical fallback tiles tells
 you nothing about what is in it.
 
-Right-click any tile ▸ **Customize** and pick one of 287 Feather icons
-on a background colour: four presets, or any colour you like via
+Right-click any tile ▸ **Customize**. The **Custom Icon** switch is the
+door: off, the tile shows its own thumbnail; on, pick one of 287
+Feather icons on a background colour — five presets, or any colour via
 **Custom Color**. The preview shows the actual tile, because the icon
-and the colour only make sense together. **Icon Color** switches the
-symbol between dark and light, for when the background needs it.
-**Accept** sets it, **Remove** takes it away — closing the window
+and the colour only make sense together. **Lines** switches the symbol
+between dark and light, for when the background needs it. The dialog
+also carries the asset's **Name**, its **Category**, and its **Tags**
+— on a multi-selection, Category moves every selected tile and Tags
+ADDS to what each tile already has. **Apply** commits and stays open,
+**Accept** commits and closes — closing the window any other way
 changes nothing.
 
 - Works on **every section that has tiles** — Material, Node, Code and
   File, scenes included. Color keeps its own swatches.
 - Applies to the **whole selection**, so twelve LOP setups can take one
   icon in one go.
-- **Nothing is overwritten.** A tile with a rendered thumbnail keeps it;
-  the icon sits beside it, and **Remove** brings the render back.
+- **Nothing is overwritten.** A tile with a rendered thumbnail keeps
+  it; the icon sits beside it, and switching **Custom Icon** off
+  brings the render back.
 - Your choice travels with the library — it is stored on the asset
   (or, for File rows, in an `icons.json` beside the index).
 
