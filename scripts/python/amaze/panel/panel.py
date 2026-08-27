@@ -2639,34 +2639,37 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self._icon_dialog = dialog
 
-        def _finished(_result=0, dialog=dialog, held=frozenset(held),
-                      model=model):
+        def _apply_edits(dialog=dialog, held=frozenset(held), model=model):
+            rows = [row for row in range(model.rowCount())    # resolved HERE and not at open: where the held tiles are NOW, in one scan of the model on commit. A tile that went away during the dialog simply is not found
+                    if model.tile_key(row) in held]
+            if not rows:
+                return
+            self._apply_icon_spec(model, rows, dialog.spec)
+            new_name = getattr(dialog, "new_tile_name", None)
+            if new_name and len(rows) == 1 and \
+                    hasattr(model, "set_tile_name"):
+                model.set_tile_name(rows[0], new_name)
+            new_tags = getattr(dialog, "new_tags", None)
+            if new_tags is not None and hasattr(model, "set_tile_tags"):
+                if len(rows) == 1:
+                    model.set_tile_tags(rows[0], new_tags)    # `is not None`, never truth: "" is a real answer that CLEARS this tile's tags
+                else:
+                    for row in rows:    # ADDS across a selection: each tile keeps its own tags and gains these, so one shared line cannot flatten them all
+                        model.add_tile_tags(row, new_tags)
+            new_category = getattr(dialog, "new_category", None)
+            if new_category and hasattr(model, "set_tile_category"):
+                for row in rows:    # EVERY selected row, unlike the name and the tags: moving a whole selection to one category is what the field is for
+                    model.set_tile_category(row, new_category)
+
+        def _finished(_result=0, dialog=dialog):
             self._icon_dialog = None
             try:
                 if not dialog.canceled:
-                    rows = [row for row in range(model.rowCount())    # resolved HERE and not at open: where the held tiles are NOW, in one scan of the model on OK. A tile that went away during the dialog simply is not found
-                            if model.tile_key(row) in held]
-                    if not rows:
-                        return
-                    self._apply_icon_spec(model, rows, dialog.spec)
-                    new_name = getattr(dialog, "new_tile_name", None)
-                    if new_name and len(rows) == 1 and \
-                            hasattr(model, "set_tile_name"):
-                        model.set_tile_name(rows[0], new_name)
-                    new_tags = getattr(dialog, "new_tags", None)
-                    if new_tags is not None and hasattr(model, "set_tile_tags"):
-                        if len(rows) == 1:
-                            model.set_tile_tags(rows[0], new_tags)    # `is not None`, never truth: "" is a real answer that CLEARS this tile's tags
-                        else:
-                            for row in rows:    # ADDS across a selection: each tile keeps its own tags and gains these, so one shared line cannot flatten them all
-                                model.add_tile_tags(row, new_tags)
-                    new_category = getattr(dialog, "new_category", None)
-                    if new_category and hasattr(model, "set_tile_category"):
-                        for row in rows:    # EVERY selected row, unlike the name and the tags: moving a whole selection to one category is what the field is for
-                            model.set_tile_category(row, new_category)
+                    _apply_edits()
             finally:
                 dialog.deleteLater()    # the panel is its C++ parent and outlives every dialog, so dropping the Python name frees nothing - 287 buttons and ~6.5MB stay alive per open otherwise
 
+        dialog.applied.connect(_apply_edits)    # Apply commits and stays open; Accept closes and commits through _finished
         dialog.finished.connect(_finished)
         dialog.show()
         return

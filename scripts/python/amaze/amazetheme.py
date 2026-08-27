@@ -20,8 +20,9 @@ D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
 
 D02_FORM_WIDTH = 544     # ▸ D02 Customize (Tile Icon): the drawn width, band included
 D02_CELL = 34            # one icon button in the chooser grid
-D02_COLUMNS = 10         # how wide the grid runs before wrapping
-D02_SIDE_WIDTH = 150     # preview, swatches and buttons all measure this
+D02_COLUMNS = 9          # how wide the grid runs before wrapping - 10 until 2026-08-27, when the side column grew
+D02_SIDE_WIDTH = 195     # the side column: preview and swatch row measure this
+D02_BUTTON_W = 72        # Apply and Accept, drawn flush right - they do NOT span the column
 
 SAVE_WIDTH = 350         # ▸ the save family D09, D10, D12, D13: every one is this wide, whatever its labels
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
@@ -74,8 +75,8 @@ LINK_COLOR = "#8e8a85"              # About-tab links, a step darker than body t
 
 BTN_APPLY = "Apply"                 # ▸ THE WORDS, from here down. Buttons first
 BTN_CANCEL = "Cancel"
-BTN_REMOVE = "Remove"
-BTN_CUSTOM_COLOR = "Custom Color..."
+BTN_ACCEPT = "Accept"               # commits and CLOSES; Apply commits and stays open - Houdini's own pair (ref ▸ windows/optype)
+BTN_CUSTOM_COLOR = "Custom Color"
 BTN_ADD_FOLDER = "Add Folder"
 BTN_CLEAR_SEARCH = "Clear Search"
 BTN_SHOW_ALL = "Show All"
@@ -86,6 +87,7 @@ LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_LINES = "Lines"
 LABEL_TAGS = "Tags"
 LABEL_CATEGORY = "Category"
+LABEL_CUSTOM_ICON = "Custom Icon"   # the D02 toggle: OFF = the tile's own thumbnail, ON = the chooser applies
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"

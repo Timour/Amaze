@@ -15,10 +15,12 @@ SIDE_WIDTH = amazetheme.D02_SIDE_WIDTH   # preview, swatches and buttons all mea
 
 
 class IconDialog(base_dialog.AssetDialog):
-    """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel."""
+    """NON-MODAL icon + colour picker on the house shell; `spec` is the result and the inherited `canceled` stays True until the user accepts, so Esc and the title-bar X read as cancel. `applied` fires on Apply, which commits without closing - Houdini's own Accept/Apply pair (ref ▸ windows/optype)."""
 
     FORM_WIDTH = amazetheme.D02_FORM_WIDTH
     HEADER_BAND = True    # D02 wears the drawn name strip ▸p/one-design-document
+
+    applied = QtCore.Signal()
 
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
@@ -29,7 +31,7 @@ class IconDialog(base_dialog.AssetDialog):
                          fixed_size=False, parent=parent)
         self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
-        self._tile_tags = tile_tags   # the same rule as the name: None = this section has no tags, and a multi-selection greys the field
+        self._tile_tags = tile_tags   # None = this section has no tags; on a multi-selection the field opens empty and ADDS
         self._categories = list(categories or [])   # None = this section has no categories, so no field at all
         self._tile_category = tile_category or ""
         self.new_tile_name = None
@@ -37,6 +39,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
         self._stroke = stroke_units or tile_icons.STROKE_UNITS
         current = tile_icons.normalise(current)
+        self._has_icon = bool(current)   # what the Custom Icon toggle opens on: OFF = the tile's own thumbnail
         self.spec = dict(current)
         self._name = current.get("name", "") or "box"
         self._bg = current.get("bg", "") or tile_icons.PRESETS[0][1]
@@ -46,50 +49,28 @@ class IconDialog(base_dialog.AssetDialog):
         gap = theme.ui_px(8)
 
         content = QtWidgets.QWidget()
-        root = QtWidgets.QVBoxLayout(content)
-        root.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
-        root.setSpacing(gap)
-        root.addLayout(self._build_top_row(gap))    # search and name share the FULL width above both columns, as drawn - neither belongs to the column under it
-        body = QtWidgets.QHBoxLayout()
+        body = QtWidgets.QHBoxLayout(content)
+        body.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
         body.setSpacing(gap)
         body.addLayout(self._build_chooser(gap), 1)
         body.addWidget(self._build_side(gap), 0)
-        root.addLayout(body, 1)
         self.set_content(content)
-        self.finish(ok_cancel=False)   # Accept lives in the side column, wired to _accept
+        self.finish(ok_cancel=False)   # Accept and Apply live in the side column
+        self.custom_toggle.toggled.connect(self._set_custom_enabled)
+        self._set_custom_enabled(self._has_icon)
         self._refresh_preview()
 
-
-    def _build_top_row(self, gap: int):
-        """`Name` and `Category`, each labelled, across the whole width above both columns - as drawn. The search sits at the BOTTOM, beside Remove and Apply."""
+    def _build_name_row(self, gap: int):
+        """The asset's name above the grid - as drawn; the side column holds Category and Tags."""
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(gap)
-
-        if self._tile_name is None:
-            self.tile_name_edit = None
-        else:
-            row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_NAME))
-            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
-            self.tile_name_edit.setEnabled(self._tile_name_enabled)
-            self.tile_name_edit.setPlaceholderText(amazetheme.LABEL_NAME)
-            self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
-                "Rename this tile. The name is what the grid, the "
-                "sidebar count and every search look at."))
-            row.addWidget(self.tile_name_edit, 1)
-
-        if not self._categories:
-            self.category_combo = None
-            return row
-        row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_CATEGORY))
-        self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
-        self.category_combo.setEditable(True)
-        for name in self._categories:
-            self.category_combo.addItem(name)
-        self.category_combo.setCurrentText(self._tile_category)
-        self.category_combo.setToolTip(ui_helpers.tooltip_text(
-            "Move to this category. Unlike Name and Tags this one "
-            "applies to every tile you have selected."))
-        row.addWidget(self.category_combo, 1)
+        row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_NAME))
+        self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
+        self.tile_name_edit.setEnabled(self._tile_name_enabled)
+        self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
+            "Rename this tile. The name is what the grid, the "
+            "sidebar count and every search look at."))
+        row.addWidget(self.tile_name_edit, 1)
         return row
 
     def _build_search(self):
@@ -151,12 +132,20 @@ class IconDialog(base_dialog.AssetDialog):
         area.setWidget(holder)
         area.setMinimumSize(
             theme.ui_px(CELL * COLUMNS + 30), theme.ui_px(CELL * 8))
+        self._chooser_area = area
+        out = QtWidgets.QVBoxLayout()
+        out.setSpacing(gap // 2)
+        if self._tile_name is not None:
+            out.addLayout(self._build_name_row(gap))
+        else:
+            self.tile_name_edit = None
+        out.addLayout(column, 1)
         column.addWidget(area, 1)
         column.addWidget(self._build_search())   # under the GRID it filters, not beside the buttons - as drawn
-        return column
+        return out
 
     def _build_side(self, gap: int):
-        """The right-hand column: name, preview, swatches, buttons."""
+        """The right-hand column: Category and Tags, preview, swatches, the Custom Icon toggle, Lines, buttons."""
         side = theme.ui_px(SIDE_WIDTH)
         panel = QtWidgets.QWidget()
         panel.setFixedWidth(side)         # the ONE width preview, swatches and buttons all fill, so the column reads as a block
@@ -164,17 +153,46 @@ class IconDialog(base_dialog.AssetDialog):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(gap // 2)
 
+        top = QtWidgets.QFormLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(6)
+        top.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                              | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        top.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
+            QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        if not self._categories:
+            self.category_combo = None
+        else:
+            self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
+            self.category_combo.setEditable(True)
+            for name in self._categories:
+                self.category_combo.addItem(name)
+            self.category_combo.setCurrentText(self._tile_category)
+            self.category_combo.setToolTip(ui_helpers.tooltip_text(
+                "Move to this category. Applies to every tile you "
+                "have selected."))
+            top.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
+        if self._tile_tags is None:
+            self.tags_edit = None
+        else:
+            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection: it opens empty and ADDS to every tile
+            self.tags_edit.setToolTip(ui_helpers.tooltip_text(
+                "Tags for this tile, separated by commas."
+                if self._tile_name_enabled else
+                "Tags to ADD to every tile you have selected, separated "
+                "by commas. Each tile keeps the tags it already has."))
+            top.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
+        if top.rowCount():
+            column.addLayout(top)
+            column.addSpacing(gap // 2)
+
         self.preview = QtWidgets.QLabel()
         self.preview.setFixedSize(side, side)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(self.preview)
-
-        self.chosen_label = QtWidgets.QLabel()
-        self.chosen_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        column.addWidget(self.chosen_label)
         column.addSpacing(gap)
 
-        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the four share exactly the column width
+        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the five share exactly the column width
         swatches.setSpacing(4)
         self._swatches = []
         for label, colour in tile_icons.PRESETS:
@@ -193,57 +211,62 @@ class IconDialog(base_dialog.AssetDialog):
             self._swatches.append(swatch)
         column.addLayout(swatches)
 
+        toggle_row = QtWidgets.QHBoxLayout()   # Custom Icon OFF = the tile's own thumbnail; ON = the chooser applies
+        toggle_row.setSpacing(6)
+        toggle_row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_ICON))
+        toggle_row.addStretch(1)    # the slack sits BETWEEN label and switch, as drawn
+        self.custom_toggle = ui_helpers.ToggleSwitch()
+        self.custom_toggle.setChecked(self._has_icon)
+        self.custom_toggle.setToolTip(ui_helpers.tooltip_text(
+            "Off shows the tile's own thumbnail; on uses the icon "
+            "chosen here."))
+        toggle_row.addWidget(self.custom_toggle)
         self.custom_button = QtWidgets.QPushButton(
             amazetheme.BTN_CUSTOM_COLOR)
         self.custom_button.setToolTip(ui_helpers.tooltip_text(
             "Pick any color, with Houdini's color picker."))
         self.custom_button.clicked.connect(self._pick_custom)
-        column.addWidget(self.custom_button)
+        toggle_row.addWidget(self.custom_button)
+        column.addLayout(toggle_row)
 
-        fields = QtWidgets.QFormLayout()   # ink sits next to the background it must work against (dark on dark is an invisible icon), and Tags under it in the same two-column rhythm
+        fields = QtWidgets.QFormLayout()   # ink sits next to the background it must work against - dark on dark is an invisible icon
         fields.setContentsMargins(0, 0, 0, 0)
         fields.setSpacing(6)
         fields.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE, so an unstated form draws differently on macOS than under Houdini's own ▸r/form-layout-defaults
+        fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.ink_combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
-
         self.ink_combo.addItem("Dark", "dark")
         self.ink_combo.addItem("Light", "light")
         self.ink_combo.setCurrentIndex(
             max(self.ink_combo.findData(self._ink), 0))
         self.ink_combo.currentIndexChanged.connect(self._set_ink)
         fields.addRow(amazetheme.LABEL_LINES, self.ink_combo)
-
-        if self._tile_tags is None:
-            self.tags_edit = None
-        else:
-            self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection, like Category and unlike Name: tagging a whole selection at once is the point of it
-            self.tags_edit.setToolTip(ui_helpers.tooltip_text(
-                "Tags for this tile, separated by commas. What is in "
-                "the field replaces the tags it already has."
-                if self._tile_name_enabled else
-                "Tags to ADD to every tile you have selected, separated "
-                "by commas. Each tile keeps the tags it already has."))
-            fields.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
         column.addLayout(fields)
         column.addStretch(1)
 
-        actions = QtWidgets.QHBoxLayout()   # two buttons, no Cancel: closing IS cancelling, and Remove is the way back so an icon is never a one-way door
+        actions = QtWidgets.QHBoxLayout()   # Apply commits and stays open, Accept commits and closes - Houdini's own pair (ref ▸ windows/optype); closing IS cancelling, so there is no Cancel
         actions.setSpacing(6)
-        self.clear_button = QtWidgets.QPushButton(amazetheme.BTN_REMOVE)
-        self.clear_button.setToolTip(
-            "Show this tile's own thumbnail again")
-        self.clear_button.clicked.connect(self._clear)
-        actions.addWidget(self.clear_button)
+        actions.addStretch(1)               # both drawn flush RIGHT at a fixed width, not spanning the column
+        self.apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
+        self.apply_button.setFixedWidth(theme.ui_px(amazetheme.D02_BUTTON_W))
+        self.apply_button.clicked.connect(self._apply)
+        actions.addWidget(self.apply_button)
 
-        self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
+        self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_ACCEPT)
+        self.accept_button.setFixedWidth(theme.ui_px(amazetheme.D02_BUTTON_W))
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)
         column.addLayout(actions)
         return panel
+
+    def _set_custom_enabled(self, on: bool) -> None:
+        """The chooser follows the toggle; Name, Category and Tags do not - they are the asset's, not the icon's."""
+        for widget in (self._chooser_area, self.search, self.custom_button,
+                       self.ink_combo, self.preview, *self._swatches):
+            widget.setEnabled(bool(on))
 
 
     def showEvent(self, event) -> None:
@@ -318,13 +341,6 @@ class IconDialog(base_dialog.AssetDialog):
                 QtCore.Qt.AspectRatioMode.KeepAspectRatio,
                 QtCore.Qt.TransformationMode.SmoothTransformation,
             ))
-        self.chosen_label.setText("%s  %s" % (self._name, self._bg))
-
-    def _clear(self) -> None:
-        self.spec = {}
-        self._harvest_tile_name()
-        self._harvest_tags()
-        self._on_accept()
 
     def _harvest_tile_name(self) -> None:
         """On any accepting close: the new name, or None when the field is absent, greyed, blank or unchanged."""
@@ -351,10 +367,22 @@ class IconDialog(base_dialog.AssetDialog):
         if text and text != (self._tile_category or "").strip():
             self.new_category = text
 
-    def _accept(self) -> None:
-        self.spec = tile_icons.normalise(
-            {"name": self._name, "bg": self._bg, "ink": self._ink})
+    def _harvest(self) -> None:
+        """Everything a commit writes: the spec per the toggle - OFF is `{}`, which the models read as "clear it" - and the name, tags and category."""
+        if self.custom_toggle.isChecked():
+            self.spec = tile_icons.normalise(
+                {"name": self._name, "bg": self._bg, "ink": self._ink})
+        else:
+            self.spec = {}
         self._harvest_tile_name()
         self._harvest_tags()
         self._harvest_category()
+
+    def _apply(self) -> None:
+        """Commit and STAY OPEN; `canceled` stays True, so a later X re-applies nothing."""
+        self._harvest()
+        self.applied.emit()
+
+    def _accept(self) -> None:
+        self._harvest()
         self._on_accept()

@@ -245,11 +245,11 @@ class BandContrastTest(unittest.TestCase):
                 green, self.DELEGATE.text_on(green)),
             4.5, "near-white ink is back on bright green")
 
-    def test_the_shipped_presets_are_unchanged(self):
-        """The rule change must not restyle what is already saved: all four presets measured identically under both rules."""
-        from amaze.core import tile_icons
+    LEGACY_PRESETS = ("#ef8878", "#4af2a1", "#5cc9f5", "#e2b148")   # what tiles saved before 2026-08-27 hold; the LIVE palette is drawn and includes a pink that measures 4.29, so it is not this rule's corpus
 
-        for _name, value in tile_icons.PRESETS:
+    def test_the_shipped_presets_are_unchanged(self):
+        """The rule change must not restyle what is already saved: the four legacy presets measured identically under both rules."""
+        for value in self.LEGACY_PRESETS:
             color = QtGui.QColor(value)
             self.assertGreater(
                 self.DELEGATE.contrast_ratio(
@@ -316,8 +316,7 @@ class BandContrastTest(unittest.TestCase):
     def test_a_colour_that_already_reads_is_left_alone(self):
         """The adjustment must not restyle colours that were fine - the colour identifies the category, so the hue has to survive."""
         row = QtGui.QColor("#313131")
-        for _name, value in __import__(
-                "amaze.core.tile_icons", fromlist=["x"]).PRESETS:
+        for value in self.LEGACY_PRESETS:
             color = QtGui.QColor(value)
             self.assertEqual(
                 color.name(),

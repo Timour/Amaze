@@ -20,8 +20,10 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import amazetheme  # noqa: E402
 from amaze.core import cop_library, tile_icons  # noqa: E402
 from amaze.dialogs import icon_dialog  # noqa: E402
+from amaze.helpers import theme  # noqa: E402
 from amaze.panel import panel as panel_mod  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -343,12 +345,35 @@ class DialogTest(unittest.TestCase):
         self.assertEqual({"name": "layers", "bg": "#4af2a1",
                           "ink": "dark"}, dialog.spec)
 
-    def test_remove_returns_an_empty_choice(self):
-        """Empty spec is what the models read as "clear it"."""
+    def test_toggling_custom_icon_off_returns_an_empty_choice(self):
+        """Empty spec is what the models read as "clear it" - the toggle's OFF is what Remove used to be."""
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
-        dialog.clear_button.click()
+        self.assertTrue(dialog.custom_toggle.isChecked(),
+                        "a tile WITH an icon must open with the toggle on")
+        dialog.custom_toggle.setChecked(False)
+        dialog.accept_button.click()
         self.assertFalse(dialog.canceled)
         self.assertEqual({}, dialog.spec)
+
+    def test_a_tile_without_an_icon_opens_with_the_toggle_off(self):
+        dialog = self._dialog()
+        self.assertFalse(dialog.custom_toggle.isChecked())
+        self.assertFalse(dialog._chooser_area.isEnabled(),
+                         "the chooser is live while the toggle is off")
+        dialog.custom_toggle.setChecked(True)
+        self.assertTrue(dialog._chooser_area.isEnabled())
+
+    def test_apply_commits_without_closing(self):
+        """Houdini's own pair: Apply commits and stays open, Accept closes. `canceled` stays True after Apply, so a later X re-applies nothing."""
+        dialog = self._dialog({"name": "box", "bg": "#ef8878"})
+        landed = []
+        dialog.applied.connect(lambda: landed.append(dict(dialog.spec)))
+        dialog._choose("layers")
+        dialog.apply_button.click()
+        self.assertEqual([{"name": "layers", "bg": "#ef8878",
+                           "ink": "dark"}], landed)
+        self.assertTrue(dialog.canceled,
+                        "Apply must not read as an accepting close")
 
     def test_closing_the_window_changes_nothing(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
@@ -384,11 +409,19 @@ class DialogTest(unittest.TestCase):
         width = dialog.preview.width()
         gaps = 4 * (len(dialog._swatches) - 1)
         swatch_row = sum(s.width() for s in dialog._swatches) + gaps
-        buttons = (dialog.clear_button.width()
-                   + dialog.accept_button.width() + 6)
         self.assertEqual(width, swatch_row, "the swatch row is ragged")
-        self.assertEqual(width, dialog.custom_button.width())
-        self.assertEqual(width, buttons)
+        self.assertEqual(    # Custom Color shares its row with the toggle, so the ROW ends where the column does
+            dialog.preview.geometry().right(),
+            dialog.custom_button.geometry().right(),
+            "the toggle row does not reach the column's right edge")
+        self.assertEqual(    # the buttons are drawn flush right at a fixed width, not spanning
+            dialog.preview.geometry().right(),
+            dialog.accept_button.geometry().right(),
+            "Accept does not end where the column does")
+        self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
+                         dialog.apply_button.width())
+        self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
+                         dialog.accept_button.width())
 
     def test_the_search_filters_without_losing_the_choice(self):
         dialog = self._dialog({"name": "layers", "bg": "#5cc9f5"})
@@ -558,6 +591,7 @@ class MenuWiringTest(unittest.TestCase):
             def __init__(self, *a, **k):
                 self.spec = spec
                 self.finished = _Signal()
+                self.applied = _Signal()
 
             def show(self):
                 # the non-modal contract: finished fires after show(), here synchronously so the test stays straight-line

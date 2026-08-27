@@ -32,11 +32,12 @@ def ink_colour(token: str) -> str:
     """Hex for an ink token, falling back to dark for anything odd."""
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
-PRESETS = (  # four presets plus Custom (the colour picker); deliberately provisional - a palette is only judged against real tiles at real sizes, so these are placed to be tuned
-    ("Salmon", "#ef8878"),
-    ("Mint", "#4af2a1"),
-    ("Sky", "#5cc9f5"),
-    ("Sand", "#e2b148"),
+PRESETS = (  # five presets plus Custom (the colour picker) - the D02 swatches, hex-for-hex from the drawing ▸p/one-design-document
+    ("Red", "#ff3319"),
+    ("Green", "#33ff7d"),
+    ("Amber", "#fcb900"),
+    ("Blue", "#0cb6ff"),
+    ("Pink", "#eb46a6"),
 )
 
 _COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke, ink) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024
