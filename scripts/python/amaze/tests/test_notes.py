@@ -1471,6 +1471,28 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         self.assertIn("what I wanted to say",
                       " ".join(i.get("text", "") for i in items))
 
+    def test_typing_INSIDE_a_picture_block_is_kept(self):
+        """Clicking just right of a picture puts the caret in the picture's own block, and userState stays STATE_IMAGE - the words typed there must still reach the store. ▸p/comment-images"""
+        picked = self._a_picture_on_disk()
+        with self._fake_ui(picked):
+            self._menu_entry("Image").trigger()
+        edit = self.widget.text_edit
+        block = edit.document().begin()
+        while block.isValid() and not edit.is_image_block(block):
+            block = block.next()
+        self.assertTrue(block.isValid(), "premise: an image block exists")
+        cursor = edit.textCursor()
+        cursor.setPosition(block.position() + block.length() - 1)
+        edit.setTextCursor(cursor)
+        edit.textCursor().insertText("words beside the picture")
+
+        items = edit.serialize()
+        self.assertIn("image", [i.get("t") for i in items])
+        self.assertIn("words beside the picture",
+                      " ".join(i.get("text", "") for i in items),
+                      "the words typed in the picture's block were "
+                      "lost: %s" % items)
+
     def test_a_bullet_point_still_goes_in_from_the_menu(self):
         """An EMPTY to-do serializes to nothing by design, so it has to be given a label before the round trip shows it."""
         self._menu_entry("Bullet point").trigger()

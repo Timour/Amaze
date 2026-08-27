@@ -404,6 +404,9 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     items.append({"t": "image", "src": src,
                                   "text": "[image: %s]"    # what a build with no image support shows instead of a blank line ▸p/comment-images
                                           % os.path.basename(src)})
+                typed = block.text().replace("￼", "")    # the caret can legally land in the picture's block (a click right of it), and words typed there are real content - the image fragment itself reads as U+FFFC (measured, hython 22.0.418)
+                if typed.strip():
+                    text_lines.append(typed)
             elif self.is_todo_block(block):
                 flush_text()
                 label = self.block_label(block)
