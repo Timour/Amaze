@@ -1,25 +1,4 @@
-"""The version store: mat/versions/<id>/ and its ledger.
-
-THE MODEL, in one paragraph. The base files - mat/<id>.mat, .interface,
-.builder.json - are always the ACTIVE version's files: every existing
-code path (import, drag, thumbnail, corpus check) reads them and none
-of them had to learn anything. Each version, the active one included,
-also has an archived copy under mat/versions/<id>/<n>.*, and a ledger
-(versions.json) records what exists, what is active, and what each
-version is called. Switching versions copies an archive over the base;
-creating one archives the base. Nothing is ever edited in place.
-
-WHY the base stays authoritative: practice.md's standing rule - the
-index may become a cache only "once a per-asset truth exists to rebuild
-it from, and not one moment before". Same shape here: the archive is a
-copy of the truth, never the truth. A library whose versions/ folder is
-lost entirely still opens, imports and renders every material.
-
-Pre-Versions builds cannot damage it: the strict classifier refuses to
-sweep what it cannot positively identify, and a directory does not
-match any sweepable shape. Ledger writes go through the same unique-
-scratch atomic path as every database.
-"""
+"""The version store, mat/versions/<id>/ and its ledger: the BASE files are always the ACTIVE version's files (the archive is a copy of the truth, never the truth), switching copies an archive over the base, creating archives the base, and nothing is edited in place. ▸r/version-store"""
 
 from __future__ import annotations
 
@@ -33,41 +12,12 @@ import time
 from amaze.core import debug, users
 from amaze.helpers import hostos
 
-#: THE COLOUR-NAME PLACEHOLDER POOL IS GONE (2026-08-12, ROADMAP line
-#: 21). It minted a name per MACHINE so two machines with untouched
-#: settings signed different filenames - correct for filenames, and
-#: exactly wrong for an identity that keys one user's things ACROSS
-#: their machines. It lives in `core/users.py` now and is minted once
-#: per LIBRARY for its first user, never per machine.
-#:
-#: WHAT THAT COSTS, narrowly: the both-machines-offline window widens
-#: for users who never set a name and were being protected by the
-#: minted colour. It was already open for everyone who DID set one -
-#: the shared tag is the expected case, not an edge - and the collision
-#: protection was never the name anyway: it is stepping past a stem
-#: already on disk, below.
+_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>`, or bare `<n>` whenever `writer_tag` answers empty (no user picked, unreadable prefs, a name with nothing alphanumeric left) - the trailing number IS the version number either way
 
-#: A stem is `<writer>-<n>`, or bare `<n>` when the file was written
-#: unsigned. NOT a legacy form: `_stem` still emits it whenever
-#: `writer_tag` answers empty - a prefs with no `library_user`
-#: attribute, one that cannot be read at all, or a name with no
-#: alphanumeric characters left after stripping.
-#: The trailing number IS the version number either way.
-_STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")
-
-#: The file kinds a version archives - the asset's whole payload.
-#: A missing .builder.json or .png is fine (older assets, no capture);
-#: a missing .mat is not a version.
-_KINDS = ((".mat", True), (".interface", False),
+_KINDS = ((".mat", True), (".interface", False),    # the kinds a version archives - a missing .builder.json or .png is fine (older assets, no capture), a missing .mat is not a version
           (".builder.json", False), (".png", False))
 
-#: `asset_files()` kind -> the archive suffix it fills. The store
-#: archives exactly the four _KINDS; a kind absent here (cop, stamp,
-#: tile icon) is not versioned. library.py keys its pre-edit hold with
-#: this: keyed by filename suffix, `<id>_cop.mat` collided with
-#: `<id>.mat` and the companion was archived as Version 1's material
-#: (found 2026-08-06).
-SOURCE_KINDS = {
+SOURCE_KINDS = {    # `asset_files()` kind -> the archive suffix it fills; a kind absent here (cop, stamp, tile icon) is not versioned, and library.py keys its pre-edit hold on this by filename suffix - `<id>_cop.mat` once collided with `<id>.mat` and archived the companion as Version 1's material
     "mat": ".mat",
     "interface": ".interface",
     "builder": ".builder.json",
@@ -88,10 +38,7 @@ def _ledger_path(preferences, mat_id: str) -> str:
 
 
 def read_ledger(preferences, mat_id: str) -> dict:
-    """The ledger, or an empty one. Unreadable is reported and treated
-    as empty for READING - the base files still work, which is the
-    whole point of the base staying authoritative - but create/switch
-    refuse on an unreadable ledger rather than write blind over it."""
+    """The ledger, or an empty one - unreadable is treated as empty for READING (the base files still work), but create/switch refuse on it rather than write blind over it."""
     path = _ledger_path(preferences, mat_id)
     if not os.path.exists(path):
         data = {"active": 0, "versions": []}
@@ -112,27 +59,7 @@ def read_ledger(preferences, mat_id: str) -> dict:
 
 
 def _adopt_strays(preferences, mat_id: str, ledger: dict) -> None:
-    """Adopt version files the ledger does not know.
-
-    The ledger is one JSON file, so a sync between two machines is
-    last-write-wins: the row a losing machine wrote vanishes while its
-    ARCHIVE FILES arrive intact - a stem already on disk is stepped
-    past at write time, so once the other machine's files have landed
-    the two cannot take the same name.
-
-    THE NARROWER CLAIM IS THE HONEST ONE. This used to say
-    writer-stemmed names cannot collide, which is false whenever both
-    machines belong to ONE artist: the writer is the artist's own
-    `library_user`, which is now the SAME on both by design - that is
-    what the identity is for. Two machines writing while both are
-    offline still land on one name, because nothing shared can allocate
-    it. (Until 2026-08-12 a blank author minted a per-machine colour
-    name, which narrowed that window for untouched installs only.)
-    Reading the directory back into the ledger makes the files the
-    truth - the same rule the whole store is built on - so a version
-    can be lost to sync only if its files are, and losing the ledger
-    entirely now costs only names and dates, not the versions.
-    Best-effort persist; adopting again next read costs nothing."""
+    """Adopt version files the ledger does not know: the ledger is last-write-wins across a sync, so a losing machine's row vanishes while its archive files arrive intact - reading the directory back makes the files the truth, so a version is lost to sync only if its files are. Best-effort persist; adopting again next read costs nothing. ▸r/version-store"""
     try:
         names = os.listdir(versions_dir(preferences, mat_id))
     except OSError:
@@ -176,10 +103,8 @@ def _write_ledger(preferences, mat_id: str, ledger: dict) -> bool:
     path = _ledger_path(preferences, mat_id)
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
-        # The snapshot tier every other store has - guarded on
-        # existence so the session's once-per-file slot is not spent
-        # on the ledger's own birth, when there is nothing to copy.
-        if os.path.exists(path):
+        if os.path.exists(path):    # the snapshot tier every other store has, guarded so the session's once-per-file slot is not spent on the ledger's own birth
+
             hostos.snapshot_before_write(path)
         hostos.write_json_atomic(path, ledger, indent=1)
         return True
@@ -205,16 +130,7 @@ def active_version(preferences, mat_id: str) -> int:
 
 
 def active_version_name(preferences, mat_id: str) -> str:
-    """The NAME of the version currently in the base files, or "" when
-    the asset has no versions at all.
-
-    List mode shows this in a column where the grid shows a badge: the
-    badge could only ever say "there are versions", while a row has
-    room to say WHICH one you are looking at. Named versions are the
-    point of the feature, so the name is what the column shows -
-    falling back to the "Version N" that save_version writes when a
-    version was never given one.
-    """
+    """The NAME of the version currently in the base files ("" when the asset has none) - list mode's column shows WHICH version where the grid's badge can only say versions exist, falling back to the `Version N` save_version writes."""
     ledger = read_ledger(preferences, mat_id)
     entries = ledger.get("versions", [])
     if not entries:
@@ -223,10 +139,7 @@ def active_version_name(preferences, mat_id: str) -> str:
     for entry in entries:
         if int(entry.get("n", 0)) == active:
             return str(entry.get("name") or ("Version %d" % active))
-    # Active points at nothing (a hand-edited or half-written ledger):
-    # the versions are real, so say so with the newest rather than
-    # claiming the asset has none.
-    newest = entries[-1]
+    newest = entries[-1]    # active points at nothing (a hand-edited or half-written ledger): the versions are real, so answer with the newest rather than claiming the asset has none
     return str(newest.get("name") or ("Version %d" % int(newest.get("n", 0))))
 
 
@@ -243,19 +156,7 @@ def _base_paths(preferences, mat_id: str) -> dict:
 
 
 def writer_tag(preferences) -> str:
-    """The signature version FILES carry: the current user's NAME.
-
-    THE UID IDENTIFIES, THE NAME SIGNS. Everything a user owns is tagged
-    with their UID, but a stem of `a3f9c2e8b1d4-1.mat` is unreadable and
-    would match no `Plum-<n>` already on disk, so this resolves the UID
-    to the name and signs with that. A later rename leaves old versions
-    reading as the old name, which is correct - that IS who wrote them,
-    and the ledger records the stem it wrote rather than re-deriving it.
-
-    Empty when there is no user yet: a second machine that has not
-    picked one signs nothing rather than inventing somebody, and `_stem`
-    emits the bare `<n>` form. Never the OS user, never the machine
-    name."""
+    """The signature version FILES carry - the UID identifies, the NAME signs: the library user's name with only alphanumerics kept, and empty when no library user exists yet (never the OS account, never the machine name), so `_stem` emits the bare `<n>` form rather than inventing a signature."""
     try:
         uid = users.current(preferences)
     except (AttributeError, OSError):
@@ -271,8 +172,7 @@ def _stem(tag: str, number: int) -> str:
 
 
 def _row_stem(row: dict) -> str:
-    """The stem a ledger row's files use - recorded at write time, or
-    the bare number for rows whose writer signed nothing."""
+    """The stem a ledger row's files use - recorded at write time, or the bare number for rows whose writer signed nothing."""
     return str(row.get("file") or int(row.get("n", 0)))
 
 
@@ -284,44 +184,14 @@ def _row_for(ledger: dict, number: int) -> dict | None:
 
 
 def _archive_paths(preferences, mat_id: str, stem) -> dict:
-    """The archive file set for one stem (`<writer>-<n>` or a bare
-    `<n>`, which an unsigned write still produces)."""
+    """The archive file set for one stem (`<writer>-<n>` or a bare `<n>`, which an unsigned write still produces)."""
     folder = versions_dir(preferences, mat_id)
     return {kind: os.path.join(folder, "%s%s" % (stem, kind))
             for kind, _required in _KINDS}
 
 
 def _copy_set(sources: dict, targets: dict) -> bool:
-    """Copy every present kind as ONE unit: all bytes first, then the
-    renames.
-
-    WHY BOTH PHASES. This used to copy-and-promote one kind at a time,
-    and its docstring only claimed the .mat go/no-go - "a half-copied
-    set fails loudly on the .mat before anything else was touched" -
-    which says nothing about a failure on the SECOND file, after the
-    .mat has already gone over the base. Reproduced on switch_active
-    with the .interface held: the base was left holding version 1's
-    .mat and version 2's .interface, and the caller's `return False`
-    meant the ledger was never updated either, so nothing on disk or in
-    the ledger recorded that the material was now a mixture of two
-    versions. Importing it then builds one version's network behind
-    another's parameter interface.
-
-    There is still no portable multi-file atomic rename, so the promote
-    phase ALSO rolls back. Two phases alone were not enough and the
-    reproduction says so: the realistic failure is a sync client
-    holding one file, `replace_file` retries three times and re-raises
-    PermissionError, and by then the earlier kinds have already gone
-    over the base. So each destination is moved aside before its
-    replacement lands, and a failure part way puts back the ones that
-    already moved. That undo is renames of files this function itself
-    just created, in the same directory - the one operation most likely
-    to succeed at the moment another one did not.
-
-    What remains uncovered is a crash between two renames. The base is
-    then mixed with nothing to run the undo; that is the residual, and
-    it is orders of magnitude narrower than a held file, which happens.
-    """
+    """Copy every present kind as ONE unit - all bytes first, then the renames, each destination moved aside first so a failure part way puts back the ones already moved; the residual is only a crash between two renames. practice.md ▸ THE LIST IS WRITTEN FIRST holds the held-file reproduction."""
     staged = []
     displaced = []
     promoted = 0
@@ -340,21 +210,14 @@ def _copy_set(sources: dict, targets: dict) -> bool:
                 os.makedirs(os.path.dirname(target), exist_ok=True)
                 scratch = hostos.unique_scratch(target)
                 shutil.copyfile(source, scratch)
-            except OSError as exc:
-                # Nothing has been promoted yet, whichever kind this
-                # is. The old line here read
-                # `return kind != ".mat" and False if required else
-                # False`, which evaluates to False in every branch -
-                # whatever it meant to express, it was a tautology.
+            except OSError as exc:    # nothing has been promoted yet, whichever kind this is
                 debug.event("versions", "copy failed - nothing promoted",
                             source=source, target=target, error=str(exc))
                 return False
             staged.append((scratch, target))
 
         for scratch, target in staged:
-            # Move the destination aside FIRST, so this kind can be put
-            # back if a later one cannot be written.
-            if os.path.exists(target):
+            if os.path.exists(target):    # the destination moves aside FIRST, so this kind can be put back if a later one cannot be written
                 aside = hostos.unique_scratch(target, ".rollback",
                                               create=False)
                 hostos.replace_file(target, aside)
@@ -369,39 +232,22 @@ def _copy_set(sources: dict, targets: dict) -> bool:
         for aside, target in reversed(displaced):
             try:
                 hostos.replace_file(aside, target)
-            except OSError as undo_exc:
-                # Nothing more can be done here, and it must not be
-                # silent: this is the only shape that still leaves the
-                # base mixed.
+            except OSError as undo_exc:    # nothing more can be done, and it must not be silent - the only shape that still leaves the base mixed
                 debug.event("versions", "ROLLBACK FAILED - the base is "
                             "mixed", target=target, error=str(undo_exc))
         displaced = []
         return False
     finally:
-        # Whatever never made it into place, on any exit.
-        for scratch, _target in staged:
+        for scratch, _target in staged:    # whatever never made it into place, on any exit
             hostos.discard_scratch(scratch)
-        # On the success path these are the old versions of the files,
-        # already replaced - drop them.
-        for aside, _target in displaced:
+        for aside, _target in displaced:    # on the success path these are the old files, already replaced
             hostos.discard_scratch(aside)
     return True
 
 
 def create_version(preferences, mat_id: str, name: str = "",
                    source_paths: dict = None) -> int:
-    """Archive the CURRENT base files as a new version and mark it
-    active. Returns the new version number, 0 on refusal.
-
-    First call on an asset archives the base TWICE conceptually: the
-    pre-existing state becomes Version 1, so the state the user is
-    versioning away from is kept - opinion-based versioning starts by
-    not losing the opinion you had.
-
-    The caller saves the base files BEFORE calling this (automatic-on-
-    save integration): so "create" here always means "the base now
-    holds the new state; archive it".
-    """
+    """Archive the CURRENT base files as a new version and mark it active - the caller saves the base BEFORE calling, so create always means the base now holds the new state. Returns the new number, 0 on refusal."""
     ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         debug.event("versions", "create refused - ledger unreadable",
@@ -409,29 +255,9 @@ def create_version(preferences, mat_id: str, name: str = "",
         return 0
     number = max([int(v.get("n", 0)) for v in ledger["versions"]] or [0]) + 1
     sources = source_paths or _base_paths(preferences, mat_id)
-    # The stem carries the WRITER, and the row records the stem it
-    # wrote so readers never re-derive it.
-    #
-    # THE NUMBER IS ALLOCATED AGAINST THE FOLDER, NOT ONLY THE LEDGER.
-    # The writer is the artist's own `library_user`, so two machines
-    # belonging to ONE artist carry the SAME tag - by design since
-    # 2026-08-12, and the expected case before that for anyone who had
-    # typed a name.
-    # The ledger is last-write-wins across a sync, so a machine whose
-    # row lost still computes the same next number, and with the same
-    # tag that is the same filename: one version's payload silently
-    # replaced by another's, which `_adopt_strays` cannot recover
-    # because the stem reads as already known.
-    #
-    # Stepping past a stem that is ALREADY ON DISK closes every case
-    # where the other machine's files have arrived, which is all of
-    # them once a sync completes. Two machines writing while both
-    # offline still land on one name; that is a property of having no
-    # shared allocator, and it is why the invariant in `_adopt_strays`
-    # is stated as the narrower thing it can honestly claim.
-    tag = writer_tag(preferences)
+    tag = writer_tag(preferences)    # the stem carries the WRITER and the row records the stem it wrote, so readers never re-derive it
     stem = _stem(tag, number)
-    while any(os.path.exists(path) for path
+    while any(os.path.exists(path) for path    # THE NUMBER IS ALLOCATED AGAINST THE FOLDER, NOT ONLY THE LEDGER: two machines of one artist share the tag, the ledger is last-write-wins across a sync, and stepping past a stem already on disk is what stops one version's payload silently replacing another's ▸r/version-store
               in _archive_paths(preferences, mat_id, stem).values()):
         debug.event("versions", "version stem already on disk - taking "
                                 "the next number", mat_id=str(mat_id),
@@ -441,12 +267,7 @@ def create_version(preferences, mat_id: str, name: str = "",
     if not _copy_set(sources,
                      _archive_paths(preferences, mat_id, stem)):
         return 0
-    # THE NAME, NOT THE UID - and it is FROZEN here rather than resolved
-    # at read time. Two reasons: the stem beside it froze the same name,
-    # so resolving would make the dialog and the filename disagree after
-    # a rename; and a row that outlives its user record still says who
-    # wrote it, where a bare UID would leave the version unattributable.
-    author = ""
+    author = ""    # THE NAME, NOT THE UID, FROZEN here rather than resolved at read time: the stem beside it froze the same name, and a row that outlives its user record still says who wrote it
     try:
         writer = users.current(preferences)
         if writer:
@@ -468,11 +289,30 @@ def create_version(preferences, mat_id: str, name: str = "",
     return number
 
 
+def _base_is_archived(preferences, mat_id: str, ledger: dict) -> bool:
+    """Whether the ACTIVE version's archive holds the base's content - byte-compared, .png excluded (record_render refreshes archive thumbnails on its own clock). A structural update rewrites the base without minting, and this is how a switch tells."""
+    row = _row_for(ledger, ledger.get("active", 0))
+    if row is None:
+        return False
+    archive = _archive_paths(preferences, mat_id, _row_stem(row))
+    base = _base_paths(preferences, mat_id)
+    for kind in (".mat", ".interface", ".builder.json"):
+        base_path, archive_path = base.get(kind), archive.get(kind)
+        in_base = bool(base_path) and os.path.exists(base_path)
+        in_archive = bool(archive_path) and os.path.exists(archive_path)
+        if in_base != in_archive:
+            return False
+        try:
+            if in_base and not filecmp.cmp(base_path, archive_path,
+                                           shallow=False):
+                return False
+        except OSError:
+            return False
+    return True
+
+
 def switch_active(preferences, mat_id: str, number: int) -> bool:
-    """Copy version `number`'s archive over the base files and mark it
-    active. The base is archived first if it is not itself a version
-    yet (it always should be, but a truth must not be overwritten on an
-    assumption)."""
+    """Copy version `number`'s archive over the base files and mark it active - the base is archived first if it is not itself a version yet, because a truth must not be overwritten on an assumption."""
     ledger = read_ledger(preferences, mat_id)
     if ledger.get("unreadable"):
         return False
@@ -481,18 +321,24 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
         debug.event("versions", "switch refused - no such version",
                     mat_id=str(mat_id), n=number)
         return False
+    if not _base_is_archived(preferences, mat_id, ledger):
+        if not create_version(preferences, mat_id):
+            debug.event("versions", "switch refused - the base holds "
+                                    "unarchived content and could not "
+                                    "be archived",
+                        mat_id=str(mat_id), n=number)
+            return False
+        ledger = read_ledger(preferences, mat_id)    # minting appended a row and moved `active`
+        row = _row_for(ledger, number)
+        if row is None:
+            return False
     previous = ledger.get("active")
     if not _copy_set(
             _archive_paths(preferences, mat_id, _row_stem(row)),
             _base_paths(preferences, mat_id)):
         return False
     ledger["active"] = int(number)
-    if not _write_ledger(preferences, mat_id, ledger):
-        # The base already holds version `number` while the ledger on
-        # disk still names the previous one - the exact base/ledger
-        # disagreement _copy_set's two-phase design prevents one layer
-        # down. The previous active's archive is still complete, so the
-        # rollback is one more promote.
+    if not _write_ledger(preferences, mat_id, ledger):    # the base already holds `number` while the disk ledger names the previous - the previous archive is still complete, so the rollback is one more promote
         previous_row = (_row_for(ledger, previous)
                         if previous is not None else None)
         rolled_back = (
@@ -512,17 +358,7 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
 
 
 def record_render(preferences, mat_id: str) -> bool:
-    """Copy the base thumbnail into the ACTIVE version's archive slot.
-
-    The archive is each version's DURABLE thumbnail - it lives until
-    the version goes - but a version is minted at save time, BEFORE
-    that save's render lands, so a fresh slot starts holding the
-    previous version's picture. Running this wherever a row's PNG is
-    declared fresh keeps the active slot true to what was last
-    rendered while its version was active. Identical bytes are left
-    untouched, so the call after a switch costs no write and no sync
-    churn.
-    """
+    """Copy the base thumbnail into the ACTIVE version's archive slot - a version is minted BEFORE its save's render lands, so the fresh slot starts holding the previous picture; run wherever a row's PNG is declared fresh, and identical bytes cost no write."""
     active = 0
     try:
         ledger = read_ledger(preferences, mat_id)
@@ -544,10 +380,7 @@ def record_render(preferences, mat_id: str) -> bool:
         scratch = hostos.unique_scratch(target)
         shutil.copyfile(source, scratch)
         hostos.promote_scratch(scratch, target)
-    except (OSError, hostos.PathEscape) as exc:
-        # Best-effort by design: this FOLLOWS a thumbnail refresh, so
-        # a library whose paths refuse to compose gets an event and a
-        # False, never an exception up through the refresh.
+    except (OSError, hostos.PathEscape) as exc:    # best-effort by design: this FOLLOWS a thumbnail refresh, and gets an event and a False, never an exception up through it
         debug.event("versions", "render not recorded to the active slot",
                     mat_id=str(mat_id), n=active, error=str(exc))
         return False
@@ -558,9 +391,7 @@ def record_render(preferences, mat_id: str) -> bool:
 
 def rename_version(preferences, mat_id: str, number: int,
                    name: str) -> bool:
-    """Rename one version in the ledger. Names are labels, nothing on
-    disk moves - the files are numbered, deliberately, so a rename can
-    never be a file operation that fails halfway."""
+    """Rename one version in the ledger - names are labels, nothing on disk moves, so a rename can never be a file operation that fails halfway."""
     name = str(name or "").strip()
     if not name:
         return False

@@ -2735,6 +2735,30 @@ class TheMembershipBaselineFollowsEverySave(_Case):
             "the row reached disk but was never handed to the model, so "
             "the next save rebuilds assets[] without it")
 
+    def test_a_row_the_peer_deleted_stays_deleted(self):
+        """The third direction: in our memory AND the baseline but gone from disk means the peer deleted it - and its files are already unlinked, so writing it back mints a fileless ghost on both machines."""
+        self._write(self._document(count=2))
+        db, _ = self._load()
+
+        theirs = self._on_disk()
+        theirs["assets"] = [r for r in theirs["assets"]
+                            if str(r["id"]) != "ASSET1"]
+        self._write(theirs)
+
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0 edited"},
+                           {"id": "ASSET1", "name": "mat 1"}]})
+        self.assertTrue(db.save(), "premise: the save landed")
+
+        ids = [str(r["id"]) for r in self._on_disk()["assets"]]
+        self.assertNotIn(
+            "ASSET1", ids,
+            "the peer's deletion was undone - the row went back into "
+            "library.json with its payload files already unlinked")
+        self.assertIn(
+            "ASSET1", [str(r["id"]) for r in db.take_dropped()],
+            "the deletion never reached the model, so the next save "
+            "writes the row straight back")
+
     def test_an_identical_skip_also_moves_the_baseline(self):
         """A save whose bytes match disk agrees with the file just as much."""
         self._write(self._document(count=1))

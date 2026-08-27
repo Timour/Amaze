@@ -1,30 +1,4 @@
-"""Write ordering: the list first, the files second, and the answer honoured.
-
-ONE PATTERN, ELEVEN PLACES. Every test here pins a defect that was
-reproduced before it was fixed, and they are all the same shape - work
-committed in an order that cannot survive the step in the middle
-failing, or a return value that says it failed and is dropped:
-
-  * remove_asset unlinked all seven payload files and THEN saved,
-    discarding save()'s answer - so a refused write destroyed the
-    content and kept the row;
-  * asset_files() never learned about mat/versions/<id>/, so deleting
-    an asset orphaned its whole version store under an id no list
-    mentions again;
-  * asset_files() composed paths from an id read verbatim out of
-    library.json, with no containment;
-  * versions._copy_set promoted file by file, so one held file left a
-    material made of two different versions;
-  * CopLibrary/CodeLibrary.add_asset dropped save()'s answer;
-  * an absent policy.json read as permissive even with its own backups
-    beside it;
-  * the texture thumbnail manifest and the hip capture manifest each
-    lost another writer's work, one by clobbering and one by a
-    truncating write.
-
-They live together because they are one lesson, and because a reader
-who breaks one of them should see the other ten.
-"""
+"""Write ordering - the list first, the files second, and the answer honoured: every test pins a defect reproduced before it was fixed, all one shape, and a reader who breaks one of them should see the others. practice.md ▸ THE LIST IS WRITTEN FIRST"""
 
 import json
 import os
@@ -83,14 +57,7 @@ class _LibraryCase(unittest.TestCase):
         return self.model.find_asset_row_by_id(self.mat_id)
 
     def _refuse_the_index_write(self):
-        """Point the shared connector at ANOTHER library.
-
-        The refusal that cannot heal itself: save() checks db.serves()
-        before writing and returns False without raising. Setting
-        _write_blocked by hand does NOT work here and that is correct -
-        save() runs the merge first and the merge clears the latch on a
-        healthy file.
-        """
+        """Point the shared connector at ANOTHER library - the refusal that cannot heal itself: save() returns False at the serves() gate, where setting `_write_blocked` by hand would not work because the merge clears that latch on a healthy file."""
         other = tempfile.mkdtemp(prefix="amaze_other_library_")
         self.addCleanup(shutil.rmtree, other, True)
         shutil.copytree(self.prefs.dir, other, dirs_exist_ok=True)
@@ -133,24 +100,42 @@ class RemoveAssetHonoursTheIndexWrite(_LibraryCase):
             "library.json no longer lists an asset whose delete was refused")
 
     def test_a_refused_write_takes_back_the_row_removal(self):
-        """The forget() mark outlives a refused save.
-
-        removeRow marks the id for deletion on the next set(); a save
-        that returns False never reaches the merge that consumes the
-        mark. Without unforget() the NEXT save deletes the row this one
-        just put back - so the delete happens anyway, one save later.
-        """
+        """The forget() mark outlives a refused save - without unforget() the NEXT save deletes the row this one just put back, so the delete happens anyway one save later."""
         self._refuse_the_index_write()
         self.model.remove_asset(self.model.index(self._row(), 0))
 
-        # Point the connector home again and save normally.
-        database.DatabaseConnector(
+        database.DatabaseConnector(    # point the connector home again and save normally
             self.model.DB_FILENAME).reload_with_path(self.prefs.dir)
         self.assertTrue(self.model.save(), "the fixture save should succeed")
         self.assertIn(
             self.mat_id, self._on_disk_ids(),
             "the refused delete was carried out by the next save - the "
             "forget mark was never taken back")
+
+    def test_a_refused_write_leaks_no_row_into_the_other_library(self):
+        """The restore's set() lands on the shared connector, which a refusal at the serves() gate means is bound to ANOTHER pane's library - the put-back row must not be absorbed into that library's live document."""
+        other = tempfile.mkdtemp(prefix="amaze_other_library_")
+        self.addCleanup(shutil.rmtree, other, True)
+        shutil.copytree(self.prefs.dir, other, dirs_exist_ok=True)
+        index_path = os.path.join(other, "library.json")
+        with open(index_path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+        doc["assets"] = [a for a in doc["assets"]
+                         if str(a.get("id")) != self.mat_id]
+        with open(index_path, "w", encoding="utf-8") as fh:
+            json.dump(doc, fh)
+        connector = database.DatabaseConnector(self.model.DB_FILENAME)
+        connector.reload_with_path(other + os.sep)
+
+        self.model.remove_asset(self.model.index(self._row(), 0))
+
+        listed = {str(a.get("id"))
+                  for a in connector._data.get("assets", [])}
+        self.assertNotIn(
+            self.mat_id, listed,
+            "the refused delete's restore injected the row into the "
+            "OTHER library's live document - its payload files live in "
+            "this one, so that library now lists a fileless asset")
 
     def test_a_completed_delete_removes_the_files(self):
         """The fix must not cost the ordinary case."""
@@ -201,9 +186,7 @@ class DeletingAnAssetTakesItsVersionStore(_LibraryCase):
 
 class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
 
-    #: Read verbatim out of library.json by Material.from_dict, which
-    #: validates nothing - a hand-edited, tampered or badly-merged index.
-    ESCAPING = "../../../Documents/thesis"
+    ESCAPING = "../../../Documents/thesis"    # read verbatim out of library.json by Material.from_dict, which validates nothing - a hand-edited, tampered or badly-merged index
 
     def test_asset_files_returns_nothing_for_an_escaping_id(self):
         self.assertEqual({}, self.model.asset_files(self.ESCAPING))
@@ -220,13 +203,7 @@ class AnIdThatCannotNameAFileOwnsNothing(_LibraryCase):
                 "%s resolved outside the library: %s" % (kind, path))
 
     def test_delete_of_an_escaping_id_unlinks_nothing_outside(self):
-        """The whole loop, run on an id that points out of the library.
-
-        The id is composed to reach a real file OUTSIDE the library, the
-        way a tampered or badly-merged library.json can, and then
-        remove_asset's own unlink loop is run over whatever
-        asset_files() hands back. Before the fix this deleted the file.
-        """
+        """remove_asset's own unlink loop, run over what asset_files() hands back for an id composed to reach a real file OUTSIDE the library - before the fix this deleted that file."""
         outside = tempfile.mkdtemp(prefix="amaze_outside_")
         self.addCleanup(shutil.rmtree, outside, True)
         victim = os.path.join(outside, "thesis.mat")
@@ -281,15 +258,7 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             return 2 if "VERSION-2" in fh.read(64) else 1
 
     def test_a_held_file_leaves_the_base_on_one_version(self):
-        """The realistic failure: a sync client holds one of the files.
-
-        promote_scratch -> replace_file retries and then re-raises, and
-        the kinds before it in _KINDS have already gone over the base.
-        Measured before the fix: .mat on version 1, .interface on
-        version 2, and the ledger naming a third state - a material
-        whose network and parameter interface come from different
-        versions, with nothing able to see the disagreement.
-        """
+        """The realistic failure - a sync client holds one file: measured before the fix, .mat on version 1, .interface on version 2, the ledger naming a third state, and nothing able to see the disagreement."""
         real_promote = hostos.promote_scratch
 
         def held_interface(scratch, target):
@@ -311,6 +280,29 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             ".interface come from different ones, so importing it builds "
             "one version's network behind another's parameters")
 
+    def test_an_unarchived_base_is_archived_before_the_switch(self):
+        """A STRUCTURAL update rewrites the base without minting a version (the no-mint rule) - so at switch time the base can hold the only copy of that content, and promoting an archive over it destroys it. The docstring's promise: the base is archived first."""
+        for kind in (".mat", ".interface"):
+            with open(self.base[kind], "w", encoding="utf-8") as fh:
+                fh.write("STRUCTURAL %s" % kind)
+
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual(1, self._holds(".mat"))
+        self.assertEqual(1, versions.active_version(self.prefs, self.mat_id))
+
+        ledger = versions.read_ledger(self.prefs, self.mat_id)
+        archived = []
+        for row in ledger["versions"]:
+            paths = versions._archive_paths(self.prefs, self.mat_id,
+                                            versions._row_stem(row))
+            if os.path.exists(paths[".mat"]):
+                with open(paths[".mat"], encoding="utf-8") as fh:
+                    archived.append(fh.read(64))
+        self.assertTrue(
+            any("STRUCTURAL" in text for text in archived),
+            "the switch destroyed the ONLY copy of the structural "
+            "update - no archive holds it: %s" % archived)
+
     def test_an_ordinary_switch_still_works(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(1, self._holds(".mat"))
@@ -325,10 +317,7 @@ class AnAbsentPolicyIsNotAPermissiveOne(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, True)
 
     def test_absent_with_a_trace_fails_closed(self):
-        # Twice, so snapshot_before_write has something to copy - which
-        # is what the real library looks like. A one-write library has
-        # no trace and the permissive default is then correct.
-        library_policy.set_allow_overwrite(self.dir, True)
+        library_policy.set_allow_overwrite(self.dir, True)    # twice, so snapshot_before_write has something to copy - what the real library looks like; a one-write library has no trace and the permissive default is then correct
         library_policy.set_allow_overwrite(self.dir, False)
         traces = [n for n in os.listdir(self.dir)
                   if n.startswith("policy.json.")]
@@ -381,13 +370,7 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             "so the folder re-converts from scratch on every visit")
 
     def test_reconcile_matches_a_folder_stored_with_a_trailing_slash(self):
-        """Locate Folder GUARANTEES the trailing slash.
-
-        FolderListModel.relocate_folder appends one, os.walk preserves
-        it on the root dirpath, and the manifest's keys are
-        canonicalised - so the two never matched and nothing was ever
-        reconciled again for a folder the user had relocated.
-        """
+        """Locate Folder GUARANTEES the trailing slash the manifest's canonicalised keys lack - the two never matched, so a relocated folder was never reconciled again."""
         images = os.path.join(self.root, "images")
         os.makedirs(images)
         live = os.path.join(images, "keep.png")
@@ -454,17 +437,7 @@ class TheCaptureManifestSurvivesACrashMidWrite(unittest.TestCase):
 
 
 class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
-    """tools/restore.py's whole claim is that it works when Houdini
-    does not start, and the retirement of old undo copies reached
-    quarantine_file through core/library.py, which imports hou at
-    module level. From the terminal tool that import always raised,
-    was always swallowed, and the bound retired nothing - reproduced at
-    eight restores, eight copies, against a stated bound of five.
-
-    Pinned in two halves, neither of which depends on what interpreters
-    happen to be installed: the bound RETIRES, and the module it
-    retires through stays free of hou.
-    """
+    """The retirement of old undo copies once reached quarantine_file through a hou-importing module, so from the terminal tool the bound retired nothing - pinned in two halves: the bound RETIRES, and the module it retires through stays free of hou."""
 
     def test_the_bound_retires_the_oldest_copies(self):
         root = tempfile.mkdtemp(prefix="amaze_restore_case_")
@@ -491,10 +464,7 @@ class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
         self.assertTrue(retired, "nothing was reported as retired")
 
     def test_the_retirement_does_not_go_through_a_hou_importing_module(self):
-        """The regression guard. A behaviour test cannot see this: under
-        hython `from amaze.core import library` succeeds, so pointing
-        the retirement back at it would leave the test above green and
-        the terminal tool broken again."""
+        """The regression guard a behaviour test cannot be: under hython the hou import succeeds, so pointing the retirement back at it would leave the test above green and the terminal tool broken again."""
         source = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "helpers", "restore.py")
@@ -520,8 +490,7 @@ class TheUndoCopyBoundHoldsWithoutHoudini(unittest.TestCase):
 class UndoCopiesAreOrderedByTheirName(unittest.TestCase):
 
     def test_the_picker_and_the_retirement_agree(self):
-        """mtime says when a file was TOUCHED; the name says which state
-        it holds, and a backup pass rewrites the former."""
+        """mtime says when a file was TOUCHED; the name says which state it holds, and a backup pass rewrites the former."""
         root = tempfile.mkdtemp(prefix="amaze_undo_order_")
         self.addCleanup(shutil.rmtree, root, True)
         target = os.path.join(root, "library.json")
@@ -531,9 +500,7 @@ class UndoCopiesAreOrderedByTheirName(unittest.TestCase):
             name = "%s.bak-before-restore-%s" % (target, stamp)
             with open(name, "w", encoding="utf-8") as fh:
                 fh.write(stamp)
-        # The oldest STATE, touched most recently - what any backup
-        # pass or transport produces.
-        os.utime("%s.bak-before-restore-%s" % (target, stamps[0]),
+        os.utime("%s.bak-before-restore-%s" % (target, stamps[0]),    # the oldest STATE, touched most recently - what any backup pass or transport produces
                  (2 ** 31 - 1, 2 ** 31 - 1))
 
         found = restore_mod.snapshots(target)

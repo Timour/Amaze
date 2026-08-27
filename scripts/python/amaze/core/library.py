@@ -528,6 +528,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         db.set(data)
         stored = db.save()
         self._adopt_rows(db.take_adopted())  # a save can ADOPT rows another session wrote while we had the library open; they reached disk but not this model, and assets[] above is rebuilt from the model, so the next save would write them out of existence
+        self._drop_rows(db.take_dropped())   # and the mirror: rows a peer DELETED from disk, whose files are already unlinked - kept in the model, the next save writes back a fileless ghost
         if stored and getattr(db, "_save_outcome", "") != "identical-skip":
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
@@ -554,6 +555,26 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         finally:
             self.endInsertRows()
         self.rebuild_thumbs()
+
+    def _drop_rows(self, rows: list) -> None:
+        """Remove rows another session deleted, with the row signals a view needs. Nothing on disk is touched - the deleting session already unlinked the files."""
+        if not isinstance(rows, list):  # a list, by contract
+            return
+        removed = False
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            index = self.find_asset_row_by_id(str(row.get("id", "")))
+            if index < 0:
+                continue
+            self.beginRemoveRows(QtCore.QModelIndex(), index, index)
+            try:
+                del self._assets[index]
+            finally:
+                self.endRemoveRows()
+            removed = True
+        if removed:
+            self.rebuild_thumbs()
 
     @property
     def assets(self) -> list:
@@ -712,7 +733,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             try:  # removeRow marked the row for deletion on the next write, so without this the delete just declined happens anyway the next time anything saves
                 connector = database.DatabaseConnector(self.DB_FILENAME)
                 connector.unforget(asset.mat_id)
-                connector.set({"assets": [asset.get_as_dict()]})  # unforget clears a PENDING delete, but the failed save() above already ran set(), which consumed the mark and dropped the row from the live document - so the row has to go back in too
+                if connector.serves(self.preferences.dir):  # unforget clears a PENDING delete, but the failed save() above already ran set(), which consumed the mark and dropped the row from the live document - so the row has to go back in too. UNLESS the refusal was the serves() gate itself: set() never ran there, and running it here would absorb this row into the OTHER pane's library
+                    connector.set({"assets": [asset.get_as_dict()]})
             except (AttributeError, TypeError) as exc:
                 debug.event("library", "could not take back a row removal",
                             error=str(exc))

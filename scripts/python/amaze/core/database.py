@@ -309,6 +309,7 @@ class DatabaseConnector:
             inst._loaded_ids = set()
 
             inst._adopted = []
+            inst._dropped = []
 
             # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
             inst._forgotten = set()
@@ -677,6 +678,12 @@ class DatabaseConnector:
         self._adopted = []
         return rows
 
+    def take_dropped(self) -> list:
+        """Rows a peer's save deleted from disk, handed over exactly once - the model must drop them too, or its next save writes them back."""
+        rows = self._dropped
+        self._dropped = []
+        return rows
+
     @staticmethod
     def _migrate_peer(disk: dict) -> None:
         """Bring a PEER document up to our shape, in place - shape only: no stamping, no latching, no reporting, because those verdicts belong to the file THIS connector loaded."""
@@ -754,6 +761,19 @@ class DatabaseConnector:
                 _merge_shared_metadata(ours[tid], theirs, self._filename)
         adopted = len(adopted_rows)
         self._adopted.extend(adopted_rows)
+        disk_ids = {str(theirs.get("id"))
+                    for theirs in disk.get("assets", [])
+                    if isinstance(theirs, dict)}
+        dropped_rows = []    # the third direction: in our memory AND the baseline but gone from disk is THE PEER'S DELETION, and its files are already unlinked - kept, the row is a fileless ghost on both machines
+        current = self._data.setdefault("assets", [])
+        for row in list(current):
+            if not isinstance(row, dict):
+                continue
+            rid = str(row.get("id"))
+            if rid in self._loaded_ids and rid not in disk_ids:
+                current.remove(row)
+                dropped_rows.append(row)
+        self._dropped.extend(dropped_rows)
         for key in ("categories", "tags"):
             existing = self._data.setdefault(key, [])
             for value in disk.get(key, []):
@@ -770,6 +790,7 @@ class DatabaseConnector:
         debug.event(
             "database", "merged concurrent changes",
             file=self._filename, adopted_assets=adopted,
+            dropped_assets=len(dropped_rows),
             disk_assets=len(disk.get("assets", [])),
             memory_assets=len(self._data.get("assets", [])),
         )
