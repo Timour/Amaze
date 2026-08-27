@@ -309,6 +309,31 @@ class DialogTest(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         return dialog
 
+    def test_the_category_field_stays_live_on_a_multi_selection(self):
+        """Name and Tags grey out where one field cannot say what several rows carry; Category is the opposite - moving a whole selection to one category is the point of it."""
+        dialog = icon_dialog.IconDialog(
+            None, tile_name="", tile_name_enabled=False,
+            categories=["Metal", "Wood"], tile_category="")
+        self.addCleanup(dialog.deleteLater)
+        self.assertFalse(dialog.tile_name_edit.isEnabled(),
+                         "the Name field is live on a multi-selection")
+        self.assertTrue(dialog.category_combo.isEnabled(),
+                        "the Category field greys out, so a selection "
+                        "cannot be moved in one go")
+
+    def test_a_blank_category_moves_nothing(self):
+        """An empty box is not an answer the way an empty Tags line is: there is no such thing as no category."""
+        dialog = icon_dialog.IconDialog(
+            None, categories=["Metal"], tile_category="Metal")
+        self.addCleanup(dialog.deleteLater)
+        dialog.category_combo.setCurrentText("")
+        dialog.accept_button.click()
+        self.assertIsNone(dialog.new_category)
+
+    def test_a_section_without_categories_shows_no_field(self):
+        dialog = self._dialog()
+        self.assertIsNone(dialog.category_combo)
+
     def test_accept_returns_the_choice(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
         dialog._choose("layers")

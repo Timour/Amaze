@@ -85,6 +85,7 @@ BTN_NEW_FILE = "New File"
 LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_LINES = "Lines"
 LABEL_TAGS = "Tags"
+LABEL_CATEGORY = "Category"
 LABEL_NAME = "Name"
 PLACEHOLDER_TAGS = "metal, rough"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more

@@ -294,6 +294,26 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self.row_changed(model_index.row())
         return True
 
+    def tile_category(self, row: int) -> str:
+        """This asset's category - what the Customize dialog's Category dropdown shows. One category per asset, so there is no rule about which of several wins."""
+        if not 0 <= row < len(self._assets):
+            return ""
+        cats = self._assets[row].categories or []
+        return str(cats[0]) if cats else ""
+
+    def set_tile_category(self, row: int, name: str) -> bool:
+        """MOVE one asset to `name`, replacing whatever it had - a narrow write beside `set_tile_name`, then the ordinary save chain. Unlike name and tags this one runs over a whole selection, so a blank is a no-op rather than a clear."""
+        name = (name or "").strip()
+        if not 0 <= row < len(self._assets) or not name:
+            return False
+        asset = self._assets[row]
+        if list(asset.categories or []) == [name]:
+            return False
+        asset.categories = name    # the RECORD's own setter splits and drops the blanks
+        self.save()
+        self.row_changed(row)
+        return True
+
     def tile_tags(self, row: int) -> str:
         """This asset's tags as ONE comma-separated line - what the Customize dialog's Tags field shows and edits."""
         if not 0 <= row < len(self._assets):

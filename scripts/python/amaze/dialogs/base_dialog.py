@@ -5,7 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.helpers import theme
+from amaze.helpers import theme, ui_helpers
 
 SAVE_WIDTH = amazetheme.SAVE_WIDTH    # every small save dialog is this wide, whatever its labels ▸p/save-dialog-rows
 
@@ -57,7 +57,7 @@ class AssetDialog(QtWidgets.QDialog):
     def add_combo(
         self, label: str, items, current: str = "", editable: bool = False
     ):
-        combo = QtWidgets.QComboBox()
+        combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
         combo.setEditable(editable)
         for item in items:
             combo.addItem(item)

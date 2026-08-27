@@ -22,15 +22,19 @@ class IconDialog(base_dialog.AssetDialog):
 
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
-                 tile_name_enabled: bool = True, tile_tags=None) -> None:
+                 tile_name_enabled: bool = True, tile_tags=None,
+                 categories=None, tile_category="") -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
                          else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
                          fixed_size=False, parent=parent)
         self._tile_name = tile_name   # None = the section has no rename at all; "" with tile_name_enabled False = a multi-selection, so the field greys out
         self._tile_name_enabled = bool(tile_name_enabled)
         self._tile_tags = tile_tags   # the same rule as the name: None = this section has no tags, and a multi-selection greys the field
+        self._categories = list(categories or [])   # None = this section has no categories, so no field at all
+        self._tile_category = tile_category or ""
         self.new_tile_name = None
         self.new_tags = None
+        self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
         self._stroke = stroke_units or tile_icons.STROKE_UNITS
         current = tile_icons.normalise(current)
         self.spec = dict(current)
@@ -57,27 +61,44 @@ class IconDialog(base_dialog.AssetDialog):
 
 
     def _build_top_row(self, gap: int):
-        """Search and the asset's name, EQUAL HALVES of the whole dialog width - the search steers the grid below it and the name belongs to neither column."""
+        """`Name` and `Category`, each labelled, across the whole width above both columns - as drawn. The search sits at the BOTTOM, beside Remove and Apply."""
         row = QtWidgets.QHBoxLayout()
         row.setSpacing(gap)
 
+        if self._tile_name is None:
+            self.tile_name_edit = None
+        else:
+            row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_NAME))
+            self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
+            self.tile_name_edit.setEnabled(self._tile_name_enabled)
+            self.tile_name_edit.setPlaceholderText(amazetheme.LABEL_NAME)
+            self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
+                "Rename this tile. The name is what the grid, the "
+                "sidebar count and every search look at."))
+            row.addWidget(self.tile_name_edit, 1)
+
+        if not self._categories:
+            self.category_combo = None
+            return row
+        row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_CATEGORY))
+        self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
+        self.category_combo.setEditable(True)
+        for name in self._categories:
+            self.category_combo.addItem(name)
+        self.category_combo.setCurrentText(self._tile_category)
+        self.category_combo.setToolTip(ui_helpers.tooltip_text(
+            "Move to this category. Unlike Name and Tags this one "
+            "applies to every tile you have selected."))
+        row.addWidget(self.category_combo, 1)
+        return row
+
+    def _build_search(self):
+        """The icon filter, drawn at the bottom under the grid."""
         self.search = QtWidgets.QLineEdit()
         self.search.setPlaceholderText(amazetheme.PLACEHOLDER_SEARCH_ICONS)
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
-        row.addWidget(self.search, 1)
-
-        if self._tile_name is None:
-            self.tile_name_edit = None
-            return row
-        self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)   # no "Name" label: the field's own content says what it is
-        self.tile_name_edit.setEnabled(self._tile_name_enabled)
-        self.tile_name_edit.setPlaceholderText(amazetheme.LABEL_NAME)
-        self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
-            "Rename this tile. The name is what the grid, the "
-            "sidebar count and every search look at."))
-        row.addWidget(self.tile_name_edit, 1)
-        return row
+        return self.search
 
     def _build_chooser(self, gap: int):
         column = QtWidgets.QVBoxLayout()
@@ -131,6 +152,7 @@ class IconDialog(base_dialog.AssetDialog):
         area.setMinimumSize(
             theme.ui_px(CELL * COLUMNS + 30), theme.ui_px(CELL * 8))
         column.addWidget(area, 1)
+        column.addWidget(self._build_search())   # under the GRID it filters, not beside the buttons - as drawn
         return column
 
     def _build_side(self, gap: int):
@@ -186,6 +208,7 @@ class IconDialog(base_dialog.AssetDialog):
         fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE, so an unstated form draws differently on macOS than under Houdini's own ▸r/form-layout-defaults
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.ink_combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
+
         self.ink_combo.addItem("Dark", "dark")
         self.ink_combo.addItem("Light", "light")
         self.ink_combo.setCurrentIndex(
@@ -319,9 +342,18 @@ class IconDialog(base_dialog.AssetDialog):
         if text != (self._tile_tags or "").strip():
             self.new_tags = text
 
+    def _harvest_category(self) -> None:
+        """On any accepting close: the category to move to, or None when the field is absent or unchanged. A BLANK is not an answer - unlike tags there is no such thing as no category - so it is ignored."""
+        if self.category_combo is None:
+            return
+        text = self.category_combo.currentText().strip()
+        if text and text != (self._tile_category or "").strip():
+            self.new_category = text
+
     def _accept(self) -> None:
         self.spec = tile_icons.normalise(
             {"name": self._name, "bg": self._bg, "ink": self._ink})
         self._harvest_tile_name()
         self._harvest_tags()
+        self._harvest_category()
         self._on_accept()

@@ -2622,6 +2622,11 @@ class MatLibPanel(QtWidgets.QWidget):
         tile_tags = None    # the same rule as the name, one row down: a section whose model cannot hold tags shows no field at all
         if hasattr(model, "set_tile_tags"):
             tile_tags = model.tile_tags(rows[0]) if single else ""
+        categories = None    # the same rule as the name and the tags: a section whose model cannot hold a category shows no field at all
+        tile_category = ""
+        if hasattr(model, "set_tile_category"):
+            categories = self.get_category_names()
+            tile_category = model.tile_category(rows[0]) if single else ""
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
             tile_icons.stroke_for(self.prefs),
@@ -2629,6 +2634,8 @@ class MatLibPanel(QtWidgets.QWidget):
             tile_name=tile_name,
             tile_name_enabled=single,
             tile_tags=tile_tags,
+            categories=categories,
+            tile_category=tile_category,
         )
         self._icon_dialog = dialog
 
@@ -2650,6 +2657,10 @@ class MatLibPanel(QtWidgets.QWidget):
                     if new_tags is not None and len(rows) == 1 and \
                             hasattr(model, "set_tile_tags"):    # `is not None`, never truth: "" is a real answer that CLEARS the tags
                         model.set_tile_tags(rows[0], new_tags)
+                    new_category = getattr(dialog, "new_category", None)
+                    if new_category and hasattr(model, "set_tile_category"):
+                        for row in rows:    # EVERY selected row, unlike the name and the tags: moving a whole selection to one category is what the field is for
+                            model.set_tile_category(row, new_category)
             finally:
                 dialog.deleteLater()    # the panel is its C++ parent and outlives every dialog, so dropping the Python name frees nothing - 287 buttons and ~6.5MB stay alive per open otherwise
 
