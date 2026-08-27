@@ -8,7 +8,7 @@ import unittest
 from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists: the first module to build the QApplication picks the Qt platform for the whole hython, and on the native one the host style lays widgets outside their layout cells - which fails OTHER modules' geometry asserts, three modules later ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 import hou  # noqa: E402
 
@@ -601,6 +601,20 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         self.assertGreaterEqual(
             code.width(), theme.ui_px(amazetheme.D11_FORM_WIDTH),
             "the code dialog opens narrower than its drawn floor")
+        self.assertLess(    # the drawn 2x2: the editor spans the FULL width under both halves, so it starts left of the indented Name field
+            code._editor.mapTo(code, QtCore.QPoint(0, 0)).x(),
+            code._line_name.mapTo(code, QtCore.QPoint(0, 0)).x(),
+            "the editor sits in the field column, not across the dialog")
+        self.assertGreater(
+            code._combo_category.mapTo(code, QtCore.QPoint(0, 0)).x(),
+            code._line_name.mapTo(code, QtCore.QPoint(0, 0)).x()
+            + code._line_name.width(),
+            "Category is not in a second column beside Name")
+        caption = [c for c in code._editor.children()
+                   if isinstance(c, QtWidgets.QLabel)]
+        self.assertEqual(
+            [amazetheme.LABEL_CODE], [c.text() for c in caption],
+            "the Code caption is not drawn on the editor")
 
     def test_only_the_drawn_three_wear_a_header_band(self):
         """D01, D02 and D11 carry the drawn strip; the save family and Preferences do not, and a band appearing on one of those is the misreading that put it there in the first place. ▸p/one-design-document"""

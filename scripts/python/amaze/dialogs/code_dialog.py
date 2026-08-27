@@ -142,31 +142,58 @@ class CodeDialog(base_dialog.AssetDialog):
         self.tags = ""
         self.code = ""
 
+        def form():
+            half = QtWidgets.QFormLayout()
+            half.setContentsMargins(0, 0, 0, 0)
+            half.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
+                                   | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            half.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
+                QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+            return half
+
+        left, right = form(), form()    # Name | Category over Language | Tags - the drawn 2x2, equal halves
+
         self._line_name = QtWidgets.QLineEdit(name)
         self._line_name.setToolTip(ui_helpers.tooltip_text(
             "Name it, pick a category, and add tags to find "
             "it again later."))
-        self.add_row("Name", self._line_name)
+        left.addRow("Name", self._line_name)
 
-        self._combo_lang = QtWidgets.QComboBox()
+        self._combo_lang = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
         for lang in LANGUAGES:
             self._combo_lang.addItem(lang)
         if language in LANGUAGES:
             self._combo_lang.setCurrentText(language)
-        self.add_row("Language", self._combo_lang)
+        left.addRow("Language", self._combo_lang)
 
-        self._combo_category = self.add_combo(
-            "Category", categories,
-            current=category or (categories[0] if categories else ""),
-            editable=True,
-        )
+        self._combo_category = ui_helpers.DesignedComboBox()
+        self._combo_category.setEditable(True)
+        for item in categories:
+            self._combo_category.addItem(item)
+        self._combo_category.setCurrentText(
+            category or (categories[0] if categories else ""))
+        right.addRow("Category", self._combo_category)
 
-        self._line_tags = self.add_row("Tags", QtWidgets.QLineEdit(tags))
+        self._line_tags = QtWidgets.QLineEdit(tags)
+        right.addRow("Tags", self._line_tags)
+
+        content = QtWidgets.QWidget()
+        stack = QtWidgets.QVBoxLayout(content)
+        stack.setContentsMargins(0, 0, 0, 0)
+        stack.setSpacing(theme.ui_px(12))
+        halves = QtWidgets.QHBoxLayout()
+        halves.setSpacing(theme.ui_px(18))
+        halves.addLayout(left, 1)
+        halves.addLayout(right, 1)
+        stack.addLayout(halves)
 
         self._editor = CodeEditor(code)
-        self._editor.setMinimumHeight(theme.ui_px(amazetheme.D11_EDITOR_H))    # HEIGHT only: the editor's width is the field column, which the dialog's own width already decides ▸p/one-design-document
-        self.add_row("Code", self._editor)
+        self._editor.setMinimumHeight(theme.ui_px(amazetheme.D11_EDITOR_H))
+        caption = QtWidgets.QLabel(amazetheme.LABEL_CODE, self._editor)   # drawn ON the editor's top-left, over the gutter
+        caption.move(theme.ui_px(19), 0)
+        stack.addWidget(self._editor, 1)    # FULL width, under both halves - as drawn
 
+        self.set_content(content)
         self.finish()
 
     def _on_accept(self) -> None:
