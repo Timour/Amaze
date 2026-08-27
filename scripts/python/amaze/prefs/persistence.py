@@ -1,7 +1,6 @@
 """The preferences document: the save/load round trip, the path encoding, and the shared keys' trips to the library. ▸p/store-guards"""
 
 import os
-import hou
 
 from amaze.core import debug, keyed_store
 from amaze.helpers import hostos
@@ -14,18 +13,6 @@ def _settings_value(value):
 
 SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
 
-_AMAZE_TOKEN = "$AMAZE"  # `hostos.storage_path_key` mints it for paths under the install; this module only reads it
-
-
-def _amaze_root() -> str:
-    return (hou.getenv("AMAZE") or "").replace("\\", "/").rstrip("/")
-
-
-def _split_dir_slash(path: str):
-    """Split a folder pref's trailing slash off, so a transform that strips it can put it back."""
-    clean = path.replace("\\", "/")
-    return clean.rstrip("/"), "/" if clean.endswith("/") else ""
-
 
 def _encode_path(path):
     """Spell a path the way settings.json stores it - one encoder, shared with every other store."""
@@ -35,19 +22,11 @@ def _encode_path(path):
 
 
 def _decode_path(path):
-    """A stored spelling back to this machine's path: the `$AMAZE` and `~` forms expand, and a foreign absolute is re-homed when the result exists."""
+    """A stored spelling back to this machine's path through `hostos.expand_storage_path` - the declared inverse of the encoder above - plus the re-home step for a foreign absolute that no longer exists."""
     if not isinstance(path, str) or not path:
         return path
-    if path.startswith(_AMAZE_TOKEN):
-        root = _amaze_root()
-        if not root:
-            return path
-        body, slash = _split_dir_slash(path[len(_AMAZE_TOKEN):])
-        joined = os.path.normpath(root + body).replace("\\", "/")
-        return joined + slash
-    if path.startswith("~"):
-        body, slash = _split_dir_slash(path)
-        return os.path.expanduser(body).replace("\\", "/") + slash
+    if path.startswith("$AMAZE") or path.startswith("~"):
+        return hostos.expand_storage_path(path)    # ONE grammar with every other reader (locations.py decodes the same spellings) - two expansions disagreeing at the edges made one stored value resolve to two strings
     clean = path.replace("\\", "/")
     if not os.path.exists(clean):
         rehomed = hostos.rehome(clean)  # another machine's home prefix swapped for this one's, and only when the result exists

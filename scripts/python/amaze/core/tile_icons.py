@@ -259,18 +259,30 @@ def icon_image_path(preferences, asset_id: str) -> str:
         str(asset_id) + "_icon" + preferences.img_ext)
 
 
+def render_size(preferences) -> int:
+    """The pixel size an icon composes at - the preference when it parses, CANVAS otherwise; the ONE size read for every compose."""
+    try:
+        return int(getattr(preferences, "rendersize", CANVAS)) or CANVAS
+    except (TypeError, ValueError):
+        return CANVAS
+
+
+def compose_for(preferences, spec):
+    """One normalised spec composed in memory at the preferences' size - the one call the models share, so an icon looks the same in every section."""
+    spec = normalise(spec)
+    if not spec:
+        return None
+    return compose(spec["name"], spec["bg"], render_size(preferences),
+                   stroke_for(preferences), spec["ink"])
+
+
 def render_for(preferences, asset_id: str, spec) -> str:
     """Compose an asset's icon onto disk and return the path, or "" if there is no icon to make - deleting the file when the icon is cleared is the caller's job (it knows whether a render exists)."""
     spec = normalise(spec)
     if not spec:
         return ""
     path = icon_image_path(preferences, asset_id)
-    size = CANVAS
-    try:
-        size = int(getattr(preferences, "rendersize", CANVAS)) or CANVAS
-    except (TypeError, ValueError):
-        pass
-    if not write(path, spec["name"], spec["bg"], size,
+    if not write(path, spec["name"], spec["bg"], render_size(preferences),
                  stroke_for(preferences), spec["ink"]):
         return ""
     return path

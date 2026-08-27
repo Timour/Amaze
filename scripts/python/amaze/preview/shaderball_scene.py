@@ -1,6 +1,4 @@
-"""
-Generates a ShaderBall Scene and allows for Rendering Material Preview
-"""
+"""Generates a ShaderBall Scene and allows for Rendering Material Preview"""
 
 import hou
 
@@ -9,9 +7,7 @@ from amaze.core import material
 
 
 class ShaderBallSetup:
-    """
-    Generates a ShaderBall Scene and allows for Rendering Material Preview
-    """
+    """Generates a ShaderBall Scene and allows for Rendering Material Preview"""
 
     def __init__(
         self,
@@ -84,23 +80,18 @@ class ShaderBallSetup:
         self.geo_node.layoutChildren()
 
     def apply_initial_materials(self, renderer: str) -> None:
-        """
-        Apply Default Materials for the given Renderer
-        """
+        """Apply Default Materials for the given Renderer"""
         if "Redshift" in renderer:
 
             self.mat = self.matnet.createNode("redshift_vopnet")
 
-            # Locate the auto-created surface material. The default child
-            # node differs between Redshift versions: older builds create
-            # StandardMaterial1, newer builds create an OpenPBR material.
-            rsmat = self.mat.node("StandardMaterial1")
+            rsmat = self.mat.node("StandardMaterial1")    # the auto-created surface material's name differs between Redshift versions - older builds create StandardMaterial1, newer an OpenPBR material
             if rsmat is None:
                 for child in self.mat.children():
                     tname = child.type().name()
                     if tname in material.REDSHIFT_TERMINALS:
                         continue
-                    if "Material" in tname or "PBR" in tname:
+                    if material.is_surface_shader_type(tname):
                         rsmat = child
                         break
             if rsmat is None:
@@ -113,9 +104,7 @@ class ShaderBallSetup:
                 if out is not None:
                     out.setInput(0, rsmat, 0)
 
-            # Kill specular on the floor. Parameter names differ:
-            # StandardMaterial uses refl_weight, OpenPBR uses specular_weight.
-            for parm_name in ("refl_weight", "specular_weight"):
+            for parm_name in ("refl_weight", "specular_weight"):    # kill specular on the floor - StandardMaterial spells it refl_weight, OpenPBR specular_weight
                 parm = rsmat.parm(parm_name)
                 if parm is not None:
                     parm.set(0)
@@ -126,10 +115,8 @@ class ShaderBallSetup:
                 "$AMAZE//scripts/python/amaze/res/img/FloorTexture.exr"
             )
 
-            # Prefer the named input so this works on both material types;
-            # input index 0 is only guaranteed on StandardMaterial.
             try:
-                rsmat.setNamedInput("base_color", tex, 0)
+                rsmat.setNamedInput("base_color", tex, 0)    # the NAMED input works on both material types; index 0 is only guaranteed on StandardMaterial
             except (hou.OperationFailed, AttributeError):
                 rsmat.setInput(0, tex, 0)
 
@@ -139,11 +126,7 @@ class ShaderBallSetup:
 
             self.mat = self.matnet.createNode("octane_vopnet")
 
-            # Locate the auto-created surface material. As with Redshift
-            # above, the default child's name can differ between Octane
-            # versions - search generically instead of assuming
-            # "Standard_Surface" and crashing when it isn't there.
-            omat = self.mat.node("Standard_Surface")
+            omat = self.mat.node("Standard_Surface")    # as with Redshift above, the default child's name differs between Octane versions - searched generically rather than crashing when the assumed name is absent
             if omat is None:
                 for child in self.mat.children():
                     tname = child.type().name()
@@ -162,16 +145,11 @@ class ShaderBallSetup:
                 )
                 omat.setInput(1, tex, 0)
             else:
-                # event, not note: a renderer version difference in the
-                # shaderball's floor is developer detail - the render
-                # still completes, just without the floor texture.
-                debug.event("thumb", "octane default material node not "
+                debug.event("thumb", "octane default material node not "    # event, not note: a renderer version difference in the shaderball's floor is developer detail - the render completes, just without the floor texture
                             "found - floor texture/specular skipped")
 
             self.mat.setName("Plane", True)
 
     def get_geo_node(self) -> hou.Node:
-        """
-        Get the currently attached GeoNode
-        """
+        """Get the currently attached GeoNode"""
         return self.geo_node

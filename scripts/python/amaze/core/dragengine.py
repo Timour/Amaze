@@ -273,20 +273,27 @@ def ghost_clear() -> None:
 DROP_TARGET_RADIUS = 0.25
 
 
+def _drop_items_at(editor, position):
+    """Every network item within the drop radius of `position`, or None when the editor cannot answer - the ONE hit-test box the wire and connector questions share."""
+    try:
+        spot = editor.posToScreen(position)
+        radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
+        return editor.networkItemsInBox(
+            hou.Vector2(spot.x() - radius, spot.y() - radius),
+            hou.Vector2(spot.x() + radius, spot.y() + radius),
+            for_drop=True)
+    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+        return None
+
+
 def wire_under_cursor(editor, position, exclude=()):
     """The connection a release at `position` would land on, as the triple `setDropTargetItem` wants - or (None, "", -1); the FIRST connection in the list wins and items in front of it are skipped, never a veto. The preference gates the QUESTION: a network where the host forbids the insert pays no hit test. ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
     if not _drop_on_wire_allowed(editor):
         return (None, "", -1)
-    try:
-        spot = editor.posToScreen(position)
-        radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
-        found = editor.networkItemsInBox(
-            hou.Vector2(spot.x() - radius, spot.y() - radius),
-            hou.Vector2(spot.x() + radius, spot.y() + radius),
-            for_drop=True)
-    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+    found = _drop_items_at(editor, position)
+    if found is None:
         return (None, "", -1)
     for item, name, index in found:
         if isinstance(item, hou.NodeConnection):
@@ -304,14 +311,8 @@ def connector_under_cursor(editor, position, exclude=()):
     """The node CONNECTOR a release at `position` would land on, as (node, name, index) - or (None, "", -1), which is also the answer when the cursor is inside a node body; asked at the host's DROP radius, never the wider connector snap radius. ▸r/drop-targets"""
     if editor is None or position is None:
         return (None, "", -1)
-    try:
-        spot = editor.posToScreen(position)
-        radius = editor.lengthToScreen(DROP_TARGET_RADIUS)
-        found = editor.networkItemsInBox(
-            hou.Vector2(spot.x() - radius, spot.y() - radius),
-            hou.Vector2(spot.x() + radius, spot.y() + radius),
-            for_drop=True)
-    except (AttributeError, hou.OperationFailed, hou.ObjectWasDeleted):
+    found = _drop_items_at(editor, position)
+    if found is None:
         return (None, "", -1)
     candidates = [(item, name, index) for item, name, index in found
                   if isinstance(item, hou.Node) and item not in exclude]

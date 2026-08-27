@@ -265,12 +265,7 @@ class GridGestureMixin:
             return False
         if pane is None or pane.type() != hou.paneTabType.Parm:
             return False
-        preview = self._preview
-        self._preview = None
-        if preview is not None:
-            preview.hide()
-            preview.close()
-            preview.deleteLater()
+        self._finish_preview(True)    # a hand-off, not a miss - teardown in its one named home, no indicator
         self._dragging = False
         self._drag_start = None
         dragengine.end()

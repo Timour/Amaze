@@ -346,7 +346,6 @@ class IconDialog(base_dialog.AssetDialog):
 
     def _pick_custom(self) -> None:
         """Houdini's colour picker, reachable ONLY because this dialog holds no exec loop. ▸r/houdini-colour-picker"""
-        from amaze.helpers import ui_helpers
         chosen = ui_helpers.pick_color(self._bg, self, "Tile Background")
         if chosen is not None:
             self._set_bg(chosen.name())

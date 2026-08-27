@@ -22,7 +22,7 @@ def normalise(value) -> dict:
     """A well-formed location record, or {} for junk - `show_all` is the one field whose FALSE is a real value (an override of the global Show Unknown Files preference), so falsy fields are not blanket-dropped."""
     if not isinstance(value, dict):
         return {}
-    known = ("registered", "name", "color", "show_all", "recursive")  # unknown fields ride along: a newer build's field must survive an older build's rewrite, the engine's own whole-foreign-entries rule one level up
+    known = FIELDS  # the ONE list of the record's fields; unknown fields ride along - a newer build's field must survive an older build's rewrite - and a field added to FIELDS needs its own branch below or its write vanishes here
     record = {k: v for k, v in value.items() if k not in known}
     if value.get("registered"):
         record["registered"] = True

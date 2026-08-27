@@ -303,18 +303,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             cached = QtGui.QPixmapCache.find(key)
             if cached is not None and not cached.isNull():
                 return cached
-            if cover:
-                return AssetItemDelegate._cover_pixmap(
-                    QtGui.QPixmap.fromImage(icon), target, dpr, key)
-            scaled = QtGui.QPixmap.fromImage(icon).scaled(
-                target,
-                target,
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            )
-            scaled.setDevicePixelRatio(dpr)
-            QtGui.QPixmapCache.insert(key, scaled)
-            return scaled
+            return AssetItemDelegate._scale_and_cache(
+                QtGui.QPixmap.fromImage(icon), key, target, dpr, cover)
         pixmap = AssetItemDelegate._to_pixmap(icon)
         if pixmap is None:
             return None
@@ -323,6 +313,12 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         cached = QtGui.QPixmapCache.find(key)
         if cached is not None and not cached.isNull():
             return cached
+        return AssetItemDelegate._scale_and_cache(
+            pixmap, key, target, dpr, cover)
+
+    @staticmethod
+    def _scale_and_cache(pixmap, key, target, dpr, cover):
+        """The cache-miss tail both decoration branches share: cover-crop or aspect-fit scale, ratio stamped, inserted under `key`."""
         if cover:
             return AssetItemDelegate._cover_pixmap(pixmap, target, dpr, key)
         scaled = pixmap.scaled(

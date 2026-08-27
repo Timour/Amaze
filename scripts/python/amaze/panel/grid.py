@@ -372,8 +372,7 @@ def apply_view_mode(panel) -> None:
     try:
         if panel.prefs.view_mode == "list":
             restore_drag_mode(panel)    # the TABLE is list mode; the QListView stays in IconMode, hidden, so the grid is the only thing it ever paints
-            show_table(panel, True)
-            sync_table_columns(panel)
+            show_table(panel, True)    # whose own last statement is the column sync
         else:
             panel.thumblist.setViewMode(QtWidgets.QListView.ViewMode.IconMode)
             restore_drag_mode(panel)

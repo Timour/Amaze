@@ -117,23 +117,13 @@ def live_current_index(view):
     return model.index(index.row(), 0)   # COLUMN 0, not the clicked cell: over the list-mode table the current index keeps whichever column was clicked, and the grid models answer roles only on the owning one ▸r/row-selection
 
 
-def _screen_dpr() -> float:
-    """The PRIMARY screen's device-pixel ratio, 1.0 when headless - deliberately app-wide, because a tooltip is built at setToolTip time, before anyone knows which monitor it will pop on. ▸r/screen-dpr"""
-    from PySide6 import QtGui as _QtGui
-
-    screen = _QtGui.QGuiApplication.primaryScreen()
-    if screen is None:
-        return 1.0
-    return float(screen.devicePixelRatio()) or 1.0
-
-
 def tooltip_text(text: str, max_px: int = 800) -> str:
     """A tooltip that never draws wider than `max_px` REAL screen pixels - Qt renders a PLAIN-text tooltip as one line however long, and a width-capped table is the one rich-text width control QTextDocument honours; the cap is in DEVICE pixels, a ruler on a screenshot."""
     from PySide6 import QtWidgets as _QtWidgets
 
     import html
 
-    cap = max(1, int(max_px / _screen_dpr()))
+    cap = max(1, int(max_px / theme.screen_ratio()))    # the primary screen deliberately: a tooltip is built at setToolTip time, before which monitor it will pop on is knowable ▸r/screen-dpr
     metrics = QtGui.QFontMetrics(_QtWidgets.QToolTip.font())
     if metrics.horizontalAdvance(text) <= cap:
         return html.escape(text) if _might_be_rich(text) else text    # Qt AUTO-DETECTS rich text, so remote catalogue text renders as markup unless this branch escapes too ▸r/tooltip-autodetect

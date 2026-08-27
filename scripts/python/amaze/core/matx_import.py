@@ -164,12 +164,9 @@ def _producer_for(record, source, resolution, preferences, progress=None):
     if os.path.isdir(dest) and os.listdir(dest):   # REFUSE AN OCCUPIED DESTINATION: with identity in the name, an existing directory means THIS record was already downloaded, and extracting over it replaces texture files a saved material may be referencing at render time
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
-        mtlx_files = [os.path.join(root, filename)
-                      for root, _dirs, files in os.walk(dest)
-                      for filename in files
-                      if filename.lower().endswith(".mtlx")]
-        if mtlx_files:
-            fetched = {"mtlx": mtlx_files[0]}
+        found = matx_sources._find_mtlx(dest)    # the one home for "the first .mtlx under a directory", shared with the fresh-fetch path
+        if found:
+            fetched = {"mtlx": found}
         else:
             return (None, "", "%s is already on disk but holds no "
                               ".mtlx - remove %s and try again"

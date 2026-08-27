@@ -999,11 +999,7 @@ class AmazeSource(MatxSource):
     RAW_BASE = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
     def __init__(self):
-        self._paths = None
-        self._bundles = {}
-        self._manifests = {}
-        self._remotes = {}    # url -> the RangedFile under the bundle, for progress_hook
-        self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
+        self.refresh()    # the ONE list of this source's caches lives there - a sixth cache declared here but not there would survive the user's explicit Refresh
 
     PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
 
@@ -1094,8 +1090,8 @@ class AmazeSource(MatxSource):
         self._paths = None
         self._manifests = {}
         self._bundles = {}
-        self._remotes = {}
-        self._sizes = {}
+        self._remotes = {}    # url -> the RangedFile under the bundle, for progress_hook
+        self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
 
     def list_materials(self, search="", offset=0, limit=60) -> list:
         if self._paths is None:

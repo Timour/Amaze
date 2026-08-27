@@ -9,6 +9,11 @@ import datetime
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
 
+def is_surface_shader_type(type_name: str) -> bool:
+    """Whether a Redshift node TYPE NAME looks like a surface material - the ONE spelling of the heuristic the converter and the shaderball share, so a renamed default shader is fixed in one place."""
+    return "Material" in type_name or "PBR" in type_name
+
+
 TERMINAL_INPUTS = {
     "surface": ("Surface",),
     "displacement": ("Displacement",),

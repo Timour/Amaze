@@ -389,11 +389,9 @@ class TestMaterialLibrary(unittest.TestCase):
 
         self.assertTrue(flags & QtCore.Qt.ItemFlag.ItemIsDragEnabled)
 
-    def test_set_custom_iconsize(self):
-        """Test set_custom_iconsize updates thumbnail size"""
-        new_size = QtCore.QSize(512, 512)
-
-        self.library.set_custom_iconsize(new_size)
+    def test_thumbsize_setter_updates_the_size(self):
+        """The property is the ONE door to the model's size."""
+        self.library.thumbsize = 512
 
         self.assertEqual(self.library._thumbsize, 512)
 

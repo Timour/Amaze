@@ -283,12 +283,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if 0 <= row < len(self._assets):
             spec = self.tile_icon(row)
             if spec:
-                return tile_icons.compose(  # composed in memory, never written: painting must not touch the disk, and this is what makes a library copied without its _icon.png files still show them
-                    spec["name"], spec["bg"],
-                    int(getattr(self.preferences, "rendersize", 512) or 512),
-                    tile_icons.stroke_for(self.preferences),
-                    spec["ink"],
-                )
+                return tile_icons.compose_for(self.preferences, spec)  # composed in memory, never written: painting must not touch the disk, and this is what makes a library copied without its _icon.png files still show them
         return self._placeholder_image("missing_thumbnail.svg")
 
     def tile_name(self, row: int) -> str:
@@ -429,10 +424,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if thumbnails.engine.is_missing(key):
             return self._missing_thumb_image(row)
         return None
-
-    def set_custom_iconsize(self, size: QtCore.QSize) -> None:
-        """Sets a custom IconSize - usually called via the View - Thumbnail Size Slider"""
-        self._thumbsize = size.width()
 
     def rowCount(
         self, parent: QtCore.QModelIndex | QtCore.QPersistentModelIndex | None = None

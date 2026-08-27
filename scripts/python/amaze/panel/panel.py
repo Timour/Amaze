@@ -487,9 +487,6 @@ class MatLibPanel(QtWidgets.QWidget):
         self.material_model.save()
         self.prefs.load()
         self.load()
-        if not self.material_model:
-            self.setup()
-
         self.switch_all_models()    # THE SAME WALK every other switch site uses, never a copy of it
 
         debug.event("session", "library reloaded")
@@ -587,12 +584,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def toggle_catview(self) -> None:
         """Show and Hide the Category View via Menu"""
-        if self.action_catview.isChecked():
-            self.cat_wrapper.setVisible(True)
-            self.action_catview.setChecked(True)
-        else:
-            self.cat_wrapper.setVisible(False)
-            self.action_catview.setChecked(False)
+        self.cat_wrapper.setVisible(self.action_catview.isChecked())
         self.prefs.show_categories = self.action_catview.isChecked()    # remembered across sessions
         self.prefs.save()
         button = getattr(self, "btn_categories", None)    # the chip IS this state, so it is kept in step whichever side moved - the action can still be toggled from code and from tests
@@ -1458,8 +1450,7 @@ class MatLibPanel(QtWidgets.QWidget):
         for proxy_index in proxy_indexes:
             path = proxy_index.data(self.file_files_model.PathRole) or ""
             if path:
-                paths.append(file_library.houdini_path(
-                    path, getattr(self.prefs, "path_style", "home")))
+                paths.append(self._scene_path(path))    # the one home for the spelling, so pasted paths match what the session writes into parms
         if not paths:
             return
         QtWidgets.QApplication.clipboard().setText("\n".join(paths))    # no dialog - the clipboard changing IS the report
@@ -3066,17 +3057,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 return None
         if pane_type != hou.paneTabType.NetworkEditor:    # the network canvas takes no native node drops (DRAGTEST log, 2026-07-19), which is the whole reason this resolution exists
             return None
-        node = None
-        for item in self._network_items_at_cursor(pane_tab):
-            candidates = (
-                item if isinstance(item, (tuple, list)) else (item,)
-            )
-            for candidate in candidates:
-                if isinstance(candidate, hou.Node):
-                    node = candidate
-                    break
-            if node is not None:
-                break
+        node = self._first_node_at_cursor(pane_tab)
         if node is not None:
             hit = (
                 matcher(node)
@@ -3368,6 +3349,10 @@ class MatLibPanel(QtWidgets.QWidget):
                 return None
         if pane_type != hou.paneTabType.NetworkEditor:
             return None
+        return self._first_node_at_cursor(pane_tab)
+
+    def _first_node_at_cursor(self, pane_tab) -> hou.Node | None:
+        """The first hou.Node among the network items under the cursor, or None - the ONE reading the drop resolver and the click resolver share, so the two agree on what is under the cursor."""
         for item in self._network_items_at_cursor(pane_tab):
             candidates = (
                 item if isinstance(item, (tuple, list)) else (item,)
@@ -4139,8 +4124,7 @@ class MatLibPanel(QtWidgets.QWidget):
         value = self.click_slider.value()
         self.prefs.thumbsize = value
         self._thumbsize_save_timer.start()    # persisted debounced (500ms after the last slider tick): writing settings.json on every pixel of a drag would thrash a file that lives in the cloud-synced install folder
-        self.material_model.thumbsize = value
+        self.material_model.thumbsize = value    # the property is the ONE door to the model's size
 
         self.apply_view_mode()    # sizing for the active mode - grid grows icons, list grows rows
-        self.material_model.set_custom_iconsize(QtCore.QSize(value, value))    # and the images themselves
 

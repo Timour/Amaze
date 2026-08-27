@@ -158,7 +158,7 @@ class ThumbnailCache:
 
     def put(self, full_path: str, image: QtGui.QImage) -> None:
         """Persist a freshly generated thumbnail and record it in the manifest - does not flush to disk, call save() when convenient."""
-        full_path = self._key(full_path)
+        full_path = self._key(full_path)  # canonicalised HERE, at the write door itself - it used to hold only because every caller happened to do it first
         try:
             st = os.stat(full_path)
         except OSError:
@@ -180,7 +180,6 @@ class ThumbnailCache:
                 "untouched." % os.path.basename(full_path),
                 path=full_path)
             return
-        full_path = hostos.canonical_path_key(full_path)  # canonicalised HERE, at the write door itself - it used to hold only because every caller happened to do it first
         self._manifest[full_path] = {"mtime": st.st_mtime, "size": st.st_size}
         self._dirty = True
 

@@ -1605,6 +1605,8 @@ class CopyPathTest(unittest.TestCase):
         if not home or home in ("/", "."):
             self.skipTest("no $HOME in this session")
         recorder = _RecordingPanel()
+        recorder._scene_path = (    # the real spelling home, bound to the stub
+            lambda p: panel_mod.MatLibPanel._scene_path(recorder, p))
         panel_mod.MatLibPanel.copy_file_paths(recorder, [
             _FakeIndex("other", home + "/mocap/walk.bvh"),
             _FakeIndex("image", "/mnt/elsewhere/tex.png"),
@@ -1661,10 +1663,10 @@ class TooltipWidthTest(unittest.TestCase):
 
     def _with_dpr(self, dpr):
         """Pin the screen ratio the cap divides by, restored after."""
-        from amaze.helpers import ui_helpers
-        original = ui_helpers._screen_dpr
-        ui_helpers._screen_dpr = lambda: dpr
-        self.addCleanup(setattr, ui_helpers, "_screen_dpr", original)
+        from amaze.helpers import theme
+        original = theme.screen_ratio
+        theme.screen_ratio = lambda widget=None: dpr
+        self.addCleanup(setattr, theme, "screen_ratio", original)
 
     def test_a_short_tooltip_passes_through_untouched(self):
         from amaze.helpers import ui_helpers

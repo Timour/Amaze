@@ -32,7 +32,6 @@ def build_karma_scaffold(preferences):
             lib1.setFirstInput(ref)
             surf = lib1.createNode("mtlxstandard_surface")
             tex = lib1.createNode("mtlxtiledimage")
-            tex.parm("file").set("color3")
             tex.parm("file").set(
                 "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat")
             surf.setInput(1, tex, 0)

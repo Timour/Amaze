@@ -53,14 +53,14 @@ def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
             inputs = child.inputs()
             if inputs and inputs[0] is not None:
                 tname = inputs[0].type().name()
-                if "Material" in tname or "PBR" in tname:    # inputs() can return a compacted tuple (only displacement wired), where index 0 is not the Surface input at all - trust only what looks like a surface shader
+                if material.is_surface_shader_type(tname):    # inputs() can return a compacted tuple (only displacement wired), where index 0 is not the Surface input at all - trust only what looks like a surface shader
                     return inputs[0]
             break
     for child in vopnet.children():
         tname = child.type().name()
         if tname in material.REDSHIFT_TERMINALS:
             continue
-        if "Material" in tname or "PBR" in tname:
+        if material.is_surface_shader_type(tname):
             return child
     return None
 

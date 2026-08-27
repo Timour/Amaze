@@ -3,7 +3,6 @@
 import json
 import os
 
-import hou
 from PySide6 import QtCore, QtGui
 
 import amaze

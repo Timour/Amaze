@@ -72,7 +72,6 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
         cache_dirs = sorted(os.listdir(root), key=str.lower)
     except OSError:
         return 0
-    import hashlib
     import json as json_mod
     for name in cache_dirs:
         if not name.startswith(("texture_thumbnails_", "geo_thumbnails_")):
@@ -100,7 +99,7 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
         for path in doomed:
             png = os.path.join(
                 cache_dir,
-                hashlib.sha1(path.encode("utf-8")).hexdigest() + ".png")
+                texture_library.ThumbnailCache._cache_filename(path))    # the cache's OWN naming - a hand-rolled hash here would stop matching silently if the scheme moved, and the sweep would delete nothing while claiming success
             try:
                 if os.path.exists(png):
                     os.remove(png)
@@ -736,15 +735,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         """Signature parity with the asset models; already persisted."""
 
     def _tile_icon_image(self, row: int):
-        spec = tile_icons.normalise(self.tile_icon(row))
-        if not spec:
-            return None
-        return tile_icons.compose(
-            spec["name"], spec["bg"],
-            int(getattr(self.preferences, "rendersize", 512) or 512),
-            tile_icons.stroke_for(self.preferences),
-            spec["ink"],
-        )
+        return tile_icons.compose_for(self.preferences,
+                                      self.tile_icon(row))
 
     def data(self, index, role: int = 0):
         if index.column() > 0:  # LATER COLUMNS are the table's, not the row's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell any of this happened
