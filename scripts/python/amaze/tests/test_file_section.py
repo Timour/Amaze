@@ -395,8 +395,10 @@ class LocationsArePerUserTest(unittest.TestCase):
         from amaze.core import keyed_store
         mine = test_support.FIXTURE_USER + keyed_store.USER_SEP
         self.assertEqual(
-            sorted(mine + path for path in self.PRE_TAG_ROWS),
-            sorted(stored),
+            len(self.PRE_TAG_ROWS), len(stored),
+            "rows were lost or invented in the adoption")
+        self.assertTrue(
+            all(key.startswith(mine) for key in stored),
             "the file still holds untagged spellings, or rows landed "
             "under someone else")
         self.assertEqual(
@@ -1412,8 +1414,7 @@ class _Prefs:
         if not record:
             return False
         at = self._order.index(old) if old in self._order else len(self._order)
-        locations_mod.set_record(self, old, {})
-        locations_mod.set_record(self, new, record)
+        locations_mod.relocate_record(self, old, new)    # the PRODUCT door (prefs.relocate_file_folder) - the forget-and-recreate pair this replaced minted a fresh identity and orphaned every star under the old one
         if new in self._order:
             self._order.remove(new)
         self._order.insert(min(at, len(self._order)), new)
@@ -1448,29 +1449,31 @@ class FileKeyIsCanonicalTest(unittest.TestCase):
         model.set_folder(folder)
         return model
 
-    def test_the_key_is_one_canonical_spelling(self):
+    def test_the_key_is_one_spelling_however_the_location_is_spelled(self):
         tmp = tempfile.mkdtemp(prefix="amaze_key_")
         self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
         os.mkdir(os.path.join(tmp, "sub"))
         with open(os.path.join(tmp, "a.png"), "w") as handle:
             handle.write("x")
-        from amaze.helpers import hostos
         detour = os.path.join(tmp, "sub", os.pardir)
         model = self._model_over(detour)
         self.assertGreater(model.rowCount(), 0, "the fixture scanned "
                                                 "nothing - this test is "
                                                 "not testing keys")
-        for row in range(model.rowCount()):
-            key = model.file_key(row)
-            self.assertEqual(
-                hostos.canonical_path_key(key), key,
-                "file_key %r is not canonical - the same file reached "
-                "through a differently-spelled location gets a different "
-                "identity, and its comment and icon are keyed to the "
-                "spelling" % key)
+        straight = file_library.FileFiles(model.preferences)
+        straight.set_folder(tmp)
+        keys = [model.file_key(r) for r in range(model.rowCount())]
+        self.assertEqual(
+            keys,
+            [straight.file_key(r) for r in range(straight.rowCount())],
+            "the same file reached through a differently-spelled "
+            "location gets a different identity, and its comment and "
+            "icon are keyed to the spelling")
+        for key in keys:
             self.assertTrue(
-                os.path.isfile(key),
-                "the canonical key %r no longer opens as a path" % key)
+                key.startswith("loc:"),
+                "file_key %r is not the location-keyed ident - keyed "
+                "by path, a moved folder orphans it" % key)
 
     def test_an_out_of_range_row_stays_empty(self):
         """normpath("") is ".", so a blind canonicalise would turn the no-such-row answer into a truthy path every `if not key` guard misses."""
@@ -2414,6 +2417,38 @@ class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
             "material_favorites", p.data,
             "load() consumed the migration source itself - the doors "
             "own that, after a product surface asked for a favourite")
+
+
+class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
+    """The whole journey: star a scanned row, Locate the folder somewhere else, re-scan - the star is keyed to the location's id, so it never notices the path changed."""
+
+    def test_the_star_is_still_lit_at_the_new_path(self):
+        old = tempfile.mkdtemp(prefix="amaze_move_")
+        self.addCleanup(shutil.rmtree, old, ignore_errors=True)
+        open(os.path.join(old, "wood.png"), "w").close()
+        prefs = _Prefs([old])
+        folders_model = file_library.FileFolders(prefs)
+        files = file_library.FileFiles(prefs)
+        files.set_folder(old)
+        self.assertEqual(1, files.rowCount(), "premise: one file scanned")
+        files.toggle_favorite(0)
+        self.assertTrue(files.index(0, 0).data(files.FavoriteRole),
+                        "premise: the star lit")
+
+        new = tempfile.mkdtemp(prefix="amaze_moved_")
+        self.addCleanup(shutil.rmtree, new, ignore_errors=True)
+        os.rename(os.path.join(old, "wood.png"),
+                  os.path.join(new, "wood.png"))
+        prefs.save = lambda: None
+        self.assertGreaterEqual(folders_model.relocate_folder(1, new), 0,
+                                "premise: the Locate landed")
+
+        files.set_folder(new)
+        self.assertEqual(1, files.rowCount(), "premise: the new scan sees it")
+        self.assertTrue(
+            files.index(0, 0).data(files.FavoriteRole),
+            "the star did not survive the move - it was keyed to the "
+            "path after all")
 
 
 class ACountResolvesTheLocationRuleOnce(unittest.TestCase):

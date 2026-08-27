@@ -1,23 +1,4 @@
-"""The Comments area: a context says what its own subject is.
-
-BATCH 9 of the four-areas restructure, and the last of them.
-
-`_notes_subject` branched on `section.key` three ways - File, the three
-Asset sections, and Color - with each branch mapping an index through
-that section's own proxy and reading that section's own roles. Per-
-section knowledge sitting in the panel, which is the same shape batch 4
-collapsed for activation and batch 8 collapsed for the toolbar.
-
-Comments is the FOURTH AREA, not an exception - the roadmap's words,
-and this is what makes it true in code.
-
-Two questions, deliberately kept apart:
-
-* `takes_comments` - CAN this context ever carry a comment? The toolbar
-  chip needs that answer with nothing selected.
-* `comment_subject(index)` - what is the subject RIGHT NOW? Needs a
-  selection, and only a context can map its own index.
-"""
+"""The Comments area: a context says what its own subject is - `takes_comments` answers CAN this context ever carry one (the toolbar chip, with nothing selected), `comment_subject(index)` answers what the subject is RIGHT NOW, and only a context can map its own index."""
 
 import ast
 import os
@@ -56,9 +37,7 @@ class TheSubjectBelongsToTheContext(unittest.TestCase):
                     "panel has to know for it" % name)
 
     def test_the_panel_no_longer_branches_on_which_section(self):
-        """The three branches were the defect's shape, not a defect in
-        themselves: each mapped an index through one section's proxy and
-        read one section's roles, in a method that serves all of them."""
+        """The three branches were the defect's shape: each mapped an index through one section's proxy and read one section's roles, in a method that serves all of them."""
         with open(os.path.join(PACKAGE, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             source = handle.read()
@@ -78,8 +57,7 @@ class TheSubjectBelongsToTheContext(unittest.TestCase):
                 % key)
 
     def test_a_context_that_takes_no_comments_has_no_subject(self):
-        """The two questions must agree: a context whose chip is
-        disabled cannot produce a subject."""
+        """The two questions must agree: a context whose chip is disabled cannot produce a subject."""
         self.assertFalse(sections.OnlineContext.takes_comments)
         self.assertIsNone(
             sections.OnlineContext.comment_subject(
@@ -87,24 +65,14 @@ class TheSubjectBelongsToTheContext(unittest.TestCase):
 
 
 class TheSubjectIsRightForEachContext(unittest.TestCase):
-    """Driven through a real panel: a key with the right prefix, for the
-    row actually selected."""
+    """Driven through a real panel: a key with the right prefix, for the row actually selected."""
 
     @classmethod
     def setUpClass(cls):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def _subject_for_last_row(self, key):
-        """The subject for a row whose PROXY position is not its source
-        position - the only conditions under which a subject built from
-        an unmapped index looks wrong.
-
-        Reached by typing the last row's name into the filter box, which
-        is what a user does: the row that survives is at proxy row 0 and
-        somewhere else entirely in the source model. Without this the
-        two orders agree, every mapping looks correct, and the test
-        cannot fail (the first version of it could not - the sabotage
-        round said so)."""
+        """The subject for a row whose PROXY position differs from its source position (the last row filtered to proxy row 0) - with the two orders agreeing, an unmapped index looks correct and the test cannot fail."""
         panel = self.panel
         panel.section_tabs.setChecked(key)
         QtWidgets.QApplication.processEvents()
@@ -152,9 +120,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "the comment key does not name the asset that is selected, "
             "so the pane writes onto a different tile's page")
         self.assertEqual(index.data(), subject.name)
-        # The header shows ONE category - the first, which is the one
-        # the sidebar files the asset under.
-        held = index.data(model.CategoryRole)
+        held = index.data(model.CategoryRole)    # the header shows ONE category - the first, the one the sidebar files the asset under
         first = (held[0] if isinstance(held, (list, tuple)) and held
                  else str(held or ""))
         self.assertEqual(str(first), subject.category,
@@ -162,36 +128,24 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
                          "filed under first")
 
     def test_a_file_subject_is_keyed_by_the_SELECTED_rows_PATH(self):
-        """`file_key(row)` is a row-number read against the SOURCE
-        model, so the index has to be mapped first. The name in the
-        header comes from the index instead - so the two disagree the
-        moment the mapping is dropped, and that is what this compares."""
+        """`file_key(row)` is a row-number read against the SOURCE model, so the index has to be mapped first - the header's name comes from the index instead, and the two disagree the moment the mapping is dropped."""
         subject, _index = self._subject_for_last_row("file")
         self.assertIsNotNone(
             subject, "no subject for a File row - the fixture location "
                      "is empty, so this cannot test anything")
-        # The path after the prefix is CANONICAL (file_key, 2026-08-06)
-        # - one spelling per file, absolute, idempotent under
-        # canonical_path_key. Asserting a leading slash encoded the
-        # macOS spelling; asserting os-native encoded the Windows one.
-        from amaze.helpers import hostos
-        tail = subject.key[len("file:"):]
+        tail = subject.key[len("file:"):]    # the location-keyed ident, `loc:<id>/<relative>` - a moved location orphans no comment, and one file gets one key however its location is spelled
         self.assertTrue(
-            subject.key.startswith("file:") and os.path.isabs(tail)
-            and hostos.canonical_path_key(tail) == tail,
+            subject.key.startswith("file:") and tail.startswith("loc:")
+            and "/" in tail,
             "a File row's comment key is %r - it must be 'file:' plus "
-            "the one canonical absolute path, which is what makes a "
-            "comment come back when the location is removed and "
-            "registered again, however the location is spelled"
-            % subject.key)
+            "the location-keyed ident, which is what lets a comment "
+            "follow the location wherever it moves" % subject.key)
         self.assertEqual(
             subject.name, os.path.basename(subject.key[len("file:"):]),
             "the key names one file and the header names another")
 
     def test_a_colour_subject_is_keyed_by_the_SELECTED_palettes_uid(self):
-        """`note_uid(row)` is the same row-number read, checked the same
-        way: the uid is looked up in the source model here, and the name
-        stored against it must be the name the header shows."""
+        """`note_uid(row)` is the same row-number read, checked the same way: the uid is looked up in the source model, and the name stored against it must be the name the header shows."""
         subject, _index = self._subject_for_last_row("gradient")
         self.assertIsNotNone(
             subject, "no subject for a palette - the fixture has none, "
@@ -221,9 +175,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
                     "paints six" % (key, len(subject)))
 
     def test_the_online_world_has_no_subject_at_all(self):
-        """An online record is not a library asset: there is nothing to
-        write a comment against, and the pane must clear rather than
-        keep pointing at whatever was selected before."""
+        """An online record is not a library asset: nothing to write a comment against, and the pane must clear rather than keep pointing at whatever was selected before."""
         panel = self.panel
         self.addCleanup(self._leave_online)
         panel.section_tabs.setChecked("material")
@@ -234,9 +186,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel._is_online(), "not online, so this proves "
                                             "nothing")
-        # BOTH halves, because they must agree: the chip the toolbar
-        # reads with nothing selected, and the subject with a selection.
-        self.assertFalse(panel._section().takes_comments)
+        self.assertFalse(panel._section().takes_comments)    # BOTH halves, because they must agree: the chip with nothing selected, the subject with a selection
         self.assertIsNone(panel._notes_subject())
 
     def _leave_online(self):
@@ -246,17 +196,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
 
 
 class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
-    """The construction's law is one flexible pane (the grid); a side
-    pane asks for a width and keeps it. The sidebar has said so through
-    a shared widget since it was built - the Comments pane said it
-    through 50 lines of splitter arithmetic on the panel instead.
-
-    Measured before removing that arithmetic: with it disconnected, the
-    pane came up at exactly the same width in every case, at panel
-    widths from 1400px down to 620px. By the time its `shown` signal
-    fires the splitter has already honoured the sizeHint, so the method
-    was recomputing what was already true - and every guard inside it
-    was unreachable."""
+    """The construction's law: ONE flexible pane (the grid), and a side pane asks for a width and keeps it - measured at panel widths 1400px down to 620px, the splitter honours the sizeHint before `shown` ever fires."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -287,8 +227,7 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
         self.assertEqual(320, self._sizes()[self.panel.notes_panel])
 
     def test_opening_it_takes_the_room_from_the_GRID(self):
-        """Not from the sidebar - the defect the old arithmetic was
-        written for. The grid is the one pane that flexes."""
+        """Not from the sidebar - the grid is the one pane that flexes."""
         sidebar = self.panel.cat_wrapper
         before = self._sizes()[sidebar]
         self.panel.btn_notes.setChecked(True)
@@ -309,13 +248,7 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
 
 
 class _Stack:
-    """A stand-in for the curated-library stack, holding ONE row.
-
-    Written as a stub deliberately, and only for the one thing a
-    fixture asset cannot show: an asset filed under SEVERAL categories.
-    The header has room for one, and which one is a choice inside
-    comment_subject - so the list is the input and the choice is what
-    is under test."""
+    """A stand-in for the curated-library stack, holding ONE row - a stub only for what a fixture asset cannot show: an asset filed under SEVERAL categories, where which one the header shows is comment_subject's own choice."""
 
     IdRole = 1
     CategoryRole = 2
@@ -332,16 +265,13 @@ class _Stack:
             self.RendererLabelRole: "Karma",
         }
 
-    # -- as the model ---------------------------------------------------
-    def data(self, role):
+    def data(self, role):    # as the model
         return self._fields.get(role)
 
-    # -- as the proxy ---------------------------------------------------
-    def mapToSource(self, _index):
+    def mapToSource(self, _index):    # as the proxy
         return self
 
-    # -- as the source index --------------------------------------------
-    def isValid(self):
+    def isValid(self):    # as the source index
         return True
 
 
@@ -355,8 +285,7 @@ class AnAssetFiledUnderSeveralCategories(unittest.TestCase):
         return section.comment_subject(None)
 
     def test_the_header_shows_the_FIRST_one(self):
-        """The first is the one the sidebar files it under, so it is the
-        one the header has to agree with."""
+        """The first is the one the sidebar files it under, so it is the one the header has to agree with."""
         subject = self._subject_for(["Metal", "Wood", "Fabric"])
         self.assertEqual("Metal", subject.category)
 
@@ -369,30 +298,18 @@ class AnAssetFiledUnderSeveralCategories(unittest.TestCase):
 
 
 class TheLocationBehindAFileRow(unittest.TestCase):
-    """`location_for` moved out of the panel with the File branch. It
-    is what puts a location's NAME and COLOUR in the Comments header,
-    and the header is the only place a file row shows either.
-
-    Built on the real FileFolders model rather than a stub, because the
-    two answers it gives - the custom display name and the Set Color
-    colour - are that model's own, and a stub would test the stub."""
+    """`location_for` puts a location's NAME and COLOUR in the Comments header - built on the real FileFolders model because both answers are that model's own, and a stub would test the stub."""
 
     def setUp(self):
         test_support.reset_database_singletons()
         self.addCleanup(test_support.reset_database_singletons)
-        # A location registered INSIDE another one. Never the real
-        # photo archive: both are fresh temporary directories.
-        self.outer = test_support.fresh_files_folder(self)
+        self.outer = test_support.fresh_files_folder(self)    # a location registered INSIDE another one - both fresh temporary directories, never a real archive
         self.inner = os.path.join(self.outer, "inner")
         os.makedirs(self.inner, exist_ok=True)
         self.section = self._section_registering(self.outer, self.inner)
 
     def _section_registering(self, *paths):
-        """A File section whose locations were registered in the order
-        given. The ORDER is a test parameter on purpose: a rule of
-        "first one that covers it" and a rule of "last one that covers
-        it" each look right under one order and wrong under the other,
-        and neither is longest-prefix."""
+        """A File section whose locations were registered in the order given - the ORDER is a parameter on purpose: first-that-covers and last-that-covers each look right under one order, and neither is longest-prefix."""
         prefs = test_support.fixture_prefs(self)
         for path in paths:
             prefs.add_file_folder(path)
@@ -404,9 +321,7 @@ class TheLocationBehindAFileRow(unittest.TestCase):
         return sections.FileSection(_PanelStub(prefs, folders))
 
     def test_the_innermost_registered_location_wins(self):
-        """A file under both answers to the NEARER one - otherwise the
-        header names a location the user did not put it in, and paints
-        that location's colour beside it."""
+        """A file under both answers to the NEARER one - otherwise the header names a location the user did not put it in, and paints its colour beside it."""
         from amaze.helpers import hostos
         for order in ((self.outer, self.inner), (self.inner, self.outer)):
             with self.subTest(registered=("outer first"
@@ -416,10 +331,7 @@ class TheLocationBehindAFileRow(unittest.TestCase):
                 location, label, colour = section.location_for(
                     os.path.join(self.inner, "shot.exr"))
                 self.assertEqual(
-                    # Canonical: the locations API's spelling since the
-                    # portable-spelling change; the fixture built the
-                    # nested path natively.
-                    hostos.canonical_path_key(self.inner), location,
+                    hostos.canonical_path_key(self.inner), location,    # canonical: the locations API's spelling since the portable-spelling change
                     "a file inside the nested location answered with %r"
                     % location)
                 self.assertEqual("#4af2a1", colour)
@@ -431,24 +343,15 @@ class TheLocationBehindAFileRow(unittest.TestCase):
         self.assertEqual(("", "", ""), (location, label, colour))
 
     def test_a_SIBLING_whose_name_merely_extends_it_is_not_inside_it(self):
-        """`/plates` does not contain `/plates_backup/shot.exr`. A
-        prefix compared without its separator says it does, and the
-        header then names a location the file is not in - the same
-        boundary bug the notes store had for `retire_prefix`."""
-        # rstrip BOTH separators: fresh_files_folder returns the path
-        # with a trailing os.sep, and on Windows rstrip("/") leaves the
-        # backslash - the probe then lands INSIDE the location, in a
-        # subfolder literally named `_backup`, and the product's correct
-        # answer read as the boundary bug this test exists to catch.
+        """`/plates` does not contain `/plates_backup/shot.exr` - a prefix compared without its separator says it does, the same boundary bug the notes store had for `retire_prefix`."""
         location, label, colour = self.section.location_for(
-            self.outer.rstrip("/\\") + "_backup/shot.exr")
+            self.outer.rstrip("/\\") + "_backup/shot.exr")    # rstrip BOTH separators: fresh_files_folder ends in os.sep, and on Windows rstrip("/") leaves the backslash - the probe then lands INSIDE the location, in a subfolder literally named `_backup`
         self.assertEqual(
             ("", "", ""), (location, label, colour),
             "a file in a SIBLING location answered with %r" % location)
 
     def test_the_label_follows_a_RENAMED_location(self):
-        """The name a location was given is the model's answer, not the
-        basename - so the header has to ask the model."""
+        """The name a location was given is the model's answer, not the basename - so the header has to ask the model."""
         self.section.panel.prefs.set_file_folder_name(self.outer, "Plates")
         _location, label, _colour = self.section.location_for(
             os.path.join(self.outer, "shot.exr"))
@@ -456,11 +359,7 @@ class TheLocationBehindAFileRow(unittest.TestCase):
 
 
 class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
-    """A comment is keyed by IDENTITY - an id, a path, a uid - and a
-    rename changes none of those. So the pane is pointed at the same
-    key it already holds, which is the one case `set_subject` returns
-    early on, and the header kept the OLD name for as long as the pane
-    stayed open."""
+    """A comment is keyed by IDENTITY, which a rename does not change - so the pane is pointed at the same key it already holds, the one case `set_subject` returns early on, and the header kept the OLD name for as long as the pane stayed open."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -482,10 +381,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
         self.assertIn("Wood", self.pane.section_label.text())
 
     def test_an_edit_IN_PROGRESS_survives_the_header_update(self):
-        """The reason set_subject returns early on a same-key call: it
-        is called on every click, and reloading the stored page there
-        would throw away whatever is being typed. The header may follow
-        a rename; the PAGE must not be reloaded with it."""
+        """set_subject is called on every click, and reloading the stored page there would throw away whatever is being typed - the header may follow a rename; the PAGE must not be reloaded with it."""
         self.pane.text_edit.setPlainText("half a sentence")
         self.pane.set_subject(sections.CommentSubject("material:asset-1", "material", "New Name",
                               "Karma", "Metal", "#ff8000"))
@@ -494,8 +390,7 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
 
 
 class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
-    """600ms of typed text lives only in the widget until the debounce
-    fires. Every way the pane can go away has to write it first."""
+    """600ms of typed text lives only in the widget until the debounce fires - every way the pane can go away has to write it first."""
 
     def setUp(self):
         test_support.reset_database_singletons()
@@ -506,10 +401,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
 
     def _pending_edit(self, key="material:asset-1", shown=True):
         if shown:
-            # A hide event only arrives at a widget that was showing;
-            # without this the pane is hidden already and hide() is a
-            # no-op, which is a test that passes for no reason.
-            self.pane.show()
+            self.pane.show()    # a hide event only arrives at a widget that was showing; without this hide() is a no-op and the test passes for no reason
             QtWidgets.QApplication.processEvents()
         self.pane.set_subject(sections.CommentSubject(key, "material", "Rusty", "Karma"))
         self.pane.text_edit.setPlainText("typed but not yet saved")
@@ -529,30 +421,16 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         self.assertTrue(self._stored(key), "the page is empty on disk")
 
     def test_CLOSING_a_pane_that_was_never_SHOWN_writes_it(self):
-        """Deliberately without the show: a close then delivers no hide
-        event, so hideEvent is not the thing being tested here."""
+        """Deliberately without the show: a close then delivers no hide event, so hideEvent is not the thing being tested here."""
         key = self._pending_edit(shown=False)
         self.pane.close()
         QtWidgets.QApplication.processEvents()
         self.assertTrue(self._stored(key), "the page is empty on disk")
 
     def test_the_pane_is_wired_to_the_APPLICATION_quitting(self):
-        """Houdini shutting down reaches no widget event of ours, so
-        the pane rides `aboutToQuit` - the wiki's rule for the
-        thumbnail engine, and the same rule for unsaved typing.
-
-        Checked by DISCONNECTING rather than by emitting: this suite
-        runs every module in one hython process, and a real
-        `aboutToQuit` would shut the thumbnail engine down under every
-        test that follows. That flush() actually writes is pinned by
-        the two tests above; what is left to pin is that quitting
-        reaches it.
-
-        The RETURN VALUE is the answer - PySide's disconnect() warns and
-        returns False for a connection that was never made, it does not
-        raise (probed), so a try/except here would pass either way."""
+        """Houdini shutting down reaches no widget event of ours, so the pane rides `aboutToQuit` - checked by DISCONNECTING rather than emitting, because a real `aboutToQuit` in this one-process suite would shut the thumbnail engine down under every test that follows; that flush() writes is pinned above, what is left is that quitting reaches it."""
         app = QtWidgets.QApplication.instance()
-        was_connected = app.aboutToQuit.disconnect(self.pane.flush)
+        was_connected = app.aboutToQuit.disconnect(self.pane.flush)    # the RETURN VALUE is the answer - disconnect() warns and returns False for a connection never made, it does not raise (probed), so a try/except would pass either way
         if was_connected:
             app.aboutToQuit.connect(self.pane.flush)
         self.assertTrue(
@@ -561,9 +439,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
             "quits - the last 600ms of typing goes with the session")
 
     def test_a_pane_with_nothing_pending_writes_nothing(self):
-        """flush() is called on every teardown path AND on every subject
-        switch, so it has to be free when there is nothing to write -
-        otherwise every click rewrites a page."""
+        """flush() runs on every teardown path AND every subject switch, so it has to be free when there is nothing to write - otherwise every click rewrites a page."""
         self.pane.set_subject(sections.CommentSubject("material:asset-2", "material", "Rusty",
                               "Karma"))
         before = self._stored("material:asset-2")
@@ -572,21 +448,14 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
 
 
 class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
-    """The teardown a child widget cannot see for itself. Measured:
-    hiding or closing a window sends hide events to its children, but
-    deleting a parent sends them nothing - and deletion is how a
-    Houdini pane tab goes away.
-
-    Its own panel, because the test ends by destroying it."""
+    """The teardown a child cannot see for itself - measured: closing a window sends its children hide events, deleting a parent sends them NOTHING, and deletion is how a Houdini pane tab goes away. Its own panel, because the test ends by destroying it."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
 
     def test_deleting_the_panel_flushes_the_pane_first(self):
         pane = self.panel.notes_panel
-        # Held now: after the delete, reading anything off the panel is
-        # a use-after-free.
-        prefs = self.panel.prefs
+        prefs = self.panel.prefs    # held now: after the delete, reading anything off the panel is a use-after-free
         pane.set_subject(sections.CommentSubject("material:asset-9", "material", "Rusty", "Karma"))
         pane.text_edit.setPlainText("typed as the tab closed")
         self.assertTrue(pane._save_timer.isActive(),
@@ -595,12 +464,8 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
 
         test_support.stop_panel_workers(self.panel)
         self.panel.deleteLater()
-        # processEvents() alone never delivers this one: Qt holds
-        # DeferredDelete until the event loop that posted it returns,
-        # and a test has no such loop. Sending it explicitly reproduces
-        # what Houdini's own loop does when the tab closes.
         QtWidgets.QApplication.sendPostedEvents(
-            None, QtCore.QEvent.Type.DeferredDelete)
+            None, QtCore.QEvent.Type.DeferredDelete)    # processEvents() alone never delivers this: Qt holds DeferredDelete until the posting event loop returns, and a test has no such loop - sending it explicitly reproduces what Houdini's loop does when the tab closes
         QtWidgets.QApplication.processEvents()
 
         self.assertTrue(
@@ -609,8 +474,7 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
 
 
 class _PanelStub:
-    """Only what location_for reaches for: prefs, and the folder model
-    under the name FileSection knows it by."""
+    """Only what location_for reaches for: prefs, and the folder model under the name FileSection knows it by."""
 
     def __init__(self, prefs, folders):
         self.prefs = prefs

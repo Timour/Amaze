@@ -173,12 +173,13 @@ class FileFolders(folders.FolderListModel):
             return
         path = self._folders()[row - 1]
         super().remove_folder(row)
-        keyed_store.retire_prefix(self.preferences, path)  # PER-LOCATION STATE DIES WITH THE POINTER, all of it in one call: naming surfaces by hand left the colour and Show All Files behind, so re-registering brought back an amber row and a hidden-files setting the user never re-chose
+        keyed_store.retire_prefix(self.preferences, path)  # PER-LOCATION STATE DIES WITH THE POINTER, all of it in one call - path-keyed, id-keyed and the identity row alike: naming surfaces by hand left the colour and Show All Files behind, so re-registering brought back an amber row and a hidden-files setting the user never re-chose
+        locations.touch()    # the engine edited the identity table outside the module's own doors
         sweep_folder_cache(  # ...and so do its cached thumbnails, comments and tile icons - removing a location clears everything, so re-adding is a clean slate (the UI text register - File (folders) - Remove); hip captures are the one exception, hand-framed and not regenerable, and which stores go is `survives_forget` on each spec, said once, never inferred from this method's lines
             self.preferences, path, list(self._folders()))
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
-        """One announcement, no enumeration - the old hand-written tuple named neither notes.json nor icons.json, so a Locate Folder orphaned every comment and tile icon still keyed by the old path; the caller names the prefix that moved, the engine walks its registry, and a store cannot fail to join a list it does not have to be added to."""
+        """The legacy belt: id-keyed state does not move at all (the identity row's path edit already carried it), and this sweep re-homes only path-keyed stragglers an older build wrote - the engine walks its registry, so a store cannot fail to join."""
         keyed_store.relocate(self.preferences, old_path, new_path)
 
 
@@ -213,6 +214,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._all_folders_mode = False
         self._files: list = []          # (folder, filename) pairs
         self._kinds: list = []          # KIND_* per row, same order
+        self._file_key_cache: dict = {}  # full path -> its store key, filled per row per load - the ident lookup walks the identity table, and the paint path must not
+        self._file_key_generation = -1   # the locations generation the cache was built against - a register or Locate moves it, and stale idents must not outlive the boundary that minted them
         self._row_specs: list = []      # per-row engine spec (key, source, payload); source is one of file (valid cached PNG, lazy), convert (image pipeline), render (geo pass), capture (hip store), os-icon
         self._key_rows: dict = {}
         self._image_cache = None
@@ -314,6 +317,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
         self.beginResetModel()
         self._files = []
+        self._file_key_cache = {}
         self._kinds = []
         self._row_specs = []
         self._key_rows = {}
@@ -652,12 +656,12 @@ class FileFiles(grid_columns.GridColumnsMixin,
         return ""
 
     def toggle_favorite(self, row: int) -> None:
-        full = self._full_path(row)
-        if not full:
+        key = self.file_key(row)    # the ONE identity per file - the raw path here left the star keyed to a spelling the id conversion abandons
+        if not key:
             return
         locations.set_favourite(
-            self.preferences, full,
-            not locations.is_favourite(self.preferences, full))
+            self.preferences, key,
+            not locations.is_favourite(self.preferences, key))
         index = self.index(row, 0)
         self.row_changed(index.row(), [self.FavoriteRole])
 
@@ -707,11 +711,19 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if geo_misses:
             self._render_geo_misses(geo_misses)
 
-    def file_key(self, row: int) -> str:  # rows are FILES, not library assets: per-tile choices live in icons.json keyed by absolute path, CANONICAL - the raw join carried the location's $AMAZE-relative spelling (research.md - Windows), so re-registering the same folder absolute sent every comment and icon under it dark; nothing was orphaned by canonicalising, measured: icons.json did not exist and notes.json held no file keys
+    def file_key(self, row: int) -> str:  # rows are FILES, not library assets: per-tile state keys by `loc:<id>/<relative>` for a file a registered location owns - so a moved folder orphans nothing - and by the canonical absolute path for one no location owns
         if not 0 <= row < len(self._files):
             return ""
         folder, name = self._files[row]
-        return hostos.canonical_path_key(os.path.join(folder, name))
+        full = hostos.canonical_path_key(os.path.join(folder, name))
+        if locations.generation() != self._file_key_generation:
+            self._file_key_generation = locations.generation()
+            self._file_key_cache = {}
+        cached = self._file_key_cache.get(full)
+        if cached is None:
+            cached = locations.file_ident(self.preferences, full) or full
+            self._file_key_cache[full] = cached
+        return cached
 
     def tile_icon(self, row: int) -> dict:
         key = self.file_key(row)
@@ -802,9 +814,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if role in (self.PathRole, QtCore.Qt.ItemDataRole.ToolTipRole):
             return hostos.canonical_path_key(os.path.join(folder, name))
         if role == self.FavoriteRole:
-            return locations.is_favourite(  # a MEMBERSHIP TEST per tile per repaint - file_favorites composes the whole list out of the store, so asking it here would rebuild every star to answer about one
-                self.preferences,
-                hostos.canonical_path_key(os.path.join(folder, name)))
+            return locations.is_favourite(  # a MEMBERSHIP TEST per tile per repaint, asked by the file's ONE identity - file_favorites composes the whole list out of the store, so asking it here would rebuild every star to answer about one
+                self.preferences, self.file_key(row))
         if role == self.FolderRole:
             return os.path.basename(folder.rstrip("/\\")) or folder
         if role == self.CategoryColorRole:

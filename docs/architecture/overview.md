@@ -396,12 +396,32 @@ store that keeps per-key choices beside the thing they belong to.
   retired keys drop AFTER the peer adoption or they are adopted
   straight back on every save.
   Favourites serve EVERY section since 2026-08-13, through one door —
-  `locations.is_favourite` / `set_favourite` — keyed by file PATH for
-  File rows and by bare asset id for Material/Node/Code/Color, the
-  icons.json scheme; an id rides through the path conversion
-  unchanged, and no path prefix can ever match one, so the location
-  fan-outs never touch it.
-  All six are files IN THE LIBRARY. The last two were views onto
+  `locations.is_favourite` / `set_favourite` — keyed by
+  `loc:<id>/<relative>` for File rows a registered location owns and
+  by bare asset id for Material/Node/Code/Color, the icons.json
+  scheme; an id rides through the path conversion unchanged, and no
+  path prefix can ever match one, so the location fan-outs never
+  touch it.
+
+  **A LOCATION IS AN ID, ITS PATH ONE PROPERTY** (2026-08-27): the
+  **Location identity table** (`location_paths.json`, untagged,
+  shared) holds one row per registered folder — id → its current
+  path — and it is the ONLY place a location's path is stored. The
+  per-user record keys by `loc:<id>`, and every per-file key
+  (favourite, comment, tile icon) by `loc:<id>/<relative>`, so
+  **Locate Folder is one field edit on one shared row**: every user
+  and every machine follows at once, and no key ever embeds a dead
+  path. A `loc:` key is an ID to the whole engine whatever the
+  store's keyspace — never spelling-converted, never rewritten by
+  `relocate` (kept only as the belt for path keys an older build
+  wrote, which `locations.convert_to_ids` re-homes per session,
+  collapsing rival ids two machines minted offline toward the
+  smaller). A file inside two nested locations belongs to the
+  INNERMOST (`locations.file_ident`), the same rule the sidebar
+  colours use. `retire_prefix` retires the identity row and the
+  id-keyed state along with the legacy path keys, so Remove stays
+  one door.
+  All seven are files IN THE LIBRARY. The last two were views onto
   `settings.json` until 2026-08-05, which is why an icon or a comment on
   a file could disappear when you switched library while the file stayed
   registered: a File row's facts answered to two different scopes.
@@ -694,7 +714,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 | **Filter Proxy** | The Grid's search/renderer/favourite/tag filter (Asset sections). | `core/multifilterproxy_model.py` |
 | **Asset Stack** | The four models an Asset section works through — Library Model, Filter Proxy, selection model, Categories Model — as `sections.AssetStack`, whose fields are `model` / `proxy` / `selection` / `categories`. A bare 4-tuple until 2026-08-03: it was unpacked in nine places and read by NUMBER in three more (`st[0]`, `st[3]`), which is where a reorder would have gone unnoticed. | `section.stack()` |
 | **Folders Model / Files Model** | The Folder-archetype pair (registered dirs / files inside). Folders share ONE base — `core/folders.py` `FolderListModel` (counts, All row, add/remove/relocate); each section only names its prefs surface + extension predicate. | `core/folders.py`, `texture_library.py`, `geo_library.py`, `scene_captures.py` |
-| **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns amber — the colour is the whole signal — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses `Timour/AmazePackages` per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it ask the CONTEXT instead: this world answers `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_world` / `leave_online_world`, `core/matx_sources.py` |
+| **Online world** | A PARALLEL world, not a view mode over Materials (which is what it was until 2026-08-01). The toolbar's Online button enters it and turns amber — the colour is the whole signal — and the tab strip becomes the SOURCES in source order (Amaze first, then GPUOpen, PolyHaven, PhysicallyBased, RGL) from `matx_sources.all_sources()`. The Amaze source browses the `AmazePackages` repository per TILE: folders under `packages/` are categories, every entry in every `.amazepkg` is one record read by ranged requests (a plain-file entry becomes a bare tile), and importing fetches only the chosen tiles' members. No File tab, and `enabled_sections` does not apply, because these are not sections. ONE strip, two lists: `_build_section_tabs` already rebuilt on an `enabled_sections` change, so switching worlds reuses that path. A tab click picks a source. Leaving returns you to the section you left from. `_is_online()` is now just the mode — it used to be `online_mode AND current_section == "material"` — and since 2026-08-15 six panel paths that branched on it ask the CONTEXT instead: this world answers `search_hint`, `filter_text`, `filter_favorites`, `select_category`, `double_click` and an empty `SIDEBAR_MENU` like any section, so the eleven `_is_online()` reads left are all WORLD questions (which tab strip to build, which world a progress bar draws over) rather than section ones. Favourites and Comments are disabled here: an online record has no favourite state, and a comment is written against a library asset. | `panel.py` `enter_online_world` / `leave_online_world`, `core/matx_sources.py` |
 | **Designed dialogs** | `ui_helpers.DesignedDialog` is the shell the UI designs describe, and the one to reuse: a dark header band (icon, subtitle, bold title, kind line) over a body column inset equally both sides, `add_field()` placing the design's uneven gaps and `add_buttons()` the pair that fills the column. Measurements come from the Figma frame and are stated once as the class CONSTANTS, HALVED — the pages are drawn at 2×, so a design number is halved at source and then goes through `theme.ui_px` like every other chrome measurement (the 2× rule, §8). No sizing path reads a device ratio: Houdini's UI scale is one number fixed at startup and it never rescales when a window moves between monitors, so neither does a dialog. The two SURFACE colours follow Houdini's theme; the INK is literal, being the design's own answer rather than a token. First use: the Versions dialog, 2026-08-02. | `helpers/ui_helpers.py` |
 | **Filtering & sorting** | THREE proxies, one base: `core/grid_proxy.py`'s `GridProxyModel`, inherited by `MultiFilterProxyModel` (the asset sections and Online), `TextureFilterProxyModel` (File) and `GradientFilterProxyModel` (Color). They differ in what they FILTER ON; the base owns WHAT IS SHOWN AND IN WHAT ORDER. `setDynamicSortFilter(False)`, set for performance, turns off three things at once, and each came back as a caller remembering: the re-sort after a filter change (2026-08-01 — picking a category then going back to All came back unsorted), the re-sort after an INSERT (2026-08-03 — a newly saved asset landed at the bottom of 548), and the re-test of a row whose DATA changed (2026-08-03 — un-favouriting a tile with Favourites-only on left it in the grid, star off). The re-test is role-aware (`watched_roles`) and every pass is coalesced onto one per event-loop turn. | `core/grid_proxy.py`, `core/multifilterproxy_model.py` |
 | **Scrolling** | Both axes go through one handler: per-PIXEL scroll mode and `dragdrop_widgets.wheelEvent`, which reads the dominant axis, converts a classic wheel's 120-unit notches, and applies the `scroll_speed` preference. Horizontal was on Qt's per-ITEM default until 2026-08-01 — one step is a whole row, which reads as wild acceleration — and it went unnoticed because nothing could scroll sideways until list rows grew wider than the panel. | `panel/dragdrop_widgets.py` |

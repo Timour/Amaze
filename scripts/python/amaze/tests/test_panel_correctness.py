@@ -661,6 +661,7 @@ class LocateFolderKeepsEveryPerLocationSetting(unittest.TestCase):
                                 {"/old/": True}, ["/old/"])
         model = file_library.FileFolders.__new__(file_library.FileFolders)
         model.preferences = prefs
+        locations.relocate_record(prefs, "/old/", "/new/")    # the product order: the identity's path edit first, then the hook for path-keyed stragglers
         model._on_folder_relocated("/old/", "/new/")
         # Against the record: the derived dicts would read back this seed.
         self.assertEqual({}, locations.record(prefs, "/old/"),

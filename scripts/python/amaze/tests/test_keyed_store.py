@@ -811,24 +811,32 @@ class TheStoreSpeaksPortableSpelling(StoreCase):
         self.assertIn("file:/old/a.exr", self.on_disk()["notes"])
 
     def test_locations_speak_walkable_absolutes_over_portable_bytes(self):
-        """The store holds the portable spelling; the reader hands back an absolute `os.walk` can open."""
+        """The identity table holds the portable spelling and the record its owner's id; the reader hands back an absolute `os.walk` can open."""
         home = self._fake_home("plates/a.exr")
         absolute = home + "/plates"
         locations.register(self.prefs, absolute)
         locations.set_favourite(self.prefs, absolute + "/a.exr", True)
+        lid = locations.location_id(self.prefs, absolute)
+        self.assertEqual(
+            "~/plates",
+            self.on_disk(keyed_store.LOCATION_PATHS)
+            ["location_paths"][lid]["path"],
+            "the identity table carries the machine's spelling")
         stored = self.on_disk(keyed_store.LOCATIONS)["locations"]
         self.assertEqual(
-            [(test_support.FIXTURE_USER, "~/plates")],
+            [(test_support.FIXTURE_USER, "loc:" + lid)],
             [keyed_store.untagged_key(locations.SPEC, key)
              for key in stored],
-            "locations.json carries the machine's spelling, or the "
-            "row landed under nobody")
+            "the record is keyed by something a move would rewrite, or "
+            "the row landed under nobody")
         self.assertEqual([absolute],
                          locations.registered_paths(self.prefs),
                          "the reader hands back a spelling the scanner "
                          "cannot walk")
         self.assertTrue(
-            locations.is_favourite(self.prefs, absolute + "/a.exr"))
+            locations.is_favourite(
+                self.prefs,
+                locations.file_ident(self.prefs, absolute + "/a.exr")))
         self.assertEqual([absolute + "/a.exr"],
                          locations.favourite_paths(self.prefs))
 
@@ -1617,6 +1625,192 @@ class ReRegisterKeepsTheBinding(StoreCase):
             "a re-register with no normaliser dropped the binding - a "
             "keyed_store reload would leave every un-reloaded binder's "
             "store opening with spec.normalise None")
+
+
+class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
+    """The location-id design: state hangs on the id, the path is one shared editable property, so a move is one field edit and no key ever embeds a dead path."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="amaze_locid_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+        locations.forget()
+        self.addCleanup(locations.forget)
+        self.prefs = _Prefs(self.dir)
+
+    def _reg(self, name, prefs=None):
+        path = os.path.join(self.dir, name)
+        os.makedirs(path, exist_ok=True)
+        locations.register(prefs or self.prefs, path)
+        return path
+
+    def test_registering_mints_one_id_and_reuse_finds_it(self):
+        folder = self._reg("tex")
+        lid = locations.location_id(self.prefs, folder)
+        self.assertTrue(lid, "registering minted no id")
+        self.assertEqual(lid, locations.location_id(self.prefs, folder),
+                         "asking twice minted twice")
+
+    def test_loc_keys_are_ids_to_every_store(self):
+        self.assertFalse(locations.SPEC.is_path_key("loc:abc123"),
+                         "a location-id key reads as a path")
+        self.assertFalse(
+            locations.FAVOURITES_SPEC.is_path_key("loc:abc123/wood.png"))
+        self.assertFalse(notes.SPEC.is_path_key("file:loc:abc123/wood.png"))
+        self.assertEqual(
+            "loc:abc123/wood.png",
+            keyed_store.storage_key(tile_icons.SPEC, "loc:abc123/wood.png"),
+            "storage spelling mangled an id key")
+
+    def test_a_star_survives_a_move_untouched(self):
+        folder = self._reg("tex")
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(folder, "wood.png"))
+        self.assertTrue(ident.startswith("loc:"),
+                        "premise: the file is owned by its location")
+        locations.set_favourite(self.prefs, ident, True)
+
+        new = os.path.join(self.dir, "textures")
+        os.makedirs(new)
+        locations.relocate_record(self.prefs, folder, new)
+
+        moved = locations.file_ident(self.prefs,
+                                     os.path.join(new, "wood.png"))
+        self.assertEqual(ident, moved,
+                         "the file's identity changed with the path")
+        self.assertTrue(locations.is_favourite(self.prefs, moved),
+                        "the star was keyed to the path after all")
+
+    def test_the_move_reaches_every_user_at_once(self):
+        folder = self._reg("tex")
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(folder, "wood.png"))
+        other = _Prefs(self.dir, library_user="second-user-uid")
+        self._reg("tex", prefs=other)
+        self.assertEqual(locations.location_id(self.prefs, folder),
+                         locations.location_id(other, folder),
+                         "one folder minted two identities")
+        locations.set_favourite(other, ident, True)
+
+        new = os.path.join(self.dir, "textures")
+        os.makedirs(new)
+        locations.relocate_record(self.prefs, folder, new)
+
+        self.assertIn(hostos.canonical_path_key(new),
+                      [hostos.canonical_path_key(p) for p in
+                       locations.registered_paths(other)],
+                      "the move did not reach the other user's sidebar")
+        self.assertTrue(
+            locations.is_favourite(
+                other, locations.file_ident(
+                    other, os.path.join(new, "wood.png"))),
+            "the other user's star waited for their own Locate")
+
+    def test_the_innermost_location_owns_the_file(self):
+        outer = self._reg("a")
+        inner = self._reg(os.path.join("a", "b"))
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(inner, "wood.png"))
+        self.assertTrue(
+            ident.startswith(
+                "loc:" + locations.location_id(self.prefs, inner) + "/"),
+            "the outer location captured a file the inner one owns")
+
+    def test_legacy_path_keys_convert_on_load(self):
+        folder = os.path.join(self.dir, "tex")
+        os.makedirs(folder)
+        stored = hostos.storage_path_key(folder)
+        star = hostos.storage_path_key(os.path.join(folder, "wood.png"))
+        tag = test_support.FIXTURE_USER + keyed_store.USER_SEP
+        store = keyed_store.open_store(locations.SPEC, self.prefs)
+        store.rekey_stored({})    # premise: the door exists
+        store._table[tag + stored] = {"registered": True, "name": "Old"}
+        favourites = keyed_store.open_store(locations.FAVOURITES_SPEC,
+                                            self.prefs)
+        favourites._table[tag + star] = {"favourite": True}
+
+        locations.convert_to_ids(self.prefs)
+
+        lid = locations.location_id(self.prefs, folder)
+        self.assertTrue(lid, "conversion minted no id for the old record")
+        self.assertEqual("Old",
+                         locations.record(self.prefs, folder).get("name"))
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(folder, "wood.png"))
+        self.assertTrue(favourites.has(ident),
+                        "the old star was not re-homed onto the id")
+        self.assertFalse(favourites.has(star),
+                         "the old path key is still there beside it")
+
+    def test_two_minted_ids_collapse_to_one(self):
+        folder = self._reg("tex")
+        keep = locations.location_id(self.prefs, folder)
+        rival = "ffffffffffffffffffffffffffffffff"
+        ids = keyed_store.open_store(locations.IDS_SPEC, self.prefs)
+        ids._table[rival] = {"path": hostos.storage_path_key(folder)}
+        favourites = keyed_store.open_store(locations.FAVOURITES_SPEC,
+                                            self.prefs)
+        tag = test_support.FIXTURE_USER + keyed_store.USER_SEP
+        favourites._table[tag + "loc:" + rival + "/wood.png"] = {
+            "favourite": True}
+
+        locations.convert_to_ids(self.prefs)
+
+        self.assertEqual(keep, locations.location_id(self.prefs, folder),
+                         "the collapse kept the wrong id")
+        self.assertNotIn(rival, ids.all(), "the rival id row survived")
+        self.assertTrue(
+            favourites.has("loc:" + keep + "/wood.png"),
+            "the rival's star did not move to the surviving id")
+
+    def test_a_collapse_never_deletes_a_conflicting_value(self):
+        """Two machines minted rival ids offline and BOTH decorated the same thing - the collapse keeps the winner's value AND leaves the rival's row and id in place rather than silently overwriting either."""
+        folder = self._reg("tex")
+        keep = locations.location_id(self.prefs, folder)
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(folder, "wood.png"))
+        rival = "ffffffffffffffffffffffffffffffff"
+        ids = keyed_store.open_store(locations.IDS_SPEC, self.prefs)
+        ids._table[rival] = {"path": hostos.storage_path_key(folder)}
+        notes_store = keyed_store.open_store(notes.SPEC, self.prefs)
+        notes_store._table["file:" + ident] = {
+            "items": [{"t": "text", "text": "mine"}]}
+        notes_store._table["file:loc:" + rival + "/wood.png"] = {
+            "items": [{"t": "text", "text": "theirs"}]}
+
+        locations.convert_to_ids(self.prefs)
+
+        self.assertEqual(
+            [{"t": "text", "text": "mine"}],
+            notes_store.get("file:" + ident).get("items"),
+            "the winner's comment was overwritten by the rival's")
+        self.assertIn(
+            "file:loc:" + rival + "/wood.png", notes_store.everyones(),
+            "the rival's conflicting comment was silently deleted")
+        self.assertIn(rival, ids.all(),
+                      "the rival id was retired while a row of its "
+                      "could not move - orphaning the comment for good")
+
+    def test_removal_retires_the_identity_and_every_users_keys(self):
+        folder = self._reg("tex")
+        lid = locations.location_id(self.prefs, folder)
+        ident = locations.file_ident(self.prefs,
+                                     os.path.join(folder, "wood.png"))
+        locations.set_favourite(self.prefs, ident, True)
+        other = _Prefs(self.dir, library_user="second-user-uid")
+        locations.set_favourite(other, ident, True)
+
+        keyed_store.retire_location(self.prefs, lid)
+        locations.drop_location_id(self.prefs, lid)
+
+        favourites = keyed_store.open_store(locations.FAVOURITES_SPEC,
+                                            self.prefs)
+        self.assertEqual(
+            [], [k for k in favourites.everyones() if lid in k],
+            "a removed location's stars survived for some user")
+        self.assertEqual("", locations.location_id(self.prefs, folder),
+                         "the identity row survived the removal")
 
 
 if __name__ == "__main__":

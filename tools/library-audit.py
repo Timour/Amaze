@@ -1,25 +1,4 @@
-"""What is allowed to exist inside a library directory - and what isn't.
-
-    tools/library-audit.py [LIBRARY]        report
-    tools/library-audit.py --strict [LIB]   exit 1 if anything is unknown
-
-WHY. A library is the user's data, and Amaze is not its only writer -
-the OS, a sync client, an interrupted save and our own development all
-leave things behind. Until 2026-07-30 there was no written statement of
-what a library may contain, so the question "is this library clean?"
-could only be answered by reading the code and reasoning it out fresh
-each time. That is the kind of question that gets answered differently
-by the same person twice.
-
-This file IS the statement. Everything a library may hold is listed
-below; anything else is reported. Pure stdlib on purpose - no Houdini,
-no imports from the package - so it runs on any machine, in a hook, or
-against a library copied off a stick.
-
-A SCRATCH file is called out separately from a merely unknown one. An
-unknown file might be the user's own; a leftover `.writing` is always
-ours, and always means a save died partway.
-"""
+"""What is allowed to exist inside a library directory: `tools/library-audit.py [LIBRARY]` reports, `--strict` exits 1 on anything unknown - pure stdlib on purpose, so it runs where Houdini will not start; SCRATCH is called out separately because a leftover `.writing` is always ours and always means a save died partway. ▸p/store-declarations"""
 
 from __future__ import annotations
 
@@ -28,82 +7,36 @@ import os
 import re
 import sys
 
-#: The four databases plus the policy file and the two keyed side
-#: tables. notes.json (core/notes.py) and icons.json (core/tile_icons.py)
-#: are written into the library beside the databases and carry a .bak
-#: tier of their own; policy.json is snapshotted too (library_policy.py
-#: :139, "the only library JSON with zero backup coverage until now").
-#: None of the three was listed, so --strict exited 1 on a library where
-#: nothing was wrong - measured on the real one: 7 files reported as
-#: not-library-data, among them the notes store and the policy file's
-#: only restore points, under a heading that says anything unknown "is
-#: either a failed write or not library data".
-#:
-#: THIS LIST DUPLICATES `keyed_store`'s REGISTRY, DELIBERATELY AND
-#: PERMANENTLY. That module declares every store as data and `stores()`
-#: is the one enumeration Repair and the restore picker read - but this
-#: file may not import it, because it must run where Houdini will not
-#: start. So a new store is added in BOTH places, and this is the end
-#: that fails loudly: an undeclared file is UNKNOWN and `--strict`
-#: exits 1. Stated at both ends now; the other end used to read as
-#: though it had absorbed this one.
-DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")
+DATABASES = ("library.json", "cops.json", "code.json", "gradients.json")    # with SIDE_TABLES and policy.json, everything loose a library may hold; DUPLICATES keyed_store's registry DELIBERATELY - this file may not import it, so a new store is added in BOTH places and this is the end that fails loudly ▸p/store-declarations
 SIDE_TABLES = ("notes.json", "icons.json", "locations.json",
-               "favourites.json", "users.json", "prefs.json")
+               "location_paths.json", "favourites.json", "users.json",
+               "prefs.json")
 LOOSE_FILES = DATABASES + SIDE_TABLES + ("policy.json",)
 
-#: The product's own restore tier. NOT clutter: snapshot_before_write
-#: writes these, Repair Library reads them, restore.put_back recovers
-#: from them. Every shipping library carries them, and a library without
-#: them has no way back from a bad write.
-#:
-#: Built from LOOSE_FILES, not DATABASES: every file that gets
-#: snapshotted gets a tier, and keying this on the narrower tuple is
-#: what made the wider one wrong.
-BACKUP = re.compile(r"^(%s)\.bak-(1|2|3|first)$"
+BACKUP = re.compile(r"^(%s)\.bak-(1|2|3|first)$"    # the PRODUCT's restore tier, not clutter: snapshot_before_write writes these, Repair and restore.put_back read them - built from LOOSE_FILES because every snapshotted file gets a tier, and keying on the narrower tuple is what made the wider one wrong
                     % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-#: helpers/restore.py's undo copies: one per restore, timestamped, with
-#: a counter when two land in the same second. Repair's own undo
-#: sentence points the user at these, so reporting them as
-#: not-library-data contradicts the tool beside it.
-UNDO_COPIES = re.compile(r"^(%s)\.bak-before-restore-\d{8}-\d{6}(-\d+)?$"
+UNDO_COPIES = re.compile(r"^(%s)\.bak-before-restore-\d{8}-\d{6}(-\d+)?$"    # helpers/restore.py's undo copies, one per restore; Repair's own undo sentence points the user at these
                          % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-#: hostos.preserve_unreadable keeps a file it could not parse rather
-#: than letting the next write destroy the evidence.
-PRESERVED = re.compile(r"^(%s)\.unreadable(\.\d+)?$"
+PRESERVED = re.compile(r"^(%s)\.unreadable(\.\d+)?$"    # hostos.preserve_unreadable keeps what it could not parse rather than letting the next write destroy the evidence
                        % "|".join(re.escape(d) for d in LOOSE_FILES))
 
-#: Seed markers - "the curated content was already offered here once",
-#: so a user who deleted it does not get it back on every launch.
-MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",
+MARKERS = (".amaze_gradient_seed_v1", ".amaze_code_starter_v1",    # seed markers - the curated content was already offered here once, so a user who deleted it does not get it back on every launch
            ".assetlib_gradient_seed_v1", ".assetlib_code_starter_v1")
 
-#: Asset payloads, by directory.
-ASSET_DIRS = {
-    # .builder.json is the builder sidecar: the container's own
-    # parameter interface and values, recorded as data so importing a
-    # material never has to execute a file. .stamp.json is the recovery
-    # stamp: the asset's whole record, so the index can be rebuilt if it
-    # is lost. Both are per-asset sidecars; see overview.md.
+ASSET_DIRS = {    # asset payloads by directory; .builder.json is the builder sidecar (the parameter interface as data, so importing never executes a file) and .stamp.json the recovery stamp (the whole record, so the index can be rebuilt) - see overview.md
     "mat": (".mat", ".interface", ".builder.json", ".stamp.json"),
     "img": (".png", ".jpg", ".jpeg"),
 }
 
-#: MaterialX packages: a directory per package, holding the .mtlx and
-#: whatever textures it references. Texture extensions are open-ended
-#: by nature, so this directory is checked for SCRATCH only.
-PACKAGE_DIRS = ("matX",)
+PACKAGE_DIRS = ("matX",)    # a directory per MaterialX package, .mtlx + textures; texture extensions are open-ended by nature, so checked for SCRATCH only
 
-#: Always ours, always a failed write. A fixed-name scratch that
-#: survives is the bug class this project has hit repeatedly.
-SCRATCH = re.compile(
+SCRATCH = re.compile(    # always ours, always a failed write - a fixed-name scratch that survives is the bug class this project has hit repeatedly
     r"(\.writing|\.capturing|\.tmp|\.temp|\.new|\.partial|\.lock"
     r"|\.swp|~)$|^\.amaze_scratch", re.IGNORECASE)
 
-#: The OS's own droppings. Not ours, still not the user's data.
-OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",
+OS_NOISE = (".DS_Store", "Thumbs.db", "desktop.ini", ".Spotlight-V100",    # the OS's own droppings - not ours, still not the user's data
             ".fseventsd", ".TemporaryItems", "._.DS_Store")
 
 
@@ -126,23 +59,16 @@ def classify(relative: str) -> str:
         return "unknown"
 
     top = parts[0]
-    # mat/versions/<id>/<n>.<kind> + versions.json: the version store.
-    # The archive holds the same kinds the base does, numbered.
-    if top == "mat" and len(parts) == 4 and parts[1] == "versions":
-        # The archive holds the same kinds the base does - INCLUDING
-        # the thumbnail, which lives in img/ for the base and so was
-        # not in ASSET_DIRS["mat"]. Measured on the real library: four
-        # `mat/versions/<id>/<n>.png` reported as not-library-data.
+    if top == "mat" and len(parts) == 4 and parts[1] == "versions":    # mat/versions/<id>/<n>.<kind> + versions.json: the version store
         if (name == "versions.json"
                 or name.endswith(ASSET_DIRS["mat"])
-                or name.endswith(ASSET_DIRS["img"])):
+                or name.endswith(ASSET_DIRS["img"])):    # the archive numbers the same kinds the base holds INCLUDING the thumbnail, which lives in img/ for the base - measured: four mat/versions PNGs reported as not-library-data
             return "ok"
         return "unknown"
     if top in ASSET_DIRS and len(parts) == 2:
         return "ok" if name.endswith(ASSET_DIRS[top]) else "unknown"
     if top in PACKAGE_DIRS:
-        # Texture formats are open-ended; scratch was already caught.
-        return "ok"
+        return "ok"    # texture formats are open-ended; scratch was already caught above
     return "unknown"
 
 

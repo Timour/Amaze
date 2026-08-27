@@ -15,6 +15,8 @@ KEY_ID = "id"                       # an asset id - a folder move leaves it
 KEY_PATH = "path"                   # a path - a folder move rewrites it
 KEY_MIXED = "mixed"                 # both, so the store declares path_prefix
 
+LOC_PREFIX = "loc:"                 # `loc:<id>` or `loc:<id>/<relative>` - a location-ID key, an ID in EVERY store whatever its keyspace: no spelling conversion, no relocate rewrite, retired by `retire_location`
+
 USER_SEP = "|"                      # `<uid>|<key>`, split on the FIRST one
 
 READ = "read"                       # parsed from a file that is there
@@ -92,7 +94,9 @@ class Spec:
         self.absence_is_fresh = bool(absence_is_fresh)
 
     def is_path_key(self, key: str) -> bool:
-        """Does a path move rewrite this key?"""
+        """Does a path move rewrite this key? A `loc:` key never - it is an ID whatever the keyspace."""
+        if _bare_path(self, str(key)).startswith(LOC_PREFIX):
+            return False
         if self.keyspace == KEY_PATH:
             return True
         if self.keyspace == KEY_MIXED:
@@ -194,6 +198,31 @@ register(
 LOCATIONS = "locations.json"        # one record per registered folder
 
 FAVOURITES = "favourites.json"      # every section's, keyed to its owner
+
+LOCATION_PATHS = "location_paths.json"  # the identity table: one row per location, id -> its current path - the ONE place a location's path is stored
+
+register(
+    filename=LOCATION_PATHS,
+    payload="location_paths",
+    keyspace=KEY_ID,
+    label="File location paths",
+    noun="location path",
+    category="file",
+    alert_key="location-paths-unreadable",
+    unreadable_alert=(
+        "Your registered folders' paths could not be read, so Amaze "
+        "will not save over them.\n\n"
+        "Nothing has been lost. The File section is showing the copy "
+        "your last session left behind, and any folder you add or "
+        "move now will not be kept.\n\n"
+        "Close Houdini and put back a recent copy with the Repair tool "
+        "in the Amaze shelf."),
+    refused_sentence=(
+        "the registered folders' paths could not be read earlier this "
+        "run, so this change was not saved - writing now would replace "
+        "every path already in the list."),
+    survives_forget=True,
+)
 
 register(
     filename=LOCATIONS,
@@ -651,7 +680,8 @@ class Store:
         for old in touched:
             value = staged.pop(old)
             staged.setdefault(moves[old], value)  # a destination entry WINS
-        return self._commit(staged, touched)
+        return self._commit(staged, touched,
+                            retire=[k for k in touched if k not in staged])    # the OLD keys as retired, or the commit's disk adoption resurrects them - sparing one another move re-filled as its destination
 
     def adopt_orphans(self) -> Written:
         """File every ownerless row under the current user in ONE write; adoption only ADDS. ▸p/store-commit-order"""
@@ -674,6 +704,20 @@ class Store:
         return self._drop([str(k) for k in (keys or ())
                            if str(k) in self._table])
 
+    def rekey_stored(self, moves: dict) -> Written:
+        """Rewrite keys AS STORED in ONE write - every owner's, no user needed; `rekey` is the scoped door, and a destination entry WINS here too."""
+        moves = {str(k): str(v) for k, v in (moves or {}).items()
+                 if str(k) != str(v)}
+        touched = [k for k in moves if k in self._table]
+        if not touched:
+            return Written(True, REASON_UNCHANGED)
+        staged = dict(self._table)
+        for old in touched:
+            value = staged.pop(old)
+            staged.setdefault(moves[old], value)
+        return self._commit(staged, touched,
+                            retire=[k for k in touched if k not in staged])    # the OLD keys as retired, or the commit's disk adoption resurrects them beside their moved selves - sparing one another move re-filled as its destination
+
     def _drop(self, doomed) -> Written:
         """Commit the table without these STORED keys; an empty list is unchanged, not a failure. ▸p/keyed-store-slate"""
         if not doomed:
@@ -681,7 +725,7 @@ class Store:
         staged = dict(self._table)
         for key in doomed:
             staged.pop(key, None)
-        return self._commit(staged, doomed)
+        return self._commit(staged, doomed, retire=doomed)    # as RETIRED, or the disk adoption inside the commit puts a just-dropped key straight back when the file changed since the load
 
     def retire(self, keys) -> Written:
         """Drop keys - ONE write. A location is gone for good."""
@@ -887,14 +931,14 @@ def _bare_path(spec: Spec, key: str) -> str:
 
 
 def storage_key(spec: Spec, key, user: str = "") -> str:
-    """The spelling a key is STORED under - variable-relative, and `<uid>|` prefixed on a tagged store."""
+    """The spelling a key is STORED under - variable-relative for a path, verbatim for an id (`loc:` included), and `<uid>|` prefixed on a tagged store."""
     key = str(key)
-    if spec.keyspace == KEY_PATH:
-        key = hostos.storage_path_key(key)
-    elif (spec.keyspace == KEY_MIXED and spec.path_prefix
-            and key.startswith(spec.path_prefix)):
-        key = spec.path_prefix + hostos.storage_path_key(
-            key[len(spec.path_prefix):])
+    if spec.is_path_key(key):
+        if spec.keyspace == KEY_PATH:
+            key = hostos.storage_path_key(key)
+        else:
+            key = spec.path_prefix + hostos.storage_path_key(
+                key[len(spec.path_prefix):])
     if spec.user_tagged and user:
         key = user + USER_SEP + key
     return key
@@ -954,8 +998,17 @@ def relocate(preferences, old: str, new: str) -> dict:
     return results
 
 
+def location_ids_at(preferences, prefix: str) -> list:
+    """Every identity-table id whose path is `prefix` - either trailing-separator spelling."""
+    store = open_store(_registry[LOCATION_PATHS], preferences)
+    wanted = hostos.storage_path_key(prefix).rstrip("/") or "/"
+    return sorted(
+        lid for lid, row in store.all().items()
+        if (str(row.get("path") or "").rstrip("/") or "/") == wanted)
+
+
 def retire_prefix(preferences, prefix: str) -> dict:
-    """A location is gone: drop every key under it, in the stores whose `survives_forget` says so. ▸p/store-declarations"""
+    """A location is gone: drop every key under it - the legacy path spellings, the id-keyed state, and the identity rows themselves - in the stores whose `survives_forget` says so. ▸p/store-declarations"""
     results = {}
     for spec in stores():
         if spec.survives_forget or spec.keyspace == KEY_ID:
@@ -971,6 +1024,41 @@ def retire_prefix(preferences, prefix: str) -> dict:
         doomed = [k for k in store.all() if _under(spec, k, prefix)]
         if doomed:
             results[spec.filename] = store.retire(doomed)
+    doomed_ids = location_ids_at(preferences, prefix)
+    swept_clean = True
+    for locid in doomed_ids:
+        for filename, written in retire_location(preferences,
+                                                 locid).items():
+            if filename not in results or not written.ok:
+                results[filename] = written    # a refusal is the answer worth keeping when both sweeps touched one store
+            swept_clean = swept_clean and written.ok
+    if doomed_ids and swept_clean:    # the identity rows go LAST, and only when their dependents went - retired first, a refused sweep leaves keys under an id nothing resolves
+        results[LOCATION_PATHS] = open_store(
+            _registry[LOCATION_PATHS], preferences).retire(doomed_ids)
+    return results
+
+
+def retire_location(preferences, locid: str) -> dict:
+    """A location is gone by its ID: drop `loc:<id>` and everything under `loc:<id>/` from the stores whose `survives_forget` says so - every user's, a removal is a shared act, path-prefixed spellings (`file:loc:...`) included."""
+    results = {}
+    locid = str(locid)
+    if not locid:
+        return results
+    own = LOC_PREFIX + locid
+    edge = own + "/"
+    for spec in stores():
+        if spec.survives_forget:
+            continue
+
+        def _doomed_key(bare):
+            bare = _bare_path(spec, bare)
+            return bare == own or bare.startswith(edge)
+
+        store = open_store(spec, preferences)
+        doomed = [stored for stored in store.everyones()
+                  if _doomed_key(untagged_key(spec, stored)[1])]
+        if doomed:
+            results[spec.filename] = store.retire_stored(doomed)
     return results
 
 
