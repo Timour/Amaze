@@ -80,6 +80,7 @@ class AssetDialog(QtWidgets.QDialog):
             self._buttons.rejected.connect(self.reject)
 
         layout = QtWidgets.QVBoxLayout()
+        self._inner_layout = layout    # the margined content layout, for a dialog whose drawn margins are per-side
         if self._content is not None:
             if self._form.rowCount():
                 raise RuntimeError(

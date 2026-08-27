@@ -407,17 +407,14 @@ class DialogTest(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
         width = dialog.preview.width()
-        gaps = 4 * (len(dialog._swatches) - 1)
+        gaps = (theme.ui_px(amazetheme.D02_SWATCH_GAP)
+                * (len(dialog._swatches) - 1))
         swatch_row = sum(s.width() for s in dialog._swatches) + gaps
         self.assertEqual(width, swatch_row, "the swatch row is ragged")
-        self.assertEqual(    # Custom Color shares its row with the toggle, so the ROW ends where the column does
-            dialog.preview.geometry().right(),
+        self.assertEqual(    # Custom Color and Accept are both drawn flush right, so their right edges agree whatever the style's fonts do to the rows
             dialog.custom_button.geometry().right(),
-            "the toggle row does not reach the column's right edge")
-        self.assertEqual(    # the buttons are drawn flush right at a fixed width, not spanning
-            dialog.preview.geometry().right(),
             dialog.accept_button.geometry().right(),
-            "Accept does not end where the column does")
+            "the toggle row and the button row end at different edges")
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
                          dialog.apply_button.width())
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),

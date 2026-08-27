@@ -46,26 +46,33 @@ class IconDialog(base_dialog.AssetDialog):
         self._ink = current.get("ink", "") or tile_icons.DEFAULT_INK
         self._buttons_by_name: dict = {}
 
-        gap = theme.ui_px(8)
+        gap = theme.ui_px(amazetheme.D02_SIDE_GAP)
 
         content = QtWidgets.QWidget()
         body = QtWidgets.QHBoxLayout(content)
         body.setContentsMargins(0, 0, 0, 0)   # the shell owns the outer margins now
-        body.setSpacing(gap)
+        body.setSpacing(theme.ui_px(amazetheme.D02_BODY_GAP))
         body.addLayout(self._build_chooser(gap), 1)
         body.addWidget(self._build_side(gap), 0)
         self.set_content(content)
-        self.finish(ok_cancel=False)   # Accept and Apply live in the side column
+        margins = amazetheme.D02_MARGINS
+        self.finish(ok_cancel=False,   # Accept and Apply live in the side column
+                    margins=(margins[0] + margins[2]) // 2)
+        self._inner_layout.setContentsMargins(
+            *(theme.ui_px(m) for m in margins))
         self.custom_toggle.toggled.connect(self._set_custom_enabled)
         self._set_custom_enabled(self._has_icon)
         self._refresh_preview()
+        self.resize(theme.ui_px(amazetheme.D02_FORM_WIDTH),   # the drawn OPENING size; the grid is the part that grows if the user resizes
+                    theme.ui_px(amazetheme.D02_FRAME_H))
 
     def _build_name_row(self, gap: int):
         """The asset's name above the grid - as drawn; the side column holds Category and Tags."""
         row = QtWidgets.QHBoxLayout()
-        row.setSpacing(gap)
+        row.setSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
         row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_NAME))
         self.tile_name_edit = QtWidgets.QLineEdit(self._tile_name)
+        self.tile_name_edit.setFixedHeight(theme.ui_px(amazetheme.D02_FIELD_H))
         self.tile_name_edit.setEnabled(self._tile_name_enabled)
         self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
             "Rename this tile. The name is what the grid, the "
@@ -76,6 +83,7 @@ class IconDialog(base_dialog.AssetDialog):
     def _build_search(self):
         """The icon filter, drawn at the bottom under the grid."""
         self.search = QtWidgets.QLineEdit()
+        self.search.setFixedHeight(theme.ui_px(amazetheme.D02_FIELD_H))
         self.search.setPlaceholderText(amazetheme.PLACEHOLDER_SEARCH_ICONS)
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._apply_filter)
@@ -130,16 +138,16 @@ class IconDialog(base_dialog.AssetDialog):
         area.setStyleSheet("QScrollArea { background: %s; border: none; }"
                            % chooser_bg)
         area.setWidget(holder)
-        area.setMinimumSize(
-            theme.ui_px(CELL * COLUMNS + 30), theme.ui_px(CELL * 8))
+        area.setMinimumHeight(theme.ui_px(CELL * 8))    # HEIGHT only: the drawn 319 column is what the dialog's width leaves, and a width minimum here forced the whole window past the drawing
         self._chooser_area = area
         out = QtWidgets.QVBoxLayout()
-        out.setSpacing(gap // 2)
+        out.setSpacing(theme.ui_px(amazetheme.D02_COL_GAP))
         if self._tile_name is not None:
             out.addLayout(self._build_name_row(gap))
         else:
             self.tile_name_edit = None
         out.addLayout(column, 1)
+        column.setSpacing(theme.ui_px(amazetheme.D02_COL_GAP))
         column.addWidget(area, 1)
         column.addWidget(self._build_search())   # under the GRID it filters, not beside the buttons - as drawn
         return out
@@ -153,18 +161,21 @@ class IconDialog(base_dialog.AssetDialog):
         column.setContentsMargins(0, 0, 0, 0)
         column.setSpacing(gap // 2)
 
+        field_h = theme.ui_px(amazetheme.D02_FIELD_H)
         top = QtWidgets.QFormLayout()
         top.setContentsMargins(0, 0, 0, 0)
-        top.setSpacing(6)
+        top.setHorizontalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        top.setVerticalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
         top.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                               | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        top.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
-            QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        top.setFieldGrowthPolicy(    # AllNonFixed, so the combo fills like the line edit ▸r/form-layout-defaults
+            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         if not self._categories:
             self.category_combo = None
         else:
             self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
             self.category_combo.setEditable(True)
+            self.category_combo.setFixedHeight(field_h)
             for name in self._categories:
                 self.category_combo.addItem(name)
             self.category_combo.setCurrentText(self._tile_category)
@@ -176,6 +187,7 @@ class IconDialog(base_dialog.AssetDialog):
             self.tags_edit = None
         else:
             self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection: it opens empty and ADDS to every tile
+            self.tags_edit.setFixedHeight(field_h)
             self.tags_edit.setToolTip(ui_helpers.tooltip_text(
                 "Tags for this tile, separated by commas."
                 if self._tile_name_enabled else
@@ -184,21 +196,20 @@ class IconDialog(base_dialog.AssetDialog):
             top.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
         if top.rowCount():
             column.addLayout(top)
-            column.addSpacing(gap // 2)
 
         self.preview = QtWidgets.QLabel()
         self.preview.setFixedSize(side, side)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         column.addWidget(self.preview)
-        column.addSpacing(gap)
+        column.addSpacing(theme.ui_px(3))    # the swatch row sits 9 under the preview, 3 past the column rhythm
 
         swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the five share exactly the column width
-        swatches.setSpacing(4)
+        swatches.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         self._swatches = []
         for label, colour in tile_icons.PRESETS:
             swatch = QtWidgets.QToolButton()
             swatch.setToolTip(label)
-            swatch.setFixedHeight(theme.ui_px(28))
+            swatch.setFixedHeight(theme.ui_px(amazetheme.D02_SWATCH_H))
             swatch.setSizePolicy(
                 QtWidgets.QSizePolicy.Policy.Expanding,
                 QtWidgets.QSizePolicy.Policy.Fixed,
@@ -212,8 +223,10 @@ class IconDialog(base_dialog.AssetDialog):
         column.addLayout(swatches)
 
         toggle_row = QtWidgets.QHBoxLayout()   # Custom Icon OFF = the tile's own thumbnail; ON = the chooser applies
-        toggle_row.setSpacing(6)
-        toggle_row.addWidget(QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_ICON))
+        toggle_row.setSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        toggle_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_ICON)
+        toggle_label.setMinimumWidth(1)    # the label yields before the row overflows the column - a wide style's font otherwise shoves the fixed-size button past the drawn edge
+        toggle_row.addWidget(toggle_label)
         toggle_row.addStretch(1)    # the slack sits BETWEEN label and switch, as drawn
         self.custom_toggle = ui_helpers.ToggleSwitch()
         self.custom_toggle.setChecked(self._has_icon)
@@ -223,6 +236,8 @@ class IconDialog(base_dialog.AssetDialog):
         toggle_row.addWidget(self.custom_toggle)
         self.custom_button = QtWidgets.QPushButton(
             amazetheme.BTN_CUSTOM_COLOR)
+        self.custom_button.setFixedSize(theme.ui_px(amazetheme.D02_CUSTOM_W),
+                                        field_h)
         self.custom_button.setToolTip(ui_helpers.tooltip_text(
             "Pick any color, with Houdini's color picker."))
         self.custom_button.clicked.connect(self._pick_custom)
@@ -231,12 +246,14 @@ class IconDialog(base_dialog.AssetDialog):
 
         fields = QtWidgets.QFormLayout()   # ink sits next to the background it must work against - dark on dark is an invisible icon
         fields.setContentsMargins(0, 0, 0, 0)
-        fields.setSpacing(6)
+        fields.setHorizontalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        fields.setVerticalSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
         fields.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                  | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        fields.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
-            QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        fields.setFieldGrowthPolicy(    # AllNonFixed, so the combo fills to the drawn right edge ▸r/form-layout-defaults
+            QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         self.ink_combo = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width
+        self.ink_combo.setFixedHeight(field_h)
         self.ink_combo.addItem("Dark", "dark")
         self.ink_combo.addItem("Light", "light")
         self.ink_combo.setCurrentIndex(
@@ -247,15 +264,17 @@ class IconDialog(base_dialog.AssetDialog):
         column.addStretch(1)
 
         actions = QtWidgets.QHBoxLayout()   # Apply commits and stays open, Accept commits and closes - Houdini's own pair (ref ▸ windows/optype); closing IS cancelling, so there is no Cancel
-        actions.setSpacing(6)
-        actions.addStretch(1)               # both drawn flush RIGHT at a fixed width, not spanning the column
+        actions.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
+        actions.addStretch(1)               # both drawn flush RIGHT at a fixed size, not spanning the column
         self.apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
-        self.apply_button.setFixedWidth(theme.ui_px(amazetheme.D02_BUTTON_W))
+        self.apply_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
+                                       field_h)
         self.apply_button.clicked.connect(self._apply)
         actions.addWidget(self.apply_button)
 
         self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_ACCEPT)
-        self.accept_button.setFixedWidth(theme.ui_px(amazetheme.D02_BUTTON_W))
+        self.accept_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
+                                        field_h)
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)

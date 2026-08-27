@@ -145,10 +145,12 @@ class CodeDialog(base_dialog.AssetDialog):
         def form():
             half = QtWidgets.QFormLayout()
             half.setContentsMargins(0, 0, 0, 0)
+            half.setHorizontalSpacing(theme.ui_px(amazetheme.D11_LABEL_GAP))
+            half.setVerticalSpacing(theme.ui_px(amazetheme.D11_ROW_GAP))
             half.setLabelAlignment(QtCore.Qt.AlignmentFlag.AlignRight
                                    | QtCore.Qt.AlignmentFlag.AlignVCenter)
-            half.setFieldGrowthPolicy(    # BOTH stated: each defaults per host STYLE ▸r/form-layout-defaults
-                QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+            half.setFieldGrowthPolicy(    # AllNonFixed, so the combos fill their half exactly as the line edits do - all four fields are drawn equal ▸r/form-layout-defaults
+                QtWidgets.QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
             return half
 
         left, right = form(), form()    # Name | Category over Language | Tags - the drawn 2x2, equal halves
@@ -180,21 +182,32 @@ class CodeDialog(base_dialog.AssetDialog):
         content = QtWidgets.QWidget()
         stack = QtWidgets.QVBoxLayout(content)
         stack.setContentsMargins(0, 0, 0, 0)
-        stack.setSpacing(theme.ui_px(12))
+        stack.setSpacing(theme.ui_px(amazetheme.D11_STACK_GAP))
         halves = QtWidgets.QHBoxLayout()
-        halves.setSpacing(theme.ui_px(18))
+        halves.setSpacing(theme.ui_px(amazetheme.D11_HALF_GAP))
         halves.addLayout(left, 1)
         halves.addLayout(right, 1)
         stack.addLayout(halves)
 
         self._editor = CodeEditor(code)
         self._editor.setMinimumHeight(theme.ui_px(amazetheme.D11_EDITOR_H))
-        caption = QtWidgets.QLabel(amazetheme.LABEL_CODE, self._editor)   # drawn ON the editor's top-left, over the gutter
-        caption.move(theme.ui_px(19), 0)
         stack.addWidget(self._editor, 1)    # FULL width, under both halves - as drawn
 
         self.set_content(content)
-        self.finish()
+        margins = amazetheme.D11_MARGINS
+        self.finish(margins=(margins[0] + margins[2]) // 2)   # the strut needs the drawn CONTENT width; the real, asymmetric margins land below
+        self._inner_layout.setContentsMargins(
+            *(theme.ui_px(m) for m in margins))
+        self._inner_layout.setSpacing(theme.ui_px(amazetheme.D11_BUTTON_GAP))
+        field_h = theme.ui_px(amazetheme.D11_FIELD_H)
+        for widget in (self._line_name, self._combo_lang,
+                       self._combo_category, self._line_tags):
+            widget.setFixedHeight(field_h)
+        for button in self._buttons.buttons():    # the box's own padding and gap are style defaults otherwise, and the drawing pins both
+            button.setFixedHeight(field_h)
+        self._buttons.layout().setContentsMargins(0, 0, 0, 0)
+        self._buttons.layout().setSpacing(
+            theme.ui_px(amazetheme.D11_BUTTON_GAP))
 
     def _on_accept(self) -> None:
         self.name = self._line_name.text().strip()

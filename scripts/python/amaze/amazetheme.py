@@ -19,16 +19,33 @@ D01_BUTTON_PX = 12
 D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
 
 D02_FORM_WIDTH = 544     # ▸ D02 Customize (Tile Icon): the drawn width, band included
+D02_FRAME_H = 440        # the drawn OPENING height; the dialog stays resizable
+D02_MARGINS = (8, 6, 8, 16)   # left, top-under-band, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
-D02_COLUMNS = 9          # how wide the grid runs before wrapping - 10 until 2026-08-27, when the side column grew
-D02_SIDE_WIDTH = 195     # the side column: preview and swatch row measure this
+D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
+D02_SIDE_WIDTH = 195     # the side column; the grid column is what the width leaves
+D02_FIELD_H = 22         # every field, the search and both buttons
+D02_SWATCH_H = 28
+D02_SWATCH_GAP = 6
 D02_BUTTON_W = 72        # Apply and Accept, drawn flush right - they do NOT span the column
+D02_CUSTOM_W = 90        # the Custom Color button beside the toggle
+D02_BODY_GAP = 14        # grid column to side column
+D02_COL_GAP = 7          # name row to grid, and grid to search
+D02_SIDE_GAP = 6         # the side column's rhythm; the swatch row sits 3 lower
+D02_ROW_GAP = 5          # label to field, and Category to Tags
 
 SAVE_WIDTH = 350         # ▸ the save family D09, D10, D12, D13: every one is this wide, whatever its labels
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
 
-D11_FORM_WIDTH = 638     # ▸ D11 Save Code: a FLOOR, not a pin - the only dialog that resizes, because it carries an editor. Its field column follows from this width, so there is no second number for it
-D11_EDITOR_H = 364       # the editor's minimum HEIGHT; it spans the full dialog width, under the two-column form
+D11_FORM_WIDTH = 638     # ▸ D11 Save Code: a FLOOR, not a pin - the only dialog that resizes, because it carries an editor
+D11_EDITOR_H = 364       # the editor's minimum HEIGHT; it spans the full content width, under the two-column form
+D11_MARGINS = (18, 19, 8, 13)  # left, top-under-band, right, bottom
+D11_FIELD_H = 22         # every field and button in the frame
+D11_ROW_GAP = 4          # between the two form rows
+D11_LABEL_GAP = 7        # label to its field
+D11_HALF_GAP = 18        # between the two form halves
+D11_STACK_GAP = 12       # fields to the editor
+D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
 PREFS_FORM_WIDTH = 480   # ▸ D04-D08 Preferences, the one tabbed window
 PREFS_HEADROOM = 50      # rendered px added to the natural content height
@@ -87,7 +104,6 @@ LABEL_LINES = "Lines"
 LABEL_TAGS = "Tags"
 LABEL_CATEGORY = "Category"
 LABEL_CUSTOM_ICON = "Custom Icon"   # the D02 toggle: OFF = the tile's own thumbnail, ON = the chooser applies
-LABEL_CODE = "Code"                 # D11's caption, drawn on the editor's top-left
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
 PLACEHOLDER_VERSION_NAME = "Rename this version"

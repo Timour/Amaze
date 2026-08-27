@@ -33,11 +33,11 @@ def ink_colour(token: str) -> str:
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
 PRESETS = (  # five presets plus Custom (the colour picker) - the D02 swatches, hex-for-hex from the drawing ▸p/one-design-document
-    ("Red", "#ff3319"),
-    ("Green", "#33ff7d"),
-    ("Amber", "#fcb900"),
-    ("Blue", "#0cb6ff"),
-    ("Pink", "#eb46a6"),
+    ("Red", "#e0523a"),
+    ("Green", "#a4c18a"),
+    ("Amber", "#f6ca6d"),
+    ("Blue", "#b0d1df"),
+    ("Sand", "#e1d7bb"),
 )
 
 _COMPOSED_MAX_BYTES = 64 * 1024 * 1024  # (name, bg, size, stroke, ink) -> QImage, capped in BYTES not entries: 240 entries measured 63MB at rendersize 256, 252MB at 512, 1007MB at 1024

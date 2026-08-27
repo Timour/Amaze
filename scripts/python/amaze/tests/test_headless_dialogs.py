@@ -613,8 +613,8 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         caption = [c for c in code._editor.children()
                    if isinstance(c, QtWidgets.QLabel)]
         self.assertEqual(
-            [amazetheme.LABEL_CODE], [c.text() for c in caption],
-            "the Code caption is not drawn on the editor")
+            [], caption,
+            "a caption is drawn on the editor; the design has none")
 
     def test_only_the_drawn_three_wear_a_header_band(self):
         """D01, D02 and D11 carry the drawn strip; the save family and Preferences do not, and a band appearing on one of those is the misreading that put it there in the first place. ▸p/one-design-document"""
