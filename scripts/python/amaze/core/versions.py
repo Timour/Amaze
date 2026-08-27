@@ -194,6 +194,7 @@ def _copy_set(sources: dict, targets: dict) -> bool:
     """Copy every present kind as ONE unit - all bytes first, then the renames, each destination moved aside first so a failure part way puts back the ones already moved; the residual is only a crash between two renames. practice.md ▸ THE LIST IS WRITTEN FIRST holds the held-file reproduction."""
     staged = []
     displaced = []
+    created = []
     promoted = 0
     try:
         for kind, required in _KINDS:
@@ -222,6 +223,8 @@ def _copy_set(sources: dict, targets: dict) -> bool:
                                               create=False)
                 hostos.replace_file(target, aside)
                 displaced.append((aside, target))
+            else:
+                created.append(target)    # nothing to put back for this kind - the rollback must REMOVE it instead
             hostos.promote_scratch(scratch, target)
             promoted += 1
         staged = []
@@ -229,6 +232,14 @@ def _copy_set(sources: dict, targets: dict) -> bool:
         debug.event("versions", "promote failed - putting the base back",
                     promoted=promoted, of=len(staged), error=str(exc))
         staged = staged[promoted:]
+        for target in created:
+            try:
+                if os.path.exists(target):
+                    os.remove(target)
+            except OSError as undo_exc:
+                debug.event("versions", "ROLLBACK FAILED - a created "
+                            "kind stays", target=target,
+                            error=str(undo_exc))
         for aside, target in reversed(displaced):
             try:
                 hostos.replace_file(aside, target)

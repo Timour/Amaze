@@ -1014,5 +1014,37 @@ class TileTagsTest(unittest.TestCase):
                         "the tags")
 
 
+class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
+    """set_tile_icon refreshes ONE row - a full rebuild per call made a multi-select icon pass O(rows^2) in store lookups, each a deepcopy."""
+
+    def test_set_tile_icon_does_not_walk_every_row(self):
+        from unittest import mock
+
+        from amaze.core import library as library_mod
+        from amaze.core import tile_icons
+        prefs_obj = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=prefs_obj)
+        if model.rowCount() < 3:
+            self.skipTest("fixture library has too few rows")
+        calls = []
+        real = tile_icons.override_for
+
+        def counted(preferences, mat_id):
+            calls.append(mat_id)
+            return real(preferences, mat_id)
+
+        with mock.patch.object(tile_icons, "override_for", counted):
+            model.set_tile_icon(model.index(0, 0),
+                                {"name": "circle", "bg": "#e0523a",
+                                 "ink": "dark"}, save=False)
+        self.assertLess(
+            len(calls), model.rowCount(),
+            "one row's icon walked the whole model: %d lookups over %d "
+            "rows, each a store get with a deepcopy"
+            % (len(calls), model.rowCount()))
+
+
 if __name__ == "__main__":
     unittest.main()

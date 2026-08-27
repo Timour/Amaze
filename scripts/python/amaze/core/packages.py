@@ -103,11 +103,10 @@ def write_package(out_path: str, items) -> int:
     return len(entries)
 
 
-def read_manifest(path: str) -> dict:
-    """The package's manifest - refused by name for a missing/unreadable manifest or a format NEWER than this build reads."""
+def _manifest_from(bundle, path: str) -> dict:
+    """The manifest out of an OPEN bundle - refused by name for a missing/unreadable manifest or a format NEWER than this build reads."""
     try:
-        with zipfile.ZipFile(path) as bundle:
-            raw = bundle.read(MANIFEST)
+        raw = bundle.read(MANIFEST)
     except KeyError:
         raise PackageError("%s carries no %s - not an Amaze package"
                            % (os.path.basename(path), MANIFEST)) from None
@@ -126,17 +125,30 @@ def read_manifest(path: str) -> dict:
     return manifest
 
 
+def read_manifest(path: str) -> dict:
+    """The package's manifest, through one open of the file."""
+    try:
+        with zipfile.ZipFile(path) as bundle:
+            return _manifest_from(bundle, path)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise PackageError("cannot read %s: %s" % (path, exc)) from None
+
+
 def import_package(models, prefs, path: str, restore: bool = False) -> dict:
     """Bring one package into the library - FRESH by default (ids minted, every asset filed under `Import`), adopt-only by the package's ORIGINAL ids with `restore=True` - refusing whole on a missing member or no library, and answering {imported, skipped, files, refused, problems, categories}."""
     if not getattr(prefs, "dir", ""):
         raise PackageError("no library set - nowhere to import into")
-    problems = verify_package(path)
-    if problems:
-        raise PackageError("%s is not whole: %s"
-                           % (os.path.basename(path),
-                              "; ".join(problems)))
-    manifest = read_manifest(path)
-    with zipfile.ZipFile(path) as bundle:
+    try:
+        bundle = zipfile.ZipFile(path)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise PackageError("cannot read %s: %s" % (path, exc)) from None
+    with bundle:    # ONE open serves manifest, verify and import - four sequential central-directory reads were felt on network folders, and verifying one open while importing from another gave a sync client a swap window
+        manifest = _manifest_from(bundle, path)
+        problems = _verify(bundle, manifest)
+        if problems:
+            raise PackageError("%s is not whole: %s"
+                               % (os.path.basename(path),
+                                  "; ".join(problems)))
         return import_entries(models, prefs, bundle,
                               manifest.get("entries", ()), restore)
 
@@ -268,12 +280,11 @@ def _import_file(prefs, bundle, entry, summary) -> None:
     summary["files"] += 1
 
 
-def verify_package(path: str) -> list:
-    """Problems, one sentence each - every manifest member the zip does not hold; [] means whole."""
+def _verify(bundle, manifest) -> list:
+    """Problems against an OPEN bundle, one sentence each - every manifest member the zip does not hold; [] means whole."""
     problems = []
-    with zipfile.ZipFile(path) as bundle:
-        held = set(bundle.namelist())
-    for entry in read_manifest(path).get("entries", ()):
+    held = set(bundle.namelist())
+    for entry in manifest.get("entries", ()):
         arcs = ([entry.get("arc")] if entry.get("type") == "file"
                 else list((entry.get("files") or {}).values())
                 + list((entry.get("textures") or {}).values()))
@@ -281,3 +292,9 @@ def verify_package(path: str) -> list:
             if arc and arc not in held:
                 problems.append("missing member %s" % arc)
     return problems
+
+
+def verify_package(path: str) -> list:
+    """Problems, one sentence each, through one open of the file; [] means whole."""
+    with zipfile.ZipFile(path) as bundle:
+        return _verify(bundle, _manifest_from(bundle, path))

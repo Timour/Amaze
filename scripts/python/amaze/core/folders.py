@@ -85,11 +85,16 @@ class FolderListModel(QtCore.QAbstractListModel):
         """The sidebar label for a registered folder - the basename here, custom-name-or-path in FileFolders."""
         return os.path.basename(path.rstrip("/\\")) or path
 
+    def _matcher_for(self, path: str):
+        """One folder's per-name test with the location rule resolved ONCE - `matches_in` resolves it per FILE, which is a store get and a deepcopy inside the paint path."""
+        return lambda name: self.matches_in(path, name)
+
     def _folder_count(self, path: str) -> int:
         count = self._counts.get(path)
         if count is not None:
             return count
         count = 0
+        matches = self._matcher_for(path)
         try:
             if self.includes_subfolders(path):
                 for _dirpath, dirnames, filenames in walk_following_links(path):
@@ -98,11 +103,11 @@ class FolderListModel(QtCore.QAbstractListModel):
                                    if not d.startswith(".")]
                     dirnames.sort()
                     count += sum(1 for name in filenames
-                                 if self.matches_in(path, name))
+                                 if matches(name))
             else:
                 count = sum(    # FILES only, matching the grid's flat scan ▸p/folder-sidebar
                     1 for name in os.listdir(path)
-                    if self.matches_in(path, name)
+                    if matches(name)
                     and os.path.isfile(os.path.join(path, name))
                 )
         except OSError:

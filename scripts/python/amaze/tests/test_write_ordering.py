@@ -303,6 +303,30 @@ class SwitchingVersionsIsAllOrNothing(unittest.TestCase):
             "the switch destroyed the ONLY copy of the structural "
             "update - no archive holds it: %s" % archived)
 
+    def test_a_failed_switch_removes_the_kinds_it_created(self):
+        """The rollback restores displaced targets - a kind promoted onto a target that did NOT previously exist must be taken back too, or the base pairs one version's material with another's interface."""
+        os.remove(self.base[".interface"])
+
+        real_promote = hostos.promote_scratch
+
+        def held_png(scratch, target):
+            if target.endswith(".png") and os.sep + "img" in target:
+                raise PermissionError("held by another process")
+            return real_promote(scratch, target)
+
+        hostos.promote_scratch = held_png
+        self.addCleanup(setattr, hostos, "promote_scratch", real_promote)
+        try:
+            switched = versions.switch_active(self.prefs, self.mat_id, 1)
+        finally:
+            hostos.promote_scratch = real_promote
+
+        self.assertFalse(switched, "premise: the held file refuses the switch")
+        self.assertFalse(
+            os.path.exists(self.base[".interface"]),
+            "the failed switch left version 1's .interface beside the "
+            "restored base .mat - a material made of two versions")
+
     def test_an_ordinary_switch_still_works(self):
         self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
         self.assertEqual(1, self._holds(".mat"))

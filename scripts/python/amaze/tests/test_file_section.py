@@ -6,6 +6,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -2411,6 +2412,34 @@ class ABarePrefsLoadWritesNothingButItsOwnFile(unittest.TestCase):
             "material_favorites", p.data,
             "load() consumed the migration source itself - the doors "
             "own that, after a product surface asked for a favourite")
+
+
+class ACountResolvesTheLocationRuleOnce(unittest.TestCase):
+    """The sidebar count runs inside data(), the paint path - resolving the location record per FILE is a store get with a deepcopy, thousands of them on one first paint."""
+
+    def test_the_rule_is_not_resolved_per_file(self):
+        folder = tempfile.mkdtemp(prefix="amaze_count_cost_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        for i in range(12):
+            open(os.path.join(folder, "f%d.png" % i), "w").close()
+        prefs = _Prefs([folder])
+        model = file_library.FileFolders(prefs)
+
+        calls = []
+        real = file_library.locations.record
+
+        def counted(preferences, location):
+            calls.append(location)
+            return real(preferences, location)
+
+        with mock.patch.object(file_library.locations, "record", counted):
+            count = model._folder_count(folder)
+        self.assertEqual(12, count, "premise: every file counted")
+        self.assertLess(
+            len(calls), 12,
+            "the location rule was resolved per FILE (%d record reads "
+            "for 12 files) - each is a store get with a deepcopy, on "
+            "the paint path" % len(calls))
 
 
 class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):

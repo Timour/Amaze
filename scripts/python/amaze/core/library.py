@@ -216,14 +216,31 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         }
 
     def _add_thumb_paths(self, row: int):
-        """Refresh one row's thumbnail: forget the key so the repaint re-requests the (re)written PNG, and clear a sticky "missing" so a fresh render gets its retry. Serves add_asset, render_thumbnail and update_asset_content alike."""
-        self.rebuild_thumbs()
-        if 0 <= row < self.rowCount():
-            versions.record_render(self.preferences,  # every path that declares this row's PNG fresh comes through here, so the ACTIVE version's archive slot follows the base picture; identical bytes are skipped inside
-                                   self._assets[row].mat_id)
-            thumbnails.engine.discard(self._thumb_key(row))
-            self.row_changed(
-                row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        """Refresh ONE row's thumbnail maps and repaint it - never a whole-model rebuild, which made a multi-select icon pass O(rows^2) in store lookups. Serves add_asset, render_thumbnail and update_asset_content alike."""
+        if not 0 <= row < self.rowCount():
+            return
+        mat_id = self._assets[row].mat_id
+        path = (self.preferences.dir + self.preferences.img_dir
+                + mat_id + self.preferences.img_ext)
+        if self.tile_icon(row):
+            path = tile_icons.icon_image_path(self.preferences, mat_id)
+        entry = (path, self._assets[row].fav, row)
+        if row < len(self._mat_paths):
+            self._mat_paths[row] = entry
+        elif row == len(self._mat_paths):
+            self._mat_paths.append(entry)    # add_asset appends the row first, so the maps grow by one here
+        else:
+            self.rebuild_thumbs()    # the maps fell out of step with the rows - resync whole
+        for stale in [key for key, mapped in self._thumb_rows.items()
+                      if mapped == row]:
+            del self._thumb_rows[stale]
+        key = self._thumb_key(row)
+        self._thumb_rows[key] = row
+        versions.record_render(self.preferences,  # every path that declares this row's PNG fresh comes through here, so the ACTIVE version's archive slot follows the base picture; identical bytes are skipped inside
+                               mat_id)
+        thumbnails.engine.discard(key)
+        self.row_changed(
+            row, [QtCore.Qt.ItemDataRole.DecorationRole])
 
     def _on_thumb_key_ready(self, key) -> None:
         """The engine delivered (or failed) a key - repaint its row if it belongs to this model. Key-based, so reloads and reorders cannot misroute an image; a key from another library simply is not in this model's map."""

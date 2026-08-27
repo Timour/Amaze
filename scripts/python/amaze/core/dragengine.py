@@ -12,6 +12,7 @@ from amaze.helpers import hostver
 serial = 0
 
 PICK_INTERVAL = 0.03
+_UNASKED = object()    # "the caller supplied no tracked answer" - distinct from a tracked MISS (None), which is an answer and must not re-run the ~3ms lookup per tick
 CLEAR_DELAY = 0.25
 
 _hover = {
@@ -708,15 +709,15 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
 
 
 def hover_update(panel, section_key, pane_tab=None,
-                 pane_kind=None) -> None:
-    """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, Materials only, with the TRACKED pane handed in so a tick over any other pane costs no lookup ▸p/drag-move-cost."""
+                 pane_kind=_UNASKED) -> None:
+    """Per-move hover, throttled here: pick under the cursor and drive the highlight - called from the drag widgets during the gesture, Materials only, with the TRACKED pane handed in so a tick over any other pane costs no lookup; a tracked MISS is an answer too, never re-asked ▸p/drag-move-cost."""
     if section_key != "material":
         return
     now = time.time()
     if now - _hover["last_pick"] < PICK_INTERVAL:
         return
     _hover["last_pick"] = now
-    if pane_tab is None and pane_kind is None:
+    if pane_kind is _UNASKED and pane_tab is None:
         viewer, x, y, wh, scale = _scene_viewer_under_cursor()
     elif pane_kind != hou.paneTabType.SceneViewer:
         viewer, x, y, wh, scale = None, 0, 0, 0, 1.0

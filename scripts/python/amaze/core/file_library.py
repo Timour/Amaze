@@ -151,6 +151,13 @@ class FileFolders(folders.FolderListModel):
             return True
         return kind_for(filename) != KIND_OTHER
 
+    def _matcher_for(self, path: str):
+        keep_other = shows_all_files(self.preferences, path)    # the location rule, resolved ONCE per folder - same hoist as _load's gather
+        if keep_other:
+            return lambda name: not name.startswith(".")
+        return lambda name: (not name.startswith(".")
+                             and kind_for(name) != KIND_OTHER)
+
     def includes_subfolders(self, path: str) -> bool:
         return bool(locations.record(
             self.preferences, path).get("recursive"))

@@ -484,5 +484,30 @@ class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
                          "before reaching them")
 
 
+class ATrackedMissIsAnAnswer(unittest.TestCase):
+    """The tracker's genuine miss must reach the clear branch, not re-run the lookup the tracker exists to avoid - once per tick for a whole hover over dead space."""
+
+    def _hover(self, *args, **kwargs):
+        calls = []
+        with mock.patch.object(
+                dragengine, "_scene_viewer_under_cursor",
+                side_effect=lambda: (calls.append(1)
+                                     or (None, 0, 0, 0, 1.0))), \
+                mock.patch.object(dragengine, "_set_highlight"):
+            dragengine._hover["last_pick"] = 0
+            dragengine.hover_update(None, "material", *args, **kwargs)
+        return calls
+
+    def test_a_tracked_miss_does_not_rerun_the_lookup(self):
+        self.assertEqual(
+            [], self._hover(None, None),
+            "the tracked miss was read as arguments-not-supplied and "
+            "paid the full lookup on the tick")
+
+    def test_an_unsupplied_pane_still_looks_up(self):
+        self.assertEqual([1], self._hover(),
+                         "the no-arguments call stopped looking up at all")
+
+
 if __name__ == "__main__":
     unittest.main()
