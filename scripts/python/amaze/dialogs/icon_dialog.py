@@ -25,7 +25,8 @@ class IconDialog(base_dialog.AssetDialog):
     def __init__(self, current=None, stroke_units: float = 0.0,
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None,
-                 categories=None, tile_category="") -> None:
+                 categories=None, tile_category="",
+                 tile_face=None) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
                          else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
                          fixed_size=False, parent=parent)
@@ -34,6 +35,7 @@ class IconDialog(base_dialog.AssetDialog):
         self._tile_tags = tile_tags   # None = this section has no tags; on a multi-selection the field opens empty and ADDS
         self._categories = list(categories or [])   # None = this section has no categories, so no field at all
         self._tile_category = tile_category or ""
+        self._tile_face = tile_face   # the tile's CURRENT grid face - what the preview shows while Custom Icon is off
         self.new_tile_name = None
         self.new_tags = None
         self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
@@ -282,10 +284,11 @@ class IconDialog(base_dialog.AssetDialog):
         return panel
 
     def _set_custom_enabled(self, on: bool) -> None:
-        """The chooser follows the toggle; Name, Category and Tags do not - they are the asset's, not the icon's."""
+        """The chooser follows the toggle; Name, Category and Tags do not - they are the asset's, not the icon's. The preview stays live either way: off, it shows the tile's current face."""
         for widget in (self._chooser_area, self.search, self.custom_button,
-                       self.ink_combo, self.preview, *self._swatches):
+                       self.ink_combo, *self._swatches):
             widget.setEnabled(bool(on))
+        self._refresh_preview()
 
 
     def showEvent(self, event) -> None:
@@ -352,14 +355,19 @@ class IconDialog(base_dialog.AssetDialog):
         button = self._buttons_by_name.get(self._name)
         if button is not None and not button.isChecked():
             button.setChecked(True)
-        image = tile_icons.compose(self._name, self._bg, 256, self._stroke,
-                                   self._ink)
-        if image is not None:
-            self.preview.setPixmap(QtGui.QPixmap.fromImage(image).scaled(
-                self.preview.size(),
-                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
-                QtCore.Qt.TransformationMode.SmoothTransformation,
-            ))
+        if self.custom_toggle.isChecked():
+            image = tile_icons.compose(self._name, self._bg, 256,
+                                       self._stroke, self._ink)
+        else:
+            image = self._tile_face   # off = what the grid shows today: the render, the swatches, the painted code
+        if image is None:
+            self.preview.clear()
+            return
+        self.preview.setPixmap(QtGui.QPixmap.fromImage(image).scaled(
+            self.preview.size(),
+            QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+            QtCore.Qt.TransformationMode.SmoothTransformation,
+        ))
 
     def _harvest_tile_name(self) -> None:
         """On any accepting close: the new name, or None when the field is absent, greyed, blank or unchanged."""

@@ -363,6 +363,28 @@ class DialogTest(unittest.TestCase):
         dialog.custom_toggle.setChecked(True)
         self.assertTrue(dialog._chooser_area.isEnabled())
 
+    def test_the_preview_shows_the_tile_s_own_face_while_off(self):
+        """Off = what the grid shows today; on = the composed icon. The face is whatever the section paints - a render, swatches, code."""
+        face = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
+        face.fill(QtGui.QColor("#12b886"))
+        dialog = icon_dialog.IconDialog(None, tile_face=face)
+        self.addCleanup(dialog.deleteLater)
+        shown = dialog.preview.pixmap().toImage()
+        self.assertEqual(
+            "#12b886",
+            shown.pixelColor(shown.width() // 2,
+                             shown.height() // 2).name(),
+            "the off-state preview is not the tile's current face")
+        self.assertTrue(dialog.preview.isEnabled(),
+                        "the real face must not draw greyed")
+        dialog.custom_toggle.setChecked(True)
+        shown = dialog.preview.pixmap().toImage()
+        self.assertNotEqual(
+            "#12b886",
+            shown.pixelColor(shown.width() // 2,
+                             shown.height() // 2).name(),
+            "toggling on did not swap to the composed icon")
+
     def test_apply_commits_without_closing(self):
         """Houdini's own pair: Apply commits and stays open, Accept closes. `canceled` stays True after Apply, so a later X re-applies nothing."""
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})

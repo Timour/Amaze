@@ -156,11 +156,11 @@ class FileFolders(folders.FolderListModel):
             self.preferences, path).get("recursive"))
 
     def display_name(self, path: str) -> str:
+        """A rename wins; otherwise the FOLDER'S OWN NAME, never the path - the full path is the row's hover, not its label."""
         custom = locations.record(self.preferences, path).get("name")
         if custom:
             return custom
-        style = getattr(self.preferences, "path_style", "home")
-        return houdini_path(path, style).rstrip("/") or path
+        return os.path.basename(path.rstrip("/\\")) or path
 
     def remove_folder(self, row: int) -> None:
         if row <= 0 or not row - 1 < len(self._folders()):

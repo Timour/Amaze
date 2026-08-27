@@ -1895,16 +1895,14 @@ class LocationManagementTest(unittest.TestCase):
                          "the counts do not follow each location's own "
                          "recursion flag")
 
-    def test_the_default_name_is_the_houdini_path(self):
-        home = hou.expandString("$HOME").replace("\\", "/").rstrip("/")
-        if not home or home in ("/", "."):
-            self.skipTest("no $HOME in this session")
-        target = home + "/amaze_loc_naming/"
-        model, _prefs = self._folders_model(target)
+    def test_the_default_name_is_the_folder_s_own_name(self):
+        """The row says what the folder IS; the full path is the hover, not the label. Said the collapsed path until 2026-08-27."""
+        model, _prefs = self._folders_model("/assets/textures/HDR/")
         label = model.data(model.index(1, 0),
                            QtCore.Qt.ItemDataRole.DisplayRole)
-        self.assertEqual("$HOME/amaze_loc_naming", label,
-                         "the default label is not the path: %r" % label)
+        self.assertEqual("HDR", label,
+                         "the default label is not the folder's name: %r"
+                         % label)
 
     def test_a_rename_wins_and_an_empty_rename_clears(self):
         model, prefs = self._folders_model("/assets/textures/")

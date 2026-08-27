@@ -2627,6 +2627,8 @@ class MatLibPanel(QtWidgets.QWidget):
         if hasattr(model, "set_tile_category"):
             categories = self.get_category_names()
             tile_category = model.tile_category(rows[0]) if single else ""
+        face = model.data(model.index(rows[0], 0),    # the tile's CURRENT grid face - every section answers its own kind here, render, swatches or painted code
+                          QtCore.Qt.ItemDataRole.DecorationRole)
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
             tile_icons.stroke_for(self.prefs),
@@ -2636,6 +2638,7 @@ class MatLibPanel(QtWidgets.QWidget):
             tile_tags=tile_tags,
             categories=categories,
             tile_category=tile_category,
+            tile_face=face,
         )
         self._icon_dialog = dialog
 
