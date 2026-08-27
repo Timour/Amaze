@@ -10,6 +10,7 @@ from amaze import messages
 from amaze.core import database
 from amaze.core import debug
 from amaze.helpers import hostos
+from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     RENDERER_DEFAULTS,
     _INTRODUCED_SECTIONS,
@@ -44,8 +45,7 @@ def write_fresh_index(path: str, document: dict) -> None:
     born = dict(document)
     born["version"] = database.SCHEMA_VERSION
     born["format"] = branding.LIBRARY_FORMAT
-    with open(path, "w", encoding="utf-8") as handle:
-        json.dump(born, handle)
+    hostos.write_json_atomic(path, born, indent=None)    # the one JSON writer: a kill mid-dump then leaves NO file and the door re-seeds, where a truncated index routes into the rescue machinery
 
 
 def seed_starter_index(lib_dir: str) -> None:
@@ -142,24 +142,21 @@ class Prefs(_Persistence):
     def get_dir_from_user(self) -> bool:
         """Get Directory from User and write into prefs"""
         ui = getattr(hou, "ui", None)
-        count = 0
-        while count < 3:
-            if not os.path.exists(self._directory) or count < 1:
-                if ui is None:      # nobody to ask, so fall through to the branch that ACCEPTS a library already on disk
-                    count += 1
-                    continue
-                if count > 0:   # only a RETRY speaks - the first picker follows the user's own gesture, and the set-up preamble it used to carry was a dialog in front of the dialog ▸p/dialogs-are-a-bill; its context is the title below now
+        for attempt in range(3):    # every attempt is validated, the LAST included - a valid third pick adopted but never saved left the next launch unconfigured
+            if ui is not None:
+                if attempt:   # only a RETRY speaks - the first picker follows the user's own gesture, and the set-up preamble it used to carry was a dialog in front of the dialog ▸p/dialogs-are-a-bill; its context is the title below now
                     ui.displayMessage(messages.LIBRARY_PATH_INVALID)
                 path = ui.selectFile(file_type=hou.fileType.Directory,
                                      title="Choose a folder for your Amaze library")
                 if path == "":  # Canceled
                     return False
                 self.dir = hou.text.expandString(path)  # through the SETTER, so meeting the picked library adopts its shared settings before the save below; the chooser hands back the `$HOME/...` spelling, which is what makes a path portable, so it expands here
-            else:
+            if os.path.exists(self._directory):
                 debug.event("session", "library set", dir=self._directory)
                 self.save()
                 return True
-            count += 1
+            if ui is None:      # nobody to ask and nothing on disk to accept
+                return False
         return False
 
     @property

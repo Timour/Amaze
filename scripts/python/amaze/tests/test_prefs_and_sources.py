@@ -525,6 +525,21 @@ class OnlineDownloadsStayInsideTheLibrary(unittest.TestCase):
             "a failed extract poisons the package folder permanently")
 
 
+class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
+    """Refresh is the user asking us to go and LOOK - a cache that survives it serves yesterday's site until restart."""
+
+    def test_gpuopen_refresh_drops_the_category_map(self):
+        from amaze.core import matx_sources
+        source = matx_sources.GPUOpenSource()
+        source._categories = {"1": "Metals"}
+        source.refresh()
+        self.assertIsNone(
+            source._categories,
+            "the category map survived Refresh - a renamed remote "
+            "category files its materials under Uncategorized until "
+            "Houdini restarts")
+
+
 class ARemapOnAColourChainStillRemaps(unittest.TestCase):
     """mtlxremap and mtlxclamp are signature-polymorphic: wiring a color3 source flips the LIVE parm to the `_color3` variant, so the range values must go through `_set_poly_parm` or they land on the inert plain parm and the remap renders as a no-op."""
 
@@ -1059,6 +1074,27 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
                          "until picked is the ASK rule")
         self.assertFalse(dlg._btn_edit_user.isEnabled())
         self.assertFalse(dlg._btn_delete_user.isEnabled())
+
+
+class ACancelledTestFolderPickIsANoOp(unittest.TestCase):
+    """Turning Test Library on with no folder asks for one; cancelling the ask applied NOTHING, so the revert must not switch every model on its way back."""
+
+    def test_the_revert_does_not_switch_the_library(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        applied = []
+        dlg._apply_test_mode = lambda: applied.append(True)
+        dlg.change_test_path = lambda: None
+        dlg._cbx_test_mode.setChecked(True)
+        self.assertFalse(p.test_mode)
+        self.assertFalse(dlg._cbx_test_mode.isChecked())
+        self.assertEqual(
+            [], applied,
+            "the revert re-entered set_test_mode and ran the full "
+            "library switch for a gesture that applied nothing")
 
 
 class TheOverwriteSwitchFollowsTheLibrary(unittest.TestCase):

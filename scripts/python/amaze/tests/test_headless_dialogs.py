@@ -381,6 +381,32 @@ class TheLibraryPickerStillAsksWhenThereIsAScreenTest(unittest.TestCase):
                         "launch shows an unlabelled folder chooser")
 
 
+class TheThirdPickIsStillValidatedTest(unittest.TestCase):
+    """The picker allows three attempts, and every one of them counts - a valid folder picked on the last attempt must be saved, not adopted in memory and reported as a cancel."""
+
+    def test_a_valid_third_pick_is_accepted_and_saved(self):
+        prefs = test_support.fixture_prefs(self)
+        good = prefs.dir
+        prefs._directory = os.path.join(tempfile.gettempdir(),
+                                        "amaze_no_such_library_dir")
+        picks = iter(["/no/such/place", "/still/no/such/place", good])
+        saved = []
+        prefs.save = lambda: saved.append(True)
+
+        fake = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: None,
+            selectFile=lambda *a, **k: next(picks))
+        with mock.patch.object(hou, "ui", fake, create=True):
+            answer = prefs.get_dir_from_user()
+
+        self.assertTrue(answer,
+                        "a valid folder picked on the third attempt was "
+                        "reported as a cancel")
+        self.assertTrue(saved,
+                        "the third pick was adopted in memory but never "
+                        "saved - next launch is unconfigured again")
+
+
 class EveryDialogRidesTheHouseShellTest(unittest.TestCase):
     """ROADMAP R51: ONE shell owner. Every QDialog subclass in dialogs/ either rides AssetDialog or names its recorded reason in a HOUSE_STRAY class attribute - the four one-off dialogs hand-copied the shell line by line before this pin existed."""
 

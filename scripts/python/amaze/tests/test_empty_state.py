@@ -413,6 +413,24 @@ class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
                          empty_state.unreadable_folder(self.panel),
                          "the blank cannot name the folder it is about")
 
+    def test_a_dead_folder_does_not_hijack_another_folders_blank(self):
+        """The blank describes the folder being LOOKED AT - standing in a healthy folder, an empty result must not be blamed on a dead folder elsewhere."""
+        folders = self.panel.file_folders_model
+        registered = folders._folders()
+        if not registered:
+            self.skipTest("the fixture registers no file folders")
+        healthy = test_support.fresh_files_folder(self)
+        folders.add_folder(healthy)
+        self.addCleanup(folders.remove_folder, folders.row_of(healthy))
+        self.model._unreadable_folders.add(registered[0])
+        self.addCleanup(self.model._unreadable_folders.discard,
+                        registered[0])
+        self.model.set_folder(healthy)
+        self.assertEqual(
+            "", empty_state.unreadable_folder(self.panel),
+            "an empty result in a healthy folder was blamed on a dead "
+            "folder the user is not even looking at")
+
     def test_the_locate_button_moves_the_folder_the_message_names(self):
         """The blank can be up while the sidebar sits on All, so the verb must SELECT the named folder before handing over to the shared picker."""
         folders = self.panel.file_folders_model

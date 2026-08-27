@@ -857,7 +857,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             self.change_test_path()
             if not self._prefs.test_dir:
                 self._prefs.test_mode = False   # still nothing chosen, so put the switch back rather than leave it lying
+                self._cbx_test_mode.blockSignals(True)    # like every other revert here: an unblocked uncheck re-enters set_test_mode(False) and switches every model for a gesture that applied nothing
                 self._cbx_test_mode.setChecked(False)
+                self._cbx_test_mode.blockSignals(False)
                 self._prefs.save()
             return
         if on:

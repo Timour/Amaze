@@ -513,6 +513,16 @@ class OneProgressBarOwnerPerThingShown(unittest.TestCase):
             "hiding the bar while the image conversions it interleaves "
             "with are still running")
 
+    def test_an_interrupt_before_the_first_render_leaves_no_unbound_name(self):
+        """An ESC on the first progress tick reaches the finally with the loop never entered, so the scratch path must exist before the try."""
+        source = func_source("core/file_library.py", "_render_geo_misses")
+        self.assertIn('tmp_path = ""', source,
+                      "nothing binds the scratch path before the try - "
+                      "a first-tick interrupt turns into a NameError "
+                      "raised out of the finally")
+        self.assertLess(source.index('tmp_path = ""'),
+                        source.index("InterruptableOperation"))
+
     def test_a_pass_of_only_CACHES_opens_no_progress_bar(self):
         """The bar opens when the pass starts, so caches leave the list first."""
         source = func_source("core/file_library.py", "_render_geo_misses")

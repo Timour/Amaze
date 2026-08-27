@@ -502,6 +502,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         debug.begin_pass(GEO_PASS_LOG)  # fresh allowance for this pass's per-item records; the closing record below carries what the budget could not
         debug.begin_pass(GEO_PASS_FAIL_LOG)
         self.progress_changed.emit(0, total)
+        tmp_path = ""    # bound before the try: an interrupt on the FIRST progress tick reaches the finally with the loop never entered
         try:
             with hou.InterruptableOperation(
                 "Rendering geometry thumbnails",

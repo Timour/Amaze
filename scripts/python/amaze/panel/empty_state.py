@@ -87,7 +87,11 @@ def unreadable_folder(panel) -> str:
     if not folders:
         return ""
     sidebar = getattr(panel, "file_folders_model", None)
+    current = ("" if getattr(model, "_all_folders_mode", True)
+               else getattr(model, "_folder", ""))
     for folder in sorted(folders):
+        if current and folder != current:
+            continue    # the blank describes the folder being LOOKED AT - a dead folder elsewhere must not hijack a healthy folder's no-match
         if sidebar is None or sidebar.row_of(folder) is not None:
             return folder
     return ""

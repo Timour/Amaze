@@ -319,6 +319,9 @@ class GPUOpenSource(MatxSource):
     def __init__(self):
         self._categories = None
 
+    def refresh(self):
+        self._categories = None    # the next listing re-reads the site's category map - never fetch HERE, refresh() runs on the UI thread
+
     def _category_map(self):
         if self._categories is not None:
             return self._categories
