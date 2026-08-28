@@ -11,6 +11,7 @@ from amaze import branding
 from amaze.core import debug
 
 RELEASES_URL = "https://api.github.com/repos/Timour/Amaze/releases/latest"    # unauthenticated, rate-limited per IP; no timeout or user-agent constants belong beside it ▸p/updater-shape
+NEW_ISSUE_URL = "https://github.com/Timour/Amaze/issues/new"    # the repo URLs live HERE; pre-fillable with `?body=` ▸r/github-issue-url
 
 UP_TO_DATE = "up-to-date"    # the verdicts `check` can answer with
 NEWER = "newer"

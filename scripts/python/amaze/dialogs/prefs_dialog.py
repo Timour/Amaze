@@ -1,7 +1,9 @@
 """Five tabs built in code, no .ui file: every control writes into the prefs object IMMEDIATELY, the dialog persists on close, and there is no Cancel."""
 
 import os
+import platform
 import shutil
+import urllib.parse
 
 import hou
 
@@ -65,6 +67,23 @@ def _logo_image(widget=None):
     _logo_cache = {"dpr": dpr, "image": image if image is not None
                    else False}
     return image
+
+
+def bug_report_url() -> str:
+    """The repo's new-issue page with this machine's three facts in GitHub's documented `body` query parameter - the URL only pre-fills a page in the user's browser, nothing is sent by building or opening it."""
+    from amaze.core import updater
+
+    body = ("Amaze: %s\nHoudini: %s\nOS: %s\n\nWhat happened:\n"
+            % (branding.APP_VERSION, hou.applicationVersionString(),
+               platform.platform()))
+    return updater.NEW_ISSUE_URL + "?body=" + urllib.parse.quote(
+        body, safe="")
+
+
+def _open_url(url: str) -> None:
+    if not QtGui.QDesktopServices.openUrl(QtCore.QUrl(url)):    # False = the OS refused the hand-off, and nothing-happened is the one outcome that teaches nothing
+        debug.event("prefs", "the OS refused to open the bug page",
+                    url=url)
 
 
 def _picker_start(path: str) -> str:
@@ -636,6 +655,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._btn_install.clicked.connect(self.install_update)
         self._btn_install.setVisible(False)
         form.addRow("", self._btn_install)
+        self._btn_report = QtWidgets.QPushButton("Report a Bug...")
+        self._btn_report.setToolTip(ui_helpers.tooltip_text(
+            "Open the Amaze bug page in your browser with your Amaze, "
+            "Houdini and OS versions already filled in. Nothing is "
+            "sent until you press Submit there."
+        ))
+        self._btn_report.clicked.connect(self.report_bug)
+        form.addRow("", self._btn_report)
         self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
@@ -909,6 +936,11 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_matx_parallel_downloads(self, value: int) -> None:
         """Read fresh on every dispatch, so it applies to the next batch without a restart."""
         self._prefs.matx_parallel_downloads = value
+
+    @debug.guarded("prefs.report_bug")
+    def report_bug(self) -> None:
+        """Open the pre-filled new-issue page; openUrl answers only whether the OS ACCEPTED the hand-off, and `_open_url` records a refusal. ▸r/github-issue-url"""
+        _open_url(bug_report_url())
 
     @debug.guarded("prefs.check_for_updates")
     def check_for_updates(self) -> None:

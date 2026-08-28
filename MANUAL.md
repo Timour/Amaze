@@ -581,8 +581,11 @@ Unknown Files** (the File section's system-icon rows), **Write Paths
 As** ($HOME / $JOB / $HIP / Absolute), **Tile Icon Line** (Thin or
 Feather's own Regular), scroll speed.
 
-**About** — credits and licences, and the debug controls: **Debug
-Mode**, **Open Log**, **Clear Log**.
+**About** — credits and licences, updates, and the debug controls:
+**Debug Mode**, **Open Log**, **Clear Log**. **Report a Bug...** opens
+the Amaze bug page in your browser with your Amaze, Houdini and OS
+versions already filled in; nothing is sent until you press Submit
+there.
 
 ---
 
