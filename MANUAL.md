@@ -32,30 +32,30 @@ of the app lives.
 
 ## First run {#m/first-run}
 
-Add the pane tab: **New Pane Tab Type ▸ Misc ▸ Amaze**.
+Add the pane tab with the **+** at the right of any pane tab strip:
+**New Pane Tab Type ▸ Amaze**.
 
-Add the shelf tab too: right-click the shelf dock ▸ **Shelves ▸
-Amaze**. Houdini records that choice per machine and per Houdini
-build, so redo it after an upgrade — the tools are all still there,
-only the tab needs re-adding.
+Add the shelf tab with the **+** at the right of the shelf tab strip:
+**Shelves ▸ Amaze**. Houdini stores this per machine and per Houdini
+build, so repeat it after an upgrade.
 
-On first launch Amaze asks for a **library folder** — where your saved
-assets live. Keep it *outside* the plugin folder, so updating Amaze
-never touches your assets; a cloud-synced folder works well. You can
-move it later in Preferences ▸ Library.
+Set the library folder before anything else: **Preferences ▸ Library ▸
+Library Path**, the `...` button. This is where your saved assets are
+kept. Keep it outside the plugin folder, which updates replace. A
+cloud-synced folder is supported.
 
-Inside that folder Amaze keeps a JSON index and one Houdini node
-archive per asset (`.mat` + `.interface`). These are plain Houdini
-files: **if Amaze ever dies, your assets still open in vanilla
-Houdini.**
+In that folder Amaze keeps a list of your assets in JSON, and one
+Houdini node archive per asset (`.mat` and `.interface`). Both are
+standard Houdini files and open in Houdini directly.
 
-There is also an **Amaze shelf** carrying four tools: **Amaze** opens
-the panel, **Capture** takes a preview of the open scene, **Updates**
-asks the release page whether a newer Amaze exists and installs it if
-you say so (nothing is ever checked or downloaded on its own), and
-**Repair** is the recovery tool described under Housekeeping — that one
-is on the shelf rather than in the panel because it has to work when
-the panel does not.
+The **Amaze shelf** carries four tools:
+
+| tool | what it does |
+|---|---|
+| **Amaze** | Opens the panel. |
+| **Capture** | Takes a preview of the open scene. |
+| **Updates** | Checks the release page for a newer version and installs it when you confirm. |
+| **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
 
 ---
 

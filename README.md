@@ -10,7 +10,7 @@ Amaze is an assets manager for SideFX Houdini. You save materials, colour palett
 Drag a material onto an object in the viewport to assign it. Save a group of nodes from any network — SOP, Copernicus, LOP and more — and import it back into a matching one. Drop code snippets into wrangles, apply palettes onto ramp and colour parameters, and drag files from your registered folders onto file parameters. Free online material libraries — PolyHaven, AMD GPUOpen and more — are built in.
 
 
-[![Interface](scripts/python/amaze/res/img/interface.png)](scripts/python/amaze/res/img/interface.png)
+[![Interface](docs/images/interface.png)](docs/images/interface.png)
 
 **→ [Read the manual](MANUAL.md)** — every function, section by section.
 
