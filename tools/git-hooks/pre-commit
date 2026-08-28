@@ -1,30 +1,31 @@
 #!/bin/bash
-# Refuse to commit anything that would publish the author's identity.
-# That is ALL this does.
+# Find the personal-data gate and run it. That is ALL this does.
 #
-# The rule is absolute and predates the mechanism: no name, no quotes,
-# no messages, nothing traceable to the author, in anything public. It
-# was broken three times and each cost a rewrite of published history -
-# and a force-push is a reduction, not a deletion.
+# The rules, the pattern list and the reasons each rule is shaped as it
+# is live in the private notes repo, not here. What stays in this repo
+# is the lookup and one refusal.
 #
-# The scan lives in amaze_name_scan.py. It was shell twice, and both
-# times an adversarial review walked through it by exploiting how a
-# PATH becomes a STRING - see that file's header for the three shapes.
-# This wrapper only handles the escape hatch.
+# THE REFUSAL IS THE POINT. git runs no hook it cannot find and reports
+# nothing when it skips one, so a missing gate and a passing gate look
+# identical from the outside. This fails CLOSED instead.
 #
-# Escape hatch: git commit --no-verify, or
-# AMAZE_ALLOW_PRIVATE=$(git rev-parse HEAD) git commit - bound to the
-# CURRENT tip, so a static export in a profile expires after one commit
-# instead of disabling the gate forever.
+# $AMAZE_PRIVATE_HOOKS overrides the location and is used AS GIVEN -
+# there is no fallback behind it, for the same reason the name list has
+# none: a fallback turns a wrong path into a silent pass.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo="$(cd "$here/../.." && pwd)"
+name="$(basename "${BASH_SOURCE[0]}")"
+gate="${AMAZE_PRIVATE_HOOKS:-$repo/../AmazeNotes/tools/git-hooks}/$name"
 
-head_sha="$(git rev-parse HEAD 2>/dev/null || true)"
-if [ -n "${AMAZE_ALLOW_PRIVATE:-}" ] && [ "${AMAZE_ALLOW_PRIVATE}" = "$head_sha" ]; then
-    echo "pre-commit: AMAZE_ALLOW_PRIVATE matches HEAD - name scan skipped" >&2
-    exit 0
-elif [ -n "${AMAZE_ALLOW_PRIVATE:-}" ]; then
-    echo "pre-commit: AMAZE_ALLOW_PRIVATE set but does not match HEAD - scanning anyway" >&2
+if [ ! -x "$gate" ]; then
+    echo "COMMIT REFUSED - the personal-data gate is not installed, so" >&2
+    echo "nothing is checking this commit." >&2
+    echo "  Looked for: $gate" >&2
+    echo "  Clone the private notes repo beside this one, or point" >&2
+    echo "  \$AMAZE_PRIVATE_HOOKS at the hooks it carries - INSTALL.md 6a." >&2
+    echo "  Deliberate bypass: git commit --no-verify" >&2
+    exit 1
 fi
 
-exec python3 "$here/amaze_name_scan.py"
+exec "$gate" "$@"

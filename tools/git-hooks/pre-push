@@ -7,13 +7,9 @@
 # Wired with `git config core.hooksPath tools/git-hooks` so it travels
 # with a clone (sync-install.sh re-wires it automatically).
 #
-# It used to also decide WHICH pushes deserved the suite, parsing git's
-# ref protocol and diffing ranges so a docs-only push could skip. That
-# skip logic was ~40 lines, existed to save ~20 seconds, and produced
-# five of the eight gate bugs of 2026-07-27 - including two total
-# bypasses where code landed on main while the hook printed "docs only,
-# skipped". Deleted 2026-07-28: the suite ALWAYS runs. Twenty seconds
-# is cheaper than one wrong skip. (log #283)
+# It used to also decide WHICH pushes deserved the suite. That skip
+# logic was deleted on 2026-07-28 and the suite now ALWAYS runs; what
+# the skip cost is recorded in the private notes (devlog #283).
 #
 # Escape hatch for a genuine emergency: git push --no-verify, or
 # AMAZE_SKIP_TESTS=$(git rev-parse HEAD) git push - sha-bound so it
