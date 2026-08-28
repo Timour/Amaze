@@ -1,31 +1,4 @@
-"""The shell gates, tested like code - because they are code.
-
-Four shell files decide whether a build reaches the live install and a
-commit reaches the remote. Under `set -e` they abort SILENTLY, so a
-green run and a dead run look identical from outside, and shellcheck
-catches none of the forms. ▸r/shell-errexit
-
-So never assert "it exited 0". Assert the STATUS, the WORDS, and a
-TERMINAL MARKER - the last thing the script prints on that path, which
-is what turns an abort at line 93 into a failing test.
-
-SAFETY - these run in the suite, repeatedly, on a developer machine
-that has the real install and the real library on it:
-  * Everything happens in a tmpdir. A fake repo, a fake install, a
-    fake $HFS, a private git repo with a private "remote" ref.
-  * $AMAZE is ALWAYS set to the fixture install. It is never left
-    empty: with it empty, sync-install.sh reads the real Houdini
-    package file and would rsync this fixture over the REAL install.
-    That one path is deliberately untested. Do not "improve" it.
-  * The suite itself is a STUB (see _STUB below) that prints a green,
-    red, or dead run on demand. The real 15s suite never runs, the
-    real library is never opened, nothing is ever pushed - the git
-    fixture gets its upstream from `git update-ref`, so no `git push`
-    is executed anywhere in this file.
-  * The gate scripts are COPIED FROM THE REAL FILES at setUp, so this
-    tests the real logic; a hash test asserts the copy is byte-for-byte
-    identical, so the fixture cannot quietly drift into a museum piece.
-"""
+"""The shell gates, tested like code because they are code - never on an exit status, always on the words and a terminal marker, and `$AMAZE` is never left empty here. ▸p/gate-fixture-safety ▸archive/test_shell_gates.py"""
 
 import hashlib
 import os
@@ -43,17 +16,9 @@ sys.path.insert(
 
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
-# tests/ -> amaze/ -> python/ -> scripts/ -> repo root: FIVE levels.
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 
-#: The real files under test. Relative path in the fixture -> real path.
-#:
-#: houdini-env.sh is not itself a gate, but all three gates SOURCE it,
-#: so a fixture without it is a fixture where every script dies on line
-#: one - which is how it was noticed: 29 of these tests went red at once
-#: with `No such file or directory`, the silent `set -e` abort they are
-#: built to catch, caught on themselves.
 GATE_SCRIPTS = {
     os.path.join("tools", "houdini-env.sh"):
         os.path.join(REPO, "tools", "houdini-env.sh"),
@@ -65,25 +30,14 @@ GATE_SCRIPTS = {
         os.path.join(REPO, "tools", "git-hooks", "pre-push"),
 }
 
-#: Not copied - replaced by the stub. Named here so a rename breaks a
-#: test instead of silently leaving the stub un-substituted.
 REAL_RUNNER = os.path.join(
     REPO, "scripts", "python", "amaze", "tests", "start_test.sh")
 REAL_LEAK_CHECK = os.path.join(
     REPO, "scripts", "python", "amaze", "tests", "check_log_leak.py")
 
-#: Where the stub lives inside the fixture - the path BOTH gates reach
-#: (sync-install.sh calls it directly, pre-push reaches it through
-#: run-tests.sh), so one stub drives every test in this file.
 RUNNER_REL = os.path.join("scripts", "python", "amaze", "tests",
                           "start_test.sh")
 
-#: Terminal markers: the LAST thing each script prints on each path.
-#: If one of these is missing the script did not reach its end - which
-#: is precisely what a `set -e` abort looks like from outside. Both
-#: scripts now carry an explicit "DONE" line for the success path; the
-#: refusal paths `exit 1` before it, so their marker is the last line
-#: of the refusal message.
 SYNC_GREEN_MSG = "sync-install: suite green - the install is safe to open."
 SYNC_END = "sync-install: DONE"
 SYNC_RED_END = "git stash && tools/sync-install.sh"
@@ -92,12 +46,7 @@ PUSH_END = "pre-push: DONE"
 PUSH_RED_END = "Fix, or push --no-verify."
 
 
-#: Stands in for start_test.sh. Reproduces the OUTPUT CONTRACT the gates
-#: parse - unittest's "Ran N tests" / "FAILED" lines and check_log_leak's
-#: "LOG LEAK" - without hython, a licence, or 15 seconds.
-#: (test_the_stub_still_matches_the_real_runner keeps this honest.)
 _STUB = r"""#!/bin/bash
-# STUB. Not the real runner - see test_shell_gates.py.
 mode="${FAKE_SUITE_MODE:-green}"
 echo "$mode $*" >> "$FAKE_SUITE_CALLS"
 
@@ -128,26 +77,19 @@ red)
     exit 1
     ;;
 crash)
-    # The suite could not run AT ALL: no licence, no hython, an import
-    # error in a module, a segfault. No FAIL line, no "Ran" line - the
-    # shape that reads as "nothing wrong here" to a careless gate.
     echo "hython: unable to obtain a licence" >&2
     exit 1
     ;;
 no_tests)
-    # Ran, exited zero, verified NOTHING.
     echo "Ran 0 tests in 0.001s"
     echo
     echo "OK"
     exit 0
     ;;
 silent)
-    # Exit 0, not one byte of output.
     exit 0
     ;;
 leak)
-    # Everything green EXCEPT the real debug log got written to. The
-    # gates check this separately; this mode proves that arm is alive.
     echo "Ran 203 tests in 15.204s"
     echo
     echo "OK"
@@ -174,8 +116,7 @@ def _write(path, text, executable=False):
 
 
 class GateFixture(unittest.TestCase):
-    """A throwaway repo + install + git upstream, with the REAL gate
-    scripts copied in and a stub suite."""
+    """A throwaway repo, install and fake `$HFS`, with the real gate scripts copied in and a stub runner. ▸p/gate-fixture-safety"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_gates_")
@@ -190,7 +131,6 @@ class GateFixture(unittest.TestCase):
                      os.path.join(self.repo, "docs")):
             os.makedirs(path)
 
-        # The real logic, copied at test time - never a transcription.
         for relative, real in GATE_SCRIPTS.items():
             self.assertTrue(os.path.isfile(real),
                             "gate script has moved or been deleted: %s" % real)
@@ -203,10 +143,7 @@ class GateFixture(unittest.TestCase):
         _write(os.path.join(self.repo, "OPmenu.xml"), "<menuDocument/>\n")
         _write(os.path.join(self.repo, "python_panels", "amaze.pypanel"),
                "<pythonPanelDocument/>\n")
-        # The shelf is shipped like python_panels and OPmenu.xml. It is
-        # NOT optional here: a sync that tolerates a missing toolbar/
-        # would let the shelf exist only in the repo, which is the
-        # under-sync failure this fixture exists to catch.
+        # The shelf is NOT optional: tolerating a missing toolbar/ is the under-sync this catches.
         _write(os.path.join(self.repo, "toolbar", "Amaze.shelf"),
                "<shelfDocument/>\n")
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
@@ -226,8 +163,6 @@ class GateFixture(unittest.TestCase):
         _write(os.path.join(self.tmp, "gitconfig"), "")
         self._make_git_repo()
 
-    # -- fixture plumbing ----------------------------------------------
-
     def _git(self, *args):
         result = subprocess.run(("git", "-C", self.repo) + args,
                                 capture_output=True, text=True,
@@ -238,10 +173,7 @@ class GateFixture(unittest.TestCase):
         return result.stdout.strip()
 
     def _make_git_repo(self):
-        """A real repo with a real remote-tracking state - built with
-        update-ref, so NOTHING is ever pushed, not even to a local bare
-        repo. `nowhere.git` deliberately does not exist: a stray network
-        or filesystem push would fail loudly rather than succeed."""
+        """`nowhere.git` deliberately does not exist, so a stray push fails loudly instead of succeeding."""
         self._git("init", "-q")
         self._git("add", "-A")
         self._git("commit", "-q", "-m", "base")
@@ -256,18 +188,11 @@ class GateFixture(unittest.TestCase):
                   self.branch)
 
     def _commit(self, *relative_paths):
-        """Unpushed commits touching exactly these paths, so the range
-        the hook computes is what the test says it is."""
+        """Unpushed commits touching exactly these paths - git answers FORWARD slashes on every platform, `os.path.join` does not."""
         for relative in relative_paths:
             _write(os.path.join(self.repo, relative), "touched\n")
         self._git("add", "-A")
         self._git("commit", "-q", "-m", "change " + " ".join(relative_paths))
-        # git reports paths with FORWARD slashes on every platform,
-        # including Windows; the callers build theirs with os.path.join,
-        # which uses the native separator. Comparing the two directly
-        # made all seventeen pre-push tests fail in setup on Windows -
-        # every one of them reporting the gate as broken when it was the
-        # comparison that was.
         self.assertEqual(
             sorted(self._git("diff", "--name-only",
                              "%s..HEAD" % self.base_sha).splitlines()),
@@ -276,46 +201,71 @@ class GateFixture(unittest.TestCase):
         return self._git("rev-parse", "HEAD")
 
     def _env(self, mode, **extra):
+        """Never inherits a real bypass variable from the calling suite."""
         env = dict(os.environ)
-        # Never inherit a real one of these from the calling suite.
         for name in ("AMAZE_SYNC_NO_VERIFY", "AMAZE_SKIP_TESTS",
                      "AMAZE_SCRATCH_INSTALL"):
             env.pop(name, None)
         env.update(self.git_env)
         env.update({
-            "AMAZE": self.install,       # NEVER empty - see module docstring
-            "HFS": self.hfs,             # exists, so the "no Houdini" arm
-                                         # is not taken on any machine
+            "AMAZE": self.install,
+            "HFS": self.hfs,
             "FAKE_SUITE_MODE": mode,
             "FAKE_SUITE_CALLS": self.calls,
         })
         env.update(extra)
         return env
 
+    def _run_on_a_terminal(self, script, cwd, stdin, env):
+        """The script with a real pty on fd 2, so its `[ -t 2 ]` is true. Drained on a thread, or a chatty run fills the pty buffer and blocks forever."""
+        import pty
+        import threading
+        master, slave = pty.openpty()
+        chunks = []
+
+        def drain():
+            while True:
+                try:
+                    data = os.read(master, 65536)
+                except OSError:
+                    return
+                if not data:
+                    return
+                chunks.append(data)
+
+        reader = threading.Thread(target=drain, daemon=True)
+        reader.start()
+        try:
+            result = subprocess.run(
+                ["bash", script], stdout=subprocess.PIPE, stderr=slave,
+                text=True, cwd=cwd, input=stdin, env=env, timeout=600)
+        finally:
+            os.close(slave)
+        reader.join(timeout=10)
+        os.close(master)
+        result.stderr = b"".join(chunks).decode("utf-8", "replace")
+        return result
+
     def _run(self, script_relative, mode="green", cwd=None, stdin="",
-             **extra):
+             terminal=False, **extra):
         script = os.path.join(self.repo, script_relative)
         self.assertNotIn(REPO, os.path.realpath(script),
                          "refusing to run the REAL gate script")
+        env = self._env(mode, **extra)
+        if terminal:
+            return self._run_on_a_terminal(script, cwd or self.tmp, stdin, env)
         return subprocess.run(["bash", script], capture_output=True,
                               text=True, cwd=cwd or self.tmp, input=stdin,
-                              env=self._env(mode, **extra))
+                              env=env)
 
     def sync(self, mode="green", **extra):
-        # Deliberately from an unrelated cwd: sync-install.sh claims to
-        # be runnable from anywhere, and a wrong cwd is how it used to
-        # half-copy.
+        # From an unrelated cwd on purpose - it claims to run from anywhere.
         return self._run(os.path.join("tools", "sync-install.sh"),
                          mode, cwd=self.tmp, **extra)
 
     def ref_line(self, local_sha, local_ref=None, remote_ref=None,
                  remote_sha=None):
-        """One line in git's own pre-push stdin format:
-        <local ref> <local sha> <remote ref> <remote sha>.
-
-        The hook derives what to gate from THIS, not from HEAD - the
-        difference is a total bypass (`git push origin other:main`), so
-        every push test must speak the real protocol."""
+        """One line of git's pre-push stdin - the hook gates on THIS, not HEAD, so a test that fakes it proves nothing."""
         branch_ref = "refs/heads/%s" % self.branch
         return "%s %s %s %s\n" % (local_ref or branch_ref, local_sha,
                                   remote_ref or branch_ref,
@@ -323,8 +273,7 @@ class GateFixture(unittest.TestCase):
                                   else remote_sha)
 
     def push(self, mode="green", stdin=None, **extra):
-        # A git hook runs with cwd = the repo root, and with git's ref
-        # lines on stdin. Default: this branch, HEAD over the base.
+        """Runs the hook the way git does - cwd at the repo root, ref lines on stdin."""
         if stdin is None:
             stdin = self.ref_line(self._git("rev-parse", "HEAD"))
         return self._run(os.path.join("tools", "git-hooks", "pre-push"),
@@ -347,9 +296,6 @@ class GateFixture(unittest.TestCase):
             % (result.stdout, result.stderr))
 
 
-# ----------------------------------------------------------------------
-# The fixture must be testing the REAL scripts.
-# ----------------------------------------------------------------------
 
 class FixtureFidelityTest(GateFixture):
 
@@ -360,9 +306,7 @@ class FixtureFidelityTest(GateFixture):
             self.assertGreater(os.path.getsize(real), 0, real)
 
     def test_the_fixture_holds_the_real_scripts_byte_for_byte(self):
-        """Copied at setUp, hashed here. If this ever fails, the copy
-        step broke - and every other test in this file went from
-        testing the gates to testing a fossil."""
+        """Copied at setUp, hashed here - if this fails, every other test in the file is measuring a fossil."""
         for relative, real in GATE_SCRIPTS.items():
             self.assertEqual(_sha(os.path.join(self.repo, relative)),
                              _sha(real),
@@ -370,19 +314,12 @@ class FixtureFidelityTest(GateFixture):
 
     @staticmethod
     def _command_lines(script_text):
-        """The script with full-line comments removed. Keyed searches
-        run on THIS: the old key here, `hython -m unittest`, was
-        satisfied for its whole life by a comment explaining why the
-        runner does NOT do that - the drift this test exists to catch
-        had already happened, unnoticed. Grep the line that runs,
-        never prose about it."""
+        """The script with full-line comments removed - grep the line that RUNS, never prose about it."""
         return "\n".join(line for line in script_text.splitlines()
                          if not line.lstrip().startswith("#"))
 
     def test_the_stub_still_matches_the_real_runner(self):
-        """The stub fakes start_test.sh's OUTPUT. If the real runner
-        stops producing that output the stub is a lie, and every green
-        assertion below becomes meaningless."""
+        """The stub fakes the real runner's OUTPUT, so if that output changes the stub is a lie."""
         with open(REAL_RUNNER, encoding="utf-8") as handle:
             code = self._command_lines(handle.read())
         self.assertIn("run_suite.py", code,
@@ -397,11 +334,7 @@ class FixtureFidelityTest(GateFixture):
                           "both gates grep for that literal")
 
     def test_no_command_line_runs_bare_unittest(self):
-        """The strip's proof and a guard in one: `hython -m unittest`
-        lives in start_test.sh as prose only, so a stripped read must
-        not find it. A real command line running bare unittest would
-        skip the sync, the isolated log dir, the lint and the leak
-        check - every guard, to save two minutes."""
+        """Bare `unittest` skips the sync, the isolated log dir, the lint and the leak check - every guard, to save two minutes."""
         with open(REAL_RUNNER, encoding="utf-8") as handle:
             self.assertNotIn("hython -m unittest",
                              self._command_lines(handle.read()),
@@ -419,9 +352,6 @@ class FixtureFidelityTest(GateFixture):
         self.assertNotIn("Cloud", env["AMAZE"])
 
 
-# ----------------------------------------------------------------------
-# THE DEPLOYMENT GATE
-# ----------------------------------------------------------------------
 
 class SyncInstallGateTest(GateFixture):
 
@@ -433,15 +363,7 @@ class SyncInstallGateTest(GateFixture):
                          "the suite ran %r times" % self.suite_calls())
 
     def test_an_uncommitted_file_is_refused_before_anything_ships(self):
-        """The install only ever receives COMMITTED code
-        (practice.md ▸ The install only ever receives committed code).
-        It is the one tree a live Houdini reads, and it sits beside
-        real libraries - code in no commit cannot be reverted,
-        reproduced on the other machine, or told apart from code that
-        was reviewed.
-
-        Untracked counts: the mirror copies scripts/ wholesale, so an
-        uncommitted file ships exactly like a committed one."""
+        """The install only ever receives COMMITTED code, untracked included - the mirror copies `scripts/` wholesale."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# this was never committed\n")
 
@@ -464,10 +386,7 @@ class SyncInstallGateTest(GateFixture):
         return path
 
     def test_a_scratch_destination_takes_a_dirty_tree(self):
-        """A sabotage IS a dirty tree, so it collided with the rule
-        above and every sabotage died on it. The answer is a different
-        DESTINATION, not an exception: the rule protects the tree a live
-        Houdini reads, and a scratch install is read by nothing."""
+        """A sabotage is a dirty tree, so it gets a different DESTINATION rather than an exemption."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# sabotaged, never committed\n")
         scratch = self._scratch()
@@ -487,9 +406,7 @@ class SyncInstallGateTest(GateFixture):
             "reads")
 
     def test_the_real_destination_still_refuses_a_dirty_tree(self):
-        """The exemption must be the scratch path ALONE. If it leaked
-        to the ordinary path it would retire the rule rather than
-        satisfy it."""
+        """The exemption is the scratch path ALONE - leaking it to the ordinary path retires the rule rather than satisfying it."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "stray.py"), "# this was never committed\n")
 
@@ -509,8 +426,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("REAL install", self.both(result))
 
     def test_a_populated_directory_is_not_treated_as_scratch(self):
-        """Without the marker, a scratch destination that already holds
-        somebody's files would be mirrored over."""
+        """Without the marker, a scratch destination holding somebody's files would be mirrored over."""
         scratch = self._scratch()
         _write(os.path.join(scratch, "someones_work.txt"), "do not lose me\n")
 
@@ -523,12 +439,7 @@ class SyncInstallGateTest(GateFixture):
             "it refused and overwrote the directory anyway")
 
     def test_a_committed_change_ships_without_being_pushed(self):
-        """The other half of the same rule, and why it says COMMITTED
-        rather than PUSHED: run-tests.sh syncs before it tests, so
-        requiring a push would make it impossible to run the suite
-        against a change before pushing it. Nothing is ever pushed to
-        this fixture's upstream, so this commit is genuinely
-        unpushed."""
+        """COMMITTED, not PUSHED - the runner syncs before it tests, so requiring a push would make the suite unrunnable before pushing."""
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "# edited\n")
         self._git("add", "-A")
@@ -543,11 +454,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn(SYNC_GREEN_MSG, result.stdout)
 
     def test_green_run_reaches_its_end(self):
-        """The DONE marker must be the LAST line. Bug form 3 lives at
-        the `grep -c` lines: on a green suite the count is zero, grep
-        exits 1, and under `set -e` the script dies right after printing
-        'verifying...' - having shipped, and having said nothing. Exit
-        status alone cannot tell that apart from a clean finish."""
+        """The DONE marker must be the LAST line - exit status alone cannot tell a clean finish from a `set -e` death after shipping."""
         result = self.sync("green")
         lines = [line for line in result.stdout.splitlines() if line.strip()]
         self.assertTrue(lines, "sync-install printed nothing at all")
@@ -560,9 +467,7 @@ class SyncInstallGateTest(GateFixture):
             self.install, "scripts", "python", "amaze", "widget.py")))
         self.assertTrue(os.path.isfile(os.path.join(
             self.install, "OPmenu.xml")))
-        # The shelf is how a hotkey reaches Amaze at all. Shipped but
-        # unsynced, it would exist only in the repo and the tools would
-        # never appear in Houdini.
+        # The shelf is how a hotkey reaches Amaze; unsynced, no tool appears in Houdini.
         self.assertTrue(
             os.path.isfile(os.path.join(
                 self.install, "toolbar", "Amaze.shelf")),
@@ -577,15 +482,12 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("ERROR: test_restore", result.stderr)
 
     def test_red_run_reaches_its_end(self):
-        """Refusing is half the job; the rollback command is the other
-        half. It is the last thing printed, so it doubles as the marker
-        proving the red path ran to completion."""
+        """The rollback command is the last thing printed, so it doubles as the marker that the red path ran to its end."""
         result = self.sync("red")
         self.assertReachedEnd(result, SYNC_RED_END)
 
     def test_a_suite_that_cannot_run_is_refused(self):
-        """THE STATE THAT SHIPPED BROKEN. No FAIL line and no 'Ran'
-        line is not the same as 'nothing wrong'."""
+        """No FAIL line and no `Ran` line is not the same as nothing wrong - the state that shipped broken."""
         result = self.sync("crash")
         self.assertNotEqual(result.returncode, 0,
                             "a dead suite was reported as a good ship:\n%s"
@@ -593,9 +495,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertNotIn(SYNC_END, result.stdout)
 
     def test_a_suite_that_cannot_run_says_why(self):
-        """Refusing without saying why sends the developer hunting. The
-        script has the words for it ('The suite did not run at all') -
-        it must actually reach them."""
+        """The script has the words for it, and must actually reach them."""
         result = self.sync("crash")
         self.assertIn("The suite did not run at all", result.stderr,
                       "STDOUT:\n%s\nSTDERR:\n%s"
@@ -603,8 +503,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertReachedEnd(result, SYNC_RED_END)
 
     def test_a_suite_that_ran_zero_tests_is_refused(self):
-        """'Ran 0 tests ... OK' exits 0 with no failures. It verified
-        nothing. Shipping on it is shipping unverified."""
+        """`Ran 0 tests ... OK` exits 0 with no failures and verifies nothing."""
         result = self.sync("no_tests")
         self.assertNotEqual(result.returncode, 0,
                             "shipped on a suite that ran ZERO tests:\n%s"
@@ -617,25 +516,20 @@ class SyncInstallGateTest(GateFixture):
         self.assertNotIn(SYNC_END, result.stdout)
 
     def test_a_log_leak_alone_is_refused(self):
-        """Green tests, zero exit - but the run wrote to the user's real
-        debug log. That arm of the condition must not be dead code."""
+        """Green tests and a zero exit, but the run wrote to the real debug log - that arm must not be dead code."""
         result = self.sync("leak")
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertNotIn(SYNC_END, result.stdout)
 
     def test_no_verify_skips_the_suite_entirely(self):
-        """run-tests.sh sets this to break the recursion. If it stopped
-        working the suite would run twice per test command."""
+        """`run-tests.sh` sets this to break the recursion, or the suite runs twice per command."""
         result = self.sync("crash", AMAZE_SYNC_NO_VERIFY="1")
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertEqual(self.suite_calls(), [],
                          "the suite ran despite AMAZE_SYNC_NO_VERIFY")
 
     def test_a_missing_install_is_refused_before_anything_is_copied(self):
-        """$AMAZE pointing nowhere must stop the script at the guard.
-        (The $AMAZE-EMPTY path is deliberately never exercised: it falls
-        back to the Houdini package file, which on a real machine names
-        the REAL install.)"""
+        """`$AMAZE` pointing nowhere stops at the guard. `$AMAZE` EMPTY is never exercised - it falls back to the package file, which names the REAL install."""
         missing = os.path.join(self.tmp, "not_an_install")
         result = self.sync("green", AMAZE=missing)
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -644,9 +538,7 @@ class SyncInstallGateTest(GateFixture):
         self.assertEqual(self.suite_calls(), [])
 
     def test_it_wires_the_push_gate_in_a_fresh_clone(self):
-        """A fresh clone has no hook until someone runs one command, so
-        the sync path wires it. Silently losing this re-opens the hole
-        the pre-push hook exists to close."""
+        """A fresh clone has no hook until this wires it, and losing that silently re-opens the hole the push gate closes."""
         self.assertEqual(
             subprocess.run(("git", "-C", self.repo, "config", "--get",
                             "core.hooksPath"), capture_output=True, text=True,
@@ -656,13 +548,9 @@ class SyncInstallGateTest(GateFixture):
         self.assertIn("wired the pre-push gate", result.stdout)
         self.assertEqual(self._git("config", "--get", "core.hooksPath"),
                          "tools/git-hooks")
-        # ...and does not say it twice.
         self.assertNotIn("wired the pre-push gate", self.sync("green").stdout)
 
 
-# ----------------------------------------------------------------------
-# THE PUSH GATE
-# ----------------------------------------------------------------------
 
 class PrePushGateTest(GateFixture):
 
@@ -696,7 +584,6 @@ class PrePushGateTest(GateFixture):
         self.assertReachedEnd(result, PUSH_RED_END)
 
     def test_a_suite_that_cannot_run_is_refused(self):
-        """THE STATE THAT SHIPPED BROKEN, push side."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("crash")
         self.assertNotEqual(result.returncode, 0,
@@ -706,8 +593,6 @@ class PrePushGateTest(GateFixture):
         self.assertReachedEnd(result, PUSH_RED_END)
 
     def test_a_suite_that_ran_zero_tests_is_refused(self):
-        """'Ran 0 tests ... OK': exit 0, no failures, nothing verified.
-        A gate that passes this is not a gate."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("no_tests")
         self.assertNotEqual(result.returncode, 0,
@@ -728,15 +613,10 @@ class PrePushGateTest(GateFixture):
         self.assertNotEqual(result.returncode, 0, self.both(result))
         self.assertIn("PUSH REFUSED", result.stderr)
 
-    # -- what is worth 15 seconds and what is not -----------------------
 
 
     def test_a_docs_only_push_still_runs_the_suite(self):
-        """The docs-only skip was DELETED (2026-07-28): ~40 lines that
-        existed to save 20 seconds produced five of the eight gate bugs
-        of 2026-07-27, including two total bypasses. The suite runs on
-        EVERY push now - this pins the deletion so the skip logic does
-        not quietly come back."""
+        """Only `.svg` earns the short run - every other file type runs the whole suite, however harmless it looks."""
         self._commit(os.path.join("docs", "a.md"))
         result = self.push("green")
         self.assertIn("running the suite", self.both(result))
@@ -744,10 +624,96 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(result.returncode, 0, self.both(result))
         self.assertIn("pre-push: DONE", result.stdout)
 
+    def _svg(self, name="scripts/python/amaze/ui/badge_x.svg"):
+        return self._commit(os.path.join(*name.split("/")))
+
+    def test_an_svg_only_push_runs_the_art_modules_not_the_suite(self):
+        """Art is data and cannot carry a logic bug, so it earns the short run - but it still runs the tests that READ the art."""
+        self._svg()
+        result = self.push("green", terminal=True)
+        self.assertEqual(result.returncode, 0, self.both(result))
+        self.assertIn("art only", self.both(result))
+        self.assertEqual(
+            1, len(self.suite_calls()),
+            "the art run did not happen: %r" % self.suite_calls())
+        self.assertIn(
+            "test_hip_section", self.suite_calls()[0],
+            "the short run did not name the art modules: %r"
+            % self.suite_calls())
+        self.assertIn("pre-push: DONE", result.stdout)
+
+    def test_one_code_file_among_the_svgs_runs_everything(self):
+        """The whole hazard in one case - a push classified as art while code rides along."""
+        self._commit(os.path.join("scripts", "python", "amaze", "ui",
+                                  "badge_x.svg"),
+                     os.path.join("scripts", "python", "amaze", "widget.py"))
+        result = self.push("green", terminal=True)
+        self.assertNotIn("art only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
+        self.assertEqual(result.returncode, 0, self.both(result))
+
+    def test_an_svg_push_with_no_terminal_runs_everything(self):
+        """The short run is for a person who just redrew a badge and can see it - anything automated gets the whole gate."""
+        self._svg()
+        result = self.push("green")
+        self.assertNotIn("art only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
+
+    def test_an_unreadable_range_never_earns_the_art_run(self):
+        """A diff that FAILED must not read as a diff naming only art."""
+        self._svg()
+        result = self.push("red", stdin=self.ref_line(
+            "b" * 40, remote_sha="c" * 40), terminal=True)
+        self.assertNotIn("art only", self.both(result))
+        self.assertEqual(result.returncode, 1, self.both(result))
+
+    def test_no_refs_on_stdin_never_earns_the_art_run(self):
+        """Missing information is not evidence that a push is art."""
+        self._svg()
+        result = self.push("red", stdin="", terminal=True)
+        self.assertNotIn("art only", self.both(result))
+        self.assertEqual(result.returncode, 1, self.both(result))
+
+    def test_the_art_modules_cover_every_module_that_reads_the_art(self):
+        """A list nothing derives goes stale silently - the short run must name every module that asserts on the artwork. Keyed on the CALL form, or the search matches its own pattern and the helper that defines it."""
+        with open(GATE_SCRIPTS[os.path.join("tools", "git-hooks",
+                                            "pre-push")],
+                  encoding="utf-8") as handle:
+            named = re.search(r'^ART_MODULES="([^"]*)"', handle.read(),
+                              re.M)
+        self.assertIsNotNone(named, "pre-push no longer names ART_MODULES")
+        listed = set(named.group(1).split())
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        reads_art = set()
+        for name in sorted(os.listdir(tests_dir)):
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            with open(os.path.join(tests_dir, name), encoding="utf-8") as fh:
+                if re.search(r"\.art_colours\(|\._effective_paint\(",
+                             fh.read()):
+                    reads_art.add(name[:-3])
+        self.assertEqual(
+            set(), reads_art - listed,
+            "a module asserts on the art but is not in the short run, so "
+            "an svg-only push would never exercise it")
+
+    def test_a_second_ref_carrying_code_runs_everything(self):
+        """`git push --all` feeds several lines, and an art-only ref must not excuse one carrying code."""
+        art = self._commit(os.path.join("scripts", "python", "amaze", "ui",
+                                        "badge_x.svg"))
+        self._git("checkout", "-q", "-b", "feature", self.base_sha)
+        code = self._commit(os.path.join("scripts", "python", "amaze",
+                                         "widget.py"))
+        stdin = (self.ref_line(art)
+                 + self.ref_line(code, local_ref="refs/heads/feature",
+                                 remote_ref="refs/heads/feature"))
+        result = self.push("green", stdin=stdin, terminal=True)
+        self.assertNotIn("art only", self.both(result))
+        self.assertIn("running the suite", self.both(result))
+
 
     def test_a_push_touching_a_shell_script_does_not_skip(self):
-        """The allowlist version of this test missed .sh - so a push
-        that changed the TEST RUNNER ITSELF skipped the gate."""
+        """An allowlist that misses `.sh` lets a push changing the TEST RUNNER ITSELF skip the gate."""
         self._commit(os.path.join("tools", "new-helper.sh"))
         result = self.push("red")
         self.assertNotIn("suite skipped", result.stdout)
@@ -773,9 +739,7 @@ class PrePushGateTest(GateFixture):
     # -- it must gate WHAT IS BEING PUSHED, not what HEAD happens to be --
 
     def test_pushing_another_branch_is_gated_on_that_branch(self):
-        """`git push origin feature:main` is a total bypass if the hook
-        reads HEAD: the current branch can be docs-only while the ref
-        being pushed carries code. No --no-verify needed."""
+        """`git push origin feature:main` is a total bypass if the hook reads HEAD instead of the ref being pushed."""
         self._commit(os.path.join("docs", "notes.md"))   # HEAD: docs only
         self._git("checkout", "-q", "-b", "feature", self.base_sha)
         code = self._commit(os.path.join("scripts", "python", "amaze",
@@ -790,8 +754,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(len(self.suite_calls()), 1)
 
     def test_every_ref_of_a_multi_ref_push_is_gated(self):
-        """`git push --all` feeds several lines. One docs-only ref must
-        not excuse a second ref that carries code."""
+        """`git push --all` feeds several lines, and one docs-only ref must not excuse a second carrying code."""
         docs = self._commit(os.path.join("docs", "notes.md"))
         self._git("checkout", "-q", "-b", "feature", self.base_sha)
         code = self._commit(os.path.join("scripts", "python", "amaze",
@@ -805,9 +768,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(result.returncode, 1, self.both(result))
 
     def test_a_new_remote_branch_is_gated_against_the_remote(self):
-        """An all-zero REMOTE sha means the branch does not exist there
-        yet. There is still a diff worth gating - and if none can be
-        found the hook must run the suite, not skip."""
+        """An all-zero REMOTE sha is a branch that does not exist there yet, and if no diff can be found the hook runs the suite rather than skipping."""
         code = self._commit(os.path.join("scripts", "python", "amaze",
                                          "widget.py"))
         result = self.push("red", stdin=self.ref_line(
@@ -818,24 +779,14 @@ class PrePushGateTest(GateFixture):
 
 
     def test_no_refs_on_stdin_runs_the_suite(self):
-        """Missing information must never be read as 'nothing to do'.
-        This is also how the hook behaves when invoked by hand."""
+        """Missing information must never read as nothing to do - this is also the hook invoked by hand."""
         result = self.push("red", stdin="")
         self.assertNotIn("suite skipped", result.stdout)
         self.assertEqual(result.returncode, 1, self.both(result))
         self.assertEqual(len(self.suite_calls()), 1)
 
     def test_an_unreadable_range_runs_the_suite(self):
-        """A sha the repo does not have cannot be diffed - and a FAILED
-        diff must not be read as an EMPTY one.
-
-        `git diff --name-only <unknown>..<sha> || true` yields nothing,
-        exactly like a ref that really has no changes. If both land in
-        the same "nothing to test" branch, a real code push skips the
-        gate whenever the remote sha is not present locally (a force-
-        push, a pruned commit, a shallow clone). Same shape as the three
-        bugs this file exists for: an ordinary failure swallowed into a
-        value that looks like success."""
+        """A FAILED diff must never be read as an EMPTY one, or a code push skips the gate whenever the remote sha is missing locally."""
         result = self.push("red", stdin=self.ref_line(
             "b" * 40, remote_sha="c" * 40))
         self.assertNotIn("nothing to test", result.stdout,
@@ -844,17 +795,13 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(result.returncode, 1, self.both(result))
 
     def test_a_branch_deletion_is_not_reported_as_docs_only(self):
-        """An all-zero LOCAL sha is a deletion - there is nothing to
-        test. Whatever it does, it must not claim the code was vetted."""
+        """An all-zero local sha is a deletion, and whatever it does it must not claim the code was vetted."""
         result = self.push("red", stdin=self.ref_line(
             "0" * 40, local_ref="refs/heads/dead"))
         self.assertNotIn("docs only", result.stdout)
 
-    # -- the escape hatch --------------------------------------------------
-
     def test_the_escape_hatch_needs_the_sha_being_pushed(self):
-        """Deliberately not a boolean: a boolean gets exported once in a
-        shell profile and disables the gate forever."""
+        """Not a boolean - a boolean gets exported once in a shell profile and disables the gate forever."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         head = self._git("rev-parse", "HEAD")
         result = self.push("crash", AMAZE_SKIP_TESTS=head)
@@ -863,8 +810,7 @@ class PrePushGateTest(GateFixture):
         self.assertEqual(self.suite_calls(), [])
 
     def test_a_stale_escape_hatch_does_not_disable_the_gate(self):
-        """The exported-and-forgotten case: the variable is set, but to
-        a sha that is no longer HEAD. The suite must still run."""
+        """Exported and forgotten - set, but to a sha that is no longer HEAD, so the suite still runs."""
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
         result = self.push("red", AMAZE_SKIP_TESTS=self.base_sha)
         self.assertEqual(result.returncode, 1, self.both(result))
@@ -872,16 +818,11 @@ class PrePushGateTest(GateFixture):
                          "a stale AMAZE_SKIP_TESTS disabled the gate")
 
 
-# ----------------------------------------------------------------------
-# The thin wrapper the push gate goes through
-# ----------------------------------------------------------------------
 
 class RunTestsWrapperTest(GateFixture):
 
     def test_it_syncs_then_runs_the_suite_exactly_once(self):
-        """It syncs with AMAZE_SYNC_NO_VERIFY, then runs the suite
-        itself. If that flag stopped being passed the suite would run
-        twice - ~30s on every push, which is how gates get bypassed."""
+        """Without `AMAZE_SYNC_NO_VERIFY` the suite runs twice on every push, which is how a gate earns being bypassed."""
         result = self._run(os.path.join("tools", "run-tests.sh"), "green",
                            cwd=self.tmp)
         self.assertEqual(result.returncode, 0, self.both(result))
@@ -906,35 +847,14 @@ class RunTestsWrapperTest(GateFixture):
 
 
 class TargetedRunTest(unittest.TestCase):
-    """`start_test.sh <module>` runs THAT module (2026-08-05).
-
-    It used to ignore the argument and run all 55, which reads as a
-    targeted run that passed - two wasted full runs before anyone read
-    the script. The fix had to be the front door rather than a refusal:
-    a refusal sends you to a bare `hython -m unittest`, which skips the
-    sync, the isolated AMAZE_LOG_DIR, the shell lint and the log-leak
-    check - every guard, to save two minutes.
-
-    Driven against the SOURCE and the argument-checking prologue only.
-    The prologue exits before Houdini is looked for, deliberately, so
-    the bad-name cases below cost no interpreter start - which is also
-    what makes them affordable to assert here at all.
-    """
+    """`start_test.sh <module>` runs THAT module, driven against the argument prologue, which exits before Houdini is looked for so these cost no interpreter start."""
 
     def _script(self):
         return os.path.join(
             os.path.dirname(os.path.abspath(__file__)), "start_test.sh")
 
     def _run(self, *args):
-        """BOUNDED, and the bound is load-bearing.
-
-        If the argument check ever regresses, these arguments fall
-        through to the full MODULES list and this call starts the whole
-        suite - from inside the suite, recursively. Measured while
-        sabotage-testing this very guard: the run had to be killed at
-        seven minutes. A refused argument returns in milliseconds, so
-        any wait at all is the regression.
-        """
+        """The timeout is LOAD-BEARING: without it a regressed argument check starts the whole suite recursively from inside itself."""
         try:
             return subprocess.run(["bash", self._script(), *args],
                                   capture_output=True, text=True,
@@ -951,16 +871,13 @@ class TargetedRunTest(unittest.TestCase):
         self.assertIn("no such test module", result.stderr)
 
     def test_a_bad_name_AFTER_isolated_is_refused_too(self):
-        """The first version of this guard only inspected `$1`, so
-        `--isolated <junk>` sailed through with the junk dropped - the
-        same silent-ignore bug one position over."""
+        """A guard inspecting only `$1` lets `--isolated <junk>` through with the junk silently dropped."""
         result = self._run("--isolated", "test_no_such_module_here")
         self.assertEqual(2, result.returncode, result.stderr)
         self.assertIn("no such test module", result.stderr)
 
     def test_the_refusal_costs_no_interpreter_start(self):
-        """The argument check must sit ABOVE the Houdini lookup, or a
-        typo costs a Houdini start to be told it was a typo."""
+        """The argument check sits ABOVE the Houdini lookup, or a typo costs a Houdini start to be told it was a typo."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         check = source.find("no such test module")
@@ -973,17 +890,7 @@ class TargetedRunTest(unittest.TestCase):
             "typo now pays for an interpreter start to be refused")
 
     def test_a_real_module_name_reaches_the_runner(self):
-        """Structural, not executed: running it for real would cost a
-        full Houdini start. What must hold is that the named modules -
-        not MODULES - are what the runner is handed.
-
-        The runner is run_suite.py rather than `-m unittest` since
-        2026-08-08: same unittest, same module names, but it owns its
-        own exit and writes the skip report on the way out. It left via
-        `os._exit` until 2026-08-15, when that turned out to be a
-        segfault on Windows rather than a fast exit (ROADMAP line 17).
-        What this test pins is unchanged either way - the RESOLVED list
-        is what gets run."""
+        """Read from the source, never executed - running it costs a full Houdini start. Pins that the RESOLVED module list is what the runner is handed."""
         with open(self._script(), encoding="utf-8") as handle:
             source = handle.read()
         self.assertIn("run_suite.py\" $run_modules", source,
@@ -1005,21 +912,8 @@ class TargetedRunTest(unittest.TestCase):
 
 
 class TestEveryTestFileIsInTheGate(unittest.TestCase):
-    """A test file the runner never names is not in the suite.
+    """`MODULES` is hand-maintained, so a test file it never names is green by hand and gates nothing."""
 
-    MODULES in start_test.sh is hand-maintained, so a new test file
-    runs only for whoever wrote it and is silently absent from every
-    sync and every push afterwards. That is the "194 tests passed and
-    the crash shipped" failure with an extra step: the tests exist, are
-    green when run by hand, and gate nothing.
-
-    Found by counting: a local sweep ran 381 tests while the push gate
-    reported 367 - exactly the two files that had just been added.
-    """
-
-    #: Not tests. test_support is the shared fixture helper; the rest
-    #: are one-shot tools that live here because they import the same
-    #: harness.
     NOT_SUITES = {
         "test_support",
     }
@@ -1052,10 +946,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
             "add them to MODULES in start_test.sh: %s" % missing)
 
     def test_the_runner_names_no_file_that_is_gone(self):
-        """The other direction: a renamed or deleted file left in
-        MODULES makes hython fail to import and takes the whole gate
-        down, which reads as 'the suite is broken', not 'the list is
-        stale'."""
+        """A deleted file left in `MODULES` fails the import and takes the whole gate down, reading as a broken suite rather than a stale list."""
         stale = sorted(self._listed() - self._on_disk() - self.NOT_SUITES)
         self.assertEqual(
             [], stale,
@@ -1071,13 +962,7 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
 
 
 class EveryToolSpeaksTheResolver(unittest.TestCase):
-    """The Houdini lookup was written four times as a mac-only glob,
-    and a FIFTH copy - with the BSD `mktemp -d -t` and the drive-colon
-    PATH trap beside it - survived in the sidecar migration script
-    (practice.md ▸ A LOOKUP WRITTEN FOUR TIMES IS A PLATFORM SILENTLY
-    UNGATED; research.md ▸ Windows for all three trap spellings). Every
-    tools/*.sh that reaches for hython sources the one resolver, and
-    the two trap spellings are banned from the directory."""
+    """Every `tools/*.sh` reaching for hython sources the one resolver, and the two recorded trap spellings are banned from the directory."""
 
     def test_no_tool_carries_the_recorded_traps(self):
         tools = os.path.join(REPO, "tools")

@@ -26,6 +26,51 @@ elif [ -n "${AMAZE_SKIP_TESTS:-}" ]; then
     echo "pre-push: AMAZE_SKIP_TESTS set but does not match HEAD - running anyway" >&2
 fi
 
+# ART MODULES - every module that asserts on the artwork itself. Pinned by
+# test_the_art_modules_cover_every_module_that_reads_the_art, so a new art
+# test cannot fall outside the short run silently.
+ART_MODULES="test_hip_section test_notes"
+
+# An .svg cannot carry a logic bug, so a push of nothing else earns the art
+# modules instead of the whole suite. REFUSES TO SKIP ON ANY DOUBT: no refs,
+# an unreadable range, a deletion, one non-svg path, or a push with no
+# terminal - the old skip logic put code on main while printing it skipped.
+#
+# A TTY IS THE TEST. The short run is for a person who just redrew a badge
+# and can see the result; anything automated gets the whole gate, because
+# automation is what pushes a range it did not look at.
+art_only=0
+if [ -t 2 ]; then
+    refs="$(cat)"
+    if [ -n "$refs" ]; then
+        art_only=1
+        while read -r _local_ref local_sha _remote_ref remote_sha; do
+            [ -n "$local_sha" ] || continue
+            case "$local_sha$remote_sha" in
+                *[!0]*) ;;
+                *) art_only=0; break ;;
+            esac
+            if [ "$local_sha" = "0000000000000000000000000000000000000000" ] \
+               || [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+                art_only=0; break
+            fi
+            if ! changed="$(git diff --name-only \
+                    "$remote_sha".."$local_sha" 2>/dev/null)"; then
+                art_only=0; break
+            fi
+            [ -n "$changed" ] || { art_only=0; break; }
+            while read -r path; do
+                [ -n "$path" ] || continue
+                case "$path" in
+                    *.svg) ;;
+                    *) art_only=0; break ;;
+                esac
+            done <<< "$changed"
+            [ "$art_only" = 1 ] || break
+        done <<< "$refs"
+    fi
+fi
+
 # A git hook inherits almost no environment - resolve Houdini here.
 # shellcheck source=tools/houdini-env.sh
 . "$repo/tools/houdini-env.sh"
@@ -43,8 +88,14 @@ fi
 # DATED because it tracks the test count and nothing updates it: 130s was
 # true at roughly half this many tests and understated the wait by 2x by
 # the time anybody noticed. Re-measure when it misleads, and move the date.
-echo "pre-push: running the suite (minutes, not seconds - the Mac and the stick differ by 2.5x) ▸p/suite-timing"
-output="$("$repo/tools/run-tests.sh" 2>&1)"
+if [ "$art_only" = 1 ]; then
+    echo "pre-push: art only - running $ART_MODULES, not the whole suite"
+    # shellcheck disable=SC2086
+    output="$("$repo/scripts/python/amaze/tests/start_test.sh" $ART_MODULES 2>&1)"
+else
+    echo "pre-push: running the suite (minutes, not seconds - the Mac and the stick differ by 2.5x) ▸p/suite-timing"
+    output="$("$repo/tools/run-tests.sh" 2>&1)"
+fi
 status=$?
 
 tests_ran="$(printf '%s\n' "$output" | sed -n 's/^Ran \([0-9][0-9]*\) test.*/\1/p' | tail -1 || true)"
