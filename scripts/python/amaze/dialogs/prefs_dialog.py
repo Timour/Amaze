@@ -118,8 +118,8 @@ class PrefsDialog(base_dialog.AssetDialog):
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.resize(   # the WIDTH is the shell's, from `FORM_WIDTH`; only the HEIGHT is this dialog's, being its natural content plus headroom ▸p/one-design-document
-            self.width(),
+        self.resize(   # BOTH numbers come from the document: `self.width()` stood here and is Qt's unshown-widget default of 640x480, so the drawn width was never `FORM_WIDTH` ▸p/one-design-document
+            theme.ui_px(self.FORM_WIDTH),
             self.sizeHint().height() + theme.ui_px(amazetheme.PREFS_HEADROOM),
         )
 

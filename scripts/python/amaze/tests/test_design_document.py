@@ -84,6 +84,10 @@ class NoSecondHomeForAColour(unittest.TestCase):
 SIZERS = ("setFixedWidth", "setMinimumWidth", "setMaximumWidth",
           "setFixedSize", "setMinimumSize", "setBaseSize")
 
+GEOMETRY = ("resize", "setGeometry")
+SELF_READERS = ("width", "height", "size", "geometry", "rect",
+                "frameGeometry")
+
 DIALOG_DIR = os.path.join(_ROOT, "dialogs")
 
 
@@ -106,6 +110,33 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
                 found.append((node.lineno, func.attr))
         return found
 
+    def _geometry_from_itself(self, path):
+        """`self.resize(self.width(), ...)` - a geometry call whose own arguments read the widget back."""
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=path)
+        found = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not isinstance(func, ast.Attribute) or \
+                    func.attr not in GEOMETRY:
+                continue
+            if not (isinstance(func.value, ast.Name)
+                    and func.value.id == "self"):
+                continue
+            for arg in ast.walk(ast.Module(body=list(node.args),
+                                           type_ignores=[])):
+                if not isinstance(arg, ast.Call):
+                    continue
+                inner = arg.func
+                if isinstance(inner, ast.Attribute) \
+                        and inner.attr in SELF_READERS \
+                        and isinstance(inner.value, ast.Name) \
+                        and inner.value.id == "self":
+                    found.append((node.lineno, func.attr, inner.attr))
+        return found
+
     def test_only_the_shared_shell_sizes_a_dialog(self):
         offenders = []
         for name in sorted(os.listdir(DIALOG_DIR)):
@@ -121,6 +152,50 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
             "letting the shell apply it - that is how four dialogs came "
             "to render four different widths:\n  "
             + "\n  ".join(offenders))
+
+    def test_no_dialog_sizes_itself_from_its_own_geometry(self):
+        """A geometry call may name the document's constant, never read the widget back; `sizeHint` is the layout's answer, so it is not a self-reader ▸p/sized-from-nothing"""
+        offenders = []
+        for name in sorted(os.listdir(DIALOG_DIR)):
+            if not name.endswith(".py"):
+                continue
+            for line, call, read in self._geometry_from_itself(
+                    os.path.join(DIALOG_DIR, name)):
+                offenders.append("dialogs/%s:%d  self.%s(... self.%s() ...)"
+                                 % (name, line, call, read))
+        self.assertEqual(
+            [], offenders,
+            "a dialog sizes itself from its own geometry. Before the "
+            "first show() that is Qt's 640x480 default, not anything the "
+            "layout or amazetheme said - which is why Preferences drew "
+            "at 640 while the document said 480:\n  "
+            + "\n  ".join(offenders))
+
+    def test_the_geometry_scan_can_see_one(self):
+        """The scanner that found nothing must be shown a real one."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "d.py")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("class D:\n"
+                             "    def f(self):\n"
+                             "        self.resize(self.width(), 10)\n")
+            self.assertEqual(
+                [(3, "resize", "width")], self._geometry_from_itself(path),
+                "the scanner cannot see a self-reading resize even in a "
+                "sample written to contain one")
+
+    def test_the_geometry_scan_allows_the_document_and_the_hint(self):
+        """`icon_dialog` opens at D02_FORM_WIDTH, and a height from sizeHint is the layout's own answer - neither may be flagged."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, "d.py")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("class D:\n"
+                             "    def f(self):\n"
+                             "        self.resize(theme.ui_px(A.W),\n"
+                             "                    self.sizeHint().height())\n")
+            self.assertEqual([], self._geometry_from_itself(path))
 
     def test_the_scan_can_see_a_self_sizing_call(self):
         """A scanner that matches nothing passes forever."""

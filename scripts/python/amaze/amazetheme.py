@@ -51,7 +51,7 @@ D11_HALF_GAP = 18        # between the two form halves
 D11_STACK_GAP = 12       # fields to the editor
 D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
-PREFS_FORM_WIDTH = 480   # ▸ D04-D08 Preferences, the one tabbed window
+PREFS_FORM_WIDTH = 490   # ▸ D04-D08 Preferences, the one tabbed window
 PREFS_HEADROOM = 50      # rendered px added to the natural content height
 
 COMMENT_INK = "#5cc9f5"        # ▸ the Comments pane: its OWN colour, not the accent, so button, header icon and to-do glyphs read as one thing

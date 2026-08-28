@@ -1143,7 +1143,7 @@ class AmazeSource(MatxSource):
             handle.write(data)
 
 
-SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,
+SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,    # menu order, Amaze FIRST; ambientCG deliberately absent - probed: JPG/PNG zips only, no .mtlx, so it would be a FOURTH source kind (a standard_surface from conventionally-named maps), a v2
            PhysicallyBasedSource, RGLSource)
 
 
