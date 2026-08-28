@@ -1051,7 +1051,7 @@ class OnlinePackageImportTest(unittest.TestCase):
             len(fractions), 1,
             "the import reported only its end - the bar sat at zero "
             "and nothing pumped while the network ran, which is the "
-            "")
+            "frozen Houdini that has to be force-quit")
         self.assertEqual(1.0, fractions[-1])
         self.assertEqual(sorted(fractions), fractions,
                          "fractions must be non-decreasing")

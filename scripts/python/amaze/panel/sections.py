@@ -631,7 +631,7 @@ class MaterialSection(AssetSection):
             return False
         context = panel._drop_context_under_cursor("materiallibrary")
         if context is None or not cop_library.accepts_context(
-                context, self.DROP.context):
+                context, self.DROP.context):    # the wrong network is a strict MISS: nothing created anywhere, exactly as Houdini's own nodes refuse - the DECLARATION gates, shared with the live ghost
             debug.event("drag", "material release", target="miss",
                         context=context.path() if context else "")
             return False
@@ -647,7 +647,7 @@ class MaterialSection(AssetSection):
     def copy_to_targets(self, indexes, current) -> tuple:
         """WHERE the saved material lands; the entries name the destination the way Houdini writes the PATH - /stage, not the Solaris marketing name."""
         return (("/mat", "mat", "", True),
-                ("/stage/materiallibrary", "lop", "", True))
+                ("/stage/materiallibrary", "lop", "", True))    # names the LANDING: the copy goes INSIDE a material library under /stage, never stage root
 
     def menu_copy_to(self, indexes, current, payload=None) -> None:
         with helpers.preserving_selection_and_current():    # a menu import leaves the artist where they were, like a drop; the drag and click dispatchers wrap, the menu dispatcher does not, so the scene-importing verbs carry it themselves

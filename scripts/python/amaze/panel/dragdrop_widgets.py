@@ -386,7 +386,7 @@ class GridGestureMixin:
             dragengine.ghost_clear()
             return
         preview = getattr(self, "_preview", None)
-        if preview is not None:
+        if preview is not None:    # the cursor tag hides over a network editor: the outline is the feedback there, and the tag returns the moment the cursor leaves
             preview.setVisible(
                 pane_type != hou.paneTabType.NetworkEditor)
         try:
