@@ -1,26 +1,4 @@
-"""A structural fingerprint of the CONSTRUCTED panel.
-
-The panel builds itself in one 800-line method, and the only honest way
-to refactor that is to prove the thing it builds is unchanged. This
-constructs the real MatLibPanel headlessly and writes a canonical
-snapshot of everything structural about it:
-
-  * every widget: class, object name, parent path, enabled/visible,
-    size constraints, and the properties that decide how a view
-    behaves (view mode, scroll modes, drag mode, grid size, ...)
-  * every layout: class, margins, spacing, and the ORDER of its items
-  * every model/delegate actually attached to a view
-  * every menu, recursively: action text, separators, checkability
-  * **which signals are connected**, per widget - a dropped
-    `.connect(...)` flips a flag here even though nothing else moves
-  * the panel's own attributes, name -> type
-
-Two snapshots that compare equal mean the refactor was code motion.
-
-    hython tests/ui_snapshot.py --out before.json
-    ...refactor...
-    hython tests/ui_snapshot.py --out after.json --compare before.json
-"""
+"""A structural fingerprint of the CONSTRUCTED panel - widgets, layouts, models, menus, connected signals and the panel's own attributes, canonically. Two snapshots comparing equal mean a refactor was code motion.  `hython tests/ui_snapshot.py --out after.json --compare before.json`  ▸archive/ui_snapshot.py"""
 
 import argparse
 import json
@@ -34,19 +12,10 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/, the directory that
-# holds the `amaze` package. The original had four, which lands on
-# scripts/ - where amaze is NOT importable - so every one of these
-# files silently imported amaze through Houdini's own package path,
-# i.e. the INSTALL. The sync-before-test discipline masked it for the
-# suite's whole life; it surfaced when a deliberately-unsynced
-# sabotage edit failed to change a test's behaviour.
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-#: View properties worth pinning: each one has caused a real bug in
-#: this panel (scroll mode, layout mode, movement, size policy).
 _VIEW_PROPS = (
     "viewMode", "verticalScrollMode", "horizontalScrollMode", "movement",
     "resizeMode", "layoutMode", "uniformItemSizes", "dragEnabled",
@@ -57,17 +26,13 @@ _VIEW_PROPS = (
 )
 
 _WIDGET_PROPS = (
-    # isHidden, NOT isVisible: nothing is "visible" in a panel that was
-    # never shown, so isVisible recorded False for every widget and
-    # hid the difference between a hidden one and a shown one.
     "objectName", "isEnabled", "isHidden", "minimumSize", "maximumSize",
     "sizePolicy", "contextMenuPolicy", "toolTip", "styleSheet",
 )
 
 
 def _plain(value):
-    """Anything Qt hands back, as something JSON can hold and compare -
-    never an address, never an unordered set."""
+    """Anything Qt hands back as something JSON can hold and compare - never an address, never an unordered set. PySide enums raise on `int()`, and falling back to the type name makes every mode compare equal."""
     if isinstance(value, (bool, int, float, str)) or value is None:
         return value
     if isinstance(value, QtCore.QSize):
@@ -86,10 +51,6 @@ def _plain(value):
         return value.toString()
     if isinstance(value, (list, tuple)):
         return [_plain(v) for v in value]
-    # PySide6 enums are Python enums: int() raises on them, and
-    # falling back to the TYPE name recorded every QListView.ViewMode
-    # as the string "ViewMode" - so IconMode and ListMode compared
-    # equal and the snapshot silently could not see a view-mode change.
     if hasattr(value, "value") and not callable(value.value):
         try:
             return "%s.%s" % (type(value).__name__, value.name)
@@ -102,15 +63,7 @@ def _plain(value):
 
 
 def _path(widget) -> str:
-    """A stable identity: the chain of object names (or class name plus
-    SIBLING INDEX where unnamed) from the panel down.
-
-    The index matters wherever a name is absent. panel.py names some
-    widgets now (eleven `setObjectName` calls, the toolbar buttons and
-    the table among them) but most of the tree is unnamed, and the
-    three toolbar menu buttons once produced an identical path and
-    collapsed onto one dictionary entry - deleting one of them changed
-    nothing in the snapshot."""
+    """A stable identity - the chain of object names, or class name plus SIBLING INDEX where unnamed. The index is load-bearing: most of the tree is unnamed, and identical paths collapse onto one entry, so deleting a widget changes nothing in the snapshot."""
     parts = []
     node = widget
     while node is not None:
@@ -130,11 +83,7 @@ def _path(widget) -> str:
 
 
 def _connected_signals(obj) -> list:
-    """Every signal on this object that has at least one receiver.
-
-    This is the check that matters for a UI refactor: code motion that
-    accidentally drops a connect() leaves the widget tree identical and
-    the panel dead, and nothing else in the snapshot would notice."""
+    """Every signal with at least one receiver - the check that matters, because a dropped `connect()` leaves the widget tree identical and the panel dead."""
     out = []
     meta = obj.metaObject()
     for i in range(meta.methodCount()):
@@ -193,12 +142,7 @@ def _menu_snapshot(menu, depth=0):
 
 def snapshot(panel_widget) -> dict:
     widgets = {}
-    # QObject, not QWidget. Every QAction, QActionGroup, proxy model,
-    # selection model, timer and event-filter object hangs off the
-    # panel as a non-widget child, and the whole point of this tool is
-    # the connect() check - which was silently skipping the ten menu
-    # actions, both action groups and the model signals that drive the
-    # column refits.
+    # QObject, NEVER QWidget - skipping non-widget children skips their connects.
     for widget in [panel_widget] + panel_widget.findChildren(QtCore.QObject):
         entry = {"class": type(widget).__name__}
         for prop in _WIDGET_PROPS:
@@ -231,12 +175,6 @@ def snapshot(panel_widget) -> dict:
             entry["text"] = widget.text()
             entry["hasPixmap"] = widget.pixmap() is not None \
                 and not widget.pixmap().isNull()
-        # Hand-painted widgets (SectionTabBar, ListColumnHeader,
-        # ThinProgressBar, ClickSlider) are plain QWidgets, so none of
-        # the isinstance branches reach them and their entire visible
-        # state went unrecorded - renaming two section TABS changed
-        # nothing in the snapshot, which is how this gap was found.
-        # Anything they expose under a known name is fingerprinted.
         for attribute in ("_segments", "_checked_key", "_labels",
                           "_value", "_maximum", "_thumb_w", "_name_w",
                           "_type_w", "_cat_w", "_tag_w", "_licence_w"):
@@ -256,14 +194,11 @@ def snapshot(panel_widget) -> dict:
         if isinstance(widget, QtWidgets.QAbstractSlider):
             entry["range"] = [widget.minimum(), widget.maximum()]
             entry["value"] = widget.value()
-        # Non-widget children (actions, models, timers) have no layout.
         if isinstance(widget, QtWidgets.QWidget):
             entry["layout"] = _layout_snapshot(widget.layout())
         entry["signals"] = _connected_signals(widget)
         widgets[_path(widget)] = entry
 
-    # The panel's own attributes: catches a model or delegate that
-    # stopped being created at all.
     attrs = {}
     for name in sorted(dir(panel_widget)):
         if name.startswith("__"):
@@ -277,10 +212,6 @@ def snapshot(panel_widget) -> dict:
         attrs[name] = type(value).__name__
 
     signal_count = sum(len(w["signals"]) for w in widgets.values())
-    # A panel constructed with no library configured skips setup()
-    # entirely: no models, no delegates, almost no connections - and
-    # the comparison would happily report "IDENTICAL" between two such
-    # runs. A floor makes that state loud instead of invisible.
     if len(widgets) < 40 or signal_count < 40:
         print("WARNING: only %d objects and %d connected signals - the "
               "panel was probably built WITHOUT a library, so this "
@@ -314,20 +245,7 @@ def _diff(before: dict, after: dict) -> list:
 
 
 def _protect_live_settings():
-    """Constructing the real panel WRITES the real settings.json - the
-    view-mode toggle persists itself as the panel builds. A snapshot
-    must not change what the user sees next time they open Houdini, so
-    saving is disabled outright for the duration rather than restored
-    afterwards (a restore races the panel's own deferred save timers).
-
-    Found the hard way: a run of these scripts flipped the saved view
-    mode from list to grid, and the next snapshot "difference" was that
-    preference rather than any code change.
-
-    The panel also arms the debug engine and writes a session header, so
-    the LOG is redirected too - a snapshot is not a session the user
-    ever had, and it should not appear in their log as one.
-    """
+    """Constructing the real panel WRITES the real settings.json, so saving is disabled outright rather than restored afterwards - a restore races the panel's own deferred save timers. The log is redirected too: a snapshot is not a session anyone had."""
     from amaze.tests import test_support
     test_support.isolate_debug_log()
 

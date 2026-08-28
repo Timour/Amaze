@@ -13,7 +13,7 @@ DOCSTRING_LINES = 20
 
 SCANNED = (".py", ".sh", ".shelf", ".xml")
 
-BUDGET = 16
+BUDGET = 14
 
 
 def _blocks(path):
