@@ -1,25 +1,4 @@
-"""The suite must not read the machine's own files. Proven, not assumed.
-
-2026-08-02. A panel test called `activate()` on every section against
-the REAL library, and the File section's activate SCANS every
-registered location and converts every image in it. On this machine
-those locations are personal photograph and texture archives, so a
-column-width assertion spent ten minutes grinding through thousands of
-somebody's photographs. Nothing was modified and nothing failed - which
-is exactly the problem, because nothing said a word either.
-
-`_protect_live_settings` was the guard in use, and it was never enough:
-it disables `Prefs.save` and redirects the log, so the SETTINGS FILE is
-safe while the panel still opens the real library and the real
-locations recorded in it. `fixture_panel` is the one that isolates all
-of it, and these tests are what stop a class drifting back.
-
-Two independent checks, because they fail differently:
-
-* a SOURCE check - no test may construct a panel directly, which is the
-  only way to get one that is not isolated;
-* a RUNTIME check - walk every directory the panel models would scan
-  and require each to be inside the temp dir.
+"""The suite must not read the machine's own files - PROVEN, not assumed, because a run that quietly scans a real photograph archive modifies nothing, fails nothing and says nothing. Two independent checks: a SOURCE one, that no test builds a panel directly, and a RUNTIME one, that every directory the models would scan is inside the temp dir. ▸archive/test_no_live_data.py
 """
 
 import os
@@ -27,9 +6,6 @@ import re
 import tempfile
 import unittest
 
-# The offscreen QApplication has to exist before anything builds a
-# QWidget, and fixture_panel builds a whole panel. Same three lines as
-# every other panel-touching module here.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets                                  # noqa: E402
 
@@ -50,19 +26,8 @@ def _test_modules():
 
 
 class NoTestBuildsItsOwnPanel(unittest.TestCase):
-    """Constructing the panel class directly reads the machine's real
-    settings.json, and through it the real library and the real File
-    locations. (Spelled around rather than written out: this module is
-    scanned by its own check, and a mention in prose is a match.)
+    """Building the panel class directly reads the machine's real settings, and through them the real library. Asserted as an empty SET, never a count, or the check goes vacuous the day the constructor is renamed."""
 
-    Asserted as an empty SET rather than a count: "found none" and
-    "every module is clean" have to be different answers, or the check
-    goes vacuous the day the constructor is renamed.
-    """
-
-    #: The only non-test caller. It exists to snapshot the REAL panel
-    #: for the design handoff - that is its whole job, it is run by
-    #: hand, and it is not part of the suite.
     ALLOWED = {"ui_snapshot.py", "test_support.py"}
 
     def test_no_test_module_constructs_a_panel_directly(self):
@@ -83,11 +48,7 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
             % offenders)
 
     def test_the_check_can_actually_see_a_panel_construction(self):
-        """Anti-vacuity: the pattern above must match the real thing.
-
-        A source scan keyed on a name goes quiet rather than red when
-        the name changes, so prove the needle still finds the haystack
-        it was written for."""
+        """Anti-vacuity - a source scan keyed on a name goes QUIET rather than red when the name changes, so the needle must be shown to still find its haystack."""
         with open(os.path.join(HERE, "test_support.py"),
                   encoding="utf-8") as handle:
             body = handle.read()
@@ -105,9 +66,7 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
         temp = os.path.realpath(tempfile.gettempdir())
 
         registered = []
-        # NAMED, not `getattr(..., ())`. The texture/geometry/hip
-        # folder lists were swept 2026-08-12 and a defaulting lookup
-        # would have narrowed this guard to one kind in silence.
+        # NAMED, never `getattr(..., ())` - defaulting narrows this guard.
         for folder in panel.prefs.file_folders or ():
             registered.append(("file_folders", str(folder)))
         registered.append(("library", panel.prefs.dir))
@@ -121,11 +80,7 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
             "dir - it would scan the machine's own files: %s" % outside)
 
     def test_the_fixture_actually_registers_a_location(self):
-        """Accept-path half. "No locations" also passes the test above,
-        and would mean the File section is never exercised at all -
-        a guard that is only ever satisfied by emptiness is not a
-        guard, and it would have hidden the very tab that caused this.
-        """
+        """The accept path - no locations also passes the test above, and a guard only ever satisfied by emptiness is not a guard."""
         panel = test_support.fixture_panel(self)
         self.assertTrue(
             list(panel.prefs.file_folders),
@@ -134,8 +89,7 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
             "the wrong reason")
 
     def test_the_fixture_location_holds_every_kind(self):
-        """And it has to contain something of each KIND, or the section
-        is 'exercised' against an empty folder."""
+        """And it must hold something of each KIND, or the section is exercised against an empty folder."""
         from amaze.core import file_library
 
         panel = test_support.fixture_panel(self)
@@ -151,27 +105,12 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
 
 
 class TheSUITETestsTheCheckoutAndNotTheInstall(unittest.TestCase):
-    """Which COPY of the package is under test.
-
-    hython's own path holds the installed copy, so `import amaze` finds
-    that unless the checkout goes in front of it first. Sixty test
-    modules each carried their own three-line insert and five did not -
-    and the FIRST import to reach `amaze` binds it for the whole
-    process, so a subset run led by one of the five tested the last
-    sync and ignored the working tree entirely. It reads as a pass.
-
-    practice.md already records this family from the other direction
-    (an insert pointing one directory too high, which let the whole
-    standalone suite test the install for its entire life). The insert
-    now lives once in `run_suite.py`, the only way in; this is what
-    stops it being lost again, in either form.
-    """
+    """Which COPY of the package is under test. hython's own path holds the INSTALLED one, and the FIRST import to reach `amaze` binds it for the whole process - so a single module without the checkout in front tests the last sync and reads as a pass."""
 
     def test_the_amaze_package_is_the_one_beside_these_tests(self):
         import amaze
 
-        # The checkout this test file belongs to - not a configured
-        # path, so it cannot agree with a wrong answer.
+        # The checkout this file belongs to, never a configured path.
         expected = os.path.dirname(HERE)
         loaded = os.path.dirname(os.path.abspath(amaze.__file__))
         self.assertEqual(
