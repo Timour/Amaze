@@ -1,19 +1,4 @@
-"""Exporting the debug log for support.
-
-Cross-platform bugs need two machines' logs side by side, and both are
-called amaze_debug.jsonl. This copies one to a folder the user picks,
-under a name that says which machine, which OS and which Houdini
-produced it.
-
-It is a deliberate act every time - there is no setting that leaves it
-on. A real log names the author's project folders, 255 asset filenames
-and every material they touched; that is a manifest of what someone is
-working on, and it is not something to mirror in the background.
-
-The failure behaviour is the point of most of these tests: an export
-that quietly does nothing is the exact shape this project keeps finding
-- an honest empty result and a failure reported identically.
-"""
+"""Exporting the debug log for support - a deliberate act every time, never a background mirror, and its refusals are most of what is pinned here. ▸p/log-export"""
 
 import os
 import sys
@@ -61,8 +46,7 @@ class TestExportSucceeds(unittest.TestCase):
                              "the export is not a faithful copy")
 
     def test_the_name_identifies_the_machine_os_and_houdini(self):
-        """Two machines' logs must not collide, and a human must be
-        able to tell which is which without opening them."""
+        """Two machines' logs must not collide, and must be told apart unopened."""
         log = _Log(self)
         name = os.path.basename(debug.export_log(log.dest))
         self.assertTrue(name.startswith("amaze-"), name)
@@ -72,8 +56,7 @@ class TestExportSucceeds(unittest.TestCase):
         self.assertIn("hou", name)
 
     def test_the_name_is_filename_safe(self):
-        """A machine called "Bob's iMac (work)" must not produce a
-        path that breaks on the other OS."""
+        """A machine name carrying spaces, quotes or slashes must not break the path on the other OS."""
         log = _Log(self)
         real = hostos.machine_name
         self.addCleanup(setattr, hostos, "machine_name", real)
@@ -84,9 +67,7 @@ class TestExportSucceeds(unittest.TestCase):
                              % (bad, name))
 
     def test_a_second_export_never_overwrites_the_first(self):
-        """The stamp is only to the second, so a double-click would
-        otherwise destroy the export just made - and the two are not
-        interchangeable if the second is a fresh session."""
+        """The stamp resolves only to the second, so a double-click would otherwise destroy the export just made."""
         log = _Log(self)
         first = debug.export_log(log.dest)
         second = debug.export_log(log.dest)
@@ -103,8 +84,7 @@ class TestExportSucceeds(unittest.TestCase):
 
 
 class TestExportRefusesOutLoud(unittest.TestCase):
-    """Every refusal carries its reason. A silent no-op is the one
-    outcome that teaches the user nothing."""
+    """Every refusal carries its reason - a silent no-op teaches nothing. ▸p/log-export"""
 
     def test_no_log_yet_says_so_and_names_the_path(self):
         log = _Log(self, contents=None)
@@ -117,8 +97,7 @@ class TestExportRefusesOutLoud(unittest.TestCase):
                       "the refusal did not say what to do about it")
 
     def test_an_empty_log_is_refused_rather_than_exported(self):
-        """Exporting a 0-byte file looks like success and wastes a
-        round trip with whoever asked for it."""
+        """Exporting a 0-byte file looks like success and hands over nothing."""
         log = _Log(self, contents="")
         with self.assertRaises(debug.ExportRefused) as caught:
             debug.export_log(log.dest)
@@ -143,9 +122,7 @@ class TestExportRefusesOutLoud(unittest.TestCase):
         self.assertIn(blocked, str(caught.exception))
 
     def test_a_refusal_is_never_a_bare_falsy_return(self):
-        """The distinction the whole class exists for: a caller must
-        never be left unable to tell 'nothing to export' from 'the
-        export failed'."""
+        """The distinction the class exists for: `nothing to export` must never read as `the export failed`."""
         log = _Log(self, contents=None)
         try:
             result = debug.export_log(log.dest)
@@ -163,8 +140,7 @@ class TestOsFacts(unittest.TestCase):
                       ("macos", "windows", "linux", "unknown-os"))
 
     def test_machine_name_is_never_empty(self):
-        """An empty name would collapse two machines' exports into one
-        filename shape - the collision this naming exists to prevent."""
+        """An empty name collapses two machines' exports into one filename shape."""
         self.assertTrue(hostos.machine_name())
 
     def test_machine_name_falls_back_rather_than_returning_nothing(self):
@@ -183,13 +159,7 @@ class TestOsFacts(unittest.TestCase):
 
 
 class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
-    """research.md: "On Windows, ANY Python print() pops the Houdini
-    Console window open. The debug engine's jsonl log is the only safe
-    sink for normal-operation output."
-
-    debug.note is that sink, and it printed unconditionally - so the
-    one path that was supposed to obey the rule broke it too.
-    """
+    """`debug.note` is the only safe sink on Windows and once printed unconditionally, so the one path meant to obey the rule broke it. ▸r/qt-windows-macos"""
 
     def _capture(self, windows):
         import io
@@ -227,19 +197,7 @@ class NoteRespectsTheConsoleRuleTest(unittest.TestCase):
 
 
 class CapturedLogHelperTest(unittest.TestCase):
-    """test_support.captured_log() - the helper the honesty tests in
-    test_generator now assert through.
-
-    A capture helper that quietly returns nothing turns every assertion
-    built on it into a guaranteed failure, and one that returns anything
-    at all turns them into guaranteed passes. Both are worth catching
-    here rather than in the tests that use it, and the first version DID
-    return nothing: it removed the file before the caller read it.
-
-    It also has to leave Debug Mode as it found it. The suite runs one
-    hython process, so a helper that leaked `_enabled = True` would turn
-    verbose logging on for every test after the first use of it.
-    """
+    """`test_support.captured_log()` - a capture helper returning nothing or anything silently inverts every assertion built on it, and it must leave Debug Mode as it found it. ▸p/captured-log-helper"""
 
     def test_it_captures_a_note(self):
         with test_support.captured_log() as log:
@@ -251,9 +209,7 @@ class CapturedLogHelperTest(unittest.TestCase):
             "through it would fail whatever the code said")
 
     def test_it_captures_after_the_block_has_ended(self):
-        """Where the first version failed: the tempdir went at exit and
-        the records were read lazily, so this is the ordering that
-        matters."""
+        """Where the first version failed: the tempdir went at exit and records were read lazily."""
         with test_support.captured_log() as log:
             debug.note("read me afterwards")
         self.assertTrue(log.matching("read me afterwards"))
@@ -264,8 +220,7 @@ class CapturedLogHelperTest(unittest.TestCase):
         self.assertEqual([], log.matching("something else entirely"))
 
     def test_an_event_is_not_a_note(self):
-        """The category filter is the whole reason a test can say "the
-        user was told", rather than "something was logged"."""
+        """The category filter is why a test can pin `the user was told` rather than `something was logged`."""
         with test_support.captured_log() as log:
             debug.event("test", "an internal detail")
         self.assertEqual([], log.messages())

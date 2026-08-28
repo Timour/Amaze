@@ -736,7 +736,7 @@ class TheSubtitleIsTheNAMEsSize(unittest.TestCase):
 
 
 class TheFontCacheTellsFontsApart(unittest.TestCase):
-    """`fonts_for` hands back a SHARED font, so two option fonts that differ in anything Qt draws by - size, weight, style, family - must land on different cache entries, or a caller paints in the font of whoever asked first. Watch the PIXEL-sized cases especially: they all answer `pointSizeF() == -1`, so nothing about their size survives into a key built from point size ▸r/font-sizing"""
+    """`fonts_for` hands back a SHARED font, so two option fonts that differ in anything Qt draws by - size, weight, style, family - must land on different cache entries, or a caller paints in the font cached for the first one. Watch the PIXEL-sized cases especially: they all answer `pointSizeF() == -1`, so nothing about their size survives into a key built from point size ▸r/font-sizing"""
 
     def _isolated_cache(self):
         delegates.AssetItemDelegate._font_cache.clear()
