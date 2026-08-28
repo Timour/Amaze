@@ -433,33 +433,35 @@ path lives under it; otherwise the path stays absolute.
 
 ## Tile icons
 
-Not everything has a picture. A LOP setup, a DOP network, a snippet —
-there is nothing to render, and a grid of identical fallback tiles tells
-you nothing about what is in it.
+A LOP setup, a DOP network and a snippet have nothing to render, so
+they fall back to the node icon. A tile icon replaces that with a
+symbol and a colour of your choosing.
 
-Right-click any tile ▸ **Customize**. The **Custom Icon** switch is the
-door: off, the tile keeps its own thumbnail; on, pick one of 287
-Feather icons on a background colour — four presets, or click the
-colour chip beside **Custom Color** to pick any colour. The preview
-shows the actual tile, because the icon and the colour only make sense
-together. **Light Icon** switches the symbol between dark and light,
-for when the background needs it. The dialog also carries the asset's
-**Name**, its **Category**, and its **Tags** — on a multi-selection,
-Category moves every selected tile and Tags ADDS to what each tile
-already has. **Apply** commits and stays open, **Accept** commits and
-closes — closing the window any other way changes nothing.
+Right-click any tile ▸ **Customize**.
 
-- Works on **every section that has tiles** — Material, Node, Code and
+<img src="docs/images/dialog_customize.png" width="460">
+
+The **Custom Icon** switch is the door: off, the tile keeps its own
+thumbnail; on, pick one of 287 Feather icons on a background colour —
+four presets, or the colour chip beside **Custom Color** for any other.
+The preview shows the finished tile. **Light Icon** switches the symbol
+between dark and light.
+
+The dialog also carries the asset's **Name**, **Category** and
+**Tags**. On a multi-selection, Category moves every selected tile and
+Tags adds to what each tile already has. **Apply** commits and stays
+open; **Accept** commits and closes. Closing the window any other way
+changes nothing.
+
+- Works on every section that has tiles — Material, Node, Code and
   File, scenes included. Color keeps its own swatches.
-- Applies to the **whole selection**, so twelve LOP setups can take one
-  icon in one go.
-- **Nothing is overwritten.** A tile with a rendered thumbnail keeps
-  it; the icon sits beside it, and switching **Custom Icon** off
-  brings the render back.
-- Your choice travels with the library — it is stored on the asset
-  (or, for File rows, in an `icons.json` beside the index).
+- Applies to the whole selection, so twelve LOP setups take one icon in
+  one go.
+- A tile with a rendered thumbnail keeps it. The icon sits beside it,
+  and switching **Custom Icon** off brings the render back.
+- Your choice is stored with the library and travels with it.
 
-The line weight is in Preferences ▸ Look.
+The line weight is in Preferences ▸ Look ▸ **Tile Icon Line**.
 
 ---
 
@@ -470,51 +472,54 @@ that category paints the strip under its thumbnail — the one carrying
 the name and type — in that colour, and the category's own sidebar row
 gets a matching bar down its left edge.
 
-It is a way to see structure at a glance: which of these are metals,
-which are yours, which came from a scan. **Clear Color** puts the
-normal dark strip back.
+In [list mode](#the-panel-at-a-glance) the Category column takes the
+same colour. **Clear Color** puts the normal dark strip back.
 
 The name and type text flips between dark and light automatically, so
 any colour stays readable. Renaming a category carries its colour
 across; deleting one takes the colour with it.
 
-Categories are one-per-asset, which is what makes this unambiguous —
-use tags when something belongs in several places at once.
+Categories are one per asset. Use tags where something belongs in
+several places at once.
+
+**Export Category** on the same menu writes the whole category out as a
+[package](#packages).
 
 ---
 
 ## Comments
 
-The Comments chip in the toolbar (between the Renderer and grid
-buttons) opens the **Comments pane**: a page docked beside the grid,
-one page per asset. The chip stays the toolbar's blue whether the pane
-is open or not — the state is carried by its background, not by the
-glyph changing colour.
+The <img src="scripts/python/amaze/ui/icon_comments.svg" width="16">
+**Comments** button in the toolbar, between Online and Grid/List, opens
+the **Comments pane**: a page docked beside the grid, one page per
+asset. The chip stays the toolbar's blue whether the pane is open or
+not; the state is carried by its background.
 
-The page is one flowing document. Select a tile and write; click
-**+** for what you can add at your cursor:
+<img src="docs/images/comments_pane.png" width="820">
+
+The page is one flowing document. Select a tile and write. Click **+**
+for what you can add at your cursor:
 
 - **Bullet point** — a framed line you type into, and keep writing
   above or below it.
-- **Image** — pick a picture and it is copied into your library, at
-  `img/comments/`, so it travels with the library rather than pointing
-  at wherever you found it. It is scaled to the width of the pane, and
-  typing continues on the line below it.
+- **Image** — pick a picture and it is copied into your library, so it
+  travels with the library rather than pointing at wherever you found
+  it. It is scaled to the width of the pane, and typing continues on
+  the line below.
 
-Enter inside a to-do adds
-another; Enter on an empty one returns to plain text; clicking a
-to-do's marker checks it off (struck through). Emptying a to-do's
-text removes it. Everything saves as you type.
+Enter inside a to-do adds another; Enter on an empty one returns to
+plain text; clicking a to-do's marker checks it off and strikes it
+through. Emptying a to-do's text removes it. Everything saves as you
+type.
 
 To take a to-do apart, backspace at the start of its line: the frame
 becomes ordinary text and the next backspace eats the words. Deleting
 across the line above or below a to-do simply joins the lines — the
 frame keeps its marker.
 
-Comments live **in the library** (`notes.json` beside the index, a
-filename that kept its old spelling), so they
-travel across machines and survive a folder being removed and
-re-added. A tile that carries a comment shows the
+Comments are stored **in the library**, so they travel across machines
+and survive a folder being removed and re-added. A tile that carries a
+comment shows the
 <img src="scripts/python/amaze/ui/badge_comment_75.svg" width="14"> badge in
 its lower-right corner; click it to open this pane on that asset.
 
