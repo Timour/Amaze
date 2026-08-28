@@ -1,10 +1,8 @@
 #!/bin/bash
-# Sourced, never executed: one place that knows where Houdini is and how
-# to mirror a directory, for every caller that needs either. The lookup
-# was written four times, each a macOS-only glob, so a machine matching
-# none of them silently had no suite, no ship step and no push gate
-# (practice.md > A LOOKUP WRITTEN FOUR TIMES IS A PLATFORM SILENTLY
-# UNGATED, and research.md > Windows for every platform fact below).
+# SOURCED, never executed: the one place that knows where Houdini is and
+# how to mirror a directory. Every caller sources this - a private copy
+# is a platform that silently has no suite, no ship step and no gate.
+# Prose archived: AmazeNotes/code-prose.md ▸ houdini-env.sh
 
 # Git Bash and MSYS2 report MINGW64_NT-*; Cygwin reports CYGWIN_NT-*.
 amaze_is_windows() {
@@ -14,10 +12,9 @@ amaze_is_windows() {
     esac
 }
 
-# Every install, oldest first, so `tail -1` is the newest and
-# --all-versions visits them in order. A directory counts only if it
-# holds bin/hython, never by name, and the loop replaces `ls -d <glob>`,
-# which exits non-zero on no match and kills the caller under pipefail.
+# Every install, oldest first, so `tail -1` is the newest. Counted by
+# holding bin/hython, never by name. NOT `ls -d <glob>` - that exits
+# non-zero on no match and kills the caller under pipefail.
 amaze_houdini_roots() {
     # zsh ABORTS on an unmatched glob where bash carries it as a literal, and this file is sourced from interactive zsh too - nonomatch, function-scoped, gives every shell the bash reading (measured 2026-08-21: `/opt/hfs*` killed the sourcing shell on a Mac).
     [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
@@ -34,13 +31,10 @@ amaze_houdini_roots() {
             if [ -x "$d/bin/hython" ]; then found="$found$d"$'\t'"$d"$'\n'; fi
         done
         # Linux: /opt/hfsMAJOR.MINOR is SideFX's symlink to the current
-        # build, so the bare glob matches every install twice - keep the
-        # symlink (a hard-coded build number goes stale, INSTALL.md 0d)
-        # and drop any real directory a kept symlink already resolves to.
-        # Each line is "sortkey<TAB>path", and a kept symlink's key is
-        # the BUILD it resolves to: keyed on itself, hfs22.0 version-
-        # sorts below every real point-build beside it, handing tail -1
-        # a stale leftover instead of the current build.
+        # build, so the glob matches every install twice. Keep the
+        # symlink, drop the directory it resolves to, and KEY IT ON THE
+        # BUILD - keyed on itself, hfs22.0 sorts below every point-build
+        # beside it and tail -1 answers a stale leftover.
         local resolved covered=$'\n'
         for d in /opt/hfs*; do
             if [ -L "$d" ] && [ -x "$d/bin/hython" ]; then
@@ -75,12 +69,10 @@ amaze_hython() {
     fi
 }
 
-# Package files that may define $AMAZE, most authoritative LAST and ONE
-# list for every platform - a dev machine is any machine, and the per-OS
-# branches put the Linux pref-dir glob inside the WINDOWS branch, so
-# Linux resolved nothing and every sync there needed $AMAZE by hand
-# (practice.md > p/linux-tooling-blind). The globs that miss on a
-# platform simply match no file: Documents is the Windows stray,
+# Package files that may define $AMAZE, most authoritative LAST, and ONE
+# list for every platform - per-OS branches are how the Linux pref-dir
+# glob ended up inside the Windows branch. A glob that misses simply
+# matches no file: Documents is the Windows stray,
 # ~/houdini* is the pref dir on BOTH Windows (via Git Bash $HOME) and
 # Linux and outranks it, and the /Applications and ~/Library pair is
 # macOS - ~/Library goes LAST because it is the only glob that can

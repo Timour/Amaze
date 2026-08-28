@@ -89,10 +89,9 @@ fi
 # live Houdini reads, beside real libraries. Committed, not pushed:
 # run-tests.sh syncs before it tests.
 #
-# Check BY CONTENT (`diff HEAD`), never `git status` - status compares
-# stat first and once listed 208 modified files with an empty diff, so
-# it would refuse a clean repo. Untracked files are asked for
-# separately and do count.
+# BY CONTENT (`diff HEAD`), never `git status` - status compares stat
+# first and will list modified files with an empty diff, refusing a
+# clean repo. Untracked files are asked for separately and do count.
 #
 # Only a SCRATCH destination is exempt; the real path has no bypass.
 if [ -z "$scratch" ] \
@@ -111,10 +110,7 @@ if [ -z "$scratch" ] \
         exit 1
     fi
 elif [ -n "$scratch" ]; then
-    # The scratch exemption above, said out loud. This fires on EVERY
-    # suite run, and it used to print the zip-download line below -
-    # naming a reason that is false inside a git repo, which is where
-    # the suite always runs.
+    # The scratch exemption, said out loud - it fires on every suite run.
     echo "sync-install: scratch install, so the commit check does not apply" >&2
 else
     # A zip download has no .git. Say so rather than claiming a check
@@ -126,17 +122,11 @@ amaze_mirror "$repo/scripts" "$install/scripts" '__pycache__'
 amaze_mirror "$repo/python_panels" "$install/python_panels"
 amaze_mirror "$repo/toolbar" "$install/toolbar"
 cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
-# BYTECODE: purge, then rebuild HASH-VALIDATED (PEP 552).
-#
-# A synced .py can arrive with a preserved or older mtime, so a
-# TIMESTAMP-validated .pyc looks current while holding the previous
-# version - it crashed the panel with no interface. Hash validation
-# checks the source's content, so a lying mtime proves nothing.
-#
-# --force overwrites any timestamp-validated .pyc left from before, the
-# one file that could still lie. Compile with the SAME interpreter
-# Houdini runs, or the magic number mismatches and every import
-# recompiles anyway.
+# BYTECODE: purge, then rebuild HASH-VALIDATED (PEP 552). A synced .py
+# arrives with a preserved mtime, so a TIMESTAMP-validated .pyc looks
+# current while holding the previous version. --force overwrites any
+# timestamp-validated .pyc left from before. Compile with the SAME
+# interpreter Houdini runs or the magic number mismatches.
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
 _hython=""
 if [ -n "${HFS:-}" ]; then
@@ -174,15 +164,10 @@ else
     exit 1
 fi
 
-# VERIFY WHAT WAS JUST SHIPPED - this is the path that reaches a live
-# Houdini, so a broken build would sit here until someone opened the
-# panel.
-#
-# It CANNOT refuse before syncing: the suite reads $AMAZE, so the tests
-# only mean anything after. Sync, test, then say loudly what happened
-# and name the command that undoes it.
-#
-# run-tests.sh sets AMAZE_SYNC_NO_VERIFY to break the recursion.
+# VERIFY WHAT WAS JUST SHIPPED. It CANNOT refuse before syncing - the
+# suite reads $AMAZE, so the tests only mean anything after. Sync, test,
+# then name the command that undoes it. run-tests.sh sets
+# AMAZE_SYNC_NO_VERIFY to break the recursion.
 if [ -n "${AMAZE_SYNC_NO_VERIFY:-}" ]; then
     exit 0
 fi

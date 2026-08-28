@@ -1,31 +1,20 @@
 #!/bin/bash
-# Runs the hython test modules. Machine-agnostic: point $HFS at your
-# Houdini install (or run from a shell where houdini_setup already ran),
-# and run this script from anywhere - it locates the tests next to
-# itself.
-#
-#   HFS=/opt/hfs22.0 ./start_test.sh
+# Runs the hython test modules from anywhere.  HFS=/opt/hfs22.0 ./start_test.sh
+# Prose archived: AmazeNotes/code-prose.md ▸ start_test.sh
 
 set -e
 
-# Resolved BEFORE any cd: with a relative invocation, dirname "$0" is
-# only meaningful from the original working directory.
+# BEFORE any cd - dirname "$0" only means anything from the original cwd.
 tests_dir="$(cd "$(dirname "$0")" && pwd)"
 
-# Where Houdini is. Shared with run-tests.sh, sync-install.sh and the
-# pre-push hook - this file's own comment below records that three
-# callers had each grown a private copy of the lookup.
 # shellcheck source=../../../../tools/houdini-env.sh
 . "$tests_dir/../../../../tools/houdini-env.sh"
 
-# ARGUMENTS ARE CHECKED FIRST, before Houdini is looked for, so a typo
-# costs nothing instead of an interpreter start.
-#
-# NAMED MODULES RUN THROUGH THE FRONT DOOR. Do not refuse an argument
-# and send the user to a bare `hython -m unittest` - that skips the
-# sync, the isolated AMAZE_LOG_DIR, the shell lint and the log-leak
-# check. And a NAME THAT DOES NOT EXIST IS AN ERROR, never an empty
-# run: a subset that silently shrinks reads as a run that passed.
+# ARGUMENTS FIRST, before Houdini is looked for, so a typo costs no
+# interpreter start. NEVER refuse a named module and send the caller to a
+# bare `hython -m unittest`: that skips the sync, the isolated log dir,
+# the lint and the leak check. An unknown name is an ERROR, never an
+# empty run - a subset that silently shrinks reads as a run that passed.
 isolated=0
 if [ "${1:-}" = "--isolated" ]; then
     isolated=1
@@ -35,9 +24,7 @@ wanted_modules=""
 if [ $# -gt 0 ]; then
     missing=""
     for module in "$@"; do
-        # `[ ] || assign` is errexit-safe mid-script either way
-        # (research.md > Shell / set -e): the list ends 0 whether the
-        # file is there or the assignment runs.
+        # `[ ] || assign` ends 0 either way, so errexit-safe. ▸r/shell-errexit
         [ -f "$tests_dir/$module.py" ] || missing="$missing $module"
     done
     if [ -n "$missing" ]; then
@@ -48,31 +35,21 @@ if [ $# -gt 0 ]; then
     wanted_modules="$*"
 fi
 
-# The suite gets its OWN debug log. debug.py reads $AMAZE_LOG_DIR once
-# at import, so exporting it here isolates every module in the run -
-# including any that forgets to import test_support. Needed because the
-# crash tier records tracebacks with Debug Mode OFF: tests that raise on
-# purpose were writing genuine-looking crash records into the user's
-# real log.
-# An explicit template, not `-t <prefix>`: `-t` names a prefix to BSD
-# mktemp and a deprecated template to GNU's, which refuses a template
-# carrying no X characters - so the macOS form died on Git Bash with a
-# `too few X` error before a single test ran. A full path ending in X
-# characters is the one spelling both accept.
+# The suite gets its OWN debug log, or tests that raise on purpose write
+# genuine-looking crash records into the real one. `debug.py` reads this
+# once at import, so exporting it here reaches every module.
+# A FULL TEMPLATE, never `-t <prefix>`: `-t` is a prefix to BSD mktemp and
+# a deprecated template to GNU's, which refuses one carrying no X.
 AMAZE_LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/amaze_test_log.XXXXXX")"
 export AMAZE_LOG_DIR
 trap 'rm -rf "$AMAZE_LOG_DIR"' EXIT
 
-# THE SANDBOX. Armed, hostos.write_json_atomic refuses any path outside
-# a temporary directory, loudly. test_no_live_data asserts the same
-# thing afterwards; this stops it BEFORE the write.
+# THE SANDBOX: armed, every JSON write outside a temp dir is refused
+# BEFORE it lands, rather than asserted after.
 export AMAZE_SANDBOX=1
 
-# Where the real log ENDS before the run. check_log_leak.py parses only
-# what gets appended after this point, and attributes each record to the
-# process that wrote it - so an open Houdini logging while the suite runs
-# is not mistaken for a leak. Pure stdlib, no Houdini needed (it is not
-# set up yet at this point).
+# Where the real log ENDS before the run, so the leak check reads only
+# what this run appended. Stdlib only - Houdini is not set up yet here.
 python="$(amaze_python || echo python3)"
 real_log="$("$python" "$tests_dir/check_log_leak.py" --path 2>/dev/null || true)"
 before=0
@@ -80,17 +57,12 @@ if [ -n "$real_log" ] && [ -f "$real_log" ]; then
     before="$(wc -c <"$real_log" | tr -d ' ')"
 fi
 
-# Find Houdini rather than demanding the caller export $HFS. Three
-# separate callers had grown their own copy of this; a git hook and a
-# sync script inherit almost no environment, so "set HFS first" is a
-# rule that gets forgotten exactly when it matters.
+# Find Houdini rather than demanding $HFS - a hook or a sync script
+# inherits almost no environment.
 if [ -n "${AMAZE_HOUDINI:-}" ]; then
-    # An explicit install wins over anything on PATH, so a caller can
-    # pin the version the suite runs against.
     HFS="$AMAZE_HOUDINI"
-    # A drive-letter spelling cannot ride in bash PATH - PATH splits on
-    # the colon, so `C:/...` shatters into two dead entries and hython
-    # is silently not found. cygpath makes either spelling safe.
+    # A DRIVE LETTER CANNOT RIDE IN PATH: it splits on the colon, so
+    # `C:/...` shatters into two dead entries and hython vanishes.
     if amaze_is_windows && command -v cygpath >/dev/null 2>&1; then
         HFS="$(cygpath -u "$HFS")"
     fi
@@ -121,23 +93,17 @@ fi
 
 cd "$tests_dir"
 
-# NAME the environment in the output. The runner picks the NEWEST
-# installed Houdini, so updating Houdini silently moves the gate - and
-# the bugs here are version-specific, so a green result has to say which
-# host produced it.
-#
-# AMAZE_HOUDINI=/path/to/Resources pins one install;
-# tools/run-tests.sh --all-versions runs every one in turn.
+# NAME the host: the newest install wins, so updating Houdini silently
+# moves the gate and these bugs are version-specific. $AMAZE_HOUDINI pins
+# one; `run-tests.sh --all-versions` runs every one in turn.
 hython -c 'import hou, sys; print("suite host: Houdini %s, Python %s"
           % (hou.applicationVersionString(), sys.version.split()[0]))' \
     2>/dev/null | grep "suite host:" || \
     echo "suite host: UNKNOWN - hython could not report its version"
 
 status=0
-# Lint the shell first. shellcheck catches NO form of the silent
-# `set -e` abort, so it is a secondary net for quoting and
-# word-splitting - test_shell_gates.py and the DONE markers are the
-# real defence.
+# A secondary net only: shellcheck catches NO form of the silent `set -e`
+# abort. test_shell_gates.py and the DONE markers are the real defence.
 if command -v shellcheck >/dev/null 2>&1; then
     if ! shellcheck -S warning \
             "$tests_dir/start_test.sh" \
@@ -175,39 +141,27 @@ test_device_pixmap test_switch_rereads test_upgrade_tool \
 test_fixture_guard test_packages test_texstore test_event_pumps \
 test_bug_report"
 
-# Vulkan viewport multithreading OFF for the suite, on every platform.
-# Ten panel modules crash 10/10 with it on - Houdini's own heap misuse
-# inside DM_VPortAgent::setupGeometry, not any GPU's, since NVIDIA, AMD
-# and SwiftShader all crash and all pass with it off. macOS never met
-# it because SideFX default the threading on for Linux and Windows
-# only. Suite-only: a live Houdini keeps its own defaults.
+# Vulkan viewport multithreading OFF, every platform: ten panel modules
+# crash 10/10 with it on. Suite-only - a live Houdini keeps its defaults.
 # ▸r/vulkan-threading
 export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
 echo "suite: viewport draw single-threaded for this run" \
      "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
 
-# ONE hython process by default - separate launches cost almost all
-# their time starting Houdini again, which is what makes it affordable
-# to gate every sync and every push on the FULL suite.
-#
-# --isolated restores the per-module run. Keep it: the shared run is
-# strictly weaker isolation, so reach for it on a failure you suspect
-# is cross-module pollution, and re-check it before a release.
+# ONE hython process by default, which is what makes gating every sync
+# and push on the FULL suite affordable. `--isolated` restores the
+# per-module run - weaker isolation, so reach for it on a failure you
+# suspect is cross-module pollution, and re-check before a release.
 if [ -n "$wanted_modules" ]; then
     run_modules="$wanted_modules"
-    # SAY it is a subset, every time. Both gates - pre-push and
-    # sync-install - call with NO arguments, so a subset can never BE
-    # the gate; this is so a green one is never mistaken for it.
     echo "SUBSET RUN: NOT the full gate - run with no arguments before"
     echo "pushing.  Modules: $run_modules"
 else
     run_modules="$MODULES"
 fi
 
-# run_suite.py, not `-m unittest`: same runner and module names, but it
-# leaves via os._exit once the result is in hand. Without that, a helper
-# wedged in uninterruptible I/O makes PySide's shutdown wait on it and
-# the run hangs for twenty minutes after printing OK.
+# `run_suite.py`, never `-m unittest`: it owns its exit, so a helper
+# wedged in uninterruptible I/O cannot hang the run after printing OK.
 if [ "$isolated" = "1" ]; then
     for module in $run_modules; do
         echo "---------------------------"

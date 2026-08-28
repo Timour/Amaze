@@ -1,26 +1,18 @@
 #!/bin/bash
-# Run the whole suite from ANY directory, against the DEV tree —
-# PROVE, THEN SHIP.
-#
-# The suite runs against a SCRATCH install and the live sync happens
-# only after a full GREEN run, so a red build is never live. Keep that
-# order.
-#
-#   - the scratch sync reuses sync-install's scratch mechanism, so a
-#     dirty tree can be TESTED while the live promote still refuses it;
-#   - inside hython the package file OVERRIDES an exported $AMAZE, so
-#     the suite reaches scratch by SKIPPING the package
-#     (HOUDINI_PACKAGE_SKIPLIST) and rebuilding its two effects by
-#     hand: $AMAZE and the HOUDINI_PATH entry;
-#   - a SUBSET or module run never promotes.
+# Runs the whole suite from any directory against the dev tree.
+# PROVE, THEN SHIP - the suite runs against a SCRATCH install and the
+# live sync happens only after a full green run. KEEP THAT ORDER.
+# Inside hython the package file OVERRIDES an exported $AMAZE, so
+# reaching scratch means skipping the package and rebuilding its two
+# effects by hand. A subset or module run never promotes.
+# Prose archived: AmazeNotes/code-prose.md ▸ run-tests.sh
 set -euo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/houdini-env.sh
 . "$repo/tools/houdini-env.sh"
 
-# The live target, resolved BEFORE $AMAZE is repointed at scratch —
-# and the commit the suite is about to prove. Promote compares against
-# it, so a commit landing mid-run can never ship untested.
+# Resolved BEFORE $AMAZE is repointed at scratch, with the commit the
+# suite is about to prove - so a commit landing mid-run cannot ship.
 live_amaze="${AMAZE:-}"
 gate_head="$(git -C "$repo" rev-parse HEAD 2>/dev/null || echo none)"
 
@@ -30,12 +22,10 @@ AMAZE_SYNC_NO_VERIFY=1 AMAZE_SCRATCH_INSTALL="$scratch" \
     "$repo/tools/sync-install.sh" >/dev/null
 export AMAZE="$scratch"
 export HOUDINI_PACKAGE_SKIPLIST="Amaze"
-# The whole run is headless, decided HERE rather than by whichever
-# module happens to import first: the first QApplication built picks
-# the Qt platform for the process, and on the native one the host
-# style answers different fonts and geometry per widget class, so a
-# subset led by an unguarded module failed asserts in OTHER modules
-# (twice - practice.md > first-app-picks-the-platform).
+# Headless decided HERE, not by whichever module imports first: the
+# first QApplication picks the Qt platform for the whole process, and
+# the native one answers different fonts and geometry, so an unguarded
+# module fails asserts in OTHER modules. ▸p/first-app-picks-the-platform
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 # `;` is portable; `:` is Unix-only and on Windows swallows the whole
 # string as one entry, so `&` never expands and `$HH` leaves the path
@@ -66,26 +56,21 @@ promote() {
     return 1
 }
 
-# --all-versions: run the whole suite against EVERY installed Houdini,
-# not just the newest. The project supports two majors, its bugs have
-# been version-specific (a viewport pick that is correct on one build
-# and 279px out on another), and the default single run silently
-# follows whichever install is newest - so a green suite can mean the
-# other version was never executed at all.
+# --all-versions: EVERY installed Houdini, not just the newest. Bugs
+# here are version-specific and the default run follows whichever
+# install is newest, so a green suite can mean the other major never ran.
 if [ "${1:-}" = "--all-versions" ]; then
     shift
     overall=0
     found=0
-    # THE DEAD-COVER CHECK RIDES ALONG. Each run records what it
-    # SKIPPED and the sets are intersected: a test skipped on EVERY host
-    # protects nothing while still reading as coverage. Only this branch
-    # can ask - one run cannot tell a correct skip from a dead one.
+    # DEAD COVER: skips are intersected across hosts, because a test
+    # skipped on EVERY host protects nothing while reading as coverage.
+    # Only this branch can ask - one run cannot tell the two apart.
     reports_dir="$(mktemp -d "${TMPDIR:-/tmp}/amaze_skips.XXXXXX")"
     trap 'rm -rf "$reports_dir"' EXIT
     reports=""
-    # A SUBSET RUN MUST NOT ANSWER THIS. Intersecting two partial runs
-    # says "nothing dead" about the modules that were never loaded,
-    # which is the false green this whole check exists to remove.
+    # A SUBSET MUST NOT ANSWER THIS: intersecting two partial runs says
+    # "nothing dead" about modules that were never loaded.
     full_run=1
     [ $# -eq 0 ] || full_run=0
     while IFS= read -r res; do
@@ -109,13 +94,11 @@ if [ "${1:-}" = "--all-versions" ]; then
     elif [ "$found" -lt 2 ]; then
         echo "  dead-cover check SKIPPED - only one Houdini installed"
     else
-        # Through amaze_python, never the shebang: Windows has no
-        # executable bit to honour, and start_test.sh already resolves
-        # its own helpers this way.
+        # Through amaze_python, never the shebang - Windows has no
+        # executable bit to honour.
         checker_python="$(amaze_python || echo python3)"
-        # Unquoted on purpose: $reports is a space-separated list this
-        # script built from paths it made itself, under a mktemp dir
-        # with no spaces in it.
+        # Unquoted on purpose - a space-separated list of paths this
+        # script built itself, under a mktemp dir with no spaces.
         # shellcheck disable=SC2086
         "$checker_python" \
             "$repo/scripts/python/amaze/tests/check_dead_cover.py" $reports \
