@@ -568,52 +568,81 @@ rather than silently doing nothing.
 ## Preferences
 
 The <img src="scripts/python/amaze/ui/icon_library.svg" width="16">
-gear button. It is a floating window, not a modal — leave it open while
-you work.
+gear button opens it. It is a floating window, not a modal, so it can
+stay open while you work. Five tabs.
 
-**Library** — library path, **Clean Up Library**, **Reload Library**,
-**Open Library Folder**; cache path and **Delete Local Cache**.
+### Library
 
-**User** — who you are in this library. Your favorites, your File
-folders and the versions you save are kept per user, so picking
-yourself on another computer gives you the same things back. The
-dropdown switches users, **Rename** changes only the name,
-**Create a new user...** adds one and switches to them, and
-**Delete** removes a user together with their favorites and
-registered folders everywhere the library syncs — it asks first, and
-a machine still signed in as that user is asked who they are the next
-time it opens.
+<img src="docs/images/prefs_library.png" width="440">
 
-> Settings that govern the library itself — the render settings and
-> renderer choices, conversion and download throughput, and how paths
-> are written — are stored **with the library** and shared by everyone
-> who opens it: change the thumbnail samples on one computer and the
-> other answers the same. What is yours on this machine — view mode,
-> icon sizes, panel widths, which tabs show — is stored per person
-> where the OS keeps preferences (`~/Library/Preferences/Amaze` on
-> macOS, `%APPDATA%\Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on
-> Linux), not in the plugin folder, so updating or reinstalling Amaze
-> never touches it. If the library is unreachable, Amaze keeps
-> working on the last values it saw.
+**Library Path** and the `...` button beside it choose the library.
+**Clean Up Library**, **Reload Library** and **Open Library Folder**
+act on it. **Material Versions** turns
+[versions](#versions) on and off.
 
-**Render** — thumbnail resolution, samples (Redshift and Karma
-separately), RAM cache, geometry shading mode and
-background, **Render Thumbs on Import**; then texture conversion
-threads, and the download resolution and parallel downloads used by the
-online sources.
+**User** is who you are in this library. Favorites, File folders and
+the versions you save are kept per user, so picking yourself on another
+computer gives you the same things back. The dropdown switches users,
+**Rename** changes the name, **Create a new user...** adds one and
+switches to them, and **Delete** removes a user with their favorites
+and registered folders everywhere the library syncs. It asks first, and
+a machine still signed in as that user is asked who they are next time
+it opens.
 
-**Show/Hide** — which renderers and which sections appear at all.
+**Cache Path** and **Delete Local Cache** govern the thumbnail cache on
+this machine.
 
-**Look** — counts on categories, hide empty categories, **Show
-Unknown Files** (the File section's system-icon rows), **Write Paths
-As** ($HOME / $JOB / $HIP / Absolute), **Tile Icon Line** (Thin or
-Feather's own Regular), scroll speed.
+### Render
 
-**About** — credits and licences, updates, and the debug controls:
-**Debug Mode**, **Open Log**, **Clear Log**. **Report a Bug...** opens
-the Amaze bug page in your browser with your Amaze, Houdini and OS
-versions already filled in; nothing is sent until you press Submit
-there.
+<img src="docs/images/prefs_render.png" width="440">
+
+**RenderSize**, **Samples (Redshift)** and **Samples (Karma)**,
+**RAM Cache (MB)**, **Geometry Shading**, **Geometry Background** and
+**Render Thumbs on Import**. Below the divider, **Conversion Threads**
+for texture conversion, then **Download Resolution** and **Parallel
+Downloads** for the online sources.
+
+### Show/Hide
+
+<img src="docs/images/prefs_showhide.png" width="440">
+
+Which renderers appear in the [Filter](#the-panel-at-a-glance) menu,
+and which sections appear at all.
+
+### Look
+
+<img src="docs/images/prefs_look.png" width="440">
+
+**Show Counts on Categories**, **Hide Empty Categories**, **All show
+unknown files** (the File section's system-icon rows), **Write Paths
+As**, **Tile Icon Line** (Thin, or Feather's own Regular) and **Scroll
+Speed (%)**.
+
+### About
+
+<img src="docs/images/prefs_about.png" width="440">
+
+Credits and licences. **Check for Updates** asks the release page
+whether a newer Amaze exists; where there is one, **Install Update**
+appears and puts it in place. **Report a Bug...** opens the Amaze bug
+page in your browser with your Amaze, Houdini and OS versions already
+filled in; nothing is sent until you press Submit there.
+
+Then the debug controls — **Debug Mode**, **Open Log**, **Save Log...**
+and **Clear Log** — and **Test Library**, which points Amaze at a
+throwaway library in the folder named below it. Your real Library Path,
+Cache Path and registered folders come back when you switch it off.
+
+> **Where settings are kept.** The render settings and renderer
+> choices, conversion and download throughput, and how paths are
+> written are stored **with the library** and shared by everyone who
+> opens it: change the thumbnail samples on one computer and the other
+> answers the same. What is yours on this machine — view mode, icon
+> sizes, panel widths, which tabs show — is stored where the OS keeps
+> preferences (`~/Library/Preferences/Amaze` on macOS,
+> `%APPDATA%\Amaze` on Windows, `$XDG_CONFIG_HOME/Amaze` on Linux),
+> which updates and reinstalls leave alone. Where the library is
+> unreachable, Amaze works on the last values it saw.
 
 ---
 
