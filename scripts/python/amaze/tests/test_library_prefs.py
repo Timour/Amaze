@@ -1,15 +1,4 @@
-"""The Shared Settings store: `prefs.json`, everyone's answer.
-
-ROADMAP line 22's library-wide half, landed with the switch OFF:
-nothing in the product reads this store yet, so these tests are the
-only caller and must pin the contract the flip commits will lean on.
-
-THE ONE SHAPE RULE WORTH A FILE: a value is a RECORD,
-`{"value": <scalar>}`, never a bare scalar - the engine reads a falsy
-normalise result as the delete contract, so a bare False, 0 or ""
-would read back as absent, and all three are legitimate settings.
-The round-trip tests below are the proof that survives; sabotage the
-wrap and they go red.
+"""The Shared Settings store, `prefs.json`. THE SHAPE RULE: a value is a RECORD, never a bare scalar - the engine reads a falsy normalise result as the delete contract, so a bare False, 0 or empty string reads back as absent, and all three are legitimate settings. ▸archive/test_library_prefs.py
 """
 
 import json
@@ -28,9 +17,7 @@ from amaze.tests import test_support               # noqa: E402,F401
 
 
 class _Prefs:
-    """Only what a store reads: where the library is, and WHO this is.
-    The user rides along although THIS store is untagged - a stub
-    without one would pass exactly until someone tags the spec."""
+    """Only what a store reads - where the library is and WHO this is. The user rides along although this store is untagged, or the stub passes exactly until someone tags the spec."""
 
     def __init__(self, directory, library_user=""):
         self.dir = directory
@@ -76,13 +63,7 @@ class TheStoreIsDeclared(SharedSettingsCase):
             "move would rewrite it")
 
     def test_no_two_stores_share_an_alert_key(self):
-        """Alert keys are once-per-session, so a shared key means one
-        store's report swallows the other's.
-
-        RE-KEYED 2026-08-14: settings.json is a registered store now
-        rather than a file persistence.py guarded by hand, so the
-        near-collision this pinned is expressible directly - both
-        declarations exist, and they must differ."""
+        """Alert keys are once-per-session, so a shared key means one store's report swallows the other's."""
         keys = [spec.alert_key for spec in keyed_store.stores()]
         self.assertEqual(len(keys), len(set(keys)),
                          "two stores share an alert key")
@@ -94,15 +75,12 @@ class TheStoreIsDeclared(SharedSettingsCase):
 
 
 class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):
-    """The reason values are records. Every entry here is a legitimate
-    setting somebody can choose, and every one is falsy."""
+    """The reason values are records - every entry here is a legitimate setting, and every one is falsy."""
 
     CASES = (False, 0, "", 0.0)
 
     def test_each_falsy_scalar_reads_back_exactly(self):
-        """One key per case - reusing one key would meet the engine's
-        equal-value skip (0 == False), which the test below pins as
-        its own fact."""
+        """One key per case - reusing one meets the engine's equal-value skip, since 0 equals False."""
         for probe in self.CASES:
             with self.subTest(value=probe):
                 key = "probe-%s" % type(probe).__name__
@@ -116,11 +94,7 @@ class FalsyScalarsSurviveTheRoundTrip(SharedSettingsCase):
                                  "the delete contract ate it")
 
     def test_an_equal_value_rewrite_keeps_the_first_type(self):
-        """Engine behaviour, pinned so a change to it is loud: set()
-        answers UNCHANGED for a value that compares equal, and 0 ==
-        False in Python, so the first-written type wins. Harmless for
-        settings - every consumer casts through the prefs setters -
-        and worth a red test the day that stops being true."""
+        """Engine behaviour pinned so a change is loud - `set()` answers UNCHANGED for an equal value, and 0 equals False, so the first-written type wins."""
         library_prefs.set_value(self.prefs, "flip", False)
         library_prefs.set_value(self.prefs, "flip", 0)
         got = library_prefs.value_of(self.prefs, "flip", "MISSING")
@@ -149,9 +123,7 @@ class TheDoorIsTyped(SharedSettingsCase):
             {"rendersize": 512}, library_prefs.all_values(self.prefs))
 
     def test_a_non_scalar_raises_at_the_door(self):
-        """The normaliser would junk it and the write would report
-        success for a value that reads back absent - so the door
-        refuses loudly instead."""
+        """The normaliser would junk it and the write would report success for a value that reads back absent, so the door refuses loudly."""
         for junk in ({"a": 1}, [1, 2], None):
             with self.subTest(value=junk):
                 with self.assertRaises(TypeError):
@@ -179,11 +151,7 @@ class ClearIsALoudDelete(SharedSettingsCase):
 
 
 class ANewerBuildsRecordSurvives(SharedSettingsCase):
-    """A record whose "value" this build cannot read is FOREIGN - held
-    aside verbatim and written back, never stripped. An older build
-    must not erase what a newer one wrote (the engine's own contract,
-    pinned here because this store is where mixed builds meet first:
-    every machine that opens the library writes it)."""
+    """A record this build cannot read is FOREIGN - held aside verbatim and written back, never stripped, because an older build must not erase what a newer one wrote."""
 
     def test_the_unreadable_record_is_written_back_verbatim(self):
         os.makedirs(self.dir, exist_ok=True)
@@ -220,8 +188,7 @@ class ANewerBuildsRecordSurvives(SharedSettingsCase):
 
 
 class ItWorksWithNobodyPicked(SharedSettingsCase):
-    """The store is untagged, so a machine with no user still reads and
-    writes it - shared settings are not anybody's."""
+    """The store is untagged, so a machine with no user still reads and writes it - shared settings are not anybody's."""
 
     def test_read_and_write_with_a_blank_user(self):
         blank = _Prefs(self.dir, library_user="")
