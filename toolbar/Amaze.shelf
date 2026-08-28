@@ -32,8 +32,7 @@ else:
     except hip_library.CaptureRefused as exc:
         hou.ui.displayMessage(str(exc))
     else:
-        # basename() returns "untitled.hip" for an unsaved scene, never
-        # "", so there is no empty case to defend against.
+        # basename() answers "untitled.hip" for an unsaved scene, never "".
         hou.ui.setStatusMessage(
             "Amaze: thumbnail captured for %s" % hou.hipFile.basename())]]></script>
   </tool>
@@ -58,14 +57,9 @@ if interface is None:
 else:
     desktop = hou.ui.curDesktop()
 
-    # Already open? Raise it. Opening a second copy of a browser that
-    # reads one library on disk is never what was wanted, and two of
-    # them writing the same index is how a database gets damaged.
-    #
-    # paneTabs(), not floatingPaneTabs(): the first version scanned only
-    # floating tabs, so an Amaze already open as a DOCKED tab was not
-    # found and the tool opened a second copy - the exact hazard this
-    # block exists to prevent. paneTabs() covers both.
+    # Already open? Raise it - two Amaze panels writing one index is how
+    # a database gets damaged. paneTabs(), NEVER floatingPaneTabs():
+    # the latter misses a docked tab and opens a second copy.
     existing = None
     for tab in desktop.paneTabs():
         try:
@@ -79,12 +73,9 @@ else:
             continue
 
     if existing is not None:
-        # All of this is best-effort and stays inside the try.
-        # setIsCurrentTab is documented against "the containing pane",
-        # and a tab made by createFloatingPaneTab has none
-        # (PaneTab.pane() returns None there) - whether HOM no-ops or
-        # raises is not documented, and a raise must not take the
-        # raise-the-window path down with it.
+        # Best-effort, inside the try: setIsCurrentTab wants a containing
+        # pane and a floating tab has none, so it may raise - and that
+        # must not take the raise-the-window path down with it.
         try:
             existing.setIsCurrentTab()
             panel = existing.floatingPanel()
@@ -96,14 +87,10 @@ else:
         except Exception:
             pass
     else:
-        # python_panel_interface takes the interface NAME, not the
-        # hou.PythonPanelInterface object - passing the object raises
-        # "argument 5 of type 'char const *'". interfaceByName above is
-        # still worth doing: it turns "the panel is not installed" into
-        # a readable message instead of a silent empty Python Panel.
-        # Passing the name also hides the Python Panel toolbar, which is
-        # what makes this read as an Amaze window rather than a host for
-        # one.
+        # python_panel_interface takes the interface NAME, never the
+        # object - the object raises. The lookup above stays because it
+        # turns "not installed" into a readable message, and the name
+        # form hides the Python Panel toolbar.
         desktop.createFloatingPaneTab(
             hou.paneTabType.PythonPanel,
             size=(1100, 800),
@@ -129,10 +116,8 @@ Repair always reports; it can only put things right from a Houdini that
 has not opened the library yet.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
-# Every check, every refusal and every sentence lives in the module, so
-# the tool cannot drift from what it reports. It deliberately does NOT
-# import or construct the panel: Repair has to work when the panel will
-# not open, which is the case it exists for.
+# Every check and sentence lives in the module. It must NOT import or
+# construct the panel - Repair exists for when the panel will not open.
 try:
     from amaze.core import repair
 except ImportError as exc:
@@ -160,9 +145,8 @@ background call. This tool and the button in Preferences are the only
 things that ask.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
-# The verdict and its sentence live in the module, so the shelf tool
-# and the Preferences button cannot say different things about the
-# same answer.
+# The verdict lives in the module, so this and the Preferences button
+# cannot say different things about the same answer.
 try:
     from amaze.core import updater
 except ImportError as exc:

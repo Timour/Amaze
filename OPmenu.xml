@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <menuDocument>
     <menu>
-        <!--***********************************-->
         <scriptItem id="saveMatToEgLib">
             <context>
                 <expression>
@@ -75,7 +74,6 @@ rc_calls.save_material(kwargs.get("node", None))
 ]]>
                 </scriptCode>
         </scriptItem>
-        <!--***********************************-->
         <scriptItem id="saveGradientToAssetLib">
             <context>
                 <expression>
@@ -114,7 +112,6 @@ rc_calls.save_gradient(kwargs.get("node", None))
 ]]>
                 </scriptCode>
         </scriptItem>
-        <!--***********************************-->
         <scriptItem id="saveCopToAssetLib">
             <context>
                 <expression>
@@ -179,7 +176,6 @@ rc_calls.save_cop(kwargs.get("node", None))
 ]]>
                 </scriptCode>
         </scriptItem>
-        <!--***********************************-->
         <scriptItem id="saveCodeToAssetLib">
             <context>
                 <expression>
@@ -214,6 +210,5 @@ rc_calls.save_code(kwargs.get("node", None))
 ]]>
                 </scriptCode>
         </scriptItem>
-        <!--***********************************-->
     </menu>
 </menuDocument>
