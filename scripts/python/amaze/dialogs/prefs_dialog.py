@@ -641,11 +641,25 @@ class PrefsDialog(base_dialog.AssetDialog):
             "downloaded or changed by asking."
         ))
         self._btn_update.clicked.connect(self.check_for_updates)
-        form.addRow("", self._btn_update)
+        self._btn_report = QtWidgets.QPushButton("Report a Bug...")
+        self._btn_report.setToolTip(ui_helpers.tooltip_text(
+            "Open the Amaze bug page in your browser with your Amaze, "
+            "Houdini and OS versions already filled in. Nothing is "
+            "sent until you press Submit there."
+        ))
+        self._btn_report.clicked.connect(self.report_bug)
+        ask_row = QtWidgets.QWidget()   # the two live side by side, from D08
+        ask = QtWidgets.QHBoxLayout(ask_row)
+        ask.setContentsMargins(0, 0, 0, 0)
+        ask.setSpacing(theme.ui_px(8))
+        ask.addWidget(self._btn_update)
+        ask.addWidget(self._btn_report)
+        ask.addStretch(1)
+        form.addRow(self._label(""), ask_row)
         self._lbl_update = QtWidgets.QLabel("")   # THE ANSWER GOES HERE, not a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
         self._lbl_update.setWordWrap(True)
         self._lbl_update.setVisible(False)
-        form.addRow("", self._lbl_update)
+        form.addRow(self._label(""), self._lbl_update)
         self._btn_install = QtWidgets.QPushButton("Install Update")   # shown only when there IS something to install; two presses on purpose, the first changing nothing
         self._btn_install.setToolTip(ui_helpers.tooltip_text(
             "Download the new release and put it in place. Your library "
@@ -654,15 +668,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ))
         self._btn_install.clicked.connect(self.install_update)
         self._btn_install.setVisible(False)
-        form.addRow("", self._btn_install)
-        self._btn_report = QtWidgets.QPushButton("Report a Bug...")
-        self._btn_report.setToolTip(ui_helpers.tooltip_text(
-            "Open the Amaze bug page in your browser with your Amaze, "
-            "Houdini and OS versions already filled in. Nothing is "
-            "sent until you press Submit there."
-        ))
-        self._btn_report.clicked.connect(self.report_bug)
-        form.addRow("", self._btn_report)
+        form.addRow(self._label(""), self._btn_install)
         self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
