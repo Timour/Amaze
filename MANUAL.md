@@ -73,7 +73,7 @@ The **toolbar** sits top-right:
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Free-text search over names and tags in the current section. |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Two views of the same assets. |
 | <img src="scripts/python/amaze/ui/star_on.svg" width="20"> | **Favorites** | Show only favorited assets. |
-| | **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
+|<img src="scripts/python/amaze/ui/Icon-slider.svg" width="20">| **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
 | <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Your library, the online sources, categories, grid/list. |
 | <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filter materials: All, Karma, Redshift, Octane. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens Preferences (five tabs). |
