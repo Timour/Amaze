@@ -200,80 +200,75 @@ report.
 
 ## Online materials
 
-**View ▸ Import Materials** offers four free libraries. Pick one to
-browse it; pick it again to return to your own library.
+The <img src="scripts/python/amaze/ui/icon_online.svg" width="16">
+**Online** button in the toolbar switches to the online sources. Press
+it again to return to your own library. The sources appear as a tab
+strip where the section tabs were.
 
 | Source | What it is | Licence |
 |---|---|---|
 | **PolyHaven** | Photoscanned PBR materials, with textures | CC0 |
-| **GPUOpen** | AMD's MaterialX library — 454 materials, with textures | MIT Public Domain |
+| **GPUOpen** | AMD's MaterialX library, with textures | MIT Public Domain |
 | **PhysicallyBased** | 86 measured reference values: real copper, real water, real skin. No textures | CC0 1.0 |
 | **RGL (EPFL)** | 62 laboratory-measured materials from the Realistic Graphics Lab | CC0 1.0 |
+| **Amaze** | The official [packages](#packages), ready to import or restore | per package |
 
 The two measured sources have no textures, so their tiles are **drawn
 from the measurement** — the colour on the tile is the colour that was
-measured. Amaze ships their values, so the grid fills instantly and
-still works with no connection; when you are online it lists whatever
-the source publishes today, so new materials just show up.
+measured. Amaze ships their values, so the grid fills with no
+connection. Online, each source lists what it publishes today.
 
-Right-click a material (or a multi-selection):
+Right-click a material, or a multi-selection:
 
-- **Import to Library** — downloads it, builds a Karma material, saves
-  it into your library with a thumbnail if renders are on.
-- **Import to Scene** — builds it straight into the material library you
-  are working in (or `/mat`) and writes nothing to your library. For
-  when you just want the material in front of you.
-- **Refresh** — re-reads the source now. You rarely need it: the
-  browser already lists whatever the source currently publishes, so new
-  materials simply appear.
+- **Import to Materials** downloads it, builds a Karma material and
+  saves it into your library, with a thumbnail if renders are on.
+- **Import to Scene** builds it into the material library you are
+  working in, or `/mat`, and writes nothing to your library.
+- **Restore** appears on Amaze packages and puts back the entries a
+  package carries.
+- **Refresh** re-reads the source now.
 
-**Double-click imports to the scene**, like double-click everywhere
-else: the primary action puts the asset where you are working.
+**Double-click imports to the scene**, as it does everywhere else.
 
-Every import records its source, author, link and licence in Info.
-None of these sources requires attribution — but a library full of
-other people's work should be able to say whose it is.
+Every import records its source, author, link and licence. None of
+these sources requires attribution.
 
 ### Gallery Import (.gal)
 
-**View ▸ Import Materials ▸ Gallery Import (.gal)** reads a Houdini
-gallery file — including the Material Palette's own — and turns every
-material preset in it into a library material. Thumbnails are
-deliberately *not* rendered during a bulk import (hundreds of renders
-would take hours); select the new materials afterwards and use
-**Update Preview** when it suits you, which is what both import
-dialogs tell you.
+**Import/Generate ▸ Gallery Import (.gal)** reads a Houdini gallery
+file, the Material Palette's own included, and turns every material
+preset in it into a library material. Thumbnails are not rendered
+during a bulk import; select the new materials afterwards and use
+**Update Preview**.
 
 ---
 
 ## Generate Material
 
-**View ▸ Import Materials ▸ Generate Material** builds one plausible
-material into the material library you are working in.
+**Import/Generate ▸ Generate Material** builds one material into the
+material library you are working in.
 
-These are not invented numbers. Amaze ships 148 real measured materials
-— the 86 PhysicallyBased reference constants and the 62 RGL
-measurements — and generation starts from one of them, **in its own
-physical class**:
+Amaze ships 148 measured materials — 86 PhysicallyBased reference
+constants and 62 RGL measurements. Generation starts from one of them
+and stays inside its physical class:
 
-- **Metals** keep their spectrum. A metal's colour *is* its
-  reflectance, so copper stays copper: it drifts a few percent, or
-  blends toward another measured metal the way an alloy sits between two
-  elements, and takes its finish from a measured metal surface.
-- **Glass and liquids** keep their measured IOR exactly. Water is 1.333
-  or it is not water.
-- **Skin, marble, milk** keep their measured scattering distance.
-- **Opaque dielectrics** get a free hue — pigment is arbitrary, paint
-  can be any colour — with roughness from the measurement.
+- **Metals** keep their spectrum. A metal's colour is its reflectance,
+  so copper stays copper: it drifts a few percent, or blends toward
+  another measured metal the way an alloy sits between two elements,
+  and takes its finish from a measured metal surface.
+- **Glass and liquids** keep their measured IOR exactly.
+- **Skin, marble and milk** keep their measured scattering distance.
+- **Opaque dielectrics** take a free hue, with roughness from the
+  measurement.
 
-Clearcoat, sheen and emission are things measurements never mention and
-artists add, so their rates come from a corpus of 287 real authored
-materials: about a third carry a clearcoat, almost none emit.
+Clearcoat, sheen and emission are not in the measurements, so their
+rates come from a corpus of 287 authored materials: about a third carry
+a clearcoat, almost none emit.
 
 Every generated material writes its lineage into the **node comment** —
-which measurement it came from and what was varied. Generated materials
-are scene nodes, not library entries; keeping one is a deliberate *Save
-to Amaze*, exactly like a material you built by hand.
+which measurement it came from, and what was varied. Generated
+materials are scene nodes. Keeping one means saving it with **Save to
+Amaze**, like any material you built by hand.
 
 ---
 
@@ -283,17 +278,17 @@ Curated colour-theory palettes — Sanzo Wada's *A Dictionary of Color
 Combinations*, Paul Klee, Josef Albers, Johannes Itten — plus gradients
 you save yourself.
 
-- **Apply as Stepped Ramp** / **Apply Ramp** — pushes the palette onto a
-  selected node's ramp parameter. A selected node that has no ramp
-  parameter does not block it: Amaze creates the ramp node instead,
-  the same as double-clicking the tile.
-- **Apply as Linear Ramp** — curated gradients only.
-- **Copy Color ▸** — a submenu of the individual swatches, each labelled
-  with its hex code; picking one copies the hex to the clipboard. (A
-  node has many colour inputs — guessing which one you meant was worse
-  than letting you paste.)
-- Save your own: right-click a node with a colour ramp ▸ **Save Gradient
-  to Amaze**.
+<img src="docs/images/color_grid.png" width="820">
+
+- **Apply as Stepped Ramp** and **Apply Ramp** push the palette onto a
+  selected node's ramp parameter. Where the selected node has no ramp
+  parameter, Amaze creates the ramp node instead, as double-clicking
+  the tile does.
+- **Apply as Linear Ramp** is for curated gradients.
+- **Copy Color ▸** lists the individual swatches by hex code; picking
+  one copies the hex to the clipboard.
+- To save your own: right-click a node with a colour ramp ▸ **Save
+  Gradient to Amaze**.
 
 ---
 
@@ -301,26 +296,26 @@ you save yourself.
 
 Save node setups — a whole network, a selection, or a single node — and
 load them back. Works in any context Amaze supports: SOP, Copernicus,
-LOP, DOP, TOP, CHOP and object level. Each asset remembers which context
+LOP, DOP, TOP, CHOP and object level. Each asset records which context
 it came from, shown on its tile.
 
-Right-click a network container (a `geo`, a `copnet`, a `lopnet`, a
-subnet) ▸ **Save Network to Amaze** to keep its whole interior, or
-right-click the nodes themselves ▸ **Save Selection to Amaze**. Select
-several nodes first and the selection wins — the label tells you which
+<img src="docs/images/node_grid.png" width="820">
+
+Right-click a network container — a `geo`, a `copnet`, a `lopnet`, a
+subnet — ▸ **Save Network to Amaze** to keep its whole interior, or
+right-click the nodes themselves ▸ **Save Selection to Amaze**. With
+several nodes selected the selection wins, and the label names which
 one you are about to get.
 
 Double-click or drag a tile to bring the nodes back. They land in the
 network you release over, or in a fresh container of the right type.
 
-**An asset only goes home.** A SOP asset dropped on a Copernicus network
-is refused with a message rather than half-created — those nodes cannot
-exist there, and a partial network is worse than none.
+**An asset only goes home.** A SOP asset dropped on a Copernicus
+network is refused with a message, and nothing is created.
 
 Thumbnails follow the context: a Copernicus asset shows its own output
 image, a SOP asset shows its geometry, and everything else shows the
-node icon — a LOP setup has no picture to take, and that is normal, not
-a failure.
+node icon.
 
 ---
 
