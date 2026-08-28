@@ -147,29 +147,17 @@ Cancel**. Multi-selections always save as new.
 
 ### Versions
 
-Saving over a material you already have keeps the old one. When the
-re-save changed only parameters — same node structure, different
-values — Amaze archives the material as a **version** and the new
-state becomes the active one. The first version you make also keeps
-the state you were versioning away from, so both opinions are on the
-list.
+Saving over a material you already have creates a version.
 
 Tiles with more than one version carry the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
 badge in their lower-left corner. Click it to open **Versions of
 "…"**: pick a version to make it active, or rename the selected one.
-The dialog only browses, switches and names — versions are made by
-saving, never here.
-
-Versions are stored inside the library, so they travel with the
-material. The material's own files are always the active version's.
 
 Turn the behaviour off in Preferences ▸ Library ▸ **Material
-Versions**; saving over an existing material then adds a new one
-instead. The switch is stored with the library and applies to everyone
-who opens it.
+Versions**.
 
-### Getting one back out
+### Load Assets
 
 - **Double-click** imports into the context you are working in.
 - **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** name the
@@ -189,7 +177,6 @@ Package** and **Delete**. Name, Category and Tags are edited in
 <img src="docs/images/menu_copy_to.png" width="230">
 
 Assets can also be dragged onto a sidebar category to file them there.
-The category lights up as you hover.
 
 ### Convert to Karma
 
@@ -217,10 +204,6 @@ strip where the section tabs were.
 | **RGL (EPFL)** | 62 laboratory-measured materials from the Realistic Graphics Lab | CC0 1.0 |
 | **Amaze** | The official [packages](#packages), ready to import or restore | per package |
 
-The two measured sources have no textures, so their tiles are **drawn
-from the measurement** — the colour on the tile is the colour that was
-measured. Amaze ships their values, so the grid fills with no
-connection. Online, each source lists what it publishes today.
 
 Right-click a material, or a multi-selection:
 
@@ -248,6 +231,8 @@ during a bulk import; select the new materials afterwards and use
 ---
 
 ## Generate Material
+
+When you need materials to test with quickly.
 
 **Import/Generate ▸ Generate Material** builds one material into the
 material library you are working in.
@@ -278,9 +263,7 @@ Amaze**, like any material you built by hand.
 
 ## Color
 
-Curated colour-theory palettes — Sanzo Wada's *A Dictionary of Color
-Combinations*, Paul Klee, Josef Albers, Johannes Itten — plus gradients
-you save yourself.
+Come pre-filled with some colour-theory palettes — Sanzo Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers, Johannes Itten. Delete them if you dont like them.
 
 <img src="docs/images/color_grid.png" width="820">
 
@@ -338,7 +321,8 @@ node icon.
 ## Code
 
 A snippet library for VEX, OpenCL and Python, with syntax-highlighted
-previews on the tiles and a curated **Starter Toolbox** to begin with.
+previews on the tiles. A set of **examples** is seeded into a new
+library to start from; deleting one does not bring it back.
 
 <img src="docs/images/code_grid.png" width="820">
 
@@ -360,9 +344,7 @@ right-click any node with a code parameter ▸ **Save to Amaze**.
 
 ## File
 
-Register folders on disk and browse **everything** in them — one
-section for your images, models, scenes and whatever else lives beside
-them. Each file behaves as its kind:
+Browse folders on disk.
 
 - **Images** (PNG, JPG, EXR, HDR, TGA, RAT, …) get cached thumbnails.
   **Double-click** or **Load to Node** pushes the file onto a selected
