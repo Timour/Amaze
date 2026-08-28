@@ -151,8 +151,11 @@ Saving over a material you already have creates a version.
 
 Tiles with more than one version carry the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
-badge in their lower-left corner. Click it to open **Versions of
-"…"**: pick a version to make it active, or rename the selected one.
+badge in their lower-left corner. Click it to open the versions
+window, titled with the asset's name: pick a version to make it
+active, or rename the selected one.
+
+<img src="docs/images/dialog_versions.png" width="380">
 
 Turn the behaviour off in Preferences ▸ Library ▸ **Material
 Versions**.
@@ -345,6 +348,8 @@ right-click any node with a code parameter ▸ **Save to Amaze**.
 ## File
 
 Browse folders on disk.
+
+<img src="docs/images/file_grid.png" width="820">
 
 - **Images** (PNG, JPG, EXR, HDR, TGA, RAT, …) get cached thumbnails.
   **Double-click** or **Load to Node** pushes the file onto a selected
