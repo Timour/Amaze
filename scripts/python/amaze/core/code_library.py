@@ -10,7 +10,7 @@ import amaze
 from amaze.core import debug, library, category, material, thumbnails
 from amaze.helpers import hostos, vex_syntax
 
-_STARTER_DEF = "res/def/starter_snippets.json"  # curated starter snippets shipped with the plugin, seeded ONCE per library into a "Starter Toolbox" category (see seed_starter_snippets)
+_STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
 _STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
 _STARTER_MARKER_LEGACY = ".assetlib_code_starter_v1"  # pre-rename marker; renamed on sight so an old library does not re-seed the starter snippets and duplicate them
 
@@ -176,14 +176,13 @@ class CodeLibrary(library.AssetLibrary):
         return super().data(index, role)
 
     def seed_starter_snippets(self, category_model) -> None:
-        """Seed a curated "Starter Toolbox" category of useful snippets into this library, ONCE. Guarded by a versioned marker file in the library dir so deleting a seeded snippet doesn't bring it back, and existing user snippets are never touched. Best-effort: any failure (missing/broken def file, no library dir) is printed and swallowed so it can never block panel startup."""
+        """Seed an "Examples" category of snippets into this library, ONCE. Guarded by a versioned marker file in the library dir so deleting a seeded snippet doesn't bring it back, and existing user snippets are left alone. Best-effort: any failure (missing/broken def file, no library dir) is printed and swallowed so it can never block panel startup."""
         try:
             lib_dir = self.preferences.dir
             if not lib_dir:
                 return
-            self._rename_category(  # renames in place in already-seeded libraries; runs BEFORE the marker check, which would otherwise short-circuit it, and is idempotent - a no-op once nothing named "Starter Toolbox" remains
-                category_model, "Starter Toolbox", "Toolbox"
-            )
+            for old in ("Starter Toolbox", "Toolbox"):  # every earlier spelling reaches "Examples"; runs BEFORE the marker check, which would otherwise short-circuit it, and `_rename_category` merges rather than duplicating, so the chain is idempotent
+                self._rename_category(category_model, old, "Examples")
             _migrate_marker(lib_dir)
             marker = os.path.join(lib_dir, _STARTER_MARKER)
             if os.path.exists(marker):
@@ -193,7 +192,7 @@ class CodeLibrary(library.AssetLibrary):
                 return
             with open(def_path, encoding="utf-8") as f:
                 data = json.load(f)
-            cat = data.get("category", "Starter Toolbox")
+            cat = data.get("category", "Examples")
             snippets = data.get("snippets", [])
             added = 0
             for snip in snippets:
@@ -246,7 +245,7 @@ class CodeLibrary(library.AssetLibrary):
                 "adding them could not be recorded (%s) - so they "
                 "will be added a second time when Houdini next "
                 "starts. Nothing you saved yourself is affected, and "
-                "you can delete any duplicates from the Toolbox "
+                "you can delete any duplicates from the Examples "
                 "category." % exc)
             self._seed_marker_failed = True  # a RECORD, not a guard: nothing reads this attribute, and the marker file is the only thing the seed loop above reads, so nothing here prevents the re-seed - which is why the message says it will happen
             return

@@ -573,7 +573,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
 
     def _seed_curated_content(self) -> None:
-        """Seed the curated starters once per library - the Code section's Toolbox snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
+        """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
         code_model = getattr(self, "code_model", None)
         if code_model is not None:
             code_model.seed_starter_snippets(self.code_category_model)
