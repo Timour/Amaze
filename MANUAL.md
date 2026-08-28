@@ -4,12 +4,10 @@
 
 Amaze is an asset library that lives in a Houdini pane tab: materials,
 colour palettes, node setups, code snippets and the files on your
-disk, all in one place. It is built around one idea — whatever you
-are looking at, you should be able to **drag it where you need it**.
+disk, in one place. Every asset can be dragged to where it is used —
+onto a viewport object, a network, or a parameter field.
 
-Installation is in the [README](README.md). If you only read one
-section here, read [Drag and drop](#drag-and-drop): that is where most
-of the app lives.
+Installation is in the [README](README.md).
 
 - [First run](#first-run)
 - [The panel at a glance](#the-panel-at-a-glance)
@@ -20,6 +18,7 @@ of the app lives.
 - [Node](#node)
 - [Code](#code)
 - [File](#file)
+- [Packages](#packages)
 - [Tile icons](#tile-icons)
 - [Category colors](#category-colors)
 - [Comments](#comments)
@@ -431,6 +430,33 @@ path lives under it; otherwise the path stays absolute.
 
 ---
 
+## Packages
+
+A **package** is a single `.amazepkg` file carrying assets out of your
+library: their files, thumbnails, categories, tags and comments. It is
+how a set of assets moves to another machine, another library, or
+another person.
+
+**Making one.** Select any number of tiles, right-click ▸ **Export
+Package**, and choose where to write it. This is on every section's
+tile menu. To take a whole category at once, right-click it in the
+sidebar ▸ **Export Category**.
+
+**Bringing one in.** **Import/Generate ▸ Package Import (.amazepkg)**
+reads a package into your library. Every asset arrives with a new
+identity and is filed under a category called **Import**, so importing
+the same package twice gives you two copies rather than overwriting
+what you have.
+
+**Restoring instead.** The **Amaze** source in the
+[online browser](#online-materials) carries the official packages.
+Right-click one ▸ **Restore** and its entries go back under their
+original identities, matching what is already there rather than adding
+beside it. This is the door for putting back a default palette or
+material you deleted.
+
+---
+
 ## Tile icons
 
 A LOP setup, a DOP network and a snippet have nothing to render, so
@@ -531,7 +557,7 @@ File rows alike.
 ## Drag and drop
 
 Amaze manages the whole drag gesture itself, so a drag behaves the same
-everywhere and never leaves Houdini in a half-state.
+in every section and every destination.
 
 **Materials**
 
@@ -549,8 +575,7 @@ everywhere and never leaves Houdini in a half-state.
 While you drag over a viewport, the prim under the cursor highlights
 using Houdini's own scene-graph highlight. A drop that lands nowhere
 useful shows a miss indicator
-<img src="scripts/python/amaze/ui/icon_drop_miss.svg" width="14">
-rather than silently doing nothing.
+<img src="scripts/python/amaze/ui/icon_drop_miss.svg" width="14">.
 
 **Everything else**
 
@@ -648,68 +673,54 @@ Cache Path and registered folders come back when you switch it off.
 
 ## Housekeeping and troubleshooting
 
-**Clean Up Library** (Preferences ▸ Library) scans the whole estate in
-one pass: entries whose files are missing, uncategorized assets to
-rescue, category names to normalise, registered folders that no longer
-exist, favorites pointing at missing files. One summary, and it never
-renders anything.
+**Clean Up Library** (Preferences ▸ Library) scans the library in one
+pass: entries whose files are missing, uncategorized assets to rescue,
+category names to normalise, registered folders that no longer exist,
+favorites pointing at missing files. It reports in one summary and
+renders nothing.
 
-**It moves, it does not delete.** An entry whose files are missing is
-reported and kept - deleting it would take its tags, comments and
-favourites with it, and a file mid-sync looks exactly like a file that
-is gone; you remove it yourself with Delete if it really is dead.
-Files no list claims move into Amaze's own holding folder on this
-computer (outside your library, so it never syncs), are named in the
-summary, and are kept for 30 days before they are removed for good.
-Folders on a drive that simply is not mounted right now are left
-alone.
+An entry whose files are missing is reported and kept — a file mid-sync
+looks the same as a file that is gone, and deleting the entry would
+take its tags, comments and favourites with it. Remove it yourself with
+**Delete** once you know. Files that no list claims move into Amaze's
+holding folder on this computer, outside your library, are named in the
+summary, and stay there for 30 days. Folders on a drive that is not
+mounted are left alone.
 
-**Repair** is the shelf tool beside Amaze's own, and it is the one to
-reach for when Clean Up Library refuses, or when the panel will not
-open at all. It reads your library, tells you in plain words what is
-wrong, and offers only what is safe: rebuilding the list from the
+**Repair** is the shelf tool to reach for when Clean Up Library
+refuses, or when the panel will not open. It reads your library, says
+what is wrong, and offers two remedies: rebuilding the list from the
 recovery copy stored beside each asset, or putting back one of the
-snapshots. **It never deletes anything** — the strongest thing it can
-do is move files into a dated folder inside your library.
+snapshots. Its strongest action is moving files into a dated folder
+inside your library.
 
-It lives on the shelf rather than in the panel on purpose. A running
-panel writes the list as you work, so a repair made from inside it
-would be overwritten by the panel seconds later, leaving you believing
-you had recovered when you had not. From the shelf the panel is
-closed, nothing holds your library, and nothing is about to save over
-the result.
+It lives on the shelf rather than in the panel because a running panel
+writes the list as you work, and would overwrite a repair made from
+inside it seconds later. From the shelf, nothing holds your library.
 
-**Your library is safe by design.** Every write snapshots the index
-first (rolling backups plus an immutable first-run copy), and a
-concurrent write from a second Houdini session is merged rather than
-overwritten.
+Every write snapshots the list first — rolling backups plus a first-run
+copy — and a concurrent write from a second Houdini session is merged.
 
-**Overwrite can be switched off for a whole library.** The setting
-lives in Preferences ▸ Library, and unlike everything else in
-Preferences it travels with the LIBRARY rather than with your machine —
-it is kept in a small `policy.json` beside your assets, so two
-computers pointed at one library agree about it. With it off, saving
-over an existing material is refused and the Save dialog stops offering
-Overwrite at all. Worth setting on a shared library where the paragraph
-below would otherwise apply.
+**Overwrite can be switched off for a whole library**, in Preferences ▸
+Library. Unlike the rest of Preferences this setting travels with the
+library, so two computers pointed at one library agree about it. With
+it off, saving over an existing material is refused and the Save dialog
+stops offering Overwrite.
 
-That applies to the **list** of your assets. An individual asset's own
-files are a different thing: choosing **Overwrite** when you save over
-an existing material replaces them, and the last save wins. That is
-what Overwrite means, and it is the one place the sentence above does
-not cover — worth knowing if two people share one library.
+That covers the **list** of your assets. An asset's own files are a
+separate matter: choosing **Overwrite** when you save over an existing
+material replaces them, and the last save wins.
 
 **When something looks wrong**, turn on **Debug Mode** (Preferences ▸
-About) and reproduce it. The log is structured JSON Lines recording
-what the app actually did — the fastest route to a fix, and worth
-attaching to a bug report.
+About) and reproduce it. The log records what the app did, and
+**Save Log...** writes a copy to attach to a bug report.
 
-**A material renders black?** Usually a texture that failed to
+**A material renders black.** Usually a texture that failed to
 download, or a material library node whose material list no longer
-covers the material. The log names both cases explicitly.
+covers the material. The log names both cases.
 
-**Changed a Python file?** Houdini caches modules per session — quit and
-relaunch. Reopening the panel is not enough.
+**Changed a Python file.** Houdini caches modules per session, so quit
+and relaunch. Reopening the panel loads the cached modules.
 
 ---
 
