@@ -1,24 +1,4 @@
-"""Per-device view state is one USER's on this machine (ROADMAP 22).
-
-Eighteen keys - view mode, sizes, pane widths, toggles, accent,
-filters, the last folder, section enablement, debug mode - move under
-`users.<uid>` in settings.json, so two people sharing one machine each
-keep their own arrangement while the bootstrap keys stay flat.
-
-The shape rule that sizes every test here: FLAT WHILE NOBODY, BLOCK
-ONCE SOMEBODY. With no user picked, save writes the flat shape exactly
-as before - a session that cancelled the ASK dialog loses nothing and
-files nothing under nobody. The first save WITH a user carries the
-flat values into that user's block and retires the flat spellings; the
-flat keys stay the load fallback, because they are the migration
-source and the shape every older fixture writes.
-
-The switch choreography: changing `library_user` snapshots the current
-attributes into the OLD user's block, then applies the NEW user's
-block over the defaults - and when the new user has no block on this
-machine yet, the current state is kept, which is what makes both the
-first mint and a second machine's first pick inherit what is on
-screen instead of resetting it.
+"""Per-device view state is one USER's on this machine: FLAT WHILE NOBODY, BLOCK ONCE SOMEBODY. The flat keys stay the load fallback because they are the migration source. Switching snapshots the OLD user's block, then applies the NEW one over the defaults - and a user with no block here keeps what is on screen. ▸archive/test_prefs_per_user.py
 """
 
 import json
@@ -100,9 +80,7 @@ class TwoUsersKeepTheirOwnViewState(PerUserCase):
         self.assertEqual(96, users[UID_B].get("thumbsize"))
 
     def test_a_switch_resets_what_their_block_does_not_carry(self):
-        """A key missing from the incoming block means that user never
-        moved it off the default - inheriting the PREVIOUS user's
-        value would bleed one person's arrangement into another's."""
+        """A key missing from the incoming block means that user never moved it, so inheriting the PREVIOUS user's value bleeds one arrangement into another."""
         self.write_settings({
             "library_user": UID_A,
             "users": {
@@ -169,9 +147,7 @@ class AFlatFileMigratesOnTheFirstSaveWithAUser(PerUserCase):
 class NobodyPickedKeepsTheFlatShape(PerUserCase):
 
     def test_a_userless_save_writes_flat_and_mints_no_block(self):
-        """A session that cancelled the ASK dialog keeps full
-        persistence in the old shape - nothing is filed under nobody
-        and nothing is lost either."""
+        """A session that cancelled the ASK dialog keeps full persistence in the old shape - nothing filed under nobody, nothing lost."""
         self.write_settings({"view_mode": "list", "thumbsize": 300})
         p = self.prefs()
         p.load()
@@ -190,9 +166,7 @@ class NobodyPickedKeepsTheFlatShape(PerUserCase):
 class ASwitchToAnUnknownUserKeepsTheCurrentState(PerUserCase):
 
     def test_a_first_pick_inherits_what_is_on_screen(self):
-        """The mint and the second machine's first pick both land
-        here: the new user has no block on this machine, so the
-        arrangement in front of them becomes their starting state."""
+        """A user with no block on this machine starts from the arrangement in front of them, which covers both the mint and a second machine's first pick."""
         self.write_settings({
             "library_user": UID_A,
             "users": {UID_A: {"thumbsize": 256, "view_mode": "list"}},
@@ -263,10 +237,7 @@ class ABlocksUnknownKeysSurviveTheRebuild(PerUserCase):
 
 
 class TheCopiesFollowTheirUser(PerUserCase):
-    """The last-known File copies mirror stores that are per-user
-    (locations and favourites are tagged), so the copies live with the
-    user's other state: in the block once somebody, flat while
-    nobody."""
+    """The last-known File copies mirror per-user stores, so they live with the user's other state - in the block once somebody, flat while nobody."""
 
     FLAT = {
         "library_user": UID_A,
@@ -316,9 +287,7 @@ class TheCopiesFollowTheirUser(PerUserCase):
 
 
 class TheFiveDerivedKeysAreGone(PerUserCase):
-    """The four decoration tables and the recursion global were the
-    location record in an older spelling, kept for a same-machine
-    rollback that pre-1.0 is not owed. The record is the one home."""
+    """The derived keys were the location record in an older spelling - the record is the one home."""
 
     FIVE = ("file_folder_names", "file_folder_colors",
             "file_folder_show_all", "file_recursive_folders",
@@ -347,8 +316,7 @@ class TheFiveDerivedKeysAreGone(PerUserCase):
                              "dying" % key)
 
     def test_the_five_die_with_nobody_picked_too(self):
-        """Unconditional retirement: these are derived outputs, not
-        migration sources - their content is the record itself."""
+        """Unconditional retirement - these are derived outputs, never migration sources."""
         self.write_settings({
             "file_location_records": {"/tex/a/": {"registered": True}},
             "file_folder_names": {"/tex/a/": "Alpha"},
@@ -370,10 +338,7 @@ class TheFiveDerivedKeysAreGone(PerUserCase):
 class TheTableAgreesWithInit(PerUserCase):
 
     def test_every_table_default_matches_a_fresh_prefs(self):
-        """The table carries defaults for the reset-on-switch;
-        __init__ states them a second time with their reasoning. This
-        derives their agreement so the two cannot drift apart in
-        silence."""
+        """The table and `__init__` each state the defaults, so their agreement is DERIVED rather than trusted."""
         p = self.prefs()
         for stored, (prop, attr, default) in \
                 persistence.USER_KEYS.items():

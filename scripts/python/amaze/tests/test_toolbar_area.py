@@ -1,23 +1,4 @@
-"""The Toolbar area: one table, and one fact per control.
-
-BATCH 8 of the four-areas restructure. Five sync methods decided what
-the toolbar showed, and they could disagree with each other because
-each carried its own idea of which context it was in:
-
-* `_sync_toolbar_for_mode` disabled three chips by asking
-  `self._is_online()` - twice, in one method;
-* the Capture button's rule lived somewhere else entirely, as
-  `key == "file"` inside the activation path;
-* and `takes_comments` was already a fact ON the context (batch 5),
-  which is the shape the other three should have had.
-
-A control's rule is now ONE entry in `MatLibPanel.TOOLBAR_CONTROLS` -
-which control, which fact about the context, and whether the fact
-governs enabled-ness or visibility - and one `_sync_toolbar(context)`
-walks it. No toolbar path asks which WORLD it is in.
-
-Written before the change, so the first version of these fails against
-the shipped code.
+"""The Toolbar area: one table, one fact per control. A control's rule is ONE entry naming the control, the fact about the context, and whether that fact governs enabled-ness or visibility. NO toolbar path asks which WORLD it is in. ▸archive/test_toolbar_area.py
 """
 
 import ast
@@ -63,9 +44,7 @@ class TheToolbarIsATable(unittest.TestCase):
                     "changes" % (control, fact))
 
     def test_the_four_known_controls_are_in_it(self):
-        """Named, because a table that lost an entry is a control that
-        silently stops following its context - which is how Capture came
-        to be governed from the activation path instead."""
+        """NAMED, because a table that lost an entry is a control that silently stops following its context."""
         from amaze.panel.panel import MatLibPanel
 
         listed = {control for control, _f, _v in MatLibPanel.TOOLBAR_CONTROLS}
@@ -75,9 +54,7 @@ class TheToolbarIsATable(unittest.TestCase):
                           "%s no longer follows the context table" % control)
 
     def test_no_toolbar_sync_asks_which_WORLD_it_is_in(self):
-        """`_is_online()` in a toolbar path is the thing this batch
-        removes: the control's rule belongs to the CONTEXT, and the
-        online world is a context like any other since batch 5."""
+        """A control's rule belongs to the CONTEXT, and the online world is a context like any other."""
         source = open(os.path.join(PACKAGE, "panel", "panel.py"),
                       encoding="utf-8").read()
         tree = ast.parse(source)
@@ -99,9 +76,7 @@ class TheToolbarIsATable(unittest.TestCase):
 
 class EveryContextDeclaresWhatItOffers(unittest.TestCase):
 
-    #: context class -> what it must answer for each fact. The ONLINE
-    #: row is the whole point: three of these are False there, and each
-    #: used to be an `_is_online()` branch somewhere else.
+    #: Context class -> what it must answer for each fact.
     EXPECTED = {
         "MaterialSection": {"takes_comments": True, "takes_favourites": True,
                             "takes_filter_menu": True, "takes_capture": False},
@@ -125,8 +100,7 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
                         % (name, fact, getattr(context, fact)))
 
     def test_capture_is_offered_by_exactly_one_context(self):
-        """It acts on the open SCENE, so it belongs where scene tiles
-        live and nowhere else."""
+        """It acts on the open SCENE, so it belongs where scene tiles live and nowhere else."""
         offering = [name for name in dir(sections)
                     if isinstance(getattr(sections, name), type)
                     and issubclass(getattr(sections, name), sections.Section)
@@ -136,8 +110,7 @@ class EveryContextDeclaresWhatItOffers(unittest.TestCase):
 
 
 class TheToolbarFollowsTheContextLive(unittest.TestCase):
-    """Driven through a real panel - the table is only worth having if
-    walking it actually moves the widgets."""
+    """Driven through a real panel - the table is only worth having if walking it moves the widgets."""
 
     @classmethod
     def setUpClass(cls):
@@ -192,14 +165,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                     "nothing to act on" % control)
 
     def test_a_disabled_control_is_STILL_VISIBLE_in_the_online_world(self):
-        """Disabled means greyed at half opacity - not GONE. The
-        toolbar table answers these controls by ENABLED-ness, so the
-        assertions above never look at visibility, and a second owner
-        can hide one of them unseen: build_filter_menu hides
-        btn_filter whenever the context offers no filter entries,
-        which the online world always does. Reported live 2026-08-07 -
-        the eye VANISHED online instead of greying out beside
-        Favourites and Comments."""
+        """Disabled means greyed, never GONE. The table answers these by ENABLED-ness, so nothing above looks at visibility and a SECOND owner can hide one unseen - the filter menu hides its button whenever a context offers no entries."""
         from amaze.panel.panel import MatLibPanel
 
         panel = self.panel
