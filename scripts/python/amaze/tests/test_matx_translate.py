@@ -1,9 +1,4 @@
-"""The .mtlx -> VOP translator, and what flattening must not lose.
-
-A MaterialX node name is scoped to its nodegraph, so two graphs may
-each hold an `image1` (research.md > a MaterialX node name is scoped
-to its nodegraph). Keyed by the bare name the last one wins, both
-graph outputs resolve to it, and one texture is silently orphaned.
+"""The `.mtlx` to VOP translator and what flattening must not lose. A MaterialX node name is scoped to its NODEGRAPH, so two graphs may each hold an `image1` - keyed by the bare name the last wins, both outputs resolve to it, and one texture is silently orphaned. ▸archive/test_matx_translate.py
 """
 
 import os
@@ -27,7 +22,6 @@ from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
 
-#: Two graphs, each carrying a node called `image1`.
 TWO_GRAPHS = """<?xml version="1.0"?>
 <materialx version="1.39">
   <nodegraph name="graph_a">
@@ -82,9 +76,7 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
             self.path, self.builder, "two_graphs")
 
     def test_both_graphs_contribute_a_distinct_image(self):
-        """The FILES are asserted, not the node count: `setName`
-        carries `unique_name=True`, so both nodes exist even when the
-        lookup keeps one and a count alone would pass."""
+        """The FILES are asserted, never the node count - `unique_name` means both nodes exist even when the lookup keeps one, so a count alone passes."""
         images = [child for child in self.builder.children()
                   if child.type().name().startswith("mtlximage")]
         files = sorted(f for f in (_file_of(i) for i in images) if f)
@@ -93,14 +85,12 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
             "both graphs' textures must reach the builder; got %r" % (files,))
 
     def test_each_surface_input_wires_to_its_own_graph(self):
-        """base_color and specular_color must not land on one node."""
+        """Two surface inputs must not land on one node. Compared as PATHS - `hou.Node` hands back a fresh wrapper per call, so an identity check cannot fail."""
         self.assertIsNotNone(self.shader, "no surface shader was built")
         base = self.shader.input(self.shader.inputIndex("base_color"))
         spec = self.shader.input(self.shader.inputIndex("specular_color"))
         self.assertIsNotNone(base, "base_color was left unwired")
         self.assertIsNotNone(spec, "specular_color was left unwired")
-        # Paths, not objects: `hou.Node` hands back a fresh wrapper per
-        # call, so `assertIsNot` cannot fail.
         self.assertNotEqual(
             base.path(), spec.path(),
             "base_color and specular_color both wired to %s" % base.path())
@@ -111,15 +101,7 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
 
 
 class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
-    """`file` values come out of a DOWNLOADED document, and this is the
-    one place in the online path where such a string becomes a
-    filesystem path - the three write paths beside it all go through
-    `hostos.contained_join`.
-
-    Nothing is overwritten, so the harm is narrower than a write
-    escape: the resolved path lands in a `mtlximage.file` parm, so the
-    material reads a file the download never fetched, renders it, and
-    after Save to Amaze ships that path to whoever opens the asset."""
+    """A `file` value comes out of a DOWNLOADED document, and this is the one place in the online path where such a string becomes a filesystem path. Nothing is overwritten, but the resolved path lands in a parm, so the material reads a file the download never fetched and then ships that path onward."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_mtlx_")
@@ -127,8 +109,7 @@ class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
 
     def test_a_relative_reference_inside_the_package_resolves(self):
-        """The accept path first: this runs on every online import, so
-        a containment that refuses the ordinary case is an outage."""
+        """The accept path first - this runs on every online import, so a containment that refuses the ordinary case is an outage."""
         inside = os.path.join(self.dir, "wood_diffuse.png")
         with open(inside, "w", encoding="utf-8") as handle:
             handle.write("png")
@@ -151,8 +132,7 @@ class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
 
 
 class OnlyHttpsIsFetched(unittest.TestCase):
-    """Every URL the online path opens comes out of a remote JSON
-    document, and urlopen's default opener installs a FileHandler."""
+    """Every URL the online path opens comes out of a remote document, and the default opener installs a FileHandler."""
 
     def test_a_file_url_is_refused(self):
         from amaze.core import matx_sources
@@ -170,19 +150,12 @@ class OnlyHttpsIsFetched(unittest.TestCase):
         self.assertEqual(url, matx_sources._checked_url(url))
 
     def test_a_redirect_may_not_downgrade_the_scheme(self):
-        """The GPUOpen preview endpoint is a documented 302, so
-        redirects are the normal path here - and the stock handler
-        follows http and ftp whatever the original scheme was."""
+        """Redirects are the NORMAL path here, and the stock handler follows http and ftp whatever the original scheme was. Driven with a real request, or removing the guard errors inside urllib and reads as a broken test rather than an unguarded redirect."""
         import email.message
         import urllib.request
         from amaze.core import matx_sources
 
         handler = matx_sources._HttpsOnlyRedirects()
-        # A REAL request and headers, so that removing the guard lets
-        # the stock handler run and return a Request - which fails this
-        # assertion cleanly. Passing None made the sabotage ERROR inside
-        # urllib instead, which reads as a broken test rather than an
-        # unguarded redirect.
         req = urllib.request.Request("https://example.invalid/a")
         self.assertIsNone(
             handler.redirect_request(
@@ -191,9 +164,7 @@ class OnlyHttpsIsFetched(unittest.TestCase):
             "a 302 walked the download down to plain http")
 
     def test_a_redirect_to_https_is_still_followed(self):
-        """The accept path: the GPUOpen preview endpoint IS a 302, so a
-        handler that refused every redirect would break the normal
-        route rather than harden it."""
+        """The accept path - a handler that refused every redirect would break the normal route rather than harden it."""
         import email.message
         import urllib.request
         from amaze.core import matx_sources

@@ -1,38 +1,15 @@
 #!/usr/bin/env python3
-"""Did a test run write to the REAL debug log?
-
-The suite gets its own log ($AMAZE_LOG_DIR), because the crash tier
-records tracebacks with Debug Mode OFF - so tests that raise on purpose
-were landing in the user's log as genuine crash records. This checks the
-isolation held, instead of assuming it.
-
-    check_log_leak.py <byte-offset-before-the-run>
-
-Byte size alone is not the test: Houdini may be open and logging while
-the suite runs, which is not a leak. So only the bytes APPENDED during
-the run are parsed, and each record is attributed to the process that
-wrote it - the session header records `product` (hou.applicationName():
-"houdini"/"hindie" for the GUI, "hython" headless). A GUI session
-appending is the user working; a HYTHON session appending is the suite.
-
-Pure stdlib and no Houdini import, so it runs before houdini_setup and
-costs milliseconds.
-
-Exit 0 = clean, 1 = leak (with the offending sessions named), 2 = the
-log could not be located or read (reported, never a silent pass).
-"""
+"""Did a test run write to the REAL debug log? Byte size alone cannot answer it - a Houdini may be open and logging, which is not a leak - so only the bytes APPENDED during the run are parsed and each record is attributed to the process that wrote it. Pure stdlib, no Houdini import. Exit 0 clean, 1 leak, 2 could not be read.  `check_log_leak.py <byte-offset-before-the-run>`  ▸archive/check_log_leak.py"""
 
 import json
 import os
 import sys
 
-#: Products that mean "not a person using Houdini" - i.e. the suite.
 HEADLESS = ("hython", "hbatch", "hescape")
 
 
 def real_log_path() -> str:
-    """The log this machine's Amaze actually writes, via the same engine
-    the app uses - never a second copy of the per-OS convention."""
+    """The log this machine's Amaze actually writes, through the same engine the app uses - never a second copy of the per-OS convention."""
     here = os.path.dirname(os.path.abspath(__file__))
     package_root = os.path.dirname(os.path.dirname(here))   # tests/ -> amaze/ -> python/
     sys.path.insert(0, package_root)
@@ -42,8 +19,7 @@ def real_log_path() -> str:
 
 
 def leaked_sessions(path: str, offset: int):
-    """Sessions that appended to `path` after `offset` and were NOT a
-    GUI Houdini. Returns [(session_id, product, record_count)]."""
+    """Sessions that appended after `offset` and were NOT a GUI Houdini. A session with no header anywhere started writing elsewhere and switched mid-run - a leak shape a product check alone misses."""
     products = {}
     with open(path, encoding="utf-8", errors="replace") as handle:
         for line in handle:
@@ -65,9 +41,6 @@ def leaked_sessions(path: str, offset: int):
             except ValueError:
                 continue
             session = record.get("session")
-            # No header anywhere in the file means the session started
-            # writing elsewhere and switched to this file mid-run - a
-            # leak shape a product check alone would miss.
             product = products.get(session, "UNKNOWN")
             if product in HEADLESS or product == "UNKNOWN":
                 appended[session] = (product, appended.get(session, ("", 0))[1] + 1)
@@ -75,8 +48,7 @@ def leaked_sessions(path: str, offset: int):
 
 
 def main() -> int:
-    # --path: just say where the real log is (the runner needs its size
-    # before the run, and must not duplicate the path logic to get it).
+    # --path: the runner needs the size before the run without duplicating this.
     if len(sys.argv) == 2 and sys.argv[1] == "--path":
         try:
             print(real_log_path())
