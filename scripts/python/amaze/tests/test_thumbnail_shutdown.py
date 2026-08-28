@@ -1,14 +1,4 @@
-"""The thumbnail engine must not be garbage collected mid-flight.
-
-Reopening the panel RELOADS core/thumbnails, which re-runs the module
-body and replaces the `engine` singleton. The old engine held the only
-references to its running loader threads, so the collector freed a
-QThread whose run() was still executing - a dealloc inside the running
-thread, which takes the process down rather than raising something
-catchable. The log recorded its milder cousin as
-"Internal C++ object (_FileLoader) already deleted".
-
-These tests drive that exact sequence.
+"""The thumbnail engine must not be collected mid-flight. Reopening the panel RELOADS this module and replaces the `engine` singleton, so anything holding the last reference to a running QThread frees it inside its own `run()` - which takes the process down rather than raising. ▸archive/test_thumbnail_shutdown.py
 """
 
 import gc
@@ -39,8 +29,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 def _sample_images(count=40):
-    """Real image files - the loader must have genuine work to do, or
-    the thread finishes before the reload and proves nothing."""
+    """Real image files - without genuine work the thread finishes before the reload and proves nothing."""
     from amaze.prefs import prefs as prefs_mod
     library = prefs_mod.Prefs()
     library.load()
@@ -73,7 +62,7 @@ class TestThumbnailShutdown(unittest.TestCase):
         engine.shutdown()
 
     def test_module_reload_does_not_orphan_running_threads(self):
-        """The panel-reopen sequence, end to end."""
+        """The panel-reopen sequence end to end - the handover must stop the old engine's threads BEFORE the collector can reach them."""
         self._queue(thumbnails.engine, "reload")
         before = thumbnails.engine
         running = [t for t in before._threads if t.isRunning()]
@@ -82,8 +71,6 @@ class TestThumbnailShutdown(unittest.TestCase):
         importlib.reload(thumbnails)
         self.assertIsNot(thumbnails.engine, before,
                          "reload did not replace the singleton")
-        # The handover must have stopped the old engine's threads BEFORE
-        # the collector can reach them.
         self.assertEqual(before._threads, [],
                          "old engine kept threads after the reload")
         for thread in running:
@@ -97,8 +84,7 @@ class TestThumbnailShutdown(unittest.TestCase):
             time.sleep(0.01)
 
     def test_prune_survives_a_deleted_thread(self):
-        """_prune_threads walks thread objects; one whose C++ side is
-        already gone must be dropped, not raise."""
+        """A thread whose C++ side is already gone must be dropped, never raise."""
         engine = thumbnails.ThumbnailEngine()
 
         class _Gone:
@@ -114,34 +100,10 @@ class TestThumbnailShutdown(unittest.TestCase):
 
 
 class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
-    """One loader finishing must not condemn a sibling's deliveries.
-
-    _prune_threads marks any still-"pending" key of a FINISHED loader as
-    "missing", on the sound reasoning that a loader's deliveries are
-    queued before its own finished signal. That guarantee is PER-THREAD,
-    and the method used to judge every thread it found finished - so a
-    sibling that had just finished, with its `loaded` signals still
-    sitting unhandled in the main thread's queue, had its keys condemned
-    by someone else's prune. _on_loaded then dropped the real images,
-    because the state was no longer "pending".
-
-    Sticky, too: texture_library short-circuits on is_missing(), so
-    those rows never even fall back to the disk cache on a revisit.
-
-    Measured over 300 real PNGs, keys never reaching "done", with a 3ms
-    repaint handler standing in for the model:
-
-        parallel=4, idle main thread   HEAD 0,0,0,0      fix 0,0,0,0
-        parallel=4, 3ms repaints       HEAD 3,2,15,5     fix 0,0,0,0
-        parallel=8, idle main thread   HEAD 2,1,3,1      fix 0,0,0,0
-        parallel=8, 3ms repaints       HEAD 27,29,52,22  fix 0,0,0,0
-
-    Zero loss with an idle main thread at the default parallelism, which
-    is why this read as intermittent rather than as a bug."""
+    """A loader may condemn only its OWN pending keys - the deliveries-before-finished guarantee is PER-THREAD, so judging a sibling drops real images whose signals are still queued, and it sticks because a missing key never falls back to the disk cache."""
 
     class _FinishedLoader:
-        """A loader that has finished but whose deliveries have not been
-        handled yet - the state the race turns on."""
+        """Finished, but with its deliveries not yet handled - the state the race turns on."""
 
         def __init__(self, keys):
             self._keys = list(keys)
@@ -189,39 +151,20 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
             "finished signal - Qt may still hold queued deliveries from it")
 
     def test_a_cancelled_loader_marks_nothing_missing(self):
-        """Cancelled work is unrequested, not missing: the revisit
-        re-queues it."""
+        """Cancelled work is unrequested, not missing - the revisit re-queues it."""
         self.first._canceled = True
         self.engine._prune_threads(self.first)
         self.assertEqual("pending", self.engine._states["a1"])
 
 
 class TestConvertCancellation(unittest.TestCase):
-    """A worker inside a long iconvert must let go when asked.
-
-    `conversion._run_process` has always taken a `cancelled` callback
-    and polled it every 100ms from inside its nested event loop - and no
-    caller ever passed one, so the whole watchdog was dead code. cancel()
-    could
-    therefore only take effect BETWEEN items; a worker already inside a
-    30s iconvert ignored it.
-
-    That is what made shutdown() fall through to wait(3000) and then
-    terminate(). Measured with a fake iconvert that sleeps 25s:
-
-        at HEAD : shutdown 3.01s, iconvert child orphaned and still alive
-        wired   : shutdown 0.09s, no orphan, terminate() never reached
-
-    With Parallel Conversions at 8 those 3s are sequential, so a panel
-    reopen could stall ~24s and leave 8 orphaned Houdini subprocesses.
-    """
+    """A worker inside a long iconvert must let go when asked. The `cancelled` callback has to be PASSED - unwired, cancel only takes effect between items, so shutdown waits out the process and then terminates it, orphaning a Houdini subprocess per stuck worker."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_cancel_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
 
-        # A stand-in for Houdini's iconvert that simply takes far longer
-        # than the test is willing to wait.
+        # Stands in for iconvert, taking longer than the test will wait.
         binary = os.path.join(self.tmp, "hfs", "bin")
         os.makedirs(binary)
         self.hfs = os.path.dirname(binary)
@@ -235,14 +178,7 @@ class TestConvertCancellation(unittest.TestCase):
             handle.write(b"\x76\x2f\x31\x01" + b"\0" * 400)
 
     def _children(self):
-        """The pids running THIS test's fake iconvert, not any child.
-
-        `pgrep -P` alone asked only whether the process had a child, and
-        macOS tries sips before iconvert - so the wait below could be
-        satisfied by the wrong process, and a child left behind by
-        another module satisfied it too. That is a false GREEN: the test
-        sails past its setup without ever starting what it guards.
-        """
+        """The pids running THIS test's fake iconvert - `pgrep -P` alone asks only whether there is A child, which another module's leftover satisfies, and that is a false green."""
         found = subprocess.run(
             ["pgrep", "-P", str(os.getpid())],
             capture_output=True, text=True)
@@ -265,8 +201,7 @@ class TestConvertCancellation(unittest.TestCase):
         self.addCleanup(loader.wait, 5000)
         loader.start()
 
-        # Wait until it is genuinely INSIDE the subprocess, otherwise
-        # this measures nothing.
+        # Wait until it is genuinely INSIDE the subprocess, or this measures nothing.
         deadline = time.time() + 10
         while time.time() < deadline and not self._children():
             _app.processEvents()
@@ -303,8 +238,7 @@ class TestConvertCancellation(unittest.TestCase):
     @unittest.skipUnless(sys.platform != "win32",
                          "the probe uses a bash stub and pgrep")
     def test_a_cancelled_worker_kills_its_own_subprocess(self):
-        """terminate() skipped the cleanup, orphaning a real Houdini
-        subprocess for every stuck worker."""
+        """`terminate()` skips the cleanup, orphaning a real Houdini subprocess for every stuck worker."""
         engine = thumbnails.ThumbnailEngine()
         loader = thumbnails._ConvertLoader(
             [("k0", self.source, 256)], self.hfs)
@@ -325,7 +259,6 @@ class TestConvertCancellation(unittest.TestCase):
             "regression - the two failures are not the same event.")
 
         engine.shutdown()
-        # The kill is issued by the worker as it unwinds; give it a beat.
         deadline = time.time() + 3
         while time.time() < deadline and self._children():
             _app.processEvents()
@@ -337,23 +270,7 @@ class TestConvertCancellation(unittest.TestCase):
 
 
 class TestParkedThreadsSurviveReload(unittest.TestCase):
-    """The parking lot must not be emptied by a panel reopen.
-
-    thumbnails._unstoppable holds the last Python reference to QThreads
-    that refused to stop. panel.py reloads this module on every panel
-    open, and reload re-runs the module body - so a plain `= []` handed
-    the collector every thread parked by an earlier reopen.
-
-    The crash is DEFERRED, which is why this read as harmless: nothing
-    dies at reload time. A running PySide QThread is kept alive by the
-    bound `self.run` method held by C++ QThreadWrapper::run(), and the
-    dying thread releases that reference ITSELF when run() returns - so
-    the parked reference is the one that must exist at COMPLETION.
-    Measured with a real loader parked by a real shutdown():
-
-        QThread: Destroyed while thread is still running
-        QMessageLogger::fatal -> abort()   (inside QThreadWrapper::run)
-    """
+    """`_unstoppable` holds the last reference to threads that refused to stop, so a plain `= []` on reload hands them to the collector. The crash is DEFERRED to when each thread COMPLETES, which is why an empty parking lot reads as harmless."""
 
     def test_a_reload_keeps_the_parked_threads(self):
         marker = object()
@@ -376,8 +293,7 @@ class TestParkedThreadsSurviveReload(unittest.TestCase):
                 thumbnails._unstoppable.remove(marker)
 
     def test_the_engine_is_still_replaced_by_a_reload(self):
-        """The parking lot survives; the ENGINE must not. The reload
-        exists so code edits take effect on reopen."""
+        """The parking lot survives, the ENGINE must not - the reload exists so code edits take effect on reopen."""
         before = thumbnails.engine
         importlib.reload(thumbnails)
         self.assertIsNot(
@@ -387,18 +303,7 @@ class TestParkedThreadsSurviveReload(unittest.TestCase):
 
 
 class TestDeliveriesSurviveAReload(unittest.TestCase):
-    """Two Amaze pane tabs is a supported layout, and opening the second
-    used to kill the first one's thumbnails.
-
-    Models connect at CONSTRUCTION, but the engine SINGLETON is replaced
-    on every module reload and the handover shuts the old one down. So
-    the first tab's models stayed wired to a dead engine.
-
-    Measured: after the reload the new engine loaded and cached all 6
-    loadable rows and a later data() call returned 7/7 images, but 0 of
-    7 arrival repaints reached the old model - so its tiles sat on
-    placeholders while idle and filled in only on the next scroll or
-    resize, and its texture progress bar froze."""
+    """Two pane tabs is a supported layout. Models connect at CONSTRUCTION and the engine singleton is replaced on every reload, so an existing tab is left wired to a dead engine - its tiles sit on placeholders until the next scroll."""
 
     def test_a_model_still_hears_the_engine_after_a_reload(self):
         from amaze.core import library as library_mod
@@ -438,17 +343,10 @@ class TestDeliveriesSurviveAReload(unittest.TestCase):
 
 
 class DispatchWaitsAFrameNotATurn(unittest.TestCase):
-    """A 0ms re-arm runs the dispatcher on EVERY event-loop turn while
-    it waits for a slot - and a convert slot is an iconvert that can
-    run 30s. _dispatch_files hit the identical shape and measured
-    ~7.5s of pure spin before moving to 16ms; _dispatch_converts was
-    the sibling the fix never reached."""
+    """A 0ms re-arm runs the dispatcher on EVERY event-loop turn while it waits for a slot, and a convert slot can be a 30s iconvert."""
 
     def test_no_dispatcher_rearms_at_zero_delay(self):
-        """Scoped to the `_dispatch_*` bodies: the 0ms one-shots that
-        ARM a dispatcher from the request path, or hand a result back,
-        fire once and are fine - the spin is a dispatcher re-arming
-        ITSELF at 0."""
+        """Scoped to the `_dispatch_*` bodies - a 0ms one-shot that ARMS a dispatcher fires once and is fine; the spin is a dispatcher re-arming ITSELF."""
         import ast
 
         path = os.path.join(
