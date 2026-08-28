@@ -1,18 +1,4 @@
-"""LOP material assignment: the USD half of a viewport drop.
-
-Dropping a material on a Solaris viewport is two jobs. The PANEL owns
-the menu - which prim, swap or assign - because that is UI. Everything
-after the click is USD work with no widget in it: find what is already
-bound under a prim, rebind it, name the assign after the geometry it
-drives, and remove a material nothing references any more.
-
-That half lives here. It was 192 lines inside a 5,600-line panel
-class, in the app's most-used workflow (the debug log counts drag as
-its single busiest activity) and the hardest part to check by
-clicking. As plain functions over hou/USD objects it can be tested
-headlessly - which tests/test_lop_assign.py now does.
-
-Nothing here imports Qt or touches the panel.
+"""LOP material assignment - the USD half of a viewport drop: find what is bound under a prim, rebind it, name the assign after the geometry it drives, remove a material nothing references. NOTHING HERE IMPORTS Qt OR TOUCHES THE PANEL, which is what makes it testable headlessly. ▸archive/lop_assign.py
 """
 
 import hou
@@ -22,12 +8,7 @@ from amaze.helpers import helpers
 
 
 def name_new_assign(lopnet, before, assign_path) -> None:
-    """Name a freshly created assignmaterial after WHAT IT ASSIGNS -
-    "box_object1" for an object prim, "sphere_object1_mesh_0" for a
-    mesh inside one - so a stack of assigns reads as the geometry
-    it drives instead of assignmaterial1/2/3. Only the node the
-    stock helper just created is renamed; a reused assign keeps the
-    name it already earned."""
+    """Names a freshly created assignmaterial after WHAT IT ASSIGNS, so a stack of them reads as the geometry rather than assignmaterial1/2/3. ONLY the node just created is renamed - a reused assign keeps the name it earned."""
     new = [
         n for n in lopnet.children()
         if n.type().name() == "assignmaterial" and n not in before
@@ -37,8 +18,6 @@ def name_new_assign(lopnet, before, assign_path) -> None:
     parts = [p for p in str(assign_path).split("/") if p]
     if not parts:
         return
-    # Object prim -> its own name; a mesh (or any child) -> parent
-    # plus child, the "geometry_mesh" form.
     name = "_".join(parts[-2:]) if len(parts) > 1 else parts[0]
     try:
         new[0].setName(
@@ -49,10 +28,7 @@ def name_new_assign(lopnet, before, assign_path) -> None:
 
 
 def bound_materials_under(stage, primpath):
-    """[(material_prim_path, [bound_prim_paths])] governing the
-    picked prim: the nearest self-or-ancestor DIRECT binding (the
-    one the prim inherits) plus every direct binding in the
-    subtree below - the swap menu's source."""
+    """`[(material_prim_path, [bound_prim_paths])]` governing the picked prim - the nearest self-or-ancestor direct binding it inherits, plus every direct binding in the subtree below."""
     try:
         from pxr import Usd
     except Exception:
@@ -70,17 +46,7 @@ def bound_materials_under(stage, primpath):
             prims_of[mat].append(path)
 
     def direct(prim):
-        """Materials bound ON this prim, by EITHER binding style.
-
-        Houdini's assignmaterial writes one of two things depending on
-        its Bind Method: a plain `material:binding` relationship, or a
-        collection binding - `material:binding:collection:<name>`,
-        whose targets are [collection, material]. Reading only the
-        first meant a material assigned the collection way offered no
-        Swap entry at all: the drop menu simply had nothing to show,
-        which reads as the feature being gone for that object while
-        working for its neighbour.
-        """
+        """Materials bound ON this prim by EITHER binding style - a plain `material:binding`, or a collection binding whose targets are `[collection, material]`. Reading only the first leaves a collection-bound material with no Swap entry. A partial failure KEEPS what it found, or it reads as a prim with nothing bound."""
         found = []
         try:
             for rel in prim.GetRelationships():
@@ -91,17 +57,10 @@ def bound_materials_under(stage, primpath):
                 targets = [str(t) for t in rel.GetTargets()]
                 if not targets:
                     continue
-                # Direct: [material]. Collection: [collection, material]
-                # - the material is the last target either way.
-                material = targets[-1]
+                material = targets[-1]   # last target under either style
                 if material not in found:
                     found.append(material)
         except Exception as exc:                         # noqa: BLE001
-            # SAY WHY, and keep what was already found. Returning []
-            # here threw away every binding collected so far and made a
-            # PARTIAL failure indistinguishable from "this prim has no
-            # bound materials" - so the swap menu simply showed nothing,
-            # with no way to tell that it had given up halfway.
             debug.event("lop", "binding scan stopped early",
                         error="%s: %s" % (type(exc).__name__, exc),
                         prim=str(getattr(prim, "GetPath", lambda: "?")()),
@@ -125,20 +84,10 @@ def bound_materials_under(stage, primpath):
 
 
 def swap_assignments(stock, lopnet, liblop, anchor, targets, vop):
-    """Rebind every prim in targets ([(old_matpath, [primpaths])])
-    to vop's material via the stock helper - later ops win over
-    the old binding, and assignMat itself prunes the moved prims
-    from other entries - then drop each old material from liblop
-    if nothing references it anymore (the anti-dead-material
-    cleanup the swap exists for).
-
-    Returns None on success, or a reason string the caller can show."""
+    """Rebinds every prim in `targets` to `vop`'s material, then drops each old material that nothing references any more. Answers None on success, or a REASON STRING - no dialogs here, the panel owns the UI."""
     try:
         matpath = str(stock.getMaterialPrimPathForNode(liblop, vop))
     except Exception as exc:
-        # No dialogs in here: the panel owns the UI, this owns the USD.
-        # A caller with a screen shows the returned reason; headless
-        # callers (and the tests) just read it.
         debug.event("drag", "swap failed", error=str(exc))
         return "imported, but the swap failed: %s" % exc
     for old, prims in targets:
@@ -162,20 +111,7 @@ def swap_assignments(stock, lopnet, liblop, anchor, targets, vop):
 
 def remove_unreferenced_material(lopnet, liblop,
                                   matprimpath) -> bool:
-    """Delete matprimpath's definition from liblop IF no
-    assignmaterial entry in the network still uses it - a swap
-    must not leave dead materials behind, but must never take one
-    that is still assigned elsewhere. Entries whose primpattern is
-    empty do not count as uses (assignMat empties patterns when it
-    moves prims away).
-
-    A material can be defined two ways, and both are handled: by
-    EXPLICIT entries (matpath equals the prim path - every one of
-    them is removed, imports once double-entered) and by a PATTERN
-    entry (the stock wildcard "*" that exposes every VOP; its
-    matpath is empty and the prim path is containerpath + node
-    name). Pattern entries are never touched - destroying the VOP
-    alone takes the material out of their match set."""
+    """Deletes a material's definition IF no assignmaterial entry still uses it - never one still assigned elsewhere, and an empty primpattern is not a use. EXPLICIT entries are removed; PATTERN entries are never touched, and never RESOLVED to check, because a wildcard resolves to a real child and reads as a sharer. Failures here land part way through a scene edit, so they say why."""
     matsparm = liblop.parm("materials")
     if matsparm is None:
         return False
@@ -213,13 +149,6 @@ def remove_unreferenced_material(lopnet, liblop,
             if spec is not None and spec.eval() == matprimpath \
                     and pat is not None and pat.eval().strip():
                 return False
-    # Exactness guards on the VOP itself: it dies only if it lives
-    # INSIDE this library and no entry with a DIFFERENT explicit
-    # matpath (any materiallibrary in the network) points at the
-    # same node. Pattern entries do not hold it - once destroyed
-    # it simply leaves their match set. (Resolving a pattern entry
-    # with liblop.node("*") once returned a real child and made the
-    # wildcard read as a sharer - the VOP survived every removal.)
     if vop is not None and not vop.path().startswith(
             liblop.path() + "/"):
         vop = None
@@ -241,10 +170,6 @@ def remove_unreferenced_material(lopnet, liblop,
                     break
             if vop is None:
                 break
-    # SAY WHY on both of these. They fail PART WAY THROUGH a scene edit
-    # - some multiparm entries already removed, or the entries gone and
-    # the VOP still there - and a bare False told the caller nothing
-    # about a half-completed change it now has to reason about.
     for i in sorted(explicit, reverse=True):
         try:
             matsparm.removeMultiParmInstance(i - 1)
@@ -265,24 +190,7 @@ def remove_unreferenced_material(lopnet, liblop,
 
 
 def drop_choices(stage, primpath):
-    """What a LOP viewport drop can offer, as data.
-
-    Returns a list of (kind, label, payload):
-
-      ("swap",   "Swap Bronze",             [(matpath, [prims]), ...])
-      ("swap",   "Swap All Materials",      [...every bound material])
-      ("assign", "Set as Material on mesh", "/path/to/prim")
-
-    Deciding WHAT to offer is USD reasoning - which materials are bound
-    under the picked prim, which ancestors can take an assignment - and
-    it is the part worth testing. Building a QMenu out of the result is
-    three lines in the panel, and needs a human to click it.
-
-    Swap entries come first: rebinding what is already on the prim
-    beats piling a new assignment on top and leaving dead materials
-    behind. Assign entries walk self-then-ancestors, so a drop can
-    target the mesh or the object that contains it.
-    """
+    """What a viewport drop can offer, as `(kind, label, payload)` data for the panel to build a menu from. SWAP entries come first - rebinding what is already on the prim beats stacking a new assignment and leaving dead materials. Assign entries walk self-then-ancestors."""
     choices = []
     if not primpath or stage is None:
         return choices
