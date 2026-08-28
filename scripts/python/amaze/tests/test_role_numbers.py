@@ -1,19 +1,4 @@
-"""The family's Qt role numbers are ONE declaration, read off the CLASS.
-
-The shared proxy matches on hard-coded role NUMBERS and silently
-ignores a filter set on any other role, and the one tile delegate
-reads 264/266 whichever section it paints - so every model feeding
-them must answer the same number for the same name. It must answer ON
-THE CLASS: an instance attribute assigned in __init__ shadows a
-subclass's class attribute, which is how two role tables agree today
-and drift silently later (practice.md ▸ AN INSTANCE ATTRIBUTE SHADOWS
-THE CLASS ONE). Qt reserves nothing above UserRole and says nothing
-about collisions (research.md ▸ What the Qt manual SAYS about custom
-role numbers), so the agreement is ours to hold and only a test can
-hold it. The File family is deliberately absent: its proxy reads the
-models' Python API, so File aligns only the delegate pair and numbers
-the rest freely - already as class attributes.
-"""
+"""The family's Qt role NUMBERS are one declaration, read off the CLASS. The shared proxy matches on hard-coded numbers and silently ignores a filter on any other role, and an instance attribute assigned in `__init__` shadows a subclass's class attribute - which is how two role tables agree today and drift later. Qt reserves nothing above UserRole, so the agreement is ours to hold. Six of these numbers are load-bearing LITERALS elsewhere, which is why the table pins values rather than only cross-model equality. ▸archive/test_role_numbers.py"""
 
 import inspect
 import re
@@ -35,10 +20,6 @@ from amaze.core import matx_library                      # noqa: E402
 
 _USER = int(QtCore.Qt.ItemDataRole.UserRole)
 
-#: The family declaration: every shared role name and its number.
-#: 257-260 are what the proxy switches on, 264/266 what the delegate
-#: reads - those six numbers are load-bearing LITERALS elsewhere, which
-#: is why this table pins values and not just cross-model equality.
 FAMILY_ROLES = {
     "IdRole": _USER,                  # 256
     "CategoryRole": _USER + 1,        # 257  proxy: category (a LIST)
@@ -54,10 +35,6 @@ FAMILY_ROLES = {
     "ActiveVersionRole": _USER + 11,  # 267
 }
 
-#: Every model that feeds the shared proxy/delegate family.
-#: MatxOnlineLibrary cannot inherit the numbers - it is a catalogue
-#: model, not a MaterialLibrary - so it declares its subset and this
-#: test is what keeps it equal.
 FAMILY_MODELS = (
     library.MaterialLibrary,
     cop_library.CopLibrary,
@@ -66,17 +43,13 @@ FAMILY_MODELS = (
     matx_library.MatxOnlineLibrary,
 )
 
-#: The modules whose models the family contract covers - scanned as
-#: source, so a re-introduced instance assignment fails by existing.
 FAMILY_MODULES = (
     library, cop_library, code_library, gradient_library, matx_library,
 )
 
 
 class TheRolesLiveOnTheClass(unittest.TestCase):
-    """Reading a role off the CLASS is the anti-shadowing contract:
-    an inherited class attribute cannot be shadowed by a base's
-    __init__, because there is no instance write left to shadow it."""
+    """Reading a role off the CLASS is the anti-shadowing contract - an inherited class attribute has no instance write left to shadow it."""
 
     def test_the_engine_declares_every_family_role_on_the_class(self):
         for name, number in FAMILY_ROLES.items():
@@ -91,9 +64,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                 % (name, int(value), number))
 
     def test_every_family_model_agrees_by_number(self):
-        """A model may declare a SUBSET (the catalogue has no versions,
-        Colors had no licence) - but every family name it does answer
-        must carry the family's number, read off the class."""
+        """A model may declare a SUBSET, but every family name it does answer must carry the family's number."""
         for model in FAMILY_MODELS:
             for name, number in FAMILY_ROLES.items():
                 value = getattr(model, name, None)
@@ -107,9 +78,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     % (model.__name__, name, int(value), number))
 
     def test_a_models_own_roles_stay_off_the_family_numbers(self):
-        """A section's private role (Colors' ColorsRole) must not sit
-        on a family number - that is the 258 collision of 2026-08-12,
-        where asking a palette for its favourite answered its colours."""
+        """A section's private role must not sit on a family number, or asking a palette for its favourite answers its colours."""
         family_numbers = set(FAMILY_ROLES.values())
         for model in FAMILY_MODELS:
             for name in dir(model):
@@ -124,9 +93,7 @@ class TheRolesLiveOnTheClass(unittest.TestCase):
                     % (model.__name__, name, int(value)))
 
     def test_no_family_module_assigns_a_role_on_the_instance(self):
-        """The mechanism, not just today's values: `self.XRole = ...`
-        anywhere in a family module recreates the shadowing trap, so
-        the pattern itself is refused."""
+        """The MECHANISM, not today's values - an instance role assignment anywhere in a family module recreates the shadowing trap, so the pattern itself is refused."""
         pattern = re.compile(r"self\.\w*Role\s*=[^=]")
         for module in FAMILY_MODULES:
             source = inspect.getsource(module)
