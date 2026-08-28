@@ -1,24 +1,4 @@
-"""Harvest the online VALUES sources into shipped tables.
-
-The two values sources publish numbers rather than textures, and those
-numbers are small enough to ship: ~86 PhysicallyBased reference
-materials and 62 RGL measurements together are under 40 KB. Shipping
-them buys three things at once -
-
-  * the browser paints each tile in its real colour immediately,
-  * importing a known material needs no download at all, and
-  * the Generator Engine has a corpus of REAL measured materials to
-    build from offline (render/generator.py).
-
-    hython tests/harvest_online.py                 # PhysicallyBased
-    hython tests/harvest_online.py --reclassify    # RGL metal flags
-
-The RGL table's measured half (colour, roughness) comes from the
-BSDF files themselves - see core/bsdf_reader.py and RGLSource; only
-its inferred metal flag is recomputed here, since that inference is a
-keyword rule that gets corrected from time to time and needs no
-network.
-"""
+"""Harvests the online VALUES sources into shipped tables, so a tile paints in its real colour with no download and the generator has a corpus offline. Only the RGL table's INFERRED metal flag is recomputed here - its measured half comes from the BSDF files.  `hython tests/harvest_online.py [--reclassify]`  ▸archive/harvest_online.py"""
 
 import argparse
 import json
@@ -32,13 +12,6 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402
 
-# THREE dirnames: tests/ -> amaze/ -> python/, the directory that
-# holds the `amaze` package. The original had four, which lands on
-# scripts/ - where amaze is NOT importable - so every one of these
-# files silently imported amaze through Houdini's own package path,
-# i.e. the INSTALL. The sync-before-test discipline masked it for the
-# suite's whole life; it surfaced when a deliberately-unsynced
-# sabotage edit failed to change a test's behaviour.
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
@@ -49,10 +22,6 @@ RES_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "res"
 )
 
-#: Fields worth keeping from the PhysicallyBased dataset: everything
-#: that maps onto a surface shader. Deliberately dropped are the
-#: physical-but-not-shading fields (density, viscosity, surface
-#: tension, acoustic absorption) - real data, no parameter to drive.
 PB_FIELDS = (
     "color", "metalness", "roughness", "ior", "specularColor",
     "complexIor", "transmission", "transmissionDepth",
@@ -62,11 +31,7 @@ PB_FIELDS = (
 
 
 def harvest_physicallybased() -> dict:
-    """The whole PhysicallyBased dataset, trimmed to shading fields."""
-    # The LIVE API, explicitly: PhysicallyBasedSource._load() prefers
-    # the shipped table now, so harvesting through it would read back
-    # the file it is about to write - idempotent only by accident, and
-    # lossy the moment the table's shape differs from the API's.
+    """The whole PhysicallyBased dataset, trimmed to shading fields. Reads the LIVE API, never the source's loader, which prefers the shipped table and would read back the file this is about to write - and keys each entry as the API keys it."""
     items = matx_sources.get_json(
         matx_sources.PhysicallyBasedSource.API + "/materials"
     )
@@ -76,10 +41,6 @@ def harvest_physicallybased() -> dict:
         if not name:
             continue
         entry = {k: item[k] for k in PB_FIELDS if k in item}
-        # Keyed as the API keys it: everything downstream (the
-        # browser's category grouping, its search haystack) reads
-        # `category`, and a table that renamed the field to `classes`
-        # browsed as 86 Uncategorised materials.
         category = item.get("category")
         entry["category"] = (
             list(category) if isinstance(category, (list, tuple))
@@ -92,9 +53,7 @@ def harvest_physicallybased() -> dict:
 
 
 def reclassify_rgl() -> int:
-    """Recompute the RGL table's INFERRED metal flag from the current
-    keyword rule (the measured numbers are never touched). Returns the
-    number of entries whose flag changed."""
+    """Recomputes the RGL table's INFERRED metal flag from the current keyword rule, never touching the measured numbers. Answers how many changed."""
     path = os.path.join(RES_DIR, matx_sources.RGLSource.TABLE_FILE)
     with open(path, encoding="utf-8") as handle:
         doc = json.load(handle)
