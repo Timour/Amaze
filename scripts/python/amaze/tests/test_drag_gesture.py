@@ -1,18 +1,4 @@
-"""The self-managed drag gesture, replayed headlessly.
-
-Dragging is the app's busiest workflow and its least reachable code:
-every path runs inside mouse handlers, so verifying it has meant
-dragging tiles onto viewports by hand. The debug log's only slot
-crashes - six of them - are all in mouseReleaseEvent.
-
-These tests synthesise real QMouseEvents against the real
-DragDropListView and assert the STATE MACHINE holds: what arms a drag,
-what must not, and that every exit path leaves the widget clean. A
-gesture that ends with _dragging still True eats the next click.
-
-The release ACTION (import, assign, recategorise) is deliberately
-stubbed - what is under test here is the gesture, not the drop.
-"""
+"""The drag gesture replayed headlessly - real `QMouseEvent`s against the real view, asserting the STATE MACHINE, because a gesture ending with `_dragging` still True eats the next click. The drop ACTION is stubbed; the gesture is what is under test. ▸archive/test_drag_gesture.py"""
 
 import os
 import sys
@@ -35,7 +21,7 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 
 class _StubPanel(QtWidgets.QWidget):
-    """Everything the gesture asks its panel for, recorded."""
+    """Everything the gesture asks its panel for, recorded. `_find_panel` duck-types on `import_asset` to recognise it, and the release VERBS are not here - they are the section's."""
 
     def __init__(self, section="material"):
         super().__init__()
@@ -44,23 +30,14 @@ class _StubPanel(QtWidgets.QWidget):
         self.hover_rows = []
         self._category = None
         self._node = None
-        #: None = the release was over nothing (no editor); a test
-        #: that means empty NETWORK SPACE sets a sentinel.
-        self._network = None
+        self._network = None    # None = released over nothing; empty network space is a sentinel
         self._file_path_outcome = True
-        # The File section's release dispatch reads the row KIND
-        # through this attribute; the harness stamps kinds onto its
-        # QStandardItems under the same role number.
         from amaze.core import file_library
         self.file_files_model = file_library.FileFiles
 
-    # _find_panel duck-types on this attribute to recognise the panel
-    # while walking up the parent chain - a stub without it is simply
-    # not found, and the gesture never arms.
     def import_asset(self, *args, **kwargs):
         self.calls.append("import_asset")
 
-    # -- what mousePressEvent / mouseMoveEvent consult ----------------
     def _is_online(self):
         return False
 
@@ -71,9 +48,7 @@ class _StubPanel(QtWidgets.QWidget):
         return self._category
 
     def _update_category_drag_hover_global(self):
-        """File rows ride the self-managed gesture since batch 2 of
-        the interaction system, so every drag now walks the live
-        move path that drives the sidebar hover glow."""
+        """Every drag walks the live move path that drives the sidebar hover glow."""
 
     def _node_under_cursor(self):
         return self._node
@@ -83,14 +58,6 @@ class _StubPanel(QtWidgets.QWidget):
         import amaze
         return os.path.join(os.path.dirname(amaze.__file__), "ui", filename)
 
-    # -- the release actions -------------------------------------------
-    #
-    # NONE live here any more: every verb a DropRule names is the
-    # section's own (ROADMAP line 24, the panel fallback removed in
-    # B3), so the stubs sit on the harness's SECTION instance - the
-    # seam the tests patch moves with the box, and a door resolving on
-    # the panel again would find no verb and fail loudly. What stays
-    # on this stub is panel PLUMBING the dispatch itself calls.
     def assign_category_active(self, category):
         self.calls.append("category:%s" % category)
 
@@ -108,9 +75,7 @@ class _StubPanel(QtWidgets.QWidget):
 def _event(kind, pos, button=QtCore.Qt.MouseButton.LeftButton,
            buttons=None, global_pos=None):
     if global_pos is not None:
-        # The short ctor takes the GLOBAL position from the live
-        # cursor, which a headless run cannot aim - the hip cells
-        # need it spelled out (release inside vs outside the panel).
+        # The short ctor reads the LIVE cursor, which headless cannot aim.
         return QtGui.QMouseEvent(
             kind, QtCore.QPointF(pos), QtCore.QPointF(pos),
             QtCore.QPointF(global_pos), button,
@@ -142,12 +107,7 @@ class _Harness:
         self.view.resize(400, 300)
         self.panel = _StubPanel(section)
         testcase.addCleanup(self.panel.deleteLater)
-        # The moved release verbs live on the SECTION (ROADMAP line 24
-        # B2), so the harness builds the real section class over the
-        # stub panel and stubs those verbs on the INSTANCE - shadowing
-        # the real bodies, which would otherwise run against a panel
-        # that has none of their machinery. sections.drop_verb resolves
-        # the instance attribute first, exactly as the live panel does.
+        # Real section over the stub panel, verbs stubbed on the INSTANCE.
         from amaze.panel import sections
         self.section = sections.SECTION_INDEX[section](self.panel)
         self.panel.sections = {section: self.section}
@@ -199,8 +159,6 @@ class _Harness:
                 return dest is not None
             self.section.drop_code_at_release = _code
             self.section.create_code_node_in = _create_code
-        # _find_panel walks the parent chain; parenting the view to the
-        # stub is how the real panel provides itself.
         self.view.setParent(self.panel)
         self.view.show()
 
@@ -233,8 +191,7 @@ class TestGestureArming(unittest.TestCase):
         self.assertTrue(h.view._drag_index.isValid())
 
     def test_press_on_empty_space_does_not_arm(self):
-        """A press on empty grid used to arm anyway, producing a ghost
-        drag whose invalid index reached the release handlers."""
+        """A press on empty grid must not arm - a ghost drag carries an invalid index into the release handlers."""
         h = _Harness(self, rows=1)
         h.press(QtCore.QPoint(380, 280))
         self.assertIsNone(h.view._drag_start)
@@ -248,8 +205,7 @@ class TestGestureArming(unittest.TestCase):
         self.assertIsNone(h.view._drag_start)
 
     def test_press_while_dragging_keeps_the_live_state(self):
-        """A stray right/middle press mid-gesture must not clear the
-        drag - that lost the drop and left the sidebar glowing."""
+        """A stray right or middle press mid-gesture must not clear the drag, or the drop is lost and the sidebar stays glowing."""
         h = _Harness(self)
         h.press()
         h.view._dragging = True
@@ -274,9 +230,7 @@ class TestGestureRelease(unittest.TestCase):
         for section, kind, expected in (
                 ("material", None, "material"),
                 ("cop", None, "cop"),
-                # Geometry is a KIND inside the File section since the
-                # merge - the release must reach the same import
-                # handler it always did.
+                # Geometry is a KIND in the File section, same import handler.
                 ("file", "geometry", "geo")):
             h = self._armed(section, kind=kind)
             h.release()
@@ -284,8 +238,7 @@ class TestGestureRelease(unittest.TestCase):
                           "%s release did not dispatch" % section)
 
     def test_release_always_clears_the_gesture(self):
-        """Every exit path: a gesture that ends with _dragging True
-        eats the next click."""
+        """Every exit path - a gesture ending with `_dragging` True eats the next click."""
         h = self._armed()
         h.release()
         self.assertFalse(h.view._dragging)
@@ -308,9 +261,7 @@ class TestGestureRelease(unittest.TestCase):
         self.assertFalse(h.view._dragging)
 
     def test_a_failing_drop_still_clears_the_gesture(self):
-        """The six logged slot crashes were all in release. Whatever
-        the action raises, the gesture must not stay armed - or the
-        panel is dead until the next panel reopen."""
+        """Whatever the drop raises, the gesture must not stay armed - or the panel is dead until it is reopened."""
         h = self._armed()
 
         def _boom(idx):
@@ -323,20 +274,7 @@ class TestGestureRelease(unittest.TestCase):
                          "a raising drop left the gesture armed")
 
     def test_a_LOCKED_asset_is_reported_not_crashed(self):
-        """Houdini REFUSING is not a bug, and it reached Qt as one.
-
-        Dropping a material into a locked asset raises
-        `hou.PermissionError("Cannot create a node inside a locked
-        asset")`. Nothing caught it: the exception left
-        mouseReleaseEvent, Qt logged a slot crash, and the user saw a
-        drop that silently did nothing. Five times in one session on
-        2026-08-03, found by reading the debug log rather than by any
-        test.
-
-        It gets the gesture's own vocabulary for a drop that did not
-        land - the tag flies back - plus Houdini's own sentence for
-        why, on the status bar. No dialog.
-        """
+        """Houdini REFUSING is not a bug: a locked asset raises `hou.PermissionError`, and uncaught that reads as a slot crash and a drop that silently did nothing. It gets the gesture's own refusal - the tag flies back - and Houdini's sentence on the status bar. No dialog. ▸p/dialogs-are-a-bill"""
         h = self._armed()
         said = []
 
@@ -345,9 +283,6 @@ class TestGestureRelease(unittest.TestCase):
                 "Cannot create a node inside a locked asset")
 
         h.section.drop_material_at_release = _locked
-        # hou.ui is absent headless, so it is STOOD UP here rather than
-        # patched - which also proves the handler reaches it when it
-        # exists. The guard for when it does not is the test below.
         stub = type("_UI", (), {"setStatusMessage":
                                 staticmethod(
                                     lambda *a, **k: said.append(a[0]))})()
@@ -364,9 +299,7 @@ class TestGestureRelease(unittest.TestCase):
             % said[0])
 
     def test_a_headless_session_still_absorbs_the_refusal(self):
-        """`hou.ui` does not exist without a UI, and an AttributeError
-        raised inside this handler would turn the refusal it absorbs
-        back into the slot crash it prevents."""
+        """`hou.ui` does not exist without a UI, and an `AttributeError` here turns the refusal back into the slot crash it prevents."""
         h = self._armed()
 
         def _locked(idx):
@@ -380,10 +313,7 @@ class TestGestureRelease(unittest.TestCase):
         self.assertFalse(h.view._dragging)
 
     def test_a_REAL_error_still_raises(self):
-        """The other half. Only Houdini's refusal is caught; a genuine
-        programming error must still crash where it can be seen, or the
-        catch becomes the bare `except Exception` that makes a failure
-        indistinguishable from an honest empty result."""
+        """Only Houdini's refusal is caught - a real programming error must still crash where it can be seen."""
         h = self._armed()
 
         def _bug(idx):
@@ -394,15 +324,7 @@ class TestGestureRelease(unittest.TestCase):
             h.release()
 
     def test_a_failing_drop_clears_the_PRESS_state_too(self):
-        """_dragging is not the whole gesture.
-
-        It is cleared before the try block, so the test above passes even
-        when the four press-state fields survive - and those are what
-        mouseMoveEvent measures against. A raising drop left _drag_start,
-        _drag_section, _drag_panel and _drag_index set, and the method's
-        own comment describes what that costs: a later hover move with NO
-        button held measures a large distance from the stale start point
-        and launches a drag the user never began."""
+        """`_dragging` is not the whole gesture - the four press-state fields are what move measures against, and left set, a later hover with no button held launches a drag nobody began."""
         h = self._armed()
         h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
@@ -421,8 +343,7 @@ class TestGestureRelease(unittest.TestCase):
             "move launches a phantom drag" % sorted(still_set))
 
     def test_a_phantom_drag_cannot_start_after_a_failing_drop(self):
-        """The behaviour the leak causes, end to end: no button held,
-        just a mouse move, and a full gesture arms itself."""
+        """End to end: no button held, just a move, and a full gesture arms itself."""
         h = self._armed()
         h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
@@ -435,18 +356,13 @@ class TestGestureRelease(unittest.TestCase):
             "a bare hover move started a drag the user never began")
 
     def test_a_failing_drop_cannot_carry_its_section_into_another(self):
-        """Worse than a phantom drag: the stale gesture keeps the OLD
-        section, so a release after switching sections dispatches the
-        wrong handler with an index into the wrong model."""
+        """A stale gesture keeps the OLD section, so a release after switching dispatches the wrong handler with an index into the wrong model."""
         h = self._armed("material")
         h.section.drop_material_at_release = self._boom
         with self.assertRaises(hou.OperationFailed):
             h.release()
         h.panel.calls.clear()
 
-        # The user switched tabs. `current_section` is the attribute
-        # the gesture reads at press time; this line set a `section`
-        # attribute nothing reads until 2026-08-13.
         h.panel.current_section = "file"
         h.move(QtCore.QPoint(h.item_pos().x() + 200,
                              h.item_pos().y() + 200))
@@ -462,10 +378,7 @@ class TestGestureRelease(unittest.TestCase):
             harness.item_pos(), button))
 
     def test_a_right_click_cancels_the_drag_instead_of_dropping(self):
-        """mousePressEvent already swallows a stray right press
-        mid-gesture; the release handler did not filter by button, so
-        right-clicking to back out PERFORMED the drop wherever the
-        cursor happened to be - a real import or assignment."""
+        """The release handler must filter by BUTTON, or right-clicking to back out performs the drop wherever the cursor is."""
         h = self._armed()
         self._release_with(h, QtCore.Qt.MouseButton.RightButton)
         self.assertEqual(
@@ -500,11 +413,7 @@ class TestGestureRelease(unittest.TestCase):
 
 
 class FileRowsReleaseOnNodes(unittest.TestCase):
-    """Batch 2 of the one interaction system: image, unknown and
-    geometry rows ride the one self-managed gesture, and a release on
-    a node hands over the spelled path - uniform across kinds.
-    Geometry falls back to its import when the node takes nothing;
-    image and unknown rows MISS."""
+    """Image, unknown and geometry rows ride the same gesture and a release on a node hands over the spelled path - geometry falls back to its import, image and unknown MISS."""
 
     def _drag(self, harness):
         harness.press()
@@ -577,8 +486,7 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
         self.assertEqual(["create_code"], h.panel.calls)
 
     def test_a_node_that_takes_nothing_is_a_MISS_for_geometry_too(self):
-        """ONE rule on nodes, no per-kind fallback: a refused hand-over
-        does not quietly become an import beside the node."""
+        """ONE rule on nodes - a refused hand-over does not quietly become an import beside the node."""
         from amaze.core import file_library
         h = _Harness(self, section="file", kind=file_library.KIND_GEO)
         h.panel._node = object()
@@ -616,15 +524,7 @@ class FileRowsReleaseOnNodes(unittest.TestCase):
 
 
 class TheBehaviourTableCells(unittest.TestCase):
-    """The interaction matrix, one cell per release situation - the
-    RECORDED baseline for retiring the release ladder (ROADMAP, the
-    behaviour table). Written green against the ladder; the table
-    engine must keep every cell green untouched.
-
-    A cell is (section, row kind, what is under the release) and its
-    expected dispatch. Aim states: a sidebar category, a scene node,
-    empty network space, nothing at all - plus inside/outside the
-    panel for hip scenes."""
+    """One cell per release situation - `(section, row kind, what is under the release)` and its expected dispatch, over every aim state."""
 
     CELLS = (
         ("material aims itself", "material", None,
@@ -697,9 +597,7 @@ class TheBehaviourTableCells(unittest.TestCase):
                 if aim.get("category"):
                     h.panel._category = aim["category"]
                 h.press()
-                # Armed directly, as TestGestureRelease does: the cells
-                # pin the RELEASE dispatch; the move machinery (hover,
-                # promotion) has its own tests.
+                # Armed directly - these cells pin the RELEASE dispatch only.
                 h.view._dragging = True
                 h.view._drag_panel = h.panel
                 global_pos = None
@@ -714,9 +612,7 @@ class TheBehaviourTableCells(unittest.TestCase):
 
 
 class TheParameterPaneHandOff(unittest.TestCase):
-    """A File gesture crossing into a Parameters pane becomes the one
-    real QDrag - a field is a Qt widget and only mime fills it. Every
-    other section stays self-managed whatever pane it crosses."""
+    """A File gesture crossing into a Parameters pane becomes the ONE real `QDrag` - a field is a Qt widget and only mime fills it. Every other section stays self-managed."""
 
     class _Pane:
         def type(self):
@@ -730,9 +626,7 @@ class TheParameterPaneHandOff(unittest.TestCase):
             return self._pane
 
         def paneTabs(self):
-            """dragengine's viewport hover walks the panes on every
-            move of a MATERIAL drag; an empty answer keeps it inert
-            under the mock."""
+            """An empty answer keeps the viewport hover inert under the mock."""
             return []
 
     def _armed(self, section, kind=None):
@@ -769,9 +663,7 @@ class TheParameterPaneHandOff(unittest.TestCase):
                          "the gesture stayed live after the hand-off")
 
     def test_a_material_gesture_never_promotes(self):
-        # The mock is installed BEFORE arming: a material drag walks
-        # the viewport hover on every move, which asks hou.ui for the
-        # panes - absent headless, empty under the mock.
+        # Mocked BEFORE arming - every move asks `hou.ui`, absent headless.
         ran = []
         had_ui = hasattr(hou, "ui")
         real = getattr(hou, "ui", None)
@@ -795,38 +687,15 @@ class TheParameterPaneHandOff(unittest.TestCase):
 
 
 class GuardedSlotsTest(unittest.TestCase):
-    """Every Qt event handler this project overrides must be wrapped.
+    """Every overridden Qt handler must carry `debug.guarded`, or an exception in it vanishes with no record and no traceback. Checked on `__wrapped__`, never by grepping the source, which matches the decorator named in prose. It does NOT survive a SIGSEGV. ▸r/qt-windows-macos"""
 
-    research.md: *PySide swallows exceptions in Qt slots before
-    sys.excepthook* - so an exception in an unwrapped handler vanishes
-    entirely: no log record, no traceback, and the gesture half-done.
-    `debug.guarded` records it (crash tier, Debug Mode or not) and
-    re-raises, which is the only reason those six release crashes in the
-    real log were readable at all.
-
-    Checked on the ATTRIBUTE, not in the source: `guarded` wraps with
-    functools.wraps, so a wrapped handler carries `__wrapped__` and an
-    unwrapped one does not. A grep for the decorator line would also
-    match it inside a docstring or a comment - and this file's own
-    module docstring names it twice.
-
-    It does NOT protect against a SIGSEGV. research.md is explicit that
-    a segfault bypasses guarded(), the excepthook and every `except` in
-    the codebase, because the process is dying rather than raising.
-    """
-
-    #: Qt handlers whose bodies run project code. paintEvent and
-    #: sizeHint are deliberately absent: they are pure painting and
-    #: measurement, called from Qt's own layout pass, and wrapping them
-    #: would put a log write in a repaint loop.
     HANDLERS = (
         "mousePressEvent", "mouseMoveEvent", "mouseReleaseEvent",
         "dragEnterEvent", "dragMoveEvent", "dropEvent",
     )
 
     def _widget_classes(self):
-        """The project's own QWidget subclasses, from the two modules
-        that carry the gesture and the shared controls."""
+        """This project's widget classes - a QWidget OR any class defining a Qt handler, because the gesture lives on a MIXIN a QWidget-only scan would miss."""
         from amaze.helpers import ui_helpers
 
         found = []
@@ -836,13 +705,6 @@ class GuardedSlotsTest(unittest.TestCase):
                 if not (isinstance(value, type)
                         and value.__module__ == module.__name__):
                     continue
-                # A QWidget, OR any class that defines a Qt handler.
-                # The gesture moved onto a plain MIXIN 2026-08-04 so it
-                # could serve both the list and the table view - and a
-                # QWidget-only scan stopped seeing its slots at all,
-                # which is a guard silently switching itself off. The
-                # property is "an overridden handler is wrapped",
-                # wherever it is defined.
                 if issubclass(value, QtWidgets.QWidget) or any(
                         handler in value.__dict__
                         for handler in self.HANDLERS):
@@ -873,9 +735,7 @@ class GuardedSlotsTest(unittest.TestCase):
             % ", ".join(unwrapped))
 
     def test_a_guarded_handler_still_returns_what_the_body_returns(self):
-        """A wrapper that ate the return value would break every handler
-        that ends `return super().mousePressEvent(e)` - ClickSlider's
-        does, and a swallowed return changes the event's accept path."""
+        """A wrapper eating the return breaks every handler ending `return super()...` and changes the event's accept path."""
         from amaze.core import debug
 
         @debug.guarded("Probe.mousePressEvent")
@@ -885,8 +745,7 @@ class GuardedSlotsTest(unittest.TestCase):
         self.assertEqual(("body ran", 7), handler(None, 7))
 
     def test_a_guarded_handler_re_raises(self):
-        """The wrapper RECORDS and re-raises; swallowing here would turn
-        a crash into a silently half-finished gesture."""
+        """The wrapper RECORDS and re-raises - swallowing turns a crash into a silently half-finished gesture."""
         from amaze.core import debug
 
         @debug.guarded("Probe.mouseReleaseEvent")
@@ -898,16 +757,7 @@ class GuardedSlotsTest(unittest.TestCase):
 
 
 class TheGestureRunsOnBOTHViews(unittest.TestCase):
-    """Step 2 of the QTableView migration. List mode is becoming a real
-    table, and the self-managed gesture has to run there too - a second
-    copy of a 541-line press-move-release cycle is not an option, and a
-    real QDrag is not either (it traps the gesture in a nested run loop
-    where the per-move viewport picking cannot run - tried, shipped,
-    reverted, re-verified; devlog #80).
-
-    So it is a MIXIN over QAbstractItemView, and these pin that both
-    views actually get it.
-    """
+    """The gesture is a MIXIN over `QAbstractItemView` so both views get it without a second copy. A real `QDrag` is not an option - it traps the gesture in a nested run loop where per-move viewport picking cannot run."""
 
     VIEWS = ("DragDropListView", "DragDropTableView")
 
@@ -932,17 +782,13 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
                         "or it is not one gesture" % (name, handler))
 
     def test_the_table_view_carries_the_arming_rules(self):
-        """The rules are class data on the mixin; a view that lost them
-        would arm on nothing, or on everything. (What a RELEASE does is
-        no longer view data at all - the sections declare it.)"""
+        """The arming rules are class data on the mixin - a view without them arms on nothing, or on everything."""
         table = dragdrop_widgets.DragDropTableView
         self.assertEqual(dragdrop_widgets.GridGestureMixin.ARMED_SECTIONS,
                          table.ARMED_SECTIONS)
 
     def test_the_table_view_selects_ROWS_and_MANY(self):
-        """QTableView defaults to ExtendedSelection where QListView
-        defaults to Single - measured. The grid is multi-select, so the
-        table says so rather than inheriting a difference."""
+        """`QTableView` defaults to ExtendedSelection where `QListView` defaults to Single, so the table says so rather than inheriting the difference."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
         self.assertEqual(
@@ -953,8 +799,7 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
             view.selectionBehavior())
 
     def test_the_table_view_hides_the_row_numbers(self):
-        """A vertical header of row numbers is a table's default and
-        has no meaning here - the row IS the asset."""
+        """A table's default row numbers mean nothing here - the row IS the asset."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
         self.assertFalse(view.verticalHeader().isVisible())
@@ -963,14 +808,11 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
                          "row that draws its own dividers")
 
     def test_the_debug_helper_survives_a_view_with_no_gridSize(self):
-        """The one QListView-only call in 541 lines. A table has no
-        grid size, and this runs inside the scroll path."""
+        """The one `QListView`-only call in the gesture: a table has no grid size, and this runs inside the scroll path under Debug Mode."""
         view = dragdrop_widgets.DragDropTableView()
         self.addCleanup(view.deleteLater)
         self.assertFalse(hasattr(view, "gridSize"))
         view.setModel(QtGui.QStandardItemModel(3, 1))
-        # Debug-gated, so it only runs with Debug Mode on - which is
-        # exactly when a crash in it would be least welcome.
         from amaze.core import debug as debug_mod
         was_on = debug_mod.is_on()
         debug_mod.configure(True)
