@@ -658,7 +658,7 @@ relaunch. Reopening the panel is not enough.
 
 ## Credits and licence
 
-Elmar Glaubauf — Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)  for its preview engine for material thumbnails. Thank you.
+Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)  for its preview engine for material thumbnails. Thank you.
 
 Color palette sources: Sanzo Wada (public domain, via dblodorn/sanzo-wada), Paul Klee, Josef Albers, Johannes Itten (interpretive palettes from public-domain works).
 
