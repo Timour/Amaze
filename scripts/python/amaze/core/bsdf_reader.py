@@ -1,23 +1,4 @@
-"""Reader for the `tensor_file` container measured BSDFs ship in.
-
-EPFL RGL publishes its measurements (CC0) as Mitsuba tensor files: a
-12-byte magic, a version pair, a field count, then one descriptor per
-field (name, dimensions, dtype, offset, shape) followed by the raw
-arrays. Parsing it here means a measurement can be turned into
-shading numbers without their C++/Python reference API.
-
-Layout, verified against a real file:
-
-    char[12] "tensor_file\0"
-    uint8    version major, minor
-    uint32   field count
-    per field:
-        uint16 name length, char[] name
-        uint16 ndim, uint8 dtype
-        uint64 offset, uint64 shape[ndim]
-
-An RGB measurement carries: version, description, phi_i, theta_i,
-sigma, ndf, vndf, luminance, rgb, jacobian, valid.
+"""Reader for the tensor-file container measured BSDFs ship in - a magic, a version pair, a field count, then one descriptor per field followed by the raw arrays. Parsing it here turns a measurement into shading numbers without the publisher's own API. ▸archive/bsdf_reader.py
 """
 import struct
 

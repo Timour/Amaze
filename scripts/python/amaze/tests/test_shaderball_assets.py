@@ -1,21 +1,4 @@
-"""The shader-ball scene must COMPOSE, not merely exist.
-
-The Karma preview scene is two files: `shaderBallScene_Simple.usd`,
-which the engine loads, and `shaderBallScene.usd`, which it references
-for the camera, floor and lights. The ball is Houdini's own.
-
-Break any link and every Karma thumbnail dies with "no cameras found",
-while the app keeps the old thumbnail and stays quiet - so nothing looks
-broken until someone renders. A crate is BINARY, so a text grep for
-consumers reports "referenced by nothing" and the reference can be
-deleted invisibly, which has happened.
-
-NEVER GUARD THIS WITH A FILE SIZE. It passed for a 41.7MB file with the
-camera prim deleted, and failed for a scene that was merely smaller.
-This asks what the size stood in for: does the scene COMPOSE, and does
-it carry the prims the engine addresses by name?
-
-The paths are read out of `karma_scene.py`, never repeated here.
+"""The shader-ball scene must COMPOSE, not merely exist - a broken reference kills every Karma thumbnail silently, and a crate is BINARY, so a text grep reports it as referenced by nothing. NEVER GUARD THIS WITH A FILE SIZE: it passes for a huge file with the camera deleted. Paths are read out of the engine, never repeated. ▸archive/test_shaderball_assets.py
 """
 
 import os
@@ -34,18 +17,11 @@ class ShaderBallAssetsTest(unittest.TestCase):
     RES = os.path.join(PKG, "res", "usd")
     ENGINE = os.path.join(PKG, "preview", "karma_scene.py")
 
-    #: The scene the engine actually loads. Every other file is reached
-    #: through this one.
+    #: What the engine loads; every other file is reached through it.
     ENTRY = "shaderBallScene_Simple.usd"
 
     def _addressed_paths(self):
-        """Every /shaderBallScene prim path karma_scene.py names.
-
-        Derived, not listed: these are the paths the scaffold sets on
-        `primpath1`, `camera` and the two `geopath1` parameters, and a
-        scene that does not carry one of them renders nothing while
-        reporting success.
-        """
+        """Every scene prim path the engine names - DERIVED, never listed, because a scene missing one renders nothing while reporting success."""
         with open(self.ENGINE, encoding="utf-8") as handle:
             source = handle.read()
         found = sorted(set(re.findall(r'"(/shaderBallScene[^"]*)"', source)))

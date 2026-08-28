@@ -1,17 +1,4 @@
-"""A category can carry a colour, and the grid paints it under every
-tile in that category.
-
-This is only unambiguous because an asset has exactly ONE category -
-the feature is why multi-category was removed rather than the other way
-round. With several, every tile would have needed a rule for which of
-its categories won.
-
-Two things are worth pinning beyond "it stores a colour". The colour is
-keyed by NAME, so a rename has to carry it across and a removal has to
-take it away, or an orphan key silently reattaches the moment that name
-comes back. And the text on the band has to stay readable against a
-colour the user chose freely - the normal grid text is pale, and pale
-on pale is an invisible name.
+"""A category carries a colour and the grid paints it under every tile in that category - unambiguous only because an asset has exactly ONE category. The colour is keyed by NAME, so a rename must carry it and a removal must take it, or an orphan key reattaches when the name returns. ▸archive/test_category_colors.py
 """
 
 import os
@@ -64,9 +51,7 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("", self.model.category_color(self.row))
 
     def test_the_colour_reaches_the_grid(self):
-        """The asset model and the category model share one connector's
-        data dict, so the grid sees the sidebar's edit with nothing
-        wired between them."""
+        """The asset model and the category model share one connector's data, so the grid sees the sidebar's edit with nothing wired between them."""
         self.cats.set_color("Metal", "#4af2a1")
         self.assertEqual("#4af2a1", self.model.category_color(self.row))
         self.assertEqual("#4af2a1", self.model.data(
@@ -85,8 +70,7 @@ class CategoryColorTest(unittest.TestCase):
         self.assertEqual("", self.cats.color_of("Metal"))
 
     def test_a_removed_category_takes_its_colour_with_it(self):
-        """Otherwise the colour lies in wait and reattaches itself to
-        the next category that happens to reuse the name."""
+        """Otherwise the colour lies in wait and reattaches to the next category reusing the name."""
         self.cats.set_color("Metal", "#4af2a1")
         self.cats.remove_category("Metal")
         self.cats.check_add_category("Metal")
@@ -131,9 +115,7 @@ class BandTextTest(unittest.TestCase):
                 "wrong text colour on %s" % colour)
 
     def test_it_weighs_the_channels_perceptually(self):
-        """Rec. 601, not a plain average: pure green reads far brighter
-        than pure blue at the same value, and averaging puts both on the
-        same side of the line."""
+        """Weighted, never a plain average - pure green reads far brighter than pure blue at the same value, and averaging puts both on one side of the line."""
         text_on = delegates.AssetItemDelegate.text_on
         self.assertEqual(delegates.AssetItemDelegate.BAND_TEXT_DARK.name(),
                          text_on(QtGui.QColor("#00ff00")).name())

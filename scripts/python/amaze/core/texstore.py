@@ -1,4 +1,4 @@
-"""The texture store: every file a saved material references is adopted into `<library>/matX/` and referenced as `$AMAZELIB/...`, so the library is self-contained; the panel publishes the variable, Copy To resolves it back to plain absolute paths for scenes. ▸r/texture-refs"""
+"""The texture store: every file a saved material references is adopted into `<library>/matX/` and referenced as `$AMAZELIB/...`, so the library is self-contained; the panel publishes the variable, Copy To resolves it back to plain absolute paths for scenes. `hou` is imported INSIDE the node-walking functions only, because the path half serves a caller that stays hou-free. ▸r/texture-refs"""
 
 import filecmp
 import os
@@ -7,8 +7,6 @@ import shutil
 from amaze.core import debug
 from amaze.helpers import hostos
 
-# `hou` is imported inside the node-walking functions only: the path half
-# (tokenize/resolve/asset_folder) serves packages.py, which stays hou-free.
 
 TOKEN_VAR = "AMAZELIB"
 TOKEN_PREFIX = "$" + TOKEN_VAR + "/"

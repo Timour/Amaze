@@ -1,8 +1,4 @@
-"""A test skipped on EVERY Houdini protects nothing and reads as coverage.
-
-Pins the intersection in both polarities, the four refusals, the stdlib
-guarantee behind them, and the wiring.
-(practice.md > A TEST SKIPPED ON EVERY MAJOR IS DEAD COVER)
+"""A test skipped on EVERY Houdini protects nothing and reads as coverage - this pins the intersection in both polarities, the refusals, and the wiring. ▸archive/test_dead_cover.py
 """
 
 import ast
@@ -18,7 +14,6 @@ from contextlib import redirect_stderr, redirect_stdout
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
-#: Siblings in tests/, run as scripts - resolved the runner's way.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import check_dead_cover                                   # noqa: E402
@@ -69,8 +64,7 @@ class _ReportsMixin(unittest.TestCase):
         return path
 
     def run_check(self, *paths):
-        #: The real main(), captured - not a subprocess, so a failure
-        #: shows a traceback instead of an exit code to go hunting for.
+        #: The real main(), captured - a subprocess gives an exit code, not a traceback.
         out, err = io.StringIO(), io.StringIO()
         with redirect_stdout(out), redirect_stderr(err):
             code = check_dead_cover.main(list(paths))
@@ -207,9 +201,7 @@ class TheReportWriterTest(_ReportsMixin):
         self.assertEqual(run_suite.SKIP_REPORT_VAR, "AMAZE_SKIP_REPORT")
 
     def test_no_test_here_mutates_the_environment_the_runner_reads(self):
-        #: BUILT, never written whole - a source scan holding its own
-        #: pattern matches itself and can never pass (measured: it went
-        #: red on both majors on its first real run).
+        #: BUILT, never written whole - a scan holding its pattern matches itself.
         var = "AMAZE_" + "HOUDINI"
         with open(os.path.abspath(__file__), encoding="utf-8") as handle:
             source = handle.read()
@@ -276,21 +268,11 @@ class TheWiringTest(unittest.TestCase):
 
 
 class EverythingLoadsOnADirectRunTest(unittest.TestCase):
-    """unittest.main() collects what is defined ABOVE it, then exits.
-
-    Fifteen modules defined classes below the call - 126 methods a
-    direct run never collected, printing a confident green over half a
-    file. The gate was safe (run_suite imports by name, so __main__
-    never fires there); the hole was the developer loop. Dead cover's
-    other face: a run that LOOKS like coverage. The call belongs at
-    the bottom, and this pins it there.
-    """
+    """`unittest.main()` collects what is defined ABOVE it, then exits - so a class below the call is never collected on a direct run, and the run prints a confident green over half a file."""
 
     @staticmethod
     def _defined_below_main(source):
-        """Module-level definitions below the unittest.main() call, or
-        [] when there is no call. AST, never grep: a comment or a
-        docstring mentioning the call must not count as one."""
+        """Module-level definitions below the `unittest.main()` call. AST, never grep - a comment mentioning the call must not count as one."""
         tree = ast.parse(source)
         main_lines = [node.lineno for node in ast.walk(tree)
                       if isinstance(node, ast.Call)
