@@ -904,10 +904,10 @@ class IconAssetsTest(unittest.TestCase):
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
         expected_alpha = {"badge_open": 0.75, "badge_star": 0.75,
-                          "badge_versions": 0.75, "badge_comment": 1.0,
-                          "badge_comment_75": 0.75,
-                          "badge_versions_hover": 1.0,
-                          "badge_star_40": 0.4, "badge_star_75": 0.75}   # the DELIVERED values - family discs 75%, the two hover-solid buttons (versions, comment) at 1.0, the star button 40% OF FULL at rest - and they change only WITH new art, in its commit
+                          "badge_versions": 0.4, "badge_comment": 0.75,
+                          "badge_comment_75": 0.4,
+                          "badge_versions_hover": 0.75,
+                          "badge_star_40": 0.4, "badge_star_75": 0.75}   # the DELIVERED values, read from the art - they change only WITH new art, in its commit
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:

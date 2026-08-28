@@ -701,22 +701,24 @@ class ModelRoleTest(unittest.TestCase):
         self.assertTrue(model.data(index, model.NotesRole))
 
     def test_the_badge_renders_the_family_art_as_drawn(self):
-        """The tile gets the ARTWORK's own colours - no re-tint in code."""
+        """The tile gets the ARTWORK's own colours, no re-tint in code. Keyed on the DOMINANT paint, never a fixed alpha: the disc ships at whatever opacity the design chooses, and the highest-alpha pixels are the glyph's antialiased edge rather than the art."""
         from amaze.panel import delegates
         declared = test_support.art_colours("badge_comment")
         pixmap = delegates.AssetItemDelegate._badge_pixmap(
             "badge_comment", 24)
         image = pixmap.toImage()
-        painted = set()
-        for x in range(image.width()):
-            for y in range(image.height()):
-                colour = image.pixelColor(x, y)
-                if colour.alpha() > 250:  # edge pixels blend with the ground; only full coverage names the art's own colours
-                    painted.add(colour.name())
-        found = bool(painted & declared)
-        self.assertTrue(found,
-                        "the family disc (black at 75%) is not in the "
-                        "note badge as drawn")
+        import collections
+        painted = collections.Counter(
+            image.pixelColor(x, y).name()
+            for x in range(image.width())
+            for y in range(image.height())
+            if image.pixelColor(x, y).alpha() > 128)
+        dominant = painted.most_common(1)[0][0] if painted else ""
+        self.assertIn(
+            dominant, declared,
+            "the note badge's dominant paint is not one the art declares "
+            "- the delegate re-tinted it (dominant %s, art %s)"
+            % (dominant, sorted(declared)))
 
     def test_the_star_preference_has_no_path_into_the_badge(self):
         """set_star_color stays deleted - no colour push may reach the badges."""
