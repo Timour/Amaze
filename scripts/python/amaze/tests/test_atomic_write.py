@@ -1,22 +1,4 @@
-"""The write path: no reader may ever see a half-written database.
-
-The bug this pins was not theoretical and was not a truncation. Both
-database writers used a FIXED scratch name, `path + ".tmp"`, so two
-savers of the same file shared one buffer. Measured 2026-07-29, two
-processes x 600 saves through the old shape:
-
-    clean = 3414    MIXED-CONTENT = 794    UNPARSEABLE = 790
-
-The 790 unparseable reads are the harmless half - JSON announces a
-truncation loudly, and the codebase already refuses on a parse failure.
-The 794 are the dangerous half: they PARSED, and they held records from
-BOTH writers, leaving the destination larger than either document. A
-corruption that parses is a corruption nothing downstream can detect.
-
-So the test that matters is not "does it write a valid file" - the old
-code did that most of the time. It is "can two concurrent writers ever
-share a scratch file", which is a property of the NAME.
-"""
+"""The write path: no reader may ever see a half-written database - the property pinned is that two writers cannot share a scratch NAME, because the corruption that parses is the one nothing downstream detects. ▸r/atomic-writes ▸p/asset-write-unit ▸p/first-app-picks-the-platform"""
 
 import gzip
 import json
@@ -27,10 +9,6 @@ import tempfile
 import threading
 import unittest
 
-# A subset run led by this module aborts with SIGABRT ("QWidget: Must
-# construct a QApplication before a QWidget") before unittest can print
-# its FAIL lines - the full suite never sees it because another module
-# builds the app first. Same preamble as test_keyed_store.
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
 
@@ -44,11 +22,7 @@ from amaze.helpers import hostos                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
 
-#: Whether the PROCESS arrived armed - captured at import, before any
-#: test has run, because discovery imports every module first. The
-#: sentinel class at the bottom holds the sandbox tests to putting this
-#: state back.
-_SANDBOX_ARMED_AT_IMPORT = hostos.sandboxed()
+_SANDBOX_ARMED_AT_IMPORT = hostos.sandboxed()   # before any test runs
 
 
 class AtomicWriteTest(unittest.TestCase):
@@ -68,11 +42,7 @@ class AtomicWriteTest(unittest.TestCase):
             self.assertEqual({"assets": [{"id": "a"}]}, json.load(fh))
 
     def test_the_scratch_name_is_unique_per_writer(self):
-        """THE regression. A fixed name is what let two savers collide.
-
-        Captured from inside the write, because the scratch exists only
-        for the moment between creation and the rename.
-        """
+        """THE regression, captured from inside the write - the scratch exists only between creation and the rename."""
         seen = []
         real_replace = hostos.replace_file
 
@@ -90,11 +60,7 @@ class AtomicWriteTest(unittest.TestCase):
             "concurrent savers would share one buffer" % (seen,))
 
     def test_concurrent_writers_never_produce_mixed_content(self):
-        """The measured failure, reproduced in-process.
-
-        Each writer writes a document that is entirely its own. Any
-        result holding both writers' marks is the silent corruption.
-        """
+        """The measured failure in-process: each writer's document is entirely its own, so any result holding both marks is the silent corruption."""
         errors = []
 
         def write(mark):
@@ -127,13 +93,7 @@ class AtomicWriteTest(unittest.TestCase):
                          "a scratch file was left in the library")
 
     def test_no_scratch_file_survives_a_failure(self):
-        """An unserialisable value must not litter the library.
-
-        The old shape left `library.json.tmp` behind, and a later reader
-        scanning the directory then has to know to ignore it - which is
-        exactly the kind of unowned file that got 8 live assets called
-        orphans on 2026-07-29.
-        """
+        """An unserialisable value must not litter the library - an unowned leftover is what gets live assets called orphans."""
         with self.assertRaises(TypeError):
             hostos.write_json_atomic(self.path, {"bad": object()})
         self.assertEqual([], self._leftovers(),
@@ -148,9 +108,7 @@ class AtomicWriteTest(unittest.TestCase):
                              "a failed write replaced a good file")
 
     def test_the_scratch_lives_beside_the_destination(self):
-        """os.rename cannot cross drives on any OS (research.md, Windows
-        audit), so a scratch in the system temp dir would make every save
-        fail on a machine whose library is on another volume."""
+        """`os.rename` cannot cross drives, so a scratch in the system temp dir fails every save on a library held on another volume. ▸r/atomic-writes"""
         seen = []
         real_replace = hostos.replace_file
         hostos.replace_file = lambda src, dst: (
@@ -162,20 +120,7 @@ class AtomicWriteTest(unittest.TestCase):
 
 
 class EveryScratchWriterIsUniqueTest(unittest.TestCase):
-    """The property is a property of the NAME, so it is testable per
-    writer without reproducing a race.
-
-    Four writers had grown their own fixed-name version of the atomic
-    write: prefs.py (`final + ".tmp"`), library_policy.py and
-    tile_icons.py (both `path + ".writing"`), and - the one that matters
-    most - render/nodes.py's save_asset_pair, which writes the ASSET
-    rather than an index of assets, into a directory with no `.bak-*`
-    tier at all.
-
-    Each test below drives the REAL writer, not the helper it now calls:
-    a test of hostos alone would stay green through a call site that
-    quietly kept its own fixed name, which is exactly the bug.
-    """
+    """Uniqueness is a property of the NAME, so each test drives the REAL writer rather than the shared helper - a call site keeping its own fixed name is the bug. ▸r/atomic-writes"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_scratch_")
@@ -222,8 +167,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self._assert_unique("library_policy._write")
         self.assertEqual([], self._leftovers(),
                          "a scratch file was left beside policy.json")
-        # And it still round-trips - a scratch-name fix that broke the
-        # setting would be worse than the defect.
+        # And it still round-trips - a fix that broke the setting is worse than the defect.
         self.assertFalse(library_policy.allow_overwrite(self.dir),
                          "the last written value was not read back")
 
@@ -231,9 +175,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         from amaze.core import keyed_store, tile_icons
 
         class _Prefs:
-            """Only what tile_icons reads for the override path. NOT a
-            real Prefs: one built under hython resolves $AMAZE to the live
-            install, which is how a test overwrote real settings once."""
+            """Only what `tile_icons` reads - a real Prefs under hython resolves `$AMAZE` to the live install."""
 
             def __init__(self, directory):
                 self.dir = directory
@@ -243,10 +185,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         prefs = _Prefs(self.dir + os.sep)
         tile_icons.forget_overrides()
         self.addCleanup(tile_icons.forget_overrides)
-        # Through the ENGINE's own resolver, not a private in
-        # tile_icons: the store's path policy moved to
-        # keyed_store.open_store on 2026-08-03, which is the point -
-        # one place composes it for every keyed side table.
+        # Through the ENGINE's resolver - one place composes the path for every keyed side table.
         path = keyed_store.open_store(tile_icons.SPEC, prefs).path
         for n in range(6):
             self.assertTrue(
@@ -261,10 +200,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                              "the icon table did not survive the writes")
 
     def test_save_asset_pair_uses_unique_scratches(self):
-        """THE ONE THAT MATTERS MOST. `.mat`/`.interface` IS the asset,
-        and mat/ has no `.bak-*` tier, so a mixture of two writers is not
-        a recoverable inconsistency - it is a material that no longer
-        exists."""
+        """THE ONE THAT MATTERS MOST: `.mat`/`.interface` IS the asset and has no `.bak-*` tier behind it. ▸p/asset-write-unit"""
         from amaze.render import nodes
 
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
@@ -280,8 +216,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 interface_path, mat_path, "promoted parms %d\n" % n,
                 write_mat)
         self._assert_unique("save_asset_pair")
-        # BOTH destinations, and both must have gone through their own
-        # scratch: one shared name for the pair would be just as wrong.
         self.assertEqual(8, len(self.seen),
                          "the two files did not each get their own scratch")
         self.assertEqual([], self._leftovers(),
@@ -294,10 +228,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertEqual("the node network\n", handle.read())
 
     def test_the_texture_manifest_uses_a_unique_scratch(self):
-        """The LIVE case of the shared-buffer defect rather than the exotic
-        one: the thumbnail cache directory is derived from a size and a
-        prefix, nothing per-process, so two Houdini sessions browsing
-        images write this file through the same path."""
+        """The LIVE case: the cache directory is derived from a size and a prefix, nothing per-process, so two sessions write it through one path."""
         from amaze.core import texture_library
 
         store = texture_library.ThumbnailCache.__new__(
@@ -320,9 +251,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                              "the manifest did not survive the writes")
 
     def test_the_texture_manifest_keeps_its_on_disk_shape(self):
-        """A cache file's bytes are a contract too: reformatting it would
-        rewrite every manifest on every machine for no reason. json.dump
-        with no indent is what this wrote before."""
+        """A cache file's bytes are a contract too - reformatting rewrites every manifest on every machine for no reason."""
         from amaze.core import texture_library
 
         store = texture_library.ThumbnailCache.__new__(
@@ -339,12 +268,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                              "the manifest was reformatted on disk")
 
     def test_a_download_uses_a_unique_scratch(self):
-        """Two fetches of one asset - two panes, or a retry racing a slow
-        first attempt - shared `dest_path + ".part"`, and the `finally`
-        then removed whichever copy was still there regardless of who was
-        writing it. That is the RAISING half of the same defect, landing on
-        a texture where the truncation check is the only thing between a
-        partial file and a material that renders wrong for good."""
+        """Two fetches of one asset shared the `.part` name, and the `finally` removed whichever copy was still there. ▸r/atomic-writes"""
         from amaze.core import matx_sources
         import io
 
@@ -352,20 +276,13 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         body = b"PNG bytes" * 64
 
         class _Resp(io.BytesIO):
-            """_request RETURNS the response (used as `with _request(url)
-            as resp`), it is not a context-manager factory - BytesIO
-            already supports the protocol."""
+            """`_request` RETURNS the response; it is not a context-manager factory."""
             headers = {"Content-Length": str(len(body))}
 
         real_request = matx_sources._request
         matx_sources._request = lambda _url: _Resp(body)
         self.addCleanup(setattr, matx_sources, "_request", real_request)
-        # CAUGHT MID-FLIGHT, through the progress callback the real UI
-        # passes. Listing the directory afterwards proves nothing: the
-        # `finally` removes the scratch either way, so the first version of
-        # this test stayed green with the fixed `.part` name restored. The
-        # name only exists while the transfer is running.
-        scratches = set()
+        scratches = set()   # caught mid-flight; the name is gone by the end
 
         def watch(_read, _total):
             scratches.update(n for n in os.listdir(self.dir)
@@ -386,17 +303,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             self.assertEqual(body, handle.read())
 
     def test_the_capture_scratch_is_unique_and_keeps_its_extension(self):
-        """Two sessions capturing the same scene share `out`, which is
-        derived from the hip file's path - so the fixed `.capturing` name
-        was one shared buffer, and for a PNG a mixture is a decode failure
-        the user is told about as a blank frame.
-
-        create=False here, unlike every other caller: Houdini writes this
-        file and saveThumbnailFromViewer needs a live scene viewer, so it
-        cannot be measured against a pre-created one from a headless test.
-        The extension still has to survive - Houdini picks the image FORMAT
-        from it, and an earlier `.new` suffix made it write PIC2 bytes into
-        a file everything downstream read as a PNG."""
+        """Two sessions capturing one scene shared the `.capturing` name, and the extension must survive because Houdini picks the image FORMAT from it. ▸r/atomic-writes"""
         from amaze.core import scene_captures
 
         out = os.path.join(self.dir, "abc123.png")
@@ -418,13 +325,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          % sorted(seen))
 
     def test_the_capture_call_site_uses_the_shared_naming_helper(self):
-        """SOURCE-DERIVED, because capture_thumbnail needs a live scene
-        viewer and cannot be driven headlessly at all - and the helper above
-        proves nothing about a call site that quietly builds its own name
-        again. The property is a DECISION but it is not reachable at
-        runtime, which is exactly the case practice ▸ source-derived tests
-        keeps them for. Comments stripped first: an earlier test in this
-        project failed on the comment documenting the fix it checked."""
+        """SOURCE-DERIVED: `capture_thumbnail` needs a live viewer, so the decision is unreachable at runtime. Comments are stripped first. ▸p/testing-can-fail"""
         import inspect
         from amaze.core import scene_captures
 
@@ -437,10 +338,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             1, len(assigns),
             "capture_thumbnail no longer has exactly one scratch name - "
             "this test cannot say which one Houdini is handed (%r)" % assigns)
-        # STARTSWITH on the right-hand side, not `in` on the line. `in`
-        # passed for `_legacy_capture_scratch(out)`, which CONTAINS
-        # "_capture_scratch(" - the substring trap, caught by the sabotage
-        # pass and not by reading the test.
         called = assigns[0].split("=", 1)[1].strip()
         self.assertTrue(
             called.startswith("_capture_scratch("),
@@ -449,11 +346,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "extension rule are both back in play here (%r)" % called)
 
     def test_a_scratch_is_not_leaked_when_the_second_one_cannot_be_made(self):
-        """Both scratches are created INSIDE the try, so the cleanup covers
-        both. With the first call outside it, a failure of the SECOND - a
-        full directory, no descriptors left - left the first scratch in
-        mat/ with nothing to remove it, which is precisely the unowned file
-        in the library directory that got 8 live assets called orphans."""
+        """Both scratches are created INSIDE the try, so a failure of the SECOND cannot strand the first with nothing to remove it."""
         from amaze.render import nodes
 
         real_scratch = hostos.unique_scratch
@@ -481,13 +374,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "Library has to decide whether it is an orphan")
 
     def test_preserving_an_unreadable_file_says_nothing_on_screen(self):
-        """The helper RECORDS; the caller speaks. Every caller of
-        preserve_unreadable already prints a full paragraph about the file
-        it could not read and names the copy - or does not - from what this
-        returned, so a printed line from inside was a second paragraph
-        about one event, in vocabulary the reader cannot act on
-        separately. snapshot_before_write chose the same policy 60 lines
-        away in the same file; this was the outlier."""
+        """The helper RECORDS, the caller speaks - a line printed from inside is a second paragraph about one event."""
         import contextlib
         import io
 
@@ -504,12 +391,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                 "paragraphs about one event" % content)
 
     def test_save_asset_pair_survives_houdini_s_own_writer(self):
-        """THE REAL WRITER, not a lambda. unique_scratch pre-creates the
-        file, which is what makes the name safe to hold - and every other
-        test here hands save_asset_pair a callback that writes with a plain
-        open(). All six production call sites pass hou.Node.saveItemsToFile,
-        so the assumption that Houdini's writer overwrites a pre-created
-        0-byte file was the one thing in this step nothing drove."""
+        """THE REAL WRITER, not a lambda - `unique_scratch` pre-creates the file, and that Houdini's own writer overwrites a pre-created 0-byte one is the assumption nothing else here drives."""
         import hou
         from amaze.render import nodes
 
@@ -534,8 +416,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "the real writer left a scratch behind")
 
     def test_save_asset_pair_scratches_live_beside_their_destinations(self):
-        """os.rename cannot cross drives on any OS, and this pair can be
-        written to a library on another volume than the system temp dir."""
+        """`os.rename` cannot cross drives, and this pair can live on another volume than the system temp dir."""
         directories = []
         real_replace = hostos.replace_file
         hostos.replace_file = lambda src, dst: (
@@ -551,11 +432,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
         self.assertEqual([os.path.abspath(self.dir)] * 2, directories)
 
     def test_a_failed_mat_write_promotes_neither_file(self):
-        """The reason the pair is written as one unit at all. A .mat write
-        that fails must not leave the NEW .interface beside a stale .mat -
-        verified once by forcing saveItemsToFile to fail, which rewrote
-        the .interface (57177 bytes against the old 57023) and left the
-        previous good asset unrecoverable."""
+        """Why the pair is one unit: a failed `.mat` write must not leave a NEW `.interface` beside a stale `.mat`. ▸p/asset-write-unit"""
         from amaze.render import nodes
         import hou
 
@@ -584,32 +461,9 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "the failed write left its scratch files behind")
 
     def test_concurrent_asset_pair_writers_never_mix(self):
-        """The measured failure shape, applied to the asset itself, and
-        MADE DETERMINISTIC so the headline claim is the assertion that goes
-        red.
-
-        The first version of this test raced two writers and then read the
-        destinations. It went red under the fixed-name sabotage - but on
-        `a concurrent write raised`, because one writer's cleanup removes
-        the scratch the other is about to rename, and the mixed-content
-        assertion below it never executed at all. A test whose stated claim
-        is never reached is an unverified claim, however green the run.
-
-        So the interleave is FORCED with a barrier instead of hoped for.
-        Each writer stops half way through its own scratch, waits for the
-        other to reach the same point, finishes, and then reads back the
-        file it was given. With a scratch name per writer that read can
-        only ever hold that writer's own mark. With one shared name the
-        second writer's open() truncates the first's work and both then
-        write on at their own offsets, so the first writer reads back the
-        second's bytes - the exact silent, parseable mixture measured
-        cross-process at 344 of 4800 reads, here with no sampling luck
-        involved.
-        """
+        """The measured mixing, forced with a barrier rather than hoped for, so the headline claim is the assertion that goes red. ▸p/testing-can-fail"""
         from amaze.render import nodes
 
-        # The real replace_file, not setUp's capturing wrapper - a list
-        # appended from two threads is not what this test is about.
         hostos.replace_file = self._real_replace
         interface_path = os.path.join(self.dir, "RACE.interface")
         mat_path = os.path.join(self.dir, "RACE.mat")
@@ -620,7 +474,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
 
         def write(mark):
             handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
-            body = (mark * 79 + "\n") * 256          # ~20KB, both files
+            body = (mark * 79 + "\n") * 256
             half = len(body) // 2
 
             def write_mat(scratch):
@@ -649,7 +503,6 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             t.start()
         for t in threads:
             t.join(timeout=60)
-        # THE HEADLINE FIRST, so it is the assertion that fails.
         self.assertEqual(
             [], mixed,
             "a writer's scratch held the OTHER writer's bytes - this is the "
@@ -672,11 +525,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "a scratch file survived the race")
 
     def test_an_atomic_write_keeps_the_destination_s_permissions(self):
-        """mkstemp creates at 0600, which is right for a scratch file in
-        /tmp and wrong for the file it becomes. A shared library whose
-        library.json and .mat files silently turned owner-only would stop
-        being readable by the other person using it, with nothing in the
-        app saying why."""
+        """`mkstemp` creates at 0600, right for a scratch and wrong for the file it becomes - a shared library would silently stop being readable. ▸r/atomic-writes"""
         if hostos.is_windows():
             self.skipTest("POSIX permission bits are not the model here")
         path = os.path.join(self.dir, "library.json")
@@ -689,10 +538,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "working from this library just lost access to it")
 
     def test_a_new_file_gets_exactly_what_a_plain_open_would_have(self):
-        """Against _DEFAULT_FILE_MODE, not against `!= 0o600`. The looser
-        form passes for the wrong reason on any machine whose umask is 077,
-        where the correct answer IS 0600 - so it would have gone red on a
-        colleague's laptop while proving nothing on this one."""
+        """Against `_DEFAULT_FILE_MODE`, never `!= 0o600` - the looser form passes for the wrong reason under a 077 umask. ▸p/testing-can-fail"""
         if hostos.is_windows():
             self.skipTest("POSIX permission bits are not the model here")
         path = os.path.join(self.dir, "fresh.json")
@@ -706,14 +552,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "have - mkstemp's 0600 reached the destination")
 
     def test_an_atomic_write_repairs_a_narrowing_the_bug_already_made(self):
-        """PRESERVING THE MODE PRESERVES THE DAMAGE. write_json_atomic went
-        through mkstemp with no chmod for a while, so every file it wrote
-        in that window became owner-only - and "match the destination"
-        would then keep it owner-only for every future save, forever.
-        Measured on the real library, 2026-07-30: library.json 0600 and
-        code.json 0600 (both written by that code) against cops.json 0644
-        and gradients.json 0666 written before it. On a shared library the
-        second person can open neither."""
+        """PRESERVING THE MODE PRESERVES THE DAMAGE - matching the destination keeps an owner-only file owner-only forever. ▸r/atomic-writes"""
         if hostos.is_windows():
             self.skipTest("POSIX permission bits are not the model here")
         if hostos._DEFAULT_FILE_MODE == 0o600:
@@ -729,10 +568,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
             "change made is permanent and nobody else can read the library")
 
     def test_the_repair_is_narrow_enough_to_leave_a_real_choice_alone(self):
-        """The accept path, and the residual this fix accepts knowingly.
-        0600 EXACTLY is what mkstemp creates with, so recognising it
-        recognises our own bug - and nothing else. Any other narrowing is
-        somebody's decision and survives."""
+        """0600 EXACTLY is what mkstemp creates, so recognising it recognises our own bug and nothing else - any other narrowing was a decision and survives."""
         if hostos.is_windows():
             self.skipTest("POSIX permission bits are not the model here")
         path = os.path.join(self.dir, "policy.json")
@@ -747,8 +583,7 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
 
 
 class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
-    """settings.json is read at panel construction and written from
-    ordinary sidebar use, so both directions have to fail softly."""
+    """`settings.json` is read at panel construction and written from ordinary sidebar use, so both directions fail softly."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_prefs_hard_")
@@ -765,10 +600,7 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
             fh.write(payload)
 
     def test_a_top_level_list_does_not_kill_the_panel(self):
-        """load()'s own docstring promises an exception here would kill
-        the panel during construction with no interface and no message -
-        and every key is read with a default for that reason. A top
-        level that is not an object has no .get() at all."""
+        """An exception here kills the panel during construction with no interface and no message, and a top level that is not an object has no `.get()` at all."""
         self._write('["not", "an", "object"]')
         p = self._prefs()
         self.assertFalse(p.load(), "a wrong-shaped file loaded as usable")
@@ -791,9 +623,7 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
                          "an ordinary settings file was treated as damaged")
 
     def test_a_failed_write_is_recorded_and_does_not_raise(self):
-        """The only atomic writer in the package that reported nothing
-        on failure, with none of its callers wrapping it - so a full
-        disk lost every preference change in silence."""
+        """The one writer that reported nothing on failure, with no caller wrapping it - a full disk lost every preference change in silence."""
         p = self._prefs()
         p.load()
 
@@ -806,36 +636,14 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
 
         with test_support.captured_log() as log:
             p.save()                                  # must not raise
-        # RE-KEYED 2026-08-14: the engine writes the file now, so the
-        # line is its `could not save <filename>` under the same `prefs`
-        # category. The condition is unchanged - a full disk must leave
-        # a trace - and pinning the retired wording would have gone
-        # VACUOUS rather than red.
         self.assertTrue(
             log.matching("could not save settings.json", "prefs"),
             "a failed settings write left no trace at all")
 
 
 class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
-    """A SOURCE-derived scan, because the per-writer tests above are a
-    LIST and a list is only as good as whoever remembered to extend it.
+    """A SOURCE-derived scan over the whole package, because the per-writer tests above are a LIST and asset content has no `.bak-*` tier to recover from. ▸p/guard-pinned-filename-list ▸r/atomic-writes"""
 
-    prepare_cop_companion wrote its companion network straight onto the
-    live destination for as long as it existed, and every behavioural
-    test here stayed green throughout - they each drive one named
-    writer, and that one was never named. This asserts the property
-    across the whole package instead: a node archive is written to a
-    SCRATCH and swapped in, never onto the path it is replacing.
-
-    Asset content has no `.bak-*` tier - the databases get
-    snapshot_before_write, `mat/` gets nothing - so a truncated write
-    here is not a recoverable inconsistency, it is a material that no
-    longer exists.
-    """
-
-    #: Names a scratch is allowed to arrive under. `scratch` is
-    #: hostos.scratch_beside's yield; `path` is save_asset_pair's
-    #: write_mat callback parameter, which is handed the scratch.
     SCRATCH_NAMES = {"scratch", "path", "tmp_mat", "tmp", "dest"}
 
     def _package_root(self):
@@ -877,17 +685,7 @@ class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
 
 
 class MachineLocalHistoryTest(unittest.TestCase):
-    """The .bak-* tiers live INSIDE the library, and the library lives
-    in a synced folder - measured: the sync client tracks 15 in-library
-    .bak paths, so the restore points sit inside the tree they exist to
-    protect against, exactly as hostos's own docstring warns.
-
-    The daily ledger is the answer to the failure the ring cannot cover:
-    "this file was already wrong yesterday and the sync has since
-    carried that everywhere". It is ADDED, not moved - the in-library
-    tier is what lets a library be recovered on a machine that has never
-    seen it before.
-    """
+    """The `.bak-*` ring sits inside the synced tree it protects against, so a machine-local daily ledger is ADDED beside it, never instead of it. ▸r/atomic-writes"""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_hist_")
@@ -935,8 +733,7 @@ class MachineLocalHistoryTest(unittest.TestCase):
         self.assertEqual(1, len(self._entries()))
 
     def test_a_file_that_does_not_parse_is_not_recorded(self):
-        """The same rule the .bak tier follows: recording garbage spends
-        the day's slot while the good state ages out behind it."""
+        """Recording garbage spends the day's slot while the good state ages out behind it."""
         with open(self.path, "w", encoding="utf-8") as fh:
             fh.write("{ truncated")
         self.assertEqual("", hostos.record_history(self.path))
@@ -952,8 +749,7 @@ class MachineLocalHistoryTest(unittest.TestCase):
             "overwrites the other's day")
 
     def test_old_entries_are_pruned_by_DATE_not_mtime(self):
-        """The name carries the date the copy is OF; mtime records when
-        it was written, and a restore or a file copy rewrites that."""
+        """The name carries the date the copy is OF, and a restore or a file copy rewrites mtime."""
         folder = hostos.history_root(self.path)
         os.makedirs(folder, exist_ok=True)
         made = []
@@ -963,8 +759,7 @@ class MachineLocalHistoryTest(unittest.TestCase):
             with gzip.open(full, "wb") as fh:
                 fh.write(b"{}")
             made.append(name)
-        # Touch the OLDEST so mtime and date disagree.
-        os.utime(os.path.join(folder, made[0]), None)
+        os.utime(os.path.join(folder, made[0]), None)   # oldest, so mtime and date disagree
         hostos._prune_history(folder, "library.json", days=3)
         left = sorted(n for n in os.listdir(folder) if n.endswith(".gz"))
         self.assertEqual(made[-3:], left,
@@ -972,8 +767,7 @@ class MachineLocalHistoryTest(unittest.TestCase):
                          "mtime, which a restore or a copy rewrites")
 
     def test_a_save_records_history_without_being_asked(self):
-        """Wired into the one chokepoint every database already uses, so
-        a new database cannot be added without history."""
+        """Wired into the one chokepoint every database uses, so a new database cannot arrive without history."""
         self._write({"assets": []})
         hostos.snapshot_before_write(self.path)
         self.assertEqual(1, len(self._entries()),
@@ -983,11 +777,7 @@ class MachineLocalHistoryTest(unittest.TestCase):
 
 
 class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
-    """panel.py constructs a Prefs per pane tab, so two writers of
-    settings.json is ordinary use. There was no stale-write handling at
-    all - gradients.json already had it - and either pane's save erased
-    the other's whole document.
-    """
+    """`panel.py` constructs a Prefs per pane tab, so two writers of `settings.json` is ordinary use and either pane's save erased the other's whole document."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_prefs_merge_")
@@ -1022,18 +812,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
                          "pane B's own change did not land")
 
     def test_the_adoption_SURVIVES_the_next_save_from_the_same_pane(self):
-        """One save was the whole lifetime of the merge.
-
-        The merge repaired `self.data`, but `save()` runs
-        `refresh_data()` first and that rebuilds every collected key
-        from the backing attributes - so the adopted entries were gone
-        again on the next save from the same object, and by then
-        `_disk_stat` matched the file this pane had just written, so
-        the merge early-returned instead of re-adopting.
-
-        The sibling test above saves once per pane and stayed green
-        through all of it. Closing Preferences alone saves twice.
-        """
+        """One save was the whole lifetime of the merge, and closing Preferences saves twice - the sibling test above saves once per pane and stayed green throughout."""
         pane_a = self._prefs()
         pane_a.save()
         pane_b = self._prefs()
@@ -1055,13 +834,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
             "only, and refresh_data rebuilds it from the attributes")
 
     def test_a_location_LABEL_saved_by_the_other_pane_survives(self):
-        """The four location decorations travel inside
-        `file_location_records` since 2026-08-05, and `refresh_data`
-        DERIVES the four old keys from those records. The merge's old
-        dict arms adopted the derived keys into attributes refresh_data
-        no longer reads - dead writes - so pane B's save put its stale
-        records over pane A's fresh ones, and A's label was gone from
-        the fallback copy (and from any store later seeded from it)."""
+        """Location decorations travel inside `file_location_records`, so a merge adopting the DERIVED keys writes into attributes nothing reads back."""
         pane_a = self._prefs()
         pane_a.save()
         pane_b = self._prefs()
@@ -1085,18 +858,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
             "the records merge adopted nothing")
 
     def test_every_collected_key_has_a_backing_attribute(self):
-        """RE-KEYED 2026-08-14, in the change that moved the merge.
-
-        The three tables this walked - _LIST_KEYS, _DICT_KEYS and
-        _COLLECTED_ATTRS - are the store's `merge_rules` now, and they
-        could only spell a TOP-LEVEL key. That is what the per-user
-        migration broke: every collected key moved under `users/<uid>/`.
-        So the question is no longer whether a collected key has a
-        backing attribute, but whether every collected key is reachable
-        in BOTH shapes - flat while nobody is picked, nested once
-        somebody is. A rule declared for one and not the other is
-        exactly the drift that shipped nothing.
-        """
+        """Every collected key must be reachable in BOTH shapes - flat while nobody is picked, nested under `users/<uid>/` once somebody is."""
         from amaze.core import keyed_store
         rules = keyed_store.store_for(keyed_store.SETTINGS).merge_rules
         flat = {key for key in rules if "/" not in key and key != "users"}
@@ -1112,9 +874,6 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
         self.assertEqual("fields", rules.get("users"),
                          "a uid this pane has never seen must arrive "
                          "whole, or a second user is invisible")
-        # The other half the attribute map used to carry: a fresh Prefs
-        # must actually own what `_absorb_committed` reads the folded
-        # document back into, or the first two-pane save raises.
         blank = prefs.Prefs()
         for attr in ("_file_folders", "_file_favorites",
                      "_file_location_records", "_users_blocks"):
@@ -1124,8 +883,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
                 "does not have" % attr)
 
     def test_a_scalar_takes_the_saving_pane(self):
-        """The merge must not turn scalars into a fight: the pane the
-        user is touching wins the single-choice keys."""
+        """The merge must not turn scalars into a fight - the pane being touched wins the single-choice keys."""
         pane_a = self._prefs()
         pane_a.save()
         pane_b = self._prefs()
@@ -1143,10 +901,7 @@ class TwoPanesEditSettingsWithoutClobberTest(unittest.TestCase):
 
 
 class AHealthyFileRepairsABrokenFloorTest(unittest.TestCase):
-    """.bak-first is write-once forever - and the permanent floor being
-    garbage is worse than no floor: a single half-synced launch minted
-    it from a truncated file, and the rolling ring then aged every good
-    state out behind it."""
+    """`.bak-first` is write-once forever, so a floor minted from a truncated file is worse than no floor at all."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_floor_")
@@ -1171,8 +926,7 @@ class AHealthyFileRepairsABrokenFloorTest(unittest.TestCase):
                       "never worked")
 
     def test_a_parseable_floor_with_different_content_is_never_touched(self):
-        """The control: replacing a HEALTHY floor because it differs is
-        the floor failing at its whole job."""
+        """The control - replacing a HEALTHY floor because it differs is the floor failing at its whole job."""
         with open(self.path + ".bak-first", "w", encoding="utf-8") as fh:
             json.dump({"assets": [{"id": "OLD-STATE"}]}, fh)
         hostos.snapshot_before_write(self.path)
@@ -1182,9 +936,7 @@ class AHealthyFileRepairsABrokenFloorTest(unittest.TestCase):
 
 
 class SnapshotsAreThrottledNotOncePerProcessTest(unittest.TestCase):
-    """The once-per-session gate meant the rolling .bak-N ring captured
-    at most ONE state per launch - a day of work in one session had a
-    single restore point, and the ring mostly held air."""
+    """A once-per-session gate gives the rolling `.bak-N` ring one state per launch, so the ring mostly holds air."""
 
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix="amaze_throttle_")
@@ -1205,8 +957,7 @@ class SnapshotsAreThrottledNotOncePerProcessTest(unittest.TestCase):
         for number, count in enumerate((1, 2, 3, 4), 1):
             self._write_state(count)
             hostos.snapshot_before_write(self.path)
-            # Advance the clock past the threshold by backdating the
-            # recorded stamp - monotonic time itself cannot be moved.
+            # Backdate the stamp - monotonic time itself cannot be moved.
             hostos._session_snapshots[self.path] -= (
                 hostos.SNAPSHOT_INTERVAL + 1)
         tiers = self._tiers()
@@ -1241,17 +992,7 @@ class SnapshotsAreThrottledNotOncePerProcessTest(unittest.TestCase):
 
 
 class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
-    """`library_user` is WHO this is. It keys everything stored per user
-    in the library AND it signs versions - one field, because two fields
-    is what forced the conflict that retired `version_author`: versions
-    need the name to DIFFER per machine, favourites need it to MATCH
-    across a user's machines, and one preference cannot do both
-    (ROADMAP line 21).
-
-    An auto-harvested name puts a real person's identity into a library
-    that may be shared, without them choosing it (step 35) - that ban is
-    unchanged and is the last test here.
-    """
+    """`library_user` is WHO this is - one field keying per-user storage and signing versions, and it is never harvested. ▸p/identity-is-chosen"""
 
     def _home(self, prefix="amaze_user_"):
         home = tempfile.mkdtemp(prefix=prefix)
@@ -1277,12 +1018,7 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
         self.assertEqual("Chosen Name", self._prefs_at(home).library_user)
 
     def test_prefs_cannot_resolve_the_identity_itself(self):
-        """THE SPLIT. Answering *who am I* can require MINTING a user
-        into the library, and this file holds a pointer without knowing
-        what it points at - the same way it holds `directory` without
-        knowing what is in it. A resolver here would have to reach the
-        library from inside the preferences object.
-        """
+        """THE SPLIT: prefs holds the pointer, `core/users.py` does the minting. ▸p/identity-is-chosen"""
         p = self._prefs_at(self._home())
         self.assertFalse(hasattr(p, "resolve_library_user"),
                          "prefs grew an identity resolver again - "
@@ -1293,20 +1029,13 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                          "users asks which of them this machine is")
 
     def test_an_existing_version_author_is_adopted(self):
-        """The minted name BECOMES the user. Every `Plum-<n>` stem
-        already on disk keeps matching its writer, and nothing is
-        renamed - the other machine's name simply appears in the
-        dropdown until its owner picks the one they want.
-        """
+        """The adopted name BECOMES the user, so existing version stems keep matching their writer."""
         home = self._home()
         self._write_settings(home, {"version_author": "Plum"})
         self.assertEqual("Plum", self._prefs_at(home).library_user)
 
     def test_the_retired_author_key_is_dropped_on_save(self):
-        """A key `_RETIRED_KEYS` does not name is carried back verbatim
-        by the unknown-key courtesy on every save, so the field would
-        outlive the code that read it - on every machine.
-        """
+        """The unknown-key courtesy carries an unnamed key back verbatim, so a retired field outlives the code that read it."""
         home = self._home()
         self._write_settings(home, {"version_author": "Plum"})
         p = self._prefs_at(home)
@@ -1318,31 +1047,8 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                          "the retired key survived a save")
         self.assertEqual("Plum", stored.get("library_user"))
 
-    # Signing is `TheUserIsAUidWithANameTest` now: it needs a real
-    # library, because resolving a UID to its name reads a store. A
-    # copy here would have run with `dir` unset and written a
-    # `users.json` into the working directory.
-
     def test_no_identity_source_touches_the_author_path(self):
-        """Source-derived ban: machine_name, platform.node, getpass and
-        $USER may never appear in the prefs PACKAGE - the identity is
-        typed by a person, or it is the shipped default that is the same
-        everywhere. Never the computer's account or machine name.
-
-        WALKS EVERY MODULE, not the one that used to hold everything.
-        `library_user` is answered in `prefs.py` but both saved and
-        loaded in `persistence.py`, and `load()` is exactly where a
-        default would be backfilled from the account name - it is also
-        where the `version_author` adoption reads. Scanning a single
-        module would have left that half uncovered - and would have kept
-        PASSING while it did, which is how a guard becomes decoration.
-
-        **AND IT NOW WALKS `core/users.py` TOO**, which is where naming
-        a user actually happens since the identity became a UID. The
-        minting moved out of this package on 2026-08-12 and the ban did
-        not follow it for one commit - a guard pointed at the module the
-        risk used to live in is the same decoration by another route.
-        """
+        """Source-derived ban on the account and machine name, walking EVERY module of the package plus `core/users.py`, never the one that used to hold the risk. ▸p/identity-is-chosen ▸p/guard-pinned-filename-list"""
         import io
         import os
         import tokenize
@@ -1358,11 +1064,6 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
             checked.append(name)
             with open(path, encoding="utf-8") as fh:
                 raw = fh.read()
-            # CODE only. The module's own comment names the banned
-            # sources while explaining the ban - which is exactly what
-            # a comment is for, and exactly what this scan must not
-            # trip on (the same lesson as the credit-by-position pin
-            # catching its own comment).
             source = "".join(
                 token.string for token in tokenize.generate_tokens(
                     io.StringIO(raw).readline)
@@ -1374,24 +1075,13 @@ class TheLibraryUserIsTheOneIdentityTest(unittest.TestCase):
                     banned, source,
                     "%s appears in %s - an identity can be harvested "
                     "into a user's name" % (banned, name))
-        # A walk that finds nothing passes silently: name what it must
-        # have seen, so a rename cannot empty the ban.
         self.assertIn("prefs.py", checked)
         self.assertIn("persistence.py", checked)
         self.assertIn("users.py", checked)
 
 
 class TheUserIsAUidWithANameTest(unittest.TestCase):
-    """A user is a UID and a NAME beside it. Everything a user owns is
-    tagged with the UID, never with the name they typed, so a rename
-    relinks one label and moves no data at all.
-
-    THE ASSET CONVENTION APPLIED TO PEOPLE. `material.py:164` mints a
-    `uuid4` into `id` and keeps `name` separate, which is exactly why
-    one favourites list is safe across libraries. A person is the same
-    shape, and the alternative - keying on the typed name - reintroduces
-    every problem ids were minted to remove.
-    """
+    """A user is a UID with a NAME beside it - the asset convention applied to people, so a rename relinks one label and moves no data. ▸p/identity-is-chosen"""
 
     def _prefs(self):
         from amaze.tests import test_support
@@ -1420,8 +1110,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual(1, len(users.all_users(p)))
 
     def test_two_users_may_share_a_name(self):
-        """A name-keyed scheme cannot allow this; a UID-keyed one has
-        nothing to collide."""
+        """A name-keyed scheme cannot allow this; a UID-keyed one has nothing to collide."""
         from amaze.core import users
         p = self._prefs()
         first = users.create(p, "Plum")
@@ -1440,9 +1129,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                          "a second call minted a second identity")
 
     def test_a_name_left_by_the_first_build_is_adopted_onto_a_uid(self):
-        """Step 1 shipped `library_user` holding a NAME. That install
-        keeps its name and gains a UID for it - it does not become a
-        second person, and its version stems still match."""
+        """An install holding a NAME keeps it and gains a UID for it, rather than becoming a second person."""
         from amaze.core import users
         p = self._prefs()
         p.library_user = "Plum"
@@ -1453,25 +1140,16 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
                          "carried onto the new UID")
 
     def test_a_library_with_no_users_mints_one_on_a_colour_name(self):
-        """A brand-new library asks nobody anything. The colour mint is
-        back after step 1 deleted it, with its unit changed: once per
-        LIBRARY for its first user, never per machine."""
+        """A brand-new library asks nobody anything - the colour mint runs once per LIBRARY, never per machine."""
         from amaze.core import users
         p = self._prefs()
-        # NOBODY, said out loud. The shared fixture POINTS at a user so
-        # tagged stores can key; the mint only runs on an empty
-        # pointer, and a carried one is ADOPTED AS A NAME - so leaving
-        # it would name the first user after a UID.
         p.library_user = ""
         self.assertEqual(users.MINT, users.first_run_state(p))
         uid = users.current(p)
         self.assertIn(users.name_for(p, uid), users.PLACEHOLDER_NAMES)
 
     def test_an_existing_library_asks_instead_of_minting(self):
-        """THE SECOND MACHINE. A library that already has users, met by
-        a machine whose pointer names none of them, must ASK - pick an
-        existing user or create one. Minting here silently turns one
-        person into two, which is the whole failure this prevents."""
+        """THE SECOND MACHINE: a library with users, met by a pointer naming none of them, must ASK - minting here turns one person into two."""
         from amaze.core import users
         p = self._prefs()
         users.create(p, "Plum")
@@ -1490,9 +1168,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
         self.assertEqual(uid, users.current(p))
 
     def test_versions_sign_with_the_readable_name(self):
-        """A stem of `a3f9c2e8-1.mat` is unreadable and would match no
-        `Plum-<n>` already on disk. The UID identifies; the NAME signs.
-        """
+        """The UID identifies, the NAME signs - a UID stem is unreadable and matches nothing already on disk."""
         from amaze.core import users, versions
         p = self._prefs()
         uid = users.create(p, "Plum")
@@ -1501,10 +1177,7 @@ class TheUserIsAUidWithANameTest(unittest.TestCase):
 
 
 class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
-    """A library with people in it, met by a machine that is none of
-    them, ASKS instead of minting - the one case where the question is
-    worth its cost, because minting there turns one person into two.
-    """
+    """A library with people in it, met by a machine that is none of them, ASKS instead of minting. ▸p/dialogs-are-a-bill"""
 
     def _panel(self):
         from amaze.tests import test_support
@@ -1532,8 +1205,7 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
         self.assertEqual(2, len(users.all_users(panel.prefs)))
 
     def test_a_cancel_leaves_no_user_and_asks_again(self):
-        """Cancelling must not fall back to minting or to a blank key:
-        nothing is keyed this session and the question returns."""
+        """Cancelling falls back to neither minting nor a blank key - nothing is keyed this session and the question returns."""
         from amaze.core import users
         panel = self._panel()
         users.create(panel.prefs, "Cobalt")
@@ -1568,20 +1240,7 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
 
 
 class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
-    """A store may declare that its keys are TAGGED with the user, and
-    the ENGINE does the tagging (ROADMAP line 21 step 2d).
-
-    Asserted against a store this test builds itself, never against a
-    shipped one. Two reasons, and both are the point of this commit:
-    the mechanism is what is under test, so borrowing a section's store
-    would measure that section too; and no shipped store sets the flag
-    yet, so turning one on to test it is the change, not the test.
-
-    Built with `Spec(...)` rather than `register(...)` DELIBERATELY -
-    registering would put a fictional file in `stores()` and
-    `filenames()`, which Repair surveys and the restore picker offers,
-    for every test that runs after this one.
-    """
+    """A store may declare its keys TAGGED with the user and the ENGINE does the tagging - asserted against a `Spec(...)` this test builds, never a registered one, which would put a fictional file in front of Repair for every later test."""
 
     SEP = "|"
 
@@ -1638,9 +1297,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                         "switching back lost the first user's entry")
 
     def test_the_stored_key_carries_the_uid(self):
-        """On disk, so a store written by one build is readable by the
-        next: `<uid>|<key>`, split on the FIRST separator only - a uuid4
-        hex cannot contain one, a path can."""
+        """`<uid>|<key>` on disk, split on the FIRST separator only - a uuid4 hex cannot contain one, a path can."""
         self._store("uid-one").set("~/a|b.exr", True)
         keys = list(self._on_disk())
         self.assertEqual(1, len(keys))
@@ -1650,9 +1307,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                          "a separator inside the KEY was eaten")
 
     def test_no_user_stores_nothing_rather_than_a_blank_bucket(self):
-        """A machine that has not picked a user must not file entries
-        under an empty tag: that bucket is not a shared user, it is an
-        absent one."""
+        """An empty tag is not a shared user, it is an absent one."""
         from amaze.core import keyed_store
         written = self._store("").set("~/a.exr", True)
         self.assertFalse(written, "an entry was filed with no user")
@@ -1660,10 +1315,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
         self.assertFalse(self._store("").has("~/a.exr"))
 
     def test_all_is_scoped_and_everyones_is_not(self):
-        """`all()` means the things that are MINE - it is what a section
-        paints and what a sweep walks. `everyones()` is the unscoped
-        read, for repair and migration, the only two jobs that
-        legitimately see across people."""
+        """`all()` is what is MINE and what a section paints; `everyones()` is the unscoped read, for repair and migration only."""
         from amaze.core import keyed_store
         self._store("uid-one").set("~/mine.exr", True)
         keyed_store.release()
@@ -1676,11 +1328,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                          "everyones() cannot see across people")
 
     def test_a_row_from_before_the_store_had_owners_is_dropped(self):
-        """A row written before the store had owners is REMOVED, not
-        adopted - nothing on it says whose it was, so handing it to
-        whoever opens the library first would give one person
-        everybody's entries (ROADMAP line 21 step 2d).
-        """
+        """A pre-owner row is REMOVED, not adopted - nothing on it says whose it was, and adopting would give one person everybody's entries."""
         self._plant("~/old.exr")
         store = self._store("uid-one")
         self.assertFalse(store.has("~/old.exr"),
@@ -1691,9 +1339,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                          "the row was kept aside rather than dropped")
 
     def test_a_dropped_row_does_not_come_back_on_the_next_write(self):
-        """The half `_foreign` would break: a value held aside as
-        unreadable is written back on every save, so a pre-tag row must
-        NOT be held there or the drop undoes itself."""
+        """A value held aside as unreadable is written back on every save, so a pre-tag row held there would undo its own drop."""
         self._plant("~/old.exr")
         self._store("uid-one").set("~/mine.exr", True)
         self.assertEqual(["uid-one" + self.SEP + "~/mine.exr"],
@@ -1702,12 +1348,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                          "dropped")
 
     def test_asking_for_nothing_is_not_a_refusal(self):
-        """DOING NOTHING CANNOT FAIL. A store that can key nothing must
-        still answer an empty write with UNCHANGED, or a caller that
-        checks the answer reads a failure into an empty list - which is
-        how `locations.migrate` came to refuse the LOCATIONS half, a
-        store with no owner at all, on a machine with nobody picked.
-        """
+        """DOING NOTHING CANNOT FAIL - an empty write answers UNCHANGED, or a caller checking the answer reads a failure into an empty list."""
         from amaze.core import keyed_store
         store = self._store("")
         for written, what in ((store.update({}), "update"),
@@ -1718,10 +1359,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
                              "an empty %s did not answer unchanged" % what)
 
     def test_an_untagged_store_is_completely_unaffected(self):
-        """THE CONTROL, and the reason this can land before anything
-        turns the flag on: with `user_tagged` false the engine must
-        behave exactly as it did, including for a prefs carrying no
-        user at all."""
+        """THE CONTROL: with `user_tagged` false the engine behaves exactly as it did, including for a prefs carrying no user."""
         from amaze.core import keyed_store
         store = self._store("", tagged=False)
         self.assertTrue(store.set("~/a.exr", True))
@@ -1735,26 +1373,11 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
 
 
 class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
-    """The gate for 2026-08-05, when a probe wrote two files into the
-    real synced library.
-
-    The script MEANT to use a scratch library and set `dir` one line too
-    late - after `load()`, which is where the location migration runs.
-    Nothing caught it: the destructive-command hook reads shell commands
-    for delete verbs, and this was a Python write. So the one function
-    every JSON write goes through refuses on its own behalf when a run
-    says it is only allowed to touch temporary files.
-    """
+    """The one function every JSON write goes through refuses on its own behalf when a run says it may touch only temporary files. ▸p/hand-run-script-is-unguarded"""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_sandbox_")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        # RESTORE WHAT WAS FOUND, never pop. Under the runner the
-        # variable arrives armed for the WHOLE process, so a cleanup
-        # that popped it disarmed every test that ran after this
-        # module - and on 2026-08-13 a live settings load in that
-        # unarmed tail wrote real favourites from inside a green
-        # suite. The sentinel class at the bottom holds this.
         original = os.environ.get(hostos.SANDBOX_VAR)
         if original is None:
             self.addCleanup(os.environ.pop, hostos.SANDBOX_VAR, None)
@@ -1784,9 +1407,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
             self.assertEqual({"a": 1}, json.load(handle))
 
     def test_unarmed_it_does_nothing_at_all(self):
-        """Nothing in the product sets the variable, so the product must
-        not be able to feel this. A guard that is on by accident in a
-        live session would refuse the user's own saves."""
+        """Nothing in the product sets the variable, and a guard on by accident would refuse the user's own saves."""
         os.environ.pop(hostos.SANDBOX_VAR, None)
         self.assertFalse(hostos.sandboxed())
         outside = os.path.join(self.tmp, "..", os.path.basename(self.tmp),
@@ -1796,10 +1417,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
         hostos.check_sandbox("/anywhere/at/all.json")
 
     def test_it_covers_a_keyed_store_and_the_databases_too(self):
-        """The point of putting it in write_json_atomic rather than in
-        one store: prefs, all four databases, the keyed stores and the
-        manifests share that funnel, so one check covers every one of
-        them and there is no per-caller list to be one short."""
+        """One check in the shared funnel covers prefs, the databases, the keyed stores and the manifests, with no per-caller list to be one short. ▸p/guard-pinned-filename-list"""
         source = hostos.write_json_atomic.__doc__ or ""
         self.assertIn("front door", source)
         import inspect
@@ -1811,20 +1429,7 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
 
 
 class OnePathHasOneSpelling(unittest.TestCase):
-    """A registered folder is written into settings.json by one encoder
-    and into locations.json by another, and overview.md 4c says
-    settings.json keeps a COPY of what those stores hold.
-
-    Agreement held for a folder under home and broke for one BESIDE
-    the install - where a Houdini user's textures naturally live.
-    Measured 2026-08-10, this machine:
-
-        settings.json   $AMAZE/../../SomeOther/textures
-        locations.json  ~/Cloud/3D/H-FILES/SomeOther/textures
-
-    The `..` walk breaks the moment the install moves; `~` survives it.
-    Both decoders read both spellings, so one encoder wins and nothing
-    needs migrating."""
+    """Two encoders write the same folder into two files, and a `$AMAZE/..` walk breaks the moment the install moves where `~` survives it - both decoders read both spellings, so nothing migrates."""
 
     def _cases(self):
         from amaze.helpers import hostos
@@ -1834,8 +1439,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
                  home,
                  "/Volumes/Share/textures"]
         if amaze:
-            # The divergent shape: shares a subtree with the install
-            # without being under it.
+            # The divergent shape: shares a subtree with the install, not under it.
             cases.append(os.path.join(
                 os.path.dirname(amaze), "Sibling", "textures"))
             cases.append(os.path.join(amaze, "scripts"))
@@ -1854,9 +1458,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
             "one folder is spelled two ways in two files: %s" % disagree)
 
     def test_the_old_walking_spelling_is_still_read(self):
-        """Nothing migrates, so whatever is already in settings.json has
-        to keep resolving - including the `$AMAZE/..` form this stops
-        writing."""
+        """Nothing migrates, so the `$AMAZE/..` form this stops writing must keep resolving."""
         from amaze.prefs import persistence
         cases, hostos = self._cases()
         amaze = os.environ.get("AMAZE", "")
@@ -1870,15 +1472,8 @@ class OnePathHasOneSpelling(unittest.TestCase):
             "an existing settings.json entry stopped resolving")
 
     def test_a_trailing_separator_survives_the_round_trip(self):
-        """`directory` is stored WITH one, and the connectors build
-        their paths as `self._path + self._filename`."""
+        """`directory` is stored WITH one, and the home half is built CANONICALLY - gluing a POSIX literal onto a Windows `expanduser` mints a spelling no encoder here can emit."""
         from amaze.prefs import persistence
-        # The home half is built CANONICALLY, never concatenated: on
-        # Windows `expanduser` answers `C:\Users\Dev` and gluing a POSIX
-        # literal onto it mints `C:\Users\Dev/Cloud/lib/`, a spelling no
-        # encoder here can emit. The round trip was answering correctly
-        # and the INPUT was the mixed one (ROADMAP line 17; practice.md ▸
-        # *`assertEqual` PRINTS EXPECTED FIRST*).
         for path in (test_support.posix_path(os.path.expanduser("~"))
                      + "/Cloud/lib/",
                      "/Volumes/Share/lib/"):
@@ -1889,15 +1484,7 @@ class OnePathHasOneSpelling(unittest.TestCase):
 
 
 class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
-    """The runner arms `AMAZE_SANDBOX` for the WHOLE process, and the
-    sandbox tests above toggle it - so cleanup must put back the state
-    setUp met, never pop the variable. A pop-as-cleanup left every
-    test after this module running unarmed, and on 2026-08-13 a live
-    settings load in that unarmed tail migrated real favourites into
-    the real library from inside a green suite. Named after the guard
-    class so it runs behind it in the loader's alphabetical order;
-    standalone unarmed runs have nothing to hold and skip.
-    """
+    """The sentinel: `AMAZE_SANDBOX` is armed for the WHOLE process, so a pop-as-cleanup leaves every later test able to write live data. Named to sort behind the guard class it holds."""
 
     def test_the_armed_state_survived_the_sandbox_tests(self):
         if not _SANDBOX_ARMED_AT_IMPORT:
