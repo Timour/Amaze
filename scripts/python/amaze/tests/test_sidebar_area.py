@@ -1,25 +1,4 @@
-"""The Sidebar area: a row acts on the name it STORES.
-
-BATCH 7 of the four-areas restructure. The defect it dissolves: clicking
-a category whose stored name begins with an underscore filters the grid
-to nothing.
-
-`Categories.data` returns `elem[1:]` for DisplayRole when the stored
-name starts with "_" - the mechanism that makes the stored "_All" sort
-first and read as "All". So a category stored `_WIP` DISPLAYS as "WIP",
-and a caller reading `index.data()` gets a name no asset carries. The
-grid goes empty with nothing saying why, and the sidebar row stays
-highlighted.
-
-The panel already has the one right answer - `_raw_category_name`,
-whose own docstring lists three actions that were broken this exact way
-(rename, remove, and drag-to-categorise) and were moved onto it. The
-sidebar CLICK was never moved. That is protocol answer 2: it has an
-owner, and the fix was being written outside it.
-
-Written BEFORE the fix, and it fails against the shipped code - which
-is the strongest form of the sabotage-first rule, because the defect
-is real rather than injected.
+"""The Sidebar area: a row acts on the name it STORES, never the one it displays. DisplayRole strips a leading underscore - the mechanism that makes `_All` sort first and read as All - so a caller reading `index.data()` gets a name no asset carries, and the grid empties with the row still highlighted. ▸archive/test_sidebar_area.py
 """
 
 import os
@@ -46,11 +25,7 @@ from amaze.tests import test_support  # noqa: E402
 
 
 class _Recorder:
-    """Stands in for the grid proxy: remembers what filter it was given.
-
-    The REAL Categories model is used beside it, deliberately - the
-    underscore strip lives in its `data()`, and a stub model would test
-    the stub."""
+    """Stands in for the grid proxy, remembering the filter it was given. The REAL Categories model sits beside it - the underscore strip lives in its `data()`, so a stub model would test the stub."""
 
     def __init__(self):
         self.filters = []
@@ -67,8 +42,7 @@ class _Model:
 
 
 class _CatList:
-    """Only what the name reader asks of the sidebar widget: which model
-    it is showing."""
+    """Only what the name reader asks of the sidebar widget - which model it is showing."""
 
     def __init__(self, model):
         self._model = model
@@ -78,15 +52,7 @@ class _CatList:
 
 
 class _Panel:
-    """Only what select_category reaches for on the panel: the ONE
-    reader of a row's stored name, borrowed from the real class rather
-    than reimplemented - a copy here would pin the copy.
-
-    The sidebar is wired to the PROXY, as it is in production. That is
-    load-bearing: `_raw_category_name` reads `CatSortRole` through
-    `model.sourceModel()` and falls back to DisplayRole when the model
-    has no source - so a stub with no cat_list gets the displayed name
-    and the test would pass while the defect stood."""
+    """The real name reader, borrowed rather than reimplemented, since a copy would pin the copy. Wired to the PROXY as in production - the reader falls back to DisplayRole when a model has no source, so a stub would pass while the defect stood."""
 
     from amaze.panel.panel import MatLibPanel as _Real
     _raw_category_name = _Real._raw_category_name
@@ -96,9 +62,7 @@ class _Panel:
 
 
 class _Section(sections.AssetSection):
-    """An AssetSection whose stack is the recorder above. Nothing else
-    about it differs - `select_category` is inherited, which is the
-    method under test."""
+    """An AssetSection whose stack is the recorder above - `select_category` is inherited, and it is the method under test."""
 
     def __init__(self, categories, proxy, sidebar_proxy):
         self._categories = categories
@@ -107,8 +71,7 @@ class _Section(sections.AssetSection):
         self.panel = _Panel(sidebar_proxy)
 
     def stack(self):
-        # The LABELLED shape the real one returns (2026-08-03) -
-        # a bare tuple here would let the stub drift from it.
+        # The LABELLED shape the real one returns - a bare tuple would drift.
         return sections.AssetStack(
             model=self._model, proxy=self._proxy,
             selection=None, categories=self._categories)
@@ -130,9 +93,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
         self.section = _Section(self.categories, self.proxy, self.sidebar)
 
     def _row_for(self, stored):
-        """The sidebar row holding `stored`, added if the fixture has
-        no such category. Fails rather than skips when it cannot be
-        made - a pin that can skip is not a pin."""
+        """The sidebar row holding `stored`, as a PROXY index - what a click actually hands over. Fails rather than skips when it cannot be made, because a pin that can skip is not a pin."""
         row = self.categories._row_of(stored)
         if row is None:
             self.categories.check_add_category(stored)
@@ -140,14 +101,10 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
         self.assertIsNotNone(
             row, "could not put %r in the sidebar, so this test cannot "
                  "say anything about it" % stored)
-        # A PROXY index - what a click actually hands over.
         return self.sidebar.mapFromSource(self.categories.index(row, 0))
 
     def test_an_underscore_category_filters_on_its_STORED_name(self):
-        """THE DEFECT. `index.data()` is DisplayRole, which is where the
-        leading underscore is stripped - so clicking `_WIP` filtered the
-        grid to "WIP", a name no asset carries, and the grid emptied
-        with the row still highlighted and nothing saying why."""
+        """`index.data()` is DisplayRole, where the leading underscore is stripped - so a stored `_WIP` filters on a name no asset carries."""
         index = self._row_for("_WIP")
         self.assertEqual(
             "WIP", index.data(),
@@ -163,17 +120,13 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
             "highlighted")
 
     def test_an_ordinary_category_is_unaffected(self):
-        """The half that stops the fix over-reaching: a name with no
-        underscore must filter on itself, unchanged."""
+        """The half that stops the fix over-reaching - a name with no underscore filters on itself."""
         index = self._row_for("Metal")
         self.section.select_category(index)
         self.assertEqual([(_Model.CategoryRole, "Metal")], self.proxy.filters)
 
     def test_the_All_row_still_clears_the_filter(self):
-        """`_All` is the one stored underscore name that MUST resolve to
-        the everything-filter - it is the whole reason the strip exists.
-        A fix that reads the stored name naively would filter on the
-        literal "_All" and show nothing at all."""
+        """`_All` is the one stored underscore name that MUST resolve to the everything-filter - reading it naively filters on the literal and shows nothing."""
         row = self.categories._row_of("_All")
         self.assertIsNotNone(
             row, "the fixture has no _All row, so this cannot test the "
@@ -190,16 +143,7 @@ class ARowActsOnTheNameItStores(unittest.TestCase):
 
 
 class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
-    """BATCH 7, 2026-08-04. The drag-hover cluster branched on the
-    section KEY twice: a `CATEGORY_SECTIONS` tuple of four key strings,
-    and `if self.current_section == "gradient"` reaching into
-    `gradient_model` by name from inside a shared helper.
-
-    That is the shape batches 4 to 9 took out of activation, the
-    toolbar, Comments and both menus - and it was still standing here.
-    A sixth section with categories would have had to be remembered in
-    a tuple; one without would have had to be kept OUT of it.
-    """
+    """What a sidebar row accepts is the CONTEXT's answer, never a branch on a section key - a tuple of keys is a list someone has to remember to update when a section arrives."""
 
     def test_every_context_answers_whether_it_takes_drops(self):
         for name in ("MaterialSection", "CopSection", "CodeSection",
@@ -211,20 +155,15 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
                     "them" % name)
 
     def test_FILE_takes_none(self):
-        """Its rows are registered folders. A file's location is where
-        it sits on disk, not something a drag can change."""
+        """Its rows are registered folders - a file's location is where it sits on disk, not something a drag can change."""
         self.assertFalse(sections.FileSection.takes_category_drops)
 
     def test_the_ONLINE_world_takes_none_either(self):
-        """It has a sidebar of SOURCES, and a remote catalogue's
-        categories are not ours to write to."""
+        """A sidebar of SOURCES - a remote catalogue's categories are not ours to write to."""
         self.assertFalse(sections.OnlineContext.takes_category_drops)
 
     def test_the_panel_no_longer_holds_a_list_of_section_KEYS(self):
-        """`CATEGORY_SECTIONS` is the thing this replaces. A tuple of
-        keys is a list someone has to remember to update - which is
-        exactly how Node and Code missed the sidebar half of the filter
-        push (practice.md)."""
+        """A tuple of section keys is a list someone has to remember to update, and a section that is forgotten simply misses the behaviour."""
         with open(os.path.join(PACKAGE, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             source = handle.read()
@@ -234,8 +173,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             "categories")
 
     def test_the_cluster_does_not_branch_on_a_section_key(self):
-        """Read as STRUCTURE, not prose: the module may mention a key
-        in a comment, but no code in it may compare against one."""
+        """Read as STRUCTURE, not prose - the module may name a key in a comment, but no code in it may COMPARE against one. Every string under the comparison counts, or a tuple form slips past."""
         import ast
         with open(os.path.join(PACKAGE, "panel", "sidebar.py"),
                   encoding="utf-8") as handle:
@@ -245,11 +183,6 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
         for node in ast.walk(tree):
             if not isinstance(node, ast.Compare):
                 continue
-            # EVERY string under the comparison, not just a bare
-            # comparator: `not in ("material", "cop")` puts them in a
-            # Tuple, and that is the CATEGORY_SECTIONS shape this test
-            # exists to catch. The first version checked only bare
-            # constants and a sabotage in exactly that form went green.
             for side in [node.left] + list(node.comparators):
                 for inner in ast.walk(side):
                     if (isinstance(inner, ast.Constant)
@@ -261,9 +194,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             "context answers for itself" % offenders)
 
     def test_COLOR_still_guards_its_synthetic_rows(self):
-        """The one rule that is genuinely per-context survives the
-        move: a gradient row must be a real user category. It used to
-        be an `== "gradient"` branch inside the shared helper."""
+        """The one rule that is genuinely per-context survives the move - a gradient row must be a real user category."""
         section = sections.GradientSection.__new__(sections.GradientSection)
         section.panel = type("_P", (), {
             "gradient_model": type("_M", (), {
@@ -274,9 +205,7 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             "a synthetic palette row accepted a dropped tile")
 
     def test_the_base_answer_is_permissive(self):
-        """The shared rules already rejected what matters (no context,
-        no row, the All row). A context with nothing extra to say says
-        nothing."""
+        """The shared rules already reject what matters, so a context with nothing extra to say says nothing."""
         self.assertTrue(
             sections.AssetSection.accepts_category_drop(None, None, "Metal"))
 
