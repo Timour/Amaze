@@ -1,42 +1,16 @@
 #!/usr/bin/env python3
-"""Which tests skipped on EVERY Houdini the suite ran against?
-
-    check_dead_cover.py <report.json> <report.json> [...]
-
-A test that skips everywhere protects nothing and reads as coverage.
-`test_building_a_redshift_scene_restores_the_selection` was one for its
-whole life - it guarded on Redshift AND needed a GUI, so it skipped
-under H22 (no Redshift) and errored under H21 (no `hou.ui`). The
-regression it was written to catch was live again by the time it first
-ran. Nothing reported that, because the suite says `skipped=3` and
-never says WHICH three, and each run's count looks reasonable alone.
-
-WHY THIS IS A STEP OVER TWO RUNS AND NOT A TEST INSIDE ONE. A single
-run cannot know it. Skipping under H22 is correct behaviour for a
-Redshift test; it only becomes dead cover once H21 skipped it too. The
-question needs both results in hand, so it lives where both exist -
-`run-tests.sh --all-versions`, after the loop.
-
-REFUSING IS A RESULT. A report that is missing, unreadable, or says
-`testsRun: 0` means that run did not finish - Houdini's crash handler
-exits 0 (practice.md), so a crashed suite leaves no trace in the status.
-Comparing the surviving runs anyway would name tests as dead-everywhere
-on the strength of one version, which is the same false-green this
-check exists to remove. So it stops and says so.
-
-Exit 0 = no dead cover, 1 = dead cover (named), 2 = cannot tell.
+"""Which tests skipped on EVERY Houdini the suite ran against - a test that skips everywhere protects nothing and reads as coverage. A step over TWO runs, because one cannot know it. REFUSING IS A RESULT: a missing, unreadable or empty report means that run did not finish, and comparing the survivors would name dead cover on the strength of one version. Exit 0 none, 1 named, 2 cannot tell. ▸archive/check_dead_cover.py
 """
 
 import json
 import os
 import sys
 
-#: Two runs is the minimum that can answer the question at all.
 MINIMUM_REPORTS = 2
 
 
 def load(path: str):
-    """One run's report, or a sentence saying why there is not one."""
+    """One run's report, or a sentence saying why there is not one - a run that executed nothing vouches for nothing, which is how a crashed suite reads as having skipped nothing."""
     if not os.path.exists(path):
         return None, ("no report at %s - that run never reached the end "
                       "of run_suite.py, so it crashed or was killed" % path)
@@ -47,9 +21,6 @@ def load(path: str):
         return None, "unreadable report at %s (%s)" % (path, exc)
     if not isinstance(report, dict) or "skipped" not in report:
         return None, "report at %s is not a skip report" % path
-    # A run that executed nothing cannot vouch for anything. This is the
-    # `Ran 0 tests` check that catches a crashed suite, in the one place
-    # that would otherwise read the crash as "skipped nothing".
     if not report.get("testsRun"):
         return None, ("report at %s ran 0 tests - the suite died before "
                       "it could skip anything" % path)
@@ -61,8 +32,6 @@ def host_of(report) -> str:
     houdini = (report.get("houdini") or "").rstrip("/")
     if not houdini:
         return "(newest install)"
-    # .../Houdini21.0.729/Frameworks/... - the version directory is the
-    # only readable part, and it is what a person would say out loud.
     for part in houdini.split("/"):
         if part.startswith("Houdini") and any(c.isdigit() for c in part):
             return part
@@ -70,10 +39,7 @@ def host_of(report) -> str:
 
 
 def dead_everywhere(reports):
-    """Test ids that skipped in EVERY report, with each run's reason.
-
-    An INTERSECTION, which is the whole point: skipping on one host is
-    ordinary and correct, and only skipping on all of them is dead."""
+    """Test ids that skipped in EVERY report, with each run's reason - an INTERSECTION, because skipping on one host is ordinary and only skipping on all of them is dead."""
     per_run = []
     for report in reports:
         per_run.append({test_id: reason for test_id, reason in report["skipped"]})

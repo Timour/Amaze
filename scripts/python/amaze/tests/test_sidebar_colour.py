@@ -1,20 +1,4 @@
-"""One colour gesture for the Sidebar, three answers behind it.
-
-BATCH 7 of the four-areas restructure, the second half. Set Color /
-Clear Color was written three times - once per sidebar menu - and each
-copy carried the whole gesture: read the current colour out of its own
-store, open the picker with its own copy of the default `#4af2a1`, and
-repaint its own two models afterwards.
-
-They also disagreed about the one thing the first half of this batch
-was about: the asset path reads the STORED name through
-`_raw_category_name` (a category shown as "WIP" is stored "_WIP"), and
-the other two read whatever their menu happened to be holding.
-
-The gesture belongs to the area; what a colour IS belongs to the
-context. Three stores stay three stores - a category colour lives in
-the library, a palette category's in gradients.json, a location's in
-prefs, and moving them is a storage question nobody has asked yet.
+"""One colour gesture for the Sidebar, three answers behind it: the GESTURE belongs to the area, what a colour IS belongs to the context, and the three stores stay three stores. ▸archive/test_sidebar_colour.py
 """
 
 import ast
@@ -39,7 +23,6 @@ from amaze.tests import test_support  # noqa: E402
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-#: Every context with a sidebar whose rows can carry a colour.
 COLOURED = ("AssetSection", "FileSection", "GradientSection")
 
 
@@ -56,8 +39,7 @@ class EveryContextSaysWhatAColourIs(unittest.TestCase):
                         "store to reach for" % (name, verb))
 
     def test_each_one_names_its_own_picker(self):
-        """A location is not a category, and the picker's title is the
-        only place that shows."""
+        """A location is not a category, and the picker's title is the only place that shows."""
         self.assertEqual("Location Color", sections.FileSection.colour_title)
         for name in ("AssetSection", "GradientSection"):
             self.assertEqual("Category Color",
@@ -89,9 +71,7 @@ class ThePickerOpensFromONEPlace(unittest.TestCase):
             "at %s" % offenders)
 
     def test_the_default_colour_is_written_once(self):
-        """Three copies of a hex literal is three places to change it,
-        and the sabotage that finds a stale one is a person noticing
-        months later."""
+        """Three copies of a hex literal is three places to change, and the sabotage that finds a stale one is a person noticing months later."""
         with open(os.path.join(PACKAGE, "panel", "panel.py"),
                   encoding="utf-8") as handle:
             panel_source = handle.read()
@@ -102,10 +82,7 @@ class ThePickerOpensFromONEPlace(unittest.TestCase):
 
 
 class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
-    """A sidebar colour is painted twice: on the sidebar row itself
-    (SIDEBAR_COLOR_ROLE, one role for all three families) and on every
-    tile filed under it. A gesture that writes the store but repaints
-    only one of them looks like it did nothing."""
+    """A sidebar colour is painted TWICE - on the row and on every tile filed under it - so a gesture that repaints one of them looks like it did nothing."""
 
     @classmethod
     def setUpClass(cls):
@@ -117,8 +94,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         model = panel.cat_list.model()
         self.assertIsNotNone(model, "the %s tab has no sidebar" % key)
-        # Row 0 is All in every family - a view, not a category, and
-        # colouring it would mean colouring everything.
+        # Row 0 is All in every family - a view, never a category.
         self.assertGreater(model.rowCount(), 1,
                            "the %s sidebar has only All, so there is "
                            "nothing to colour" % key)
@@ -144,10 +120,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                     "the %s sidebar row does not paint it" % key)
 
     def test_the_sidebar_is_TOLD_so_the_row_actually_repaints(self):
-        """Reading the role back is not enough: these models answer it
-        live from the store, so a gesture that wrote and told nobody
-        reads correct and shows nothing until the next unrelated
-        refresh. The signal IS the repaint."""
+        """Reading the role back proves nothing - these models answer live from the store, so a gesture that wrote and told nobody reads correct and shows nothing. The SIGNAL is the repaint."""
         for key in ("material", "gradient", "file"):
             with self.subTest(section=key):
                 context, model, index = self._sidebar_row(key)
@@ -186,10 +159,7 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
                     "the %s row still wears the cleared colour" % key)
 
     def test_an_UNDERSCORE_category_is_coloured_by_its_stored_name(self):
-        """The first half of this batch, in the colour gesture: the
-        sidebar DISPLAYS "_WIP" as "WIP", and a colour written under
-        the displayed name is one nothing ever reads - plus an orphan
-        key that reattaches if the name comes back."""
+        """A colour written under the DISPLAYED name is one nothing reads, plus an orphan key that reattaches if the name comes back. Driven THROUGH the panel's gesture, which is where the name is read - calling the context directly never exercises it."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
@@ -209,10 +179,6 @@ class TheColourReachesBOTHPlacesItIsPainted(unittest.TestCase):
             "the colour was written under the DISPLAYED name, which no "
             "row is keyed by")
 
-        # THROUGH THE PANEL'S GESTURE, which is where the name is read:
-        # Clear Color on the selected row. Calling the context directly
-        # (above) never exercises that read - the sabotage round found
-        # exactly that hole.
         row = panel.cat_list.model().mapFromSource(
             panel.category_model.index(
                 panel.category_model._row_of("_WIP"), 0)) \
