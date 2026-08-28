@@ -1,32 +1,4 @@
-"""Where can a long method be split without moving any state?
-
-Splitting a method is safe exactly where no LOCAL VARIABLE crosses the
-boundary: everything before the cut can move into its own method,
-because nothing after it reads what that code produced. This walks a
-method's top-level statements and reports those boundaries.
-
-    hython tests/split_points.py panel/panel.py init_ui
-    hython tests/split_points.py panel/panel.py init_ui --allow central_layout
-
-`--allow NAME` answers the follow-up question: "what would promoting
-this local to an attribute buy me?" - it reports the cuts that would
-open up if NAME no longer counted as crossing.
-
-Module-level names are not locals: imports, constants and classes are
-visible in any method and never block a split.
-
-**WHAT IT CANNOT SEE.** `self` counts as always-available, so ordering
-constraints expressed through attributes are invisible - an index saved
-on self and read later, a widget that must be added before another is
-inserted at 0, a connect that must follow its widget. It reports where
-no LOCAL crosses, never where the ORDER matters. Taking its "promote
-this local to an attribute" advice converts a constraint it CAN see
-into one it cannot; only worth it when the attribute is genuinely
-panel-wide state.
-
-Its cuts are necessary, not sufficient. Pair with tests/ui_snapshot.py,
-which compares the constructed panel before and after.
-"""
+"""Where a long method can be split without moving state - the boundaries no LOCAL variable crosses. ITS CUTS ARE NECESSARY, NEVER SUFFICIENT: `self` counts as always-available, so an ordering constraint carried through an attribute is invisible to it, and promoting a local to an attribute converts a constraint it CAN see into one it cannot. Pair it with ui_snapshot.  `hython tests/split_points.py panel/panel.py init_ui [--allow NAME]`  ▸archive/split_points.py"""
 
 import argparse
 import ast
@@ -36,8 +8,7 @@ import sys
 
 
 def module_level_names(tree) -> set:
-    """Every name a method can use without it being a local: imports,
-    module constants, module-level defs and classes, and builtins."""
+    """Every name a method can use without it being a local - imports, module constants, module-level defs and classes, and builtins."""
     names = set(dir(builtins))
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom)):

@@ -1,10 +1,4 @@
-"""The renders-black invariant, on the renderer that holds most of it.
-
-Redshift ends a material in a terminal NODE rather than a named
-`surface` connector, so the Karma-shaped check answered False for every
-Redshift asset in the real library (research.md > Redshift terminal
-shape). The plugin-dependent cases skip where Redshift is not
-installed; the spelling cases below never do.
+"""The renders-black invariant on Redshift, which ends a material in a terminal NODE rather than a named connector - so a Karma-shaped check answers False for every Redshift asset. The plugin cases skip where Redshift is absent; the spelling cases never do. ▸archive/test_redshift_terminal.py
 """
 
 import os
@@ -69,23 +63,7 @@ class RedshiftMaterialsHoldTheTerminalInvariant(unittest.TestCase):
 
 
 class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
-    """ROADMAP batch 4's displacement item, CORRECTED by measurement.
-
-    The audit said these terminals do not name their inputs at all, so
-    the converter's `Displacement` lookup could never fire. Measured
-    2026-08-14 on 22.0.407 and 21.0.729 (the probe kept beside the
-    notes): `inputNames()` DOES name them - Surface, Displacement,
-    ... - and it is `inputLabels()` that answers the generic
-    `Input 1`..`Input N`. Displacement was never broken.
-
-    One spelling is: the classic `redshift_material` says `Bump Map`,
-    the USD `redshift_usd_material` says `BumpMap`, and the converter
-    asked only for the spaced one - so a bump wired into the OUTPUT
-    node was dropped on every USD-builder material, which is the
-    majority form in a real library.
-
-    Needs no plugin: the roles are a table, and a table can be read.
-    """
+    """`inputNames()` names the terminal inputs; `inputLabels()` answers the generic ones. The two Redshift terminals SPELL A BUMP DIFFERENTLY, so asking for one form drops it on every material of the other. Needs no plugin - the roles are a table."""
 
     SENTINEL = object()
 
@@ -117,10 +95,7 @@ class TheTwoTerminalsDoNotSpellTheirInputsAlike(unittest.TestCase):
 
 
 class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
-    """The spellings have ONE home, so the second form cannot be missed
-    again. This is the shape batch 4 asked for in its own words: make
-    the hand-written spelling stop working so it cannot come back.
-    """
+    """The spellings have ONE home, and the hand-written form is made to stop working so it cannot come back."""
 
     def test_the_package_asks_through_terminal_input(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -148,12 +123,7 @@ class NoTerminalInputIsLookedUpByHand(unittest.TestCase):
 @unittest.skipUnless(_redshift_available(),
                      "the Redshift plugin is not installed")
 class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
-    """The table is a measurement, so the plugin gets to refute it.
-
-    Runs on any host with Redshift - both majors carry it since the
-    22.x plugin build appeared (research.md > Renderer plugins under
-    hython), so this is no longer a one-version test.
-    """
+    """The table is a MEASUREMENT, so the plugin gets to refute it - runs on any host carrying Redshift."""
 
     def _terminal(self, parent, builder_type, terminal_type):
         builder = parent.createNode(builder_type)
