@@ -1,4 +1,4 @@
-"""The write path: no reader may ever see a half-written database - the property pinned is that two writers cannot share a scratch NAME, because the corruption that parses is the one nothing downstream detects. ▸r/atomic-writes ▸p/asset-write-unit ▸p/first-app-picks-the-platform"""
+"""The write path: no reader may ever see a half-written database - the property pinned is that two writers cannot share a scratch NAME, because the corruption that parses is the one nothing downstream detects. ▸r/atomic-writes ▸p/asset-write-unit ▸archive/test_atomic_write.py"""
 
 import gzip
 import json
