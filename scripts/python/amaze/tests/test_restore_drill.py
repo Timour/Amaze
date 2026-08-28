@@ -1,14 +1,4 @@
-"""The restore drill: prove the snapshots can actually be put back.
-
-The backup system has saved this project's data twice, but a restore
-had never been rehearsed end to end - which means it was a belief, not
-a capability. These tests run the real tool (tools/restore.py) against
-a COPY of the real library, through the failure shapes that actually
-happen: a truncated write, corrupt json, a deleted index, and a
-half-synced cloud file.
-
-Never touches the live library: everything runs in a temp copy.
-"""
+"""The restore drill - the real `tools/restore.py` driven against a COPY of the real library through the failure shapes that happen, because a restore nobody has rehearsed is a belief rather than a capability. NEVER touches the live library. ▸archive/test_restore_drill.py"""
 
 import json
 import os
@@ -22,9 +12,6 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-# tests/ -> amaze/ -> python/ -> scripts/ -> repo root: FIVE levels.
-# (Got this wrong once already today in the other direction - counting
-# them out beats eyeballing nested dirname calls.)
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))))
 RESTORE = os.path.join(REPO, "tools", "restore.py")
@@ -32,24 +19,11 @@ RESTORE = os.path.join(REPO, "tools", "restore.py")
 from amaze.tests import test_support             # noqa: E402
 
 
-#: restore.py is pure stdlib on purpose - a restore must work when
-#: Houdini does not start. Driving it with the SYSTEM python keeps the
-#: drill fast (hython costs ~10s of startup per call, which turned this
-#: file into 72 seconds) and proves the no-Houdini claim at the same
-#: time.
 PYTHON = shutil.which("python3") or sys.executable
 
 
 def _run(*args):
-    # The child gets a CLEAN Python environment. This drill runs inside
-    # hython, whose PYTHONHOME/PYTHONPATH name Houdini's own stdlib -
-    # and the child is whatever `python3` is on PATH, so on Windows a
-    # 3.13 binary imported H21's 3.11 stdlib and died on `SRE module
-    # mismatch` before restore.py ran a line. Twelve tests red, none of
-    # them about restoring. Stripping the two is also the claim under
-    # test: restore.py is pure stdlib precisely so it runs under ANY
-    # python when Houdini is broken - a real user's terminal does not
-    # carry hython's variables, and the drill should not either.
+    # CLEAN: hython's PYTHONHOME/PYTHONPATH would give the child Houdini's stdlib.
     env = {k: v for k, v in os.environ.items()
            if k not in ("PYTHONHOME", "PYTHONPATH")}
     return subprocess.run([PYTHON, RESTORE] + list(args),
@@ -62,7 +36,6 @@ class TestRestoreDrill(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="amaze_drill_")
         self.addCleanup(shutil.rmtree, self.tmp, True)
         self.target = os.path.join(self.tmp, "library.json")
-        # A realistic index plus the snapshot tiers the app maintains.
         self.good = {"assets": [{"id": "a%d" % i, "name": "mat_%d" % i}
                                 for i in range(500)], "tags": []},
         self.good = self.good[0]
@@ -77,16 +50,14 @@ class TestRestoreDrill(unittest.TestCase):
             json.dump(data, handle)
 
     def _assets(self, path=None):
-        # utf-8-sig, like the app and like the tool: a restored snapshot
-        # keeps whatever bytes it had, byte-order mark included.
+        # utf-8-sig, like the app and the tool - a restore keeps its bytes.
         with open(path or self.target, encoding="utf-8-sig") as handle:
             return len(json.load(handle)["assets"])
 
     # -- the failure shapes that actually happen ------------------------
 
     def test_truncated_write_restores_from_bak1(self):
-        """A write interrupted mid-flight - the classic crash/power
-        case - leaves valid-looking bytes that are not valid json."""
+        """A write interrupted mid-flight leaves valid-looking bytes that are not valid json."""
         with open(self.target, "r+", encoding="utf-8") as handle:
             handle.truncate(5000)
         with self.assertRaises(ValueError):
@@ -100,15 +71,9 @@ class TestRestoreDrill(unittest.TestCase):
         result = _run("restore", "--allow-loss", self.target, "bak-2")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self._assets(), 498)
-        # The corrupt state was preserved - a panic restore is undoable.
-        # The tool names the copy it made (timestamped, one per restore),
-        # so the drill reads the name from the same line a user would.
+        # The name read from the line a USER would read.
         undo = self._undo_named_in(result.stdout)
         self.assertTrue(os.path.exists(undo))
-        # "The undo file exists" is not the claim worth making. What the
-        # drill has to prove is that the bytes in it are the ones that
-        # were on disk - a copy of the wrong thing, or a truncated copy,
-        # looks identical to this test until it is read.
         with open(undo, encoding="utf-8") as handle:
             self.assertEqual(
                 "{ not json at all", handle.read(),
@@ -116,9 +81,7 @@ class TestRestoreDrill(unittest.TestCase):
                 "the restore is not actually reversible")
 
     def _undo_named_in(self, stdout):
-        """The undo copy a restore said it wrote, from its own output -
-        the same sentence a user acts on, so a name printed but not
-        written (or written but not printed) fails here."""
+        """The undo copy read out of the restore's OWN output, so a name printed but not written - or written but not printed - fails here."""
         lines = [line for line in stdout.splitlines()
                  if line.startswith("current state saved to ")]
         self.assertEqual(1, len(lines),
@@ -127,19 +90,7 @@ class TestRestoreDrill(unittest.TestCase):
         return os.path.join(self.tmp, lines[0].rsplit(None, 1)[-1])
 
     def test_the_undo_is_restorable_and_the_swap_goes_both_ways(self):
-        """THE UNDO HAD TO BE DRIVEN, not merely inspected. A previous
-        version of this drill stopped at "the undo copy holds the right
-        bytes" and recorded the rest as a finding: the undo was a single
-        fixed name and put_back wrote it BEFORE reading its source, so
-        `restore <file> bak-before-restore` overwrote the undo with the
-        state it was about to undo and then copied that over itself.
-        Measured through this same CLI: 500 assets, restore bak-3 (495),
-        undo -> still 495, and the 500-asset state gone from the folder.
-        Two success messages, no error, five assets lost.
-
-        A preserved copy is not a restorable one, and the dialogs that
-        promise the undo are read by somebody who has just made a choice
-        under pressure."""
+        """THE UNDO IS DRIVEN, never merely inspected - a preserved copy is not a restorable one, and checking only its bytes hid a restore that overwrote its own source."""
         self.assertEqual(500, self._assets(), "premise")
         first = _run("restore", "--allow-loss", self.target, "bak-3")
         self.assertEqual(first.returncode, 0, first.stderr)
@@ -165,10 +116,7 @@ class TestRestoreDrill(unittest.TestCase):
             "one-way door with two names")
 
     def test_a_second_restore_does_not_delete_the_first_ones_undo(self):
-        """The fixed-name defect, driven end to end through the CLI: two
-        restores in a row must leave the starting state somewhere on
-        disk. Before unique undo names, the second restore overwrote the
-        only copy of it - two success messages, no error, data gone."""
+        """Two restores in a row must leave the starting state somewhere on disk - a shared undo name makes the second one a delete."""
         self.assertEqual(500, self._assets(), "premise")
         first = _run("restore", "--allow-loss", self.target, "bak-3")       # 495
         self.assertEqual(first.returncode, 0, first.stderr)
@@ -186,13 +134,7 @@ class TestRestoreDrill(unittest.TestCase):
         self.assertEqual(495, self._assets(second_undo))
 
     def test_a_snapshot_with_a_byte_order_mark_is_still_restorable(self):
-        """THE TOOL MUST AGREE WITH THE APP ABOUT WHAT IS READABLE. The app
-        now reads databases as utf-8-sig, so hostos.parses_as_json calls a
-        BOM'd document healthy and snapshot_before_write copies it into the
-        write-once .bak-first tier. Reading plain utf-8 here made that exact
-        file the one this tool listed as NOT VALID JSON and refused to put
-        back - the recovery tool declining the one shape that most needs
-        recovering."""
+        """THE TOOL MUST AGREE WITH THE APP ABOUT WHAT IS READABLE, or the recovery tool refuses the one shape the app already filed as healthy."""
         with open(self.target + ".bak-1", "w", encoding="utf-8-sig") as handle:
             json.dump({"assets": self.good["assets"][:497], "tags": []},
                       handle)
@@ -212,17 +154,14 @@ class TestRestoreDrill(unittest.TestCase):
                          "the app's own backup made is unusable")
 
     def test_deleted_index_restores_from_the_immutable_copy(self):
-        """The rolling tiers can age out a good state; bak-first never
-        rotates, which is the whole reason it exists."""
+        """The rolling tiers age a good state out; `.bak-first` never rotates, which is why it exists."""
         os.remove(self.target)
         result = _run("restore", "--allow-loss", self.target, "bak-first")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self._assets(), 495)
 
     def test_half_synced_file_is_refused_not_restored(self):
-        """A cloud client can leave a snapshot itself truncated.
-        Restoring garbage over a live index would turn one problem into
-        two - the tool must refuse."""
+        """A cloud client can truncate the SNAPSHOT, and restoring garbage over a live index turns one problem into two."""
         with open(self.target + ".bak-1", "r+", encoding="utf-8") as handle:
             handle.truncate(120)
         result = _run("restore", "--allow-loss", self.target, "bak-1")
@@ -247,8 +186,7 @@ class TestRestoreDrill(unittest.TestCase):
 
 
 class TestDrillAgainstRealSnapshots(unittest.TestCase):
-    """The same drill against a COPY of the live library - the rehearsal
-    that matters, since it uses the real file's real snapshots."""
+    """The same drill against a COPY of the live library, so it runs on the real file's real snapshots."""
 
     def test_live_library_snapshots_are_restorable(self):
         prefs = test_support.live_library_to_rehearse_on(self)
@@ -277,23 +215,7 @@ class TestDrillAgainstRealSnapshots(unittest.TestCase):
 
 
 class TestUnreadableSettingsArePreserved(unittest.TestCase):
-    """A settings.json we cannot parse must survive the session.
-
-    load() returning False leaves the object holding PURE DEFAULTS and
-    the panel opens anyway - deliberate, so a bad settings file cannot
-    cost the whole panel. But nothing downstream could tell "no settings
-    yet" from "settings we failed to read", and save() is
-    unconditional: opening Preferences and closing it was enough.
-
-    Reproduced end to end before the fix - a truncated settings.json,
-    then one save():
-
-        before : folders=2 favs=1 accent=#ff8800
-        after  : folders=0 favs=0 accent=#5d7abd   (defaults)
-
-    and no recovery artifact at all, because snapshot_before_write is
-    once-per-session and the marker had already been spent on a file
-    that did not exist yet (fixed in hostos)."""
+    """An unparseable `settings.json` must SURVIVE the session: `load()` returning False leaves pure defaults and the panel opens anyway, so an unconditional save overwrites the real settings with them."""
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
@@ -304,8 +226,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
         self.home = tempfile.mkdtemp(prefix="amaze_unreadable_")
         self.addCleanup(shutil.rmtree, self.home, True)
         self.settings = os.path.join(self.home, "settings.json")
-        # snapshot_before_write is once per session per PATH, and the
-        # module-level set outlives a single test.
+        # snapshot_before_write is once per session per PATH, and its set outlives a test.
         hostos._session_snapshots.pop(self.settings, None)
         self.addCleanup(hostos._session_snapshots.pop, self.settings, None)
 
@@ -342,8 +263,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
                 "the preserved copy is not the file we failed to read")
 
     def test_the_preserved_copy_is_never_overwritten(self):
-        """A second failed load in the same session must not replace the
-        original evidence with an already-defaulted rewrite."""
+        """A second failed load must not replace the original evidence with an already-defaulted rewrite."""
         raw = self._write_real_settings()
         truncated = raw[:len(raw) // 2]
         with open(self.settings, "w", encoding="utf-8") as handle:
@@ -367,10 +287,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
             "a first run left a spurious .unreadable file")
 
     def test_a_file_created_this_session_still_gets_a_snapshot(self):
-        """snapshot_before_write marked the path as done BEFORE checking
-        the file existed, so the save that CREATES settings.json burned
-        the once-per-session marker and every later save that session
-        was unprotected."""
+        """Marking a path done BEFORE checking it exists burns the once-per-session marker on the save that CREATES the file, leaving every later save unprotected."""
         self._write_real_settings()          # creates the file
         first = self._prefs()
         first.load()
@@ -384,13 +301,7 @@ class TestUnreadableSettingsArePreserved(unittest.TestCase):
 
 
 class PrefsValidationTest(unittest.TestCase):
-    """load() must go through the setters that validate these tokens.
-
-    It assigned straight onto the attributes, so a settings.json holding
-    icon_line_weight="bold" (hand-edited, or written by a build that
-    spelled it differently) stayed invalid in memory - and the
-    Preferences combos, which fall back to index 0 on an unknown token,
-    then DISPLAYED something different from what was stored."""
+    """`load()` must go through the SETTERS that validate these tokens - assigning straight onto the attributes leaves an invalid value in memory, and the combos then display something other than what is stored."""
 
     def setUp(self):
         from amaze.prefs import prefs as prefs_mod
@@ -429,9 +340,7 @@ class PrefsValidationTest(unittest.TestCase):
 
 
 class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):
-    """cmd_restore validated only that the snapshot PARSES - a bare []
-    restores over a 548-record library with exit code 0 and no warning,
-    which is the tool doing the damage it exists to undo."""
+    """A snapshot that PARSES is not one worth restoring - a bare `[]` over a full library exits 0 with no warning, which is the tool doing the damage it undoes."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="amaze_loss_")
@@ -469,10 +378,7 @@ class ARestoreThatLosesRecordsMustBeMeantTest(unittest.TestCase):
 
 
 class TheUndoFamilyIsBoundedTest(unittest.TestCase):
-    """Uniquifying the undo copies traded overwriting for accumulation:
-    an unbounded family of timestamped files in a synced folder. Beyond
-    the newest N they move to the machine-local quarantine - moved, not
-    deleted, because each holds a state that exists nowhere else."""
+    """Unique undo names trade overwriting for accumulation, so past the newest N they MOVE to the machine-local quarantine - never deleted, each holds a state that exists nowhere else."""
 
     def setUp(self):
         sys.path.insert(0, os.path.join(REPO, "scripts", "python"))
@@ -538,10 +444,7 @@ class TheUndoFamilyIsBoundedTest(unittest.TestCase):
 
 
 class PrefsLoadNeverRaisesTest(unittest.TestCase):
-    """load()'s own docstring: an exception here "would kill the panel
-    during construction, with no interface and no message" - and
-    panel.py re-raises. Four shapes did exactly that.
-    """
+    """An exception in `load()` kills the panel during construction with no interface and no message, because `panel.py` re-raises."""
 
     def _prefs_with(self, payload):
         import json
@@ -562,9 +465,7 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
             ("file_folders", None), ("file_folders", 5),
             ("file_favorites", True), ("file_folders", "a/b"),
             ("directory", None), ("directory", {}), ("directory", []),
-            # TRUTHY non-strings are the ones that actually reach
-            # os.path.exists - the falsy ones short-circuit, so a test
-            # using only those proves nothing about the type guard.
+            # TRUTHY non-strings reach os.path.exists; falsy ones short-circuit.
             ("directory", {"a": 1}), ("directory", [1]), ("directory", 7),
         ):
             with self.subTest(key=key, value=bad):
@@ -584,15 +485,7 @@ class PrefsLoadNeverRaisesTest(unittest.TestCase):
             "reaches the sidebar as bogus folders")
 
     def test_a_byte_order_mark_does_not_cost_the_session(self):
-        """A BOM is what a Windows editor or a sync client's conflict
-        helper leaves at the front of a text file. The merge reader
-        forty lines from load() and the backup tier both read it fine
-        (utf-8-sig), so a load() that refuses it splits one file into
-        two verdicts: the panel opens with no library and refuses
-        every save, while the snapshot machinery files the same bytes
-        as a known-good state. Every reader of settings.json takes
-        utf-8-sig; policy, the databases and the keyed stores have
-        this test already."""
+        """EVERY reader of `settings.json` takes utf-8-sig, or one file gets two verdicts - the panel opens empty and refuses saves while the snapshot machinery files the same bytes as known-good."""
         import codecs
         import json as json_mod
         from amaze.prefs import prefs as prefs_mod
