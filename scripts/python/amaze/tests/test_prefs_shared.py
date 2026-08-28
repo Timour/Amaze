@@ -1,27 +1,4 @@
-"""The shared settings LIVE WITH THE LIBRARY (ROADMAP line 22, stage D).
-
-Nineteen keys - the library layout quartet, the render settings, the
-renderer flags, the throughput numbers, the geometry look and
-path_style - are ONE answer for everyone who opens the library
-(ROADMAP line 22 carries the decision and its scoping).
-The truth is `prefs.json` through the Shared Settings store;
-settings.json keeps a last-known COPY under `"shared_settings"`, which
-is what loads when the library is unreachable; the flat spellings are
-retired.
-
-The choreography, pinned here because every piece of it is a way the
-move can silently not happen:
-
-* load() and the `dir` setter ADOPT the store's answers into the
-  attributes - the two moments a Prefs meets a library, and both come
-  before any user edit in every real flow, so an adopted value can
-  never eat an edit;
-* save() PUSHES the attributes through ONE batch write, gated on the
-  library directory existing and the store taking writes - reads stay
-  plain attribute reads, so a setter is visible to the very next read
-  with no store round-trip in between;
-* the copy serves when the library cannot, and a latched store leaves
-  both the attributes and the copy alone.
+"""The shared settings LIVE WITH THE LIBRARY: `prefs.json` is the truth and `settings.json` keeps a last-known COPY for when the library is unreachable. `load()` and the `dir` setter ADOPT, `save()` PUSHES in one batch, and both adopt moments come before any user edit so an adopted value cannot eat one. ▸archive/test_prefs_shared.py
 """
 
 import json
@@ -53,8 +30,7 @@ class SharedPrefsCase(unittest.TestCase):
         self.addCleanup(keyed_store.release)
 
     def machine(self, home):
-        """A Prefs the way a session builds one: load settings, then
-        meet the library."""
+        """A Prefs the way a session builds one - load settings, then meet the library."""
         p = prefs_mod.Prefs()
         p.path = home
         p.load()
@@ -73,20 +49,14 @@ class SharedPrefsCase(unittest.TestCase):
 
 
 class AChangeReachesTheNextMachine(SharedPrefsCase):
-    """The headline: shared means the OTHER machine's session answers
-    with your value, off the library alone."""
+    """Shared means the OTHER machine's session answers with your value, off the library alone."""
 
     def test_a_saved_change_is_the_next_machines_answer(self):
         a = self.machine(self.home_a)
         a.rendersize = 512
-        # OFF, not on. This asserted a renderer flag turned ON, which
-        # was a real change only while one renderer defaulted False -
-        # that was the one dropped 2026-08-14, and every survivor
-        # defaults True. Turning one OFF is now the change that proves
-        # the trip; asserting True would pass on the default alone.
+        # OFF, never ON - asserting True passes on the default alone.
         a.renderer_octane_enabled = False
         a.save()
-        # The machine boundary: nothing in memory may carry over.
         keyed_store.release()
         b = self.machine(self.home_b)
         self.assertEqual(512, b.rendersize,
@@ -96,8 +66,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
                          "a renderer flag did not travel")
 
     def test_a_falsy_value_survives_the_trip(self):
-        """False, 0 and "" are legitimate choices, and the record wrap
-        exists so the engine's delete contract cannot eat them."""
+        """False, 0 and empty are legitimate choices, and the record wrap exists so the engine's delete contract cannot eat them."""
         a = self.machine(self.home_a)
         a.render_on_import = 0
         a.renderer_redshift_enabled = False
@@ -111,8 +80,7 @@ class AChangeReachesTheNextMachine(SharedPrefsCase):
 
 
 class TheFlatSpellingsRetire(SharedPrefsCase):
-    """settings.json keeps bootstrap + the copy; the 19 old flat keys
-    are dropped by the same save that writes their values to safety."""
+    """`settings.json` keeps bootstrap and the copy - the old flat keys are dropped by the same save that writes their values to safety."""
 
     def test_settings_json_carries_the_copy_not_the_flat_keys(self):
         a = self.machine(self.home_a)
@@ -132,8 +100,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
                       "library is found at all")
 
     def test_an_old_flat_file_loads_and_the_first_save_moves_it(self):
-        """The migration: flat values are the load fallback, and one
-        ordinary save carries them into the store and the copy."""
+        """The migration - flat values are the load fallback, and one ordinary save carries them into the store and the copy."""
         with open(os.path.join(self.home_a, "settings.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"directory": self.lib + "/",
@@ -158,10 +125,7 @@ class TheFlatSpellingsRetire(SharedPrefsCase):
 
 
 class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
-    """The File section's contract, applied to scalars: the library is
-    the truth, the copy is what opens the panel when the share is
-    down, and losing the copy is the one outcome the copy exists to
-    prevent."""
+    """The library is the truth and the copy opens the panel when the share is down - losing the copy is the one outcome it exists to prevent."""
 
     def test_values_survive_the_library_being_gone(self):
         a = self.machine(self.home_a)
@@ -211,10 +175,7 @@ class TheCopyServesAnUnreachableLibrary(SharedPrefsCase):
 
 
 class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
-    """`dir` can be set long after settings load - a fresh install
-    joining an existing library picks the folder in a dialog. That
-    moment must adopt, or the first save pushes this machine's
-    defaults over everyone's answers."""
+    """`dir` can be set long after settings load, and that moment must ADOPT, or the first save pushes this machine's defaults over everyone's answers."""
 
     def test_pointing_dir_at_a_library_adopts_without_a_load(self):
         a = self.machine(self.home_a)
@@ -230,10 +191,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
                          "settings on its first save")
 
     def test_junk_in_the_store_does_not_poison_a_clamped_setting(self):
-        """The store's normaliser types the RECORD, not the value's
-        meaning - a hand-edit can put a string where a size belongs,
-        and the adopt must route through the same validation load
-        uses."""
+        """The store's normaliser types the RECORD, never the value's meaning - a hand-edit can put a string where a size belongs, so the adopt must route through the same validation load uses."""
         with open(os.path.join(self.lib, "prefs.json"), "w",
                   encoding="utf-8") as handle:
             json.dump({"prefs": {
@@ -250,9 +208,7 @@ class TheLibraryIsAdoptedWhenItArrives(SharedPrefsCase):
 
 
 class AnUnchangedSaveDoesNotTouchTheStore(SharedPrefsCase):
-    """save() runs from ordinary sidebar use; the push must collapse
-    to nothing when no shared key moved, or every favourite toggled
-    would fsync the library's prefs.json."""
+    """`save()` runs from ordinary sidebar use, so the push must collapse to nothing when no shared key moved."""
 
     def test_a_second_save_with_nothing_changed_leaves_the_file_alone(self):
         a = self.machine(self.home_a)
