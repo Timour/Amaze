@@ -57,59 +57,65 @@ The **Amaze shelf** carries four tools:
 | **Updates** | Checks the release page for a newer version and installs it when you confirm. |
 | **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
 
+<img src="docs/images/shelf_tools.png" width="420">
+
 ---
 
 ## The panel at a glance
 
-The **section tabs** run along the top — Material, Color, Node, Code,
-File. Each section remembers its own category, view mode
-and scroll position. Sections you never use can be hidden entirely
-(Preferences ▸ Show/Hide).
+<img src="docs/images/material_grid.png" width="820">
 
-The **toolbar** sits top-right:
+The **section tabs** run along the top: Material, Color, Node, Code,
+File. Each section keeps its own category, view mode and scroll
+position. Sections can be hidden in Preferences ▸ Show/Hide.
+
+The **toolbar** runs along the top of the panel. Left to right:
 
 | | | |
 |:--:|---|---|
-| <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Free-text search over names and tags in the current section. |
+| <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
+| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg), Generate Material. |
+| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, Karma, Redshift, Octane. |
+| <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches to the online sources and back. |
+| <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens the [Comments pane](#comments). |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Two views of the same assets. |
-| <img src="scripts/python/amaze/ui/star_on.svg" width="20"> | **Favorites** | Show only favorited assets. |
-|<img src="scripts/python/amaze/ui/Icon-slider.svg" width="20">| **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
-| <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Your library, the online sources, categories, grid/list. |
-| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filter materials: All, Karma, Redshift, Octane. |
-| <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens Preferences (five tabs). |
+| <img src="scripts/python/amaze/ui/star_on.svg" width="20"> | **Favorites** | Shows favorited assets only. |
+| <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
+| <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags: `:metal` finds everything tagged metal. |
+| <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Takes a preview of the open scene. File section only. |
+| <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
-**List mode** is a spreadsheet, and its columns fit themselves to the
-longest name currently on screen:
+**List mode** shows the same assets as rows.
 
-| | Name | Type | Category | Tags | License |
-|:--:|---|---|---|---|---|
-| *thumb* | Bronze_Worn | <span style="color:#4af2a1">Redshift</span> | <span style="color:#d8d6d4">Metal</span> | <span style="color:#e28248">worn, warm</span> | <span style="color:#5cc9f5">CC0 1.0</span> |
+<img src="docs/images/material_list.png" width="820">
 
-Tags and License appear only for sections that have them (Material,
-Node). On a narrow panel the right-hand columns step aside rather than
-squeezing the rest.
+**Name** and **Type** are always there. **Category**, **Favorite**,
+**Version**, **Open**, **Comments**, **Tags**, **License**, **Date** and
+**ID** appear where the section has them. Favorite, Open and Comments
+draw as ticks, and Category takes the [category colour](#category-colors).
+Click a column heading to sort by it; drag the edge of a heading to set
+its width.
 
 The **sidebar** holds categories (Material, Node, Code), registered
-folders (File) or palette groups (Color). Right-click to
-add, rename, remove — or give a category a
-[colour](#category-colors). **Sort by name** puts the categories in
-alphabetical order once, with All staying on top; drag them where you
-like afterwards, and sort again whenever. It can show per-category
-counts and hide empty categories — Preferences ▸ Look.
+folders (File) or palette groups (Color). Right-click to add, rename or
+remove one, or to give a category a [colour](#category-colors). **Sort
+by name** puts the categories in alphabetical order once, with All on
+top; drag them where you like afterwards, and sort again whenever.
+Per-category counts and hiding empty categories are in
+Preferences ▸ Look.
 
-The sidebar keeps the order **you** give it. Press and hold a row for
-about half a second and it picks up — drag it where you want, let go
-to keep the new order, or press Esc to put it back. **All** always
-stays at the top, and a new category appears at the bottom until you
-move it. This works the same in every section, File's registered
-folders included; category order travels with the library, folder
-order stays with each machine.
+The sidebar keeps the order you give it. Press and hold a row for about
+half a second and it picks up — drag it where you want, let go to keep
+the new order, or press Esc to put it back. **All** stays at the top,
+and a new category appears at the bottom until you move it. This works
+in every section, File's registered folders included. Category order
+travels with the library; folder order stays with each machine.
 
 Both side panes — the sidebar and the Comments pane — keep the width
-you drag them to, across sessions; the grid takes up the slack.
+you drag them to, across sessions. The grid takes up the slack.
 
-A tile can carry up to four **badges**, one per corner, each a glyph
-on a dark backdrop so it stays readable on any thumbnail:
+A tile can carry up to four **badges**, one per corner, each a glyph on
+a dark backdrop:
 
 | | | |
 |:--:|---|---|
@@ -134,8 +140,7 @@ around the node, renders a shaderball and files it away.
 
 Saving a node Amaze recognises — from the ID stamp a previous save left
 on it, or a unique name match — offers **Save Version / Save New /
-Cancel**, the way any file-save should. Multi-selections always save as
-new.
+Cancel**. Multi-selections always save as new.
 
 > Thumbnails need `$OCIO` set, and Karma additionally needs an open
 > Scene Viewer (it reads the display/view transform from one). Renders
@@ -147,8 +152,8 @@ Saving over a material you already have keeps the old one. When the
 re-save changed only parameters — same node structure, different
 values — Amaze archives the material as a **version** and the new
 state becomes the active one. The first version you make also keeps
-the state you were versioning away from, so the original opinion is
-never the one that gets lost.
+the state you were versioning away from, so both opinions are on the
+list.
 
 Tiles with more than one version carry the
 <img src="scripts/python/amaze/ui/badge_versions.svg" width="14">
@@ -157,39 +162,39 @@ badge in their lower-left corner. Click it to open **Versions of
 The dialog only browses, switches and names — versions are made by
 saving, never here.
 
-Versions live with the material (`mat/versions/<id>/` and
-`versions.json` in the library), so they travel with it. The base
-files are always the active version's; losing the versions folder
-costs the history, never the material.
+Versions are stored inside the library, so they travel with the
+material. The material's own files are always the active version's.
 
-Turn the whole behaviour off in Preferences ▸ Library ▸ **Material
-Versions** — then saving over an existing material always adds a new
-one instead. The switch lives with the library, like the rest of the
-shared settings — it governs something everyone using it relies on.
+Turn the behaviour off in Preferences ▸ Library ▸ **Material
+Versions**; saving over an existing material then adds a new one
+instead. The switch is stored with the library and applies to everyone
+who opens it.
 
 ### Getting one back out
 
-- **Double-click** — imports into the context you are working in.
-- **Copy To ▸ /mat** / **Copy To ▸ /stage** — right-click, choose
-  explicitly.
-- **Drag it** — see [Drag and drop](#drag-and-drop). This is the good way.
+- **Double-click** imports into the context you are working in.
+- **Copy To ▸ /mat** and **Copy To ▸ /stage/materiallibrary** name the
+  destination explicitly. The second lands inside a material library
+  under `/stage`.
+- **Drag it** — see [Drag and drop](#drag-and-drop).
 
 ### Organising
 
-Right-click a tile: **Info** (name, category — one per asset —
-tags, favorite, plus License and About fields that carry credits),
-**Update Preview**, **Customize**, **Favorite**, **Delete**.
+Right-click a tile: **Copy To**, **Convert to Karma** on a Redshift
+material, **Update Preview**, **Customize**, **Favorite**, **Export
+Package** and **Delete**. Name, Category and Tags are edited in
+[Customize](#tile-icons); Date, ID and License are columns in
+[list mode](#the-panel-at-a-glance).
 
-You can also *drag* assets onto a sidebar category to file them there —
-the category glows as you hover.
+Assets can also be dragged onto a sidebar category to file them there.
+The category lights up as you hover.
 
 ### Convert to Karma
 
 Select a Redshift material, right-click ▸ **Convert to Karma**. It
-rebuilds the network as a proper Karma Material Builder and then tells
-you exactly what it could not translate, rather than quietly producing
-something that looks nearly right. Shaders with no Karma equivalent are
-named in the report.
+rebuilds the network as a Karma Material Builder and reports what it
+could not translate. Shaders with no Karma equivalent are named in the
+report.
 
 ---
 
