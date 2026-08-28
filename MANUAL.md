@@ -186,6 +186,9 @@ Package** and **Delete**. Name, Category and Tags are edited in
 [Customize](#tile-icons); Date, ID and License are columns in
 [list mode](#the-panel-at-a-glance).
 
+<img src="docs/images/menu_material_tile.png" width="200">
+<img src="docs/images/menu_copy_to.png" width="230">
+
 Assets can also be dragged onto a sidebar category to file them there.
 The category lights up as you hover.
 
@@ -204,6 +207,8 @@ The <img src="scripts/python/amaze/ui/icon_online.svg" width="16">
 **Online** button in the toolbar switches to the online sources. Press
 it again to return to your own library. The sources appear as a tab
 strip where the section tabs were.
+
+<img src="docs/images/online_browser.png" width="820">
 
 | Source | What it is | Licence |
 |---|---|---|
@@ -280,15 +285,24 @@ you save yourself.
 
 <img src="docs/images/color_grid.png" width="820">
 
-- **Apply as Stepped Ramp** and **Apply Ramp** push the palette onto a
-  selected node's ramp parameter. Where the selected node has no ramp
-  parameter, Amaze creates the ramp node instead, as double-clicking
-  the tile does.
-- **Apply as Linear Ramp** is for curated gradients.
-- **Copy Color ▸** lists the individual swatches by hex code; picking
-  one copies the hex to the clipboard.
-- To save your own: right-click a node with a colour ramp ▸ **Save
-  Gradient to Amaze**.
+Right-click a tile:
+
+- **Apply** pushes the palette onto a selected node's ramp parameter.
+  Where the selected node has no ramp parameter, Amaze creates the ramp
+  node instead, as double-clicking the tile does.
+- **Apply as ▸** does the same and sets the ramp's interpolation:
+  Constant, Linear, CatmullRom, MonotoneCubic, Bezier, BSpline or
+  Hermite.
+- **Copy Color ▸** lists the swatches by name and hex code, each with
+  its colour. Picking one copies the hex to the clipboard.
+- **Customize**, **Favorite**, **Export Package** and **Delete**.
+
+<img src="docs/images/menu_color_tile.png" width="200">
+<img src="docs/images/menu_apply_as.png" width="200">
+<img src="docs/images/menu_copy_color.png" width="260">
+
+To save your own: right-click a node with a colour ramp ▸ **Save
+Gradient to Amaze**.
 
 ---
 
@@ -307,8 +321,11 @@ right-click the nodes themselves ▸ **Save Selection to Amaze**. With
 several nodes selected the selection wins, and the label names which
 one you are about to get.
 
-Double-click or drag a tile to bring the nodes back. They land in the
-network you release over, or in a fresh container of the right type.
+Double-click, drag a tile, or right-click ▸ **Load** to bring the nodes
+back. They land in the network you release over, or in a fresh
+container of the right type.
+
+<img src="docs/images/menu_node_tile.png" width="200">
 
 **An asset only goes home.** A SOP asset dropped on a Copernicus
 network is refused with a message, and nothing is created.
@@ -324,13 +341,21 @@ node icon.
 A snippet library for VEX, OpenCL and Python, with syntax-highlighted
 previews on the tiles and a curated **Starter Toolbox** to begin with.
 
-- **New File** — write one in the dialog.
-- **Apply** — pushes the snippet into the selected node's code
-  parameter.
-- **Edit**, **Customize**, **Favorite**, **Delete**.
-- Right-click any node with a code parameter ▸ **Save to Amaze**.
+<img src="docs/images/code_grid.png" width="820">
 
-Double-click or drag a snippet onto a node to apply it.
+Right-click a tile:
+
+- **New File** opens the editor on a blank snippet.
+- **Apply** pushes the snippet into the selected node's code parameter.
+- **Edit** opens it in the editor, with Name, Language, Category and
+  Tags above the code.
+- **Customize**, **Favorite**, **Export Package** and **Delete**.
+
+<img src="docs/images/menu_code_tile.png" width="200">
+<img src="docs/images/dialog_edit_snippet.png" width="480">
+
+Double-click or drag a snippet onto a node to apply it. To save one:
+right-click any node with a code parameter ▸ **Save to Amaze**.
 
 ---
 
@@ -360,44 +385,42 @@ them. Each file behaves as its kind:
   out of the panel and release anywhere outside it to open it the same
   way. The scene currently open carries a tick on its tile. Scene
   thumbnails are **captures**: open the scene from Amaze, frame the
-  viewport, then right-click ▸ **Capture Thumbnail from Viewport** (or
-  the camera button in the toolbar). Nothing is ever captured or
-  rendered automatically — a scene cooks when you say so.
-- **Everything else** shows its system icon and has one action —
+  viewport, then right-click ▸ **Capture Preview**, or press the
+  <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="14">
+  button in the toolbar.
+- **Everything else** shows its system icon and has one action,
   **Copy Path**, which puts the path on the clipboard the way Houdini
-  writes paths (see **Write Paths As** below). A motion-capture file's
-  path pasted into a parameter is a real workflow; pretending Amaze
-  could open the file is not. Hide these entirely with
-  Preferences ▸ Look ▸ **Show Unknown Files** off.
+  writes paths — see **Write Paths As** below. Hide these rows with
+  Preferences ▸ Look ▸ **All show unknown files** off.
 
-Every row can be favorited, given a [tile icon](#tile-icons), revealed
-in the file browser, or path-copied. There is deliberately **no
-Delete** here: these are your files on disk, not library entries.
+Right-click a row for **Load**, **Copy Path**, **Show Location**,
+**Capture Preview**, **Customize**, **Favorite** and **Export
+Package**. There is no **Delete**: these are your files on disk.
+
+<img src="docs/images/menu_file_tile.png" width="210">
 
 ### Locations
 
 Right-click the sidebar:
 
-- **Add Folder** registers a location — a pointer, nothing is scanned
-  or copied until you open it.
-- **Remove Folder** unregisters it and forgets everything about it —
-  its label, colour, Include Subfolders and Show All Files
-  settings, its favorites, comments and tile icons, and its cached
-  thumbnails. Re-adding the folder gives you a clean slate. Captures
-  are the exception and are kept: you framed those by hand, and
-  nothing can render them again.
+- **Add Location** registers a folder. Nothing is scanned or copied
+  until you open it.
+- **Remove** unregisters it and forgets its label, colour, Show
+  Subfolders and Show All Files settings, its favorites, comments and
+  tile icons, and its cached thumbnails. Re-adding the folder starts
+  from scratch. Captures are kept, since nothing can render them again.
 
-  Removing a folder clears it for everyone who uses the library —
-  registrations live with the library now, so it does not come back
-  from the other computer. If Amaze was open on the other computer at
-  that moment, close and reopen it there and the removal shows.
-- **Locate Folder…** re-points a location that moved on disk;
-  favorites, its name and its settings follow.
-- **Rename Folder…** gives it your own label. The default name is the
-  path itself; an empty rename goes back to that.
-- **Include Subfolders** is **per location** — a deep asset tree can
-  recurse while a flat downloads folder stays shallow. Off by default:
-  a deep tree can queue a lot of first-time thumbnails.
+  Removing a folder removes it for everyone who uses the library, so it
+  does not come back from the other computer. Where Amaze was open
+  there at the time, close and reopen it to see the removal.
+- **Locate** re-points a folder that moved on disk. Favorites, its name
+  and its settings follow.
+- **Label ▸** gives it your own name. The default is the path itself.
+- **Show Subfolders** is per location, so a deep asset tree can recurse
+  while a flat downloads folder stays shallow. Off by default.
+- **Show All Files** carries the Look tab's setting for unknown files.
+- **Set Color** and **Clear Color** work as they do on a
+  [category](#category-colors).
 
 ### Write Paths As
 
