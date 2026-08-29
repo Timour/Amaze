@@ -356,7 +356,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self._kinds.append(kind)
             full = hostos.canonical_path_key(os.path.join(dirpath, name))
             if kind == KIND_IMAGE:
-                key = ("tex", full, image_cache.size)
+                key = ("tex", full, image_cache.size)  # NO staleness in the key: every requester discards first (here and rerender_thumbnails), and a third caller must do the same or put the mtime into the key
                 self._key_rows.setdefault(key, []).append(row)
                 cached_png = image_cache.valid_path(full)
                 if cached_png is not None:
@@ -374,7 +374,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     self._pending_writes[key] = full
                     self._progress_keys.add(key)
             elif kind == KIND_GEO:
-                key = ("geo", full, geo_cache.cache_dir)
+                key = ("geo", full, geo_cache.cache_dir)  # same discard-first contract as the tex key above
                 self._key_rows.setdefault(key, []).append(row)
                 cached_png = geo_cache.valid_path(full)
                 if cached_png is not None:
