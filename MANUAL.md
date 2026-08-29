@@ -56,7 +56,7 @@ The **Amaze shelf** carries four tools:
 | **Updates** | Checks the release page for a newer version and installs it when you confirm. |
 | **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
 
-<img src="docs/images/shelf_tools.png" width="820">
+<img src="docs/images/shelf_tools.png" width="420">
 
 ---
 
@@ -89,7 +89,7 @@ what you have starred:
 
 <img src="docs/images/menu_import_generate.png" width="230">
 <img src="docs/images/menu_filter.png" width="180">
-<img src="docs/images/favorites_filter.png" width="330">
+<img src="docs/images/favorites_filter.png" width="820">
 
 **List mode** shows the same assets as rows.
 
