@@ -29,7 +29,8 @@ Installation is in the [README](README.md).
 
 ---
 
-## First run {#m/first-run}
+## First run
+<!-- {#m/first-run} -->
 
 Add the pane tab with the **+** at the right of any pane tab strip:
 **New Pane Tab Type ▸ Amaze**.
