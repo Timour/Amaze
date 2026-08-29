@@ -480,7 +480,10 @@ never a scratchpad a caller mutates in place — so a refused save can no
 longer light a tile's comment badge for a note that was never written.
 
 **The engine performs all three failure reports; the store supplies the
-WORDS.** `unreadable_alert` when the file will not parse,
+WORDS.** `unreadable_alert` when the file will not parse — **on EITHER
+read**, the load's and the adopt-before-write one, since 2026-08-29;
+the second read used to swallow a parse failure and write over the
+peer's bytes, which nothing else held —
 `refused_sentence` when a latched store declines a write, and
 `denied_alert` when the disk refuses one — the last of which the
 adapters used to do themselves, so `notes.py` and `tile_icons.py` held

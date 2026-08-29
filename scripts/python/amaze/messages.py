@@ -54,7 +54,9 @@ CONFIRM_ADD_UNLISTED_TO_SECTION = 'Add %d unlisted %s to %s?'
 
 SECTION_LIST_UNCHANGED_REASON = 'Amaze did not change the %s list: %s.'
 
-UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. They are in the %s category and ready to be renamed.'
+UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. Each one came back with the name, category and tags recorded beside its files.'
+
+UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = '%d %s were restored to %s.\n\nOpen Amaze to review them. %d of them had no record beside the files: those are in the %s category, named after their file, and ready to be renamed.'
 
 TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has been lost — only this icon selection. The tile will retain its previous icon.\n\nThis occurred because %s'
 

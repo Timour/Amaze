@@ -830,9 +830,13 @@ def _do_reattach(findings: dict) -> None:
             messages.SECTION_LIST_UNCHANGED_REASON % (label, exc),
             title=messages.TITLE_AMAZE_REPAIR)
         return
-    hou.ui.displayMessage(                                # type: ignore
-        messages.UNLISTED_FILES_ADDED_BACK_DONE
-        % (len(result["added"]),
-           database.section_noun(filename, len(result["added"])),
-           label, RECOVERED_CATEGORY),
-        title=messages.TITLE_AMAZE_REPAIR)
+    count = len(result["added"])
+    noun = database.section_noun(filename, count)
+    minted = len(result["minted"])
+    if minted:                    # only these need renaming; the rest kept their own names
+        said = messages.UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED % (
+            count, noun, label, minted, RECOVERED_CATEGORY)
+    else:
+        said = messages.UNLISTED_FILES_ADDED_BACK_DONE % (count, noun, label)
+    hou.ui.displayMessage(said,                           # type: ignore
+                          title=messages.TITLE_AMAZE_REPAIR)
