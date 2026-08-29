@@ -19,6 +19,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
     def __init__(self, parent: QtCore.QObject | None = None) -> None:
         super().__init__(parent)
         self._filters = {}
+        self._folded = {}  # role -> the lowered spelling of a STRING filter, folded ONCE at set time - filterAcceptsRow ran .lower() per row per keystroke; the favourites role compares raw and stays out
 
     def watched_roles(self):
         """Exactly what this proxy reads: the roles it filters on now, plus the ones it orders by."""
@@ -30,6 +31,9 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             self.removeFilter(filter_role)
             return
         self._filters[filter_role] = filter_value
+        self._folded[filter_role] = (filter_value.lower()
+                                     if isinstance(filter_value, str)
+                                     else filter_value)
         self.refilter()
 
     def removeFilter(self, filter_role):
@@ -37,12 +41,13 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
             return
         if filter_role in self._filters.keys():
             del self._filters[filter_role]
+            self._folded.pop(filter_role, None)
             self.refilter()    # immediately, or rows stay hidden by the REMOVED filter until something else invalidates the proxy
 
     def _name_matches(self, needle: str, index) -> bool:
-        """Does this row answer the search text? The ONE test a section may widen rather than copy the whole filter walk."""
+        """Does this row answer the search text? The ONE test a section may widen rather than copy the whole filter walk; `needle` arrives already lower-folded."""
         name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
-        return needle.lower() in name.lower()
+        return needle in name.lower()
 
     def filterAcceptsRow(
         self,
@@ -59,10 +64,11 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         index = self.sourceModel().index(source_row, 0, source_parent)
         for role, curr_filter in self._filters.items():
             data = index.data(role)
+            folded = self._folded.get(role, curr_filter)  # lowered at set time; only the raw-comparing favourites role reads curr_filter
 
             if role == 0:  # Check Names
                 if curr_filter != "" \
-                        and not self._name_matches(curr_filter, index):
+                        and not self._name_matches(folded, index):
                     name_filter = False
             elif role == 257:  # Check Category: a row matches if ANY of its categories equals the filter
                 if curr_filter == "":
@@ -71,7 +77,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
                     cat_filter = False
                 else:
                     cat_filter = any(
-                        curr_filter.lower() == str(elem).strip().lower()
+                        folded == str(elem).strip().lower()
                         for elem in data
                     )
 
@@ -79,8 +85,8 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
                 if curr_filter != data and curr_filter != "":
                     return False
             elif role == 259:  # Check Renderer: all_renderers is tested FIRST and an empty renderer is no special case - repair mints those rows ▸r/filter-role-numbers
-                if curr_filter.lower() not in data.lower():
-                    if "all_renderers" not in curr_filter.lower():
+                if folded not in data.lower():
+                    if "all_renderers" not in folded:
                         render_filter = False
 
             elif role == 260:  # is TagRole: an empty filter accepts every row INCLUDING one with no tags - testing that inside the loop hid every untagged material ▸r/filter-role-numbers
@@ -88,7 +94,7 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
                     tag_filter = True
                 else:
                     tag_filter = any(
-                        curr_filter.lower() in str(elem).lower() for elem in data
+                        folded in str(elem).lower() for elem in data
                     )
 
         if tag_filter and cat_filter and name_filter and render_filter:    # no fav_filter: the favourites role returns early above

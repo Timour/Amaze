@@ -456,7 +456,6 @@ class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):
         if super()._name_matches(needle, index):
             return True
         entry = self.sourceModel().entry(index.row()) or {}
-        needle = needle.lower()
         return any(needle in str(color.get("name", "")).lower()
                    for color in entry.get("colors") or ())
 
