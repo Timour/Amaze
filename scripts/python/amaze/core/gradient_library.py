@@ -259,8 +259,8 @@ class GradientLibrary(library.AssetLibrary):
         return moved
 
     def add_user_gradient(self, name: str, category_name: str,
-                          ramp_data: dict) -> None:
-        """Register a saved ramp; the colour list is derived from the ramp values so search, swatches and subtitles work as they do for seeded entries."""
+                          ramp_data: dict, tags: str = "") -> None:
+        """Register a saved ramp; the colour list is derived from the ramp values so search, swatches and subtitles work as they do for seeded entries. `tags` is the save dialog's comma-separated string, sanitized here as the material save does."""
         colors = []
         for value in ramp_data.get("values", []):
             hex_color = "#%02x%02x%02x" % tuple(
@@ -273,7 +273,8 @@ class GradientLibrary(library.AssetLibrary):
             cats.append(category_name)
         mat = material.Material()
         mat.set_data((name or "Gradient").strip() or "Gradient",
-                     category_name, "", False, "")
+                     category_name, self.sanitize_tags(tags or ""),
+                     False, "")
         mat._extra = {"colors": colors, "ramp": ramp_data}
         self.beginInsertRows(QtCore.QModelIndex(), 0, 0)  # at the TOP: the Colors grid shows source order and the newest palette belongs where the eye is
         try:

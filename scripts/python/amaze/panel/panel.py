@@ -113,7 +113,7 @@ _reload(file_library)    # after texture/geo/hip: it composes all three engines
 _reload(vex_syntax)    # before code_library/code_dialog, which consume its palette and tokenizer
 _reload(code_library)    # after library/category: it subclasses the material machinery
 
-_reload(base_dialog)    # FIRST of the dialogs: gradient_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
+_reload(base_dialog)    # FIRST of the dialogs: user_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
 _reload(prefs_dialog)
 _reload(save_dialog)
 _reload(icon_dialog)
@@ -3387,19 +3387,23 @@ class MatLibPanel(QtWidgets.QWidget):
                 )
             return
         ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
-        dialog = gradient_dialog.GradientDialog(
-            self.gradient_model.user_categories(), default_name=node.name(),
-            parent=self
+        categories = self.gradient_model.user_categories()
+        dialog = save_dialog.SaveDialog(
+            categories, default_cat=categories[0] if categories else "",
+            name=node.name(),
+            title="Save Gradient to " + branding.APP_NAME, parent=self
         )
         dialog.exec()
         if dialog.canceled:
             return
         self.gradient_model.add_user_gradient(
-            dialog.name, dialog.category, ramp_data
+            dialog.name, dialog.categories, ramp_data, tags=dialog.tags
         )
-        if dialog.category:
+        if dialog.categories:
             self.gradient_categories_model.check_add_category(    # the shared verb, which brackets its own insert - not switch_model_data(), which belongs to a library switch and only ever runs through switch_all_models()
-                dialog.category)
+                dialog.categories)
+        if dialog.tags:
+            self.gradient_model.check_add_tags(dialog.tags)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """Any splitter drag records BOTH side panes' widths; the debounced save timer writes them. The construction's law - side panes hold their width - only works if each side pane KNOWS its width."""
@@ -3906,7 +3910,10 @@ class MatLibPanel(QtWidgets.QWidget):
 
         current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
 
-        dialog = save_dialog.SaveDialog(cats, current_cat, parent=self)
+        one = sel[0] if len(sel) == 1 else None    # a multi-selection greys the Name row: one field cannot name several materials, so each keeps its node's name
+        dialog = save_dialog.SaveDialog(
+            cats, current_cat, name=one.name() if one is not None else "",
+            name_enabled=one is not None, parent=self)
         r = dialog.exec()
 
         debug.event(
@@ -3927,7 +3934,8 @@ class MatLibPanel(QtWidgets.QWidget):
         for asset in sel:
             try:    # a read-only or unreachable library directory raises out of the save chain (IsADirectoryError on the .interface, verified), and debug.guarded LOGS AND RE-RAISES rather than absorbing it, so the per-material failure report needs this catch of its own
                 renderer = self.material_model.add_asset(
-                    asset, dialog.categories, dialog.tags, dialog.fav
+                    asset, dialog.categories, dialog.tags, dialog.fav,
+                    name=dialog.name or None
                 )
             except Exception as exc:                    # noqa: BLE001
                 debug.exception("save_asset", exc, node=asset.path())

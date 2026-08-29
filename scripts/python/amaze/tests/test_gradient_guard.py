@@ -140,6 +140,63 @@ class GradientStaleWriteTest(unittest.TestCase):
         self.assertEqual([], strays, "a scratch file survived the save")
 
 
+class GradientTagsReachTheRowTest(unittest.TestCase):
+    """ROADMAP R56: Colors saves through the family's save dialog, so a palette is tagged like every other asset - and a tag that stops at the dialog is a field that does nothing."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        self.dir = tempfile.mkdtemp(prefix="amaze_grad_tags_")
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.path = os.path.join(self.dir, "gradients.json")
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"version": SCHEMA, "categories": ["Warm"],
+                       "assets": []}, fh)
+        self.lib = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+
+    def _saved(self, name):
+        """The row as it reached DISK, which is the only place a tag has to survive to."""
+        with open(self.path, encoding="utf-8") as fh:
+            for row in json.load(fh).get("assets", []):
+                if row.get("name") == name:
+                    return row
+        self.fail("no palette named %r reached the file" % name)
+
+    def test_the_tags_are_stored_on_the_saved_palette(self):
+        self.lib.add_user_gradient("mine", "Warm",
+                                   {"values": [], "keys": []},
+                                   tags="warm,sunset")
+        self.assertEqual(
+            ["warm", "sunset"], self._saved("mine").get("tags"),
+            "the tags the save dialog collected never reached the row, "
+            "so the field is decoration")
+
+    def test_a_reloaded_library_reads_them_back(self):
+        self.lib.add_user_gradient("mine", "Warm",
+                                   {"values": [], "keys": []},
+                                   tags="warm,sunset")
+        test_support.reset_database_singletons()
+        again = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+        rows = [again._assets[r] for r in range(again.rowCount())
+                if again._assets[r].name == "mine"]
+        self.assertTrue(rows, "premise: the palette reloaded")
+        self.assertEqual(["warm", "sunset"], list(rows[0].tags))
+
+    def test_an_untagged_palette_carries_no_tags(self):
+        """The accept path: a row that answered `["warm", "sunset"]` whatever it was given would pass the two above."""
+        self.lib.add_user_gradient("plain", "Warm",
+                                   {"values": [], "keys": []})
+        self.assertEqual([], self._saved("plain").get("tags"))
+
+    def test_the_tags_go_through_the_family_sanitizer(self):
+        """`Material.tags` splits but does not dedupe, so a repeat proves the shared helper is the one being used."""
+        self.lib.add_user_gradient("dupes", "Warm",
+                                   {"values": [], "keys": []},
+                                   tags="warm, warm ,, warm")
+        self.assertEqual(["warm"], self._saved("dupes").get("tags"))
+
+
 class GradientAbsenceAndShapeTest(unittest.TestCase):
     """The guards every database inherits, exercised on this one, plus the marker honesty that is Colors' own."""
 

@@ -486,7 +486,7 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
 class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
     """A parented dialog inherits its parent's SCREEN; a parentless one goes to the primary. With the panel torn off to another monitor that is the wrong one. ▸r/dialog-parents"""
 
-    DIALOGS = {"NameDialog", "CategoryDialog", "GradientDialog",
+    DIALOGS = {"NameDialog", "CategoryDialog",
                "SaveDialog", "CodeDialog", "UserPickerDialog",
                "IconDialog", "PrefsDialog", "DesignedDialog"}
 
@@ -551,7 +551,6 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
         from amaze.dialogs import (base_dialog, code_dialog, gradient_dialog,
                                    icon_dialog, save_dialog, user_dialog)
         classes = [base_dialog.AssetDialog, base_dialog.NameDialog,
-                   gradient_dialog.GradientDialog,
                    gradient_dialog.CategoryDialog, code_dialog.CodeDialog,
                    icon_dialog.IconDialog, save_dialog.SaveDialog,
                    user_dialog.UserPickerDialog]
@@ -572,6 +571,68 @@ class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):
             "a parented dialog no longer inherits its parent's screen")
 
 
+class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
+    """ROADMAP R56: every section saves through ONE dialog - Name, Category, Tags. The Name row is always built; a multi-selection GREYS it rather than dropping it, as D02 already does."""
+
+    def _dialog(self, **kwargs):
+        from amaze.dialogs import save_dialog
+        dialog = save_dialog.SaveDialog(["Metal"], "Metal", **kwargs)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def test_the_name_row_is_built_when_no_name_is_given(self):
+        dialog = self._dialog()
+        self.assertIsNotNone(
+            dialog.line_name,
+            "the dialog dropped its Name row, so this section saves "
+            "through a different form than its siblings")
+        self.assertEqual("", dialog.line_name.text())
+        self.assertTrue(dialog.line_name.isEnabled())
+
+    def test_the_name_row_is_prefilled_when_one_is_given(self):
+        self.assertEqual("rocks1", self._dialog(name="rocks1").line_name.text())
+
+    def test_a_multi_selection_greys_the_name_row_instead(self):
+        dialog = self._dialog(name="", name_enabled=False)
+        self.assertIsNotNone(
+            dialog.line_name,
+            "the greyed form dropped the row, so the dialog changes "
+            "SHAPE between one material and several")
+        self.assertFalse(
+            dialog.line_name.isEnabled(),
+            "the Name field is live for a multi-selection, where one "
+            "name cannot serve several assets")
+
+    def test_a_greyed_name_is_never_harvested(self):
+        dialog = self._dialog(name="", name_enabled=False)
+        dialog.line_name.setText("typed anyway")
+        dialog._on_accept()
+        self.assertEqual(
+            "", dialog.name,
+            "a disabled field's text reached the save, which would "
+            "rename every material of a multi-selection to one string")
+
+    def test_a_live_name_IS_harvested(self):
+        """The accept path: a harvest that answered "" always would leave every single save named after its node whatever the user typed."""
+        dialog = self._dialog(name="rocks1")
+        dialog.line_name.setText("renamed")
+        dialog._on_accept()
+        self.assertEqual("renamed", dialog.name)
+
+    def test_a_new_category_can_be_typed_in_any_section(self):
+        self.assertTrue(
+            self._dialog().combo_cats.isEditable(),
+            "the category cannot be typed into, so a section that used "
+            "to offer a new category no longer does")
+
+    def test_the_title_is_the_house_one_unless_a_caller_says_otherwise(self):
+        from amaze import branding
+        self.assertEqual("Save to " + branding.APP_NAME,
+                         self._dialog().windowTitle())
+        self.assertEqual("Save Gradient",
+                         self._dialog(title="Save Gradient").windowTitle())
+
+
 class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
     """The save dialogs are ONE drawn width, and the measurement is taken AFTER `show()` - `SetFixedSize` re-applies the layout's own hint on every activation, so a width that is right at construction can still be wrong on screen. ▸r/fixed-size-constraint"""
 
@@ -583,14 +644,19 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         return dialog
 
     def _dialogs(self):
-        from amaze.dialogs import base_dialog, gradient_dialog, save_dialog
+        """D09 is THE save frame: every section rides it, so the greyed and the titled forms are the same three rows. ▸p/one-design-document"""
+        from amaze import branding
+        from amaze.dialogs import gradient_dialog, save_dialog
         return (
             ("D09 Save to Amaze (Node)",
              save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1")),
-            ("D10 Save to Amaze (Materials)",
-             save_dialog.SaveDialog(["Metal"], "Metal")),
-            ("D12 Save Gradient to Amaze",
-             gradient_dialog.GradientDialog(["Metal"], "ramp1")),
+            ("D09 Save to Amaze (Materials)",
+             save_dialog.SaveDialog(["Metal"], "Metal", name="",
+                                    name_enabled=False)),
+            ("D09 Save Gradient to Amaze",
+             save_dialog.SaveDialog(["Warm"], "Warm", name="sunset",
+                                    title="Save Gradient to "
+                                          + branding.APP_NAME)),
             ("D13 Name Input",
              gradient_dialog.CategoryDialog()),
         )
@@ -603,8 +669,6 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
         from amaze.helpers import theme
         built = (
             ("SaveDialog", lambda: save_dialog.SaveDialog(["Metal"], "Metal")),
-            ("GradientDialog",
-             lambda: gradient_dialog.GradientDialog(["Metal"], "ramp1")),
             ("CategoryDialog", gradient_dialog.CategoryDialog),
             ("NameDialog", base_dialog.NameDialog),
             ("CodeDialog", lambda: code_dialog.CodeDialog(["Metal"])),
@@ -653,8 +717,9 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
              lambda: code_dialog.CodeDialog(["Metal"]), True),
             ("D09 Save", lambda: save_dialog.SaveDialog(
                 ["Metal"], "Metal", name="rocks1"), False),
-            ("D12 Gradient", lambda: gradient_dialog.GradientDialog(
-                ["Metal"], "ramp1"), False),
+            ("D09 Gradient", lambda: save_dialog.SaveDialog(
+                ["Warm"], "Warm", name="sunset",
+                title="Save Gradient"), False),
             ("D13 Name", gradient_dialog.CategoryDialog, False),
         )
         for label, build, wanted in wants:

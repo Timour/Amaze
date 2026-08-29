@@ -316,7 +316,8 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
             canceled = True
             categories = ""
 
-            def __init__(self, cats, current, parent=None):
+            def __init__(self, cats, current, name="", name_enabled=True,
+                         parent=None):
                 offered["cats"] = list(cats)
 
             def exec(self):
@@ -329,6 +330,51 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
             "Alloys", offered.get("cats", []),
             "a category starting with the pseudo-category's name is "
             "missing from the save dialog's dropdown")
+
+
+class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
+    """ROADMAP R56: one save engine. A single material may be renamed on the way in; several share one dialog, so the field greys and each keeps its node's name."""
+
+    def _asked(self, selection):
+        """(name, name_enabled) the save dialog was built with."""
+        from unittest import mock
+
+        from amaze.panel import panel as panel_mod
+        panel = test_support.fixture_panel(self)
+        seen = {}
+
+        class _Dialog:
+            canceled = True
+            categories = ""
+
+            def __init__(self, cats, current, name="", name_enabled=True,
+                         parent=None):
+                seen["name"] = name
+                seen["enabled"] = name_enabled
+
+            def exec(self):
+                return 0
+
+        with mock.patch.object(panel_mod.save_dialog, "SaveDialog",
+                               _Dialog):
+            panel.get_material_info_user(selection)
+        return seen.get("name"), seen.get("enabled")
+
+    def _node(self, name):
+        from unittest import mock
+        node = mock.Mock()
+        node.name.return_value = name
+        return node
+
+    def test_one_material_prefills_its_own_name(self):
+        self.assertEqual(("rocks1", True), self._asked([self._node("rocks1")]))
+
+    def test_several_materials_grey_the_field(self):
+        self.assertEqual(
+            ("", False),
+            self._asked([self._node("a"), self._node("b")]),
+            "a multi-selection was offered a live Name field, so one "
+            "typed name would land on every material saved")
 
 
 class GridResolvesTheDelegateThroughTheModule(unittest.TestCase):

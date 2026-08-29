@@ -357,6 +357,31 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertEqual(renderer, "karma")
         mock_handler.save_node.assert_called_once()
 
+    def test_add_asset_records_the_name_it_was_given(self):
+        """The save dialog names a single material; a multi-selection passes none, and every asset keeps the node's own name."""
+        mock_node = Mock()
+        mock_node.name.return_value = "NodeName"
+
+        mock_handler = Mock()
+        mock_handler.get_renderer_from_node.return_value = "karma"
+        mock_handler.save_node.return_value = True
+        self.mock_nodes_cls.return_value = mock_handler
+
+        new_mat = Mock()
+        new_mat.mat_id = "mat_named"
+        self.mock_material_cls.return_value = new_mat
+
+        self.library.add_asset(mock_node, "metal", "", False, name="Chosen")
+        self.assertEqual(
+            "Chosen", new_mat.set_data.call_args[0][0],
+            "the name the dialog collected was dropped, so a renamed "
+            "save comes back named after its node")
+
+        self.library.add_asset(mock_node, "metal", "", False)
+        self.assertEqual(
+            "NodeName", new_mat.set_data.call_args[0][0],
+            "a save that names nothing no longer falls back to the node")
+
     def test_add_asset_says_no_when_the_save_did_not_happen(self):
         """THE RENDERER-STRING CONTRACT, which all three add_assets honour: a renderer name means the asset is IN the library, an empty string means it is not. Returning the renderer regardless of what save_node answered lets every call site read a failed save as a good one."""
         mock_node = Mock()

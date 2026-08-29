@@ -1332,13 +1332,14 @@ class MaterialLibrary(AssetLibrary):
             label += ":" + shader_type
         return label
 
-    def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool) -> str:
-        """Add a material to this library. THE RENDERER STRING IS THE CONTRACT: a renderer name means the asset is IN the library, "" means it is not, and the sibling add_assets answer the same way - so never return it unconditionally."""
+    def add_asset(self, node: hou.Node, cats: str, tags: str, fav: bool,
+                  name: str | None = None) -> str:
+        """Add a material to this library. `name` is the one the save dialog collected; without it the asset is named after the node, which is what a multi-selection save passes. THE RENDERER STRING IS THE CONTRACT: a renderer name means the asset is IN the library, "" means it is not, and the sibling add_assets answer the same way - so never return it unconditionally."""
         handler = nodes.NodeHandler(self.preferences)
         renderer = handler.get_renderer_from_node(node)
         new_mat = material.Material()
         tags = self.sanitize_tags(tags)
-        new_mat.set_data(node.name(), cats, tags, fav, renderer)
+        new_mat.set_data(name or node.name(), cats, tags, fav, renderer)
         new_mat.node_color = nodes.custom_node_color(node)
 
         saved = handler.save_node(node, new_mat.mat_id, False)
