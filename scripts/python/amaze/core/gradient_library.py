@@ -10,7 +10,6 @@ from amaze.core import category
 from amaze.core import database
 from amaze.core import debug
 from amaze.core import library
-from amaze.core import locations
 from amaze.core import material
 from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails

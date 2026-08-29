@@ -909,7 +909,6 @@ class MatLibPanel(QtWidgets.QWidget):
             for a in list(menu_view.actions()):
                 if a.isSeparator():
                     menu_view.removeAction(a)
-            anchor = self.action_catview        # = action_show_cat
             self.action_catview.setText("Show Categories")
             self.show_cat_group = QtGui.QActionGroup(self)    # renders "Show Categories" with a radio-style CIRCLE to match the other View items: a standalone checkable action draws a checkmark, one in an exclusive group draws a circle, and ExclusiveOptional keeps it a free on/off toggle since a lone member can be unchecked
             self.show_cat_group.setExclusionPolicy(
@@ -1383,7 +1382,6 @@ class MatLibPanel(QtWidgets.QWidget):
         active = versions.active_version(self.prefs, mat.mat_id)
 
         dialog = ui_helpers.DesignedDialog(self, title=mat.name)    # the name goes in at CONSTRUCTION because it fills the drawn band as well as the title bar ▸p/one-design-document
-        layout = dialog.body_layout
 
         picker = QtWidgets.QComboBox(dialog)
         for version in listed:

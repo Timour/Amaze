@@ -25,7 +25,6 @@ import hou                                                # noqa: E402
 
 from amaze.core import category, database, repair         # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
-from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
 from amaze.helpers import restore as restore_lib          # noqa: E402
