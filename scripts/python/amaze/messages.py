@@ -26,6 +26,8 @@ CLEANUP_FOUND_NOTHING_TO_CLEAN = 'Library cleanup finished: nothing to clean.'
 
 ASSET_CHANGED_ON_DISK_SINCE_LOAD = 'Another user has updated "%s" since this session loaded it, so Amaze did not overwrite their version.\n\nYou can save it as a new material, or reopen the Amaze panel to load their version first.'
 
+VERSION_SWITCH_DIVERGED = "The version switch did not finish: the material's files hold version %d, but its version list still names the previous one. Every archived version is still there.\n\nSwitch the version again to finish."
+
 UNSAFE_ARCHIVE_PATHS_SKIPPED = '%d file(s) in this download attempted to write outside your library folder and were skipped.\n\nNo data outside your library was affected. The remainder of the material was downloaded successfully.\n\nThis typically indicates a malformed package. If the material appears incorrect, delete it and download it again.'
 
 NO_LIBRARY_FOLDER_CONFIGURED = 'No library folder has been configured for Amaze.\n\nTo resolve this, open Amaze, select a library folder in Preferences, and then run Repair again.'
