@@ -5,6 +5,7 @@ import os
 
 from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 
+import amaze
 from amaze import amazetheme
 from amaze.core import debug
 from amaze.helpers import theme
@@ -91,9 +92,7 @@ def ui_asset(name: str) -> str:
             root, "scripts", "python", "amaze", "ui", name)
         if os.path.exists(candidate):
             return candidate
-    return os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "ui", name)
+    return amaze.package_file("ui", name)
 
 
 def live_current_index(view):

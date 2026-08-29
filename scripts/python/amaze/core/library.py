@@ -568,12 +568,14 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         """Remove rows another session deleted, with the row signals a view needs. Nothing on disk is touched - the deleting session already unlinked the files."""
         if not isinstance(rows, list):  # a list, by contract
             return
+        ids = {str(row.get("id", "")) for row in rows
+               if isinstance(row, dict)}
+        ids.discard("")
+        if not ids:
+            return
         removed = False
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            index = self.find_asset_row_by_id(str(row.get("id", "")))
-            if index < 0:
+        for index in range(len(self._assets) - 1, -1, -1):  # ONE pass, highest row first so indices stay valid - a per-row find_asset_row_by_id scan was O(dropped x library)
+            if str(self._assets[index].mat_id) not in ids:
                 continue
             self.beginRemoveRows(QtCore.QModelIndex(), index, index)
             try:
@@ -929,12 +931,14 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             mat_path = owned["mat"]
             img_path = owned["thumbnail"]
 
-            if not os.path.exists(interface_path) or not os.path.exists(mat_path):
+            iface_ok = os.path.exists(interface_path)
+            mat_ok = os.path.exists(mat_path)
+            if not iface_ok or not mat_ok:
                 debug.event(
                     "cleanup", "asset files missing on disk",
                     mat_id=str(asset.mat_id), name=asset.name,
-                    interface=os.path.exists(interface_path),
-                    mat=os.path.exists(mat_path),
+                    interface=iface_ok,
+                    mat=mat_ok,
                 )
                 rows_to_remove.append(row)
             elif not os.path.exists(img_path):

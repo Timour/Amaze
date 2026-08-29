@@ -10,6 +10,7 @@ import hou
 from PySide6 import QtWidgets, QtCore, QtGui
 from PySide6.QtGui import QCloseEvent
 
+import amaze
 from amaze import amazetheme
 from amaze import branding
 from amaze.core import debug, library_policy, texture_library, users
@@ -35,10 +36,7 @@ def _logo_image(widget=None):
     if isinstance(_logo_cache, dict) and _logo_cache.get("dpr") == dpr:
         return _logo_cache["image"] or None
 
-    path = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "ui", "logo.svg",
-    )
+    path = amaze.package_file("ui", "logo.svg")
     image = None
     try:
         from PySide6 import QtSvg

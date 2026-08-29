@@ -7,9 +7,9 @@ import random
 
 import hou
 
-_RES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "res"
-)
+import amaze
+
+_RES_DIR = amaze.package_file("res")
 
 _SPECS_FILE = os.path.join(_RES_DIR, "material_specs.json")    # parameter distributions measured from REAL AUTHORED materials (written by tests/extract_specs.py) - the authored-character rates, and the fallback corpus when the online tables are absent
 

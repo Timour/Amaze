@@ -673,6 +673,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
     """Paints the category/folder sidebar's rows - name, entry count, and the colour bar down a coloured category's left edge - by DECLARING them in `initStyleOption` and letting the host's style draw the row, which is what keeps its selection, hover and alternating colour identical to the Grid table's."""
 
     PAD = theme.ui_px(6)
+    _swatch_cache = {}   # QIcon per (side, rgba-or-None) - initStyleOption runs per row per paint AND per size hint, and it built a fresh QPixmap+QIcon every call; bounded to sides x set colours, the `_badge_cache` shape
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -704,11 +705,16 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
             font.setBold(True)
             option.font = font
         side = max(QtGui.QFontMetrics(option.font).height(), 1)    # FROM THE FONT, never from `option.rect`: that rect is not the row here - Qt passes a much larger one when asking for a size hint - so deriving the decoration from it grew the row's hint until one selected row filled the whole sidebar with its band
-        pixmap = QtGui.QPixmap(self.BAR, side)
         swatch = self._swatch_color(index)
-        pixmap.fill(swatch if swatch is not None
-                    else QtGui.QColor(0, 0, 0, 0))
-        option.icon = QtGui.QIcon(pixmap)    # the bar is a DECORATION rather than an inset rect, because Qt lays the text out after a decoration on its own, where insetting `option.rect` would shrink the CELL and cut the band short at the row's edge
+        key = (side, swatch.rgba() if swatch is not None else None)
+        icon = self._swatch_cache.get(key)
+        if icon is None:
+            pixmap = QtGui.QPixmap(self.BAR, side)
+            pixmap.fill(swatch if swatch is not None
+                        else QtGui.QColor(0, 0, 0, 0))
+            icon = QtGui.QIcon(pixmap)
+            self._swatch_cache[key] = icon
+        option.icon = icon    # the bar is a DECORATION rather than an inset rect, because Qt lays the text out after a decoration on its own, where insetting `option.rect` would shrink the CELL and cut the band short at the row's edge
         option.decorationSize = QtCore.QSize(self.BAR, side)
         option.features |= (
             QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration)

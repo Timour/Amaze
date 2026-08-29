@@ -8,12 +8,12 @@ from collections import OrderedDict
 
 from PySide6 import QtCore, QtGui, QtSvg
 
+import amaze
 from amaze import messages
 from amaze.core import debug, keyed_store
 from amaze.helpers import hostos
 
-ICON_DIR = os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), "ui", "feather")  # the icon set, relative to the package
+ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, through the package's one path join
 
 CANVAS = 512
 ICON_SCALE = 12.5  # straight from the template - change these and every existing tile silently re-renders differently, so they are constants, not preferences
