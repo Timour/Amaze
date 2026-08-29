@@ -654,9 +654,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         ask.addWidget(self._btn_report)
         ask.addStretch(1)
         form.addRow(self._label(""), ask_row)
+        self._about_form = form   # the two rows below hide as ROWS, and only a form can do that
         self._lbl_update = QtWidgets.QLabel("")   # THE ANSWER GOES HERE, not a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
         self._lbl_update.setWordWrap(True)
-        self._lbl_update.setVisible(False)
         form.addRow(self._label(""), self._lbl_update)
         self._btn_install = QtWidgets.QPushButton("Install Update")   # shown only when there IS something to install; two presses on purpose, the first changing nothing
         self._btn_install.setToolTip(ui_helpers.tooltip_text(
@@ -665,8 +665,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             "restarted afterwards."
         ))
         self._btn_install.clicked.connect(self.install_update)
-        self._btn_install.setVisible(False)
         form.addRow(self._label(""), self._btn_install)
+        self._show_update_row(self._lbl_update, False)
+        self._show_update_row(self._btn_install, False)
         self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
@@ -775,6 +776,10 @@ class PrefsDialog(base_dialog.AssetDialog):
             if self._panel is not None:
                 getattr(self._panel, method_name)()
         return _call
+
+    def _show_update_row(self, field: QtWidgets.QWidget, shown: bool) -> None:
+        """Hide the ROW, not the field: a hidden field leaves its empty label behind and the form keeps 21px of dead space for it."""
+        self._about_form.setRowVisible(field, shown)
 
     def _add_divider(self, form: QtWidgets.QFormLayout) -> None:
         """A 1px group divider as a spanning row; groups carry no title text, like Houdini's own parameter panes."""
@@ -953,7 +958,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Checking...")
-        self._lbl_update.setVisible(False)
+        self._show_update_row(self._lbl_update, False)
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
@@ -962,9 +967,10 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._btn_update.setEnabled(True)
             self._btn_update.setText("Check for Updates")
         self._lbl_update.setText(result.sentence)
-        self._lbl_update.setVisible(True)
+        self._show_update_row(self._lbl_update, True)
         self._last_update = result
-        self._btn_install.setVisible(bool(result) and bool(result.url))   # only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
+        self._show_update_row(   # only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
+            self._btn_install, bool(result) and bool(result.url))
 
     def install_update(self) -> None:
         """Fetch the release the last check found, with NO confirmation and no popup - the button's label IS the outcome. Only the install is replaced, and the previous one is kept beside it."""
@@ -991,7 +997,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._btn_install.setEnabled(True)
             self._btn_install.setText("Install Update")
 
-        self._btn_install.setVisible(False)
+        self._show_update_row(self._btn_install, False)
         self._lbl_update.setText(
             messages.UPDATE_INSTALLED % result.version)
 
