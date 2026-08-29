@@ -1239,6 +1239,10 @@ class TheSecondMachineIsAskedWhoItIsTest(unittest.TestCase):
             "library user named like it could be mistaken for it")
 
 
+A_USER = "a1b2c3d4e5f60718293a4b5c6d7e8f90"  # minted shape: the product tags with uuid4().hex only, and only that shape reads back as an owner
+B_USER = "90f8e7d6c5b4a3928170f6e5d4c3b2a1"
+
+
 class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
     """A store may declare its keys TAGGED with the user and the ENGINE does the tagging - asserted against a `Spec(...)` this test builds, never a registered one, which would put a fictional file in front of Repair for every later test."""
 
@@ -1285,24 +1289,24 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
 
     def test_two_users_do_not_see_each_others_entries(self):
         from amaze.core import keyed_store
-        self.assertTrue(self._store("uid-one").set("~/a.exr", True))
-        self.assertTrue(self._store("uid-one").has("~/a.exr"))
+        self.assertTrue(self._store(A_USER).set("~/a.exr", True))
+        self.assertTrue(self._store(A_USER).has("~/a.exr"))
         keyed_store.release()
         self.assertFalse(
-            self._store("uid-two").has("~/a.exr"),
+            self._store(B_USER).has("~/a.exr"),
             "the other user's entry is showing - the tag is not keeping "
             "them apart")
         keyed_store.release()
-        self.assertTrue(self._store("uid-one").has("~/a.exr"),
+        self.assertTrue(self._store(A_USER).has("~/a.exr"),
                         "switching back lost the first user's entry")
 
     def test_the_stored_key_carries_the_uid(self):
         """`<uid>|<key>` on disk, split on the FIRST separator only - a uuid4 hex cannot contain one, a path can."""
-        self._store("uid-one").set("~/a|b.exr", True)
+        self._store(A_USER).set("~/a|b.exr", True)
         keys = list(self._on_disk())
         self.assertEqual(1, len(keys))
         tag, _sep, rest = keys[0].partition(self.SEP)
-        self.assertEqual("uid-one", tag, "key %r is not tagged" % keys[0])
+        self.assertEqual(A_USER, tag, "key %r is not tagged" % keys[0])
         self.assertEqual("~/a|b.exr", rest,
                          "a separator inside the KEY was eaten")
 
@@ -1317,11 +1321,11 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
     def test_all_is_scoped_and_everyones_is_not(self):
         """`all()` is what is MINE and what a section paints; `everyones()` is the unscoped read, for repair and migration only."""
         from amaze.core import keyed_store
-        self._store("uid-one").set("~/mine.exr", True)
+        self._store(A_USER).set("~/mine.exr", True)
         keyed_store.release()
-        self._store("uid-two").set("~/theirs.exr", True)
+        self._store(B_USER).set("~/theirs.exr", True)
         keyed_store.release()
-        store = self._store("uid-one")
+        store = self._store(A_USER)
         self.assertEqual(["~/mine.exr"], sorted(store.all()),
                          "all() is not scoped to this user")
         self.assertEqual(2, len(store.everyones()),
@@ -1330,7 +1334,7 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
     def test_a_row_from_before_the_store_had_owners_is_dropped(self):
         """A pre-owner row is REMOVED, not adopted - nothing on it says whose it was, and adopting would give one person everybody's entries."""
         self._plant("~/old.exr")
-        store = self._store("uid-one")
+        store = self._store(A_USER)
         self.assertFalse(store.has("~/old.exr"),
                          "an entry from before the store had owners is "
                          "still showing")
@@ -1341,8 +1345,8 @@ class AStoreCanTagItsKeysWithAnOwnerTest(unittest.TestCase):
     def test_a_dropped_row_does_not_come_back_on_the_next_write(self):
         """A value held aside as unreadable is written back on every save, so a pre-tag row held there would undo its own drop."""
         self._plant("~/old.exr")
-        self._store("uid-one").set("~/mine.exr", True)
-        self.assertEqual(["uid-one" + self.SEP + "~/mine.exr"],
+        self._store(A_USER).set("~/mine.exr", True)
+        self.assertEqual([A_USER + self.SEP + "~/mine.exr"],
                          sorted(self._on_disk()),
                          "the untagged row was written back after being "
                          "dropped")

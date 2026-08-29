@@ -30,7 +30,8 @@ from amaze.tests import test_support                     # noqa: E402,F401
 SCHEMA = database.SCHEMA_VERSION    # the stamp a fixture carries so it is a CURRENT document rather than one the load path has to upgrade; read from the module and never typed, because a literal turns every fixture into a silent test of the migration at the next bump instead of the behaviour it names
 
 
-def _fixture_prefs(testcase, directory, user="grad-fixture-uid"):
+def _fixture_prefs(testcase, directory,
+                   user="9f8e7d6c5b4a30211203a4b5c6d7e8f9"):  # minted shape - only uuid4().hex reads back as an owner
     """A real Prefs pointed at the fixture dir - the rebased model reads the whole preference surface (asset_dir, img_dir, ext, thumbsize), so a bare stub does not stand in. `.dir` keeps its trailing separator because the connector concatenates, which is the shape Prefs.save() forces on the real field, and `.path` is redirected so nothing ever touches the machine's settings."""
     p = prefs.Prefs()
     p.dir = directory.rstrip(os.sep) + os.sep
@@ -746,7 +747,7 @@ class AColourStarSurvivesAReloadTest(unittest.TestCase):
         with open(self.path, "w", encoding="utf-8") as fh:
             json.dump(document, fh, indent=1)
 
-    def _library(self, user="grad-star-uid"):
+    def _library(self, user="8a7b6c5d4e3f20110213f4e5d6c7b8a9"):  # minted shape, as in _fixture_prefs
         return gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir, user=user))
 
