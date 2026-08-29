@@ -84,7 +84,7 @@ The **toolbar** runs along the top of the panel. Left to right:
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Takes a preview of the open scene. File section only. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
 
-Two of those open menus. 
+**Import/Generate**	and **Filter** menu. 
 
 <img src="docs/images/menu_import_generate.png" width="230">
 <img src="docs/images/menu_filter.png" width="180">
