@@ -2,14 +2,12 @@
 
 import os
 import json
-import hou
 
 import amaze
 from amaze import branding
 from amaze import messages
 from amaze.core import database
 from amaze.core import debug
-from amaze.helpers import hostos
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
     RENDERER_DEFAULTS,
@@ -141,6 +139,10 @@ class Prefs(_Persistence):
 
     def get_dir_from_user(self) -> bool:
         """Get Directory from User and write into prefs"""
+        try:  # the package's ONE module-scope `import hou` lived at the top of this file and welded the whole test harness to Houdini through it; this method is the only hou user, and `hou = None` walks the same no-picker path as a UI-less hython ▸p/prefs-hou-choke
+            import hou
+        except ImportError:
+            hou = None
         ui = getattr(hou, "ui", None)
         for attempt in range(3):    # every attempt is validated, the LAST included - a valid third pick adopted but never saved left the next launch unconfigured
             if ui is not None:
