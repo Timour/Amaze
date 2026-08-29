@@ -362,6 +362,14 @@ def switch_active(preferences, mat_id: str, number: int) -> bool:
                     "switch refused - ledger write failed",
                     mat_id=str(mat_id), n=int(number),
                     rolled_back=bool(rolled_back))
+        if not rolled_back:  # disk and list now DISAGREE and the next save builds on the wrong base - the you-think-you-saved case, which interrupts ▸p/dialogs-are-a-bill
+            debug.alert(
+                "The version switch did not finish: the material's "
+                "files hold version %d, but its version list still "
+                "names the previous one. Every archived version is "
+                "still there. Switch the version again to finish."
+                % int(number),
+                key="versions-diverged-%s" % mat_id)
         return False
     debug.event("versions", "active version switched",
                 mat_id=str(mat_id), n=number)

@@ -109,6 +109,27 @@ class SwitchRollsBackOnALedgerRefusal(_Case):
             "the ledger moved despite the refusal")
 
 
+class AFailedRollbackSpeaksTest(_Case):
+    """Disk holding one version while the list names another is the you-think-you-saved case, so a rollback that ALSO fails interrupts instead of logging."""
+
+    def test_the_user_hears_when_the_rollback_also_fails(self):
+        from unittest import mock
+
+        versions.create_version(self.prefs, self.mat_id)          # V1
+        self._rewrite_base(b"EDITED-STATE")
+        versions.create_version(self.prefs, self.mat_id)          # V2
+        with mock.patch.object(versions, "_write_ledger",
+                               return_value=False), \
+             mock.patch.object(versions, "_copy_set",
+                               side_effect=[True, False]), \
+             mock.patch.object(versions.debug, "alert") as spoke:
+            self.assertFalse(
+                versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertTrue(
+            spoke.called,
+            "a divergence the next save builds on stayed in the log")
+
+
 class TheArchiveIsEachVersionsDurableThumbnail(_Case):
     """A version is minted at SAVE time, before that save's render lands, so a fresh archive slot starts holding the previous version's picture; record_render runs wherever a row's PNG is declared fresh and copies it into the ACTIVE slot, so each version keeps its own picture until the version goes."""
 
