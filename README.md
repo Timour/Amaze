@@ -11,8 +11,7 @@ Drag a material onto an object in the viewport to assign it. Save a group of nod
 
 [![Interface](docs/images/interface.png)](docs/images/interface.png)
 
-**→ [Read the manual](MANUAL.md)** — every function, section by section.
-
+**→ [Read the manual](MANUAL.md)** 
 ## Sections
 
 Everything saved to the library appears as a tile in the grid — a picture and a name — sorted into sections, one tab per kind.
