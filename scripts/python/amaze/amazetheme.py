@@ -40,6 +40,17 @@ D02_BUTTON_GAP = 8       # grid to the button row
 
 SAVE_WIDTH = 350         # ▸ the save family D09, D10, D12, D13: every one is this wide, whatever its labels
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
+SAVE_FRAME_H = {"D09": 125, "D10": 100, "D12": 100, "D13": 72}   # each frame's drawn height; the row count is the only difference between them
+SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
+SAVE_FIELD_X = 67        # every field starts here; 67 + 276 = 343, so the right inset is 7
+SAVE_FIRST_ROW_Y = 11    # the first field's top
+SAVE_FIELD_H = 22
+SAVE_ROW_PITCH = 26      # field top to field top
+SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
+SAVE_BUTTON_W = (31, 50)  # OK, Cancel
+SAVE_BUTTON_GAP = 8
+SAVE_BUTTON_RIGHT = 343  # Cancel's right edge, level with the fields'
+SAVE_BUTTON_BOTTOM = 9   # the button row's bottom to the frame's, on D09/D10/D12; D13 draws 11 and is the odd one
 
 D11_FORM_WIDTH = 638     # ▸ D11 Save Code: a FLOOR, not a pin - the only dialog that resizes, because it carries an editor
 D11_EDITOR_H = 364       # the editor's minimum HEIGHT; it spans the full content width, under the two-column form
@@ -51,8 +62,26 @@ D11_HALF_GAP = 18        # between the two form halves
 D11_STACK_GAP = 12       # fields to the editor
 D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
-PREFS_FORM_WIDTH = 490   # ▸ D04-D08 Preferences, the one tabbed window
+PREFS_FRAME = (490, 451)    # ▸ D04-D08 Preferences, the one tabbed window - the drawn frame, every tab
+PREFS_FORM_WIDTH = 490   # the frame's width, kept under its old name because call sites use it
 PREFS_HEADROOM = 50      # rendered px added to the natural content height
+PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
+PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
+PREFS_CONTENT_TOP = 42   # the first row's top, under the tab bar
+PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
+PREFS_FIELD_X = 148      # every field, button and toggle column starts here
+PREFS_FIELD_H = 22       # a line edit, combo or button
+PREFS_SPIN_H = 24        # a spin box is 2 taller, its inner line edit inset 1
+PREFS_TOGGLE_H = 19      # a ToggleSwitch
+PREFS_ROW_GAP = 6        # between rows inside one group
+PREFS_SECTION_GAP = 27   # across a divider, bottom of one row to top of the next
+PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
+PREFS_SLIDER = (220, 250)   # x and width of the ClickSlider beside a spin box; right edge 470
+PREFS_BROWSER_H = 253    # D08's credits box, 450 wide at the content inset
+PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
+PREFS_DIVIDER_H = 1
+PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
+PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = PREFS_SECTION_GAP
 
 COMMENT_INK = "#5cc9f5"        # ▸ the Comments pane: its OWN colour, not the accent, so button, header icon and to-do glyphs read as one thing
 COMMENT_HEADER_BG = "#22232b"
@@ -176,4 +205,332 @@ EMPTY_FILE = {
         "No locations added yet",
         "Add folders of images, geometry or .hip files.",
         BTN_ADD_FOLDER, "add_file_folder_user"),
+}
+
+
+DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node, per frame; `AmazeNotes/tools/figma-diff.py` checks Figma against it ▸p/one-design-document
+    "D01": {   # Versions
+        "frame": (256, 185),
+        "nodes": (
+            ("header band", 0, -3, 256, 30, None),
+            ("QLabel", 18, 4, 93, 15, "[name of version] "),
+            ("QComboBox", 18, 42, 220, 30, None),
+            ("QComboBox ▸ text", 23, 50, 153, 15, "Version 2   (2026-08-01)   active"),
+            ("QLabel", 18, 81, 59, 13, "Change Name"),
+            ("QLineEdit", 18, 98, 220, 30, None),
+            ("QLineEdit ▸ text", 23, 106, 46, 15, "Version 2"),
+            ("QPushButton", 18, 146, 101, 21, None),
+            ("QPushButton ▸ text", 52, 149, 34, 15, "Cancel"),
+            ("QPushButton", 138, 146, 101, 21, None),
+            ("QPushButton ▸ text", 174, 149, 29, 15, "Apply"),
+        ),
+    },
+    "D02": {   # Customize (Tile Icon)
+        "frame": (335, 610),
+        "nodes": (
+            ("icon grid ▸ 287 cells (collapsed)", 8, 318, 319, 250, None),
+            ("icon grid ▸ note", 16, 405, 136, 11, "287 icon cells, 34×34 — scrolls"),
+            ("QLineEdit", 8, 290, 319, 22, None),
+            ("QLineEdit ▸ text", 14, 294, 35, 15, "Search "),
+            ("QLineEdit", 71, 36, 256, 22, None),
+            ("QLineEdit ▸ text", 76, 40, 72, 15, "brushed_steel"),
+            ("QScrollBar", 311, 323, 16, 240, None),
+            ("QLabel", 8, 131, 150, 150, None),
+            ("QToolButton", 171, 252, 35, 28, None),
+            ("QToolButton", 212, 252, 34, 28, None),
+            ("QToolButton", 252, 252, 35, 28, None),
+            ("QToolButton", 293, 252, 34, 28, None),
+            ("QToolButton", 252, 214, 75, 28, None),
+            ("QPushButton ▸ text", 171, 221, 68, 15, "Custom Color"),
+            ("QLabel", 189, 158, 50, 15, "Light Icon"),
+            ("QLabel", 33, 40, 30, 15, "Name"),
+            ("QPushButton", 177, 576, 72, 22, None),
+            ("QPushButton ▸ text", 198, 579, 29, 15, "Apply"),
+            ("QPushButton", 255, 576, 72, 22, None),
+            ("QPushButton ▸ text", 274, 579, 34, 15, "Accept"),
+            ("QLabel", 40, 101, 23, 15, "Tags"),
+            ("QLabel", 18, 71, 45, 15, "Category"),
+            ("QLineEdit", 71, 98, 255, 22, None),
+            ("QLineEdit", 71, 67, 255, 22, None),
+            ("header band", 0, 0, 544, 30, None),
+            ("QLabel", 18, 7, 82, 15, "[name of asset] "),
+            ("ToggleSwitch", 295, 130, 32, 19, None),
+            ("ToggleSwitch", 295, 158, 32, 19, None),
+            ("ToggleSwitch ▸ text", 176, 131, 63, 15, "Custom Icon"),
+        ),
+    },
+    "D04": {   # Preferences - Library
+        "frame": (490, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Library (selected)", 12, 12, 64, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 37, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QLabel", 79, 46, 61, 15, "Library Path"),
+            ("QLineEdit", 148, 42, 292, 22, None),
+            ("QLineEdit ▸ text", 153, 46, 35, 15, "<path>"),
+            ("QPushButton", 442, 42, 28, 22, None),
+            ("QPushButton ▸ text", 452, 46, 9, 15, "..."),
+            ("QPushButton", 148, 70, 99, 22, None),
+            ("QPushButton ▸ text", 156, 74, 83, 15, "Clean Up Library"),
+            ("QPushButton", 148, 98, 88, 22, None),
+            ("QPushButton ▸ text", 156, 102, 73, 15, "Reload Library"),
+            ("QPushButton", 148, 126, 115, 22, None),
+            ("QPushButton ▸ text", 156, 130, 100, 15, "Open Library Folder"),
+            ("ToggleSwitch", 148, 175, 118, 19, None),
+            ("ToggleSwitch ▸ text", 164, 177, 86, 15, "Material Versions"),
+            ("QLabel", 117, 204, 23, 15, "User"),
+            ("QComboBox", 148, 200, 196, 22, None),
+            ("QComboBox ▸ text", 153, 204, 27, 15, "Plum"),
+            ("QLabel", 83, 253, 57, 15, "Cache Path"),
+            ("QLineEdit", 148, 249, 236, 22, None),
+            ("QLineEdit ▸ text", 153, 253, 35, 15, "<path>"),
+            ("QPushButton", 388, 249, 28, 22, None),
+            ("QPushButton ▸ text", 398, 253, 9, 15, "..."),
+            ("QPushButton", 418, 249, 52, 22, None),
+            ("QPushButton ▸ text", 426, 253, 37, 15, "Default"),
+            ("QPushButton", 148, 277, 110, 22, None),
+            ("QPushButton ▸ text", 156, 281, 95, 15, "Delete Local Cache"),
+            ("QPushButton", 352, 200, 56, 22, None),
+            ("QPushButton ▸ text", 360, 204, 42, 15, "Rename"),
+            ("QPushButton", 414, 200, 56, 22, None),
+            ("QPushButton ▸ text", 422, 204, 33, 15, "Delete"),
+            ("QWidget ▸ group divider", 20, 162, 450, 1, None),
+            ("QWidget ▸ group divider", 20, 236, 450, 1, None),
+        ),
+    },
+    "D05": {   # Preferences - Render
+        "frame": (490, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render (selected)", 76, 12, 65, 22, None),
+            ("QTabBar::tab ▸ Render", 90, 16, 38, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("QLabel", 83, 47, 57, 15, "RenderSize"),
+            ("QSpinBox", 148, 42, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 47, 18, 15, "256"),
+            ("QLineEdit", 149, 43, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 47, 18, 15, "256"),
+            ("ClickSlider", 220, 43, 250, 22, None),
+            ("QLabel", 46, 77, 94, 15, "Samples (Redshift)"),
+            ("QSpinBox", 148, 72, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 77, 18, 15, "256"),
+            ("QLineEdit", 149, 73, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 77, 18, 15, "256"),
+            ("ClickSlider", 220, 73, 250, 22, None),
+            ("QLabel", 54, 107, 86, 15, "Samples (Karma)"),
+            ("QSpinBox", 148, 102, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 107, 6, 15, "9"),
+            ("QLineEdit", 149, 103, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 107, 6, 15, "9"),
+            ("ClickSlider", 220, 103, 250, 22, None),
+            ("QLabel", 59, 137, 81, 15, "RAM Cache (MB)"),
+            ("QSpinBox", 148, 132, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 137, 18, 15, "256"),
+            ("QLineEdit", 149, 133, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 137, 18, 15, "256"),
+            ("ClickSlider", 220, 133, 250, 22, None),
+            ("QLabel", 46, 166, 94, 15, "Geometry Shading"),
+            ("QComboBox", 148, 162, 165, 22, None),
+            ("QComboBox ▸ text", 153, 166, 93, 15, "Hidden Line Ghost"),
+            ("QLabel", 27, 194, 113, 15, "Geometry Background"),
+            ("QComboBox", 148, 190, 165, 22, None),
+            ("QComboBox ▸ text", 153, 194, 28, 15, "Black"),
+            ("ToggleSwitch", 148, 218, 165, 19, None),
+            ("ToggleSwitch ▸ text", 165, 220, 132, 15, "Render Thumbs on Import"),
+            ("QLabel", 40, 269, 100, 15, "Conversion Threads"),
+            ("QSpinBox", 148, 264, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 269, 6, 15, "4"),
+            ("QLineEdit", 149, 265, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 269, 6, 15, "4"),
+            ("ClickSlider", 220, 265, 250, 22, None),
+            ("QLabel", 32, 319, 108, 15, "Download Resolution"),
+            ("QComboBox", 148, 315, 72, 22, None),
+            ("QComboBox ▸ text", 153, 319, 12, 15, "2k"),
+            ("QLabel", 44, 348, 96, 15, "Parallel Downloads"),
+            ("QSpinBox", 148, 343, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 348, 6, 15, "8"),
+            ("QLineEdit", 149, 344, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 348, 6, 15, "8"),
+            ("ClickSlider", 220, 344, 250, 22, None),
+        ),
+    },
+    "D06": {   # Preferences - Show/Hide
+        "frame": (490, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide (selected)", 141, 12, 84, 22, None),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 57, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("ToggleSwitch", 148, 42, 66, 19, None),
+            ("ToggleSwitch ▸ text", 164, 44, 34, 15, "Karma"),
+            ("ToggleSwitch", 148, 67, 74, 19, None),
+            ("ToggleSwitch ▸ text", 165, 69, 41, 15, "Redshift"),
+            ("ToggleSwitch", 148, 92, 69, 19, None),
+            ("ToggleSwitch ▸ text", 165, 94, 36, 15, "Octane"),
+            ("ToggleSwitch", 148, 138, 74, 19, None),
+            ("ToggleSwitch ▸ text", 165, 140, 41, 15, "Material"),
+            ("ToggleSwitch", 148, 163, 60, 19, None),
+            ("ToggleSwitch ▸ text", 164, 165, 28, 15, "Color"),
+            ("ToggleSwitch", 148, 188, 60, 19, None),
+            ("ToggleSwitch ▸ text", 165, 190, 27, 15, "Node"),
+            ("ToggleSwitch", 148, 213, 59, 19, None),
+            ("ToggleSwitch ▸ text", 165, 215, 26, 15, "Code"),
+            ("ToggleSwitch", 148, 238, 51, 19, None),
+            ("ToggleSwitch ▸ text", 165, 240, 18, 15, "File"),
+        ),
+    },
+    "D07": {   # Preferences - Look
+        "frame": (490, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look (selected)", 225, 12, 53, 22, None),
+            ("QTabBar::tab ▸ Look", 239, 16, 26, 15, "Look"),
+            ("QTabBar::tab ▸ About", 292, 16, 31, 15, "About"),
+            ("ToggleSwitch", 148, 42, 169, 19, None),
+            ("ToggleSwitch ▸ text", 164, 44, 137, 15, "Show Counts on Categories"),
+            ("ToggleSwitch", 148, 67, 146, 19, None),
+            ("ToggleSwitch ▸ text", 164, 69, 114, 15, "Hide Empty Categories"),
+            ("ToggleSwitch", 148, 92, 147, 19, None),
+            ("ToggleSwitch ▸ text", 164, 94, 115, 15, "All show unknown files"),
+            ("QLabel", 69, 121, 71, 15, "Write Paths As"),
+            ("QComboBox", 148, 117, 105, 22, None),
+            ("QComboBox ▸ text", 153, 121, 37, 15, "$HOME"),
+            ("QLabel", 74, 149, 66, 15, "Tile Icon Line"),
+            ("QComboBox", 148, 145, 145, 22, None),
+            ("QComboBox ▸ text", 153, 149, 23, 15, "Thin"),
+            ("QLabel", 57, 178, 83, 15, "Scroll Speed (%)"),
+            ("QSpinBox", 148, 173, 64, 24, None),
+            ("QSpinBox ▸ text", 153, 178, 12, 15, "75"),
+            ("QLineEdit", 149, 174, 62, 22, None),
+            ("QLineEdit ▸ text", 154, 178, 12, 15, "75"),
+            ("ClickSlider", 220, 174, 250, 22, None),
+        ),
+    },
+    "D08": {   # Preferences - About
+        "frame": (490, 451),
+        "nodes": (
+            ("QTabBar", 12, 12, 466, 22, None),
+            ("QTabBar::tab ▸ Library", 26, 16, 36, 15, "Library"),
+            ("QTabBar::tab ▸ Render", 91, 16, 36, 15, "Render"),
+            ("QTabBar::tab ▸ Show/Hide", 155, 16, 56, 15, "Show/Hide"),
+            ("QTabBar::tab ▸ Look", 239, 16, 25, 15, "Look"),
+            ("QTabBar::tab ▸ About (selected)", 278, 12, 59, 22, None),
+            ("QTabBar::tab ▸ About", 292, 16, 32, 15, "About"),
+            ("QTextBrowser", 20, 42, 450, 253, None),
+            ("QScrollBar", 454, 42, 16, 253, None),
+            ("QPushButton", 260, 335, 64, 22, None),
+            ("QPushButton ▸ text", 268, 339, 48, 15, "Open Log"),
+            ("QPushButton", 332, 335, 70, 22, None),
+            ("QPushButton ▸ text", 340, 339, 54, 15, "Save Log..."),
+            ("QPushButton", 408, 335, 62, 22, None),
+            ("QPushButton ▸ text", 416, 339, 47, 15, "Clear Log"),
+            ("ToggleSwitch", 148, 336, 96, 19, None),
+            ("ToggleSwitch ▸ text", 165, 338, 63, 15, "Debug Mode"),
+            ("ToggleSwitch", 148, 384, 91, 19, None),
+            ("ToggleSwitch ▸ text", 164, 386, 59, 15, "Test Library"),
+            ("QLabel", 85, 412, 55, 15, "Test Folder"),
+            ("QLineEdit", 148, 409, 292, 22, None),
+            ("QPushButton", 442, 409, 28, 22, None),
+            ("QPushButton ▸ text", 452, 413, 9, 15, "..."),
+            ("QPushButton", 148, 303, 108, 22, None),
+            ("QPushButton ▸ text", 156, 307, 92, 15, "Check for Updates"),
+            ("QPushButton", 264, 303, 90, 22, None),
+            ("QPushButton ▸ text", 272, 307, 74, 15, "Report a Bug..."),
+        ),
+    },
+    "D09": {   # Save to Amaze - Node
+        "frame": (350, 125),
+        "nodes": (
+            ("QLabel", 30, 15, 30, 15, "Name"),
+            ("QLineEdit", 67, 11, 276, 22, None),
+            ("QLineEdit ▸ text", 72, 15, 33, 15, "rocks1"),
+            ("QLabel", 15, 41, 45, 15, "Category"),
+            ("QComboBox", 67, 37, 276, 22, None),
+            ("QComboBox ▸ text", 72, 41, 28, 15, "Metal"),
+            ("QLabel", 37, 67, 23, 15, "Tags "),
+            ("QLineEdit", 67, 63, 276, 22, None),
+            ("QPushButton", 254, 94, 31, 22, None),
+            ("QPushButton ▸ text", 262, 98, 15, 15, "OK"),
+            ("QPushButton", 293, 94, 50, 22, None),
+            ("QPushButton ▸ text", 301, 98, 34, 15, "Cancel"),
+        ),
+    },
+    "D10": {   # Save to Amaze - Materials
+        "frame": (350, 100),
+        "nodes": (
+            ("QPushButton", 254, 69, 31, 22, None),
+            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
+            ("QPushButton", 293, 69, 50, 22, None),
+            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
+            ("QLabel", 15, 15, 45, 15, "Category"),
+            ("QComboBox", 67, 11, 276, 22, None),
+            ("QComboBox ▸ text", 72, 15, 28, 15, "Metal"),
+            ("QLabel", 37, 41, 23, 15, "Tags "),
+            ("QLineEdit", 67, 37, 276, 22, None),
+        ),
+    },
+    "D11": {   # Save Code to Amaze
+        "frame": (638, 516),
+        "nodes": (
+            ("QLabel", 33, 53, 30, 15, "Name"),
+            ("QLineEdit", 70, 49, 245, 22, None),
+            ("QLineEdit ▸ text", 75, 53, 33, 15, "helper"),
+            ("QLabel", 14, 79, 49, 15, "Language"),
+            ("QComboBox", 70, 75, 245, 22, None),
+            ("QComboBox ▸ text", 75, 79, 19, 15, "VEX"),
+            ("QLabel", 333, 53, 45, 15, "Category"),
+            ("QComboBox", 385, 49, 245, 22, None),
+            ("QComboBox ▸ text", 390, 53, 28, 15, "Metal"),
+            ("QLabel", 355, 79, 23, 15, "Tags"),
+            ("QLineEdit", 385, 75, 245, 22, None),
+            ("QLabel", 37, 109, 26, 15, "Code"),
+            ("CodeEditor", 18, 109, 612, 364, None),
+            ("_LineNumberArea", 19, 110, 28, 362, None),
+            ("QPushButton", 541, 481, 31, 22, None),
+            ("QPushButton ▸ text", 549, 485, 15, 15, "OK"),
+            ("QPushButton", 580, 481, 50, 22, None),
+            ("QPushButton ▸ text", 588, 485, 34, 15, "Cancel"),
+            ("header band", 0, 0, 638, 30, None),
+            ("QLabel", 18, 7, 82, 15, "[name of asset] "),
+        ),
+    },
+    "D12": {   # Save Gradient to Amaze
+        "frame": (350, 100),
+        "nodes": (
+            ("QPushButton", 254, 69, 31, 22, None),
+            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
+            ("QPushButton", 293, 69, 50, 22, None),
+            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
+            ("QLabel", 15, 15, 45, 15, "Category"),
+            ("QComboBox", 67, 11, 276, 22, None),
+            ("QComboBox ▸ text", 72, 15, 28, 15, "Metal"),
+            ("QLabel", 37, 41, 23, 15, "Tags "),
+            ("QLineEdit", 67, 37, 276, 22, None),
+        ),
+    },
+    "D13": {   # Name Input
+        "frame": (350, 72),
+        "nodes": (
+            ("QPushButton", 254, 39, 31, 22, None),
+            ("QPushButton ▸ text", 262, 43, 15, 15, "OK"),
+            ("QPushButton", 293, 39, 50, 22, None),
+            ("QPushButton ▸ text", 301, 43, 34, 15, "Cancel"),
+            ("QLabel", 30, 15, 30, 15, "Name"),
+            ("QComboBox", 67, 11, 276, 22, None),
+            ("QComboBox ▸ text", 72, 15, 28, 15, "Metal"),
+        ),
+    },
 }
