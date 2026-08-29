@@ -26,6 +26,8 @@ from amaze.prefs import prefs as prefs_mod
 
 LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
+PREFS_FRAMES = ("D04", "D05", "D06", "D07", "D08")   # the drawn frame per tab, in the order the tabs are added ▸p/one-design-document
+
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 
 
@@ -102,6 +104,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model
+        self._tab_combos: dict = {}   # each tab's combos in CREATION order, which is what the frame's drawn combo rects answer
 
         tabs = QtWidgets.QTabWidget()
         tabs.setDocumentMode(True)
@@ -110,15 +113,18 @@ class PrefsDialog(base_dialog.AssetDialog):
         tabs.addTab(self._build_showhide_tab(), "Show/Hide")
         tabs.addTab(self._build_look_tab(), "Look")
         tabs.addTab(self._build_about_tab(), "About")
+        self._tabs = tabs
 
         self.set_content(tabs)
-        self.finish(ok_cancel=False, margins=12)   # 12px, recorded: a tabbed window keeps its air - the 5px house margin is for compact forms
+        self.finish(ok_cancel=False,   # a tabbed window keeps its air - the house margin is for compact forms
+                    margins=amazetheme.PREFS_DIALOG_MARGIN)
 
         for combo in self.findChildren(QtWidgets.QComboBox):   # combos never TAKE focus, and this MUST run after setLayout since findChildren walks only the CURRENT tree
             combo.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self._pin_pages_to_document()
         self.resize(   # BOTH numbers come from the document: `self.width()` stood here and is Qt's unshown-widget default of 640x480, so the drawn width was never `FORM_WIDTH` ▸p/one-design-document
-            theme.ui_px(self.FORM_WIDTH),
-            self.sizeHint().height() + theme.ui_px(amazetheme.PREFS_HEADROOM),
+            theme.ui_px(amazetheme.PREFS_FRAME[0]),
+            theme.ui_px(amazetheme.PREFS_FRAME[1]),
         )
 
 
@@ -126,7 +132,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         """(page widget, its form layout): every tab is one form with the shared right-aligned label column, top-aligned so short tabs keep their row spacing."""
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
-        _m = theme.ui_px(8)
+        _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
         outer.setContentsMargins(_m, _m, _m, _m)
         form = self._make_form()
         outer.addLayout(form)
@@ -254,7 +260,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_workdir.setToolTip(ui_helpers.tooltip_text(
             "The folder the library lives in."))
         browse_lib = QtWidgets.QPushButton("...")
-        browse_lib.setFixedWidth(theme.ui_px(28))
+        browse_lib.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         browse_lib.clicked.connect(self.change_library_path)
         form.addRow(self._label("Library Path"), self._path_row(self.line_workdir, browse_lib))
 
@@ -329,7 +335,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_cache.setToolTip(ui_helpers.tooltip_text(
             "Where the preview copies live on this machine."))
         browse_cache = QtWidgets.QPushButton("...")
-        browse_cache.setFixedWidth(theme.ui_px(28))
+        browse_cache.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         browse_cache.clicked.connect(self.change_cache_path)
         self._default_cache = QtWidgets.QPushButton("Default")
         self._default_cache.clicked.connect(self.reset_cache_path)
@@ -348,6 +354,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             "browse, the library is untouched."))
         form.addRow(self._label(""), clear_cache_btn)
 
+        self._tab_combos["D04"] = (self.cbb_library_user,)
         self._real_path_widgets = (self.line_workdir, browse_lib)   # inert under Test Mode: showing the test path while writing the real field could lose a library. CACHE rows stay live, Test Mode does not move the cache
         self._sync_test_mode_rows()
         return page
@@ -468,6 +475,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Parallel Downloads"),
             self._field_slider_row(self.spin_matx_parallel, 1, 16),
         )
+        self._tab_combos["D05"] = (self._combo_geo_shading,
+                                   self._combo_geo_bg, self.cbb_matx_res)
         return page
 
     def _build_showhide_tab(self) -> QtWidgets.QWidget:
@@ -564,12 +573,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Scroll Speed (%)"),
             self._field_slider_row(self.spin_scroll_speed, 10, 300),
         )
+        self._tab_combos["D07"] = (self._combo_path_style,
+                                   self._combo_icon_weight)
         return page
 
     def _build_about_tab(self) -> QtWidgets.QWidget:
         page = QtWidgets.QWidget()
         outer = QtWidgets.QVBoxLayout(page)
-        _m = theme.ui_px(8)
+        _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
         outer.setContentsMargins(_m, _m, _m, _m)
 
         browser = QtWidgets.QTextBrowser()   # not QTextEdit: it renders <a href> AND opens it
@@ -633,12 +644,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         outer.addWidget(browser, 1)
 
         form = self._make_form()
-        self._btn_update = QtWidgets.QPushButton("Check for Updates")   # ON REQUEST ONLY: nothing consults the release feed at launch
-        self._btn_update.setToolTip(ui_helpers.tooltip_text(
-            "Ask whether a newer Amaze has been released. Nothing is "
-            "downloaded or changed by asking."
-        ))
-        self._btn_update.clicked.connect(self.check_for_updates)
+        self._lbl_version = QtWidgets.QLabel(   # EVERY update answer lands here, not in a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
+            "Amaze version " + branding.APP_VERSION)
+        self._lbl_version.setWordWrap(True)
+        form.addRow(self._label(""), self._lbl_version)
+        self._last_update = None
+        self._btn_update = QtWidgets.QPushButton()   # ON REQUEST ONLY: nothing consults the release feed at launch
+        self._btn_update.clicked.connect(self._press_update)
+        self._set_update_button(False)
         self._btn_report = QtWidgets.QPushButton("Report a Bug...")
         self._btn_report.setToolTip(ui_helpers.tooltip_text(
             "Open the Amaze bug page in your browser with your Amaze, "
@@ -649,26 +662,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         ask_row = QtWidgets.QWidget()   # the two live side by side, from D08
         ask = QtWidgets.QHBoxLayout(ask_row)
         ask.setContentsMargins(0, 0, 0, 0)
-        ask.setSpacing(theme.ui_px(8))
+        ask.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
         ask.addWidget(self._btn_update)
         ask.addWidget(self._btn_report)
         ask.addStretch(1)
         form.addRow(self._label(""), ask_row)
-        self._about_form = form   # the two rows below hide as ROWS, and only a form can do that
-        self._lbl_update = QtWidgets.QLabel("")   # THE ANSWER GOES HERE, not a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
-        self._lbl_update.setWordWrap(True)
-        form.addRow(self._label(""), self._lbl_update)
-        self._btn_install = QtWidgets.QPushButton("Install Update")   # shown only when there IS something to install; two presses on purpose, the first changing nothing
-        self._btn_install.setToolTip(ui_helpers.tooltip_text(
-            "Download the new release and put it in place. Your library "
-            "and your settings are not touched, and Houdini must be "
-            "restarted afterwards."
-        ))
-        self._btn_install.clicked.connect(self.install_update)
-        form.addRow(self._label(""), self._btn_install)
-        self._show_update_row(self._lbl_update, False)
-        self._show_update_row(self._btn_install, False)
-        self._add_divider(form)
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
         self._cbx_debug.setToolTip(ui_helpers.tooltip_text(
@@ -679,7 +677,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         debug_row = QtWidgets.QWidget()   # toggle and its two buttons on ONE row: three stacked rows read as three unrelated settings
         row = QtWidgets.QHBoxLayout(debug_row)
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(theme.ui_px(8))
+        row.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
         row.addWidget(self._cbx_debug)
         row.addStretch(1)
 
@@ -722,7 +720,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_test_dir.setToolTip(ui_helpers.tooltip_text(
             "The folder holding the test lib and cache folders."))
         self._browse_test = QtWidgets.QPushButton("...")
-        self._browse_test.setFixedWidth(theme.ui_px(28))
+        self._browse_test.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         self._browse_test.clicked.connect(self.change_test_path)
         form.addRow(self._label("Test Folder"),
                     self._path_row(self.line_test_dir, self._browse_test))
@@ -730,7 +728,35 @@ class PrefsDialog(base_dialog.AssetDialog):
         outer.addLayout(form)
         return page
 
-    LABEL_COL = 120   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
+    def _pin_pages_to_document(self) -> None:
+        """Take every button, combo and field on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. A spin box is left alone - the document draws it 2 taller, and its own editor with it. ▸p/one-design-document"""
+        field_h = theme.ui_px(amazetheme.PREFS_FIELD_H)
+        for index, frame_key in enumerate(PREFS_FRAMES):
+            page = self._tabs.widget(index)
+            for button in page.findChildren(QtWidgets.QPushButton):
+                ui_helpers.pin_drawn(button, frame_key, "QPushButton",
+                                     button.text())
+            for field in page.findChildren(QtWidgets.QLineEdit):
+                if isinstance(field.parent(), QtWidgets.QAbstractSpinBox):
+                    continue
+                field.setFixedHeight(field_h)
+            for combo in page.findChildren(QtWidgets.QComboBox):
+                combo.setFixedHeight(field_h)
+            self._pin_combo_widths(frame_key,
+                                   self._tab_combos.get(frame_key, ()))
+
+    def _pin_combo_widths(self, frame_key: str, combos) -> None:
+        """Take each combo's WIDTH from the frame's drawn `QComboBox` rects, drawn order against creation order - a combo carries no label of its own to pin by, and matching one to its row's label is not reliable."""
+        drawn = sorted(amazetheme.drawn_boxes(frame_key).get(
+            ("QComboBox", None), ()), key=lambda box: (box[1], box[0]))
+        if len(drawn) != len(combos):
+            debug.event("prefs", "the drawn combos and the built ones "
+                        "differ in number", frame=frame_key,
+                        drawn=len(drawn), built=len(combos))
+        for combo, box in zip(combos, drawn):
+            combo.setFixedWidth(theme.ui_px(box[2]))
+
+    LABEL_COL = amazetheme.PREFS_LABEL_COL   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
 
     def _label(self, text: str) -> QtWidgets.QLabel:
         lbl = QtWidgets.QLabel(text)
@@ -763,7 +789,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(theme.ui_px(4))
+        h.setSpacing(theme.ui_px(amazetheme.PREFS_INLINE_GAP))
         h.addWidget(line_edit, 1)
         h.addWidget(browse_btn)
         for widget in extra:
@@ -777,21 +803,19 @@ class PrefsDialog(base_dialog.AssetDialog):
                 getattr(self._panel, method_name)()
         return _call
 
-    def _show_update_row(self, field: QtWidgets.QWidget, shown: bool) -> None:
-        """Hide the ROW, not the field: a hidden field leaves its empty label behind and the form keeps 21px of dead space for it."""
-        self._about_form.setRowVisible(field, shown)
-
     def _add_divider(self, form: QtWidgets.QFormLayout) -> None:
         """A 1px group divider as a spanning row; groups carry no title text, like Houdini's own parameter panes."""
         box = QtWidgets.QWidget()
         v = QtWidgets.QVBoxLayout(box)
-        v.setContentsMargins(0, theme.ui_px(8), 0, theme.ui_px(6))
+        v.setContentsMargins(0, theme.ui_px(amazetheme.PREFS_DIVIDER_ABOVE),
+                             0, theme.ui_px(amazetheme.PREFS_DIVIDER_BELOW))
         divider = QtWidgets.QWidget()
         divider.setAttribute(
             QtCore.Qt.WidgetAttribute.WA_StyledBackground, True
         )
-        divider.setStyleSheet("background-color: #434343;")
-        divider.setFixedHeight(theme.ui_px(1))
+        divider.setStyleSheet("background-color: %s;"
+                              % amazetheme.PREFS_DIVIDER_INK)
+        divider.setFixedHeight(theme.ui_px(amazetheme.PREFS_DIVIDER_H))
         v.addWidget(divider)
         form.addRow(box)
 
@@ -800,7 +824,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     ) -> QtWidgets.QWidget:
         """Houdini-style numeric row: number field + ClickSlider kept in sync both ways, terminating because setValue with an unchanged value emits nothing."""
         spinbox.setRange(lo, hi)
-        spinbox.setFixedWidth(theme.ui_px(64))
+        spinbox.setFixedWidth(theme.ui_px(amazetheme.PREFS_SPIN_W))
         spinbox.setButtonSymbols(
             QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
         )
@@ -815,7 +839,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(theme.ui_px(8))
+        h.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
         h.addWidget(spinbox)
         h.addWidget(slider, 1)
         return row
@@ -832,8 +856,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.setFieldGrowthPolicy(
             QtWidgets.QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow
         )
-        form.setHorizontalSpacing(theme.ui_px(8))   # EXPLICIT: a style computes label-to-field spacing per widget-type pair, drifting the shared column between tabs
-        form.setVerticalSpacing(theme.ui_px(6))
+        form.setHorizontalSpacing(   # EXPLICIT: a style computes label-to-field spacing per widget-type pair, drifting the shared column between tabs
+            theme.ui_px(amazetheme.PREFS_LABEL_GAP))
+        form.setVerticalSpacing(theme.ui_px(amazetheme.PREFS_ROW_GAP))
         return form
 
 
@@ -951,55 +976,75 @@ class PrefsDialog(base_dialog.AssetDialog):
         """Open the pre-filled new-issue page; openUrl answers only whether the OS ACCEPTED the hand-off, and `_open_url` records a refusal. ▸r/github-issue-url"""
         _open_url(bug_report_url())
 
+    def _installable(self):
+        """The release the last check found, when it named a file to fetch; None when there is nothing to install."""
+        result = self._last_update
+        return result if result and getattr(result, "url", "") else None
+
+    def _set_update_button(self, offer: bool) -> None:
+        """The one button in its two readings; the tooltip moves with the label, since nothing being downloaded stops being true in the second."""
+        self._btn_update.setText(
+            "Install Update" if offer else "Check for Updates")
+        ui_helpers.pin_drawn(   # ONE drawn box for both readings: the word moves, the geometry does not
+            self._btn_update, "D08", "QPushButton", "Check for Updates")
+        self._btn_update.setToolTip(ui_helpers.tooltip_text(
+            "Download the new release and put it in place. Your library "
+            "and your settings are not touched, and Houdini must be "
+            "restarted afterwards."
+            if offer else
+            "Ask whether a newer Amaze has been released. Nothing is "
+            "downloaded or changed by asking."))
+
+    def _press_update(self) -> None:
+        """Check, then install: the button only reaches the install once a check has found one, so the press that downloads is never the press that looked."""
+        if self._installable() is None:
+            self.check_for_updates()
+        else:
+            self.install_update()
+
     @debug.guarded("prefs.check_for_updates")
     def check_for_updates(self) -> None:
-        """Ask the release feed and say the answer in the tab; it BLOCKS, which is why the button says so - a worker thread would be more machinery than the wait it saves."""
+        """Ask the release feed and say the answer in the version line; it BLOCKS, which is why the button says so - a worker thread would be more machinery than the wait it saves."""
         from amaze.core import updater
 
         self._btn_update.setEnabled(False)
         self._btn_update.setText("Checking...")
-        self._show_update_row(self._lbl_update, False)
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
-            result = updater.check()
+            self._last_update = updater.check()
         finally:
             self._btn_update.setEnabled(True)
-            self._btn_update.setText("Check for Updates")
-        self._lbl_update.setText(result.sentence)
-        self._show_update_row(self._lbl_update, True)
-        self._last_update = result
-        self._show_update_row(   # only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
-            self._btn_install, bool(result) and bool(result.url))
+            self._set_update_button(   # offered only when the release NAMED a file; one with no archive is offered nowhere rather than offered and then failing
+                self._installable() is not None)
+        self._lbl_version.setText(self._last_update.sentence)
 
     def install_update(self) -> None:
-        """Fetch the release the last check found, with NO confirmation and no popup - the button's label IS the outcome. Only the install is replaced, and the previous one is kept beside it."""
+        """Fetch the release the last check found, with NO confirmation and no popup - the version line IS the outcome. Only the install folder is replaced, and `updater.apply_update` DELETES the one it replaces."""
         from amaze.core import updater
 
-        result = getattr(self, "_last_update", None)
-        if not result or not getattr(result, "url", ""):
+        result = self._installable()
+        if result is None:
             return
 
-        self._btn_install.setEnabled(False)
-        self._btn_install.setText("Installing...")
+        self._btn_update.setEnabled(False)
+        self._btn_update.setText("Installing...")
         QtWidgets.QApplication.processEvents(
             QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
         try:
             updater.install(result)    # the SAME call the shelf tool makes, so the two cannot drift
         except OSError as exc:
-            self._lbl_update.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one
-            return
+            self._lbl_version.setText(str(exc))   # the updater raises with a FINISHED sentence, shown as-is rather than wrapped in a second one
         except Exception as exc:                              # noqa: BLE001
             debug.exception("update install", exc)
-            self._lbl_update.setText(messages.UPDATE_FAILED_UNEXPECTED % exc)
-            return
+            self._lbl_version.setText(messages.UPDATE_FAILED_UNEXPECTED % exc)
+        else:
+            self._last_update = None   # the offer is spent, so the next press asks the feed again rather than fetching a second time
+            self._lbl_version.setText(
+                messages.UPDATE_INSTALLED % result.version)
         finally:
-            self._btn_install.setEnabled(True)
-            self._btn_install.setText("Install Update")
-
-        self._show_update_row(self._btn_install, False)
-        self._lbl_update.setText(
-            messages.UPDATE_INSTALLED % result.version)
+            self._btn_update.setEnabled(True)
+            self._set_update_button(self._installable() is not None)
 
     def set_debug_mode(self, checked: bool) -> None:
         """Takes effect IMMEDIATELY: the engine is reconfigured here as well as on close, so a session can be captured without restarting Houdini."""

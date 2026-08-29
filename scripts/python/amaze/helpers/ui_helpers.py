@@ -180,6 +180,16 @@ class DesignedComboBox(QtWidgets.QComboBox):
             QtCore.QPoint(0, self.height())))
 
 
+def pin_drawn(widget, frame_key: str, kind: str, text: str) -> None:
+    """Size `widget` to the box the design draws for `<kind> ▸ <text>` in `frame_key`, so a node resized in Figma resizes the widget. A label the document does not draw pins NOTHING and records the miss - a renamed drawn label costs one widget's size, never the dialog. ▸p/one-design-document"""
+    box = amazetheme.drawn_boxes(frame_key).get((kind, text))
+    if box is None:
+        debug.event("ui", "no drawn box for this widget",
+                    frame=frame_key, kind=kind, text=text)
+        return
+    widget.setFixedSize(theme.ui_px(box[2]), theme.ui_px(box[3]))
+
+
 def header_band(parent, text: str):
     """The drawn header strip: a full-width band carrying the asset's OWN name, which D01, D02 and D11 all wear and nothing else does. It is NOT the window title bar - the design draws both. ▸p/one-design-document"""
     band = QtWidgets.QWidget(parent)
@@ -271,6 +281,11 @@ class DesignedDialog(QtWidgets.QDialog):
             button = QtWidgets.QPushButton(text, self)
             button.setFixedSize(theme.ui_px(self.BUTTON[0]),
                                 theme.ui_px(self.BUTTON[1]))
+            button.setStyleSheet(
+                "border-radius: %dpx;" % theme.ui_px(self.RADIUS))
+            font = QtGui.QFont(button.font())
+            font.setPixelSize(theme.ui_px(self.BUTTON_PX))
+            button.setFont(font)
             button.clicked.connect(slot)
             row.addWidget(button)
         self.body_layout.addSpacing(theme.ui_px(self.INSET))   # the design's 35 BELOW THE FIELD, the same as the side padding; NOT a stretch, which floats them to the body's bottom and puts a different gap above them at every dialog height
@@ -721,8 +736,8 @@ class ToggleSwitch(QtWidgets.QCheckBox):
         w = (
             theme.ui_px(self.TRACK_W)
             + (theme.ui_px(self.GAP) + fm.horizontalAdvance(self.text())
+               + theme.ui_px(2)     # the trailing slack is the TEXT's; a textless switch is drawn flush at the column edge, where 2px of hint puts the painted track left of the drawn pill
                if self.text() else 0)
-            + theme.ui_px(2)
         )
         h = max(theme.ui_px(self.TRACK_H) + theme.ui_px(4),
                 fm.height() + theme.ui_px(2))

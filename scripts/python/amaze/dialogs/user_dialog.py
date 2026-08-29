@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from PySide6 import QtWidgets
 
+from amaze import amazetheme
 from amaze.dialogs.base_dialog import AssetDialog
 
 
 class UserPickerDialog(AssetDialog):
     """Pick an existing user, or create one - `uid` is set when an existing one was picked, `new_name` when a new one was named, and both stay empty on cancel."""
 
+    FORM_WIDTH = amazetheme.SAVE_WIDTH          # D14 is drawn at the save family's width ▸p/save-dialog-rows
+    FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
     CREATE = "\x00create"    # itemData for the create row: not a name and not a UID, so it can never be mistaken for either
 
     def __init__(self, known: dict, parent=None) -> None:

@@ -15,6 +15,7 @@ class AssetDialog(QtWidgets.QDialog):
 
     FORM_WIDTH = None    # a shared width in logical px, or None to hug the content; the save family sets one so siblings match ▸p/save-dialog-rows
     FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
+    FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the drawn field height every `add_*` row takes; the form rows are the save family's, and the drawn frames give them all one height ▸p/save-dialog-rows
     HEADER_BAND = False  # the drawn header strip carrying the asset's name - D01, D02 and D11 wear one, the save family and Preferences do not ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,
@@ -45,6 +46,8 @@ class AssetDialog(QtWidgets.QDialog):
         """Add a labelled row; returns the widget for wiring. A dialog declaring `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
         if self.FIELD_WIDTH:
             widget.setFixedWidth(theme.ui_px(self.FIELD_WIDTH))
+        if self.FIELD_HEIGHT:
+            widget.setFixedHeight(theme.ui_px(self.FIELD_HEIGHT))
         self._form.addRow(label, widget)
         return widget
 
@@ -78,6 +81,7 @@ class AssetDialog(QtWidgets.QDialog):
             )
             self._buttons.accepted.connect(self._on_accept)
             self._buttons.rejected.connect(self.reject)
+            self._pin_button_row()
 
         layout = QtWidgets.QVBoxLayout()
         self._inner_layout = layout    # the margined content layout, for a dialog whose drawn margins are per-side
@@ -94,7 +98,8 @@ class AssetDialog(QtWidgets.QDialog):
             if self._buttons is not None:
                 self._form.addRow(self._buttons)
             layout.addLayout(self._form)
-        _m = theme.ui_px(5 if margins is None else margins)
+        _m = theme.ui_px(
+            amazetheme.HOUSE_MARGIN if margins is None else margins)
         layout.setContentsMargins(_m, _m, _m, _m)
         if self.FORM_WIDTH:
             layout.addStrut(theme.ui_px(self.FORM_WIDTH) - 2 * _m)    # THE LAYOUT'S OWN HINT, never `setFixedWidth`: under `SetFixedSize` the hint IS the width and is re-imposed on every activation, so a hand-set width dies at `show()` ▸r/fixed-size-constraint
@@ -118,6 +123,29 @@ class AssetDialog(QtWidgets.QDialog):
                 QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(outer)
         self._pin_label_column(_m)
+
+    def _pin_button_row(self) -> None:
+        """The drawn OK/Cancel pair - fixed widths and height, no padding of the box's own, the drawn gap, and the drawn ORDER, which a style is free to disagree with. Every frame that draws the pair draws it the same, so it lives here rather than in each dialog. ▸p/one-design-document"""
+        box = self._buttons
+        ok = box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
+        cancel = box.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        height = theme.ui_px(amazetheme.SAVE_BUTTON_H)
+        for button, width in ((ok, amazetheme.SAVE_BUTTON_W[0]),
+                              (cancel, amazetheme.SAVE_BUTTON_W[1])):
+            if button is not None:
+                button.setFixedSize(theme.ui_px(width), height)
+        row = box.layout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(theme.ui_px(amazetheme.SAVE_BUTTON_GAP))
+        if ok is None or cancel is None:
+            return
+        built = [row.itemAt(i).widget() for i in range(row.count())]
+        if [w for w in built if w is not None][:1] != [ok]:   # a macOS or GNOME button layout draws Cancel first; no frame does
+            while row.count():
+                row.takeAt(0)
+            row.addStretch(1)      # the pair is drawn flush RIGHT, level with the fields above it
+            row.addWidget(ok)
+            row.addWidget(cancel)
 
     def _pin_label_column(self, margin: int) -> None:
         """Pin every label to the slack the drawn numbers leave, clipping a long one as Houdini's own panes do - unpinned, a label 1px past the slack outgrows the strut and the whole family widens; AFTER setLayout, because `horizontalSpacing` answers -1 until the style resolves ▸p/save-dialog-rows"""

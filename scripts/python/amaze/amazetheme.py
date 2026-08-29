@@ -7,6 +7,8 @@ HEADER_BAND_INSET = 18   # where the name starts
 HEADER_BAND_TEXT_PX = 12
 HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D01, D02 and D11
 
+HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
+
 D01_FRAME = (256, 185)      # ▸ D01 Versions, header band included
 D01_INSET = 18              # 35, both sides, leaving a 220-wide column
 D01_FIRST_FIELD_Y = 15      # 30, the first field's top
@@ -37,10 +39,14 @@ D02_SECTION_GAP = 37     # the switch pair to the Custom Color row - with PRESET
 D02_PRESET_GAP = 10      # the current-colour chip to the preset row
 D02_TOP_GAP = 11         # the Tags row to the preview block
 D02_BUTTON_GAP = 8       # grid to the button row
+D02_GRID_SPACING = 2     # the chooser grid's cell gap, UNSCALED: D02_COLUMNS is the count the drawn 319 column fits at exactly this gap
+D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, like the two below
+D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
+D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
 
-SAVE_WIDTH = 350         # ▸ the save family D09, D10, D12, D13: every one is this wide, whatever its labels
+SAVE_WIDTH = 350         # ▸ the save family D09, D13, D14: every one is this wide, whatever its labels. D10/D12 retired 2026-08-30 - one save engine, D09 is THE save dialog
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
-SAVE_FRAME_H = {"D09": 125, "D10": 100, "D12": 100, "D13": 72}   # each frame's drawn height; the row count is the only difference between them
+SAVE_FRAME_H = {"D09": 125, "D13": 72, "D14": 100}   # each frame's drawn height; the row count is the only difference between them
 SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
 SAVE_FIELD_X = 67        # every field starts here; 67 + 276 = 343, so the right inset is 7
 SAVE_FIRST_ROW_Y = 11    # the first field's top
@@ -64,16 +70,22 @@ D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
 PREFS_FRAME = (490, 451)    # ▸ D04-D08 Preferences, the one tabbed window - the drawn frame, every tab
 PREFS_FORM_WIDTH = 490   # the frame's width, kept under its old name because call sites use it
-PREFS_HEADROOM = 50      # rendered px added to the natural content height
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
+PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
+PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
 PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
 PREFS_CONTENT_TOP = 42   # the first row's top, under the tab bar
 PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
+PREFS_LABEL_COL = 120    # the label column itself, from the inset to LABEL_RIGHT
+PREFS_LABEL_GAP = 8      # a label to its field: FIELD_X less LABEL_RIGHT
 PREFS_FIELD_X = 148      # every field, button and toggle column starts here
 PREFS_FIELD_H = 22       # a line edit, combo or button
 PREFS_SPIN_H = 24        # a spin box is 2 taller, its inner line edit inset 1
+PREFS_SPIN_W = 64        # the number field beside a slider
 PREFS_TOGGLE_H = 19      # a ToggleSwitch
 PREFS_ROW_GAP = 6        # between rows inside one group
+PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box to its slider
+PREFS_INLINE_GAP = 4     # a path field to the browse button beside it
 PREFS_SECTION_GAP = 27   # across a divider, bottom of one row to top of the next
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
 PREFS_SLIDER = (220, 250)   # x and width of the ClickSlider beside a spin box; right edge 470
@@ -212,7 +224,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
     "D01": {   # Versions
         "frame": (256, 185),
         "nodes": (
-            ("header band", 0, -3, 256, 30, None),
+            ("header band", 0, 0, 256, 30, None),
             ("QLabel", 18, 4, 93, 15, "[name of version] "),
             ("QComboBox", 18, 42, 220, 30, None),
             ("QComboBox ▸ text", 23, 50, 153, 15, "Version 2   (2026-08-01)   active"),
@@ -228,7 +240,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
     "D02": {   # Customize (Tile Icon)
         "frame": (335, 610),
         "nodes": (
-            ("header band", 0, 0, 544, 30, None),
+            ("header band", 0, 0, 335, 30, None),
             ("QLabel", 18, 7, 82, 15, "[name of asset] "),
             ("QLineEdit", 71, 36, 256, 22, None),
             ("QLabel", 33, 40, 30, 15, "Name"),
@@ -243,13 +255,13 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLabel", 189, 158, 50, 15, "Light Icon"),
             ("ToggleSwitch", 304, 160, 23, 15, None),
             ("QToolButton", 252, 214, 75, 28, None),
-            ("QPushButton ▸ text", 171, 221, 68, 15, "Custom Color"),
+            ("QLabel", 171, 221, 68, 15, "Custom Color"),
             ("QToolButton", 171, 252, 35, 28, None),
             ("QToolButton", 212, 252, 34, 28, None),
             ("QToolButton", 252, 252, 35, 28, None),
             ("QToolButton", 293, 252, 34, 28, None),
             ("QLineEdit", 8, 290, 319, 22, None),
-            ("QLineEdit ▸ text", 14, 294, 35, 15, "Search "),
+            ("QLineEdit ▸ text", 14, 294, 35, 15, "Search"),
             ("icon grid ▸ 287 cells (collapsed)", 8, 318, 319, 250, None),
             ("QScrollBar", 311, 323, 16, 240, None),
             ("icon grid ▸ note", 16, 405, 136, 11, "287 icon cells, 34×34 — scrolls"),
@@ -473,20 +485,6 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 301, 98, 34, 15, "Cancel"),
         ),
     },
-    "D10": {   # Save to Amaze - Materials
-        "frame": (350, 100),
-        "nodes": (
-            ("QComboBox", 67, 11, 276, 22, None),
-            ("QLabel", 15, 15, 45, 15, "Category"),
-            ("QComboBox ▸ text", 72, 15, 28, 15, "Metal"),
-            ("QLineEdit", 67, 37, 276, 22, None),
-            ("QLabel", 37, 41, 23, 15, "Tags"),
-            ("QPushButton", 254, 69, 31, 22, None),
-            ("QPushButton", 293, 69, 50, 22, None),
-            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
-        ),
-    },
     "D11": {   # Save Code to Amaze
         "frame": (638, 516),
         "nodes": (
@@ -512,21 +510,6 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 588, 485, 34, 15, "Cancel"),
         ),
     },
-    "D12": {   # Save Gradient to Amaze
-        "frame": (350, 100),
-        "nodes": (
-            ("QLineEdit", 67, 11, 276, 22, None),
-            ("QLabel", 30, 15, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 72, 15, 34, 15, "sunset"),
-            ("QComboBox", 67, 37, 276, 22, None),
-            ("QLabel", 15, 41, 45, 15, "Category"),
-            ("QComboBox ▸ text", 72, 41, 30, 15, "Warm"),
-            ("QPushButton", 254, 69, 31, 22, None),
-            ("QPushButton", 293, 69, 50, 22, None),
-            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
-        ),
-    },
     "D13": {   # Name Input
         "frame": (350, 72),
         "nodes": (
@@ -539,4 +522,53 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 301, 43, 34, 15, "Cancel"),
         ),
     },
+    "D14": {   # User Picker - who is using this library, on first open
+        "frame": (350, 100),
+        "nodes": (
+            ("QLabel", 23, 15, 37, 15, "You are"),
+            ("QComboBox", 67, 11, 276, 22, None),
+            ("QComboBox ▸ text", 72, 15, 27, 15, "Plum"),
+            ("QLabel", 6, 41, 54, 15, "New name"),
+            ("QLineEdit", 67, 37, 276, 22, None),
+            ("QPushButton", 254, 69, 31, 22, None),
+            ("QPushButton", 293, 69, 50, 22, None),
+            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
+            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
+        ),
+    },
 }
+
+_NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
+_TEXT_SUFFIX = _NODE_MARK + "text"
+_DRAWN_BOXES: dict = {}
+
+
+def drawn_boxes(frame_key: str) -> dict:
+    """One frame's boxes keyed for a call site, derived from `DIALOG_LAYOUT` alone: `(kind, text)` is the plain `<Kind>` rect ENCLOSING that `<Kind> ▸ text` node, and `(kind, None)` is every plain `<Kind>` rect in document order. An unknown frame answers `{}`; a label drawn beside its rect rather than inside it (the toggle pills) pairs with nothing. Cached and SHARED - read it, never edit it."""
+    cached = _DRAWN_BOXES.get(frame_key)
+    if cached is not None:
+        return cached
+    nodes = (DIALOG_LAYOUT.get(frame_key) or {}).get("nodes", ())
+    rects: dict = {}
+    for kind, x, y, w, h, text in nodes:
+        if text is None and _NODE_MARK not in kind:   # PLAIN, so a `QWidget ▸ group divider` or a tab chip is not a box anything pins from
+            rects.setdefault(kind, []).append((x, y, w, h))
+    boxes = {(kind, None): tuple(found) for kind, found in rects.items()}
+    for kind, x, y, w, h, text in nodes:
+        if text is None or not kind.endswith(_TEXT_SUFFIX):
+            continue
+        plain = kind[:-len(_TEXT_SUFFIX)]
+        holding = [box for box in rects.get(plain, ())
+                   if box[0] <= x and box[1] <= y
+                   and box[0] + box[2] >= x + w
+                   and box[1] + box[3] >= y + h]
+        if holding:
+            boxes.setdefault(   # SMALLEST first, and the first text wins: D05 draws `256` in three rows, so a repeated label must answer one box and always the same one
+                (plain, text), min(holding, key=lambda box: box[2] * box[3]))
+    _DRAWN_BOXES[frame_key] = boxes
+    return boxes
+
+
+def forget_drawn_boxes() -> None:
+    """Drop the derived-box cache - the NAMED test seam, so no test reaches into the module dict and pins its spelling."""
+    _DRAWN_BOXES.clear()

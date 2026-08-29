@@ -139,17 +139,19 @@ class IconDialog(base_dialog.AssetDialog):
         area.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         holder = QtWidgets.QWidget()
-        holder.setStyleSheet(
+        holder.setStyleSheet(    # the two px numbers are UNSCALED, like every stylesheet number in this file
             "QWidget { background: %s; }"
             " QToolButton { background: transparent; border: none;"
-            " border-radius: 3px; }"
+            " border-radius: %dpx; }"
             " QToolButton:hover { background: rgba(255, 255, 255, 28); }"
             " QToolButton:checked { background: %s;"
-            " border: 2px solid %s; }"
-            % (chooser_bg, theme.color_hex("field"), icon_ink)
+            " border: %dpx solid %s; }"
+            % (chooser_bg, amazetheme.D02_CHOOSER_RADIUS,
+               theme.color_hex("field"), amazetheme.D02_CHECKED_BORDER,
+               icon_ink)
         )
         self._grid = QtWidgets.QGridLayout(holder)
-        self._grid.setSpacing(2)
+        self._grid.setSpacing(amazetheme.D02_GRID_SPACING)
         self._grid.setContentsMargins(0, 0, 0, 0)
 
         group = QtWidgets.QButtonGroup(self)   # every button is built ONCE and only shown/hidden by the filter; rebuilding 287 per keystroke feels broken
@@ -251,7 +253,8 @@ class IconDialog(base_dialog.AssetDialog):
                 QtWidgets.QSizePolicy.Policy.Fixed,
             )
             swatch.setStyleSheet(
-                "background:%s; border:1px solid #222;" % colour)
+                "background:%s; border:%dpx solid #222;"
+                % (colour, amazetheme.D02_SWATCH_BORDER))
             swatch.clicked.connect(
                 lambda _checked=False, picked=colour: self._set_bg(picked))
             swatches.addWidget(swatch)
@@ -264,7 +267,8 @@ class IconDialog(base_dialog.AssetDialog):
 
     def _refresh_chip(self) -> None:
         self.custom_chip.setStyleSheet(
-            "background:%s; border:1px solid #222;" % self._bg)
+            "background:%s; border:%dpx solid #222;"
+            % (self._bg, amazetheme.D02_SWATCH_BORDER))
 
     def _set_ink_light(self, on: bool) -> None:
         self._ink = "light" if on else "dark"

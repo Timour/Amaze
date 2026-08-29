@@ -407,7 +407,7 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
         self.addCleanup(dialog.deleteLater)
         return dialog
 
-    def test_a_successful_install_reports_and_hides_the_button(self):
+    def test_a_successful_install_reports_and_withdraws_the_offer(self):
         import hou
         from unittest.mock import patch
 
@@ -421,7 +421,6 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
         dialog._last_update = updater.Update(
             updater.NEWER, version="9.9",
             url="https://example.invalid/r.zip", sentence="newer")
-        dialog._btn_install.setVisible(True)
 
         with patch.object(hou, "getenv", return_value=install), \
                 patch.object(updater, "fetch_and_stage",
@@ -429,14 +428,13 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
                 patch.object(updater, "apply_update", return_value=backup):
             dialog.install_update()
 
-        text = dialog._lbl_update.text()
+        text = dialog._lbl_version.text()
         self.assertIn("9.9", text, "the sentence does not name the version")
         self.assertIn("Restart", text,
                       "nothing tells the user the new build is not live "
                       "until Houdini restarts")
-        # isHidden(), never isVisible(): a QTabWidget page that is not current is explicitly hidden, so isVisible() answers False whatever the button was told ▸p/updater-shape
-        self.assertTrue(dialog._btn_install.isHidden(),
-                        "Install is still offered after installing")
+        self.assertEqual("Check for Updates", dialog._btn_update.text(),
+                         "the install is still offered after installing")
 
     def test_a_refused_install_shows_the_updaters_own_sentence(self):
         import hou
@@ -458,9 +456,12 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
                                  "archive. Nothing has been changed.")):
             dialog.install_update()
 
-        self.assertIn("not a zip archive", dialog._lbl_update.text(),
+        self.assertIn("not a zip archive", dialog._lbl_version.text(),
                       "the updater's finished sentence was replaced or "
                       "swallowed")
+        self.assertEqual("Install Update", dialog._btn_update.text(),
+                         "a refused install withdrew an offer that still "
+                         "stands, so a retry has to check again first")
 
     def test_an_unknown_install_location_changes_nothing(self):
         import hou
@@ -479,7 +480,126 @@ class TheAboutTabCanActuallyRunAnInstall(unittest.TestCase):
 
         fetch.assert_not_called()
         self.assertIn("cannot tell where it is installed",
-                      dialog._lbl_update.text())
+                      dialog._lbl_version.text())
+
+
+class TheAboutTabOffersTheUpdateInOnePlace(unittest.TestCase):
+    """One permanent version line and one button that morphs: every answer has the same home, and no row appears or disappears to make room for it. ▸p/updater-shape"""
+
+    def setUp(self):
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6 import QtWidgets
+
+        self.app = (QtWidgets.QApplication.instance()
+                    or QtWidgets.QApplication([]))
+
+    def _dialog(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        dialog = prefs_dialog.PrefsDialog(prefs, panel=None)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def _form(self, dialog):
+        """The About form, reached through the version line - the dialog keeps no handle on it for a test to lean on."""
+        from PySide6 import QtWidgets
+
+        return dialog._lbl_version.parentWidget().findChild(
+            QtWidgets.QFormLayout)
+
+    def test_the_version_line_stands_before_anything_is_asked(self):
+        dialog = self._dialog()
+
+        self.assertEqual("Amaze version " + branding.APP_VERSION,
+                         dialog._lbl_version.text(),
+                         "the About tab does not say which Amaze this is "
+                         "until the release feed is asked")
+        self.assertTrue(dialog._lbl_version.wordWrap(),
+                        "an update sentence lands in this label, and it "
+                        "would widen the dialog instead of wrapping")
+
+    def test_a_found_release_morphs_the_button_and_the_next_press_installs(
+            self):
+        from unittest.mock import patch
+
+        found = updater.Update(
+            updater.NEWER, version="9.9",
+            url="https://example.invalid/r.zip",
+            sentence="Amaze 9.9 is available. You are running 1.0.")
+        dialog = self._dialog()
+
+        with patch.object(updater, "check", return_value=found), \
+                patch.object(updater, "install") as install:
+            dialog._btn_update.click()
+            install.assert_not_called()    # the first press ASKS; nothing on disk moves until a second, deliberate one
+            self.assertEqual("Install Update", dialog._btn_update.text(),
+                             "a release was found and the button still "
+                             "only offers to look for one")
+            self.assertIn("9.9", dialog._lbl_version.text(),
+                          "the answer did not land in the version line")
+            dialog._btn_update.click()
+
+        install.assert_called_once_with(found)
+
+    def test_an_answer_with_nothing_to_install_leaves_the_button_alone(self):
+        from unittest.mock import patch
+
+        answer = updater.Update(
+            updater.UP_TO_DATE, version="1.0",
+            sentence="You are running 1.0, which is the newest release.")
+        dialog = self._dialog()
+
+        with patch.object(updater, "check", return_value=answer):
+            dialog._btn_update.click()
+
+        self.assertEqual(answer.sentence, dialog._lbl_version.text(),
+                         "the answer went somewhere other than the "
+                         "version line")
+        self.assertEqual("Check for Updates", dialog._btn_update.text(),
+                         "the button offers an install after a check that "
+                         "found nothing to install")
+
+    def test_the_about_form_keeps_ONE_divider_above_test_library(self):
+        from PySide6 import QtWidgets
+
+        dialog = self._dialog()
+        form = self._form(dialog)
+        dividers = [row for row in range(form.rowCount())
+                    if form.itemAt(
+                        row, QtWidgets.QFormLayout.ItemRole.SpanningRole)]
+
+        self.assertEqual(
+            1, len(dividers),
+            "the About form draws %d dividers; the document draws one, "
+            "above Test Library" % len(dividers))
+        rows = [form.getWidgetPosition(widget)[0] for widget in (
+            dialog._lbl_version, dialog._btn_update.parentWidget(),
+            dialog._cbx_debug.parentWidget(), dialog._cbx_test_mode)]
+        self.assertNotIn(-1, rows, "a row was not found on the form")
+        self.assertEqual(sorted(rows), rows,
+                         "the rows do not run version, buttons, debug, "
+                         "Test Library: %s" % rows)
+        self.assertEqual([rows[2] + 1, rows[3] - 1], [dividers[0]] * 2,
+                         "the divider does not sit between the debug row "
+                         "and Test Library")
+
+    def test_no_about_row_is_hidden_and_the_hidden_pair_is_gone(self):
+        dialog = self._dialog()
+        form = self._form(dialog)
+        hidden = [row for row in range(form.rowCount())
+                  if not form.isRowVisible(row)]
+
+        self.assertEqual([], hidden,
+                         "the About form still holds rows nobody can see, "
+                         "which read as dead space: %s" % hidden)
+        left = [name for name in ("_lbl_update", "_btn_install",
+                                  "_show_update_row", "_about_form")
+                if hasattr(dialog, name)]
+        self.assertEqual([], left,
+                         "the hidden update row machinery is still here: "
+                         "%s" % left)
 
 
 class AReleaseIsStagedIntoTheINSTALLShape(unittest.TestCase):
