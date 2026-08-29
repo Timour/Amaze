@@ -127,7 +127,7 @@ a dark backdrop:
 
 | | | |
 |:--:|---|---|
-| <img src="scripts/python/amaze/ui/badge_open.svg" width="18"> | top-left | the scene you currently have open (File) |
+| <img src="scripts/python/amaze/ui/badge_open.svg" width="20"> | top-left | the scene you currently have open (File) |
 | <img src="scripts/python/amaze/ui/badge_star.svg" width="18"> | top-right | the favorite button — on every tile: dim when not a favorite, brighter under the cursor, amber when favorited. Click to toggle; with several tiles selected, clicking a selected tile's star toggles them all |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="18"> | lower-left | has more than one [version](#versions) — click it to browse them |
 | <img src="scripts/python/amaze/ui/badge_comment_75.svg" width="18"> | lower-right | carries a [comment](#comments) — click it to open the Comments pane on that asset |
