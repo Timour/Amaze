@@ -56,7 +56,7 @@ The **Amaze shelf** carries four tools:
 | **Updates** | Checks the release page for a newer version and installs it when you confirm. |
 | **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
 
-<img src="docs/images/shelf_tools.png" width="420">
+<img src="docs/images/shelf_tools.png" width="820">
 
 ---
 
