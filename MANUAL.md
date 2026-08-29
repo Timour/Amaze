@@ -244,7 +244,7 @@ during a bulk import; select the new materials afterwards and use
 
 ## Generate Material
 
-When you need materials to test with quickly.
+For building test materials quickly.
 
 **Import/Generate ▸ Generate Material** builds one material into the
 material library you are working in.
@@ -275,7 +275,7 @@ Amaze**, like any material you built by hand.
 
 ## Color
 
-Come pre-filled with some colour-theory palettes — Sanzo Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers, Johannes Itten. Delete them if you dont like them.
+Comes pre-filled with colour-theory palettes — Sanzo Wada's *A Dictionary of Color Combinations*, Paul Klee, Josef Albers, Johannes Itten. Delete any you do not want.
 
 <img src="docs/images/color_grid.png" width="820">
 
@@ -321,7 +321,7 @@ container of the right type.
 
 <img src="docs/images/menu_node_tile.png" width="200">
 
-**An asset only goes home.** A SOP asset dropped on a Copernicus
+**Assets load only into a matching context.** A SOP asset dropped on a Copernicus
 network is refused with a message, and nothing is created.
 
 Thumbnails follow the context: a Copernicus asset shows its own output
@@ -448,7 +448,7 @@ what you have.
 [online browser](#online-materials) carries the official packages.
 Right-click one ▸ **Restore** and its entries go back under their
 original identities, matching what is already there rather than adding
-beside it. This is the door for putting back a default palette or
+beside it. This is the way to restore a default palette or
 material you deleted.
 
 ---
@@ -514,8 +514,7 @@ several places at once.
 The <img src="scripts/python/amaze/ui/icon_comments.svg" width="16">
 **Comments** button in the toolbar, between Online and Grid/List, opens
 the **Comments pane**: a page docked beside the grid, one page per
-asset. The chip stays the toolbar's blue whether the pane is open or
-not; the state is carried by its background.
+asset. Its background shows whether the pane is open.
 
 <img src="docs/images/comments_pane.png" width="820">
 
@@ -724,7 +723,7 @@ and relaunch. Reopening the panel loads the cached modules.
 
 Amaze uses code from [egMatLib](https://github.com/eglaubauf/egMatLib)  for its preview engine for material thumbnails. Thank you.
 
-Color palette sources: Sanzo Wada (public domain, via dblodorn/sanzo-wada), Paul Klee, Josef Albers, Johannes Itten (interpretive palettes from public-domain works).
+Colour palette sources: Sanzo Wada (public domain, via dblodorn/sanzo-wada), Paul Klee, Josef Albers, Johannes Itten (interpretive palettes from public-domain works).
 
 Tile icons are [Feather](https://feathericons.com) by Cole Bemis (MIT).
 
