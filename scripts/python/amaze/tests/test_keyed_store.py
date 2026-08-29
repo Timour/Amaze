@@ -22,6 +22,8 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import keyed_store, locations, notes, tile_icons  # noqa: E402
+
+SECOND_USER = "f0e1d2c3b4a5968778695a4b3c2d1e0f"  # a second minted-shaped uid beside test_support.FIXTURE_USER
 from amaze.helpers import hostos  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -977,7 +979,7 @@ class TheKeyLifecycle(StoreCase):
         store = keyed_store.open_store(locations.FAVOURITES_SPEC, self.prefs)
         store.set("/gone/a.exr", True)              # the first user's star
         store.set("/kept/b.exr", True)
-        self.prefs.library_user = "second-uid"
+        self.prefs.library_user = SECOND_USER  # minted shape: the product tags with uuid4().hex only, so a hand-spelled tag is a row it cannot write
         store.set("/gone/a.exr", True)              # the second user's
         self.prefs.library_user = ""                # nobody picked now
 
@@ -1686,7 +1688,7 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
         folder = self._reg("tex")
         ident = locations.file_ident(self.prefs,
                                      os.path.join(folder, "wood.png"))
-        other = _Prefs(self.dir, library_user="second-user-uid")
+        other = _Prefs(self.dir, library_user=SECOND_USER)
         self._reg("tex", prefs=other)
         self.assertEqual(locations.location_id(self.prefs, folder),
                          locations.location_id(other, folder),
@@ -1798,7 +1800,7 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
         ident = locations.file_ident(self.prefs,
                                      os.path.join(folder, "wood.png"))
         locations.set_favourite(self.prefs, ident, True)
-        other = _Prefs(self.dir, library_user="second-user-uid")
+        other = _Prefs(self.dir, library_user=SECOND_USER)
         locations.set_favourite(other, ident, True)
 
         keyed_store.retire_location(self.prefs, lid)
@@ -1811,6 +1813,23 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
             "a removed location's stars survived for some user")
         self.assertEqual("", locations.location_id(self.prefs, folder),
                          "the identity row survived the removal")
+
+
+class OnlyAUidShapedOwnerCountsAsATagTest(unittest.TestCase):
+    """A pipe is legal in a POSIX path, so an untagged path carrying one must not read as somebody's row - only the 32-hex uuid4 shape is an owner."""
+
+    def test_a_pipe_in_an_untagged_path_stays_untagged(self):
+        self.assertEqual(
+            ("", "/plates/wei|rd"),
+            keyed_store.untagged_key(locations.SPEC, "/plates/wei|rd"))
+
+    def test_a_tagged_pipe_path_splits_at_the_tag(self):
+        from amaze.tests import test_support
+        uid = test_support.FIXTURE_USER
+        self.assertEqual(
+            (uid, "/plates/wei|rd"),
+            keyed_store.untagged_key(
+                locations.SPEC, uid + "|/plates/wei|rd"))
 
 
 if __name__ == "__main__":

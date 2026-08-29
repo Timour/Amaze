@@ -952,12 +952,19 @@ def restored_key(spec: Spec, key: str) -> str:
     return storage_key(spec, key)
 
 
+def uid_shaped(value: str) -> bool:
+    """Is this a minted UID - 32 hex characters, the `uuid4().hex` shape? The ONE home for the test; `users` reads it from here."""
+    value = str(value or "")
+    return len(value) == 32 and all(
+        c in "0123456789abcdef" for c in value)
+
+
 def untagged_key(spec: Spec, key: str) -> tuple:
-    """`(uid, key)` for a stored key, `("", key)` when untagged - split on the FIRST separator only."""
+    """`(uid, key)` for a stored key, `("", key)` when untagged - split on the FIRST separator, and only a uid-shaped owner half counts: a pipe is legal in a POSIX path, so an untagged pre-tag row carrying one must not read as somebody's."""
     if not spec.user_tagged:
         return ("", key)
     tag, sep, rest = str(key).partition(USER_SEP)
-    return (tag, rest) if sep else ("", key)
+    return (tag, rest) if sep and uid_shaped(tag) else ("", key)
 
 
 def _under(spec: Spec, key: str, prefix: str) -> bool:

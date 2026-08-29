@@ -93,10 +93,8 @@ def delete(preferences, uid) -> bool:
 
 
 def _looks_like_uid(value: str) -> bool:
-    """Is this a minted UID rather than a person's name? 32 hex characters, the `uuid4().hex` shape."""
-    value = str(value or "")
-    return len(value) == 32 and all(
-        c in "0123456789abcdef" for c in value)
+    """Is this a minted UID rather than a person's name? The shape lives in `keyed_store.uid_shaped`, where the key reader needs it too."""
+    return keyed_store.uid_shaped(value)
 
 
 def rename(preferences, uid, name: str) -> bool:
