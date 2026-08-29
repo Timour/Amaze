@@ -595,9 +595,10 @@ class NodeHandler:
         elif "mtlxstandard_surface" in node.type().name():
             self._renderer = "Karma"
         elif node.type().name() == "subnet":
-            for n in node.children():
+            for n in node.allSubChildren():  # the WHOLE interior: the manual tells artists to collapse blocks of a big network into subnets (help ▸ vop/subnet), so one level missed exactly the materials built its way
                 if "mtlx" in n.type().name():
                     self._renderer = "Karma"
+                    break
         elif node.type().name() == "collect":
             self._renderer = "Karma"
         return self._renderer

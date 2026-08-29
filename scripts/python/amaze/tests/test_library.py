@@ -1435,5 +1435,18 @@ class EveryAssetModelIsGivenItsLibrary(unittest.TestCase):
             % keeps)
 
 
+class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):
+    """Houdini's own manual tells artists to collapse blocks of a large network into subnets (help ▸ `vop/subnet`), so a Karma builder's mtlx nodes may sit any number of containers down."""
+
+    def test_mtlx_inside_a_nested_subnet_reads_as_karma(self):
+        from amaze.render import nodes as nodes_mod
+        outer = hou.node("/mat").createNode("subnet")
+        self.addCleanup(outer.destroy)
+        inner = outer.createNode("subnet")
+        inner.createNode("mtlxstandard_surface")
+        handler = nodes_mod.NodeHandler(Mock())
+        self.assertEqual("Karma", handler.get_renderer_from_node(outer))
+
+
 if __name__ == "__main__":
     unittest.main()
