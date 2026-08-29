@@ -334,10 +334,16 @@ class ThumbnailEngine(QtCore.QObject):
             return            # cannot ask a deleted object what it held
         if getattr(finisher, "_canceled", False):
             return    # cancelled work is unrequested, not missing - the revisit re-queues it
-        for key in thread_keys:
-            if self._states.get(key) == "pending":
-                self._states[key] = "missing"
-                self.ready.emit(key)
+
+        def _condemn(keys=tuple(thread_keys)):
+            for key in keys:
+                if self._states.get(key) == "pending":
+                    self._states[key] = "missing"
+                    try:
+                        self.ready.emit(key)
+                    except RuntimeError:
+                        return   # the engine's C++ side died between turns - a reload handover; nothing left to repaint
+        QtCore.QTimer.singleShot(0, _condemn)    # ONE TURN LATER, never in the finished-turn itself: on a stalled main thread the finisher's own queued deliveries can arrive BEHIND its finished signal, and a same-turn verdict condemned 16 of 16 real images at the 2026-08-29 cold open - sticky, since missing never retries ▸p/prune-outran-deliveries
 
 
 _previous_engine = globals().get("engine")    # the reopen HANDOVER: reload re-runs this body, and without stopping the old engine first the collector freed a QThread mid-run ▸r/module-reload ▸r/model-contracts

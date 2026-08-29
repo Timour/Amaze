@@ -99,6 +99,30 @@ class TestThumbnailShutdown(unittest.TestCase):
         self.assertEqual(engine._threads, [])
 
 
+class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
+    """The 2026-08-29 live loss: the finisher's OWN deliveries can still be queued when its finished-prune runs on a stalled main thread, so the verdict waits one event-loop turn and a real image beats it."""
+
+    def setUp(self):
+        self.engine = thumbnails.ThumbnailEngine()
+        self.loader = TestPruneJudgesOnlyItsOwnLoader._FinishedLoader(
+            ["k1", "k2"])
+        self.engine._threads = [self.loader]
+        self.engine._states = {"k1": "pending", "k2": "pending"}
+
+    def test_a_delivery_between_prune_and_verdict_wins(self):
+        self.engine._prune_threads(self.loader)   # the race's early prune
+        image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("red"))
+        self.engine._on_loaded("k1", image)       # its own delivery, landing next
+        _app.processEvents()
+        self.assertEqual(
+            "done", self.engine._states["k1"],
+            "a delivered image was condemned by a verdict that outran it")
+        self.assertEqual(
+            "missing", self.engine._states["k2"],
+            "a key that truly never delivered must still be judged")
+
+
 class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
     """A loader may condemn only its OWN pending keys - the deliveries-before-finished guarantee is PER-THREAD, so judging a sibling drops real images whose signals are still queued, and it sticks because a missing key never falls back to the disk cache."""
 
@@ -124,6 +148,7 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
 
     def test_a_siblings_keys_are_left_alone(self):
         self.engine._prune_threads(self.first)
+        _app.processEvents()   # the verdict is one turn deferred now, so the judging is asserted through the turn
         self.assertEqual("missing", self.engine._states["a1"],
                          "the finisher's own undelivered key must be judged")
         self.assertEqual(
