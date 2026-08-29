@@ -1574,6 +1574,26 @@ class DeadScratchesAreSweptWithAnAgeGateTest(unittest.TestCase):
                          "a scratch")
 
 
+class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
+    """A raising promote must not litter the library - an unowned scratch is how live assets get reported as orphans."""
+
+    def test_write_json_discards_its_scratch_when_the_promote_raises(self):
+        folder = tempfile.mkdtemp(prefix="amaze_repair_scratch_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        target = os.path.join(folder, "library.json")
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write("{}")
+        with patch.object(hostos, "promote_scratch",
+                          side_effect=OSError("no rename")):
+            with self.assertRaises(OSError):
+                repair._write_json(target, {"assets": []})
+        leftovers = [n for n in os.listdir(folder) if ".repairing" in n]
+        self.assertEqual([], leftovers,
+                         "a failed promote left a scratch behind")
+        with open(target, encoding="utf-8") as fh:
+            self.assertEqual("{}", fh.read())
+
+
 class TheSentenceJoinerHasOneOwner(unittest.TestCase):
     """`helpers.and_list`, and `database.py`'s Houdini-free copy of it."""
 

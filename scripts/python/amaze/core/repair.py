@@ -542,15 +542,10 @@ def _reattachable_files(findings: dict) -> list:
 
 
 def _write_json(path: str, document) -> None:
-    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies."""
-    scratch = hostos.unique_scratch(path, suffix=".repairing")
-    try:
+    """Scratch-and-promote without the snapshot: a recovery tool keeps the copies. `scratch_beside` discards on ANY raise - the hand-rolled version discarded only on a write-time OSError, so a raising promote left a `.repairing` file for the orphan scan to misread."""
+    with hostos.scratch_beside(path, suffix=".repairing") as scratch:
         with open(scratch, "w", encoding="utf-8", newline="\n") as handle:
             json.dump(document, handle, indent=4)
-    except OSError:
-        hostos.discard_scratch(scratch)
-        raise
-    hostos.promote_scratch(scratch, path)
 
 
 def put_back(findings: dict, filename: str, tier: str) -> dict:
