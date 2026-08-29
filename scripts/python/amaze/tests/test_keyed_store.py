@@ -1832,5 +1832,63 @@ class OnlyAUidShapedOwnerCountsAsATagTest(unittest.TestCase):
                 locations.SPEC, uid + "|/plates/wei|rd"))
 
 
+class AnUnreadablePeerIsNotOverwritten(StoreCase):
+    """The second read has the first read's refusal, or a peer's work is lost."""
+
+    def _damage(self, text=b'{"notes": {"a": '):
+        with open(self.path(), "wb") as handle:
+            handle.write(text)
+        return text
+
+    def test_a_write_over_an_unparseable_file_is_refused(self):
+        store = self.store()
+        self.assertTrue(store.set("a", self.page()).ok, "premise: it writes")
+
+        damaged = self._damage()
+        written = store.set("b", self.page("second"))
+
+        self.assertFalse(
+            written.ok,
+            "the store wrote over a file it could not read, so whatever the "
+            "other machine put there is gone")
+        with open(self.path(), "rb") as handle:
+            self.assertEqual(damaged, handle.read(),
+                             "the damaged bytes were replaced")
+
+    def test_the_unreadable_file_is_kept_beside_itself(self):
+        store = self.store()
+        self.assertTrue(store.set("a", self.page()).ok, "premise: it writes")
+        damaged = self._damage()
+
+        store.set("b", self.page("second"))
+
+        kept = self.path() + ".unreadable"
+        self.assertTrue(os.path.exists(kept),
+                        "no copy of the damaged file was kept, and the "
+                        "snapshot tier declines one that will not parse")
+        with open(kept, "rb") as handle:
+            self.assertEqual(damaged, handle.read())
+
+    def test_the_refusal_latches_for_the_session(self):
+        store = self.store()
+        self.assertTrue(store.set("a", self.page()).ok, "premise: it writes")
+        self._damage()
+        store.set("b", self.page("second"))
+
+        self.assertFalse(store.writable,
+                         "the store stayed writable, so the next edit "
+                         "overwrites the damaged file after all")
+
+    def test_this_sessions_own_rows_are_still_readable(self):
+        """A refused write keeps the panel's own table - it is not a reload."""
+        store = self.store()
+        store.set("a", self.page("mine"))
+        self._damage()
+        store.set("b", self.page("second"))
+
+        self.assertEqual(self.page("mine"), store.get("a"),
+                         "the refusal threw away this session's own rows")
+
+
 if __name__ == "__main__":
     unittest.main()

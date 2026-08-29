@@ -766,7 +766,15 @@ class Store:
         foreign = dict(self._foreign)   # a COPY, or a refused write loses it
         try:
             os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            self._adopt_from_disk(staged, foreign)
+            if not self._adopt_from_disk(staged, foreign):  # the refusal `_load` does on the first read, on the second ▸p/store-refuses-unreadable-peer
+                hostos.preserve_unreadable(self.path,
+                                           why=spec.label.lower())
+                self.state = BLIND
+                self._refuse_and_alert(
+                    "%s changed underneath this session and will not parse"
+                    % spec.filename)
+                return Written(False, REASON_LATCHED, spec.refused_sentence,
+                               keys)
             for key in retire:          # AFTER the adoption, or it comes back
                 staged.pop(str(key), None)
                 foreign.pop(str(key), None)
@@ -798,21 +806,27 @@ class Store:
     def _remember_disk_state(self) -> None:
         self._disk_state = hostos.disk_state(self.path)
 
-    def _adopt_from_disk(self, staged: dict, foreign: dict) -> None:
-        """Fold in keys another session added since this one read; ADDS only, and a same-session delete can come back. ▸p/store-commit-order"""
+    def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:
+        """Fold in keys another session added since this one read; ADDS only, and a same-session delete can come back. FALSE means the file is there and will not parse, and the caller must refuse rather than write over it. ▸p/store-commit-order"""
         current = hostos.disk_state(self.path)
         if current is None or self._disk_state == current:
-            return                          # nothing moved underneath us
+            return True                     # nothing moved underneath us
         try:
             with open(self.path, "rb") as handle:
-                loaded = json.loads(handle.read().decode("utf-8-sig"))
-        except (OSError, ValueError):
-            return
+                raw = handle.read()
+        except OSError:
+            return True     # a hold, not damage: the peer's bytes are intact
+        try:
+            loaded = json.loads(raw.decode("utf-8-sig"))
+        except ValueError:
+            return False
         if not isinstance(loaded, dict):
-            return
+            return False
         peer = self._table_in(loaded)
+        if peer is None:
+            return True                     # a table this store does not own
         if not isinstance(peer, dict):
-            return
+            return False
         adopted = 0
         for key, value in peer.items():
             stored = restored_key(self.spec, str(key))
@@ -839,6 +853,7 @@ class Store:
                         "adopted entries another session wrote",
                         path=self.path, adopted=adopted,
                         store=self.spec.filename)
+        return True
 
 
 RULE_SEP = "/"                      # separates the levels of a nested rule

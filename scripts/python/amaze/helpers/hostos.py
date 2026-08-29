@@ -461,8 +461,9 @@ def snapshot_before_write(path: str, keep: int = 3) -> None:
             if os.path.exists(older):
                 os.replace(older, "%s.bak-%d" % (path, i))
         shutil.copy2(path, newest)
-    except OSError:
-        pass
+    except OSError as exc:
+        _record("backup", "no snapshot taken - the tier could not be "
+                "rotated", path=path, error=str(exc))  # nothing is lost - the floor above never rotates and `record_history` already ran - but the tier stopped advancing and only the log says so
 
 
 def replace_file(src: str, dst: str) -> None:

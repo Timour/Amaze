@@ -170,7 +170,7 @@ def stamped_assets(directory: str, asset_dir: str = "mat/",
 
 def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
                         index_filename: str = "library.json") -> dict:
-    """One index rebuilt from the stamps `index_filename` claims, damaged named."""
+    """One index rebuilt from the stamps `index_filename` claims; `damaged` names the stamps that would not read, `unreadable` the sibling lists that would not parse - a caller with a non-empty `unreadable` may not write the result. ▸p/clean-library-sweep"""
     folder = os.path.join(directory, asset_dir)
     assets, damaged = [], []
     categories, tags = [], []
@@ -179,10 +179,12 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
     except OSError as exc:
         debug.event("repair", "cannot read the asset folder for a rebuild",
                     folder=folder, error=str(exc))
-        return {"assets": [], "categories": [], "tags": [], "damaged": []}
+        return {"assets": [], "categories": [], "tags": [], "damaged": [],
+                "unreadable": []}
 
     owned_elsewhere = set()
     by_file, unreadable = database.ids_claimed_by(directory)
+    unreadable = [name for name in unreadable if name != index_filename]  # the index being rebuilt is unreadable BY PREMISE; a sibling is not
     for filename, ids in by_file.items():
         if filename != index_filename:
             owned_elsewhere |= ids
@@ -216,6 +218,7 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         "categories": sorted(categories),
         "tags": sorted(tags),
         "damaged": damaged,
+        "unreadable": sorted(unreadable),
     }
 
 
@@ -241,10 +244,17 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
                     tier=tier, undo=outcome.get("undo", ""))
         return True, "the newest saved copy was put back"
     document = rebuild_from_stamps(directory, asset_dir)
+    if document["unreadable"]:  # a list that will not parse claims NOTHING, so every asset it owns reads as unclaimed and lands here as ours ▸p/clean-library-sweep
+        debug.event("repair", "rebuild refused - a sibling list is "
+                    "unreadable", files=document["unreadable"])
+        return False, ("%s cannot be read, so a rebuild cannot tell its "
+                       "assets from this list's"
+                       % helpers.and_list(document["unreadable"]))
     if not document["assets"]:
         return False, ("no saved copy parses and no recovery stamps "
                        "were found")
     try:
+        hostos.preserve_unreadable(target, why="library index")  # the snapshot tier declines a file that will not parse, so this copy is the only one kept ▸p/db-restore
         hostos.snapshot_before_write(target)
         hostos.write_json_atomic(target, {
             "version": database.SCHEMA_VERSION,
@@ -473,7 +483,7 @@ def quarantine(findings: dict) -> dict:
 
 
 def reattach(findings: dict, filename: str) -> dict:
-    """A row for every complete unclaimed pair, under a plain name and no renderer."""
+    """A row for every complete unclaimed pair, from the stamp beside the files where one reads, else a plain name and no renderer. Repair is the stamp's sanctioned reader ▸p/recovery-stamp."""
     _refuse_a_houdini_that_holds_the_library()
     if not findings["complete"]:
         raise ValueError("one of the library's lists cannot be read, so "
@@ -487,27 +497,37 @@ def reattach(findings: dict, filename: str) -> dict:
         raise ValueError("that list cannot be read, so nothing was added "
                          "to it")
 
-    added = []
+    added, minted, rows = [], [], []
+    folder = os.path.join(findings["directory"], findings["asset_dir"])
     for asset_id in _complete_pairs(findings):
-        asset = material.Material(
-            name="Recovered %s" % asset_id[:8],
-            cats=RECOVERED_CATEGORY,
-            tags=[""],
-            fav=False,
-            renderer="",
-            date=str(datetime.datetime.now())[:-7],
-            mat_id=asset_id,
-        )
-        document.setdefault("assets", []).append(asset.get_as_dict())
+        record = read_stamp(os.path.join(folder, asset_id + STAMP_SUFFIX))
+        if record is None:
+            record = material.Material(
+                name="Recovered %s" % asset_id[:8],
+                cats=RECOVERED_CATEGORY,
+                tags=[""],
+                fav=False,
+                renderer="",
+                date=str(datetime.datetime.now())[:-7],
+                mat_id=asset_id,
+            ).get_as_dict()
+            minted.append(asset_id)
+        record["id"] = asset_id
+        rows.append(record)
         added.append(asset_id)
     if added:
+        document.setdefault("assets", []).extend(rows)
         categories = document.setdefault("categories", ["_All"])
-        if RECOVERED_CATEGORY not in categories:
+        for row in rows:                # a stamped row brings its own back
+            for cat in row.get("categories") or []:
+                if cat and cat not in categories:
+                    categories.append(cat)
+        if minted and RECOVERED_CATEGORY not in categories:
             categories.append(RECOVERED_CATEGORY)
         _write_json(path, document)
     debug.event("repair", "unlisted files added back to a list",
-                file=filename, added=len(added))
-    return {"added": added, "path": path}
+                file=filename, added=len(added), from_stamps=len(added) - len(minted))
+    return {"added": added, "path": path, "minted": minted}
 
 
 def _complete_pairs(findings: dict) -> list:
@@ -788,16 +808,15 @@ def _do_reattach(findings: dict) -> None:
     if hou.ui.displayMessage(                             # type: ignore
         # How a material is stored is not what it is.
         messages.CONFIRM_ADD_UNLISTED_TO_SECTION % (len(pairs), noun, label),
-        help="Each one comes back in a new category called %s, named %s "
-             "plus the start of its file name - rename them afterwards. "
-             "They come back without a renderer badge until you save them "
-             "again. Their old names, categories and tags cannot come back "
-             "this way: those were only ever in the list, not in the "
-             "files.\n\n"
+        help="Each one keeps the name, category and tags recorded beside "
+             "its files, and comes back where it was. Anything with no "
+             "such record comes back in a new category called %s, named "
+             "%s plus the start of its file name, with no renderer badge "
+             "until you save it again - rename those afterwards.\n\n"
              "If there is a saved copy of the %s list from before they "
-             "went missing, putting that back instead brings the names "
-             "and categories with it. Nothing here is deleted or "
-             "overwritten either way."
+             "went missing, putting that back instead is still the "
+             "closest match. Nothing here is deleted or overwritten "
+             "either way."
              % (RECOVERED_CATEGORY, RECOVERED_CATEGORY, label),
         buttons=messages.BUTTONS_ADD_BACK,
         default_choice=1, close_choice=1,

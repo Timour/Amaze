@@ -448,6 +448,52 @@ class AddingUnlistedFilesBackTest(_Case):
                          "the files are still unclaimed after being added "
                          "back, so Clean Library would still refuse")
 
+    def test_the_stamp_beside_the_files_names_the_asset(self):
+        """▸p/recovery-stamp: Repair is the sanctioned reader, and this is a repair."""
+        import json as json_mod
+
+        self._cops([])
+        self._pair()
+        with open(os.path.join(self.mat_dir,
+                               self.COP_ID + ".stamp.json"), "w",
+                  encoding="utf-8") as handle:
+            json_mod.dump({"id": self.COP_ID, "name": "Brushed Copper",
+                           "categories": ["Metals"], "tags": ["copper", "pbr"],
+                           "description": "the one from the kitchen shot",
+                           "renderer": "Karma"}, handle)
+
+        repair.reattach(self._survey(), "library.json")
+
+        document = self._read(os.path.join(self.dir, "library.json"))
+        row = [r for r in document["assets"]
+               if r.get("id") == self.COP_ID][0]
+        self.assertEqual(
+            "Brushed Copper", row.get("name"),
+            "the name sat in the stamp beside the files and Repair minted a "
+            "placeholder instead; the next save then rewrites that stamp")
+        self.assertEqual(["Metals"], row.get("categories"))
+        self.assertIn("Metals", document["categories"])
+        self.assertEqual(["copper", "pbr"], row.get("tags"))
+
+    def test_a_pair_with_no_stamp_still_comes_back_named(self):
+        """The fallback: no stamp, or one that will not parse, still reattaches."""
+        self._cops([])
+        self._pair()
+        with open(os.path.join(self.mat_dir,
+                               self.COP_ID + ".stamp.json"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("{not json")
+
+        result = repair.reattach(self._survey(), "library.json")
+
+        self.assertEqual([self.COP_ID], result["added"])
+        document = self._read(os.path.join(self.dir, "library.json"))
+        row = [r for r in document["assets"]
+               if r.get("id") == self.COP_ID][0]
+        self.assertTrue(str(row.get("name", "")).startswith("Recovered "),
+                        "an unreadable stamp must fall back, not raise")
+        self.assertIn(repair.RECOVERED_CATEGORY, document["categories"])
+
     def test_only_a_complete_pair_is_offered(self):
         """Half a pair would put a tile in the panel that cannot open."""
         self._cops([])
@@ -1401,6 +1447,68 @@ class TheRebuildDrillTest(unittest.TestCase):
                          "something outside Repair reads a recovery stamp - "
                          "they are write-only shadows, and a reader makes "
                          "them a second source of truth")
+
+    def test_a_rebuild_refuses_while_a_sibling_list_is_unreadable(self):
+        """An unreadable sibling claims NOTHING, so its assets read as ours."""
+        import json as json_mod
+
+        stranger = "c0de0000000040008000000000000002"
+        with open(os.path.join(self.mat_dir, stranger + ".stamp.json"), "w",
+                  encoding="utf-8") as handle:
+            json_mod.dump({"id": stranger, "name": "A COP network",
+                           "categories": ["Nodes"]}, handle)
+        with open(os.path.join(self.prefs.dir, "cops.json"), "w",  # EXISTS and will not parse - not the absent case ▸p/clean-library-sweep
+                  encoding="utf-8") as handle:
+            handle.write('{"assets": [{"id": "c0de00000')
+
+        document = repair.rebuild_from_stamps(self.prefs.dir,
+                                              self.prefs.asset_dir)
+        self.assertEqual(
+            ["cops.json"], document["unreadable"],
+            "the rebuild did not report the sibling it could not read, so "
+            "no caller can refuse on it")
+
+        for name in ("library.json", "library.json.bak-1",
+                     "library.json.bak-2", "library.json.bak-3",
+                     "library.json.bak-first"):
+            path = os.path.join(self.prefs.dir, name)
+            if os.path.exists(path):
+                os.remove(path)
+        ok, sentence = repair.repair_index(self.prefs.dir,
+                                           self.prefs.asset_dir)
+        self.assertFalse(
+            ok, "the index was rebuilt while a sibling could not be read, so "
+                "that sibling's assets are now rows in this list")
+        self.assertIn("cannot be read", sentence)
+        self.assertFalse(
+            os.path.exists(os.path.join(self.prefs.dir, "library.json")),
+            "a refused rebuild still wrote the index")
+
+    def test_the_damaged_index_is_kept_before_a_rebuild_writes_over_it(self):
+        """The dialog promises the corrupted file is retained. It has to be."""
+        damaged = b'{"assets": [{"id": "0000000000'
+        target = os.path.join(self.prefs.dir, "library.json")
+        for name in ("library.json.bak-1", "library.json.bak-2",
+                     "library.json.bak-3", "library.json.bak-first"):
+            path = os.path.join(self.prefs.dir, name)
+            if os.path.exists(path):
+                os.remove(path)
+        with open(target, "wb") as handle:
+            handle.write(damaged)
+
+        ok, sentence = repair.repair_index(self.prefs.dir,
+                                           self.prefs.asset_dir)
+        self.assertTrue(ok, sentence)
+
+        kept = target + ".unreadable"
+        self.assertTrue(
+            os.path.exists(kept),
+            "the rebuild destroyed the damaged index; no other copy of it "
+            "is kept, since the snapshot tier refuses a file that will not "
+            "parse")
+        with open(kept, "rb") as handle:
+            self.assertEqual(damaged, handle.read(),
+                             "the kept copy is not the damaged bytes")
 
 
 class QuarantineIsBoundedTest(unittest.TestCase):

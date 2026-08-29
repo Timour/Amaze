@@ -641,6 +641,36 @@ class PrefsSurvivesADamagedOrUnwritableFileTest(unittest.TestCase):
             "a failed settings write left no trace at all")
 
 
+class AFailedRotationSaysSoTest(unittest.TestCase):
+    """No data is lost when the tier cannot rotate, but it stops advancing."""
+
+    def test_a_rotation_failure_reaches_the_log(self):
+        import shutil as shutil_mod
+
+        directory = test_support.scratch_dir("amaze_rotate_")
+        self.addCleanup(shutil_mod.rmtree, directory, ignore_errors=True)
+        target = os.path.join(directory, "library.json")
+        for name, body in ((target, '{"assets": []}'),
+                           (target + ".bak-first", '{"assets": []}'),
+                           (target + ".bak-1", '{"assets": [1]}')):
+            with open(name, "w", encoding="utf-8") as handle:
+                handle.write(body)
+
+        def boom(*_args, **_kwargs):
+            raise OSError(13, "Permission denied")
+
+        original = hostos.shutil.copy2
+        hostos.shutil.copy2 = boom
+        self.addCleanup(setattr, hostos.shutil, "copy2", original)
+
+        with test_support.captured_log() as log:
+            hostos.snapshot_before_write(target)      # must not raise
+
+        self.assertTrue(
+            log.matching("the tier could not be rotated", "backup"),
+            "the backup tier stopped advancing and nothing recorded it")
+
+
 class NoContentWriterTargetsItsDestinationTest(unittest.TestCase):
     """A SOURCE-derived scan over the whole package, because the per-writer tests above are a LIST and asset content has no `.bak-*` tier to recover from. ▸p/guard-pinned-filename-list ▸r/atomic-writes"""
 
