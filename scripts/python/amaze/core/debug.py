@@ -671,7 +671,7 @@ def material_snapshot(shader, builder=None) -> dict:
         info["shader"] = shader.name()
         info["shader_type"] = shader.type().name()
         inputs = {}
-        for name, source in zip(shader.inputNames(), shader.inputs()):
+        for name, source in zip(shader.inputNames(), shader.inputs()):  # lengths differ BY CONTRACT - inputNames() is every declared input, inputs() only the connected ones - so the zip truncates to the connected prefix, which is the dump this wants ▸r/inputs-contract
             parm = shader.parmTuple(name) or shader.parm(name)
             entry = {"driven_by": source.name() if source else None}
             if parm is not None:
