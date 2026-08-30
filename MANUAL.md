@@ -643,9 +643,10 @@ Speed (%)**.
 
 <img src="docs/images/prefs_about.png" width="440">
 
-Credits and licences. **Check for Updates** asks the release page
-whether a newer Amaze exists; where there is one, **Install Update**
-appears and puts it in place. **Report a Bug...** opens the Amaze bug
+Credits and licences. The version line above the buttons says what you
+are running and carries every update answer. **Check for Updates** asks
+the release page whether a newer Amaze exists; where there is one, the
+same button becomes **Install Update** and puts it in place. **Report a Bug...** opens the Amaze bug
 page in your browser with your Amaze, Houdini and OS versions already
 filled in; nothing is sent until you press Submit there.
 

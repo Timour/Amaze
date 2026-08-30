@@ -799,7 +799,7 @@ copied per dialog.
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
 | **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog |
 | **Save Dialog** | Materials / Cop | `dialogs/save_dialog.py` ✓ AssetDialog |
-| **Gradient / Category Dialog** | Colors | `dialogs/gradient_dialog.py` ✓ AssetDialog |
+| **Gradient save** | Colors | the one **Save Dialog** (`dialogs/save_dialog.py`) since 2026-08-30; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |
