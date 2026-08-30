@@ -18,6 +18,22 @@
 set -uo pipefail
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
+# The process gate runs first and lives in the private notes repo,
+# like the personal-data gate the commit hooks run. Fail CLOSED when
+# it is absent - a missing gate and a passing gate look identical
+# from the outside otherwise.
+gate="${AMAZE_PRIVATE_HOOKS:-$repo/../AmazeNotes/tools/git-hooks}/pre-push-gate"
+if [ ! -x "$gate" ]; then
+    echo "pre-push: REFUSED - the process gate is not installed, so" >&2
+    echo "nothing is checking this push." >&2
+    echo "  Looked for: $gate" >&2
+    echo "  Clone the private notes repo beside this one, or point" >&2
+    echo "  \$AMAZE_PRIVATE_HOOKS at the hooks it carries - INSTALL.md 6a." >&2
+    echo "  Deliberate bypass: git push --no-verify" >&2
+    exit 1
+fi
+"$gate" || exit 1
+
 if [ "${AMAZE_SKIP_TESTS:-}" = "$(git rev-parse HEAD 2>/dev/null)" ]; then
     echo "pre-push: AMAZE_SKIP_TESTS matches HEAD - suite skipped" >&2
     echo "pre-push: DONE"
