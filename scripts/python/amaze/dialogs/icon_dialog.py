@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
+from amaze import tooltips
 from amaze.core import tile_icons
 from amaze.dialogs import base_dialog
 from amaze.helpers import theme, ui_helpers
@@ -90,8 +91,7 @@ class IconDialog(base_dialog.AssetDialog):
             self.tile_name_edit.setFixedHeight(field_h)
             self.tile_name_edit.setEnabled(self._tile_name_enabled)
             self.tile_name_edit.setToolTip(ui_helpers.tooltip_text(
-                "Rename this tile. The name is what the grid, the "
-                "sidebar count and every search look at."))
+                tooltips.CUSTOMIZE_TILE_NAME))
             form.addRow(amazetheme.LABEL_NAME, self.tile_name_edit)
         if not self._categories:
             self.category_combo = None
@@ -102,8 +102,7 @@ class IconDialog(base_dialog.AssetDialog):
                 self.category_combo.addItem(name)
             self.category_combo.setCurrentText(self._tile_category)
             self.category_combo.setToolTip(ui_helpers.tooltip_text(
-                "Move to this category. Applies to every tile you "
-                "have selected."))
+                tooltips.CUSTOMIZE_CATEGORY))
             form.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
         if self._tile_tags is None:
             self.tags_edit = None
@@ -111,10 +110,9 @@ class IconDialog(base_dialog.AssetDialog):
             self.tags_edit = QtWidgets.QLineEdit(self._tile_tags)   # LIVE on a multi-selection: it opens empty and ADDS to every tile
             self.tags_edit.setFixedHeight(field_h)
             self.tags_edit.setToolTip(ui_helpers.tooltip_text(
-                "Tags for this tile, separated by commas."
+                tooltips.CUSTOMIZE_TAGS_ONE_TILE
                 if self._tile_name_enabled else
-                "Tags to ADD to every tile you have selected, separated "
-                "by commas. Each tile keeps the tags it already has."))
+                tooltips.CUSTOMIZE_TAGS_MANY_TILES))
             form.addRow(amazetheme.LABEL_TAGS, self.tags_edit)
         return form
 
@@ -209,15 +207,14 @@ class IconDialog(base_dialog.AssetDialog):
 
         row, self.custom_toggle = switch_row(
             amazetheme.LABEL_CUSTOM_ICON,
-            "Off shows the tile's own thumbnail; on uses the icon "
-            "chosen here.")
+            tooltips.CUSTOMIZE_CUSTOM_ICON)
         self.custom_toggle.setChecked(self._has_icon)
         stack.addLayout(row)
         stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
 
         row, self.light_toggle = switch_row(
             amazetheme.LABEL_LIGHT_ICON,
-            "Draws the icon's lines light, for a dark background.")
+            tooltips.CUSTOMIZE_LIGHT_ICON)
         self.light_toggle.setChecked(self._ink == "light")
         self.light_toggle.toggled.connect(self._set_ink_light)
         stack.addLayout(row)
@@ -229,8 +226,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.custom_chip.setFixedSize(theme.ui_px(amazetheme.D02_CHIP_W),
                                       theme.ui_px(amazetheme.D02_SWATCH_H))
         self.custom_chip.setToolTip(ui_helpers.tooltip_text(
-            "The current background. Click to pick any color, with "
-            "Houdini's color picker."))
+            tooltips.CUSTOMIZE_CUSTOM_COLOR))
         self.custom_chip.clicked.connect(self._pick_custom)
         colour_row.addWidget(self.custom_chip)   # chip LEFT, label after - the 2026-08-30 redraw, like the switch rows above
         colour_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_COLOR)

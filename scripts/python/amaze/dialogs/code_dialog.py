@@ -8,6 +8,7 @@ from amaze.helpers import ui_helpers
 from amaze import amazetheme
 from amaze import branding
 from amaze import messages
+from amaze import tooltips
 from amaze.dialogs import base_dialog
 from amaze.helpers import vex_syntax
 
@@ -156,9 +157,7 @@ class CodeDialog(base_dialog.AssetDialog):
         left, right = form(), form()    # Name | Category over Language | Tags - the drawn 2x2, equal halves
 
         self._line_name = QtWidgets.QLineEdit(name)
-        self._line_name.setToolTip(ui_helpers.tooltip_text(
-            "Name it, pick a category, and add tags to find "
-            "it again later."))
+        self._line_name.setToolTip(ui_helpers.tooltip_text(tooltips.CODE_NAME))
         left.addRow("Name", self._line_name)
 
         self._combo_lang = ui_helpers.DesignedComboBox()    # its dropdown holds the box's width ▸r/combo-popup-width

@@ -1212,17 +1212,18 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self.assertFalse(delegate._is_button_hovered("versions", index))
 
     def test_the_tooltip_says_what_a_click_does(self):
+        from amaze import tooltips
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
         import inspect
         body = inspect.getsource(delegates.AssetItemDelegate._badge_tooltip)
-        self.assertIn("Click to select version", body)
-        self.assertIn("Add to favorites", body)
-        self.assertIn("Remove from favorites", body)
+        self.assertIn("tooltips.BADGE_VERSIONS", body)   # the WORDS live in tooltips.py; the badge still has to reach for each one
+        self.assertIn("tooltips.BADGE_FAVORITE_ADD", body)
+        self.assertIn("tooltips.BADGE_FAVORITE_REMOVE", body)
         help_body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
         self.assertIn("ui_helpers.tooltip_text", help_body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
         self.assertTrue(
-            ui_helpers.tooltip_text("Click to select version"),
+            ui_helpers.tooltip_text(tooltips.BADGE_VERSIONS),
             "the shared tooltip helper returned nothing")
 
 

@@ -10,6 +10,7 @@ from amaze import amazetheme
 from amaze.core import debug, notes
 from amaze.helpers import theme, ui_helpers
 from amaze import messages
+from amaze import tooltips
 
 COMMENT_INK = amazetheme.COMMENT_INK    # the design's, declared once ▸p/one-design-document
 
@@ -480,7 +481,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
         self.add_button = QtWidgets.QToolButton()
         self.add_button.setAutoRaise(True)
-        self.add_button.setToolTip("Add a to-do at the cursor")
+        self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
         self.add_button.setCursor(
             QtCore.Qt.CursorShape.PointingHandCursor)
         self._build_add_menu()    # the + opens a menu now, so nothing connects to `clicked` - InstantPopup does not fire it ▸p/comment-images

@@ -49,6 +49,7 @@ from amaze.dialogs import (
 from amaze import amazetheme
 from amaze import branding
 from amaze import messages
+from amaze import tooltips
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos, theme, ui_helpers, vex_syntax
 from amaze.core import (
@@ -99,6 +100,7 @@ _reload(repair)
 _reload(folders)
 _reload(prefs)
 _reload(messages)      # the wording every dialog shows; reloaded like `branding`, so a reworded message reaches an already-open Houdini ▸p/messages-need-one-home
+_reload(tooltips)      # the same for every hover text, and before the dialogs, the delegates and the models that read its constants
 _reload(amazetheme)    # before theme and ui_helpers: their class bodies read the DESIGN's values at definition time, so a stale one draws yesterday's design ▸p/one-design-document
 _reload(theme)    # before ui_helpers, whose class bodies read theme colours
 _reload(branding)    # FIRST of the ones below: everything reads its constants, and a stale branding produced 38 unhandled AttributeErrors live when APP_VERSION was added
@@ -769,9 +771,8 @@ class MatLibPanel(QtWidgets.QWidget):
         grid = self.prefs.view_mode != "list"
         self.click_slider.setEnabled(grid)
         self.click_slider.setToolTip(ui_helpers.tooltip_text(
-            "Tile size." if grid else
-            "Tile size - grid only. A list row is one text line, so "
-            "it does not scale."))
+            tooltips.PANEL_TILE_SIZE if grid else
+            tooltips.PANEL_TILE_SIZE_LIST))
         if not grid:
             was = self.click_slider.blockSignals(True)
             self.click_slider.setValue(self.click_slider.minimum())
@@ -825,8 +826,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.btn_notes = ui_helpers.ChipToggleButton()    # the Comments chip joins the ICON FAMILY and stays blue in ALL FOUR states, the state carried by the chip's BACKGROUND - `_sync_notes_button_pixmaps` has the reasoning. Built FIRST of the toolbar chips, with Online, Filter, Categories and Capture following, and the row is mirrored afterwards, so build order is NOT display order; overview.md §2 has where it lands
             self.btn_notes.setObjectName("btn_notes")
             self.btn_notes.setToolTip(ui_helpers.tooltip_text(
-                "Comments - a page of text and to-dos for the selected "
-                "tile"))
+                tooltips.PANEL_COMMENTS))
             self._sync_notes_button_pixmaps()
             self.btn_notes.setChecked(bool(self.prefs.show_notes))
             self.btn_notes.toggled.connect(self._on_notes_toggled)    # connected AFTER the initial state, so restoring a saved "open" does not re-save preferences mid-construction
@@ -835,7 +835,7 @@ class MatLibPanel(QtWidgets.QWidget):
             self.btn_online = ui_helpers.ChipToggleButton()    # Online sits immediately LEFT of Comments once the row is mirrored, so it is added right after it here. The AMBER is the whole signal that you are in the other world - the favourites star's pattern exactly, so it is built the same way by the same engine, and does not lighten on hover because the colour is what carries the state
             self.btn_online.setObjectName("btn_online")
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
-                "Browse materials online."))
+                tooltips.PANEL_ONLINE))
             self._sync_online_button_pixmaps()
             self.btn_online.setChecked(self._is_online())
             self.btn_online.toggled.connect(self._on_online_button)
@@ -847,7 +847,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 self.toolbar_layout.addSpacing(theme.ui_px(2))
                 btn_view = self._make_menu_button(menu_view)
                 btn_view.setToolTip(ui_helpers.tooltip_text(
-                    "Import a gallery file, or generate a material."))
+                    tooltips.PANEL_VIEW_MENU))
                 self.toolbar_layout.addWidget(btn_view)
                 self.online_view_menu = QtWidgets.QMenu(self.ui)    # the ONLINE eye's menu: _sync_toolbar swaps it onto btn_filter when the context offers the kind filter
                 kind_group = QtGui.QActionGroup(self.online_view_menu)
@@ -873,13 +873,13 @@ class MatLibPanel(QtWidgets.QWidget):
             )
             btn_prefs.setObjectName("btn_prefs")    # named for the same reason as the two menu buttons above - nothing else tells these three apart. Deliberately NOT also stored on self: the layout owns it, and adding an attribute is what made a toolbar test report a naming refactor as a layout defect
             btn_prefs.setToolTip(ui_helpers.tooltip_text(
-                "Open preferences."))
+                tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
             self.toolbar_layout.addSpacing(theme.ui_px(2))
             self.btn_categories = ui_helpers.ChipToggleButton()    # Show Categories, promoted out of the View menu to a button of its own. Added AFTER the gear because the row is mirrored at the end of construction, so the last widget added is the leftmost drawn. It DRIVES action_catview rather than repeating it: the action owns the behaviour and the persistence, and two paths to one preference is how a toggle ends up disagreeing with the thing it toggles
             self.btn_categories.setObjectName("btn_categories")
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
-                "Show the category sidebar."))
+                tooltips.PANEL_CATEGORIES))
             self._sync_categories_button_pixmaps()
             self.btn_categories.setChecked(
                 bool(self.prefs.show_categories))
@@ -895,8 +895,7 @@ class MatLibPanel(QtWidgets.QWidget):
             )
             self.btn_hip_capture.setObjectName("btn_hip_capture")
             self.btn_hip_capture.setToolTip(ui_helpers.tooltip_text(
-                'Captures a preview from "scene view" pane'
-            ))
+                tooltips.PANEL_CAPTURE))
             self.btn_hip_capture.setVisible(False)
             self.toolbar_layout.addWidget(self.btn_hip_capture)
         self.filter_action_group = None    # the Filter menu is NOT built here: its entries belong to whichever section is showing and no section exists yet at this point in construction. build_filter_menu fills it, and runs again on every section change
@@ -955,7 +954,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cb_favsonly = ui_helpers.ChipToggleButton()
         self.cb_favsonly.setObjectName("cb_favsonly")
         self.cb_favsonly.setToolTip(ui_helpers.tooltip_text(
-            "Show favorites."))
+            tooltips.PANEL_FAVORITES))
         try:
             self.cb_favsonly.set_art(
                 self._ui_icon_path("star.svg"),
@@ -973,7 +972,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cb_viewmode = ui_helpers.ChipToggleButton()    # the Grid/List view-mode toggle, the same hand-painted chip treatment as the star: unchecked = grid (icon mode), checked = list mode, and the icon shows the CURRENT mode
         self.cb_viewmode.setObjectName("cb_viewmode")
         self.cb_viewmode.setToolTip(ui_helpers.tooltip_text(
-            "Switch between the thumbnail grid and the detail list."))
+            tooltips.PANEL_VIEW_MODE))
         try:
             self.cb_viewmode.set_art(    # both hover variants whiten to the shared light colour, which is safe here because grid and list are different SHAPES - the lightening cannot be mistaken for a change of state
                 self._ui_icon_path("grid.svg"),
@@ -1165,8 +1164,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.line_filter.textEdited.connect(self.filter_thumb_view)
         self.line_filter.setPlaceholderText(sections.Section.search_hint)    # the box is EMPTY by decree (2026-08-01): the "Search" label and the magnifier already name the control. The search_hint machinery stays for the day a section needs a word again, but every hint is "" and the tooltip is where :tag gets taught
         self.line_filter.setToolTip(ui_helpers.tooltip_text(
-            "Search for objects, a leading colon searches tags "
-            "instead: :metal finds everything tagged metal."))
+            tooltips.PANEL_SEARCH))
         self.line_filter.setStyleSheet(    # borderless box on the `field` token with the magnifier inside the left edge; the sheet goes on the widget ITSELF, never an ancestor, which is the rule the whole file follows to avoid the details-panel regression class. padding-left reserves room so typed text does not start under the icon
             "QLineEdit { border: none; background-color: "
             + theme.color_hex("field")
@@ -1400,15 +1398,12 @@ class MatLibPanel(QtWidgets.QWidget):
             (i for i, v in enumerate(listed)
              if int(v.get("n", 0)) == active), 0)
         picker.setCurrentIndex(current_row)
-        picker.setToolTip(ui_helpers.tooltip_text(
-            "Pick the active version in the list, rename it in the "
-            "field. Versions are made automatically when you save."))
+        picker.setToolTip(ui_helpers.tooltip_text(tooltips.PANEL_VERSION_ROW))
         dialog.add_field(picker)
 
         name_field = QtWidgets.QLineEdit(dialog)
         name_field.setToolTip(ui_helpers.tooltip_text(
-            "Pick the active version in the list, rename it in the "
-            "field. Versions are made automatically when you save."))
+            tooltips.PANEL_VERSION_ROW))
         name_field.setPlaceholderText(amazetheme.PLACEHOLDER_VERSION_NAME)
         name_field.setText(listed[current_row].get("name") or "")
         dialog.add_field(name_field, label=amazetheme.LABEL_CHANGE_NAME)
@@ -2174,7 +2169,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 btn_filter.set_menu(self.online_view_menu)
                 btn_filter.setEnabled(True)
                 btn_filter.setToolTip(ui_helpers.tooltip_text(
-                    "Show one kind of tile."))
+                    tooltips.PANEL_KIND_FILTER))
             else:
                 btn_filter.set_menu(self.menu_filter)
         self._sync_filter_placeholder()

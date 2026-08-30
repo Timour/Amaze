@@ -5,6 +5,7 @@ import os
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
+from amaze import tooltips
 from amaze.core import category, debug
 from amaze.helpers import theme, ui_helpers
 
@@ -456,14 +457,14 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     def _badge_tooltip(self, badge, index):
         """The words a button badge shows on hover - state-aware, so the star names the ACTION a click would take, not the state it is in."""
         if badge.name == "versions":
-            return "Click to select version"
+            return tooltips.BADGE_VERSIONS
         if badge.name == "comment":
-            return "Show comments"
+            return tooltips.BADGE_COMMENTS
         if badge.name == "favourite":
             role = getattr(self, badge.role_attr)
-            return ("Remove from favorites"
+            return (tooltips.BADGE_FAVORITE_REMOVE
                     if role is not None and index.data(role)
-                    else "Add to favorites")
+                    else tooltips.BADGE_FAVORITE_ADD)
         return ""
 
     def helpEvent(self, event, view, option, index):

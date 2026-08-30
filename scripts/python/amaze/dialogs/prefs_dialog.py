@@ -20,6 +20,7 @@ from amaze.core import tile_icons
 from amaze.helpers import theme
 from amaze.helpers import ui_helpers
 from amaze import messages
+from amaze import tooltips
 from amaze.panel import sections as sections_module
 from amaze.prefs import prefs as prefs_mod
 
@@ -258,7 +259,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_workdir = QtWidgets.QLineEdit(self._prefs.dir)
         self.line_workdir.setReadOnly(True)
         self.line_workdir.setToolTip(ui_helpers.tooltip_text(
-            "The folder the library lives in."))
+            tooltips.PREFS_LIBRARY_PATH))
         browse_lib = QtWidgets.QPushButton("...")
         browse_lib.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         browse_lib.clicked.connect(self.change_library_path)
@@ -267,19 +268,17 @@ class PrefsDialog(base_dialog.AssetDialog):
         cleanup_btn = QtWidgets.QPushButton("Clean Up Library")
         cleanup_btn.clicked.connect(self._panel_call("cleanup_db"))
         cleanup_btn.setToolTip(ui_helpers.tooltip_text(
-            "Tidy up: missing files are reported, leftovers are set "
-            "aside for 30 days. Everything still showing in the "
-            "panel stays."))
+            tooltips.PREFS_CLEAN_UP_LIBRARY))
         form.addRow(self._label(""), cleanup_btn)
         reload_btn = QtWidgets.QPushButton("Reload Library")
         reload_btn.clicked.connect(self._panel_call("open"))
         reload_btn.setToolTip(ui_helpers.tooltip_text(
-            "Read the library from disk again."))
+            tooltips.PREFS_RELOAD_LIBRARY))
         form.addRow(self._label(""), reload_btn)
         open_btn = QtWidgets.QPushButton("Open Library Folder")
         open_btn.clicked.connect(self._panel_call("open_usdlib_folder"))
         open_btn.setToolTip(ui_helpers.tooltip_text(
-            "Open the library folder."))
+            tooltips.PREFS_OPEN_LIBRARY_FOLDER))
         form.addRow(self._label(""), open_btn)
 
         self._add_divider(form)
@@ -289,35 +288,21 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_allow_overwrite.setChecked(
             library_policy.allow_overwrite(self._prefs.dir))
         self._cbx_allow_overwrite.setToolTip(ui_helpers.tooltip_text(
-            "Whether saving over an existing material creates a new "
-            "VERSION of it. Stored in the library itself, not in your "
-            "preferences - so it applies to everyone who opens this "
-            "library, on every machine. ON: saving over an existing "
-            "material offers Save Version - the old version is kept, "
-            "and the tile's badge switches between them any time. "
-            "OFF: saving always adds a separate new material, and "
-            "existing ones are never touched."))
+            tooltips.PREFS_MATERIAL_VERSIONS))
         self._cbx_allow_overwrite.toggled.connect(self.set_allow_overwrite)
         form.addRow(self._label(""),
                     self._cbx_allow_overwrite)
 
         self.cbb_library_user = QtWidgets.QComboBox()   # shows the NAME, never the UID that everything is tagged with
         self.cbb_library_user.setToolTip(ui_helpers.tooltip_text(
-            "Who you are in this library. Your favorites and your "
-            "folders are saved under you, so the same user on another "
-            "computer gives you the same things back - and two people "
-            "sharing one library keep theirs apart. It also signs the "
-            "versions you save. Never taken from your computer's user "
-            "or machine name."))
+            tooltips.PREFS_LIBRARY_USER))
         self._btn_edit_user = QtWidgets.QPushButton("Rename")
         self._btn_edit_user.setToolTip(ui_helpers.tooltip_text(
-            "Change the name shown for this user. Only the name "
-            "changes - your favorites and folders stay yours."))
+            tooltips.PREFS_RENAME_USER))
         self._btn_edit_user.clicked.connect(self._ask_rename_library_user)
         self._btn_delete_user = QtWidgets.QPushButton("Delete")
         self._btn_delete_user.setToolTip(ui_helpers.tooltip_text(
-            "Remove this user from the library, along with their "
-            "favorites and registered folders. Asks first."))
+            tooltips.PREFS_DELETE_USER))
         self._btn_delete_user.clicked.connect(self._ask_delete_library_user)
         self._reload_library_users()
         self.cbb_library_user.currentIndexChanged.connect(
@@ -333,25 +318,21 @@ class PrefsDialog(base_dialog.AssetDialog):
         )
         self.line_cache.setReadOnly(True)
         self.line_cache.setToolTip(ui_helpers.tooltip_text(
-            "Where the preview copies live on this machine."))
+            tooltips.PREFS_CACHE_PATH))
         browse_cache = QtWidgets.QPushButton("...")
         browse_cache.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         browse_cache.clicked.connect(self.change_cache_path)
         self._default_cache = QtWidgets.QPushButton("Default")
         self._default_cache.clicked.connect(self.reset_cache_path)
         self._default_cache.setToolTip(ui_helpers.tooltip_text(
-            "Put the preview cache back where this machine keeps it. "
-            "Nothing is deleted - previews at the old location stay "
-            "where they are, and remake themselves at the new one as "
-            "you browse."))
+            tooltips.PREFS_DEFAULT_CACHE))
         form.addRow(self._label("Cache Path"),
                     self._path_row(self.line_cache, browse_cache,
                                    self._default_cache))
         clear_cache_btn = QtWidgets.QPushButton("Delete Local Cache")
         clear_cache_btn.clicked.connect(self.clear_texture_cache)
         clear_cache_btn.setToolTip(ui_helpers.tooltip_text(
-            "Throw away the preview copies. They are remade as you "
-            "browse, the library is untouched."))
+            tooltips.PREFS_DELETE_LOCAL_CACHE))
         form.addRow(self._label(""), clear_cache_btn)
 
         self._tab_combos["D04"] = (self.cbb_library_user,)
@@ -375,8 +356,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_rendersize.setValue(self._prefs.rendersize)
         self.line_rendersize.valueChanged.connect(self.set_rendersize)
         self.line_rendersize.setToolTip(ui_helpers.tooltip_text(
-            "Thumbnail resolution in pixels. Bigger is sharper "
-            "and slower."))
+            tooltips.PREFS_RENDER_SIZE))
         form.addRow(self._label("RenderSize"), self._field_slider_row(self.line_rendersize, 64, 1024)
         )
         self.line_rendersamples = QtWidgets.QSpinBox()   # the Redshift dial (its ROP's UnifiedMaxSamples); Karma is CPU and needs its own far smaller scale
@@ -384,7 +364,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.line_rendersamples.setValue(self._prefs.rendersamples)
         self.line_rendersamples.valueChanged.connect(self.set_rendersamples)
         self.line_rendersamples.setToolTip(ui_helpers.tooltip_text(
-            "Render quality for Redshift thumbnails."))
+            tooltips.PREFS_SAMPLES_REDSHIFT))
         form.addRow(self._label("Samples (Redshift)"),
             self._field_slider_row(self.line_rendersamples, 1, 1024),
         )
@@ -393,8 +373,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.spin_karma_samples.setValue(self._prefs.karma_rendersamples)
         self.spin_karma_samples.valueChanged.connect(self.set_karma_rendersamples)
         self.spin_karma_samples.setToolTip(ui_helpers.tooltip_text(
-            "Render quality for Karma thumbnails, 9 is Karma's "
-            "default."))
+            tooltips.PREFS_SAMPLES_KARMA))
         form.addRow(self._label("Samples (Karma)"),
             self._field_slider_row(self.spin_karma_samples, 1, 256),
         )
@@ -403,8 +382,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.spin_ram_cache.setValue(self._prefs.ram_cache_mb)
         self.spin_ram_cache.valueChanged.connect(self.set_ram_cache_mb)
         self.spin_ram_cache.setToolTip(ui_helpers.tooltip_text(
-            "Memory for keeping thumbnails ready. More scrolls "
-            "smoother."))
+            tooltips.PREFS_RAM_CACHE))
         form.addRow(self._label("RAM Cache (MB)"),
             self._field_slider_row(self.spin_ram_cache, 64, 4096),
         )
@@ -419,8 +397,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ), "geometry_shading_mode")
         form.addRow(self._label("Geometry Shading"), self._combo_geo_shading)
         self._combo_geo_shading.setToolTip(ui_helpers.tooltip_text(
-            "How geometry thumbnails are drawn: shaded, wireframe "
-            "or both."))
+            tooltips.PREFS_GEOMETRY_SHADING))
         self._combo_geo_bg = self._data_combo((
             ("Black", "black"),
             ("White", "white"),
@@ -428,21 +405,18 @@ class PrefsDialog(base_dialog.AssetDialog):
         ), "geometry_bg")
         form.addRow(self._label("Geometry Background"), self._combo_geo_bg)
         self._combo_geo_bg.setToolTip(ui_helpers.tooltip_text(
-            "The backdrop for geometry thumbnails."))
+            tooltips.PREFS_GEOMETRY_BACKGROUND))
         self.cbx_render_on_import = ui_helpers.ToggleSwitch("Render Thumbs on Import")
         self.cbx_render_on_import.setChecked(bool(self._prefs.render_on_import))
         self.cbx_render_on_import.stateChanged.connect(self.set_render_on_import)
         self.cbx_render_on_import.setToolTip(ui_helpers.tooltip_text(
-            "Render thumbnails as soon as materials are imported. "
-            "Off = render later with Update Preview."))
+            tooltips.PREFS_RENDER_ON_IMPORT))
         form.addRow(self._label(""), self.cbx_render_on_import)
 
         self._add_divider(form)
         self.spin_parallel = QtWidgets.QSpinBox()
         self.spin_parallel.setToolTip(ui_helpers.tooltip_text(
-            "How many texture conversions (EXR/HDR to thumbnail) run "
-            "at once."
-        ))
+            tooltips.PREFS_CONVERSION_THREADS))
         form.addRow(
             self._label("Conversion Threads"),
             self._field_slider_row(self.spin_parallel, 1, 8),
@@ -458,9 +432,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.cbb_matx_res.setCurrentIndex(current if current >= 0 else 1)
         self.cbb_matx_res.currentTextChanged.connect(self.set_matx_resolution)
         self.cbb_matx_res.setToolTip(ui_helpers.tooltip_text(
-            "Texture resolution to download. A floor, not a hard match: "
-            "the next highest available is used, or the highest below."
-        ))
+            tooltips.PREFS_DOWNLOAD_RESOLUTION))
         form.addRow(self._label("Download Resolution"), self.cbb_matx_res)
         self.spin_matx_parallel = QtWidgets.QSpinBox()
         self.spin_matx_parallel.setRange(1, 16)
@@ -469,9 +441,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self.set_matx_parallel_downloads
         )
         self.spin_matx_parallel.setToolTip(ui_helpers.tooltip_text(
-            "Preview downloads at once. These wait on network latency "
-            "rather than bandwidth, so more is markedly faster."
-        ))
+            tooltips.PREFS_PARALLEL_DOWNLOADS))
         form.addRow(self._label("Parallel Downloads"),
             self._field_slider_row(self.spin_matx_parallel, 1, 16),
         )
@@ -487,8 +457,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         for label, attr in sections_module.renderer_prefs():
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
-                "Which renderers Amaze offers. Hide the ones you "
-                "don't use."))
+                tooltips.PREFS_RENDERER_SWITCH))
             box.setChecked(bool(getattr(self._prefs, attr)))
             box.toggled.connect(
                 lambda checked, a=attr: setattr(self._prefs, a, checked)
@@ -501,8 +470,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         for key, label in sections_module.all_sections():   # from the sections THEMSELVES; a hardcoded copy never learned about "hip", so that tab had no switch and was deleted by toggling any other
             box = ui_helpers.ToggleSwitch(label)
             box.setToolTip(ui_helpers.tooltip_text(
-                "Which sections the panel shows. A hidden section "
-                "keeps everything, the tab just goes away."))
+                tooltips.PREFS_SECTION_SWITCH))
             box.setChecked(key in self._prefs.enabled_sections)
             box.toggled.connect(self._on_section_toggled)
             self._section_boxes[key] = box
@@ -518,25 +486,21 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_sidebar_counts.setChecked(self._prefs.sidebar_counts)
         self._cbx_sidebar_counts.toggled.connect(self.set_sidebar_counts)
         self._cbx_sidebar_counts.setToolTip(ui_helpers.tooltip_text(
-            "Show how many things each category holds."))
+            tooltips.PREFS_SIDEBAR_COUNTS))
         form.addRow(self._label(""), self._cbx_sidebar_counts)
 
         self._cbx_hide_empty = ui_helpers.ToggleSwitch("Hide Empty Categories")
         self._cbx_hide_empty.setChecked(self._prefs.hide_empty_categories)
         self._cbx_hide_empty.toggled.connect(self.set_hide_empty_categories)
         self._cbx_hide_empty.setToolTip(ui_helpers.tooltip_text(
-            "Hide categories with nothing in them, they come back "
-            "when something lands there."))
+            tooltips.PREFS_HIDE_EMPTY_CATEGORIES))
         form.addRow(self._label(""), self._cbx_hide_empty)
 
         self._cbx_show_unknown = ui_helpers.ToggleSwitch(
             "All show unknown files"
         )
         self._cbx_show_unknown.setToolTip(ui_helpers.tooltip_text(
-            "Show files Amaze has no preview for, using their "
-            "system icon. Each location can override this in its "
-            "own right-click menu."
-        ))
+            tooltips.PREFS_SHOW_UNKNOWN_FILES))
         self._cbx_show_unknown.setChecked(self._prefs.file_show_unknown)
         self._cbx_show_unknown.toggled.connect(self.set_file_show_unknown)
         form.addRow(self._label(""), self._cbx_show_unknown)
@@ -548,10 +512,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             ("Absolute", "absolute"),
         ), "path_style")
         self._combo_path_style.setToolTip(ui_helpers.tooltip_text(
-            "How Amaze writes paths - Copy Path and the File "
-            "section's location labels. A variable applies when the "
-            "path lives under it; otherwise the path stays absolute."
-        ))
+            tooltips.PREFS_WRITE_PATHS_AS))
         form.addRow(self._label("Write Paths As"), self._combo_path_style)
 
         self._combo_icon_weight = self._data_combo((
@@ -562,14 +523,14 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._recompose_tile_icons)
         form.addRow(self._label("Tile Icon Line"), self._combo_icon_weight)
         self._combo_icon_weight.setToolTip(ui_helpers.tooltip_text(
-            "Line weight of the tile icons, thin or regular."))
+            tooltips.PREFS_TILE_ICON_LINE))
 
         self.spin_scroll_speed = QtWidgets.QSpinBox()
         self.spin_scroll_speed.setRange(10, 300)
         self.spin_scroll_speed.setValue(round(self._prefs.scroll_speed * 100))
         self.spin_scroll_speed.valueChanged.connect(self.set_scroll_speed)
         self.spin_scroll_speed.setToolTip(ui_helpers.tooltip_text(
-            "How fast the grid scrolls, 100 is normal."))
+            tooltips.PREFS_SCROLL_SPEED))
         form.addRow(self._label("Scroll Speed (%)"),
             self._field_slider_row(self.spin_scroll_speed, 10, 300),
         )
@@ -654,10 +615,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._set_update_button(False)
         self._btn_report = QtWidgets.QPushButton("Report a Bug...")
         self._btn_report.setToolTip(ui_helpers.tooltip_text(
-            "Open the Amaze bug page in your browser with your Amaze, "
-            "Houdini and OS versions already filled in. Nothing is "
-            "sent until you press Submit there."
-        ))
+            tooltips.PREFS_REPORT_A_BUG))
         self._btn_report.clicked.connect(self.report_bug)
         ask_row = QtWidgets.QWidget()   # the two live side by side, from D08
         ask = QtWidgets.QHBoxLayout(ask_row)
@@ -670,9 +628,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
         self._cbx_debug.setToolTip(ui_helpers.tooltip_text(
-            "Write a structured session log for diagnosing problems. "
-            "Off by default."
-        ))
+            tooltips.PREFS_DEBUG_MODE))
         self._cbx_debug.toggled.connect(self.set_debug_mode)
         debug_row = QtWidgets.QWidget()   # toggle and its two buttons on ONE row: three stacked rows read as three unrelated settings
         row = QtWidgets.QHBoxLayout(debug_row)
@@ -683,21 +639,15 @@ class PrefsDialog(base_dialog.AssetDialog):
 
         reveal_btn = QtWidgets.QPushButton("Open Log")
         reveal_btn.clicked.connect(self.reveal_debug_log)
-        reveal_btn.setToolTip(ui_helpers.tooltip_text(
-            "Open the debug log."))
+        reveal_btn.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_OPEN_LOG))
         row.addWidget(reveal_btn)
         save_btn = QtWidgets.QPushButton("Save Log...")
-        save_btn.setToolTip(ui_helpers.tooltip_text(
-            "Copy the debug log to a folder you choose, named for this\n"
-            "machine and Houdini version - so two machines' logs can sit\n"
-            "side by side when a problem happens on only one of them.\n\n"
-            "The copy contains your file paths, asset and material names."))
+        save_btn.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_SAVE_LOG))
         save_btn.clicked.connect(self.save_debug_log)
         row.addWidget(save_btn)
         clear_btn = QtWidgets.QPushButton("Clear Log")
         clear_btn.clicked.connect(self.clear_debug_log)
-        clear_btn.setToolTip(ui_helpers.tooltip_text(
-            "Empty the log and start fresh."))
+        clear_btn.setToolTip(ui_helpers.tooltip_text(tooltips.PREFS_CLEAR_LOG))
         row.addWidget(clear_btn)
 
         form.addRow(self._label(""), debug_row)
@@ -706,19 +656,14 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")   # under Debug Mode but NOT attached to it; both paths are overlays and locations stay isolated both ways
         self._cbx_test_mode.setChecked(self._prefs.test_mode)
         self._cbx_test_mode.setToolTip(ui_helpers.tooltip_text(
-            "Work against a throwaway library instead of the real one. "
-            "Point it at any folder: Amaze uses the lib folder inside "
-            "it as the library and the cache folder as the preview "
-            "cache, making either if it is missing. Your real Library "
-            "Path, Cache Path and registered folders are left exactly "
-            "as they are and come back when you switch this off."))
+            tooltips.PREFS_TEST_LIBRARY))
         self._cbx_test_mode.toggled.connect(self.set_test_mode)
         form.addRow(self._label(""), self._cbx_test_mode)
 
         self.line_test_dir = QtWidgets.QLineEdit(self._prefs.test_dir)
         self.line_test_dir.setReadOnly(True)
         self.line_test_dir.setToolTip(ui_helpers.tooltip_text(
-            "The folder holding the test lib and cache folders."))
+            tooltips.PREFS_TEST_FOLDER))
         self._browse_test = QtWidgets.QPushButton("...")
         self._browse_test.setFixedWidth(theme.ui_px(amazetheme.PREFS_BROWSE_W))
         self._browse_test.clicked.connect(self.change_test_path)
@@ -988,12 +933,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         ui_helpers.pin_drawn(   # ONE drawn box for both readings: the word moves, the geometry does not
             self._btn_update, "D08", "QPushButton", "Check for Updates")
         self._btn_update.setToolTip(ui_helpers.tooltip_text(
-            "Download the new release and put it in place. Your library "
-            "and your settings are not touched, and Houdini must be "
-            "restarted afterwards."
+            tooltips.PREFS_INSTALL_UPDATE
             if offer else
-            "Ask whether a newer Amaze has been released. Nothing is "
-            "downloaded or changed by asking."))
+            tooltips.PREFS_CHECK_FOR_UPDATES))
 
     def _press_update(self) -> None:
         """Check, then install: the button only reaches the install once a check has found one, so the press that downloads is never the press that looked."""

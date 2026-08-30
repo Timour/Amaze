@@ -11,8 +11,8 @@ PINNED = {  # PROVEN green without Houdini, 2026-08-29; may only grow
     "test_dead_cover", "test_event_pumps", "test_harness_reset",
     "test_library_prefs", "test_log_export", "test_messages",
     "test_prefs_per_user", "test_prefs_shared", "test_shaderball_assets",
-    "test_shell_gates", "test_ui_labels", "test_unbound_names",
-    "test_upgrade_tool",
+    "test_shell_gates", "test_tooltips", "test_ui_labels",
+    "test_unbound_names", "test_upgrade_tool",
 }
 
 HERE = os.path.dirname(os.path.abspath(__file__))
