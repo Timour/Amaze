@@ -8,13 +8,13 @@ SECTION_UNREADABLE_SAVING_DISABLED = 'Your saved %s could not be read, so Amaze 
 
 LIBRARY_FORMAT_AHEAD_READ_ONLY = 'This library was saved by a newer version of Amaze. To prevent data loss, it has been opened in read-only mode. Update Amaze to restore full functionality.'
 
-LIBRARY_WRITE_FAILED = 'The library could not be saved - %s\n\nThis change is still in memory and will be included in the next successful save, but it is not yet on disk and will not persist if Houdini is closed.'
+LIBRARY_WRITE_FAILED = 'The library could not be saved — %s\n\nThis change is still in memory and will be included in the next successful save, but it is not yet on disk and will not persist if Houdini is closed.'
 
 PALETTE_NOT_SAVED = 'Amaze was unable to save "%s".\n\nTo resolve this, close any other Amaze panel, or restart Houdini, and then try again.'
 
 PALETTE_NOT_DELETED = '"%s" was not deleted because Amaze could not update your colors.\n\nTo resolve this, close any other Amaze panel, or restart Houdini, and then try again.'
 
-SAVE_DENIED_WITH_CAUSE = '%s\n\nThis happened because %s'
+SAVE_DENIED_WITH_CAUSE = '%s\n\nThis happened because %s.'
 
 ASSET_FILES_WRITTEN_BUT_LIST_NOT_UPDATED = '"%s" was written to disk, but Amaze could not update the library index.\n\nThe item will not appear in the grid until the index is updated.\n\nTo resolve this, restart Houdini and run Repair Library from the Amaze shelf.'
 
@@ -54,11 +54,11 @@ CONFIRM_ADD_UNLISTED_TO_SECTION = 'Add %d unlisted %s to %s?'
 
 SECTION_LIST_UNCHANGED_REASON = 'Amaze did not change the %s list: %s.'
 
-UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. Each one came back with the name, category and tags recorded beside its files.'
+UNLISTED_FILES_ADDED_BACK_DONE = '%d %s were restored to %s.\n\nOpen Amaze to review them. Each one came back with the name, category, and tags recorded beside its files.'
 
 UNLISTED_FILES_ADDED_BACK_SOME_UNNAMED = '%d %s were restored to %s.\n\nOpen Amaze to review them. %d of them had no record beside the files: those are in the %s category, named after their file, and ready to be renamed.'
 
-TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has been lost — only this icon selection. The tile will retain its previous icon.\n\nThis occurred because %s'
+TILE_ICON_NOT_SAVED = 'Your tile icon could not be saved.\n\nNo other data has been lost — only this icon selection. The tile will retain its previous icon.\n\nThis occurred because %s.'
 
 USER_DELETE_CONFIRM = 'Delete user "%s" from this library?'
 
@@ -84,7 +84,7 @@ NO_FOLDER_SELECTED_TO_RELOCATE = 'Select the registered folder to re-point first
 
 RELOCATE_TARGET_NOT_A_FOLDER = 'The specified location does not exist as a folder.'
 
-NO_LIBRARY_CONFIGURED = 'Please configure a library first.'
+NO_LIBRARY_CONFIGURED = 'Configure a library first.'
 
 PACKAGE_IMPORT_SUMMARY = 'Imported %d asset(s) and %d file(s) into the Import category.'
 
@@ -94,7 +94,7 @@ IMPORT_MATERIAL_PRESETS_FROM = 'Import %d material presets from:\n%s\n\n%s\n\nNo
 
 GALLERY_IMPORT_FINISHED_IMPORTED_SKIPPED = 'Gallery import complete.\n\nImported: %d\nSkipped: %d\nFailed: %d\n\nTo generate previews, select the new materials and use Update Preview.'
 
-NO_LIBRARY_OPEN = 'Please open a library first.'
+NO_LIBRARY_OPEN = 'Open a library first.'
 
 CLEAN_LIBRARY_CONFIRM = 'Clean Library?'
 
@@ -102,9 +102,9 @@ AMAZE_COULD_NOT = '%d of %d items could not be imported:\n\n%s'
 
 SCENE_BUILD_PARTIAL_FAILURE = '%d of %d items could not be built:\n\n%s'
 
-TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Please verify that the library folder is writable.'
+TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Verify that the library folder is writable.'
 
-NO_LIBRARY_CONFIGURED_2 = 'Please configure a library first. Open Preferences and select one under Library Path.'
+NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and select one under Library Path.'
 
 NO_NODE_WITH_CODE_SELECTED = 'To save a snippet, right-click a wrangle or other node that has a code parameter.'
 
@@ -128,13 +128,13 @@ MATERIAL_ASSIGN_FAILED = 'The material was imported, but assignment failed: %s'
 
 SELECT_ONE_NODE_WITH_RAMP = 'Select a single node with a color ramp first.'
 
-NO_MATERIAL_DESTINATION_NETWORK = 'Unable to create the material. Please open a LOP or /mat network first.'
+NO_MATERIAL_DESTINATION_NETWORK = 'Unable to create the material. Open a LOP or /mat network first.'
 
 MATERIAL_GENERATION_FAILED = 'Generation failed. See the debug log for details.'
 
 GENERATED_MATERIAL_MOVE_FAILED = 'Amaze: the generated material could not be moved into %s.'
 
-GENERATED_MATERIAL_NOT_REGISTERED = '"%s" was created in %s, but no material entry references it. Please check the library node\'s material list.'
+GENERATED_MATERIAL_NOT_REGISTERED = '"%s" was created in %s, but no material entry references it. Check the library node\'s material list.'
 
 MATERIAL_GENERATION_ERROR = 'Material generation failed (%s).'
 
@@ -142,13 +142,13 @@ NO_MATERIAL_SELECTED = 'No material selected.'
 
 MATERIAL_UPDATE_FAILED = 'Update failed. The library material was not modified.'
 
-SCENE_NODE_NEEDS_ASSET_SECTION = 'This section browses files on disk — a scene node cannot be saved here. Please switch to Material, Color, Node, or Code first.'
+SCENE_NODE_NEEDS_ASSET_SECTION = 'This section browses files on disk — a scene node cannot be saved here. Switch to Material, Color, Node, or Code first.'
 
 SCENE_FILE_MISSING = 'That scene file is no longer there:\n%s'
 
 SCENE_OPEN_FAILED = 'Could not open that scene:\n%s\n\n%s'
 
-LIBRARY_PATH_INVALID = 'Invalid Path selected. Please try again'
+LIBRARY_PATH_INVALID = 'The selected path is not valid. Choose a library folder.'
 
 IMPORTED_MATERIAL_MAY_NOT_APPEAR = '"%s" was imported into %s but may not appear as a material: %s.'
 
@@ -156,11 +156,11 @@ NO_NODES_SELECTED_TO_SAVE = 'No nodes are selected — nothing to save.'
 
 NETWORK_EMPTY_NOTHING_TO_SAVE = 'The network is empty — nothing to save.'
 
-OCIO_NOT_SET = 'Please configure $OCIO first.'
+OCIO_NOT_SET = 'Configure $OCIO first.'
 
 NODE_IS_NOT_A_MATERIAL_BUILDER = 'The selected node is not a Material Builder.'
 
-PANEL_NOT_OPEN = 'Please open the %s panel first.'
+PANEL_NOT_OPEN = 'Open the %s panel first.'
 
 NO_RELEASE_TO_INSTALL = 'There is no release to install. Check for updates first.'
 
@@ -178,7 +178,7 @@ TITLE_AMAZE = 'Amaze'
 
 TITLE_AMAZE_REPAIR = 'Amaze Repair'
 
-TITLE_LOG_NOT_SAVED = 'Amaze - Log not saved'
+TITLE_LOG_NOT_SAVED = 'Amaze — Log not saved'
 
 TITLE_EMPTY_SNIPPET = 'Empty snippet'
 
@@ -204,7 +204,7 @@ BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 
 
-HELP_CLEAN_LIBRARY = 'Removes index rows whose files are gone, deletes orphaned files that no library references, and drops folder pointers and favourites that no longer exist.\n\nFiles are deleted from disk. This cannot be undone.'
+HELP_CLEAN_LIBRARY = 'Removes index rows whose files are gone, deletes orphaned files that no library references, and drops folder pointers and favorites that no longer exist.\n\nFiles are deleted from disk. This cannot be undone.'
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it.'
 
