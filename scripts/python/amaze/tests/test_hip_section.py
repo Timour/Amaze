@@ -1507,6 +1507,25 @@ class ShelfTest(unittest.TestCase):
             "INTERFACE is not a string literal, so the API is handed "
             "an object again")
 
+    def test_the_panel_tool_always_opens_a_new_window(self):
+        """EVERY activation opens a fresh floating panel - there is no find-the-open-one branch, so a click can never front a window instead of giving the one that was asked for. The branch it replaces guarded against two panels sharing one index, which two pane tabs already are: a supported layout (test_thumbnail_shutdown)."""
+        root = self._shelf()
+        tool = [t for t in root.findall("tool")
+                if t.get("name") == "amaze_open_panel"][0]
+        script = re.sub(r"#.*", "", tool.find("script").text or "")  # CODE only: a comment explaining why there is no such branch must not itself read as the branch
+        for spelling in ("paneTabs", "activeInterface", "setIsCurrentTab",
+                         "floatingPanel", "raise_", "activateWindow"):
+            self.assertNotIn(
+                spelling, script,
+                "the tool hunts for an open Amaze again (%s) - an "
+                "activation that fronts a window opened none" % spelling)
+        help_text = tool.find("helpText").text or ""
+        for promise in ("raises", "already open"):
+            self.assertNotIn(
+                promise, help_text,
+                "the help still promises to raise an open Amaze (%r), "
+                "which the tool no longer does" % promise)
+
     def test_no_default_hotkey_is_shipped(self):
         """Choosing a key for the user silently takes one that already means something - the Hotkey Editor is where it gets assigned."""
         with open(self._shelf_path(), encoding="utf-8") as handle:

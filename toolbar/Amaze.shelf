@@ -6,15 +6,7 @@
 
   <tool name="amaze_capture_hip" label="Capture"
         icon="$AMAZE/scripts/python/amaze/ui/icon_screenshot.svg">
-    <helpText><![CDATA[Capture the current scene view as this scene's Amaze thumbnail.
-
-Captures whatever the viewport is showing right now, and files it
-under the scene that is currently open. The Amaze panel does not
-need to be open.
-
-Refuses, with a reason, when the viewport is rendering through a
-pathtracing delegate - a capture runs a flipbook, and a flipbook
-through Karma is work of unbounded size.]]></helpText>
+    <helpText><![CDATA[Capture the current scene view as a thumbnail.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 # The panel's button and this tool run the SAME function; every check
@@ -39,10 +31,7 @@ else:
 
   <tool name="amaze_open_panel" label="Amaze"
         icon="$AMAZE/scripts/python/amaze/ui/logo_mark.svg">
-    <helpText><![CDATA[Open Amaze in a floating window.
-
-If a floating Amaze is already open this raises that one rather than
-stacking a second copy.]]></helpText>
+    <helpText><![CDATA[Open Amaze in a floating window.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 INTERFACE = "Amaze"
@@ -57,63 +46,20 @@ if interface is None:
 else:
     desktop = hou.ui.curDesktop()
 
-    # Already open? Raise it - two Amaze panels writing one index is how
-    # a database gets damaged. paneTabs(), NEVER floatingPaneTabs():
-    # the latter misses a docked tab and opens a second copy.
-    existing = None
-    for tab in desktop.paneTabs():
-        try:
-            if tab.type() != hou.paneTabType.PythonPanel:
-                continue
-            active = tab.activeInterface()
-            if active is not None and active.name() == INTERFACE:
-                existing = tab
-                break
-        except Exception:
-            continue
-
-    if existing is not None:
-        # Best-effort, inside the try: setIsCurrentTab wants a containing
-        # pane and a floating tab has none, so it may raise - and that
-        # must not take the raise-the-window path down with it.
-        try:
-            existing.setIsCurrentTab()
-            panel = existing.floatingPanel()
-            if panel is not None:
-                window = panel.qtParentWindow()
-                if window is not None:
-                    window.raise_()
-                    window.activateWindow()
-        except Exception:
-            pass
-    else:
-        # python_panel_interface takes the interface NAME, never the
-        # object - the object raises. The lookup above stays because it
-        # turns "not installed" into a readable message, and the name
-        # form hides the Python Panel toolbar.
-        desktop.createFloatingPaneTab(
-            hou.paneTabType.PythonPanel,
-            size=(1100, 800),
-            python_panel_interface=INTERFACE,
-        )]]></script>
+    # python_panel_interface takes the interface NAME, never the object -
+    # the object raises. The lookup above stays because it turns "not
+    # installed" into a readable message, and the name form hides the
+    # Python Panel toolbar.
+    desktop.createFloatingPaneTab(
+        hou.paneTabType.PythonPanel,
+        size=(1100, 800),
+        python_panel_interface=INTERFACE,
+    )]]></script>
   </tool>
 
   <tool name="amaze_repair_library" label="Repair"
         icon="$AMAZE/scripts/python/amaze/ui/icon_repair.svg">
-    <helpText><![CDATA[Check the Amaze library and put right what is wrong.
-
-Reports which of the library's lists will not load, which files no
-section accounts for, and what each saved copy of a list would bring
-back. It can put a saved copy back, add unlisted files to a section,
-and move unclaimed files aside into a dated folder inside the library.
-
-It never deletes anything.
-
-Run it before you open Amaze in this session. If Amaze has already been
-open, quit Houdini and start it again first: an open Amaze saves the
-library while you work and would write over anything Repair put back.
-Repair always reports; it can only put things right from a Houdini that
-has not opened the library yet.]]></helpText>
+    <helpText><![CDATA[Check and repair the Amaze library. If Amaze is open, restart Houdini and run Repair before opening it again: an open Amaze keeps saving over the library and would wipe out whatever Repair fixed.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 # Every check and sentence lives in the module. It must NOT import or
@@ -131,18 +77,7 @@ else:
 
   <tool name="amaze_check_updates" label="Updates"
         icon="$AMAZE/scripts/python/amaze/ui/icon_update.svg">
-    <helpText><![CDATA[Ask whether a newer Amaze has been released, and install it.
-
-Asking changes nothing. If there is a newer release you are offered it,
-and nothing is downloaded unless you choose Install Update.
-
-Installing replaces this Amaze and Houdini restarts afterwards. Every
-previous version stays on the releases page, so no copy is left on your
-disk.
-
-Nothing is ever checked on its own - no launch-time check, no
-background call. This tool and the button in Preferences are the only
-things that ask.]]></helpText>
+    <helpText><![CDATA[Check for a newer Amaze release and install it.]]></helpText>
     <script scriptType="python"><![CDATA[import hou
 
 # The verdict lives in the module, so this and the Preferences button
