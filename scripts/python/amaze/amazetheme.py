@@ -30,7 +30,7 @@ D02_FIELD_H = 22         # every field, the search and both buttons
 D02_SWATCH_H = 28        # the preset chips AND the current-colour chip
 D02_SWATCH_GAP = 6
 D02_BUTTON_W = 72        # Apply and Accept, drawn flush right - they do NOT span the column
-D02_CHIP_W = 75          # the current-colour chip beside the Custom Color label; clicking it IS the picker
+D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label - swatch-sized since the 2026-08-30 redraw; clicking it IS the picker
 D02_STACK_GAP = 13       # preview to the switch stack, and its label column to its fields
 D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
 D02_LABEL_GAP = 8        # a label to its field in the top form
@@ -254,8 +254,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("ToggleSwitch ▸ text", 202, 132, 63, 15, "Custom Icon"),
             ("QLabel", 202, 160, 50, 15, "Light Icon"),
             ("ToggleSwitch", 171, 160, 23, 15, None),
-            ("QToolButton", 171, 214, 75, 28, None),
-            ("QLabel", 254, 220, 68, 15, "Custom Color"),
+            ("QToolButton", 171, 214, 35, 28, None),
+            ("QLabel", 212, 220, 68, 15, "Custom Color"),
             ("QToolButton", 171, 252, 35, 28, None),
             ("QToolButton", 212, 252, 34, 28, None),
             ("QToolButton", 252, 252, 35, 28, None),

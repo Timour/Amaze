@@ -221,7 +221,7 @@ class IconDialog(base_dialog.AssetDialog):
         stack.addSpacing(theme.ui_px(amazetheme.D02_SECTION_GAP))
 
         colour_row = QtWidgets.QHBoxLayout()
-        colour_row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
+        colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row rides the swatch rhythm
         self.custom_chip = QtWidgets.QToolButton()   # the chip IS the picker: it wears the current colour and opens Houdini's picker ▸r/houdini-colour-picker
         self.custom_chip.setFixedSize(theme.ui_px(amazetheme.D02_CHIP_W),
                                       theme.ui_px(amazetheme.D02_SWATCH_H))
