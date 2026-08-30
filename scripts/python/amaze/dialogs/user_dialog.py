@@ -13,6 +13,7 @@ class UserPickerDialog(AssetDialog):
 
     FORM_WIDTH = amazetheme.SAVE_WIDTH          # D14 is drawn at the save family's width ▸p/save-dialog-rows
     FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
+    FRAME_KEY = "D14"
     CREATE = "\x00create"    # itemData for the create row: not a name and not a UID, so it can never be mistaken for either
 
     def __init__(self, known: dict, parent=None) -> None:

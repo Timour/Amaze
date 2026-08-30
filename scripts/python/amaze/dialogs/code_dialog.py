@@ -120,6 +120,7 @@ class CodeDialog(base_dialog.AssetDialog):
 
     FORM_WIDTH = amazetheme.D11_FORM_WIDTH
     HEADER_BAND = True    # D11 wears the drawn name strip ▸p/one-design-document
+    FRAME_KEY = "D11"     # the OK/Cancel pair only: this frame builds its own two-column form rather than `add_*` rows
 
     def header_band_text(self) -> str:
         """The SNIPPET's name, not the window title, which here is a verb - and `Untitled` while it has none, the programming world's own word for it."""
@@ -201,9 +202,7 @@ class CodeDialog(base_dialog.AssetDialog):
         for widget in (self._line_name, self._combo_lang,
                        self._combo_category, self._line_tags):
             widget.setFixedHeight(field_h)
-        for button in self._buttons.buttons():    # the box's own padding and gap are style defaults otherwise, and the drawing pins both
-            button.setFixedHeight(field_h)
-        self._buttons.layout().setContentsMargins(0, 0, 0, 0)
+        self._buttons.layout().setContentsMargins(0, 0, 0, 0)   # the box's own padding and gap are style defaults otherwise, and the drawing pins both
         self._buttons.layout().setSpacing(
             theme.ui_px(amazetheme.D11_BUTTON_GAP))
 

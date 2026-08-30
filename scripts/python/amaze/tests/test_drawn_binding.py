@@ -36,6 +36,112 @@ PREFS_COMBOS = {    # (frame, attribute, drawn width) - the combos each tab buil
 
 UNPAIRED = {}    # a drawn `▸ text` node with no rect of its own kind around it; every one must be named, because the ordinary reading of a missing pair is a document edit that lost the rect
 
+LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's right edge, per frame. A QLabel ending anywhere else is a FIELD-side label and has to be pinned, which is what the D08 version line was not
+    "D02": (63,),               # the drawn field column less `D02_LABEL_GAP`
+    "D11": (63, 378),           # two halves, each less `D11_LABEL_GAP`
+    "D04": (amazetheme.PREFS_LABEL_RIGHT,),
+    "D05": (amazetheme.PREFS_LABEL_RIGHT,),
+    "D06": (amazetheme.PREFS_LABEL_RIGHT,),
+    "D07": (amazetheme.PREFS_LABEL_RIGHT,),
+    "D08": (amazetheme.PREFS_LABEL_RIGHT,),
+    "D09": (amazetheme.SAVE_LABEL_RIGHT,),
+    "D13": (amazetheme.SAVE_LABEL_RIGHT,),
+    "D14": (amazetheme.SAVE_LABEL_RIGHT,),
+}
+
+STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
+    ("D02", "QLineEdit"), ("D02", "QComboBox"),
+    ("D11", "QLineEdit"), ("D11", "QComboBox"),
+}
+
+LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
+    ("D01", "QLabel", 18, 81),
+    ("D02", "QLabel", 202, 160),
+    ("D02", "QLabel", 212, 220),
+}
+
+
+def plain_rects(frame_key, kind):
+    return amazetheme.drawn_boxes(frame_key).get((kind, None), ())
+
+
+def inside(node, box):
+    """The node's drawn rect sits inside `box`."""
+    return bool(box) and (box[0] <= node[1] and box[1] <= node[2]
+                          and box[0] + box[2] >= node[1] + node[3]
+                          and box[1] + box[3] >= node[2] + node[4])
+
+
+def band_box(frame_key):
+    found = plain_rects(frame_key, "header band")
+    return found[0] if found else ()
+
+
+DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off this table must pin a live widget through the binding
+    (lambda f, n: n[0].endswith(TEXT_SUFFIX),
+     "sample text drawn INSIDE a rect; the rect is what the widget wears"),
+    (lambda f, n: n[0].startswith("QTabBar"),
+     "the tab strip and its chips: Qt lays the bar out from the tab "
+     "labels, and nothing in the app places a tab"),
+    (lambda f, n: n[0] == "QScrollBar",
+     "Qt's own, shown and hidden by the view it belongs to"),
+    (lambda f, n: n[0] == "header band",
+     "a painted strip the frame's full width, `HEADER_BAND_H` tall"),
+    (lambda f, n: n[0] == "QLabel" and inside(n, band_box(f)),
+     "the band's own text, placed and sized by `ui_helpers.header_band`"),
+    (lambda f, n: n[0].startswith("icon grid"),
+     "a drawing device standing in for the `D02_CELL` cells the chooser "
+     "builds itself, and the note that says so"),
+    (lambda f, n: n[0] == "QWidget ▸ group divider",
+     "a painted rule spanning the content column, `PREFS_DIVIDER_H` tall"),
+    (lambda f, n: n[0] == "ToggleSwitch",
+     "the drawn pill is the TRACK the widget paints inside a wider box - "
+     "`TheToggleIsTheDrawnPill` holds the two together"),
+    (lambda f, n: n[0] == "QLabel" and n[1] + n[3] in LABEL_RIGHT.get(f, ()),
+     "a form label: the drawn box is its TEXT, right-aligned inside the "
+     "label column the row pins"),
+    (lambda f, n: n[0] == "QLineEdit"
+     and any(inside(n, box) for box in plain_rects(f, "QSpinBox")),
+     "the editor INSIDE a spin box, which Qt insets by 1 - pinning it "
+     "takes back the 2 the document gives the box around it"),
+    (lambda f, n: (f, n[0]) in STRETCHED_FIELDS,
+     "D02 and D11 are the frames that RESIZE: their fields fill the "
+     "column, and the drawn width is the width at the drawn size"),
+    (lambda f, n: n[0] == "CodeEditor",
+     "the editor is what D11's resize grows; `D11_EDITOR_H` is its floor"),
+    (lambda f, n: n[0] == "_LineNumberArea",
+     "the gutter is as wide as the digits the host font draws in it"),
+    (lambda f, n: (f,) + n[:3] in LOOSE_LABELS,
+     "drawn at its own text width beside its control; the widget takes "
+     "the host font's and yields before the row overflows"),
+)
+
+
+def build_every_frame(case):
+    """One live dialog per drawn frame, so the binding's pins are the real ones - a frame nothing builds cannot be proven bound."""
+    from amaze.dialogs import (base_dialog, code_dialog, icon_dialog,
+                               prefs_dialog, save_dialog, user_dialog)
+    versions = ui_helpers.DesignedDialog(None, title="brushed_steel")   # D01, built the way the panel builds it
+    versions.add_field(QtWidgets.QComboBox(versions))
+    versions.add_field(QtWidgets.QLineEdit(versions),
+                       label=amazetheme.LABEL_CHANGE_NAME)
+    versions.add_buttons(amazetheme.BTN_CANCEL, amazetheme.BTN_APPLY)
+    built = (
+        versions,
+        icon_dialog.IconDialog(None, 0.0, None, tile_name="rocks1",
+                               tile_tags="", categories=["Metal"],
+                               tile_category="Metal"),
+        prefs_dialog.PrefsDialog(test_support.fixture_prefs(case),
+                                 panel=None),
+        save_dialog.SaveDialog(["Metal"], "Metal", name="rocks1"),
+        code_dialog.CodeDialog(["Metal"]),
+        base_dialog.NameDialog(),
+        user_dialog.UserPickerDialog({"u1": "Plum"}),
+    )
+    for dialog in built:
+        case.addCleanup(dialog.deleteLater)
+    return built
+
 
 def text_nodes(kind_wanted):
     """(frame, kind, text, box) for every drawn `<Kind> ▸ text` node of one kind, over the whole document - so a frame added later is covered without touching this file."""
@@ -317,6 +423,73 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
             "rows below the fold are clipped:\n  " + "\n  ".join(over))
 
 
+class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
+    """THE COMPLETENESS PIN: every node in `DIALOG_LAYOUT` either pins a live widget through the binding, or stands on `DRAWN_EXEMPT` with its reason. Anything else is an element the design draws and the app does not read - which is what the D08 version line was until this walk named it. ▸p/one-design-document"""
+
+    def setUp(self):
+        amazetheme.forget_drawn_boxes()
+        ui_helpers.forget_drawn_pins()
+        self.addCleanup(amazetheme.forget_drawn_boxes)
+        self.addCleanup(ui_helpers.forget_drawn_pins)
+        build_every_frame(self)
+        self.pins = ui_helpers.drawn_pins()
+
+    def _matches(self, match):
+        return [(frame_key, node)
+                for frame_key, frame in amazetheme.DIALOG_LAYOUT.items()
+                for node in frame["nodes"] if match(frame_key, node)]
+
+    def test_every_drawn_node_pins_a_widget_or_is_named(self):
+        loose = []
+        for frame_key, frame in amazetheme.DIALOG_LAYOUT.items():
+            for node in frame["nodes"]:
+                if (frame_key,) + node[:3] in self.pins:
+                    continue
+                if any(match(frame_key, node) for match, _why in DRAWN_EXEMPT):
+                    continue
+                loose.append("%s %s %dx%d at %d,%d %r"
+                             % (frame_key, node[0], node[3], node[4],
+                                node[1], node[2], node[5]))
+        self.assertEqual(
+            [], loose,
+            "the design draws these and nothing in the app takes its size "
+            "from them - pin each one, or put it on DRAWN_EXEMPT with the "
+            "reason it needs no pin:\n  " + "\n  ".join(loose))
+
+    def test_the_walk_really_sees_the_pins(self):
+        """A build that pinned nothing would pass the walk above by exempting the whole document. ▸p/vacuous-register"""
+        self.assertGreaterEqual(
+            len(self.pins), 50,
+            "the frames built almost no pins, so the completeness walk's "
+            "silence means nothing")
+        self.assertEqual(
+            {"D06"},
+            set(amazetheme.DIALOG_LAYOUT)
+            - {frame_key for frame_key, _kind, _x, _y in self.pins},
+            "D06 draws only switches and the tab strip, so it is the ONE "
+            "frame with nothing to pin - any other frame listed here "
+            "built no widget the document reached")
+
+    def test_no_exemption_stands_over_a_node_that_IS_pinned(self):
+        """An exemption kept over a pinned node reads as a reason while covering nothing, and would let the pin be deleted without a word."""
+        for match, why in DRAWN_EXEMPT:
+            with self.subTest(exemption=why):
+                for frame_key, node in self._matches(match):
+                    self.assertNotIn(
+                        (frame_key,) + node[:3], self.pins,
+                        "%s %s at %d,%d is pinned AND exempted (%s)"
+                        % (frame_key, node[0], node[1], node[2], why))
+
+    def test_every_exemption_still_covers_something(self):
+        """An exemption the document no longer draws is a reason for nothing, and the next reader takes it for coverage. ▸p/vacuous-register"""
+        for match, why in DRAWN_EXEMPT:
+            with self.subTest(exemption=why):
+                self.assertTrue(
+                    self._matches(match),
+                    "nothing in the document matches this exemption any "
+                    "more - drop it: %s" % why)
+
+
 class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
     """THE POINT OF ALL OF IT: a rect resized in Figma, once the document is regenerated, resizes the real widget - proved by resizing one and building the dialog."""
 
@@ -347,6 +520,40 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 theme.ui_px(99 + 5), pinned(self, button)[0],
                 "the drawn rect was widened and the built button did not "
                 "follow, so the dialog is not reading the document")
+
+    def _prefs_dialog(self):
+        from amaze.dialogs import prefs_dialog
+        dialog = prefs_dialog.PrefsDialog(
+            test_support.fixture_prefs(self), panel=None)
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def test_a_wider_drawn_LABEL_builds_a_wider_label(self):
+        """A label, not a button: the D08 version line had no stated width at all, and its 322 was whatever the row happened to leave it."""
+        frame = self._widened("D08", "QLabel", (148, 278), 5)
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
+            amazetheme.forget_drawn_boxes()
+            dialog = self._prefs_dialog()
+            self.assertEqual(
+                theme.ui_px(322 + 5), dialog._lbl_version.maximumWidth(),
+                "the drawn version line was widened and the built label "
+                "did not follow, so its width is still a coincidence")
+
+    def test_the_version_line_is_found_by_its_WORDS_not_its_number(self):
+        """THE MECHANISM: the drawn text carries a sample version and the widget goes on to carry the updater's sentences, so the pin matches the words BEFORE the number - a document redrawn at another version still finds the node."""
+        from amaze.dialogs import prefs_dialog
+        frame = dict(amazetheme.DIALOG_LAYOUT["D08"])
+        frame["nodes"] = tuple(
+            node[:5] + (prefs_dialog.VERSION_STEM + "9.9.9",)
+            if node[:3] == ("QLabel", 148, 278) else node
+            for node in frame["nodes"])
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
+            amazetheme.forget_drawn_boxes()
+            dialog = self._prefs_dialog()
+            self.assertEqual(
+                theme.ui_px(322), dialog._lbl_version.maximumWidth(),
+                "the drawn version number changed and the pin lost the "
+                "node, so the line is bound to a number that moves")
 
 
 class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):

@@ -29,6 +29,8 @@ LINK_COLOR = amazetheme.LINK_COLOR   # About-tab links ▸p/one-design-document
 
 PREFS_FRAMES = ("D04", "D05", "D06", "D07", "D08")   # the drawn frame per tab, in the order the tabs are added ▸p/one-design-document
 
+VERSION_STEM = branding.APP_NAME + " version "   # what the drawn version line opens with; the number after it is a sample, and the widget goes on to carry the updater's answers
+
 _logo_cache = None   # rendered once and reused as a QTextDocument resource, so the About page can reference it as an img src
 
 
@@ -105,7 +107,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model
-        self._tab_combos: dict = {}   # each tab's combos in CREATION order, which is what the frame's drawn combo rects answer
+        self._tab_built: dict = {}    # each tab's widgets per KIND in CREATION order, which is what the frame's drawn rects of that kind answer
+        self._sliders: dict = {}      # the slider `_field_slider_row` built beside each spin box
+        self._path_rows: list = []    # every field-and-buttons row, re-spaced once its widgets wear their drawn widths
 
         tabs = QtWidgets.QTabWidget()
         tabs.setDocumentMode(True)
@@ -335,7 +339,10 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_DELETE_LOCAL_CACHE))
         form.addRow(self._label(""), clear_cache_btn)
 
-        self._tab_combos["D04"] = (self.cbb_library_user,)
+        self._tab_built["D04"] = {
+            "QLineEdit": (self.line_workdir, self.line_cache),
+            "QComboBox": (self.cbb_library_user,),
+        }
         self._real_path_widgets = (self.line_workdir, browse_lib)   # inert under Test Mode: showing the test path while writing the real field could lose a library. CACHE rows stay live, Test Mode does not move the cache
         self._sync_test_mode_rows()
         return page
@@ -445,8 +452,15 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Parallel Downloads"),
             self._field_slider_row(self.spin_matx_parallel, 1, 16),
         )
-        self._tab_combos["D05"] = (self._combo_geo_shading,
-                                   self._combo_geo_bg, self.cbb_matx_res)
+        spins = (self.line_rendersize, self.line_rendersamples,
+                 self.spin_karma_samples, self.spin_ram_cache,
+                 self.spin_parallel, self.spin_matx_parallel)
+        self._tab_built["D05"] = {
+            "QComboBox": (self._combo_geo_shading, self._combo_geo_bg,
+                          self.cbb_matx_res),
+            "QSpinBox": spins,
+            "ClickSlider": tuple(self._sliders[spin] for spin in spins),
+        }
         return page
 
     def _build_showhide_tab(self) -> QtWidgets.QWidget:
@@ -534,8 +548,11 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Scroll Speed (%)"),
             self._field_slider_row(self.spin_scroll_speed, 10, 300),
         )
-        self._tab_combos["D07"] = (self._combo_path_style,
-                                   self._combo_icon_weight)
+        self._tab_built["D07"] = {
+            "QComboBox": (self._combo_path_style, self._combo_icon_weight),
+            "QSpinBox": (self.spin_scroll_speed,),
+            "ClickSlider": (self._sliders[self.spin_scroll_speed],),
+        }
         return page
 
     def _build_about_tab(self) -> QtWidgets.QWidget:
@@ -671,35 +688,40 @@ class PrefsDialog(base_dialog.AssetDialog):
                     self._path_row(self.line_test_dir, self._browse_test))
 
         outer.addLayout(form)
+        self._tab_built["D08"] = {
+            "QTextBrowser": (browser,),
+            "QLineEdit": (self.line_test_dir,),
+        }
         return page
 
     def _pin_pages_to_document(self) -> None:
-        """Take every button, combo and field on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. A spin box is left alone - the document draws it 2 taller, and its own editor with it. ▸p/one-design-document"""
-        field_h = theme.ui_px(amazetheme.PREFS_FIELD_H)
+        """Take every widget on every tab from the frame drawn for that tab, so a node resized in Figma resizes the widget. The editor INSIDE a spin box is left alone - the document draws that box 2 taller and insets its editor by 1. ▸p/one-design-document"""
         for index, frame_key in enumerate(PREFS_FRAMES):
             page = self._tabs.widget(index)
+            drawn_again: dict = {}    # D04 draws `...` twice, so the second browse button takes the second box
             for button in page.findChildren(QtWidgets.QPushButton):
+                label = button.text()
+                nth = drawn_again.get(label, 0)
+                drawn_again[label] = nth + 1
                 ui_helpers.pin_drawn(button, frame_key, "QPushButton",
-                                     button.text())
-            for field in page.findChildren(QtWidgets.QLineEdit):
-                if isinstance(field.parent(), QtWidgets.QAbstractSpinBox):
-                    continue
-                field.setFixedHeight(field_h)
-            for combo in page.findChildren(QtWidgets.QComboBox):
-                combo.setFixedHeight(field_h)
-            self._pin_combo_widths(frame_key,
-                                   self._tab_combos.get(frame_key, ()))
+                                     label, nth=nth)
+            for kind, widgets in self._tab_built.get(frame_key, {}).items():
+                ui_helpers.pin_drawn_series(widgets, frame_key, kind)
+        ui_helpers.pin_drawn_stem(self._lbl_version, "D08", "QLabel",
+                                  VERSION_STEM, height=False)
+        for row in self._path_rows:
+            self._space_pinned_row(row)
 
-    def _pin_combo_widths(self, frame_key: str, combos) -> None:
-        """Take each combo's WIDTH from the frame's drawn `QComboBox` rects, drawn order against creation order - a combo carries no label of its own to pin by, and matching one to its row's label is not reliable."""
-        drawn = sorted(amazetheme.drawn_boxes(frame_key).get(
-            ("QComboBox", None), ()), key=lambda box: (box[1], box[0]))
-        if len(drawn) != len(combos):
-            debug.event("prefs", "the drawn combos and the built ones "
-                        "differ in number", frame=frame_key,
-                        drawn=len(drawn), built=len(combos))
-        for combo, box in zip(combos, drawn):
-            combo.setFixedWidth(theme.ui_px(box[2]))
+    def _space_pinned_row(self, row) -> None:
+        """Share the slack the drawn widths leave between a row's own gaps, so a row of pinned widgets ends level with the drawn field column instead of somewhere near it."""
+        layout = row.layout()
+        widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
+        slack = (theme.ui_px(amazetheme.PREFS_FORM_WIDTH)
+                 - theme.ui_px(amazetheme.PREFS_INSET)
+                 - theme.ui_px(amazetheme.PREFS_FIELD_X)
+                 - sum(w.maximumWidth() for w in widgets))   # MAXIMUM: every widget in the row is pinned by now, and `width()` before the first layout pass is not what it will be
+        if len(widgets) > 1 and slack >= 0:
+            layout.setSpacing(slack // (len(widgets) - 1))
 
     LABEL_COL = amazetheme.PREFS_LABEL_COL   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
 
@@ -730,15 +752,15 @@ class PrefsDialog(base_dialog.AssetDialog):
         return combo
 
     def _path_row(self, line_edit, browse_btn, *extra) -> QtWidgets.QWidget:
-        """A path field, its browse button, and any button after it; the cache row carries a Default beside the browse."""
+        """A path field, its browse button, and any button after it; the cache row carries a Default beside the browse. The gaps land in `_space_pinned_row`, once every widget in it wears its drawn width."""
         row = QtWidgets.QWidget()
         h = QtWidgets.QHBoxLayout(row)
         h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(theme.ui_px(amazetheme.PREFS_INLINE_GAP))
         h.addWidget(line_edit, 1)
         h.addWidget(browse_btn)
         for widget in extra:
             h.addWidget(widget)
+        self._path_rows.append(row)
         return row
 
     def _panel_call(self, method_name: str):
@@ -769,7 +791,6 @@ class PrefsDialog(base_dialog.AssetDialog):
     ) -> QtWidgets.QWidget:
         """Houdini-style numeric row: number field + ClickSlider kept in sync both ways, terminating because setValue with an unchanged value emits nothing."""
         spinbox.setRange(lo, hi)
-        spinbox.setFixedWidth(theme.ui_px(amazetheme.PREFS_SPIN_W))
         spinbox.setButtonSymbols(
             QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons
         )
@@ -787,6 +808,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         h.setSpacing(theme.ui_px(amazetheme.PREFS_BUTTON_GAP))
         h.addWidget(spinbox)
         h.addWidget(slider, 1)
+        self._sliders[spinbox] = slider
         return row
 
     @staticmethod

@@ -17,12 +17,14 @@ class AssetDialog(QtWidgets.QDialog):
     FIELD_WIDTH = None   # the drawn field width; every row built through `add_*` takes it EXACTLY, so a dialog with fewer rows cannot end up with wider fields than its siblings ▸p/save-dialog-rows
     FIELD_HEIGHT = amazetheme.SAVE_FIELD_H   # the drawn field height every `add_*` row takes; the form rows are the save family's, and the drawn frames give them all one height ▸p/save-dialog-rows
     HEADER_BAND = False  # the drawn header strip carrying the asset's name - D01, D02 and D11 wear one, the save family and Preferences do not ▸p/one-design-document
+    FRAME_KEY = ""       # the frame this dialog is drawn as; set one and every `add_*` row and the OK/Cancel pair take their size from it ▸p/one-design-document
 
     def __init__(self, title: str = "", fixed_size: bool = True,
                  parent=None) -> None:
         super().__init__(parent)
         self.canceled = True
         self._fixed_size = fixed_size
+        self._rows_built: dict = {}    # each row's widget per KIND in CREATION order, which is what the frame's drawn rects of that kind answer
         if title:
             self.setWindowTitle(title)
 
@@ -43,19 +45,20 @@ class AssetDialog(QtWidgets.QDialog):
         return self.windowTitle()
 
     def add_row(self, label, widget):
-        """Add a labelled row; returns the widget for wiring. A dialog declaring `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
-        if self.FIELD_WIDTH:
+        """Add a labelled row; returns the widget for wiring. A dialog declaring `FRAME_KEY` takes the row's size from that frame's drawn rect in `finish()`; one declaring only `FIELD_WIDTH` gets it EXACTLY here, so the label column absorbs the slack and siblings with different labels still draw the same field. ▸p/save-dialog-rows"""
+        if self.FRAME_KEY:
+            self._rows_built.setdefault(
+                ui_helpers.drawn_kind(widget, self.FRAME_KEY),
+                []).append(widget)
+        elif self.FIELD_WIDTH:
             widget.setFixedWidth(theme.ui_px(self.FIELD_WIDTH))
-        if self.FIELD_HEIGHT:
+        if self.FIELD_HEIGHT and not self.FRAME_KEY:
             widget.setFixedHeight(theme.ui_px(self.FIELD_HEIGHT))
         self._form.addRow(label, widget)
         return widget
 
-    def add_line(self, label: str, default: str = "", width: int = 0):
-        field = QtWidgets.QLineEdit(default)
-        if width:
-            field.setMinimumWidth(theme.ui_px(width))    # an explicit override; the shared width comes from `FIELD_WIDTH` through `add_row`
-        return self.add_row(label, field)
+    def add_line(self, label: str, default: str = ""):
+        return self.add_row(label, QtWidgets.QLineEdit(default))
 
     def add_combo(
         self, label: str, items, current: str = "", editable: bool = False
@@ -74,6 +77,8 @@ class AssetDialog(QtWidgets.QDialog):
 
     def finish(self, ok_cancel: bool = True, margins: int | None = None) -> None:
         """Add the OK/Cancel button row and lay the dialog out - call once, after all rows are added (or after `set_content`). `margins` is the house 5px unless a dialog records its reason to differ at the call."""
+        for kind, widgets in self._rows_built.items():
+            ui_helpers.pin_drawn_series(widgets, self.FRAME_KEY, kind)
         if ok_cancel:
             self._buttons = QtWidgets.QDialogButtonBox(
                 QtWidgets.QDialogButtonBox.StandardButton.Ok
@@ -111,7 +116,6 @@ class AssetDialog(QtWidgets.QDialog):
             self._pin_label_column(_m)
             return
 
-        from amaze.helpers import ui_helpers    # HERE, not at module scope: `ui_helpers` is the widget library and importing it at the top makes the shell depend on it for every dialog, band or no band
         band_text = self.header_band_text()
         outer = QtWidgets.QVBoxLayout()    # the band is FULL WIDTH, so the house margins move inside it rather than around it
         outer.setContentsMargins(0, 0, 0, 0)
@@ -130,9 +134,15 @@ class AssetDialog(QtWidgets.QDialog):
         ok = box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         cancel = box.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
         height = theme.ui_px(amazetheme.SAVE_BUTTON_H)
-        for button, width in ((ok, amazetheme.SAVE_BUTTON_W[0]),
-                              (cancel, amazetheme.SAVE_BUTTON_W[1])):
-            if button is not None:
+        for button, label, width in ((ok, "OK", amazetheme.SAVE_BUTTON_W[0]),
+                                     (cancel, "Cancel",
+                                      amazetheme.SAVE_BUTTON_W[1])):
+            if button is None:
+                continue
+            if self.FRAME_KEY:
+                ui_helpers.pin_drawn(button, self.FRAME_KEY, "QPushButton",
+                                     label)
+            else:
                 button.setFixedSize(theme.ui_px(width), height)
         row = box.layout()
         row.setContentsMargins(0, 0, 0, 0)
@@ -173,6 +183,7 @@ class NameDialog(AssetDialog):
 
     FORM_WIDTH = SAVE_WIDTH
     FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
+    FRAME_KEY = "D13"
 
     def __init__(self, title: str = "Name", default: str = "",
                  parent=None) -> None:

@@ -12,8 +12,6 @@ HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wear
 D01_FRAME = (256, 185)      # ▸ D01 Versions, header band included
 D01_INSET = 18              # 35, both sides, leaving a 220-wide column
 D01_FIRST_FIELD_Y = 15      # 30, the first field's top
-D01_FIELD_H = 30            # 60
-D01_BUTTON = (101, 21)      # 202 x 42
 D01_BUTTON_GAP = 19         # 38
 D01_RADIUS = 5              # 10
 D01_LABEL_PX = 10
@@ -25,9 +23,7 @@ D02_FRAME_H = 610        # the drawn OPENING height; the dialog stays resizable 
 D02_MARGINS = (8, 6, 8, 12)   # left, top-under-band, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
-D02_PREVIEW = 150        # the preview square, left of the switch stack
 D02_FIELD_H = 22         # every field, the search and both buttons
-D02_SWATCH_H = 28        # the preset chips AND the current-colour chip
 D02_SWATCH_GAP = 6
 D02_BUTTON_W = 72        # Apply and Accept, drawn flush right - they do NOT span the column
 D02_CHIP_W = 35          # the current-colour chip beside the Custom Color label - swatch-sized since the 2026-08-30 redraw; clicking it IS the picker
@@ -81,15 +77,11 @@ PREFS_LABEL_GAP = 8      # a label to its field: FIELD_X less LABEL_RIGHT
 PREFS_FIELD_X = 148      # every field, button and toggle column starts here
 PREFS_FIELD_H = 22       # a line edit, combo or button
 PREFS_SPIN_H = 24        # a spin box is 2 taller, its inner line edit inset 1
-PREFS_SPIN_W = 64        # the number field beside a slider
 PREFS_TOGGLE_H = 19      # a ToggleSwitch
 PREFS_ROW_GAP = 6        # between rows inside one group
 PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box to its slider
-PREFS_INLINE_GAP = 4     # a path field to the browse button beside it
 PREFS_SECTION_GAP = 27   # across a divider, bottom of one row to top of the next
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
-PREFS_SLIDER = (220, 250)   # x and width of the ClickSlider beside a spin box; right edge 470
-PREFS_BROWSER_H = 253    # D08's credits box, 450 wide at the content inset
 PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
 PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
@@ -541,10 +533,11 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
 _TEXT_SUFFIX = _NODE_MARK + "text"
 _DRAWN_BOXES: dict = {}
+_DRAWN_REPEATS: dict = {}
 
 
 def drawn_boxes(frame_key: str) -> dict:
-    """One frame's boxes keyed for a call site, derived from `DIALOG_LAYOUT` alone: `(kind, text)` is the plain `<Kind>` rect ENCLOSING that `<Kind> ▸ text` node, and `(kind, None)` is every plain `<Kind>` rect in document order. An unknown frame answers `{}`; a label drawn beside its rect rather than inside it (the toggle pills) pairs with nothing. Cached and SHARED - read it, never edit it."""
+    """One frame's boxes keyed for a call site, derived from `DIALOG_LAYOUT` alone: `(kind, text)` is the plain `<Kind>` rect ENCLOSING that `<Kind> ▸ text` node - or, for a node that carries its own text, that node's OWN rect, since a label IS its box - and `(kind, None)` is every plain `<Kind>` rect in document order. An unknown frame answers `{}`; a label drawn beside its rect rather than inside it (the toggle pills) pairs with nothing. Cached and SHARED - read it, never edit it."""
     cached = _DRAWN_BOXES.get(frame_key)
     if cached is not None:
         return cached
@@ -555,6 +548,10 @@ def drawn_boxes(frame_key: str) -> dict:
             rects.setdefault(kind, []).append((x, y, w, h))
     boxes = {(kind, None): tuple(found) for kind, found in rects.items()}
     for kind, x, y, w, h, text in nodes:
+        if text is not None and _NODE_MARK not in kind:   # a drawn QLabel: nothing encloses it, so its own rect is what a widget pins from
+            boxes.setdefault((kind, text), (x, y, w, h))
+    repeats: dict = {}
+    for kind, x, y, w, h, text in nodes:
         if text is None or not kind.endswith(_TEXT_SUFFIX):
             continue
         plain = kind[:-len(_TEXT_SUFFIX)]
@@ -563,12 +560,29 @@ def drawn_boxes(frame_key: str) -> dict:
                    and box[0] + box[2] >= x + w
                    and box[1] + box[3] >= y + h]
         if holding:
-            boxes.setdefault(   # SMALLEST first, and the first text wins: D05 draws `256` in three rows, so a repeated label must answer one box and always the same one
-                (plain, text), min(holding, key=lambda box: box[2] * box[3]))
+            repeats.setdefault((plain, text), []).append(   # SMALLEST of the rects around THIS node: D05 draws `256` in three rows, so a repeated label must answer one box per drawing of it and always the same one
+                min(holding, key=lambda box: box[2] * box[3]))
+            boxes.setdefault((plain, text), repeats[(plain, text)][0])
     _DRAWN_BOXES[frame_key] = boxes
+    _DRAWN_REPEATS[frame_key] = {key: tuple(found)
+                                 for key, found in repeats.items()}
     return boxes
+
+
+def drawn_repeats(frame_key: str, kind: str, text) -> tuple:
+    """Every box a call site may pin from for `(kind, text)`, in DRAWN order: one per `<kind> ▸ <text>` node, since a frame may draw a label twice - D04 draws the `...` browse button at two places - or, for `text=None`, every plain `<kind>` rect down the frame. `drawn_boxes` answers the first of them."""
+    boxes = drawn_boxes(frame_key)
+    if text is None:
+        return tuple(sorted(boxes.get((kind, None), ()),
+                            key=lambda box: (box[1], box[0])))
+    found = _DRAWN_REPEATS[frame_key].get((kind, text))
+    if found is not None:
+        return found
+    box = boxes.get((kind, text))
+    return () if box is None else (box,)
 
 
 def forget_drawn_boxes() -> None:
     """Drop the derived-box cache - the NAMED test seam, so no test reaches into the module dict and pins its spelling."""
     _DRAWN_BOXES.clear()
+    _DRAWN_REPEATS.clear()

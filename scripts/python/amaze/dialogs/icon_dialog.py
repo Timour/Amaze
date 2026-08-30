@@ -19,6 +19,7 @@ class IconDialog(base_dialog.AssetDialog):
 
     FORM_WIDTH = amazetheme.D02_FORM_WIDTH
     HEADER_BAND = True    # D02 wears the drawn name strip ▸p/one-design-document
+    FRAME_KEY = "D02"     # the fixed-size parts only: the fields, the search and the grid stretch to the column, which is what resizes
 
     applied = QtCore.Signal()
 
@@ -184,8 +185,7 @@ class IconDialog(base_dialog.AssetDialog):
         block.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
 
         self.preview = QtWidgets.QLabel()
-        self.preview.setFixedSize(theme.ui_px(amazetheme.D02_PREVIEW),
-                                  theme.ui_px(amazetheme.D02_PREVIEW))
+        ui_helpers.pin_drawn(self.preview, self.FRAME_KEY, "QLabel", None)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         block.addWidget(self.preview,
                         alignment=QtCore.Qt.AlignmentFlag.AlignTop)
@@ -223,8 +223,6 @@ class IconDialog(base_dialog.AssetDialog):
         colour_row = QtWidgets.QHBoxLayout()
         colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row rides the swatch rhythm
         self.custom_chip = QtWidgets.QToolButton()   # the chip IS the picker: it wears the current colour and opens Houdini's picker ▸r/houdini-colour-picker
-        self.custom_chip.setFixedSize(theme.ui_px(amazetheme.D02_CHIP_W),
-                                      theme.ui_px(amazetheme.D02_SWATCH_H))
         self.custom_chip.setToolTip(ui_helpers.tooltip_text(
             tooltips.CUSTOMIZE_CUSTOM_COLOR))
         self.custom_chip.clicked.connect(self._pick_custom)
@@ -236,17 +234,12 @@ class IconDialog(base_dialog.AssetDialog):
         stack.addLayout(colour_row)
         stack.addSpacing(theme.ui_px(amazetheme.D02_PRESET_GAP))
 
-        swatches = QtWidgets.QHBoxLayout()   # expanding widths and NO stretch, so the four share exactly the stack width
+        swatches = QtWidgets.QHBoxLayout()   # the drawn widths and NO stretch, so the four share exactly the stack width
         swatches.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         self._swatches = []
         for label, colour in tile_icons.PRESETS:
             swatch = QtWidgets.QToolButton()
             swatch.setToolTip(label)
-            swatch.setFixedHeight(theme.ui_px(amazetheme.D02_SWATCH_H))
-            swatch.setSizePolicy(
-                QtWidgets.QSizePolicy.Policy.Expanding,
-                QtWidgets.QSizePolicy.Policy.Fixed,
-            )
             swatch.setStyleSheet(
                 "background:%s; border:%dpx solid #222;"
                 % (colour, amazetheme.D02_SWATCH_BORDER))
@@ -254,6 +247,9 @@ class IconDialog(base_dialog.AssetDialog):
                 lambda _checked=False, picked=colour: self._set_bg(picked))
             swatches.addWidget(swatch)
             self._swatches.append(swatch)
+        ui_helpers.pin_drawn_series(   # the chip is drawn first, above the four
+            [self.custom_chip] + self._swatches, self.FRAME_KEY,
+            "QToolButton")
         stack.addLayout(swatches)
         stack.addStretch(1)
         block.addLayout(stack, 1)
@@ -274,14 +270,12 @@ class IconDialog(base_dialog.AssetDialog):
         actions.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))
         actions.addStretch(1)               # both drawn flush RIGHT at a fixed size, not spanning the column
         self.apply_button = QtWidgets.QPushButton(amazetheme.BTN_APPLY)
-        self.apply_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
-                                       theme.ui_px(amazetheme.D02_FIELD_H))
         self.apply_button.clicked.connect(self._apply)
         actions.addWidget(self.apply_button)
 
         self.accept_button = QtWidgets.QPushButton(amazetheme.BTN_ACCEPT)
-        self.accept_button.setFixedSize(theme.ui_px(amazetheme.D02_BUTTON_W),
-                                        theme.ui_px(amazetheme.D02_FIELD_H))
+        ui_helpers.pin_drawn_series((self.apply_button, self.accept_button),
+                                    self.FRAME_KEY, "QPushButton")
         self.accept_button.setDefault(True)
         self.accept_button.clicked.connect(self._accept)
         actions.addWidget(self.accept_button)

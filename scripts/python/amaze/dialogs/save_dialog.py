@@ -6,13 +6,14 @@ from amaze import amazetheme
 from amaze import branding
 from amaze import tooltips
 from amaze.dialogs import base_dialog
-from amaze.helpers import theme, ui_helpers
+from amaze.helpers import ui_helpers
 
 
 class SaveDialog(base_dialog.AssetDialog):
 
     FORM_WIDTH = base_dialog.SAVE_WIDTH
     FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH    # the drawn field width ▸p/save-dialog-rows
+    FRAME_KEY = "D09"
 
     def __init__(
         self,
@@ -32,17 +33,15 @@ class SaveDialog(base_dialog.AssetDialog):
         self.fav = False    # there is no Favorite row: the attribute stays because the COP save reads it, and it was already always False ▸p/save-dialog-rows
         self.name = name or ""
 
-        self.line_name = self.add_line("Name", self.name,
-                                       width=self.FIELD_WIDTH)
+        self.line_name = self.add_line("Name", self.name)
         self.line_name.setEnabled(name_enabled)
         self.line_name.setToolTip(ui_helpers.tooltip_text(tooltips.SAVE_NAME))
 
         self.combo_cats = self.add_combo("Category", cat_list, default_cat)   # a PLAIN dropdown (the design's rule since 2026-08-30): new categories are minted at the sidebar's Add Category door, never typed here
         self.combo_cats.setInsertPolicy(
             QtWidgets.QComboBox.InsertPolicy.InsertAtTop)
-        self.combo_cats.setMinimumWidth(theme.ui_px(self.FIELD_WIDTH))
 
-        self.line_tags = self.add_line("Tags", width=self.FIELD_WIDTH)
+        self.line_tags = self.add_line("Tags")
         self.finish()
 
     def _on_accept(self) -> None:

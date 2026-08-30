@@ -180,14 +180,70 @@ class DesignedComboBox(QtWidgets.QComboBox):
             QtCore.QPoint(0, self.height())))
 
 
-def pin_drawn(widget, frame_key: str, kind: str, text: str) -> None:
-    """Size `widget` to the box the design draws for `<kind> ▸ <text>` in `frame_key`, so a node resized in Figma resizes the widget. A label the document does not draw pins NOTHING and records the miss - a renamed drawn label costs one widget's size, never the dialog. ▸p/one-design-document"""
-    box = amazetheme.drawn_boxes(frame_key).get((kind, text))
-    if box is None:
+_DRAWN_PINS: set = set()    # every drawn node a pin has read, so the completeness walk can name the ones nothing reads ▸p/one-design-document
+
+
+def drawn_pins() -> frozenset:
+    """Every `(frame, kind, x, y)` a pin has read - the NAMED seam the completeness walk reads, so no test reaches into the module dict."""
+    return frozenset(_DRAWN_PINS)
+
+
+def forget_drawn_pins() -> None:
+    _DRAWN_PINS.clear()
+
+
+def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool) -> None:
+    """Wear one drawn box and record WHICH node it was, keyed by the position that identifies it in the frame."""
+    widget.setFixedWidth(theme.ui_px(box[2]))
+    if height:
+        widget.setFixedHeight(theme.ui_px(box[3]))
+    _DRAWN_PINS.add((frame_key, kind, box[0], box[1]))
+
+
+def pin_drawn(widget, frame_key: str, kind: str, text: str,
+              height: bool = True, nth: int = 0) -> None:
+    """Size `widget` to the box the design draws for `<kind> ▸ <text>` in `frame_key`, so a node resized in Figma resizes the widget. `text=None` addresses the frame's plain `<kind>` rects instead, `nth` picks among the boxes when there is more than one, and `height=False` takes the WIDTH alone, which is what a label wants - the drawn 15 is its text, not a box to sit in. A label the document does not draw pins NOTHING and records the miss - a renamed drawn label costs one widget's size, never the dialog. ▸p/one-design-document"""
+    found = amazetheme.drawn_repeats(frame_key, kind, text)
+    if nth >= len(found):
         debug.event("ui", "no drawn box for this widget",
-                    frame=frame_key, kind=kind, text=text)
+                    frame=frame_key, kind=kind, text=text, nth=nth)
         return
-    widget.setFixedSize(theme.ui_px(box[2]), theme.ui_px(box[3]))
+    _wear_drawn(widget, frame_key, kind, found[nth], height)
+
+
+def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,
+                   height: bool = True) -> None:
+    """Pin from the ONE drawn node whose text OPENS with `stem` - D08 draws the version line with a version number in it, and the widget goes on to carry whatever the updater answers, so the words before the sample are all that identifies the node. Nothing, or more than one, pins nothing and records it."""
+    found = [box for (drawn_kind, text), box
+             in amazetheme.drawn_boxes(frame_key).items()
+             if drawn_kind == kind and text and text.startswith(stem)]
+    if len(found) != 1:
+        debug.event("ui", "no ONE drawn box opens with this stem",
+                    frame=frame_key, kind=kind, stem=stem, found=len(found))
+        return
+    _wear_drawn(widget, frame_key, kind, found[0], height)
+
+
+def drawn_kind(widget, frame_key: str) -> str:
+    """The kind `frame_key` draws this widget as - its own class name, or the nearest base the frame has rects for, so a `DesignedComboBox` answers the drawn `QComboBox`."""
+    boxes = amazetheme.drawn_boxes(frame_key)
+    for cls in type(widget).__mro__:
+        if (cls.__name__, None) in boxes:
+            return cls.__name__
+    return type(widget).__name__
+
+
+def pin_drawn_series(widgets, frame_key: str, kind: str,
+                     height: bool = True) -> None:
+    """Pin widgets of one kind from the frame's rects of that kind, DRAWN order against CREATION order - a field, a combo or a swatch carries no label of its own to pin by, and matching one to its row's label is not reliable. The two counts differing is recorded: the frame draws something nothing builds, or the other way about."""
+    drawn = amazetheme.drawn_repeats(frame_key, kind, None)
+    widgets = tuple(widgets)
+    if len(drawn) != len(widgets):
+        debug.event("ui", "the drawn nodes and the built widgets differ in "
+                    "number", frame=frame_key, kind=kind, drawn=len(drawn),
+                    built=len(widgets))
+    for widget, box in zip(widgets, drawn):
+        _wear_drawn(widget, frame_key, kind, box, height)
 
 
 def header_band(parent, text: str):
@@ -222,13 +278,12 @@ def header_band(parent, text: str):
 class DesignedDialog(QtWidgets.QDialog):
     """A dialog in the shape the designs describe: NO header block - the name rides the WINDOW TITLE, so a caller sets `setWindowTitle` - over a body column inset equally both sides, ending in two buttons that fill it. Every constant is the design's number HALVED and goes through `theme.ui_px` like all chrome, the trailing figure being what the page says; nothing here reads a screen. ▸p/designed-dialog, ▸r/houdini-ui-scale"""
 
+    FRAME_KEY = "D01"               # the frame every field and button below takes its box from ▸p/one-design-document
     FRAME = amazetheme.D01_FRAME    # every number and ink below is the DESIGN's, declared once in `amazetheme` ▸p/one-design-document
     INSET = amazetheme.D01_INSET
     FIRST_FIELD_Y = amazetheme.D01_FIRST_FIELD_Y
     BODY_BG = theme.color_hex("surface")   # the SURFACE follows Houdini's theme, which is why it is the one value here that is NOT the design's
     LABEL_INK = amazetheme.D01_LABEL_INK
-    FIELD_H = amazetheme.D01_FIELD_H
-    BUTTON = amazetheme.D01_BUTTON
     BUTTON_GAP = amazetheme.D01_BUTTON_GAP
     RADIUS = amazetheme.D01_RADIUS
     LABEL_PX, BUTTON_PX = amazetheme.D01_LABEL_PX, amazetheme.D01_BUTTON_PX
@@ -241,6 +296,7 @@ class DesignedDialog(QtWidgets.QDialog):
                           theme.ui_px(self.FRAME[1]))
         self.setStyleSheet("QDialog { background: %s; }" % self.BODY_BG)
 
+        self._fields: dict = {}     # each field's widget per KIND in CREATION order, which is what the frame's drawn rects of that kind answer
         outer = QtWidgets.QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
@@ -268,7 +324,10 @@ class DesignedDialog(QtWidgets.QDialog):
                 "color: %s; background: transparent;" % self.LABEL_INK)
             self.body_layout.addWidget(text)
             self.body_layout.addSpacing(theme.ui_px(4))
-        widget.setFixedHeight(theme.ui_px(self.FIELD_H))
+        kind = drawn_kind(widget, self.FRAME_KEY)
+        nth = self._fields.get(kind, 0)
+        self._fields[kind] = nth + 1
+        pin_drawn(widget, self.FRAME_KEY, kind, None, nth=nth)
         self.body_layout.addWidget(widget)
 
     def add_buttons(self, reject_text: str, accept_text: str) -> None:
@@ -276,11 +335,10 @@ class DesignedDialog(QtWidgets.QDialog):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(theme.ui_px(self.BUTTON_GAP))
-        for text, slot in ((reject_text, self.reject),
-                           (accept_text, self.accept)):
+        for nth, (text, slot) in enumerate(((reject_text, self.reject),
+                                            (accept_text, self.accept))):
             button = QtWidgets.QPushButton(text, self)
-            button.setFixedSize(theme.ui_px(self.BUTTON[0]),
-                                theme.ui_px(self.BUTTON[1]))
+            pin_drawn(button, self.FRAME_KEY, "QPushButton", None, nth=nth)
             button.setStyleSheet(
                 "border-radius: %dpx;" % theme.ui_px(self.RADIUS))
             font = QtGui.QFont(button.font())
