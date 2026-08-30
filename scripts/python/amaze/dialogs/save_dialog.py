@@ -38,8 +38,7 @@ class SaveDialog(base_dialog.AssetDialog):
             "Name it, pick a category, and add tags to find "
             "it again later."))
 
-        self.combo_cats = self.add_combo("Category", cat_list, default_cat,
-                                         editable=True)
+        self.combo_cats = self.add_combo("Category", cat_list, default_cat)   # a PLAIN dropdown (the design's rule since 2026-08-30): new categories are minted at the sidebar's Add Category door, never typed here
         self.combo_cats.setInsertPolicy(
             QtWidgets.QComboBox.InsertPolicy.InsertAtTop)
         self.combo_cats.setMinimumWidth(theme.ui_px(self.FIELD_WIDTH))

@@ -619,11 +619,12 @@ class TheSaveDialogIsTheOneSaveEngine(unittest.TestCase):
         dialog._on_accept()
         self.assertEqual("renamed", dialog.name)
 
-    def test_a_new_category_can_be_typed_in_any_section(self):
-        self.assertTrue(
+    def test_the_category_is_picked_never_typed(self):
+        """The design's rule since 2026-08-30: a plain dropdown everywhere, like the Language combo - new categories are minted at the sidebar's Add Category door."""
+        self.assertFalse(
             self._dialog().combo_cats.isEditable(),
-            "the category cannot be typed into, so a section that used "
-            "to offer a new category no longer does")
+            "the category combo accepts typing, and the app's one door "
+            "for a new category is the sidebar's Add Category")
 
     def test_the_title_is_the_house_one_unless_a_caller_says_otherwise(self):
         from amaze import branding

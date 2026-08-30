@@ -168,8 +168,7 @@ class CodeDialog(base_dialog.AssetDialog):
             self._combo_lang.setCurrentText(language)
         left.addRow("Language", self._combo_lang)
 
-        self._combo_category = ui_helpers.DesignedComboBox()
-        self._combo_category.setEditable(True)
+        self._combo_category = ui_helpers.DesignedComboBox()   # a PLAIN dropdown like Language beside it (the design's rule since 2026-08-30) - the sidebar's Add Category mints new ones
         for item in categories:
             self._combo_category.addItem(item)
         self._combo_category.setCurrentText(

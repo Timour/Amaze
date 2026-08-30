@@ -97,7 +97,6 @@ class IconDialog(base_dialog.AssetDialog):
             self.category_combo = None
         else:
             self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
-            self.category_combo.setEditable(True)
             self.category_combo.setFixedHeight(field_h)
             for name in self._categories:
                 self.category_combo.addItem(name)
@@ -198,14 +197,14 @@ class IconDialog(base_dialog.AssetDialog):
 
         def switch_row(label_text, tooltip):
             row = QtWidgets.QHBoxLayout()
-            row.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
-            label = QtWidgets.QLabel(label_text)
-            label.setMinimumWidth(1)    # the label yields before the row overflows the column under a wide style's font
-            row.addWidget(label)        # labels sit LEFT, the slack before the switch
-            row.addStretch(1)
+            row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
             toggle = ui_helpers.ToggleSwitch()
             toggle.setToolTip(ui_helpers.tooltip_text(tooltip))
-            row.addWidget(toggle)
+            row.addWidget(toggle)       # the pill sits LEFT since the 2026-08-30 redraw, its label 8px after - the Preferences rows' own shape
+            label = QtWidgets.QLabel(label_text)
+            label.setMinimumWidth(1)    # the label yields before the row overflows the column under a wide style's font
+            row.addWidget(label)
+            row.addStretch(1)
             return row, toggle
 
         row, self.custom_toggle = switch_row(
@@ -225,11 +224,7 @@ class IconDialog(base_dialog.AssetDialog):
         stack.addSpacing(theme.ui_px(amazetheme.D02_SECTION_GAP))
 
         colour_row = QtWidgets.QHBoxLayout()
-        colour_row.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
-        colour_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_COLOR)
-        colour_label.setMinimumWidth(1)
-        colour_row.addWidget(colour_label)
-        colour_row.addStretch(1)
+        colour_row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
         self.custom_chip = QtWidgets.QToolButton()   # the chip IS the picker: it wears the current colour and opens Houdini's picker ▸r/houdini-colour-picker
         self.custom_chip.setFixedSize(theme.ui_px(amazetheme.D02_CHIP_W),
                                       theme.ui_px(amazetheme.D02_SWATCH_H))
@@ -237,7 +232,11 @@ class IconDialog(base_dialog.AssetDialog):
             "The current background. Click to pick any color, with "
             "Houdini's color picker."))
         self.custom_chip.clicked.connect(self._pick_custom)
-        colour_row.addWidget(self.custom_chip)
+        colour_row.addWidget(self.custom_chip)   # chip LEFT, label after - the 2026-08-30 redraw, like the switch rows above
+        colour_label = QtWidgets.QLabel(amazetheme.LABEL_CUSTOM_COLOR)
+        colour_label.setMinimumWidth(1)
+        colour_row.addWidget(colour_label)
+        colour_row.addStretch(1)
         stack.addLayout(colour_row)
         stack.addSpacing(theme.ui_px(amazetheme.D02_PRESET_GAP))
 

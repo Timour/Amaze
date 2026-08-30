@@ -422,7 +422,7 @@ class DialogTest(unittest.TestCase):
         self.assertEqual("dark", dialog.spec["ink"])
 
     def test_the_chip_wears_the_current_colour_and_the_stack_lines_up(self):
-        """The chip beside Custom Color IS the picker and shows the current background; chip, switches and buttons all end flush right."""
+        """The chip beside Custom Color IS the picker and shows the current background; chip and switch pills sit flush LEFT in the stack (the 2026-08-30 redraw, labels after their controls), the buttons flush right."""
         dialog = self._dialog({"name": "box", "bg": "#e0523a"})
         dialog.show()
         self.addCleanup(dialog.hide)
@@ -435,12 +435,10 @@ class DialogTest(unittest.TestCase):
                       "the chip did not follow a preset click")
         self.assertEqual(theme.ui_px(amazetheme.D02_CHIP_W),
                          dialog.custom_chip.width())
-        self.assertEqual(    # chip and Accept are both drawn flush right, so their edges agree whatever the style's fonts do
-            dialog.custom_chip.mapTo(dialog, QtCore.QPoint(
-                dialog.custom_chip.width(), 0)).x(),
-            dialog.accept_button.mapTo(dialog, QtCore.QPoint(
-                dialog.accept_button.width(), 0)).x(),
-            "the chip and the button row end at different edges")
+        self.assertEqual(    # chip and the switch pills are drawn flush LEFT at the stack's edge, so their x agree whatever the style's fonts do
+            dialog.custom_chip.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
+            dialog.custom_toggle.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
+            "the chip and the switch pills start at different edges")
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
                          dialog.apply_button.width())
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
