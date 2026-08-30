@@ -149,6 +149,11 @@ class GateFixture(unittest.TestCase):
         _write(os.path.join(self.repo, "scripts", "python", "amaze",
                             "widget.py"), "VALUE = 1\n")
 
+        self.private_hooks = os.path.join(self.tmp, "private-hooks")   # a permissive stand-in for the private repo's process gate, so these tests keep pinning the suite gate; its refusals have their own tests
+        os.makedirs(self.private_hooks)
+        _write(os.path.join(self.private_hooks, "pre-push-gate"),
+               "#!/bin/sh\nexit 0\n", executable=True)
+
         self.git_env = dict(os.environ)
         self.git_env.update({
             "GIT_CONFIG_GLOBAL": os.path.join(self.tmp, "gitconfig"),
@@ -212,6 +217,7 @@ class GateFixture(unittest.TestCase):
             "HFS": self.hfs,
             "FAKE_SUITE_MODE": mode,
             "FAKE_SUITE_CALLS": self.calls,
+            "AMAZE_PRIVATE_HOOKS": self.private_hooks,
         })
         env.update(extra)
         return env
@@ -553,6 +559,29 @@ class SyncInstallGateTest(GateFixture):
 
 
 class PrePushGateTest(GateFixture):
+
+    def test_the_process_gate_runs_first_and_its_refusal_stops_the_push(self):
+        refusing = os.path.join(self.tmp, "refusing-hooks")
+        os.makedirs(refusing)
+        _write(os.path.join(refusing, "pre-push-gate"),
+               '#!/bin/sh\necho "process gate says no" >&2\nexit 1\n',
+               executable=True)
+        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
+        result = self.push("green", AMAZE_PRIVATE_HOOKS=refusing)
+        self.assertNotEqual(result.returncode, 0, self.both(result))
+        self.assertIn("process gate says no", self.both(result))
+        self.assertEqual([], self.suite_calls(),
+                         "the suite ran before the process gate answered")
+
+    def test_a_missing_process_gate_fails_closed(self):
+        empty = os.path.join(self.tmp, "no-hooks")
+        os.makedirs(empty)
+        self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
+        result = self.push("green", AMAZE_PRIVATE_HOOKS=empty)
+        self.assertNotEqual(result.returncode, 0, self.both(result))
+        self.assertIn("process gate is not installed", self.both(result))
+        self.assertEqual([], self.suite_calls(),
+                         "a missing gate must refuse, not pass silently")
 
     def test_green_suite_allows_the_push_and_says_so(self):
         self._commit(os.path.join("scripts", "python", "amaze", "widget.py"))
