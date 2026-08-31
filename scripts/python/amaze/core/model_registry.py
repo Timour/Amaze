@@ -39,15 +39,14 @@ def models_for(preferences) -> dict:
     return found
 
 
-def rebind(preferences) -> None:
-    """File this library's models under `preferences.dir` after a switch moved it - a model left under the old key is served to the next panel that opens there."""
+def rebind(preferences, model) -> None:
+    """File the set holding `model` under `preferences.dir` after a switch moved it - left under the old key, the next panel opening on this library is built a second set. Identified by the MODEL, never by the Prefs object: the shared models carry whichever panel looked them up last."""
     key = _key(preferences)
     for old, models in list(_models.items()):
-        if old != key and any(
-                getattr(m, "preferences", None) is preferences
-                for m in models.values()):
+        if old != key and any(held is model for held in models.values()):
             _models.pop(old)
             _models[key] = models
+            return
 
 
 def refresh_all() -> list:

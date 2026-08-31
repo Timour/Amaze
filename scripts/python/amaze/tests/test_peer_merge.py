@@ -99,6 +99,70 @@ class APeerFieldEditSurvivesOurSave(_Case):
         self.assertEqual("2026-08-31 12:00:00", self._row().get("date"))
 
 
+class TheAuditsNamedScenarios(_Case):
+    """The reproductions the two-panel audit ran, as permanent tests."""
+
+    def test_2c_both_machines_rename_a_different_row(self):
+        """Neither rename may be lost: they touch different rows."""
+        document = self._document()
+        document["assets"].append({"id": "ASSET1", "name": "second",
+                                   "code": "", "renderer": "Karma",
+                                   "date": "2026-01-01 00:00:00"})
+        self._write(document)
+        db = self._loaded()
+
+        self._peer_writes()    # no change: take a clean peer copy first
+        theirs = self._on_disk()
+        theirs["assets"][1]["name"] = "renamed by them"
+        self._write(theirs)
+
+        rows = [dict(db._data["assets"][0], name="renamed by us"),
+                dict(db._data["assets"][1])]
+        db.set({"assets": rows, "categories": ["_All"], "tags": []})
+        self.assertTrue(db.save())
+
+        names = {row["id"]: row.get("name") for row in self._on_disk()["assets"]}
+        self.assertEqual("renamed by us", names["ASSET0"])
+        self.assertEqual("renamed by them", names["ASSET1"],
+                         "the other machine's rename was lost")
+
+    def test_2d_a_category_the_other_machine_removed_stays_removed(self):
+        """Categories union, so a removal used to come straight back."""
+        document = self._document()
+        document["categories"] = ["_All", "Wood", "Metal"]
+        self._write(document)
+        db = self._loaded()
+
+        theirs = self._on_disk()
+        theirs["categories"] = ["_All", "Wood"]
+        theirs["assets"][0]["name"] = "nudged"    # so the file is seen to move
+        self._write(theirs)
+
+        db.set({"assets": [dict(db._data["assets"][0])],
+                "categories": list(db._data["categories"]), "tags": []})
+        self.assertTrue(db.save())
+
+        self.assertNotIn(
+            "Metal", self._on_disk()["categories"],
+            "a category the other machine removed was put back by our save")
+
+    def test_2d_a_category_each_machine_added_survives(self):
+        self._write(self._document())
+        db = self._loaded()
+
+        theirs = self._on_disk()
+        theirs["categories"] = ["_All", "FromThem"]
+        self._write(theirs)
+
+        db.set({"assets": [dict(db._data["assets"][0])],
+                "categories": ["_All", "FromUs"], "tags": []})
+        self.assertTrue(db.save())
+
+        after = self._on_disk()["categories"]
+        self.assertIn("FromUs", after)
+        self.assertIn("FromThem", after, "their new category was dropped")
+
+
 class ARealConflictIsTOLD(_Case):
     """Local wins a true conflict - but never in silence."""
 

@@ -561,7 +561,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with ui_helpers.relayout(*models):
             for m in models:
                 m.switch_model_data()
-            model_registry.rebind(self.prefs)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
+            model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
 

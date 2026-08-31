@@ -320,6 +320,7 @@ class DatabaseConnector:
             inst._disk_stat = None
             inst._loaded_ids = set()
             inst._loaded_rows = {}
+            inst._loaded_containers = {}
 
             inst._adopted = []
             inst._adopted_fields = []
@@ -354,6 +355,10 @@ class DatabaseConnector:
             if isinstance(a, dict)
         }    # the merge BASE: a field differing from this is an edit, and only a field BOTH sides moved is a conflict
         self._loaded_ids = set(self._loaded_rows)
+        self._loaded_containers = {
+            key: list(document.get(key, []) or [])
+            for key in ("categories", "tags")
+        }    # the same base for the two LIST containers, so a peer's removal is not undone by a union
 
     def _migrate(self, data: dict) -> None:
         """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
@@ -805,9 +810,14 @@ class DatabaseConnector:
                 current.remove(row)
                 dropped_rows.append(row)
         self._dropped.extend(dropped_rows)
-        for key in ("categories", "tags"):
+        for key in ("categories", "tags"):    # the same three-way rule as a row, on a LIST: absent from disk but in our baseline and untouched by us is THEIR removal, and a union alone puts it back ▸p/merge-needs-a-base
             existing = self._data.setdefault(key, [])
-            for value in disk.get(key, []):
+            theirs = disk.get(key, [])
+            was = self._loaded_containers.get(key, [])
+            for value in list(existing):
+                if value in was and value not in theirs:
+                    existing.remove(value)
+            for value in theirs:
                 if value not in existing:
                     existing.append(value)
         theirs_colors = disk.get("category_colors")

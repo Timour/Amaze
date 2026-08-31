@@ -6,6 +6,7 @@ import unittest
 
 from PySide6 import QtWidgets
 
+from amaze.core import model_registry
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
@@ -74,11 +75,89 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "the second panel's save brought the deleted asset back, and its "
             "files are gone - a row pointing at nothing")
 
+    def test_1e_each_panel_retags_a_different_row_and_both_save(self):
+        """The audit's 1e: two panels edit two rows, then both write the index."""
+        model = self.a.material_model
+        named = [row for row in range(model.rowCount())
+                 if model._assets[row].name]
+        self.assertTrue(len(named) > 1, "premise: the fixture has one asset")
+        first, second = named[0], named[1]
+        one = model._assets[first].mat_id
+        two = model._assets[second].mat_id
+
+        model.set_assetdata(model.index(first, 0), "MetalA", "EditedByA", "",
+                            None)
+        self.b.material_model.set_assetdata(
+            self.b.material_model.index(second, 0), "BricksB", "EditedByB", "",
+            None)
+        self.assertTrue(self.a.material_model.save())
+        self.assertTrue(self.b.material_model.save())
+
+        rows = _rows(self.a)
+        self.assertEqual("MetalA", rows[one].get("name"),
+                         "the first panel's rename was lost")
+        self.assertEqual("BricksB", rows[two].get("name"),
+                         "the second panel's rename was lost")
+
+    def test_1b_a_delete_in_one_panel_is_not_undone_by_the_other(self):
+        """The audit's 1b, under its own name; the mechanism is pinned above."""
+        index, model = self._named_asset(self.a)
+        target = model._assets[index.row()].mat_id
+        model.remove_asset(index)
+        self.assertTrue(self.b.material_model.save())
+        self.assertNotIn(target, _rows(self.a))
+
     def test_both_panels_read_one_set_of_rows(self):
         self.assertIs(
             self.a.material_model, self.b.material_model,
             "each panel built its own library model over the same file, so "
             "one panel's save writes the other's copy of the rows")
+
+    def test_h8_a_pending_delete_is_spent_by_the_save_that_marked_it(self):
+        """One model per library, so there is no second saver to spend it."""
+        index, model = self._named_asset(self.a)
+        target = model._assets[index.row()].mat_id
+        from amaze.core import database
+
+        connector = database.DatabaseConnector(model.DB_FILENAME)
+        connector.forget(target)
+        self.assertIn(target, connector._forgotten,
+                      "premise: the mark was not made")
+
+        self.assertTrue(self.b.material_model.save(),
+                        "the other panel's save was refused")
+
+        self.assertNotIn(
+            target, _rows(self.a),
+            "the delete mark was spent by a save that did not make it, so "
+            "the row survived on disk")
+
+    def test_h9_a_switch_and_back_leaves_both_panels_saving(self):
+        first = self.a.prefs.dir
+        other = test_support.fresh_library(self)
+
+        self.a.prefs.dir = other
+        self.a.switch_all_models()
+        self.a.prefs.dir = first
+        self.a.switch_all_models()
+
+        self.assertTrue(self.a.material_model.save(),
+                        "the panel that switched cannot save after coming back")
+        self.assertTrue(self.b.material_model.save(),
+                        "the other panel was left detached by the switch")
+
+    def test_h9_a_panel_opened_after_a_switch_joins_the_same_models(self):
+        """Without the re-file, the models sit under the OLD path and the next panel builds a second set over one library."""
+        other = test_support.fresh_library(self)
+        self.a.prefs.dir = other
+        self.a.switch_all_models()
+
+        joined = model_registry.models_for(self.a.prefs)
+
+        self.assertIs(
+            self.a.material_model, joined["material_model"],
+            "a panel opening on this library is handed a second, separate "
+            "set of models - which is the divergence phase 1 removed")
 
     def test_a_closed_panel_leaves_no_listener_on_the_shared_models(self):
         """Qt takes a parented proxy with its widget - unparented, a closed pane tab goes on receiving the shared model's signals forever. ▸p/one-model-set"""
