@@ -70,22 +70,16 @@ class ThumbnailCache:
 
     def _remember_disk_state(self) -> None:
         """The manifest's fingerprint as this object last saw it."""
-        self._disk_state = hostos.disk_state(self.manifest_path)
+        self._disk_state = hostos.fingerprint_of(self.manifest_path)
 
     def _adopt_from_disk(self) -> None:
         """Fold in entries another writer added since this object read - adoption can only ADD (an entry is per-file and self-describing): a key this session does not hold is another writer's and is kept, a key both hold takes ours, because ours was just measured against the file on disk. Without it, two tabs flushing left the later writer's 40 entries and orphaned the earlier one's 300 PNGs."""
-        current = hostos.disk_state(self.manifest_path)
-        if current is None or getattr(self, "_disk_state", None) == current:
-            return                          # nothing moved underneath us
-        try:
-            with open(self.manifest_path, encoding="utf-8") as handle:
-                loaded = json.load(handle)
-        except (OSError, ValueError):
-            return              # an unreadable peer is _load_manifest's
-        if not isinstance(loaded, dict):
-            return
+        answer = hostos.peer_read(self.manifest_path,    # ▸r/peer-read
+                                  getattr(self, "_disk_state", None))
+        if answer.verdict != hostos.PEER_CHANGED:
+            return      # unchanged, absent, or an unreadable peer, which is _load_manifest's
         adopted = 0
-        for key, value in loaded.items():
+        for key, value in answer.document.items():
             key = self._key(key)
             if key not in self._manifest and isinstance(value, dict):
                 self._manifest[key] = value

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import typing
 
 APP_DIR = "Amaze"
 
@@ -307,6 +308,53 @@ def parses_as_json(raw: bytes) -> bool:
     except (UnicodeDecodeError, ValueError):
         return False
     return True
+
+
+PEER_ABSENT = "absent"          # nothing there to merge with
+PEER_UNCHANGED = "unchanged"    # the same bytes this caller last saw
+PEER_CHANGED = "changed"        # `document` holds what is on disk now
+PEER_UNREADABLE = "unreadable"  # it is there and will not parse - REFUSE, never write over it
+
+
+class PeerFile(typing.NamedTuple):
+    verdict: str
+    document: dict | None
+    fingerprint: tuple | None
+    error: str = ""
+
+
+def file_fingerprint(raw: bytes) -> tuple:
+    """`(size, sha256)` of these bytes - the ONE identity every merge path compares. ▸r/peer-read"""
+    return (len(raw), hashlib.sha256(raw).hexdigest())
+
+
+def fingerprint_of(path: str):
+    """`file_fingerprint` of what is at `path`, or None when it cannot be read - for a caller that wants the IDENTITY and not the document, so it does not pay for a parse. ▸r/peer-read"""
+    try:
+        with open(path, "rb") as handle:
+            return file_fingerprint(handle.read())
+    except OSError:
+        return None
+
+
+def peer_read(path: str, fingerprint=None) -> PeerFile:
+    """Whether another writer changed `path` since `fingerprint`, with the document when they did - the verdict is CONTENT, never a stat, and it costs a read per call, so price it per door and not per lookup. ▸r/peer-read"""
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError:
+        return PeerFile(PEER_ABSENT, None, None)
+    current = file_fingerprint(raw)
+    if fingerprint is not None and tuple(fingerprint) == current:
+        return PeerFile(PEER_UNCHANGED, None, current)
+    try:
+        loaded = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        return PeerFile(PEER_UNREADABLE, None, current, str(exc))
+    if not isinstance(loaded, dict):
+        return PeerFile(PEER_UNREADABLE, None, current,
+                        "document is %s, not an object" % type(loaded).__name__)
+    return PeerFile(PEER_CHANGED, loaded, current)
 
 
 def existed_before(path: str, markers: tuple = ()) -> str:

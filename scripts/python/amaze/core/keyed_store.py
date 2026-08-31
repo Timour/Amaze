@@ -804,25 +804,16 @@ class Store:
         return Written(True, REASON_NONE, "", keys)
 
     def _remember_disk_state(self) -> None:
-        self._disk_state = hostos.disk_state(self.path)
+        self._disk_state = hostos.fingerprint_of(self.path)
 
     def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:
         """Fold in keys another session added since this one read; ADDS only, and a same-session delete can come back. FALSE means the file is there and will not parse, and the caller must refuse rather than write over it. ▸p/store-commit-order"""
-        current = hostos.disk_state(self.path)
-        if current is None or self._disk_state == current:
-            return True                     # nothing moved underneath us
-        try:
-            with open(self.path, "rb") as handle:
-                raw = handle.read()
-        except OSError:
-            return True     # a hold, not damage: the peer's bytes are intact
-        try:
-            loaded = json.loads(raw.decode("utf-8-sig"))
-        except ValueError:
+        answer = hostos.peer_read(self.path, self._disk_state)  # ▸r/peer-read
+        if answer.verdict in (hostos.PEER_UNCHANGED, hostos.PEER_ABSENT):
+            return True     # nothing moved, or a hold: the peer's bytes are intact
+        if answer.verdict == hostos.PEER_UNREADABLE:
             return False
-        if not isinstance(loaded, dict):
-            return False
-        peer = self._table_in(loaded)
+        peer = self._table_in(answer.document)
         if peer is None:
             return True                     # a table this store does not own
         if not isinstance(peer, dict):

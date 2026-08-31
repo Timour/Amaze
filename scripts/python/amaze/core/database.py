@@ -330,13 +330,8 @@ class DatabaseConnector:
         return inst
 
     def _stat_file(self):
-        """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only)."""
-        try:
-            with open(self._path + self._filename, "rb") as handle:
-                raw = handle.read()
-            return (len(raw), hashlib.sha256(raw).hexdigest())
-        except OSError:
-            return None
+        """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only). ▸r/peer-read"""
+        return hostos.fingerprint_of(self._path + self._filename)
 
     def _remember_disk_state(self, stat=None) -> None:
         """The stale-write and merge baseline - `_disk_stat` plus `_loaded_ids`, re-derived TOGETHER on every load and successful save (ids frozen at load once returned a this-session row as a peer addition); `stat` is passed when the caller just wrote those exact bytes, and a non-dict row contributes no id, like every other walk of this list."""
@@ -647,8 +642,7 @@ class DatabaseConnector:
         serialised_stat = None
         try:
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
-            serialised_stat = (len(serialised),
-                               hashlib.sha256(serialised).hexdigest())
+            serialised_stat = hostos.file_fingerprint(serialised)    # ▸r/peer-read
             if current_stat is not None and current_stat == serialised_stat:
                 self._remember_disk_state(serialised_stat)
                 self._save_outcome = "identical-skip"
@@ -703,13 +697,13 @@ class DatabaseConnector:
 
     def _merge_from_disk(self, full: str) -> bool:
         """Three-way merge against a database another session changed underneath us - membership baseline is the ids as of OUR last load or successful save (`_remember_disk_state` refreshes both together): a disk id missing from memory is OUR deletion if it was in the baseline, THEIR addition if not; categories and tags union; conflicting records take memory (the active editor)."""
-        try:
-            with open(full, encoding="utf-8-sig") as lib_json:
-                disk = json.load(lib_json)
-        except (OSError, ValueError) as exc:
+        answer = hostos.peer_read(full)    # ▸r/peer-read
+        if answer.verdict != hostos.PEER_CHANGED:
             debug.event("database", "merge read failed",
-                        file=self._filename, error=str(exc))
+                        file=self._filename, verdict=answer.verdict,
+                        error=answer.error)
             return False
+        disk = answer.document
         malformed = wrong_shape(disk)
         if malformed:
             debug.event("database", "merge refused - not a database",
