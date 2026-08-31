@@ -20,6 +20,10 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         self._pass_scheduled = False
         self._pass_refilters = False
         self._in_pass = False
+        self._pass_timer = QtCore.QTimer(self)    # OWNED, so Qt takes it when this proxy goes: a static singleShot outlives its own object and re-sorts from beyond the grave ▸r/model-parent
+        self._pass_timer.setSingleShot(True)
+        self._pass_timer.setInterval(0)
+        self._pass_timer.timeout.connect(self._pass_now)
         self.rowsInserted.connect(self._schedule_pass)    # an insert that PASSES the filter arrives as the proxy's own rowsInserted; one that does not has nothing to order
 
     def setSourceModel(self, model) -> None:
@@ -82,7 +86,7 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         if self._pass_scheduled:    # already queued: merge into it - the flag above is set FIRST, so an insert and a data change in one turn get one pass that does both
             return
         self._pass_scheduled = True
-        QtCore.QTimer.singleShot(0, self._pass_now)
+        self._pass_timer.start()    # the OWNED timer, never a static singleShot: Qt takes it with this proxy, so a pass queued by a panel that then closes cannot run on a destroyed object ▸r/model-parent
 
     def _pass_now(self) -> None:
         self._pass_scheduled = False    # cleared at the START: from here the pass is RUNNING, which is `_in_pass`'s business, and a change arriving during it deserves its own pass

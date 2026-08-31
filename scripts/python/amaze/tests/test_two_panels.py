@@ -80,6 +80,48 @@ class TwoPanelsShareOneLibraryTest(unittest.TestCase):
             "each panel built its own library model over the same file, so "
             "one panel's save writes the other's copy of the rows")
 
+    def test_a_closed_panel_leaves_no_listener_on_the_shared_models(self):
+        """Qt takes a parented proxy with its widget - unparented, a closed pane tab goes on receiving the shared model's signals forever. ▸p/one-model-set"""
+        import shiboken6
+
+        doomed = [self.b.material_sorted_model, self.b.material_selection_model,
+                  self.b.category_sorted_model, self.b.file_sorted_model,
+                  self.b.cop_sorted_model, self.b.code_sorted_model,
+                  self.b.gradient_sorted_model]
+        self.assertTrue(all(shiboken6.isValid(o) for o in doomed),
+                        "premise: the second panel's proxies are not built")
+
+        shiboken6.delete(self.b)
+
+        alive = [o for o in doomed if shiboken6.isValid(o)]
+        self.assertEqual(
+            [], alive,
+            "%d of the closed panel's proxies outlived it, still wired to the "
+            "shared models" % len(alive))
+        self.assertTrue(self.a.material_model.rowCount(),
+                        "the surviving panel lost its rows when the other closed")
+
+    def test_a_pending_resort_dies_with_the_panel_that_asked_for_it(self):
+        """The grid proxies coalesce a re-sort onto the next event-loop turn; a panel closed inside that window leaves the call queued against a proxy Qt is about to delete."""
+        from PySide6 import QtCore
+
+        proxy = self.b.material_sorted_model
+        ran = []
+        proxy._pass_now = lambda: ran.append(True)    # patched BEFORE scheduling, so this is the callable the timer carries
+        proxy._schedule_pass()
+        self.assertTrue(proxy._pass_scheduled,
+                        "premise: no pass was queued, so nothing races here")
+
+        test_support.stop_panel_workers(self.b)
+        self.b.deleteLater()
+        QtWidgets.QApplication.sendPostedEvents(
+            None, QtCore.QEvent.Type.DeferredDelete)    # what Houdini's own loop does when the tab closes; processEvents alone never delivers it
+        QtWidgets.QApplication.processEvents()
+
+        self.assertEqual([], ran,
+                         "the queued re-sort ran after its panel was deleted, "
+                         "on a proxy Qt had already destroyed")
+
     def test_a_category_removed_in_one_panel_tells_the_other_sidebar(self):
         """Both sidebars alias ONE list, so the row vanishes from the second panel with no signal and its view repaints only by accident. ▸p/one-model-set"""
         categories = self.a.category_model
