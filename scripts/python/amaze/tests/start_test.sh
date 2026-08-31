@@ -139,7 +139,7 @@ test_design_document test_drawn_binding test_messages test_tooltips \
 test_fresh_library test_grouped_import test_row_addressing \
 test_device_pixmap test_switch_rereads test_upgrade_tool \
 test_fixture_guard test_packages test_texstore test_event_pumps \
-test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh"
+test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh test_file_lock"
 
 # Vulkan viewport multithreading OFF, every platform: ten panel modules
 # crash 10/10 with it on. Suite-only - a live Houdini keeps its defaults.

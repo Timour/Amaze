@@ -607,6 +607,11 @@ class DatabaseConnector:
             self._save_outcome = "empty-document"
             return False
         full = self._path + self._filename
+        with hostos.file_lock(full):    # AFTER the refusals that write nothing, since taking it makes a sidecar; narrows the read-merge-replace window against another Amaze, and a refused lock still writes because the merge is the real guard
+            return self._merge_and_write(full)
+
+    def _merge_and_write(self, full: str) -> bool:
+        """The window a save actually holds: merge what a peer wrote, then replace the file. Callers hold the lock. ▸p/merge-needs-a-base"""
         current_stat = self._stat_file()
         if self._disk_stat is not None and current_stat not in (
             None, self._disk_stat

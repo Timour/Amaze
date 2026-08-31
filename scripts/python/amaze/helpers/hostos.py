@@ -357,6 +357,74 @@ def peer_read(path: str, fingerprint=None) -> PeerFile:
     return PeerFile(PEER_CHANGED, loaded, current)
 
 
+LOCK_TRIES = 20             # ~1s at 50ms; `msvcrt.LK_LOCK` blocks up to 10s and `LK_NBLCK` gives up at once, so neither is used
+LOCK_WAIT = 0.05
+
+
+def lock_path(path: str) -> str:
+    """Where the lock for `path` lives: this machine's cache, never beside the file - the library folder holds library data and a stray there is what three suite guards refuse."""
+    digest = hashlib.sha256(
+        canonical_path_key(path).encode("utf-8")).hexdigest()[:16]
+    folder = os.path.join(cache_root(), "locks")
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, digest + ".lock")
+
+
+def _take_lock(handle) -> None:
+    """One non-blocking exclusive attempt; OSError when somebody else holds it, or when this filesystem cannot lock at all."""
+    try:
+        import fcntl
+    except ImportError:
+        import msvcrt
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _drop_lock(handle) -> None:
+    try:
+        import fcntl
+    except ImportError:
+        import msvcrt
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        return
+    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+@contextlib.contextmanager
+def file_lock(path: str):
+    """Hold an exclusive lock for `path` while the body runs, yielding whether it was taken. THIS MACHINE ONLY - the lock lives in its cache, so two machines on one library are not serialised by it. NEVER raises and never skips the body: it narrows a window, and the merge is the real guard. ▸p/merge-needs-a-base"""
+    handle = None
+    held = False
+    try:
+        handle = open(lock_path(path), "a+")
+    except OSError:
+        handle = None
+    if handle is not None:
+        for attempt in range(LOCK_TRIES):
+            try:
+                _take_lock(handle)
+                held = True
+                break
+            except OSError:
+                if attempt + 1 < LOCK_TRIES:
+                    time.sleep(LOCK_WAIT)
+    try:
+        yield held
+    finally:
+        if handle is not None:
+            if held:
+                try:
+                    _drop_lock(handle)
+                except OSError:
+                    pass
+            try:
+                handle.close()
+            except OSError:
+                pass
+
+
 def existed_before(path: str, markers: tuple = ()) -> str:
     """Name of ONE surviving trace proving `path` was here before, or "" when nothing says it ever was - so an absent database is only treated as new when no trace contradicts that."""
     found = existed_before_all(path, markers)
