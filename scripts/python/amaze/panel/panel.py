@@ -36,6 +36,7 @@ from amaze.core import (
     matx_library,
     matx_import,
     matx_sources,
+    model_registry,
 )
 from amaze.dialogs import (
     base_dialog,
@@ -114,6 +115,7 @@ _reload(scene_captures)
 _reload(file_library)    # after texture/geo/hip: it composes all three engines
 _reload(vex_syntax)    # before code_library/code_dialog, which consume its palette and tokenizer
 _reload(code_library)    # after library/category: it subclasses the material machinery
+_reload(model_registry)    # LAST of the models: it names all ten classes, so a stale one hands the next panel the previous build's classes
 
 _reload(base_dialog)    # FIRST of the dialogs: user_dialog from-imports AssetDialog by CLASS, so reloading it without this re-binds the SAME stale class
 _reload(prefs_dialog)
@@ -279,12 +281,13 @@ class MatLibPanel(QtWidgets.QWidget):
         return button
 
     def setup(self):
-        self.category_model = category.Categories(preferences=self.prefs)    # UNSORTED, all four sidebar proxies: the stored list order IS the sidebar order, manual and drag-to-reorder. A name sort put "_All" below any digit-named category; the proxy presents source order (probed) and only filters
-        self.category_sorted_model = category.CategoriesSidebarProxy()
+        for attr, model in model_registry.models_for(self.prefs).items():
+            setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
+
+        self.category_sorted_model = category.CategoriesSidebarProxy()    # category_model is UNSORTED, all four sidebar proxies: the stored list order IS the sidebar order, manual and drag-to-reorder. A name sort put "_All" below any digit-named category; the proxy presents source order (probed) and only filters
         self.category_sorted_model.setSourceModel(self.category_model)
         self.category_sorted_model.hide_empty = self.prefs.hide_empty_categories
 
-        self.material_model = library.MaterialLibrary(preferences=self.prefs)
         self.material_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
         self.material_sorted_model.setSourceModel(self.material_model)
         self.material_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
@@ -329,9 +332,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.asset_delegate.set_badge_click(
             "comment", self._open_comments_from_badge)
 
-        self.file_folders_model = file_library.FileFolders(self.prefs)    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered through TextureFilterProxyModel for the search box and favourites star; see core/file_library.py
-        self.file_files_model = file_library.FileFiles(self.prefs)
-        self.file_sorted_model = texture_library.TextureFilterProxyModel()
+        self.file_sorted_model = texture_library.TextureFilterProxyModel()    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered here for the search box and favourites star; see core/file_library.py
         self.file_sorted_model.setSourceModel(self.file_files_model)
         self.file_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
         self.file_selection_model = QtCore.QItemSelectionModel(
@@ -357,12 +358,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.file_files_model.progress_changed.connect(
             self._on_file_folder_progress)    # a BOUND method, never a lambda: the model outlives a closed pane tab (it stays wired to the reload-stable thumbnails relay), and a lambda receiver survives the widget's death to drive a deleted progress bar
 
-        self.gradient_model = gradient_library.GradientLibrary(    # the Gradients section is Sanzo Wada's colour combinations as curated, read-only content: painted thumbnails, no files and no workers, so the model trio is all there is to set up (core/gradient_library.py)
-            preferences=self.prefs)
-        self.gradient_categories_model = gradient_library.GradientCategories(
-            preferences=self.prefs
-        )
-        self.gradient_category_sorted_model = category.CategoriesSidebarProxy()    # the SAME proxy class as the other three sidebars and unsorted like them; Colors showing its model bare was the last odd-one-out pipeline. Nothing hides here - no renderer filter is ever pushed - and the unification is the point
+        self.gradient_category_sorted_model = category.CategoriesSidebarProxy()    # the Gradients section is curated read-only content: painted thumbnails, no files and no workers, so the proxy trio is all there is to set up (core/gradient_library.py). The SAME proxy class as the other three sidebars and unsorted like them    # the SAME proxy class as the other three sidebars and unsorted like them; Colors showing its model bare was the last odd-one-out pipeline. Nothing hides here - no renderer filter is ever pushed - and the unification is the point
         self.gradient_category_sorted_model.setSourceModel(
             self.gradient_categories_model)
         self.gradient_category_sorted_model.hide_empty = (
@@ -386,9 +382,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.gradient_delegate.set_badge_click(
             "comment", self._open_comments_from_badge)
 
-        self.cop_model = cop_library.CopLibrary(preferences=self.prefs)    # the Cop section is standalone COP-network assets: a second, fully independent material-style stack over its own cops.json (core/cop_library.py), mirroring the material model/proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
-        self.cop_category_model = cop_library.CopCategories(preferences=self.prefs)
-        self.cop_category_sorted_model = category.CategoriesSidebarProxy()
+        self.cop_category_sorted_model = category.CategoriesSidebarProxy()    # the Cop section is standalone COP-network assets over its own cops.json (core/cop_library.py), mirroring the material proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
         self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
         self.cop_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
         self.cop_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
@@ -399,11 +393,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.cop_sorted_model.setDynamicSortFilter(False)
         self.cop_selection_model = QtCore.QItemSelectionModel(self.cop_sorted_model)
 
-        self.code_model = code_library.CodeLibrary(preferences=self.prefs)    # the Code section is reusable snippets over its own code.json (core/code_library.py): the same material machinery as COP, storing snippet text inline and painting a code preview
-        self.code_category_model = code_library.CodeCategories(
-            preferences=self.prefs
-        )
-        self.code_category_sorted_model = category.CategoriesSidebarProxy()
+        self.code_category_sorted_model = category.CategoriesSidebarProxy()    # the Code section is reusable snippets over its own code.json (core/code_library.py): the same material machinery as COP, storing snippet text inline and painting a code preview
         self.code_category_sorted_model.setSourceModel(self.code_category_model)
         self.code_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
         self.code_sorted_model = multifilterproxy_model.MultiFilterProxyModel()
@@ -571,6 +561,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with ui_helpers.relayout(*models):
             for m in models:
                 m.switch_model_data()
+            model_registry.rebind(self.prefs)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
 

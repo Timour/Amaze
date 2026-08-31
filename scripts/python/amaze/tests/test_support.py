@@ -8,7 +8,7 @@ import os
 import shutil
 import tempfile
 
-from amaze.core import database, debug
+from amaze.core import database, debug, model_registry
 from amaze.helpers import hostos
 from amaze.prefs import prefs
 
@@ -90,6 +90,7 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 def reset_database_singletons() -> None:
     """Drop every cached DatabaseConnector so the next construction loads from the test's own path - CLEARED in place, never rebound, and the identity check is load-bearing. ▸p/mutate-not-rebind, ▸p/harness-isolation"""
     database.DatabaseConnector._instances.clear()
+    model_registry.release()    # the models alias the connector's document, so a dropped connector with a kept model hands the next panel rows from the previous test
     if database.DatabaseConnector._instances is not database._INSTANCES:
         raise RuntimeError(
             "the connector registry is no longer database._INSTANCES - "

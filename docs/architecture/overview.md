@@ -1025,6 +1025,7 @@ core/keyed_store.py       KEYED STORE ENGINE (guarded JSON side-tables)
 render/nodes.py           MATERIAL ENGINE (build_karma_material) + save/import
 core/debug.py             DEBUG ENGINE
 core/library.py           Library Model (Materials) + base for Cop/Code
+core/model_registry.py    the ONE source-model set per library; panels are views
 core/material.py          Material record + is_karma_renderer()
 core/category.py          Categories Model + Sidebar Proxy
 core/multifilterproxy_model.py   Filter Proxy
