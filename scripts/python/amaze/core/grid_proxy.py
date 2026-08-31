@@ -20,7 +20,7 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         self._pass_scheduled = False
         self._pass_refilters = False
         self._in_pass = False
-        self._pass_timer = QtCore.QTimer(self)    # OWNED, so Qt takes it when this proxy goes: a static singleShot outlives its own object and re-sorts from beyond the grave ▸r/model-parent
+        self._pass_timer = QtCore.QTimer(self)    # OWNED, so Qt takes it when this proxy goes: a static singleShot keeps the bound method alive and fires it after the C++ object is gone ▸r/model-parent
         self._pass_timer.setSingleShot(True)
         self._pass_timer.setInterval(0)
         self._pass_timer.timeout.connect(self._pass_now)

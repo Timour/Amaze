@@ -24,7 +24,9 @@ ASSET_NOT_DELETED_LIST_NOT_UPDATED = '"%s" was not deleted because Amaze could n
 
 CLEANUP_FOUND_NOTHING_TO_CLEAN = 'Library cleanup finished: nothing to clean.'
 
-ASSET_CHANGED_ON_DISK_SINCE_LOAD = 'Another user has updated "%s" since this session loaded it, so Amaze did not overwrite their version.\n\nYou can save it as a new material, or reopen the Amaze panel to load their version first.'
+EDIT_CONFLICT_KEPT_YOURS = 'Someone else changed "%s" while you had it open, and you both edited the same thing.\n\nAmaze kept your version and discarded theirs.'
+
+ASSET_CHANGED_ON_DISK_SINCE_LOAD ='Another user has updated "%s" since this session loaded it, so Amaze did not overwrite their version.\n\nYou can save it as a new material, or reopen the Amaze panel to load their version first.'
 
 VERSION_SWITCH_DIVERGED = "The version switch did not finish: the material's files hold version %d, but its version list still names the previous one. Every archived version is still there.\n\nSwitch the version again to finish."
 

@@ -536,10 +536,33 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         db.set(data)
         stored = db.save()
         self._adopt_rows(db.take_adopted())  # a save can ADOPT rows another session wrote while we had the library open; they reached disk but not this model, and assets[] above is rebuilt from the model, so the next save would write them out of existence
+        self._adopt_fields(db.take_adopted_fields())  # and the same for a FIELD on a row we both hold: adopted into the document, it still has to reach the record, or assets[] writes our stale value straight back
         self._drop_rows(db.take_dropped())   # and the mirror: rows a peer DELETED from disk, whose files are already unlinked - kept in the model, the next save writes back a fileless ghost
         if stored and getattr(db, "_save_outcome", "") != "identical-skip":
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
+
+    def _adopt_fields(self, fields: list) -> None:
+        """Apply `(id, field, value)` a peer changed onto the records holding them, through the ONE row reader, and tell the views. The record OBJECT is kept - dialogs and delegates hold references to it, so its state is refreshed rather than the record replaced."""
+        if not isinstance(fields, list) or not fields:  # a list, by contract, like `_adopt_rows`
+            return
+        wanted: dict = {}
+        for asset_id, field, value in fields:
+            wanted.setdefault(str(asset_id), {})[field] = value
+        for row, asset in enumerate(self._assets):
+            changes = wanted.get(str(asset.mat_id))
+            if not changes:
+                continue
+            try:
+                fresh = self._asset_from_row(
+                    dict(asset.get_as_dict(), **changes))
+            except Exception as exc:                        # noqa: BLE001
+                debug.event("database", "adopted field not readable",
+                            file=self.DB_FILENAME, error=str(exc),
+                            asset_id=str(asset.mat_id))
+                continue
+            asset.__dict__.update(fresh.__dict__)
+            self.row_changed(row)    # the whole row: an adopted field can reach any column
 
     def _adopt_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals a view needs. A row this build cannot parse is skipped rather than allowed to abort the model - it stays on disk untouched."""

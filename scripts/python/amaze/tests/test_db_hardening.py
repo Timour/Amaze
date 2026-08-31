@@ -978,8 +978,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         self.assertEqual(2, data["version"], "premise: we stopped at 2")
         peer = self._document(2, version=2)
         peer["version"] = 3
-        for row in peer["assets"]:
-            row["moods"] = []                # what step 2 would have added
+        peer["assets"][0]["moods"] = []      # what step 2 would have added, on ONE row only: the merge is field-wise over EVERY field now, so a row the peer migrated hands us its new field and the row that must stay at the old shape is one the peer left alone
         self._write(peer)
         db.set({"assets": data["assets"], "categories": data["categories"],
                 "tags": data["tags"]})

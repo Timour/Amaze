@@ -1,5 +1,6 @@
 """Database handler for Matlib: json documents on disk, one live connection per database file; migration step `_MIGRATIONS[N]` runs when a loaded document carries `version == N` and mutates it in place to version N+1, so a `SCHEMA_VERSION` bump must ship with its step or the document keeps its old version and is recorded as an incomplete chain."""
 
+import copy
 import json
 import os
 import hashlib
@@ -192,29 +193,35 @@ def asset_id_for_file(name: str, extensions: tuple,
     return stem
 
 
-_SHARED_METADATA_FIELDS = ("name", "categories", "tags", "description",
-                           "license", "about", "icon", "node_color")
-
-
-def _merge_shared_metadata(mine: dict, theirs: dict, filename: str) -> None:
-    """Field-wise merge for a record both sessions hold - the field, not the record, is the unit of editing: an empty local value adopts the peer value, and every real collision keeps the local value and is recorded, never dialogued."""
-    for field in _SHARED_METADATA_FIELDS:
-        if field not in theirs:
+def _merge_record(mine: dict, theirs: dict, base, filename: str,
+                  adopted: list) -> None:
+    """Field-wise three-way merge for a record both sessions hold - EVERY field, judged against `base`, the row as of our last load or successful save. Only a field both sides moved away from the base is a conflict; that one keeps the local value and tells the user. `base` None means we cannot say who moved, and every difference is treated as a conflict."""
+    for field in set(mine) | set(theirs):
+        if field == "id" or field not in theirs:
             continue
         their_value = theirs.get(field)
         my_value = mine.get(field)
         if my_value == their_value:
             continue
-        empties = ("", None, [], {})
-        if my_value in empties and their_value not in empties:
+        based = isinstance(base, dict)
+        theirs_moved = not based or their_value != base.get(field)
+        mine_moved = not based or my_value != base.get(field)
+        if theirs_moved and not mine_moved:
             mine[field] = their_value
+            adopted.append((str(mine.get("id")), field, their_value))
             debug.event("database", "adopted a field another session "
-                        "filled", file=filename,
+                        "changed", file=filename,
                         mat_id=str(mine.get("id")), field=field)
+        elif mine_moved and not theirs_moved:
+            continue    # ours is the only edit; nothing to say
         else:
             debug.event("database", "field collision - this session's "
                         "value kept", file=filename,
                         mat_id=str(mine.get("id")), field=field)
+            debug.alert(
+                messages.EDIT_CONFLICT_KEPT_YOURS % (
+                    mine.get("name") or mine.get("id") or "this item",),
+                key="edit-conflict-%s-%s" % (mine.get("id"), field))
 
 
 def wrong_shape(document) -> str:
@@ -312,8 +319,10 @@ class DatabaseConnector:
             inst._path = ""
             inst._disk_stat = None
             inst._loaded_ids = set()
+            inst._loaded_rows = {}
 
             inst._adopted = []
+            inst._adopted_fields = []
             inst._dropped = []
 
             # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
@@ -333,13 +342,18 @@ class DatabaseConnector:
         """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only). ▸r/peer-read"""
         return hostos.fingerprint_of(self._path + self._filename)
 
-    def _remember_disk_state(self, stat=None) -> None:
-        """The stale-write and merge baseline - `_disk_stat` plus `_loaded_ids`, re-derived TOGETHER on every load and successful save (ids frozen at load once returned a this-session row as a peer addition); `stat` is passed when the caller just wrote those exact bytes, and a non-dict row contributes no id, like every other walk of this list."""
-        self._disk_stat = self._stat_file() if stat is None else stat
-        self._loaded_ids = {
-            str(a.get("id")) for a in (self._data or {}).get("assets", [])
+    def _remember_disk_state(self) -> None:
+        """The stale-write and merge baseline, read from the FILE and never from the buffer we meant to write - a save whose rename is overwritten in the same instant must see its own row missing here, or its next save reads that row as a peer's DELETION and drops it. `_disk_stat`, `_loaded_rows` and `_loaded_ids` are re-derived together, from one read. ▸r/peer-read"""
+        answer = hostos.peer_read(self._path + self._filename)
+        document = (answer.document if answer.document is not None
+                    else (self._data or {}))    # unreadable or absent: our memory is the only baseline available, and the stale-write guard has its own refusal for that
+        self._disk_stat = answer.fingerprint
+        self._loaded_rows = {
+            str(a.get("id")): copy.deepcopy(a)
+            for a in document.get("assets", [])
             if isinstance(a, dict)
-        }
+        }    # the merge BASE: a field differing from this is an edit, and only a field BOTH sides moved is a conflict
+        self._loaded_ids = set(self._loaded_rows)
 
     def _migrate(self, data: dict) -> None:
         """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
@@ -644,7 +658,7 @@ class DatabaseConnector:
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
             serialised_stat = hostos.file_fingerprint(serialised)    # ▸r/peer-read
             if current_stat is not None and current_stat == serialised_stat:
-                self._remember_disk_state(serialised_stat)
+                self._remember_disk_state()
                 self._save_outcome = "identical-skip"
                 return True
         except (TypeError, ValueError):
@@ -665,7 +679,7 @@ class DatabaseConnector:
         else:
             if created:
                 hostos.seed_restore_floor(full)
-            self._remember_disk_state(serialised_stat)
+            self._remember_disk_state()
             self._save_outcome = "stored"
             return True
 
@@ -674,6 +688,12 @@ class DatabaseConnector:
         rows = self._adopted
         self._adopted = []
         return rows
+
+    def take_adopted_fields(self) -> list:
+        """`(id, field, value)` for every field a peer changed on a row we also hold, handed over exactly once - a model that does not apply these writes its own stale value back on its next save."""
+        fields = self._adopted_fields
+        self._adopted_fields = []
+        return fields
 
     def take_dropped(self) -> list:
         """Rows a peer's save deleted from disk, handed over exactly once - the model must drop them too, or its next save writes them back."""
@@ -755,7 +775,8 @@ class DatabaseConnector:
                 self._data.setdefault("assets", []).append(theirs)
                 adopted_rows.append(theirs)
             elif tid in ours:
-                _merge_shared_metadata(ours[tid], theirs, self._filename)
+                _merge_record(ours[tid], theirs, self._loaded_rows.get(tid),
+                              self._filename, self._adopted_fields)
         adopted = len(adopted_rows)
         self._adopted.extend(adopted_rows)
         disk_ids = {str(theirs.get("id"))
