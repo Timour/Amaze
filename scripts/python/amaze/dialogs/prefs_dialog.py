@@ -13,7 +13,8 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import debug, library_policy, texture_library, users
+from amaze.core import (debug, keyed_store, library_policy, texture_library,
+                        users)
 from amaze.dialogs import base_dialog, user_dialog
 from amaze.helpers import hostos
 from amaze.core import tile_icons
@@ -104,6 +105,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         super().__init__(branding.APP_NAME + " Preferences",
                          fixed_size=False, parent=parent)
         self._prefs = prefs
+        keyed_store.refresh_all(prefs)    # opening this dialog is a DOOR: without it every list below is the copy read when the panel opened, so a user another machine created is invisible until Houdini restarts ▸r/peer-read
         # the panel owns the library operations and this only forwards; None in tests keeps the other tabs constructable
         self._panel = panel
         self._file_files_model = file_files_model

@@ -759,6 +759,16 @@ class Store:
                        else (REASON_ABSENT if self.trace else REASON_LATCHED),
                        self.spec.refused_sentence if not self.writable else "")
 
+    def refresh(self) -> bool:
+        """Re-read when another writer has changed the file since this store last saw it; True when the tables moved. Costs ONE read per call, so fire it at a door a person opens, never per lookup. ▸r/peer-read"""
+        answer = hostos.peer_read(self.path, self._disk_state)
+        if answer.verdict == hostos.PEER_UNCHANGED:
+            return False
+        if answer.verdict == hostos.PEER_ABSENT and self._disk_state is None:
+            return False    # absent, and it was absent when we looked: nothing has happened
+        self.reread()
+        return True
+
     def _commit(self, staged: dict, keys, retire=()) -> Written:
         """EVERY write lands here - one guard set, and the cache moves only on success. ▸p/store-commit-order"""
         spec = self.spec
@@ -1128,6 +1138,23 @@ def retire_owner(preferences, uid: str) -> dict:
     return results
 
 
+
+
+def refresh_all(preferences=None) -> list:
+    """Re-read every open store another machine has written since we read it, and answer the filenames that moved. For a DOOR a person opens - a dialog, a panel becoming visible - never a lookup. ▸r/peer-read"""
+    root = (hostos.canonical_path_key(str(preferences.dir))
+            if preferences is not None else None)
+    moved = []
+    for (filename, resolved), store in list(_open.items()):
+        if root is not None and not str(resolved).startswith(root):
+            continue
+        try:
+            if store.refresh():
+                moved.append(filename)
+        except Exception as exc:                             # noqa: BLE001
+            debug.event(store.spec.category, "refresh failed",
+                        store=filename, error=str(exc))
+    return moved
 
 
 def release(preferences=None) -> None:

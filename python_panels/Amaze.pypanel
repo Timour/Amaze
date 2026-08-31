@@ -25,7 +25,17 @@ if os.environ.get("AMAZE_DEV_RELOAD"):
 
 def onCreateInterface():
     amaze_widget = panel.MatLibPanel()
-    return amaze_widget]]></script>
+    return amaze_widget
+
+
+# Houdini calls this when the tab becomes visible again. Coming back to
+# Amaze is a door: without it, everything on screen is the copy read when
+# the panel opened, so a colleague's new material or comment needs a
+# Houdini restart to appear.
+def onActivateInterface():
+    from amaze.core import model_registry
+
+    model_registry.refresh_all()]]></script>
     <includeInPaneTabMenu menu_position="99" create_separator="false" />
     <includeInToolbarMenu menu_position="415" create_separator="false" />
     <help><![CDATA[]]></help>

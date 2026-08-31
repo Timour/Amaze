@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from amaze.core import (category, code_library, cop_library, file_library,
-                        gradient_library, library)
+                        gradient_library, keyed_store, library)
 from amaze.helpers import hostos
 
 SOURCE_MODELS = (    # attribute on the panel -> the class that builds it, every one taking `preferences` alone
@@ -48,6 +48,27 @@ def rebind(preferences) -> None:
                 for m in models.values()):
             _models.pop(old)
             _models[key] = models
+
+
+def refresh_all() -> list:
+    """Take what another machine wrote into every shared model and every open store, and answer what moved. For a DOOR a person opens - a panel becoming visible, a dialog - since each one costs a read. ▸r/peer-read"""
+    moved = []
+    for key, models in list(_models.items()):
+        for attr, model in models.items():
+            refresh = getattr(model, "refresh", None)
+            if refresh is None:
+                continue
+            try:
+                if refresh():
+                    moved.append(attr)
+            except Exception as exc:                         # noqa: BLE001
+                from amaze.core import debug
+                debug.event("database", "model refresh failed",
+                            model=attr, library=key, error=str(exc))
+        preferences = getattr(models.get("material_model"), "preferences", None)
+        if preferences is not None:
+            moved.extend(keyed_store.refresh_all(preferences))
+    return moved
 
 
 def release(preferences=None) -> None:

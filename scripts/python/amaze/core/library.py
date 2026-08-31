@@ -542,6 +542,16 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
 
+    def refresh(self) -> bool:
+        """Take what another machine wrote since we read the file, without writing anything. True when rows or fields moved; for a DOOR a person opens, since it costs one read. ▸r/peer-read"""
+        db = database.DatabaseConnector(self.DB_FILENAME)
+        if not db.serves(self.preferences.dir) or not db.refresh():
+            return False
+        self._adopt_rows(db.take_adopted())
+        self._adopt_fields(db.take_adopted_fields())
+        self._drop_rows(db.take_dropped())
+        return True
+
     def _adopt_fields(self, fields: list) -> None:
         """Apply `(id, field, value)` a peer changed onto the records holding them, through the ONE row reader, and tell the views. The record OBJECT is kept - dialogs and delegates hold references to it, so its state is refreshed rather than the record replaced."""
         if not isinstance(fields, list) or not fields:  # a list, by contract, like `_adopt_rows`

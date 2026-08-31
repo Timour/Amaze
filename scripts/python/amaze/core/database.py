@@ -683,6 +683,19 @@ class DatabaseConnector:
             self._save_outcome = "stored"
             return True
 
+    def refresh(self) -> bool:
+        """Fold in what another machine wrote since we last read the file, WITHOUT writing - the same merge a save runs, so the caller drains `take_adopted`, `take_dropped` and `take_adopted_fields` exactly as it does after `save()`. True when the document moved. ▸r/peer-read"""
+        if not self._data or not self._path:
+            return False
+        full = self._path + self._filename
+        if hostos.peer_read(full, self._disk_stat).verdict == (
+                hostos.PEER_UNCHANGED):
+            return False
+        if not self._merge_from_disk(full):
+            return False    # unreadable or refused: `_merge_from_disk` has said why, and our copy stands
+        self._remember_disk_state()
+        return True
+
     def take_adopted(self) -> list:
         """Rows adopted from a peer save, handed over exactly once - drained so a second call cannot re-insert the same rows."""
         rows = self._adopted
