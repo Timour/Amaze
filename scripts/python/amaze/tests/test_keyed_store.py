@@ -428,11 +428,11 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
             theirs={"folders": ["/both", "/theirs"]})
         self.assertEqual(["/both", "/mine", "/theirs"], after["folders"])
 
-    def test_a_key_with_no_rule_keeps_THIS_sessions_choice(self):
-        """The scalar default: a single choice cannot be merged without a clock, so the saving pane wins."""
+    def test_a_key_with_no_rule_takes_THEIRS_when_we_left_it_alone(self):
+        """The scalar default USED to be that the saving pane wins, because a single choice cannot be merged without a clock. There is a base now, so the question is answered rather than guessed: we wrote 128 and have not touched it since, they changed it to 64, so 64 is the later decision. ▸p/merge-needs-a-base"""
         after = self._after_a_race(
             {}, ours={"size": 128}, theirs={"size": 64})
-        self.assertEqual(128, after["size"])
+        self.assertEqual(64, after["size"])
 
     def test_a_fields_key_merges_INSIDE_a_shared_record(self):
         """The location case: a colour from one pane, a name from the other, on one folder."""
@@ -457,8 +457,8 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
             theirs={"records": {"/b": {"name": "Theirs"}}})
         self.assertEqual({"name": "Theirs"}, after["records"]["/b"])
 
-    def test_a_library_store_adopts_exactly_as_it_always_did(self):
-        """The polarity: none of the four name a rule, so none of them may change behaviour."""
+    def test_a_library_store_takes_a_peer_edit_it_is_not_competing_for(self):
+        """This pinned the OLD polarity - ours won every collision, so a colleague's comment edit was discarded. With a base the question is who MOVED it: we wrote this page and left it alone, they changed it, so theirs stands. ▸p/merge-needs-a-base"""
         store = self.store()
         store.set("material:1", self.page("mine"))
         with open(self.path(), "w", encoding="utf-8") as handle:
@@ -466,9 +466,82 @@ class APeersKeyCanBeFOLDEDInRatherThanRefused(StoreCase):
                                  "material:2": self.page("new")}}, handle)
         store.set("material:3", self.page("later"))
         after = self.on_disk()["notes"]
-        self.assertEqual("mine",
+        self.assertEqual("theirs",
                          after["material:1"]["items"][0]["text"])
         self.assertIn("material:2", after)
+
+
+class AStoreJudgesAgainstWhatItLastSaw(StoreCase):
+    """The same three-way rule the databases use: only a key BOTH sides moved is a conflict. ▸p/merge-needs-a-base"""
+
+    def _peer_writes(self, table):
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": table}, handle)
+
+    def test_a_peer_edit_to_a_key_we_left_alone_is_adopted(self):
+        store = self.store()
+        store.set("material:1", self.page("as loaded"))
+        self._peer_writes({"material:1": self.page("theirs")})
+
+        store.set("material:9", self.page("ours, elsewhere"))
+
+        self.assertEqual(
+            "theirs",
+            self.on_disk()["notes"]["material:1"]["items"][0]["text"],
+            "we were not editing this comment and their edit was discarded")
+
+    def test_a_peer_delete_of_a_key_we_left_alone_is_honoured(self):
+        store = self.store()
+        store.set("material:1", self.page("as loaded"))
+        store.set("material:2", self.page("also ours"))
+        self._peer_writes({"material:2": self.page("also ours")})
+
+        store.set("material:9", self.page("ours, elsewhere"))
+
+        self.assertNotIn(
+            "material:1", self.on_disk()["notes"],
+            "they cleared this comment and our save brought it back")
+
+    def test_our_edit_beats_a_peer_who_left_it_alone(self):
+        store = self.store()
+        store.set("material:1", self.page("as loaded"))
+        self._peer_writes({"material:1": self.page("as loaded"),
+                           "material:2": self.page("their new one")})
+
+        store.set("material:1", self.page("ours now"))
+
+        after = self.on_disk()["notes"]
+        self.assertEqual("ours now", after["material:1"]["items"][0]["text"])
+        self.assertIn("material:2", after, "their addition was dropped")
+
+    def test_both_editing_one_key_keeps_ours_and_tells_the_user(self):
+        store = self.store()
+        store.set("material:1", self.page("as loaded"))
+        self._peer_writes({"material:1": self.page("theirs")})
+
+        alerts = []
+        real = keyed_store.debug.alert
+        keyed_store.debug.alert = lambda msg, **kw: alerts.append(str(msg))
+        self.addCleanup(setattr, keyed_store.debug, "alert", real)
+
+        store.set("material:1", self.page("ours"))
+
+        self.assertEqual(
+            "ours", self.on_disk()["notes"]["material:1"]["items"][0]["text"])
+        self.assertTrue(alerts, "a real conflict was resolved in silence")
+
+    def test_our_own_delete_still_stands_when_a_peer_wrote_elsewhere(self):
+        store = self.store()
+        store.set("material:1", self.page("as loaded"))
+        self._peer_writes({"material:1": self.page("as loaded"),
+                           "material:7": self.page("theirs")})
+
+        store.set("material:1", "")
+
+        after = self.on_disk()["notes"]
+        self.assertNotIn("material:1", after,
+                         "our delete was undone by their unrelated write")
+        self.assertIn("material:7", after)
 
 
 class ADocumentCanBeFlatAndItsFalsyValuesReal(StoreCase):

@@ -447,6 +447,11 @@ class Store:
         self._table: dict = {}
         self._foreign: dict = {}
         self._orphans: dict = {}
+        self._base: dict = {}    # the merge BASE - this table as we last saw it on disk ▸p/merge-needs-a-base
+
+    def _remember_base(self, table: dict) -> None:
+        """Take the base from a table that IS on disk - a load's read, or a write that landed."""
+        self._base = copy.deepcopy(table)
 
     def _blank_slate(self) -> None:
         """Forget disk entirely, verdict included - the state a `_load` starts from. ▸p/keyed-store-slate"""
@@ -544,6 +549,7 @@ class Store:
             hostos.preserve_unreadable(self.path, why=spec.label.lower())
             self._refuse_and_alert(str(exc))
         self._remember_disk_state()
+        self._remember_base(self._table)
 
     def _refuse_and_alert(self, why: str) -> None:
         spec = self.spec
@@ -801,6 +807,7 @@ class Store:
         self._table = staged            # only NOW does the cache move
         self._foreign = foreign
         self._orphans = {}              # the file no longer holds them
+        self._remember_base(staged)     # what we just wrote IS on disk, so it is the next merge's base
         return Written(True, REASON_NONE, "", keys)
 
     def _remember_disk_state(self) -> None:
@@ -819,25 +826,54 @@ class Store:
         if not isinstance(peer, dict):
             return False
         adopted = 0
+        base = self._base
+        seen = set()
         for key, value in peer.items():
             stored = restored_key(self.spec, str(key))
             kept = self.spec.normalise(value)
-            if not self._rejected(kept):
-                if stored not in staged:
-                    staged[stored] = kept
+            if self._rejected(kept):
+                if (value and stored not in staged
+                        and stored not in foreign):
+                    foreign[stored] = value  # theirs, or OUR write erases it
                     adopted += 1
-                else:                   # both hold it: ours, unless a rule says otherwise
-                    folded = _fold(
-                        rule_for(self.spec.merge_rules, (stored,))
-                        or MERGE_MINE,
-                        staged[stored], kept,
-                        self.spec.merge_rules, (stored,))
-                    if folded is not None:
-                        staged[stored] = folded
-                        adopted += 1
-            elif (value and stored not in staged
-                  and stored not in foreign):
-                foreign[stored] = value  # theirs, or OUR write erases it
+                continue
+            seen.add(stored)
+            based = stored in base
+            theirs_moved = not based or kept != base[stored]
+            if stored not in staged:
+                if based and not theirs_moved:
+                    continue    # WE dropped a key they left alone: our delete stands
+                staged[stored] = kept    # their addition, or their edit to something we dropped - an edit outranks a delete, because a delete cannot be recovered from
+                adopted += 1
+                continue
+            if staged[stored] == kept:
+                continue
+            named = rule_for(self.spec.merge_rules, (stored,))
+            if not named and _rules_below(self.spec.merge_rules, (stored,)):
+                named = MERGE_FIELDS    # a rule names a level below: keep walking
+            if named:    # a DECLARED rule states what the key IS - a set of folders unions whoever moved it, so the base never overrides it
+                folded = _fold(named, staged[stored], kept,
+                               self.spec.merge_rules, (stored,))
+                if folded is not None:
+                    staged[stored] = folded
+                    adopted += 1
+                continue
+            ours_moved = not based or staged[stored] != base[stored]
+            if theirs_moved and not ours_moved:
+                staged[stored] = kept    # only THEY moved it
+                adopted += 1
+                continue
+            if ours_moved and not theirs_moved:
+                continue                 # only we moved it
+            if based and self.spec.in_library:    # both moved: ours, and the user hears about it. Only a LIBRARY table speaks - two panes disagreeing about this machine's own view state is not news
+                debug.alert(
+                    messages.EDIT_CONFLICT_KEPT_YOURS % self.spec.noun,
+                    key="store-conflict-%s-%s" % (self.spec.filename, stored))
+        for stored in list(staged):    # THEIR deletes: gone from disk, and we left it as we found it
+            if stored in seen or stored not in base:
+                continue
+            if staged[stored] == base[stored]:
+                staged.pop(stored)
                 adopted += 1
         if adopted:
             debug.event(self.spec.category,
