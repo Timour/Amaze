@@ -149,6 +149,8 @@ AssetItemDelegate = delegates.AssetItemDelegate
 
 SidebarItemDelegate = delegates.SidebarItemDelegate
 
+FILTER_DEBOUNCE_MS = 180    #: the search box's pause before it filters - a pass measures ~24ms, so a keystroke each is felt, and a pause between words is not ▸p/filter-pass-cost
+
 MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use. ONE constant, never computed: a floor that moves under the user is worse than a narrow grid, and THE GRID PANE CARRIES NO MINIMUM because a child minimum propagates into the window's own ▸r/qt-windows-macos
 
 
@@ -1152,7 +1154,12 @@ class MatLibPanel(QtWidgets.QWidget):
         )
 
         self.line_filter = self.ui.line_filter  # type: ignore
-        self.line_filter.textEdited.connect(self.filter_thumb_view)
+        self._filter_timer = QtCore.QTimer(self)    # OWNED, so Qt takes it when the panel goes; `textEdited` only starts it, and Qt does not emit that for setText/clear, which is why the clear button hand-calls the filter ▸p/filter-pass-cost
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(FILTER_DEBOUNCE_MS)
+        self._filter_timer.timeout.connect(self.filter_thumb_view)
+        self.line_filter.textEdited.connect(
+            lambda _text: self._filter_timer.start())
         self.line_filter.setPlaceholderText(sections.Section.search_hint)    # the box is EMPTY by decree (2026-08-01): the "Search" label and the magnifier already name the control. The search_hint machinery stays for the day a section needs a word again, but every hint is "" and the tooltip is where :tag gets taught
         self.line_filter.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_SEARCH))

@@ -133,6 +133,26 @@ class AFilterChangeReordersWhatComesBack(_Case):
 class TheResortIsCoalesced(_Case):
     """`setDynamicSortFilter(False)` is set for performance, and a sort per inserted row would put that cost straight back."""
 
+    def test_swapping_one_filter_for_another_costs_ONE_pass(self):
+        """A pass measures ~24ms. ▸p/filter-pass-cost"""
+        source, proxy = self.build(["alpha", "bravo"])
+        proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "a")    # a filter must BE set, or the remove returns without a pass and the batching proves nothing
+        passes = []
+        real = proxy.invalidateFilter    # the REAL work; a deferred `refilter` returns at once and would count as a pass
+
+        def counted():
+            passes.append(1)
+            return real()
+
+        proxy.invalidateFilter = counted
+        with proxy.one_pass():
+            proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
+            proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, "al")
+        self.assertEqual(1, len(passes),
+                         "a remove-then-set pair cost %d passes" % len(passes))
+        self.assertEqual(["alpha"], self.shown(proxy),
+                         "the batched pair did not actually filter")
+
     def test_a_burst_of_inserts_costs_ONE_sort(self):
         source, proxy = self.build(["zulu"])
         sorts = []

@@ -536,16 +536,17 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        needle, tags_only = multifilterproxy_model.split_search(text)    # the colon rules' ONE home; NEITHER invalidate() NOR sort() around these calls - setFilter/removeFilter refilter inside GridProxyModel.refilter(), so a caller-side pair runs the pass 2-3x per keystroke
-        if tags_only:
-            st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
-            if needle:
-                st.proxy.setFilter(st.model.TagRole, needle)
+        needle, tags_only = multifilterproxy_model.split_search(text)    # the colon rules' ONE home; NEITHER invalidate() NOR sort() around these calls - `one_pass` holds the remove/set pair to a single pass ▸p/filter-pass-cost
+        with st.proxy.one_pass():
+            if tags_only:
+                st.proxy.removeFilter(QtCore.Qt.ItemDataRole.DisplayRole)
+                if needle:
+                    st.proxy.setFilter(st.model.TagRole, needle)
+                else:
+                    st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must narrow nothing
             else:
-                st.proxy.removeFilter(st.model.TagRole)    # a BARE COLON is a tag search with no tag yet, so it must narrow nothing
-        else:
-            st.proxy.removeFilter(st.model.TagRole)
-            st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, needle)
+                st.proxy.removeFilter(st.model.TagRole)
+                st.proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, needle)
 
     def filter_favorites(self, on: bool) -> None:
         st = self.stack()

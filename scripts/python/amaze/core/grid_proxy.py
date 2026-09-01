@@ -1,5 +1,7 @@
 """WHAT IS SHOWN AND IN WHAT ORDER, held however the rows change - filter, category, section, reload, insert, or a row whose own data changed. The three grid proxies differ in what they FILTER ON and must not differ in this. ▸r/proxy-invariant"""
 
+import contextlib
+
 from PySide6 import QtCore
 
 from amaze.core import grid_columns
@@ -20,6 +22,8 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
         self._pass_scheduled = False
         self._pass_refilters = False
         self._in_pass = False
+        self._batching = False      # inside `one_pass`: a filter setter defers instead of running the pass
+        self._batch_wanted = False
         self._pass_timer = QtCore.QTimer(self)    # OWNED, so Qt takes it when this proxy goes: a static singleShot keeps the bound method alive and fires it after the C++ object is gone ▸r/model-parent
         self._pass_timer.setSingleShot(True)
         self._pass_timer.setInterval(0)
@@ -62,8 +66,26 @@ class GridProxyModel(QtCore.QSortFilterProxyModel):
             return any(role in watched for role in roles)
         return any(role not in self.PASSIVE_ROLES for role in roles)
 
+    @contextlib.contextmanager
+    def one_pass(self):
+        """Hold the pass until the block ends, then run it ONCE - for a caller changing two filters for one gesture. A pass measures ~24ms. ▸p/filter-pass-cost"""
+        if self._batching:
+            yield                        # already inside one; the outermost runs it
+            return
+        self._batching = True
+        self._batch_wanted = False
+        try:
+            yield
+        finally:
+            self._batching = False
+            if self._batch_wanted:
+                self.refilter()
+
     def refilter(self) -> None:
-        """Re-filter AND re-sort, NOW - what a filter setter calls when it expects to read the result back."""
+        """Re-filter AND re-sort, NOW - what a filter setter calls when it expects to read the result back; inside `one_pass` it is deferred to the end of the block."""
+        if self._batching:
+            self._batch_wanted = True
+            return
         self._in_pass = True    # the pass's own echo: rows a re-filter brings back IN emit rowsInserted, which would post a SECOND full sort for the next turn ▸r/proxy-invariant
         try:
             self.invalidateFilter()

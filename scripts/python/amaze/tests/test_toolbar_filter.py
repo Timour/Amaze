@@ -1,5 +1,6 @@
 """The Search box: one label, an empty field, in every tab - the label reads Search, the box shows NO placeholder anywhere, and the box's tooltip is where :tag gets taught. These tests drive the real tab switch, so a section that starts writing its own text again turns them red."""
 
+import contextlib
 import json
 import os
 import shutil
@@ -12,7 +13,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -329,6 +330,97 @@ class RememberedFilterSettingsTest(unittest.TestCase):
         self.assertEqual(
             "LOP", again.section_filter("cop"),
             "the choice did not survive the round trip to disk")
+
+
+class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
+    """The box is DEBOUNCED and the remove/set pair behind it is BATCHED. Driven through `textEdited`, the signal a keystroke emits, counting `invalidateFilter`, the pass itself. ▸p/filter-pass-cost"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(
+            test_support.class_scope(cls))
+        cls.panel._on_tab_toggled("material", True)
+
+    def setUp(self):
+        self.panel._filter_timer.stop()
+        self.panel.line_filter.clear()
+        self.panel.filter_thumb_view()
+        _app.processEvents()
+
+    def _type(self, word):
+        """What a keystroke does: the text lands in the box AND `textEdited` carries it. Qt emits `textEdited` for a typed change only, which is why the clear button hand-calls the filter."""
+        box = self.panel.line_filter
+        for length in range(1, len(word) + 1):
+            box.setText(word[:length])
+            box.textEdited.emit(word[:length])
+
+    def _settle(self):
+        """Run the pending debounce NOW, the way the pause after typing does."""
+        timer = self.panel._filter_timer
+        self.assertTrue(timer.isActive(),
+                        "typing left no pending filter, so nothing "
+                        "would ever narrow the grid")
+        timer.stop()
+        self.panel.filter_thumb_view()
+        _app.processEvents()
+
+    @staticmethod
+    @contextlib.contextmanager
+    def _passes():
+        """Count the filter passes a block runs, on the CLASS: the pass is `invalidateFilter`, where the ~24ms goes, and a deferred `refilter` returns at once and would count as one."""
+        from amaze.core import grid_proxy
+        real = grid_proxy.GridProxyModel.invalidateFilter
+        seen = []
+
+        def counting(proxy, *args, **kwargs):
+            seen.append(proxy)
+            return real(proxy, *args, **kwargs)
+
+        grid_proxy.GridProxyModel.invalidateFilter = counting
+        try:
+            yield seen
+        finally:
+            grid_proxy.GridProxyModel.invalidateFilter = real
+
+    def test_a_typed_word_costs_ONE_pass_and_it_comes_after_the_typing(self):
+        """Five keystrokes queue one pass; the pause runs it."""
+        with self._passes() as seen:
+            self._type("metal")
+            _app.processEvents()
+            while_typing = len(seen)
+            self._settle()
+            settled = len(seen)
+        self.assertEqual(
+            0, while_typing,
+            "typing filtered %d time(s) mid-word, so the debounce on "
+            "line_filter.textEdited is gone" % while_typing)
+        self.assertEqual(
+            1, settled,
+            "the settled word cost %d passes, not one" % settled)
+
+    def test_swapping_a_name_search_for_a_tag_search_costs_ONE_pass(self):
+        """The gesture that pays for `one_pass`: a `:` drops the name filter and sets the tag filter, and each of those refilters on its own. Typing a word from empty does not - a removeFilter with nothing to remove returns without a pass."""
+        self._type("metal")
+        self._settle()
+        with self._passes() as seen:
+            self._type(":wood")
+            self._settle()
+            swapped = len(seen)
+        self.assertEqual(
+            1, swapped,
+            "the swap cost %d passes, not one - the remove/set pair is "
+            "running outside `one_pass`" % swapped)
+
+    def test_the_settled_text_is_what_the_grid_filters_on(self):
+        """A debounce that dropped the last keystroke would cost more than the passes it saves."""
+        self._type("metal")
+        self._settle()
+        stored = getattr(    # the proxy's own store: MultiFilterProxyModel offers setFilter/removeFilter and no reader, so this is the only way to see WHICH value landed
+            self.panel.material_sorted_model, "_filters", {})
+        self.assertEqual(
+            "metal", stored.get(QtCore.Qt.ItemDataRole.DisplayRole),
+            "the grid is filtering on something other than the word "
+            "that was typed")
 
 
 if __name__ == "__main__":
