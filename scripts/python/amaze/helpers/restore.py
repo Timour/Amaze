@@ -53,15 +53,15 @@ def count_in(document):
     return len(document), "settings"
 
 
-def info(path: str) -> dict:
-    """What a file is, read once. `count` is None when it would not open - NEVER 0, or `holds nothing` and `would not open` become the same answer."""
+def surveyed(path: str):
+    """`(facts, document)` from ONE parse, for a caller that wants both - `info()` is this with the document dropped."""
     if not os.path.exists(path):
-        return {"path": path, "name": os.path.basename(path),
-                "exists": False, "size": 0, "when": "", "count": None,
-                "noun": "", "error": ""}
+        return ({"path": path, "name": os.path.basename(path),
+                 "exists": False, "size": 0, "when": "", "count": None,
+                 "noun": "", "error": ""}, None)
     document, error = read_document(path)
     count, noun = count_in(document) if not error else (None, "")
-    return {
+    return ({
         "path": path,
         "name": os.path.basename(path),
         "exists": True,
@@ -71,7 +71,12 @@ def info(path: str) -> dict:
         "count": count,
         "noun": noun,
         "error": error,
-    }
+    }, document)
+
+
+def info(path: str) -> dict:
+    """What a file is. `count` is None when it would not open - NEVER 0, or `holds nothing` and `would not open` become the same answer."""
+    return surveyed(path)[0]
 
 
 def describe(path: str) -> str:

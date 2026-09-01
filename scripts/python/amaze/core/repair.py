@@ -74,7 +74,7 @@ def survey(directory: str, asset_dir: str = "mat/",
 def _survey_one(directory: str, filename: str) -> dict:
     """One list: its state, what it holds, and what copies sit beside it."""
     path = os.path.join(directory, filename)
-    facts = restore_lib.info(path)
+    facts, document = restore_lib.surveyed(path)    # ONE parse for both - the state below reads `facts`, the ids read `document`
     entry = {
         "filename": filename,
         "label": database.section_label(filename),
@@ -92,7 +92,6 @@ def _survey_one(directory: str, filename: str) -> dict:
     if facts["error"]:
         entry["state"] = "unreadable"
         return entry
-    document, _ = restore_lib.read_document(path)
     from amaze.core import keyed_store
     spec = keyed_store.store_for(filename)
     if spec is not None:

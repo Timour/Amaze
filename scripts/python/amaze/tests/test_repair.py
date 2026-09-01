@@ -1701,6 +1701,42 @@ class AFailedPromoteLeavesNoScratchTest(unittest.TestCase):
             self.assertEqual("{}", fh.read())
 
 
+class TheSurveyReadsEachFileOnce(_Case):
+    """The survey wants a file's facts AND its rows, and `restore.surveyed` hands back both from one parse."""
+
+    def test_a_list_is_parsed_once_not_twice(self):
+        from amaze.helpers import restore as restore_lib
+
+        real = restore_lib.read_document
+        parsed = []
+
+        def counting(path, *args, **kwargs):
+            parsed.append(path)
+            return real(path, *args, **kwargs)
+
+        restore_lib.read_document = counting
+        try:
+            self._survey()
+        finally:
+            restore_lib.read_document = real
+        twice = sorted({path for path in parsed
+                        if parsed.count(path) > 1})
+        self.assertEqual(
+            [], twice,
+            "the survey parses %d file(s) more than once: %s"
+            % (len(twice), ", ".join(os.path.basename(p) for p in twice)))
+
+    def test_the_rows_it_reports_are_the_rows_in_the_file(self):
+        """The parse it saves is the one the ids come from, so dropping it must not drop them."""
+        self._cops([{"id": self.COP_ID, "name": "one"},
+                    {"id": "COPOWNED2", "name": "two"}])
+        entry = next(one for one in self._survey()["lists"]
+                     if one["filename"] == "cops.json")
+        self.assertEqual({self.COP_ID, "COPOWNED2"}, entry["ids"],
+                         "the survey lost the ids it reads from the "
+                         "document")
+
+
 class TheSentenceJoinerHasOneOwner(unittest.TestCase):
     """`helpers.and_list`, and `database.py`'s Houdini-free copy of it."""
 
