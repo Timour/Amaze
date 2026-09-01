@@ -118,6 +118,28 @@ class Categories(QtCore.QAbstractListModel):
         finally:
             self.endResetModel()
 
+    def refresh(self) -> bool:
+        """Take the categories another machine added or removed, WITHOUT writing - the sidebar half of the asset models' refresh. ▸p/refresh-is-a-merge"""
+        db = database.DatabaseConnector(self.DB_FILENAME)
+        if not db.serves(self.preferences.dir):
+            return False
+        db.refresh()
+        return self.apply_refresh(db)
+
+    def apply_refresh(self, db) -> bool:
+        """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
+        shown = getattr(self, "_shown", None)
+        if shown is None or list(self._categories) == shown:
+            self._shown = list(self._categories)
+            return False
+        self.beginResetModel()
+        try:
+            self._shown = list(self._categories)
+            self.drop_count_cache()
+        finally:
+            self.endResetModel()
+        return True
+
     def remove_category(self, cat: str) -> None:
         """Remove a category from the library and from every asset; a no-op for a name that is not present."""
         if cat not in self._categories:

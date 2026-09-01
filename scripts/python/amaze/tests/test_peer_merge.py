@@ -163,6 +163,40 @@ class TheAuditsNamedScenarios(_Case):
         self.assertIn("FromThem", after, "their new category was dropped")
 
 
+class APeerFieldRemovalIsHonoured(_Case):
+    """The same rule the category list follows: gone from disk, in our base, untouched by us, is THEIR removal."""
+
+    def test_a_field_the_other_machine_dropped_does_not_come_back(self):
+        self._write(self._document(description="theirs to remove"))
+        db = self._loaded()
+
+        theirs = self._on_disk()
+        theirs["assets"][0].pop("description")
+        self._write(theirs)
+
+        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
+                "categories": ["_All"], "tags": []})
+        self.assertTrue(db.save())
+
+        self.assertNotIn(
+            "description", self._row(),
+            "they removed the field and our save wrote it straight back")
+
+    def test_a_field_we_changed_survives_their_removal(self):
+        self._write(self._document(description="as loaded"))
+        db = self._loaded()
+        theirs = self._on_disk()
+        theirs["assets"][0].pop("description")
+        self._write(theirs)
+
+        row = dict(db._data["assets"][0], description="ours now")
+        db.set({"assets": [row], "categories": ["_All"], "tags": []})
+        self.assertTrue(db.save())
+
+        self.assertEqual("ours now", self._row().get("description"),
+                         "our edit lost to their removal")
+
+
 class ARealConflictIsTOLD(_Case):
     """Local wins a true conflict - but never in silence."""
 

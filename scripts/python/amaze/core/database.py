@@ -196,14 +196,21 @@ def asset_id_for_file(name: str, extensions: tuple,
 def _merge_record(mine: dict, theirs: dict, base, filename: str,
                   adopted: list) -> None:
     """Field-wise three-way merge for a record both sessions hold - EVERY field, judged against `base`, the row as of our last load or successful save. Only a field both sides moved away from the base is a conflict; that one keeps the local value and tells the user. `base` None means we cannot say who moved, and every difference is treated as a conflict."""
+    based = isinstance(base, dict)
     for field in set(mine) | set(theirs):
-        if field == "id" or field not in theirs:
+        if field == "id":
+            continue
+        if field not in theirs:
+            if based and field in base and mine.get(field) == base.get(field):    # gone from theirs, in our base, untouched by us: their REMOVAL, the same rule the category list follows
+                del mine[field]
+                debug.event("database", "dropped a field another session "
+                            "removed", file=filename,
+                            mat_id=str(mine.get("id")), field=field)
             continue
         their_value = theirs.get(field)
         my_value = mine.get(field)
         if my_value == their_value:
             continue
-        based = isinstance(base, dict)
         theirs_moved = not based or their_value != base.get(field)
         mine_moved = not based or my_value != base.get(field)
         if theirs_moved and not mine_moved:
@@ -616,10 +623,9 @@ class DatabaseConnector:
         if self._disk_stat is not None and current_stat not in (
             None, self._disk_stat
         ):
+            was_ahead = getattr(self, "_format_ahead", False)
             if not self._merge_from_disk(full):
-                if getattr(self, "_format_ahead", False):
-                    pass
-                else:
+                if not (getattr(self, "_format_ahead", False) and not was_ahead):    # only a latch THIS merge set explains its own refusal; as a bare flag it swallowed a genuinely unreadable peer
                     return self._refuse_unreadable_peer(full)
         if getattr(self, "_write_blocked", False):
             if not getattr(self, "_block_reported", False):
@@ -698,10 +704,10 @@ class DatabaseConnector:
         if not self._data or not self._path:
             return False
         full = self._path + self._filename
-        if hostos.peer_read(full, self._disk_stat).verdict == (
-                hostos.PEER_UNCHANGED):
+        answer = hostos.peer_read(full, self._disk_stat)
+        if answer.verdict == hostos.PEER_UNCHANGED:
             return False
-        if not self._merge_from_disk(full):
+        if not self._merge_from_disk(full, already_read=answer):    # the SAME read decides and merges: two reads can straddle a peer's write
             return False    # unreadable or refused: `_merge_from_disk` has said why, and our copy stands
         self._remember_disk_state()
         return True
@@ -738,9 +744,9 @@ class DatabaseConnector:
             step(disk)
             version += 1
 
-    def _merge_from_disk(self, full: str) -> bool:
+    def _merge_from_disk(self, full: str, already_read=None) -> bool:
         """Three-way merge against a database another session changed underneath us - membership baseline is the ids as of OUR last load or successful save (`_remember_disk_state` refreshes both together): a disk id missing from memory is OUR deletion if it was in the baseline, THEIR addition if not; categories and tags union; conflicting records take memory (the active editor)."""
-        answer = hostos.peer_read(full)    # ▸r/peer-read
+        answer = already_read or hostos.peer_read(full)    # ▸r/peer-read
         if answer.verdict != hostos.PEER_CHANGED:
             debug.event("database", "merge read failed",
                         file=self._filename, verdict=answer.verdict,
@@ -853,6 +859,8 @@ class DatabaseConnector:
         """Point this connector at a DIFFERENT library and read it - every latch and stamp belongs to the FILE, not the session, so all are reset for `load()` to re-derive from the new path; a failed load restores the previous library state and re-raises."""
         previous = (self._data, self._path, self._disk_stat,
                     set(self._loaded_ids),
+                    dict(self._loaded_rows),
+                    dict(self._loaded_containers),
                     getattr(self, "_loaded_version", SCHEMA_VERSION),
                     getattr(self, "_migration_incomplete", False),
                     getattr(self, "_write_blocked", False),
@@ -863,6 +871,8 @@ class DatabaseConnector:
         self._data = None
         self._disk_stat = None    # the OLD library's stat and baseline must not survive into the new load - the normalisation save inside load() would merge the new file against them, with itself
         self._loaded_ids = set()
+        self._loaded_rows = {}          # ALL FIVE move together or the merge judges library B's rows against library A's ids
+        self._loaded_containers = {}
         self._write_blocked = False
         self._block_reported = False
         self._migration_incomplete = False
@@ -874,6 +884,7 @@ class DatabaseConnector:
             return self.load(path)
         except Exception:
             (self._data, self._path, self._disk_stat, self._loaded_ids,
+             self._loaded_rows, self._loaded_containers,
              self._loaded_version, self._migration_incomplete,
              self._write_blocked, self._block_reported,
              self._loaded_format, self._format_ahead,

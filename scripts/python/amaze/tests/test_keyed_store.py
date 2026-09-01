@@ -530,6 +530,22 @@ class AStoreJudgesAgainstWhatItLastSaw(StoreCase):
             "ours", self.on_disk()["notes"]["material:1"]["items"][0]["text"])
         self.assertTrue(alerts, "a real conflict was resolved in silence")
 
+    def test_a_peer_writing_junk_over_a_key_does_not_delete_ours(self):
+        """A rejected peer value is not a peer DELETE: their row is unusable, ours is fine, and the delete sweep must not read the one as the other."""
+        store = self.store()
+        store.set("material:1", self.page("ours"))
+        store.set("material:2", self.page("also ours"))
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": {"material:1": "not a page at all",
+                                 "material:2": self.page("also ours")}},
+                      handle)
+
+        store.set("material:9", self.page("ours, elsewhere"))
+
+        self.assertIn(
+            "material:1", self.on_disk()["notes"],
+            "their unreadable value dropped OUR comment from the write")
+
     def test_our_own_delete_still_stands_when_a_peer_wrote_elsewhere(self):
         store = self.store()
         store.set("material:1", self.page("as loaded"))

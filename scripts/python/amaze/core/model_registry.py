@@ -51,17 +51,32 @@ def rebind(preferences, model) -> None:
 
 def refresh_all() -> list:
     """Take what another machine wrote into every shared model and every open store, and answer what moved. For a DOOR a person opens - a panel becoming visible, a dialog - since each one costs a read. ▸r/peer-read"""
+    from amaze.core import database, debug
+
     moved = []
     for key, models in list(_models.items()):
-        for attr, model in models.items():
-            refresh = getattr(model, "refresh", None)
-            if refresh is None:
-                continue
+        preferences = getattr(models.get("material_model"), "preferences",
+                              None)
+        if preferences is None:
+            continue
+        for filename in {getattr(m, "DB_FILENAME", None)    # merge each file ONCE, then let every model take its share: the grid and the sidebar share a connector, so a per-model refresh spends it on whichever runs first
+                         for m in models.values()} - {None}:
             try:
-                if refresh():
+                db = database.DatabaseConnector(filename)
+                if db.serves(preferences.dir):
+                    db.refresh()
+            except Exception as exc:                         # noqa: BLE001
+                debug.event("database", "refresh failed", store=filename,
+                            library=key, error=str(exc))
+        for attr, model in models.items():
+            apply_refresh = getattr(model, "apply_refresh", None)
+            if apply_refresh is None:
+                continue    # `file_folders_model` and `file_files_model` are deliberately out: they scan real directories, not a library file
+            try:
+                if apply_refresh(database.DatabaseConnector(
+                        model.DB_FILENAME)):
                     moved.append(attr)
             except Exception as exc:                         # noqa: BLE001
-                from amaze.core import debug
                 debug.event("database", "model refresh failed",
                             model=attr, library=key, error=str(exc))
         preferences = getattr(models.get("material_model"), "preferences", None)

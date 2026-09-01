@@ -545,12 +545,19 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def refresh(self) -> bool:
         """Take what another machine wrote since we read the file, without writing anything. True when rows or fields moved; for a DOOR a person opens, since it costs one read. ▸r/peer-read"""
         db = database.DatabaseConnector(self.DB_FILENAME)
-        if not db.serves(self.preferences.dir) or not db.refresh():
+        if not db.serves(self.preferences.dir):
             return False
-        self._adopt_rows(db.take_adopted())
-        self._adopt_fields(db.take_adopted_fields())
-        self._drop_rows(db.take_dropped())
-        return True
+        db.refresh()    # the ANSWER is not read: the sidebar shares this connector, and whichever model refreshes FIRST consumes the merge - what is left to take is the only honest signal
+        return self.apply_refresh(db)
+
+    def apply_refresh(self, db) -> bool:
+        """Drain what a refresh (or another model's refresh) merged into the document. True when this model actually moved."""
+        rows, fields, gone = (db.take_adopted(), db.take_adopted_fields(),
+                              db.take_dropped())
+        self._adopt_rows(rows)
+        self._adopt_fields(fields)
+        self._drop_rows(gone)
+        return bool(rows or fields or gone)
 
     def _adopt_fields(self, fields: list) -> None:
         """Apply `(id, field, value)` a peer changed onto the records holding them, through the ONE row reader, and tell the views. The record OBJECT is kept - dialogs and delegates hold references to it, so its state is refreshed rather than the record replaced."""

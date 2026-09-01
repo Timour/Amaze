@@ -376,6 +376,7 @@ def _take_lock(handle) -> None:
         import fcntl
     except ImportError:
         import msvcrt
+        handle.seek(0)    # SYMMETRIC with _drop_lock: msvcrt.locking works at the CURRENT position, and an "a+" handle is not always at 0 - lock and unlock at different bytes never releases
         msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
         return
     fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)

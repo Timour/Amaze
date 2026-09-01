@@ -840,6 +840,7 @@ class Store:
         seen = set()
         for key, value in peer.items():
             stored = restored_key(self.spec, str(key))
+            seen.add(stored)    # BEFORE the reject: `seen` means the peer HOLDS this key, and a value we cannot read is not a peer's deletion. Marked after, the sweep below dropped our own good row on their bad one
             kept = self.spec.normalise(value)
             if self._rejected(kept):
                 if (value and stored not in staged
@@ -847,7 +848,6 @@ class Store:
                     foreign[stored] = value  # theirs, or OUR write erases it
                     adopted += 1
                 continue
-            seen.add(stored)
             based = stored in base
             theirs_moved = not based or kept != base[stored]
             if stored not in staged:
@@ -1146,7 +1146,8 @@ def refresh_all(preferences=None) -> list:
             if preferences is not None else None)
     moved = []
     for (filename, resolved), store in list(_open.items()):
-        if root is not None and not str(resolved).startswith(root):
+        if root is not None and not (str(resolved) == root
+                                     or str(resolved).startswith(root + "/")):    # a bare prefix matches a SIBLING: /libs/main would take /libs/mainOld with it
             continue
         try:
             if store.refresh():

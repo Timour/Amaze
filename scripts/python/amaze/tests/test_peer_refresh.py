@@ -144,6 +144,26 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
                       "the door reported nothing, so nothing was re-read")
         self.assertIn("Theirs", [a.name for a in self.model.assets])
 
+    def test_a_category_another_machine_added_reaches_the_sidebar(self):
+        """A peer's material arrives under a category the sidebar must also have."""
+        self.assertTrue(self.model.save())
+        sidebar = self.panel.category_model
+        sidebar.apply_refresh(None)    # take the snapshot the reset is judged against
+        before = sidebar.rowCount()
+
+        document = self._document()
+        document["categories"].append("FromElsewhere")
+        with open(self.path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+
+        heard = []
+        sidebar.modelReset.connect(lambda: heard.append("reset"))
+        self.assertTrue(sidebar.refresh(), "the sidebar reported no change")
+
+        self.assertEqual(before + 1, sidebar.rowCount(),
+                         "the category is not in the sidebar")
+        self.assertTrue(heard, "the rows changed and no view was told")
+
     def test_a_refresh_with_nobody_writing_changes_nothing(self):
         self.assertTrue(self.model.save())
         before = self.model.rowCount()
