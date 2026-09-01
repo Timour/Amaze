@@ -73,15 +73,13 @@ def refresh_all() -> list:
             if apply_refresh is None:
                 continue    # `file_folders_model` and `file_files_model` are deliberately out: they scan real directories, not a library file
             try:
-                if apply_refresh(database.DatabaseConnector(
-                        model.DB_FILENAME)):
+                db = database.DatabaseConnector(model.DB_FILENAME)
+                if db.serves(preferences.dir) and apply_refresh(db):    # the connector is one object per FILENAME, so an entry for another library would drain THIS one's adopted rows
                     moved.append(attr)
             except Exception as exc:                         # noqa: BLE001
                 debug.event("database", "model refresh failed",
                             model=attr, library=key, error=str(exc))
-        preferences = getattr(models.get("material_model"), "preferences", None)
-        if preferences is not None:
-            moved.extend(keyed_store.refresh_all(preferences))
+        moved.extend(keyed_store.refresh_all(preferences))
     return moved
 
 

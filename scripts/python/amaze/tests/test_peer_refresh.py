@@ -148,7 +148,6 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         """A peer's material arrives under a category the sidebar must also have."""
         self.assertTrue(self.model.save())
         sidebar = self.panel.category_model
-        sidebar.apply_refresh(None)    # take the snapshot the reset is judged against
         before = sidebar.rowCount()
 
         document = self._document()

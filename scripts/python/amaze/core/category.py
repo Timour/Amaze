@@ -28,6 +28,7 @@ class Categories(QtCore.QAbstractListModel):
         db = database.DatabaseConnector(self.DB_FILENAME)
         self._data = database.load_survivable(db, self.preferences.dir)  # survivable: a sidecar that will not read must not take the panel down from here
         self._categories = self._data["categories"]
+        self._shown = list(self._categories)    # what the views have been told about; `apply_refresh` compares against it, and starting empty made its FIRST call silent
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
         self._count_cache = None  # category -> visible count, "_All" = total; dropped on every mutation path
@@ -114,6 +115,7 @@ class Categories(QtCore.QAbstractListModel):
             data = db.reload_with_path(self.preferences.dir)
             self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
             self._categories = data["categories"]
+            self._shown = list(self._categories)    # a switch has told the views everything already
             self.drop_count_cache()
         finally:
             self.endResetModel()
@@ -128,9 +130,7 @@ class Categories(QtCore.QAbstractListModel):
 
     def apply_refresh(self, db) -> bool:
         """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
-        shown = getattr(self, "_shown", None)
-        if shown is None or list(self._categories) == shown:
-            self._shown = list(self._categories)
+        if list(self._categories) == self._shown:
             return False
         self.beginResetModel()
         try:
