@@ -11,7 +11,7 @@ from amaze.dialogs.base_dialog import AssetDialog
 class UserPickerDialog(AssetDialog):
     """Pick an existing user, or create one - `uid` is set when an existing one was picked, `new_name` when a new one was named, and both stay empty on cancel."""
 
-    FORM_WIDTH = amazetheme.SAVE_WIDTH          # D14 is drawn at the save family's width ▸p/save-dialog-rows
+    FORM_WIDTH = amazetheme.D14_WIDTH           # the save family's shape, 19 wider for its longer labels ▸p/save-dialog-rows
     FIELD_WIDTH = amazetheme.SAVE_FIELD_WIDTH
     FRAME_KEY = "D14"
     CREATE = "\x00create"    # itemData for the create row: not a name and not a UID, so it can never be mistaken for either
@@ -26,8 +26,8 @@ class UserPickerDialog(AssetDialog):
                                     key=lambda pair: pair[1].lower()):
             self._combo.addItem(name, user_id)
         self._combo.addItem("Create a new user...", self.CREATE)
-        self.add_row("You are", self._combo)
-        self._line = self.add_line("New name")
+        self.add_row("Existing Users", self._combo)
+        self._line = self.add_line("New User")
 
         self._combo.currentIndexChanged.connect(self._sync_new_name)    # connected AFTER populating: the first `addItem` on an empty combo emits `currentIndexChanged(0)`, which would run this before the field exists
         self.finish()
