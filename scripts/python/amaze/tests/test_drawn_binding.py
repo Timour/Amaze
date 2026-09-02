@@ -571,7 +571,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
 
     def test_a_wider_drawn_LABEL_builds_a_wider_label(self):
         """A label, not a button: the D08 version line had no stated width at all, and its 322 was whatever the row happened to leave it."""
-        frame = self._widened("D08", "QLabel", (148, 278), 5)
+        frame = self._widened("D08", "QLabel", (148, 274), 5)
         with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
             amazetheme.forget_drawn_boxes()
             dialog = self._prefs_dialog()
@@ -586,7 +586,7 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
         frame = dict(amazetheme.DIALOG_LAYOUT["D08"])
         frame["nodes"] = tuple(
             node[:5] + (prefs_dialog.VERSION_STEM + "9.9.9",)
-            if node[:3] == ("QLabel", 148, 278) else node
+            if node[:3] == ("QLabel", 148, 274) else node
             for node in frame["nodes"])
         with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"D08": frame}):
             amazetheme.forget_drawn_boxes()
