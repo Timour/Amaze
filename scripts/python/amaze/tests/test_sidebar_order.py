@@ -122,6 +122,47 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
             "standing in")
 
 
+class DeletingTheLastOfACategoryStandsTheSidebarOnAll(unittest.TestCase):
+    """With empty categories hidden, deleting a category's last asset hides its row - and the grid was left filtered on a category the sidebar no longer shows, its blank reading `"Marble" is empty` under a row that had moved. The delete has to land the sidebar somewhere it can show."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+        cls.panel._on_tab_toggled("material", True)
+
+    def test_the_sidebar_stands_on_all_and_the_grid_shows_everything(self):
+        panel = self.panel
+        section = panel.sections["material"]
+        proxy, source = section._sidebar_categories()
+        source.set_renderer_filter("karma")    # hiding only happens under a renderer filter: All shows every category, empty ones included, so they can be deleted
+        proxy.hide_empty = True
+        panel._refresh_sidebar_categories()
+        self.assertTrue(
+            panel._stand_on_category("Karma_Mats"),
+            "the fixture sidebar has no Karma_Mats row to stand on")
+        model = panel.material_model
+        rows = [model.index(row, 0) for row, asset in enumerate(model.assets)
+                if "Karma_Mats" in list(asset.categories)]
+        self.assertEqual(2, len(rows), "the fixture's Karma_Mats holds two")
+
+        section.delete_rows(rows)
+
+        self.assertIsNone(
+            proxy.rowCount() and next(
+                (proxy.index(r, 0) for r in range(proxy.rowCount())
+                 if proxy.index(r, 0).data() == "Karma_Mats"), None),
+            "the emptied category is still shown")
+        current = panel.cat_list.currentIndex()
+        self.assertTrue(current.isValid(), "the sidebar stands nowhere")
+        self.assertEqual(
+            "All", current.data(),
+            "the sidebar did not move to All after its category was hidden")
+        stored = getattr(panel.material_sorted_model, "_filters", {})
+        self.assertNotIn(
+            model.CategoryRole, stored,
+            "the grid is still filtered on the category that vanished")
+
+
 class MoveCategoryTest(unittest.TestCase):
     """One row-move on the shared model, with All immovable."""
 

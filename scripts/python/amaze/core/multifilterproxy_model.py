@@ -36,6 +36,10 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
                                      else filter_value)
         self.refilter()
 
+    def filter_value(self, filter_role):
+        """What this proxy filters `filter_role` on, or None when it does not - the one reader, so a caller comparing the grid's category against the sidebar need not reach into the store."""
+        return self._filters.get(filter_role)
+
     def removeFilter(self, filter_role):
         if not self._filters:
             return

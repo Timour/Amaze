@@ -3601,6 +3601,7 @@ class MatLibPanel(QtWidgets.QWidget):
             proxy.invalidateFilter()
         if self.cat_list is not None:
             self.cat_list.viewport().update()
+        self._ensure_sidebar_selection(self.current_section)    # the refilter can hide the row the user stands on - a delete emptying its category - and the view's current index then slides onto the row below while the grid stays filtered on a category the sidebar no longer shows
 
     SIDEBAR_PROXY_ATTRS = {    # the sidebar proxy each asset section's categories are shown through, named ONCE: they were enumerated correctly in setup() and _refresh_sidebar_categories, and INCOMPLETELY in the Preferences push (Code missing) and the filter-to-sidebar path (only Material had one at all)
         "material": "category_sorted_model",
@@ -3628,13 +3629,33 @@ class MatLibPanel(QtWidgets.QWidget):
             return
         if self.cat_list is None or self.cat_list.model() is not proxy:
             return
-        selection_model = self.cat_list.selectionModel()
-        if selection_model is None:
+        section = self._section()
+        stack = section.stack() if section is not None else None
+        if stack is None:
             return
-        indexes = self.cat_list.selectedIndexes()
-        if indexes and indexes[0].isValid():
-            return    # the selected category survived the refilter - proxy selections track items, not row numbers
-        self._stand_on_all_category()
+        standing = stack.proxy.filter_value(stack.model.CategoryRole)    # WHERE THE USER STANDS is the grid's filter, never the sidebar's selection: when a row hides, Qt slides both the current index and the selection onto the row below, so `selectedIndexes()` answers a category nobody chose
+        if not standing:
+            return    # All: every category is a row, and All is always one
+        row = self._sidebar_row_stored(proxy, standing)
+        if row is None:
+            self._stand_on_all_category()
+            return
+        current = ui_helpers.live_current_index(self.cat_list)
+        if current is None or current.row() != row.row():
+            self._stand_on_category(row.data())    # the row is still there and the selection slid off it
+
+    @staticmethod
+    def _sidebar_row_stored(proxy, stored: str):
+        """The sidebar row whose STORED name is `stored`, or None - keyed on the name the grid filters by, which a displayed label with its underscore stripped is not."""
+        source = proxy.sourceModel()
+        role = getattr(source, "CatSortRole", None)
+        if role is None:
+            return None
+        for row in range(proxy.rowCount()):
+            index = proxy.index(row, 0)
+            if str(index.data(role) or "") == stored:
+                return index
+        return None
 
     def _stand_on_all_category(self) -> None:
         """Point the sidebar at All and refilter - the hidden-category fallback and the empty state's Show All button."""
