@@ -69,7 +69,9 @@ def _set_value(node: hou.Node, parm_name: str, mtlx_type: str, value_str: str):
         if mtlx_type in ("color3", "vector3", "color4", "vector4",
                          "vector2"):    # one body for every tuple width - the truncation to len(pt) is what sizes it
             parts = [float(v) for v in value_str.split(",")]
-            pt = node.parmTuple(parm_name)
+            pt = node.parmTuple("%s_%s" % (parm_name, mtlx_type))    # the TYPED slot: on a multi-signature VOP the bare name is the float signature's single parm, and a tuple written there keeps its first component and leaves the colour at black ▸r/mtlx-vop-tuple-parms
+            if pt is None or len(pt) < len(parts):
+                pt = node.parmTuple(parm_name)
             if pt is not None:
                 pt.set(tuple(parts[: len(pt)]))
         elif mtlx_type == "integer":

@@ -49,6 +49,34 @@ TWO_GRAPHS = """<?xml version="1.0"?>
 """
 
 
+TINTED = """<?xml version="1.0"?>
+<materialx version="1.38">
+  <nodegraph name="graph">
+    <image name="albedo" type="color3">
+      <input name="file" type="filename" value="albedo.png"/>
+    </image>
+    <constant name="Tint" type="color3">
+      <input name="value" type="color3" value="1.0, 0.5, 0.25"/>
+    </constant>
+    <constant name="Flat" type="vector3">
+      <input name="value" type="vector3" value="0.5, 0.5, 1.0"/>
+    </constant>
+    <multiply name="tinted" type="color3">
+      <input name="in1" type="color3" nodename="albedo"/>
+      <input name="in2" type="color3" nodename="Tint"/>
+    </multiply>
+    <output name="out" type="color3" nodename="tinted"/>
+  </nodegraph>
+  <standard_surface name="surface1" type="surfaceshader">
+    <input name="base_color" type="color3" nodegraph="graph" output="out"/>
+  </standard_surface>
+  <surfacematerial name="material1" type="material">
+    <input name="surfaceshader" type="surfaceshader" nodename="surface1"/>
+  </surfacematerial>
+</materialx>
+"""
+
+
 def _file_of(vop):
     """The texture a translated mtlximage carries, basename only."""
     for parm_name in ("file", "filename"):
@@ -98,6 +126,45 @@ class TwoNodegraphsKeepTheirOwnNodes(unittest.TestCase):
                          "base_color must carry graph_a's texture")
         self.assertEqual(_file_of(spec), "b_specular.png",
                          "specular_color must carry graph_b's texture")
+
+
+class AColourConstantKeepsItsColour(unittest.TestCase):
+    """A MaterialX `constant` of a tuple type lands in the VOP parm named for that type - `value_color3`, `value_vector3` - and the bare `value` is the float signature's. ▸r/mtlx-vop-tuple-parms"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = tempfile.mkdtemp(prefix="amaze_matx_tint_")
+        cls.path = os.path.join(cls.tmp, "tinted.mtlx")
+        with open(cls.path, "w", encoding="utf-8") as handle:
+            handle.write(TINTED)
+        cls.parent = hou.node("/mat") or hou.node("/").createNode("mat")
+
+    def setUp(self):
+        self.builder = nodes.make_karma_builder(self.parent, "tinted")
+        self.addCleanup(self.builder.destroy)
+        self.shader, _disp = matx_translate.build_material(
+            self.path, self.builder, "tinted")
+
+    def _constant(self, name):
+        found = self.builder.node(name)
+        self.assertIsNotNone(found, "the %s constant was not built" % name)
+        self.assertEqual("mtlxconstant", found.type().name())
+        return found
+
+    def test_a_color3_constant_carries_the_drawn_colour(self):
+        tint = self._constant("Tint")
+        self.assertEqual("color3", tint.parm("signature").eval())
+        self.assertEqual(
+            (1.0, 0.5, 0.25), tint.parmTuple("value_color3").eval(),
+            "the tint reads black, so everything multiplied by it does too")
+
+    def test_a_vector3_constant_carries_its_vector(self):
+        flat = self._constant("Flat")
+        self.assertEqual("vector3", flat.parm("signature").eval())
+        self.assertEqual(
+            (0.5, 0.5, 1.0), flat.parmTuple("value_vector3").eval(),
+            "a flat-normal constant of zeros bends every normal it is "
+            "mixed with")
 
 
 class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
