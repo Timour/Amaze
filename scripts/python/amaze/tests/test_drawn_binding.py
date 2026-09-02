@@ -46,7 +46,7 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
     "D08": (amazetheme.PREFS_LABEL_RIGHT,),
     "D09": (amazetheme.SAVE_LABEL_RIGHT,),
     "D13": (amazetheme.SAVE_LABEL_RIGHT,),
-    "D14": (amazetheme.SAVE_LABEL_RIGHT,),
+    "D14": (amazetheme.D14_LABEL_RIGHT,),
 }
 
 STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
@@ -317,6 +317,47 @@ class PreferencesIsBuiltFromTheDocument(unittest.TestCase):
 
     def _pages(self, dialog):
         return dialog.findChild(QtWidgets.QTabWidget)
+
+    def test_the_declared_numbers_agree_with_each_other(self):
+        """The Preferences block states the drawing's geometry one number at a time; these are the two sums that have to hold, and the content column is now built from one of them."""
+        self.assertEqual(
+            amazetheme.PREFS_FORM_WIDTH - 2 * amazetheme.PREFS_INSET,
+            amazetheme.PREFS_CONTENT_WIDTH,
+            "the content column and the inset disagree about where a row "
+            "ends, and the column is what every page is pinned to")
+        self.assertEqual(
+            amazetheme.PREFS_INSET + amazetheme.PREFS_LABEL_COL
+            + amazetheme.PREFS_LABEL_GAP, amazetheme.PREFS_FIELD_X,
+            "the label column plus its gap no longer reaches the field "
+            "column, so one of the three is wrong")
+
+    def test_every_pinned_widget_lands_on_its_drawn_x(self):
+        """SIZE was pinned and POSITION was not, so a row of pinned widgets ended near its drawn boxes rather than on them: the content column is held to the drawn width, and each gap is the drawn gap. Vertical is Qt's own and the host's tab bar moves it, so only x is checked here."""
+        dialog = self._dialog()
+        dialog.show()
+        self.addCleanup(dialog.hide)
+        QtWidgets.QApplication.processEvents()
+        tabs = self._pages(dialog)
+        checked, wrong = 0, []
+        for index, frame_key in enumerate(PREFS_FRAMES):
+            tabs.setCurrentIndex(index)
+            QtWidgets.QApplication.processEvents()
+            page = tabs.widget(index)
+            for widget in page.findChildren(QtWidgets.QWidget):
+                box = getattr(widget, "drawn_box", None)
+                if box is None or not widget.isVisibleTo(page):
+                    continue
+                checked += 1
+                built = widget.mapTo(dialog, widget.rect().topLeft()).x()
+                if built != theme.ui_px(box[0]):
+                    wrong.append(
+                        "%s %s %r at x=%d, drawn at %d"
+                        % (frame_key, type(widget).__name__,
+                           getattr(widget, "text", lambda: "")(), built,
+                           theme.ui_px(box[0])))
+        self.assertGreaterEqual(
+            checked, 20, "almost nothing was pinned, so this says nothing")
+        self.assertEqual([], wrong, "\n  ".join([""] + wrong))
 
     def test_every_named_button_is_the_drawn_size(self):
         dialog = self._dialog()
@@ -663,15 +704,20 @@ class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
                         % (label, type(field).__name__, field.height(),
                            want))
 
-    def test_the_user_picker_is_the_family_width(self):
-        """D14 is drawn at the family's 350 with the family's 276 field - it was the one save dialog hugging its own content."""
+    def test_the_user_picker_is_the_drawn_width(self):
+        """D14 is drawn 19 wider than D09 and D13, its label column taking the 19 and its field keeping the family's 276."""
         from amaze.dialogs import user_dialog
-        self.assertEqual(amazetheme.SAVE_WIDTH,
+        self.assertEqual(amazetheme.D14_WIDTH,
                          user_dialog.UserPickerDialog.FORM_WIDTH)
         self.assertEqual(amazetheme.SAVE_FIELD_WIDTH,
                          user_dialog.UserPickerDialog.FIELD_WIDTH)
+        self.assertEqual(
+            amazetheme.D14_WIDTH - amazetheme.SAVE_WIDTH,
+            amazetheme.D14_LABEL_RIGHT - amazetheme.SAVE_LABEL_RIGHT,
+            "the extra width and the wider label column disagree, so the "
+            "field column no longer starts where D14 draws it")
         shown = self._shown(user_dialog.UserPickerDialog({"u1": "Plum"}))
-        self.assertEqual(theme.ui_px(amazetheme.SAVE_WIDTH), shown.width())
+        self.assertEqual(theme.ui_px(amazetheme.D14_WIDTH), shown.width())
 
 
 class TheD01ButtonsWearTheirDeclaredNumbers(unittest.TestCase):

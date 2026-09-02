@@ -95,6 +95,15 @@ def _picker_start(path: str) -> str:
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
 
 
+def _content_holder(inner) -> QtWidgets.QWidget:
+    """`inner` (a layout) inside a widget pinned to the drawn content column, so what the page is handed above that width stays empty at the right rather than moving every control. ▸r/tabwidget-adds-eight"""
+    holder = QtWidgets.QWidget()
+    inner.setContentsMargins(0, 0, 0, 0)    # a layout given to a WIDGET takes the style's own margin, where one added to another layout takes none - the page already carries the drawn margin
+    holder.setLayout(inner)
+    holder.setFixedWidth(theme.ui_px(amazetheme.PREFS_CONTENT_WIDTH))
+    return holder
+
+
 class PrefsDialog(base_dialog.AssetDialog):
     """Preferences on the house shell - live-apply, so no OK/Cancel and the inherited `canceled` is never read; resizable, tabs as the content."""
 
@@ -142,7 +151,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         _m = theme.ui_px(amazetheme.PREFS_PAGE_MARGIN)
         outer.setContentsMargins(_m, _m, _m, _m)
         form = self._make_form()
-        outer.addLayout(form)
+        outer.addWidget(_content_holder(form),
+                        alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         outer.addStretch()
         return page, form
 
@@ -621,7 +631,9 @@ class PrefsDialog(base_dialog.AssetDialog):
             "Sanzo Wada / Paul Klee / Josef Albers / Johannes Itten "
             "(color palette sources, public domain).</p>"
         )
-        outer.addWidget(browser, 1)
+        inner = QtWidgets.QVBoxLayout()   # browser AND form share the pinned content column, the browser being drawn 450 wide like every row
+        inner.setContentsMargins(0, 0, 0, 0)
+        inner.addWidget(browser, 1)
 
         form = self._make_form()
         self._lbl_version = QtWidgets.QLabel(   # EVERY update answer lands here, not in a popup: this dialog is non-modal by design ▸r/houdini-colour-picker
@@ -644,6 +656,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ask.addWidget(self._btn_report)
         ask.addStretch(1)
         form.addRow(self._label(""), ask_row)
+        self._path_rows.append(ask_row)    # spaced from the drawing like every other row of pinned widgets
         self._cbx_debug = ui_helpers.ToggleSwitch("Debug Mode")
         self._cbx_debug.setChecked(self._prefs.debug_mode)
         self._cbx_debug.setToolTip(ui_helpers.tooltip_text(
@@ -670,6 +683,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         row.addWidget(clear_btn)
 
         form.addRow(self._label(""), debug_row)
+        self._path_rows.append(debug_row)    # the three log buttons take the drawn 8 and 6, not one gap twice
 
         self._add_divider(form)
         self._cbx_test_mode = ui_helpers.ToggleSwitch("Test Library")   # under Debug Mode but NOT attached to it; both paths are overlays and locations stay isolated both ways
@@ -689,7 +703,9 @@ class PrefsDialog(base_dialog.AssetDialog):
         form.addRow(self._label("Test Folder"),
                     self._path_row(self.line_test_dir, self._browse_test))
 
-        outer.addLayout(form)
+        inner.addLayout(form)
+        outer.addWidget(_content_holder(inner),
+                        alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         self._tab_built["D08"] = {
             "QTextBrowser": (browser,),
             "QLineEdit": (self.line_test_dir,),
@@ -715,15 +731,25 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._space_pinned_row(row)
 
     def _space_pinned_row(self, row) -> None:
-        """Share the slack the drawn widths leave between a row's own gaps, so a row of pinned widgets ends level with the drawn field column instead of somewhere near it."""
+        """Give the row the DRAWN gap between each pair, so every widget lands on its drawn x. The frame draws them uneven - D04's cache row leaves 4 then 2 - and one shared spacing puts each widget near its box instead of on it."""
         layout = row.layout()
-        widgets = [layout.itemAt(i).widget() for i in range(layout.count())]
-        slack = (theme.ui_px(amazetheme.PREFS_FORM_WIDTH)
-                 - theme.ui_px(amazetheme.PREFS_INSET)
-                 - theme.ui_px(amazetheme.PREFS_FIELD_X)
-                 - sum(w.maximumWidth() for w in widgets))   # MAXIMUM: every widget in the row is pinned by now, and `width()` before the first layout pass is not what it will be
-        if len(widgets) > 1 and slack >= 0:
-            layout.setSpacing(slack // (len(widgets) - 1))
+        items = [layout.itemAt(i) for i in range(layout.count())]
+        plan = []
+        for index in range(len(items) - 1):
+            left, right = items[index].widget(), items[index + 1].widget()
+            if left is None or right is None:
+                continue    # a stretch stands between them and owns that gap
+            drawn = (getattr(left, "drawn_box", None),
+                     getattr(right, "drawn_box", None))
+            if None in drawn:
+                continue    # an unpinned widget: its drawn x is unknown, and a guessed gap is worse than Qt's own
+            plan.append((index + 1,
+                         max(drawn[1][0] - (drawn[0][0] + drawn[0][2]), 0)))
+        if not plan:
+            return
+        layout.setSpacing(0)    # the gaps are the spacers below; a spacing on top of them would add itself to every one
+        for position, gap in reversed(plan):    # from the END, so the positions ahead of each insert are still the ones planned
+            layout.insertSpacing(position, theme.ui_px(gap))
 
     LABEL_COL = amazetheme.PREFS_LABEL_COL   # ONE fixed label-column width for every row on every tab, matching Houdini's own panes, which CLIP a long label rather than widen
 

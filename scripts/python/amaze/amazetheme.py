@@ -40,7 +40,9 @@ D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, 
 D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
 D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
 
-SAVE_WIDTH = 350         # ▸ the save family D09, D13, D14: every one is this wide, whatever its labels. D10/D12 retired 2026-08-30 - one save engine, D09 is THE save dialog
+SAVE_WIDTH = 350         # ▸ the save family D09 and D13: both are this wide, whatever its labels. D10/D12 retired 2026-08-30 - one save engine, D09 is THE save dialog
+D14_WIDTH = 369          # ▸ D14 User Picker, the family's shape 19 wider: `Existing Users` is 69 and the family's label column is 60, so the column takes the 19 and the field keeps its 276
+D14_LABEL_RIGHT = 79     # where D14's label column ends, the family's 60 plus that 19
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
 SAVE_FRAME_H = {"D09": 125, "D13": 72, "D14": 100}   # each frame's drawn height; the row count is the only difference between them
 SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
@@ -64,11 +66,12 @@ D11_HALF_GAP = 18        # between the two form halves
 D11_STACK_GAP = 12       # fields to the editor
 D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
-PREFS_FRAME = (490, 451)    # ▸ D04-D08 Preferences, the one tabbed window - the drawn frame, every tab
+PREFS_FRAME = (498, 451)    # ▸ D04-D08 Preferences, the one tabbed window - the drawn frame, every tab. The width carries Qt's 8 for a tab widget, which no widget draws and every such frame must leave room for ▸r/tabwidget-adds-eight
 PREFS_FORM_WIDTH = 490   # the frame's width, kept under its old name because call sites use it
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
 PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
 PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
+PREFS_CONTENT_WIDTH = 450  # the drawn content column, spanned by every row and divider: 20..470. PINNED, because the page is handed more than this - Qt makes the window 8 wider than the tab widget needs and then lets the page use all of it ▸r/tabwidget-adds-eight
 PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
 PREFS_CONTENT_TOP = 42   # the first row's top, under the tab bar
 PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
@@ -264,7 +267,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D04": {   # Preferences - Library
-        "frame": (490, 451),
+        "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
             ("QTabBar::tab ▸ Library (selected)", 12, 12, 64, 22, None),
@@ -307,7 +310,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D05": {   # Preferences - Render
-        "frame": (490, 451),
+        "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
             ("QTabBar::tab ▸ Render (selected)", 76, 12, 65, 22, None),
@@ -368,7 +371,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D06": {   # Preferences - Show/Hide
-        "frame": (490, 451),
+        "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
             ("QTabBar::tab ▸ Show/Hide (selected)", 141, 12, 84, 22, None),
@@ -397,7 +400,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D07": {   # Preferences - Look
-        "frame": (490, 451),
+        "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
             ("QTabBar::tab ▸ Look (selected)", 225, 12, 53, 22, None),
@@ -427,7 +430,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D08": {   # Preferences - About
-        "frame": (490, 451),
+        "frame": (498, 451),
         "nodes": (
             ("QTabBar", 12, 12, 466, 22, None),
             ("QTabBar::tab ▸ About (selected)", 278, 12, 59, 22, None),
@@ -515,17 +518,17 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
     "D14": {   # User Picker - who is using this library, on first open
-        "frame": (350, 100),
+        "frame": (369, 100),
         "nodes": (
-            ("QLabel", 23, 15, 37, 15, "You are"),
-            ("QComboBox", 67, 11, 276, 22, None),
-            ("QComboBox ▸ text", 72, 15, 27, 15, "Plum"),
-            ("QLabel", 6, 41, 54, 15, "New name"),
-            ("QLineEdit", 67, 37, 276, 22, None),
-            ("QPushButton", 254, 69, 31, 22, None),
-            ("QPushButton", 293, 69, 50, 22, None),
-            ("QPushButton ▸ text", 262, 73, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 73, 34, 15, "Cancel"),
+            ("QPushButton", 273, 69, 31, 22, None),
+            ("QPushButton ▸ text", 281, 73, 15, 15, "OK"),
+            ("QPushButton", 312, 69, 50, 22, None),
+            ("QPushButton ▸ text", 320, 73, 34, 15, "Cancel"),
+            ("QLabel", 10, 15, 69, 15, "Existing Users"),
+            ("QComboBox", 86, 11, 276, 22, None),
+            ("QComboBox ▸ text", 91, 15, 27, 15, "Plum"),
+            ("QLabel", 31, 41, 48, 15, "New User"),
+            ("QLineEdit", 86, 37, 276, 22, None),
         ),
     },
 }

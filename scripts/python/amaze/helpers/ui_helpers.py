@@ -197,6 +197,7 @@ def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool) -> None:
     widget.setFixedWidth(theme.ui_px(box[2]))
     if height:
         widget.setFixedHeight(theme.ui_px(box[3]))
+    widget.drawn_box = tuple(box)    # WHERE it is drawn, for a caller placing several pinned widgets in one row - a plain attribute, the way `snap_marks` rides a slider
     _DRAWN_PINS.add((frame_key, kind, box[0], box[1]))
 
 
