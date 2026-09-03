@@ -41,6 +41,7 @@ def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
     """Resolve a .mtlx file value (document-relative, plus any active fileprefix) to an absolute path - CONTAINED IN THE PACKAGE: `value` comes out of a DOWNLOADED document and this is the one place in the online path where such a string becomes a filesystem path, so an uncontainable value answers an empty path and is logged, never raised; a texture that does not load is the safe end of a bad reference."""
     if not value:
         return value
+    value = value.replace("\\", "/")    # a package authored on Windows writes `textures\map.png`, and on a Unix host that backslash is one character of the file name
     candidates = [os.path.join(mtlx_dir, prefix, value) if prefix else None,
                   os.path.join(mtlx_dir, value)]
     contained = []

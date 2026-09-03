@@ -698,6 +698,43 @@ class MtlxRepairHonestyTest(unittest.TestCase):
             "to repair: %r" % (log.messages(),))
 
 
+class MtlxRepairFindsTheColourMapUnderItsOtherNames(unittest.TestCase):
+    """Poly Haven's document says `_diff_` while the map it ships is `_col1_`, `_coll1_` or `_albedo_` - a different stem, which the extension repair cannot see, and the material came in with no colour map at all. ▸r/matx-source-quirks"""
+
+    def _package(self, shipped):
+        import tempfile
+        dest = tempfile.mkdtemp(prefix="amaze_mtlx_col_")
+        self.addCleanup(__import__("shutil").rmtree, dest, True)
+        mtlx = os.path.join(dest, "material.mtlx")
+        with open(mtlx, "w", encoding="utf-8") as handle:
+            handle.write('<materialx><input value="textures/leather_red_02_diff_2k.jpg"/>'
+                         "</materialx>")
+        os.makedirs(os.path.join(dest, "textures"))
+        with open(os.path.join(dest, "textures", shipped), "wb") as handle:
+            handle.write(b"\x89PNG")
+        return mtlx, dest
+
+    def test_each_synonym_is_found(self):
+        for shipped in ("leather_red_02_col1_2k.png",
+                        "leather_red_02_coll1_2k.png",
+                        "leather_red_02_albedo_2k.jpg"):
+            with self.subTest(shipped=shipped):
+                mtlx, dest = self._package(shipped)
+                repairs = matx_sources.repair_mtlx_references(mtlx, dest)
+                self.assertEqual(
+                    "textures/" + shipped,
+                    repairs[0]["fixed_to"] if repairs else None,
+                    "the colour map shipped as %s was not found for the "
+                    "document's diff reference" % shipped)
+
+    def test_a_map_of_another_role_is_not_taken(self):
+        mtlx, dest = self._package("leather_red_02_rough_2k.png")
+        repairs = matx_sources.repair_mtlx_references(mtlx, dest)
+        self.assertIsNone(
+            repairs[0]["fixed_to"] if repairs else None,
+            "a roughness map was wired in as the colour map")
+
+
 class PartialCatalogueTest(unittest.TestCase):
     """A catalogue missing a whole source must not become the baseline - a COLD cache once adopted a GPUOpen-down fetch and every later run matched and accepted it, the source permanently absent while the menu still listed it."""
 

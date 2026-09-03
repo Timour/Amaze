@@ -167,6 +167,21 @@ class AColourConstantKeepsItsColour(unittest.TestCase):
             "mixed with")
 
 
+class AWindowsSeparatorInATextureReferenceResolves(unittest.TestCase):
+    """A package authored on Windows writes `textures\\map.png`; joined as-is on a Unix host the backslash is a character in the name, the file is not found, and the map silently renders as its default."""
+
+    def test_the_backslash_reads_as_a_folder_separator(self):
+        tmp = tempfile.mkdtemp(prefix="amaze_matx_backslash_")
+        os.makedirs(os.path.join(tmp, "textures"))
+        wanted = os.path.join(tmp, "textures", "map.png")
+        with open(wanted, "wb") as handle:
+            handle.write(b"\x89PNG")
+        resolved = matx_translate._resolve_file("textures\\map.png", tmp, "")
+        self.assertEqual(
+            os.path.normpath(wanted), resolved,
+            "the backslash was kept as part of the file name")
+
+
 class ATextureReferenceStaysInsideThePackage(unittest.TestCase):
     """A `file` value comes out of a DOWNLOADED document, and this is the one place in the online path where such a string becomes a filesystem path. Nothing is overwritten, but the resolved path lands in a parm, so the material reads a file the download never fetched and then ships that path onward."""
 

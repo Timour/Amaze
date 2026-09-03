@@ -34,6 +34,9 @@ def _res_rank(label: str) -> int:
         return -1
 
 
+COLOUR_MAP_STEMS = ("col1", "coll1", "albedo")    # what Poly Haven has shipped a colour map as where its own document says `diff` - read off downloaded packages, one per name ▸r/matx-source-quirks
+
+
 def pick_resolution(available, preferred: str) -> str | None:
     """Exact match, else the NEXT HIGHEST available, else the highest below - a preference is a floor, never a hard failure; None only when nothing is available."""
     if not available:
@@ -155,6 +158,11 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
             continue
         stem = os.path.splitext(os.path.basename(ref))[0]
         have = on_disk.get(stem)
+        if not have and "_diff_" in stem:    # the document says `diff` where the shipped colour map is named for its variant - one role, several stems ▸r/matx-source-quirks
+            for other in COLOUR_MAP_STEMS:
+                have = on_disk.get(stem.replace("_diff_", "_%s_" % other))
+                if have:
+                    break
         if not have:
             repairs.append({"reference": ref, "fixed_to": None})
             continue
