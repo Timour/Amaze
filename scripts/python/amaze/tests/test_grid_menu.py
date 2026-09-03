@@ -19,6 +19,7 @@ sys.path.insert(
 
 from amaze.core import file_library  # noqa: E402
 from amaze.panel import grid, sections  # noqa: E402
+from amaze.render import material_converter  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -242,7 +243,9 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_material_with_one_selected(self):
         self.assertEqual(
-            ["Copy To > [/mat, /stage/materiallibrary]", "----",
+            ["Copy To > [/mat, /stage/materiallibrary]",
+             "Convert to > [Karma(off), Redshift(off)](off)",    # the fixture's first material is neither Karma nor Redshift, so nothing here converts and the whole submenu greys
+             "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
             self._show("material", (0,)))
@@ -251,6 +254,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Every entry acts on the whole selection and stays live."""
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary]",
+             "Convert to > [Karma(off), Redshift]",
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
@@ -258,7 +262,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
 
     def test_material_with_nothing_selected(self):
         self.assertEqual(
-            ["Copy To > [/mat, /stage/materiallibrary](off)", "----",
+            ["Copy To > [/mat, /stage/materiallibrary](off)",
+             "Convert to > [Karma(off), Redshift(off)](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
              "Export Package(off)", "Delete(off)"],
             self._show("material"))
@@ -388,8 +393,11 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Built directly rather than by entering the online world (that world reaches the network) - CHANGED 2026-08-03: it used to show Refresh alone, because both imports were built only `if records`; Refresh acts on nothing, so it is the one that stays live."""
         context = self.panel.online_context
         menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
+        redshift = "" if material_converter._redshift_type_available() else "(off)"    # the child follows the HOST: greyed where the plugin is not loaded, never a lie either way
         self.assertEqual(
-            ["Import to Materials(off)", "Import to Scene(off)", "Refresh"],
+            ["Import to Materials > [Karma, Redshift%s](off)" % redshift,
+             "Import to Scene > [Karma, Redshift%s](off)" % redshift,
+             "Refresh"],
             render(menu))
 
     def test_online_imports_say_HOW_MANY_they_are_about_to_fetch(self):
@@ -562,21 +570,63 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
                     [], called,
                     "%s ran %s after the menu was dismissed" % (key, called))
 
-    def test_an_entry_that_was_never_built_cannot_be_picked(self):
-        """Convert to Karma with no Redshift material selected: the entry does not exist, and dismissing must not reach its verb."""
+    def _material_convert_children(self, karma, redshift):
+        """The Convert to submenu's rendered children with the two selection facts pinned - the facts are the panel's, so pinning them here tests the TABLE, not the fixture library."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel._section()
-        with mock.patch.object(type(context), "selection_has_redshift",
-                               lambda *a, **k: False):
+        with mock.patch.object(type(context), "selection_has_karma",
+                               lambda *a, **k: karma), \
+                mock.patch.object(panel, "_selection_has_karma",
+                                  lambda: karma), \
+                mock.patch.object(panel, "_selection_has_redshift",
+                                  lambda: redshift):
             indexes = context.grid_selection()
-            menu, verbs = grid.build_grid_menu(panel, context, indexes, None)
-        self.assertNotIn(
-            "Convert to Karma", [a.text() for a in menu.actions()])
-        self.assertNotIn(
-            "menu_convert_to_karma", [verb for verb, _payload in
-                                      verbs.values()])
+            menu, _verbs = grid.build_grid_menu(
+                panel, context, indexes, None)
+        row = [r for r in render(menu) if r.startswith("Convert to")]
+        return row[0] if row else None
+
+    def test_convert_to_greys_the_renderer_the_selection_already_is(self):
+        """Drawn as C01b: the submenu always opens, and the child naming what the selection already is greys - a Karma material offers Redshift alone, a Redshift one Karma alone, a mixed selection both."""
+        self.assertEqual("Convert to > [Karma(off), Redshift]",
+                         self._material_convert_children(True, False))
+        self.assertEqual("Convert to > [Karma, Redshift(off)]",
+                         self._material_convert_children(False, True))
+        self.assertEqual("Convert to > [Karma, Redshift]",
+                         self._material_convert_children(True, True))
+
+    def test_convert_to_dispatches_by_the_child_picked(self):
+        """One verb, the payload names the renderer: Redshift reaches the Redshift door and nothing else, Karma the Karma one."""
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        context = panel._section()
+        with mock.patch.object(panel, "convert_selected_to_redshift") as rs, \
+                mock.patch.object(panel, "convert_selected_to_karma") as km:
+            context.menu_convert_to([], None, "Redshift")
+            self.assertEqual((1, 0), (rs.call_count, km.call_count))
+            context.menu_convert_to([], None, "Karma")
+            self.assertEqual((1, 1), (rs.call_count, km.call_count))
+
+    def test_online_import_carries_the_renderer_to_its_door(self):
+        """Drawn as C06a/C06b: the child picked under either Import entry reaches the panel door as `renderer`, and a bare call (the double-click door) still means Karma."""
+        panel = self.panel
+        context = panel.online_context
+        records = ["rec"]
+        with mock.patch.object(type(context), "_records",
+                               lambda self, idx: records), \
+                mock.patch.object(panel, "_import_online_records") as lib, \
+                mock.patch.object(panel,
+                                  "_import_online_records_to_scene") as scene:
+            context.menu_import_to_library([], None, "Redshift")
+            lib.assert_called_once_with(records, renderer="Redshift")
+            context.menu_import_to_scene([], None, "Redshift")
+            scene.assert_called_once_with(records, renderer="Redshift")
+            context.menu_import_to_library([], None)
+            self.assertEqual({"renderer": "Karma"},
+                             lib.call_args.kwargs)
 
 
 class EveryVerbREACHESItsOwner(unittest.TestCase):

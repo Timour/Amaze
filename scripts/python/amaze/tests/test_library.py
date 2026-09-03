@@ -1379,7 +1379,7 @@ class TheSharedBaseCarriesNothingRendererShaped(unittest.TestCase):
     RENDERER_SHAPED = (  # the renderer-shaped surface by name: declared ON MaterialLibrary and absent from the base's own namespace, checked with vars() rather than getattr, because inheritance answers getattr for every subclass
         "is_usd_material", "shader_type_label", "add_asset",
         "update_asset_content", "import_asset_to_scene",
-        "convert_redshift_to_karma",
+        "convert_redshift_to_karma", "convert_karma_to_redshift",
     )
 
     def test_the_four_models_inherit_the_base(self):

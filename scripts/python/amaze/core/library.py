@@ -1582,3 +1582,38 @@ class MaterialLibrary(AssetLibrary):
             with hou.undos.disabler():  # the live Karma network exists only to be copied by add_asset's save path - never left in the scene
 
                 scratch.destroy()
+
+    def convert_karma_to_redshift(self, index: QtCore.QModelIndex):
+        """Best-effort conversion of a Karma material to a Redshift equivalent, registered as a NEW entry beside the source and never replacing it - the mirror of `convert_redshift_to_karma`. Returns (ok, report)."""
+        from amaze.render import redshift_converter    # late, like the forward converter's own import chain: render/ reaches back into core/
+
+        mat = self._assets[index.row()]
+        if "Karma" not in str(mat.renderer):
+            report = material_converter.ConversionReport(mat.name)
+            report.skip("not a Karma material")
+            return False, report
+
+        handler = nodes.NodeHandler(self.preferences)
+        with hou.undos.disabler():
+            scratch = hou.node("/obj").createNode("matnet")
+        try:
+            handler._hou_parent = scratch
+            handler._import_path = scratch
+            handler._use_existing_node = True
+            iface_path = material.payload_path(
+                self.preferences, mat.mat_id, ".interface")
+            handler.load_interface_mtlx(iface_path, mat)
+            handler.load_items_file_mtlx(mat)    # the reconstructed copy is scratch scaffolding for reading values, never left in the scene
+            source = handler.builder_node
+
+            builder, shader, wired, report = redshift_converter.convert_karma_builder(
+                source, scratch, mat.name)
+            if shader is None:
+                return False, report
+            saved = self.add_asset(
+                builder, ",".join(mat.categories), ",".join(mat.tags), False,
+                name=mat.name)    # the twin keeps the source's name: the builder's own carries a `1`, unique beside the reconstructed source in the same scratch
+            return bool(saved), report
+        finally:
+            with hou.undos.disabler():
+                scratch.destroy()

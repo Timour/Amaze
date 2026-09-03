@@ -539,6 +539,10 @@ the container, the wiring, activation and verification; each input is an
     → clean VOP nodes, via Houdini's MaterialX Python API.
   - **Redshift Converter** (`render/material_converter.py`) — a Redshift
     material → equivalent Karma nodes.
+  - **Karma → Redshift** (`render/redshift_converter.py`) — the mirror:
+    any Karma container → a Redshift builder (`build_redshift_material`
+    owns the container and its USD terminal), the online sources landing
+    as Redshift through `matx_import`'s `renderer` switch.
   - **Values Adapter** (`matx_import._values_to_standard_surface`) —
     PhysicallyBased measured values → a preset shader.
 - **The Builder** — the container the engine makes:
@@ -1031,6 +1035,7 @@ core/category.py          Categories Model + Sidebar Proxy
 core/multifilterproxy_model.py   Filter Proxy
 core/matx_translate.py    Adapter: online .mtlx -> clean VOP
 render/material_converter.py     Adapter: Redshift -> Karma
+render/redshift_converter.py     Engine + adapter: Karma -> Redshift
 core/matx_sources.py      Online source adapters (GPUOpen/PolyHaven/...)
 core/matx_import.py       Online import orchestration + Values Adapter
 core/matx_library.py      Online Browser model

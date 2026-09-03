@@ -1623,6 +1623,50 @@ class MatLibPanel(QtWidgets.QWidget):
                 return True
         return False
 
+    def _selection_has_karma(self) -> bool:
+        """Whether any currently-selected material is Karma - gates showing `Convert to Redshift` in the right-click menu."""
+        if not self.material_model:
+            return False
+        for index in grid_columns.selected_rows(
+                self.material_selection_model):
+            idx = self.material_sorted_model.mapToSource(index)
+            mat = self.material_model.assets[idx.row()]
+            if "Karma" in str(mat.renderer):
+                return True
+        return False
+
+    def convert_selected_to_redshift(self) -> None:
+        """Right-click `Convert to Redshift`: the selected Karma materials become Redshift ones beside their sources, non-Karma items in a mixed selection silently skipped - the mirror of `convert_selected_to_karma`."""
+        if not self.material_model:
+            return
+        indexes = grid_columns.selected_rows(self.material_selection_model)
+        if not indexes:
+            return
+        all_lines = []
+        converted_count = 0
+        karma_count = 0
+        with ui_helpers.relayout(self.material_model):
+            for index in indexes:
+                idx = self.material_sorted_model.mapToSource(index)
+                mat = self.material_model.assets[idx.row()]
+                if "Karma" not in str(mat.renderer):
+                    continue
+                karma_count += 1
+                try:
+                    ok, report = self.material_model.convert_karma_to_redshift(idx)
+                except Exception as exc:    # one bad material must not take the rest of the selection down, nor the summary the others earned
+                    all_lines.append(f'"{mat.name}": crashed - {exc}')
+                    continue
+                if ok:
+                    converted_count += 1
+                all_lines.extend(report.summary_lines())
+        ui = getattr(hou, "ui", None)
+        if ui is not None:
+            ui.displayMessage(
+                f"Converted {converted_count} of {karma_count} Karma "
+                "material(s) to Redshift.\n\n" + "\n".join(all_lines)
+            )
+
     def convert_selected_to_karma(self) -> None:
         """Right-click `Convert to Karma`: node-graph conversion of the selected Redshift materials to Karma/MaterialX, silently skipping non-Redshift items in a mixed selection."""
         if not self.material_model:
@@ -2315,8 +2359,8 @@ class MatLibPanel(QtWidgets.QWidget):
             if show_bar:
                 self.set_conversion_bar_visible(False)
 
-    def _import_online_records(self, records) -> None:
-        """Import one or more online records into the LIBRARY."""
+    def _import_online_records(self, records, renderer="Karma") -> None:
+        """Import one or more online records into the LIBRARY, built as `renderer` - Karma, or Redshift through the converter."""
         if not len(records):
             return
         total = len(records)
@@ -2326,7 +2370,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 on_progress = progress_for(i)
                 try:    # ONE BAD RECORD MUST NOT ABANDON THE BATCH: matx_import.import_record has only try/finally, so build_karma_material and library.add_asset raise straight through it, and without this the remaining records go unimported and `failures` never reaches its dialog
                     ok, reason = self.import_online_material(
-                        rec, on_progress=on_progress
+                        rec, on_progress=on_progress, renderer=renderer
                     )
                 except Exception as exc:                  # noqa: BLE001
                     debug.exception("online import", exc, record=rec.title)
@@ -2340,8 +2384,9 @@ class MatLibPanel(QtWidgets.QWidget):
                 % (len(failures), total, "\n".join(failures[:10]))
             )
 
-    def import_online_material(self, record, on_progress=None):
-        """Download (if needed) and register one online material as a normal library material with renderer Karma; on_progress(frac) is called with a 0..1 fraction during the download when given. Returns (ok, reason) - the CALLER reports, never this."""
+    def import_online_material(self, record, on_progress=None,
+                               renderer="Karma"):
+        """Download (if needed) and register one online material as a normal library material built as `renderer` - Karma, or Redshift through the converter; on_progress(frac) is called with a 0..1 fraction during the download when given. Returns (ok, reason) - the CALLER reports, never this."""
         if record is None or not self.material_model:
             return (False, "No library to import into.")
         source, resolution, error = self._online_source_for(record)
@@ -2355,7 +2400,7 @@ class MatLibPanel(QtWidgets.QWidget):
         with ui_helpers.relayout(self.material_model):
             ok, reason = matx_import.import_record(
                 record, source, resolution, self.material_model, self.prefs,
-                progress=on_progress,
+                progress=on_progress, renderer=renderer,
             )
         if not ok:
             return (False, reason or "Import failed.")
@@ -2499,7 +2544,8 @@ class MatLibPanel(QtWidgets.QWidget):
                     '"%s" has no downloadable package.' % record.title)
         return (source, resolution, "")
 
-    def _import_online_records_to_scene(self, records) -> None:
+    def _import_online_records_to_scene(self, records,
+                                        renderer="Karma") -> None:
         """Build online records straight into the scene - the current LOP material library (or /mat) - without adding them to the library; amazepkg records split off to the LIBRARY door, a store tile being library data of ANY section (palette, snippet, material row) with no scene-build path of its own."""
         packages_only = [r for r in records
                          if getattr(r, "kind", "") == "amazepkg"]
@@ -2531,7 +2577,7 @@ class MatLibPanel(QtWidgets.QWidget):
                     try:
                         builder, reason = matx_import.build_in_scene(
                             rec, source, resolution, destination, self.prefs,
-                            progress=on_progress,
+                            progress=on_progress, renderer=renderer,
                         )
                     except Exception as exc:           # noqa: BLE001
                         debug.exception("import to scene", exc,

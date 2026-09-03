@@ -16,6 +16,7 @@ from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
 from amaze import messages
 from amaze.panel import grid
+from amaze.render import material_converter
 
 
 AssetStack = collections.namedtuple(
@@ -593,10 +594,11 @@ class MaterialSection(AssetSection):
                 "go for good. Materials already used in a scene are "
                 "not affected." % count)
 
-    GRID_MENU = (    # the section's work, a divider, then the shared tail; Convert to Karma is the one CONDITIONAL entry, built only when the selection holds a Redshift material, and the builder dispatches through a dict rather than comparing the returned action - a dismissed menu and an unbuilt entry are both None, so a comparison runs the converter on every dismissed right-click
+    GRID_MENU = (    # the section's work, a divider, then the shared tail; Convert to opens on every material and greys, inside, the renderer the selection already is - drawn C01/C01b
         MenuEntry("Copy To", verb="menu_copy_to", children="copy_to_targets"),
-        MenuEntry("Convert to Karma", verb="menu_convert_to_karma",
-                  shown="selection_has_redshift"),
+        MenuEntry("Convert to", verb="menu_convert_to",
+                  children="convert_targets",
+                  needs="selection_is_convertible"),
         SEPARATOR,
     ) + GRID_MENU_TAIL
 
@@ -657,8 +659,25 @@ class MaterialSection(AssetSection):
             else:
                 self.panel.import_asset_to_mat()
 
-    def menu_convert_to_karma(self, indexes, current, payload=None) -> None:
-        self.panel.convert_selected_to_karma()
+    def selection_has_karma(self, indexes, current) -> bool:
+        return self.panel._selection_has_karma()
+
+    def selection_is_convertible(self, indexes, current) -> bool:
+        """The parent greys when no child would be live - an openable submenu with nothing to pick reads as broken."""
+        return (self.panel._selection_has_karma()
+                or self.panel._selection_has_redshift())
+
+    def convert_targets(self, indexes, current) -> tuple:
+        """What the selection can BECOME: a child is live when the selection holds a material of another renderer, so a Karma material offers Redshift and greys Karma - Octane joins here when its converter lands."""
+        return (("Karma", "Karma", "", self.panel._selection_has_redshift()),
+                ("Redshift", "Redshift", "",
+                 self.panel._selection_has_karma()))
+
+    def menu_convert_to(self, indexes, current, payload=None) -> None:
+        if payload == "Redshift":
+            self.panel.convert_selected_to_redshift()
+        else:
+            self.panel.convert_selected_to_karma()
 
     def activate(self) -> None:
         if getattr(self.panel, "online_mode", False):  # Materials alone remembers the online world: a tab round-trip must not drop out of it
@@ -1519,11 +1538,11 @@ class OnlineContext(Section):
     def stack(self):
         return None
 
-    GRID_MENU = (    # named for WHERE the material lands rather than what it is - both entries build the same Karma material and the choice is library entry vs scene node; Refresh acts on nothing selected, so it stays live like Code's New File
+    GRID_MENU = (    # named for WHERE the material lands, with a submenu for WHAT it is built as: the same downloaded MaterialX either way, built as Karma or carried on to Redshift by render/redshift_converter.py - drawn C06/C06a/C06b
         MenuEntry("Import to Materials", verb="menu_import_to_library",
-                  count_suffix=True),
+                  children="import_targets", count_suffix=True),
         MenuEntry("Import to Scene", verb="menu_import_to_scene",
-                  count_suffix=True),
+                  children="import_targets", count_suffix=True),
         MenuEntry("Restore", verb="menu_restore_packages",
                   shown="selection_is_amaze_packages", count_suffix=True),
         MenuEntry("Refresh", verb="menu_refresh", needs="always"),
@@ -1540,13 +1559,20 @@ class OnlineContext(Section):
                 records.append(record)
         return records
 
+    def import_targets(self, indexes, current) -> tuple:
+        """The renderer the import BUILDS AS - drawn C06a/C06b; Redshift greys when its plugin is not loaded, so the row still shows where the door leads."""
+        return (("Karma", "Karma", "", True),
+                ("Redshift", "Redshift", "",
+                 material_converter._redshift_type_available()))
+
     def menu_import_to_library(self, indexes, current, payload=None) -> None:
-        self.panel._import_online_records(self._records(indexes))
+        self.panel._import_online_records(self._records(indexes),
+                                          renderer=payload or "Karma")
 
     def menu_import_to_scene(self, indexes, current, payload=None) -> None:
         with helpers.preserving_selection_and_current():    # same wrapper as menu_copy_to: a menu import must not move the artist's selection, current node or view
             self.panel._import_online_records_to_scene(
-                self._records(indexes))
+                self._records(indexes), renderer=payload or "Karma")
 
     def selection_is_amaze_packages(self, indexes, current) -> bool:
         """Every selected record is an amazepkg - Restore means nothing for a material source."""

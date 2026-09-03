@@ -219,8 +219,21 @@ def _producer_for(record, source, resolution, preferences, progress=None):
     return (produce, "", "")
 
 
+def to_renderer(builder, scratch, name: str, renderer: str):
+    """The builder the caller asked for: the Karma one as built, or its Redshift twin converted beside it in `scratch` with the Karma one gone. Answers (builder, shader, wired, report-or-None)."""
+    if renderer != "Redshift":
+        return builder, None, None, None
+    from amaze.render import redshift_converter    # late: render/ reaches back into core/
+    rs_builder, shader, wired, report = redshift_converter.convert_karma_builder(
+        builder, scratch, name)
+    builder.destroy()
+    if report.skipped or report.approximated:
+        debug.note("\n".join(report.summary_lines()))
+    return rs_builder, shader, wired, report
+
+
 def build_in_scene(record, source, resolution, destination, preferences,
-                   progress=None):
+                   progress=None, renderer: str = "Karma"):
     """Build one online record straight into the SCENE, under `destination` (a materiallibrary LOP or /mat). Returns (builder, reason). - The library is never touched: this is the just-want-the-material-here path, so what lands is a scene node like any the user builds by hand - keeping it is a deliberate Save to Amaze afterwards. The caller owns the undo group (the destination may itself have just been created). - Textures still download to the library's matX folder, which is the app's permanent texture store - Clean Up Library only ever scans the .mat/.interface/thumbnail directories, so a scene-only import's textures are not collected behind its back."""
     if destination is None:
         return (None, "No destination network for the material.")
@@ -240,6 +253,10 @@ def build_in_scene(record, source, resolution, destination, preferences,
             scratch, name, produce)
         if shader is None:
             return (None, "Could not build a shading network for " + name)
+        if renderer == "Redshift":
+            builder, shader, wired, _report = to_renderer(builder, scratch, name, renderer)
+            if shader is None:
+                return (None, "Could not convert %s to Redshift" % name)
         if not wired:
             debug.note(   # the engine's own verdict, said to the user rather than only to the log: the material is real and importable, refusing it would throw away work over something the artist can wire by hand, so this is a warning attached to a success rather than a failure
                 "\"%s\" imported, but its surface output is not wired, "
@@ -273,7 +290,7 @@ def build_in_scene(record, source, resolution, destination, preferences,
 
 
 def import_record(record, source, resolution, library, preferences,
-                  progress=None):
+                  progress=None, renderer: str = "Karma"):
     """Import one online record into `library` (a MaterialLibrary). - Returns (ok, reason). Never leaves scene debris on failure. progress (frac) is called with a 0..1 fraction during the download (package sources only - value sources have nothing to download)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
@@ -293,6 +310,10 @@ def import_record(record, source, resolution, library, preferences,
 
         if shader is None:
             return (False, "Could not build a shading network for " + name)
+        if renderer == "Redshift":    # the Karma network is the way in for every online source; the Redshift twin is what lands
+            builder, shader, wired, _report = to_renderer(builder, scratch, name, renderer)
+            if shader is None:
+                return (False, "Could not convert %s to Redshift" % name)
         if not wired:
             debug.note(
                 "\"%s\" was imported, but its surface output is not "
