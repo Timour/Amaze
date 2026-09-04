@@ -1473,5 +1473,50 @@ class RendererDetectionSeesNestedSubnetsTest(unittest.TestCase):
         self.assertEqual("Karma", handler.get_renderer_from_node(outer))
 
 
+class NoTagsIsAnEmptyListTest(unittest.TestCase):
+    """"No tags" is `[]` on disk at every door - the add, and the row read back and saved again. ▸p/no-tags-is-empty. This file patches `material.Material` for the model tests, so the real class and model are imported by name below."""
+
+    def _saved_tags(self, prefs, name: str) -> list:
+        with open(os.path.join(prefs.dir, "library.json"),
+                  encoding="utf-8") as handle:
+            rows = json.load(handle)["assets"]
+        return [row["tags"] for row in rows if row.get("name") == name]
+
+    def test_a_material_added_with_no_tags_saves_an_empty_list(self):
+        """The whole trip: added with a blank Tags line, saved, read back by a fresh model the way the next Houdini session reads it, saved again untouched."""
+        from amaze.core import library as library_mod
+        from amaze.tests import make_library_fixture
+
+        test_support.reset_database_singletons()
+        prefs = test_support.fixture_prefs(self)
+        prefs.render_on_import = 0
+        model = library_mod.MaterialLibrary(preferences=prefs)
+        builder = make_library_fixture.build_material(
+            hou.node("/mat"), "Untagged", (0.5, 0.5, 0.5))
+        self.addCleanup(builder.destroy)
+        self.assertTrue(
+            model.add_asset(builder, "Karma_Mats", "", False, name="Untagged"),
+            "premise: the save went through")
+        self.assertEqual([[]], self._saved_tags(prefs, "Untagged"))
+
+        test_support.reset_database_singletons()    # a fresh read off disk, not the connector's cached document
+        reopened = library_mod.MaterialLibrary(preferences=prefs)
+        self.assertTrue(reopened.save(),
+                        "premise: the second save went through")
+        self.assertEqual(
+            [[]], self._saved_tags(prefs, "Untagged"),
+            "a row saved with no tags came back from disk carrying a "
+            "blank one")
+
+    def test_a_row_read_back_with_no_tags_holds_an_empty_list(self):
+        """The door itself: `[]` off disk is falsy, which is what let the constructor's sentinel replace it."""
+        from amaze.core.material import Material
+        self.assertEqual(
+            [], Material.from_dict({"id": "x", "tags": []}).tags,
+            "a row with no tags was read back with a blank one")
+        self.assertEqual(
+            [], Material().tags, "a bare record starts with a blank tag")
+
+
 if __name__ == "__main__":
     unittest.main()

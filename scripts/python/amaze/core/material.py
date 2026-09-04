@@ -87,9 +87,9 @@ class Material:
         self.date = date
         self._usd = usd
 
-        # cats assigns THROUGH the categories setter - the one place that collapses a legacy multi-category row; new ids are uuid4 hex, legacy timestamp ids live forever (scene nodes and filenames carry them).
+        # cats and tags assign THROUGH their setters - the one place each that collapses a legacy multi-category row and drops a blank tag; new ids are uuid4 hex, legacy timestamp ids live forever (scene nodes and filenames carry them).
         self.categories = cats if cats else ""
-        self._tags = [""] if not tags else tags
+        self.tags = tags
         self._mat_id = uuid.uuid4().hex if mat_id == "" else mat_id
         self._cop_net = {}
         self._code = ""
@@ -253,12 +253,17 @@ class Material:
 
     @property
     def tags(self) -> list[str]:
-        """The tag list; assigning takes a comma-separated string, stripped."""
+        """The tag list, `[]` for none; assigning takes a comma-separated string or a list, stripped, blanks dropped. ▸p/no-tags-is-empty"""
         return self._tags
 
     @tags.setter
-    def tags(self, tags: str) -> None:
-        self._tags = [t.strip() for t in tags.split(",") if t.strip() != ""]
+    def tags(self, tags) -> None:
+        if isinstance(tags, (list, tuple)):
+            found = [str(t).strip() for t in tags if str(t).strip()]
+        else:
+            found = [t.strip() for t in str(tags or "").split(",")
+                     if t.strip()]
+        self._tags = found
 
     @property
     def usd(self) -> int:

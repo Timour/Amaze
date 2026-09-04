@@ -504,7 +504,7 @@ def reattach(findings: dict, filename: str) -> dict:
             record = material.Material(
                 name="Recovered %s" % asset_id[:8],
                 cats=RECOVERED_CATEGORY,
-                tags=[""],
+                tags=[],
                 fav=False,
                 renderer="",
                 date=str(datetime.datetime.now())[:-7],
