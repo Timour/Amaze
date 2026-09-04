@@ -406,6 +406,59 @@ class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
                          "the classic terminal came along")
 
 
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
+class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
+    """The twins 1.0.33 saved were a `redshift_vopnet` holding a USD terminal and no classic one. The upgrade used to look for the classic terminal alone, so such a twin arrived in the LOP library with its shader wired to a SECOND USD terminal and the one feeding the suboutput empty (seen 2026-09-04)."""
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        legacy = self.parent.createNode("redshift_vopnet")
+        for child in list(legacy.children()):
+            child.destroy()
+        usd = legacy.createNode("redshift_usd_material")
+        shader = legacy.createNode("redshift::StandardMaterial",
+                                   "mtlxstandard_surface1")
+        disp = legacy.createNode("redshift::Displacement", "disp")
+        usd.setNamedInput("Surface", shader, 0)
+        usd.setNamedInput("Displacement", disp, 0)
+        self.model.add_asset(legacy, "Test", "", False, name="first_twin")
+        self.row = len(self.model.assets) - 1
+        legacy.destroy()
+
+    def test_one_usd_terminal_fed_and_feeding_the_suboutput(self):
+        stage = hou.node("/stage")
+        before = {n.path() for lib in stage.children()
+                  if lib.type().name() == "materiallibrary"
+                  for n in lib.children()}
+        ok, reason, _created = self.model.import_asset_to_scene(
+            self.model.index(self.row, 0), target="lop")
+        self.assertTrue(ok, reason)
+        node = [n for lib in stage.children()
+                if lib.type().name() == "materiallibrary"
+                for n in lib.children() if n.path() not in before][0]
+        self.addCleanup(node.destroy)
+        terminals = [c for c in node.children()
+                     if c.type().name() in material.REDSHIFT_TERMINALS]
+        self.assertEqual(["redshift_usd_material"],
+                         [t.type().name() for t in terminals],
+                         "the old terminal came along as a second one")
+        feeds = {c.outputName(): c.inputNode().name()
+                 for c in terminals[0].inputConnections()}
+        self.assertEqual({"Surface": "mtlxstandard_surface1",
+                          "Displacement": "disp"}, feeds)
+        suboutput = [c for c in node.children()
+                     if c.type().name() == "suboutput"]
+        self.assertEqual(1, len(suboutput))
+        self.assertEqual(
+            [terminals[0].name()],
+            [c.inputNode().name() for c in suboutput[0].inputConnections()],
+            "the suboutput is not fed by the one terminal")
+
+
 class _ValuesSource:
     """A values source with nothing to download: `fetch` answers the record's own payload, the way the measured-dataset sources do."""
 

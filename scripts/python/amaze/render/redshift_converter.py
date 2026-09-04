@@ -472,27 +472,34 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     if builder.type().name() != LEGACY_CONTAINER:
         return builder
     name = builder.name()
-    classic = [c for c in builder.children()
-               if c.type().name() == CLASSIC_TERMINAL]
-    feeds = []    # (classic input name, source node name, source output index)
-    for terminal in classic:
+    terminals = [c for c in builder.children()
+                 if c.type().name() in material.REDSHIFT_TERMINALS]    # a legacy container may hold the classic output, a USD one (a 1.0.33 twin, or a vopnet made inside a LOP library), or both
+    feeds = {}    # input name on the USD terminal -> (source node name, source output index); a USD terminal's own feeds win over the classic one's
+    for terminal in sorted(terminals, key=lambda t: t.type().name() == CLASSIC_TERMINAL, reverse=True):
         for conn in terminal.inputConnections():
-            feeds.append((conn.outputName(), conn.inputNode().name(),
-                          conn.outputIndex()))
+            if conn.inputNode() is None:    # an empty slot below a wired one is listed as a connection to nothing ▸r/redshift-nodes
+                continue
+            feeds[conn.outputName().replace("Bump Map", "BumpMap")] = (
+                conn.inputNode().name(), conn.outputIndex())
     movers = [c for c in builder.children()
-              if c.type().name() != CLASSIC_TERMINAL]
+              if c.type().name() not in material.REDSHIFT_TERMINALS]
     fresh = make_redshift_builder(builder.parent(), name + "_usd")
+    try:    # the container's own look and stamps come along: its colour is what the library row keeps, and the row's id rides its user data
+        fresh.setColor(builder.color())
+        fresh.setPosition(builder.position())
+        for key, value in builder.userDataDict().items():
+            fresh.setUserData(key, value)
+    except hou.Error as exc:
+        debug.event("redshift", "container look not carried", error=str(exc))
     if movers:
         hou.moveNodesTo(movers, fresh)
     terminal = redshift_terminal(fresh)
-    spelling = {"Bump Map": "BumpMap"}
-    for input_name, source_name, index in feeds:
+    for input_name, (source_name, index) in feeds.items():
         source = fresh.node(source_name)
         if source is None or terminal is None:
             continue
         try:
-            terminal.setNamedInput(spelling.get(input_name, input_name),
-                                   source, index)
+            terminal.setNamedInput(input_name, source, index)
         except hou.Error as exc:    # an input the USD terminal does not have (Shadow, Photon) is dropped, not fatal
             debug.event("redshift", "legacy feed not carried",
                         input=input_name, error=str(exc))
