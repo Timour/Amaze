@@ -108,7 +108,7 @@ class AKarmaMaterialBecomesARedshiftOne(unittest.TestCase):
         return {c.outputName(): c.inputNode() for c in node.inputConnections()}    # `outputName` is the DESTINATION's input connector; `inputName` names the source's output, `out` on every VOP ▸r/node-connection-names
 
     def test_the_container_is_a_redshift_builder_the_library_reads_as_redshift(self):
-        self.assertEqual("redshift_vopnet", self.builder.type().name())
+        self.assertEqual("rs_usd_material_builder", self.builder.type().name())    # Redshift's Solaris container, so the twin can be copied into a LOP material library as well as /mat
         handler = nodes.NodeHandler.__new__(nodes.NodeHandler)
         self.assertEqual("Redshift", handler.get_renderer_from_node(self.builder))
 
@@ -320,11 +320,90 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
         self.assertEqual(sorted([ALBEDO, NORMAL, ROUGH]), files,
                          "the saved Redshift network does not reference the source's own files")
 
+    def test_the_twin_can_be_copied_into_a_lop_material_library(self):
+        """A twin saved as an `rs_usd_material_builder` passes the import door's LOP check; a `redshift_vopnet` twin was refused with `Use Copy To /mat instead` (seen 2026-09-04)."""
+        ok, _report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
+        self.assertTrue(ok)
+        twin = self.model.assets[-1]
+        handler = nodes.NodeHandler(self.prefs)
+        self.assertEqual("rs_usd_material_builder",
+                         handler.get_saved_node_type(twin))
+        self.assertEqual({"mat", "lop"}, handler.import_targets(twin))
+
     def test_a_non_karma_row_is_refused_with_a_reason(self):
         self.model.assets[self.row].renderer = "Redshift"
         ok, report = self.model.convert_karma_to_redshift(self.model.index(self.row, 0))
         self.assertFalse(ok)
         self.assertTrue(report.skipped, "no reason given")
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
+class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
+    """A material saved in the classic `redshift_vopnet` container used to be refused by Copy To /stage. Now the import door rebuilds it into the `rs_usd_material_builder` on the way in, the saved files untouched, so every Redshift material is LOP-capable."""
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        cls = self
+        cls.prefs = test_support.fixture_prefs(cls)
+        cls.model = library_mod.MaterialLibrary(preferences=cls.prefs)
+        cls.parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        legacy = cls.parent.createNode("redshift_vopnet")
+        for child in list(legacy.children()):
+            if child.type().name() != "redshift_material":
+                child.destroy()
+        classic = [c for c in legacy.children()
+                   if c.type().name() == "redshift_material"][0]
+        shader = legacy.createNode("redshift::StandardMaterial", "SM")
+        shader.parmTuple("base_color").set((0.1, 0.9, 0.3))
+        sampler = legacy.createNode("redshift::TextureSampler", "tex")
+        shader.setNamedInput("refl_roughness", sampler, 0)
+        bump = legacy.createNode("redshift::BumpMap", "bump")
+        classic.setNamedInput("Surface", shader, 0)
+        classic.setNamedInput("Bump Map", bump, 0)
+        cls.model.add_asset(legacy, "Test", "", False, name="legacy_rs")
+        cls.row = len(cls.model.assets) - 1
+        legacy.destroy()
+
+    def _imported(self):
+        stage = hou.node("/stage")
+        before = {n.path() for lib in stage.children()
+                  if lib.type().name() == "materiallibrary"
+                  for n in lib.children()}
+        ok, reason, _created = self.model.import_asset_to_scene(
+            self.model.index(self.row, 0), target="lop")
+        self.assertTrue(ok, reason)
+        after = [n for lib in stage.children()
+                 if lib.type().name() == "materiallibrary"
+                 for n in lib.children() if n.path() not in before]
+        self.assertEqual(1, len(after), [n.path() for n in after])
+        self.addCleanup(after[0].destroy)
+        return after[0]
+
+    def test_the_saved_files_still_say_the_classic_container(self):
+        handler = nodes.NodeHandler(self.prefs)
+        self.assertEqual("redshift_vopnet",
+                         handler.get_saved_node_type(self.model.assets[self.row]))
+        self.assertEqual({"mat", "lop"},
+                         handler.import_targets(self.model.assets[self.row]))
+
+    def test_it_lands_in_a_lop_library_as_the_usd_container(self):
+        node = self._imported()
+        self.assertEqual("rs_usd_material_builder", node.type().name())
+        terminal = [c for c in node.children()
+                    if c.type().name() == "redshift_usd_material"]
+        self.assertEqual(1, len(terminal))
+        feeds = {c.outputName(): c.inputNode().name()
+                 for c in terminal[0].inputConnections()}
+        self.assertEqual({"Surface": "SM", "BumpMap": "bump"}, feeds)
+        shader = node.node("SM")
+        self.assertEqual((0.1, 0.9, 0.3),
+                         tuple(round(v, 3) for v in shader.parmTuple("base_color").eval()))
+        self.assertEqual("tex", {c.outputName(): c.inputNode().name()
+                                 for c in shader.inputConnections()}["refl_roughness"])
+        self.assertFalse([c for c in node.children()
+                          if c.type().name() == "redshift_material"],
+                         "the classic terminal came along")
 
 
 class _ValuesSource:
@@ -419,6 +498,17 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
             self._record(), _ValuesSource(), "", self.model, self.prefs)
         self.assertTrue(ok, reason)
         self.assertEqual("Karma", self.model.assets[-1].renderer)
+
+    def test_the_row_records_its_source_and_id(self):
+        """Where a row came from and which record it is, on the row itself - until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05."""
+        from amaze.core import matx_import
+        record = self._record()
+        ok, reason = matx_import.import_record(
+            record, _ValuesSource(), "", self.model, self.prefs)
+        self.assertTrue(ok, reason)
+        row = self.model.assets[-1].get_as_dict()
+        self.assertEqual(record.source, row.get("source"))
+        self.assertEqual(str(record.uid), row.get("uid"))
 
 
 if __name__ == "__main__":

@@ -37,12 +37,14 @@ class RedshiftMaterial(NamedTuple):
 
 
 def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
-    """A `redshift_vopnet` holding ONE terminal, `redshift_usd_material`, which works in /mat and in Solaris. The stock builder arrives with a classic output and an OpenPBR shader already inside; both go. ▸r/redshift-nodes"""
-    builder = parent.createNode("redshift_vopnet")
+    """An `rs_usd_material_builder` holding ONE terminal, `redshift_usd_material`, and the suboutput it feeds - the container Redshift itself uses in Solaris, and it renders from /mat too. The stock OpenPBR shader inside goes. ▸r/redshift-nodes"""
+    builder = parent.createNode("rs_usd_material_builder")    # Redshift's Solaris builder, which also renders from /mat; a `redshift_vopnet` is refused by the LOP import door ▸r/redshift-nodes
     builder.setName(helpers.sanitize_usd_path(name), unique_name=True)
     for child in list(builder.children()):
-        child.destroy()
-    builder.createNode("redshift_usd_material")
+        if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
+            child.destroy()
+    if redshift_terminal(builder) is None:
+        builder.createNode("redshift_usd_material")
     return builder
 
 
@@ -458,3 +460,42 @@ NODE_CONVERTERS = {    # MaterialX node type (version suffix stripped) -> conver
     "mtlxclamp": convert_clamp,
 }
 NODE_CONVERTERS.update({category: convert_math for category in TWO_INPUT_MATH})
+
+
+LEGACY_CONTAINER = "redshift_vopnet"
+USD_CONTAINER = "rs_usd_material_builder"
+CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade leaves behind
+
+
+def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
+    """A legacy `redshift_vopnet` rebuilt as an `rs_usd_material_builder` beside it: every child but the classic `redshift_material` output moves across with names and wiring kept, the USD terminal takes the classic one's feeds by role (`Bump Map` becomes `BumpMap`), the old container is destroyed and the new one carries its name. Anything else is answered unchanged. ▸r/redshift-nodes"""
+    if builder.type().name() != LEGACY_CONTAINER:
+        return builder
+    name = builder.name()
+    classic = [c for c in builder.children()
+               if c.type().name() == CLASSIC_TERMINAL]
+    feeds = []    # (classic input name, source node name, source output index)
+    for terminal in classic:
+        for conn in terminal.inputConnections():
+            feeds.append((conn.outputName(), conn.inputNode().name(),
+                          conn.outputIndex()))
+    movers = [c for c in builder.children()
+              if c.type().name() != CLASSIC_TERMINAL]
+    fresh = make_redshift_builder(builder.parent(), name + "_usd")
+    if movers:
+        hou.moveNodesTo(movers, fresh)
+    terminal = redshift_terminal(fresh)
+    spelling = {"Bump Map": "BumpMap"}
+    for input_name, source_name, index in feeds:
+        source = fresh.node(source_name)
+        if source is None or terminal is None:
+            continue
+        try:
+            terminal.setNamedInput(spelling.get(input_name, input_name),
+                                   source, index)
+        except hou.Error as exc:    # an input the USD terminal does not have (Shadow, Photon) is dropped, not fatal
+            debug.event("redshift", "legacy feed not carried",
+                        input=input_name, error=str(exc))
+    builder.destroy()
+    fresh.setName(name, unique_name=True)
+    return fresh

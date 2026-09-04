@@ -813,6 +813,86 @@ class AHalfFetchedPackageIsNotReused(unittest.TestCase):
             "the scratch sibling survived a successful fetch")
 
 
+class APackageDownloadedUnderItsOldNameIsReused(unittest.TestCase):
+    """Downloads before 2026-08-05 landed in matX/<title>; the identity name (<title>__<source>-<uid>) came after. A re-import of an old package must find the old folder and not fetch again - a real library holds 88 old ones, and a second copy of the textures per import is what showed (2026-09-04)."""
+
+    def _record(self):
+        class Record:
+            kind = "package"
+            uid = "old1"
+            title = "Seam Test"
+            source = "stub"
+            payload = {}
+
+        return Record()
+
+    def _refusing_source(self):
+        class Source:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                raise AssertionError("fetched although the package is on disk")
+
+        return Source()
+
+    def _old_folder(self, prefs, record):
+        from amaze.core import matx_import
+        old = os.path.join(matx_import.matx_dir(prefs.dir),
+                           matx_import.record_name(record))
+        os.makedirs(old, exist_ok=True)
+        with open(os.path.join(old, "seam.mtlx"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('<?xml version="1.0"?>\n'
+                         '<materialx version="1.38">\n</materialx>\n')
+        return old
+
+    def test_the_old_folder_is_used_in_place_and_nothing_is_fetched(self):
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        record = self._record()
+        old = self._old_folder(prefs, record)
+        produce, _note, error = matx_import._producer_for(
+            record, self._refusing_source(), "2K", prefs)
+        self.assertEqual("", error)
+        self.assertIsNotNone(produce)
+        new = os.path.join(matx_import.matx_dir(prefs.dir),
+                           matx_import.package_dirname(record))
+        self.assertFalse(os.path.isdir(new),
+                         "a second folder was made beside the old one")
+        self.assertTrue(os.path.isfile(os.path.join(old, "seam.mtlx")),
+                        "the old folder was moved or emptied")
+
+    def test_an_old_folder_without_an_mtlx_does_not_count(self):
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        record = self._record()
+        old = os.path.join(matx_import.matx_dir(prefs.dir),
+                           matx_import.record_name(record))
+        os.makedirs(old, exist_ok=True)
+        calls = []
+
+        class Source:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                calls.append(dest_dir)
+                os.makedirs(dest_dir, exist_ok=True)
+                path = os.path.join(dest_dir, "seam.mtlx")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write('<?xml version="1.0"?>\n'
+                                 '<materialx version="1.38">\n</materialx>\n')
+                return {"mtlx": path}
+
+        _produce, _note, error = matx_import._producer_for(
+            record, Source(), "2K", prefs)
+        self.assertEqual("", error)
+        self.assertEqual(1, len(calls), "an empty old folder must not stand in for a download")
+
+
 class ANoVariantAssetRefusesWithAReason(unittest.TestCase):
     """`StopIteration`'s str() is EMPTY, so an asset shipping no .mtlx variant has to name itself in the refusal or the message says nothing."""
 

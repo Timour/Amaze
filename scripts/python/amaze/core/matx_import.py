@@ -161,6 +161,12 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         return (produce, note, "")
 
     dest = os.path.join(matx_dir(preferences.dir), package_dirname(record))
+    legacy = os.path.join(matx_dir(preferences.dir), record_name(record))    # the pre-identity folder, matX/<title>, that every download before 2026-08-05 landed in
+    if not (os.path.isdir(dest) and os.listdir(dest)) \
+            and os.path.isdir(legacy) and matx_sources._find_mtlx(legacy):
+        debug.event("import", "package already on disk under its old "
+                              "name - reusing", dest=legacy)
+        dest = legacy    # reused IN PLACE, never renamed: every material saved from it references matX/<title>/textures through the $AMAZELIB token
     if os.path.isdir(dest) and os.listdir(dest):   # REFUSE AN OCCUPIED DESTINATION: with identity in the name, an existing directory means THIS record was already downloaded, and extracting over it replaces texture files a saved material may be referencing at render time
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
@@ -336,6 +342,11 @@ def import_record(record, source, resolution, library, preferences,
             credited = library.assets[row]   # add_asset() derives the renderer from the NODE and a builder full of mtlx* nodes reads as Karma, which is exactly right since online imports ARE Karma materials rather than a renderer of their own - what is left is crediting the creators
             credited.about = _credit_text(record, source)    # written to the record and moved into the asset's COMMENT by the sweep below, which is where the credit lives now ▸p/d03-retired
             credited.license = record.licence or ""
+            extra = getattr(credited, "_extra", None)
+            if extra is None:
+                extra = credited._extra = {}
+            extra["source"] = record.source or ""    # WHERE it came from and WHICH one, on the row itself: until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05
+            extra["uid"] = str(record.uid or "")
             if measurement_note:
                 credited.description = measurement_note
             library.save()

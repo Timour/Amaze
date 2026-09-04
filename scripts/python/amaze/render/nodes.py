@@ -653,6 +653,9 @@ class NodeHandler:
             return {"mat", "lop"}
         if self.get_saved_node_type(mat) in self.LOP_CAPABLE_NODE_TYPES:
             return {"mat", "lop"}
+        if "Redshift" in mat.renderer and node_type_available(
+                "rs_usd_material_builder"):    # a legacy container is rebuilt into the USD one on its way into a LOP library (load_items_file), so every Redshift material is LOP-capable while the plugin offers that container
+            return {"mat", "lop"}
         return {"mat"}
 
     def _payload_or_refusal(self, mat) -> tuple:
@@ -1021,6 +1024,11 @@ class NodeHandler:
         texstore.resolve_parms(self._builder_node, self._preferences)    # BEFORE the move, on the whole container - the no-builder branch moves every child, so resolving after would cover only the first sibling
 
         if move_builder:
+            if (self._import_path.type().name() == "materiallibrary"
+                    and self._builder_node.type().name() == "redshift_vopnet"):    # the classic container does not translate in Solaris; rebuilt into the USD one BEFORE the move, in the staging matnet, so the saved files stay as they are
+                from amaze.render import redshift_converter    # late: render/ reaches back into this module
+                self._builder_node = redshift_converter.upgrade_to_usd_builder(
+                    self._builder_node)
             new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
             if not new_mat:
                 raise hou.OperationFailed(
