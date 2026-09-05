@@ -48,7 +48,7 @@ In that folder Amaze keeps a list of your assets in JSON, and one
 Houdini node archive per asset (`.mat` and `.interface`). Both are
 standard Houdini files and open in Houdini directly.
 
-The **Amaze shelf** carries four tools:
+The **Amaze shelf** carries five tools:
 
 | tool | what it does |
 |---|---|
@@ -56,6 +56,7 @@ The **Amaze shelf** carries four tools:
 | **Capture** | Takes a preview of the open scene. |
 | **Updates** | Checks the release page for a newer version and installs it when you confirm. |
 | **Repair** | Recovers a damaged library. See [Housekeeping](#housekeeping-and-troubleshooting). |
+| **Reload** | Installs any new asset file from the packages on the Houdini path and reloads every loaded asset definition, without a restart. |
 
 <img src="docs/images/shelf_tools.png" width="420">
 

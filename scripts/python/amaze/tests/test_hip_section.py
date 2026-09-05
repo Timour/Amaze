@@ -1399,7 +1399,7 @@ class ShelfTest(unittest.TestCase):
         root = self._shelf()
         names = sorted(t.get("name") for t in root.findall("tool"))
         self.assertEqual(["amaze_capture_hip", "amaze_check_updates",  # THE WHOLE SET, listed: a count would pass a rename and an accidental duplicate, and the names are what the refusals quote at the user
-                          "amaze_open_panel", "amaze_repair_library"], names)
+                          "amaze_open_panel", "amaze_reload", "amaze_repair_library"], names)
 
     def test_every_tool_is_on_the_shelf_tab(self):
         """A toolshelf is NECESSARY but not SUFFICIENT for the tab to appear - the dock is populated from shelf SETS, and a loose toolshelf belongs to none; this asserts only the part the repo controls, and the per-machine step is the manual's job. The first version stated a guarantee the package does not provide."""

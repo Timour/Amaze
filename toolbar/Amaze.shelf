@@ -114,10 +114,32 @@ else:
                 title=messages.TITLE_AMAZE)]]></script>
   </tool>
 
+  <tool name="amaze_reload" label="Reload"
+        icon="$AMAZE/scripts/python/amaze/ui/icon_nodes.svg">
+    <helpText><![CDATA[Install any new asset file from the packages on the Houdini path and reload every loaded asset definition, without restarting Houdini.]]></helpText>
+    <script scriptType="python"><![CDATA[import glob
+import os
+
+import hou
+
+# Every otls folder a package put on the path; a file Houdini has not
+# loaded yet is installed, and every loaded file is re-read from disk.
+loaded = set(hou.hda.loadedFiles())
+new = []
+for root in hou.houdiniPath():
+    for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
+        if path not in loaded:
+            hou.hda.installFile(path)
+            new.append(path)
+hou.hda.reloadAllFiles()
+hou.ui.setStatusMessage("Amaze: %d asset definitions reloaded, %d new" % (len(hou.hda.loadedFiles()), len(new)))]]></script>
+  </tool>
+
   <toolshelf name="amaze" label="Amaze">
     <memberTool name="amaze_open_panel"/>
     <memberTool name="amaze_capture_hip"/>
     <memberTool name="amaze_repair_library"/>
     <memberTool name="amaze_check_updates"/>
+    <memberTool name="amaze_reload"/>
   </toolshelf>
 </shelfDocument>
