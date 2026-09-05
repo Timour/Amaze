@@ -671,7 +671,8 @@ class MaterialSection(AssetSection):
         """What the selection can BECOME: a child is live when the selection holds a material of another renderer, so a Karma material offers Redshift and greys Karma - Octane joins here when its converter lands."""
         return (("Karma", "Karma", "", self.panel._selection_has_redshift()),
                 ("Redshift", "Redshift", "",
-                 self.panel._selection_has_karma()))
+                 self.panel._selection_has_karma()
+                 and material_converter._redshift_type_available()))    # greyed without the plugin, like the online import's child: the live path would rebuild every Karma network only to fail at the first Redshift node
 
     def menu_convert_to(self, indexes, current, payload=None) -> None:
         if payload == "Redshift":

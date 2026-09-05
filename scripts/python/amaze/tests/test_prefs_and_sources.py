@@ -864,6 +864,40 @@ class APackageDownloadedUnderItsOldNameIsReused(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(old, "seam.mtlx")),
                         "the old folder was moved or emptied")
 
+    def test_an_old_folder_is_not_reused_when_another_source_shares_the_title(self):
+        """A bare folder names no source. When the catalogue holds the same title from another source, the record fetches into its own identity folder instead of building from a package that may be the other's."""
+        from unittest import mock
+        from amaze.core import matx_import
+        from amaze.tests import test_support
+
+        prefs = test_support.fixture_prefs(self)
+        record = self._record()
+        old = self._old_folder(prefs, record)
+        calls = []
+
+        class Source:
+            name = "stub"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                calls.append(dest_dir)
+                os.makedirs(dest_dir, exist_ok=True)
+                path = os.path.join(dest_dir, "seam.mtlx")
+                with open(path, "w", encoding="utf-8") as handle:
+                    handle.write('<?xml version="1.0"?>\n'
+                                 '<materialx version="1.38">\n</materialx>\n')
+                return {"mtlx": path}
+
+        rival = [{"source": "other", "uid": "x1", "title": "Seam Test",
+                  "kind": "package"}]
+        with mock.patch.object(matx_import, "_catalogue_records",
+                               lambda: rival):
+            _produce, _note, error = matx_import._producer_for(
+                record, Source(), "2K", prefs)
+        self.assertEqual("", error)
+        self.assertEqual(1, len(calls), "the bare folder was reused although another source offers the title")
+        self.assertTrue(os.path.isfile(os.path.join(old, "seam.mtlx")),
+                        "the old folder was touched")
+
     def test_an_old_folder_without_an_mtlx_does_not_count(self):
         from amaze.core import matx_import
         from amaze.tests import test_support

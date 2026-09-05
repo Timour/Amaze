@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import hou
+import json
 
 from amaze.core import debug, material
 from amaze.helpers import helpers
@@ -175,7 +176,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
         normal_input = "normal"
     else:
         rs = builder.createNode("redshift::OpenPBRMaterial")
-        pairs = [(rs_name, mtlx_name) for rs_name, mtlx_name in OPENPBR_MATERIAL_PARM_MAP]
+        pairs = [(rs_name, rs_name) for rs_name, _standard_name in OPENPBR_MATERIAL_PARM_MAP]    # an mtlxopen_pbr_surface spells every input the way the RS OpenPBR material does (all 31 measured); the table's right column is the STANDARD-surface spelling and reads nothing here
         colour_inputs = OPENPBR_COLOUR_INPUTS
         bump_input = "geometry_normal" if "geometry_normal" in rs.inputNames() else ""
         normal_input = "normal"
@@ -189,6 +190,12 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
             continue
         role = "color" if mtlx_name in colour_inputs else "data"
         _connect(rs, rs_name, convert_upstream(feeding, builder, report, role), feeding, report)
+
+    mapped = {mtlx_name for _rs_name, mtlx_name in pairs} | {normal_input, "displacement", "tangent", "coat_normal"}
+    for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not carry is SAID, not dropped: the report is what the artist reads instead of a black slot
+        if mtlx_name not in mapped and feeding is not None:
+            report.skip('"%s" feeds %s, which the Redshift shader has no matching input for'
+                        % (feeding.name(), mtlx_name))
 
     normal_src = wired_inputs.get(normal_input)
     if normal_src is not None:
@@ -301,7 +308,13 @@ def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionRe
     """mtlxdisplacement -> RS Displacement as a height field, the map on `texMap`, `scale` across. ▸r/redshift-nodes"""
     disp = builder.createNode("redshift::Displacement")
     disp.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
-    disp.parm("map_encoding").set("2")
+    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
+    if signature == "vector3":    # a vector displacement map: written as a tangent-space vector (map_encoding 0 = Vector, space_type 2 = Tangent ▸r/redshift-nodes), not as a height along the normal
+        disp.parm("map_encoding").set("0")
+        disp.parm("space_type").set("2")
+        report.approximate('"%s": vector displacement written as a tangent-space vector map' % node.name())
+    else:
+        disp.parm("map_encoding").set("2")
     _copy_constant_parm(node, "scale", disp, "scale")
     feeding = _named_inputs(node).get("displacement")
     if feeding is None:
@@ -467,6 +480,30 @@ USD_CONTAINER = "rs_usd_material_builder"
 CLASSIC_TERMINAL = material.REDSHIFT_TERMINALS[0]    # `redshift_material`, the OBJ-only output the upgrade leaves behind
 
 
+def _bypass_dots(builder: hou.Node) -> int:
+    """Rewire every consumer of a network dot straight to the node behind it and remove the dot: `hou.moveNodesTo` takes nodes only, so a wire routed through a dot would not survive the move. Answers how many dots went."""
+    dots = [item for item in builder.allItems()
+            if isinstance(item, hou.NetworkDot)]
+    for dot in dots:
+        source, index = dot.inputItem(), dot.inputItemOutputIndex()    # the item behind the dot and which of its outputs; a dot has no input index of its own ▸r/node-items
+        hops = 0
+        while isinstance(source, hou.NetworkDot) and hops < 8:    # a dot fed by a dot
+            source, index = source.inputItem(), source.inputItemOutputIndex()
+            hops += 1
+        if isinstance(source, hou.Node):
+            for conn in dot.outputConnections():    # listed with repeats; setInput twice is the same wire
+                consumer = conn.outputItem()
+                try:
+                    if isinstance(consumer, hou.NetworkDot):
+                        consumer.setInput(source, index)    # a dot fed by this dot now hangs off the node directly, and its own turn rewires its consumers
+                    elif consumer is not None:
+                        consumer.setInput(conn.inputIndex(), source, index)
+                except hou.Error as exc:
+                    debug.event("redshift", "dot wire not carried", error=str(exc))
+        dot.destroy()
+    return len(dots)
+
+
 def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     """A legacy `redshift_vopnet` rebuilt as an `rs_usd_material_builder` beside it: every child but the classic `redshift_material` output moves across with names and wiring kept, the USD terminal takes the classic one's feeds by role (`Bump Map` becomes `BumpMap`), the old container is destroyed and the new one carries its name. Anything else is answered unchanged. ▸r/redshift-nodes"""
     if builder.type().name() != LEGACY_CONTAINER:
@@ -491,6 +528,11 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
             fresh.setUserData(key, value)
     except hou.Error as exc:
         debug.event("redshift", "container look not carried", error=str(exc))
+    try:    # and its INTERFACE: spare parms the network references with ch("../x") and container values such as the material-ID AOV number; the sidecar helpers are the one spelling of that copy
+        nodes.apply_builder(fresh, json.loads(nodes.capture_builder(builder)))
+    except Exception as exc:                          # noqa: BLE001
+        debug.event("redshift", "container interface not carried", error=str(exc))
+    _bypass_dots(builder)    # moveNodesTo takes nodes only, so a wire through a network dot would die with the old container
     if movers:
         hou.moveNodesTo(movers, fresh)
     terminal = redshift_terminal(fresh)

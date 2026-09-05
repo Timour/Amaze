@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 
@@ -138,6 +139,34 @@ def package_dirname(record) -> str:
     return "%s__%s" % (record_name(record), tail)
 
 
+def _catalogue_records() -> list:
+    """Every record in the cached online catalogue as plain dicts, [] when there is none - read once per import, never fetched."""
+    from amaze.core import matx_library    # late: matx_library imports this module
+    try:
+        with open(matx_library.catalogue_cache(), "r", encoding="utf-8") as handle:
+            return json.load(handle).get("records", [])
+    except (OSError, ValueError):
+        return []
+
+
+def _title_shared_across_sources(record) -> bool:
+    """Whether another source offers a package whose folder name would be this record's - the case a bare pre-identity folder cannot settle."""
+    mine = record_name(record)
+    for other in _catalogue_records():
+        if (other.get("source") or "") == (record.source or ""):
+            continue
+        if (other.get("kind") or "package") == "values":
+            continue
+        if record_name(_Titled(other.get("title") or "")) == mine:
+            return True
+    return False
+
+
+class _Titled:
+    def __init__(self, title: str) -> None:
+        self.title = title
+
+
 def _producer_for(record, source, resolution, preferences, progress=None):
     """Resolve one record to a `produce` callback for the Karma material engine: returns (produce, note, error). - This is the half of an online import that reaches the NETWORK - the download, the .mtlx repair, the measured values. It is deliberately separate from what the caller then does with the material (save it to the library, or build it straight into the scene), so both destinations share exactly one download path and one shader translation."""
     name = record_name(record)
@@ -163,7 +192,8 @@ def _producer_for(record, source, resolution, preferences, progress=None):
     dest = os.path.join(matx_dir(preferences.dir), package_dirname(record))
     legacy = os.path.join(matx_dir(preferences.dir), record_name(record))    # the pre-identity folder, matX/<title>, that every download before 2026-08-05 landed in
     if not (os.path.isdir(dest) and os.listdir(dest)) \
-            and os.path.isdir(legacy) and matx_sources._find_mtlx(legacy):
+            and os.path.isdir(legacy) and matx_sources._find_mtlx(legacy) \
+            and not _title_shared_across_sources(record):    # a bare folder names no source: when another source offers the same title it could be theirs, so this record downloads into its own identity folder instead
         debug.event("import", "package already on disk under its old "
                               "name - reusing", dest=legacy)
         dest = legacy    # reused IN PLACE, never renamed: every material saved from it references matX/<title>/textures through the $AMAZELIB token
@@ -233,8 +263,14 @@ def to_renderer(builder, scratch, name: str, renderer: str):
     rs_builder, shader, wired, report = redshift_converter.convert_karma_builder(
         builder, scratch, name)
     builder.destroy()
+    try:
+        rs_builder.setName(helpers.sanitize_usd_path(name) or "material",
+                           unique_name=True)    # built BESIDE the Karma one, so it carried a `1`; the Karma one is gone now and the name is free
+    except hou.Error as exc:
+        debug.event("import", "twin not renamed", error=str(exc))
     if report.skipped or report.approximated:
-        debug.note("\n".join(report.summary_lines()))
+        debug.alert("\n".join(report.summary_lines()),
+                    key="redshift-conversion")    # on screen, not only in the console: `note` prints nothing on Windows, and the material lands with inputs left at defaults
     return rs_builder, shader, wired, report
 
 
@@ -346,7 +382,7 @@ def import_record(record, source, resolution, library, preferences,
             if extra is None:
                 extra = credited._extra = {}
             extra["source"] = record.source or ""    # WHERE it came from and WHICH one, on the row itself: until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05
-            extra["uid"] = str(record.uid or "")
+            extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
             if measurement_note:
                 credited.description = measurement_note
             library.save()

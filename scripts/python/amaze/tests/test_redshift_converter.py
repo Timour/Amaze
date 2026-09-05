@@ -459,6 +459,72 @@ class AFirstEditionTwinGoesIntoSolaris(unittest.TestCase):
             "the suboutput is not fed by the one terminal")
 
 
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
+class AnOpenPBRKarmaMaterialConvertsByItsOwnNames(unittest.TestCase):
+    """An mtlxopen_pbr_surface spells its inputs the way the RS OpenPBR material does; the table's standard-surface column read nothing off it, so weights, metalness and textures stayed at defaults while the report said fully converted (audit 2026-09-04)."""
+
+    def test_values_and_a_texture_cross(self):
+        from amaze.render import redshift_converter
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+
+        def produce(builder):
+            shader = builder.createNode("mtlxopen_pbr_surface")
+            shader.parm("base_metalness").set(0.9)
+            shader.parm("specular_roughness").set(0.35)
+            shader.parmTuple("base_color").set((0.2, 0.4, 0.6))
+            rough = builder.createNode("mtlximage")
+            rough.parm("signature").set("default")
+            rough.parm("file").set(ROUGH)
+            shader.setNamedInput("specular_roughness", rough, 0)
+            return shader
+
+        source = nodes.build_karma_material(parent, "openpbr_source", produce).builder
+        self.addCleanup(source.destroy)
+        builder, shader, wired, report = redshift_converter.convert_karma_builder(
+            source, parent, "openpbr_twin")
+        self.addCleanup(builder.destroy)
+        self.assertEqual("redshift::OpenPBRMaterial", shader.type().name())
+        self.assertAlmostEqual(0.9, shader.parm("base_metalness").eval(), places=5)
+        self.assertEqual((0.2, 0.4, 0.6),
+                         tuple(round(v, 3) for v in shader.parmTuple("base_color").eval()))
+        feeds = {c.outputName(): c.inputNode().type().name()
+                 for c in shader.inputConnections() if c.inputNode()}
+        self.assertEqual("redshift::TextureSampler", feeds.get("specular_roughness"),
+                         "the roughness texture did not cross")
+        self.assertTrue(report.is_clean(), "\n".join(report.summary_lines()))
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
+class AWireThroughADotSurvivesTheSolarisRebuild(unittest.TestCase):
+    """moveNodesTo carries nodes only, so a wire through a network dot would die with the old container; the dots are bypassed first. ▸r/node-items"""
+
+    def test_the_dot_routed_input_arrives_wired(self):
+        from amaze.render import redshift_converter
+        parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(parent.destroy)
+        legacy = parent.createNode("redshift_vopnet")
+        for child in list(legacy.children()):
+            if child.type().name() != "redshift_material":
+                child.destroy()
+        classic = [c for c in legacy.children()
+                   if c.type().name() == "redshift_material"][0]
+        shader = legacy.createNode("redshift::StandardMaterial", "SM")
+        sampler = legacy.createNode("redshift::TextureSampler", "tex")
+        dot = legacy.createNetworkDot()
+        dot.setInput(sampler, 0)
+        shader.setNamedInput("refl_roughness", dot, 0)
+        classic.setNamedInput("Surface", shader, 0)
+        fresh = redshift_converter.upgrade_to_usd_builder(legacy)
+        feeds = {c.outputName(): c.inputNode().name()
+                 for c in fresh.node("SM").inputConnections() if c.inputNode()}
+        self.assertEqual("tex", feeds.get("refl_roughness"),
+                         "the wire that ran through the dot is gone")
+        self.assertFalse([i for i in fresh.allItems()
+                          if isinstance(i, hou.NetworkDot)])
+
+
 class _ValuesSource:
     """A values source with nothing to download: `fetch` answers the record's own payload, the way the measured-dataset sources do."""
 
@@ -561,7 +627,8 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertTrue(ok, reason)
         row = self.model.assets[-1].get_as_dict()
         self.assertEqual(record.source, row.get("source"))
-        self.assertEqual(str(record.uid), row.get("uid"))
+        self.assertEqual(str(record.uid), row.get("online_uid"))
+        self.assertNotIn("uid", row, "`uid` is the pre-connector id spelling, which a package import strips")
 
 
 if __name__ == "__main__":
