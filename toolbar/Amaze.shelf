@@ -116,23 +116,30 @@ else:
 
   <tool name="amaze_reload" label="Reload"
         icon="$AMAZE/scripts/python/amaze/ui/icon_nodes.svg">
-    <helpText><![CDATA[Install any new asset file from the packages on the Houdini path and reload every loaded asset definition, without restarting Houdini.]]></helpText>
+    <helpText><![CDATA[Install any new asset file from the packages on the Houdini path and reload the loaded ones, without restarting Houdini.]]></helpText>
     <script scriptType="python"><![CDATA[import glob
 import os
 
 import hou
 
-# Every otls folder a package put on the path; a file Houdini has not
-# loaded yet is installed, and every loaded file is re-read from disk.
+# Every otls folder a package put on the path, Houdini's own excluded: a
+# file not loaded yet is installed, a loaded one is re-read from disk, and
+# either runs the asset's install script, which is what registers an
+# embedded viewer state.
+hfs = os.path.realpath(hou.getenv("HFS") or "")
 loaded = set(hou.hda.loadedFiles())
-new = []
+new, again = [], []
 for root in hou.houdiniPath():
+    if hfs and os.path.realpath(root).startswith(hfs):
+        continue
     for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
-        if path not in loaded:
+        if path in loaded:
+            hou.hda.reloadFile(path)
+            again.append(path)
+        else:
             hou.hda.installFile(path)
             new.append(path)
-hou.hda.reloadAllFiles()
-hou.ui.setStatusMessage("Amaze: %d asset definitions reloaded, %d new" % (len(hou.hda.loadedFiles()), len(new)))]]></script>
+hou.ui.setStatusMessage("Amaze: %d asset files reloaded, %d new" % (len(again), len(new)))]]></script>
   </tool>
 
   <toolshelf name="amaze" label="Amaze">
