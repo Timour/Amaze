@@ -244,7 +244,6 @@ def _copy_constant_parm(
 
 
 _UV_SCALE_TAG = "amaze_uv_scale"
-_UV_SCALE_TAG_LEGACY = "matlib_uv_scale"    # the pre-rename tag, carried by saved archives converted before 2026-07-27 - the dedup check honours BOTH, new conversions write only the new one
 
 
 def _named_inputs(node: hou.Node) -> dict:
@@ -306,8 +305,7 @@ def _get_or_create_uv_chain(
     for child in dest_parent.children():
         if (
             child.type().name() == "mtlxmultiply"
-            and (child.userData(_UV_SCALE_TAG) == tag
-                 or child.userData(_UV_SCALE_TAG_LEGACY) == tag)
+            and child.userData(_UV_SCALE_TAG) == tag
         ):
             return child
     texcoord = None

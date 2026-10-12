@@ -1,4 +1,4 @@
-"""Database handler for Matlib: json documents on disk, one live connection per database file; migration step `_MIGRATIONS[N]` runs when a loaded document carries `version == N` and mutates it in place to version N+1, so a `SCHEMA_VERSION` bump must ship with its step or the document keeps its old version and is recorded as an incomplete chain."""
+"""JSON documents on disk, one live connection per file, migrated stepwise. ▸r/chain-starts-at-four"""
 
 import copy
 import json

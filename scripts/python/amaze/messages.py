@@ -110,6 +110,8 @@ NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and selec
 
 NO_NODE_TO_SAVE = 'To save, right-click the node or network you want to keep.'
 
+RESTART_TO_FINISH_UPDATE = 'Amaze was updated while Houdini was running. Restart Houdini to finish the update.'
+
 NODE_CANNOT_BE_SAVED = '"%s" cannot be saved. It is not a material, a color ramp, a code node or a network.'
 
 NODE_SAVE_FAILED_WITH_REASON = '"%s" could not be saved: %s'

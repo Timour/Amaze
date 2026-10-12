@@ -26,9 +26,9 @@ PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 class TheToolbarIsATable(unittest.TestCase):
 
     def test_every_control_names_the_fact_it_follows(self):
-        from amaze.panel.panel import MatLibPanel
+        from amaze.panel.panel import AmazePanel
 
-        table = MatLibPanel.TOOLBAR_CONTROLS
+        table = AmazePanel.TOOLBAR_CONTROLS
         self.assertTrue(table, "the toolbar table is empty")
         for control, fact, verb in table:
             with self.subTest(control=control):
@@ -45,9 +45,9 @@ class TheToolbarIsATable(unittest.TestCase):
 
     def test_the_four_known_controls_are_in_it(self):
         """NAMED, because a table that lost an entry is a control that silently stops following its context."""
-        from amaze.panel.panel import MatLibPanel
+        from amaze.panel.panel import AmazePanel
 
-        listed = {control for control, _f, _v in MatLibPanel.TOOLBAR_CONTROLS}
+        listed = {control for control, _f, _v in AmazePanel.TOOLBAR_CONTROLS}
         for control in ("cb_favsonly", "btn_notes", "btn_filter",
                         "btn_hip_capture"):
             self.assertIn(control, listed,
@@ -122,7 +122,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         return widget.isEnabled() if verb == "enabled" else not widget.isHidden()
 
     def test_each_control_matches_its_contexts_declaration(self):
-        from amaze.panel.panel import MatLibPanel
+        from amaze.panel.panel import AmazePanel
 
         panel = self.panel
         self.addCleanup(self._restore)
@@ -130,7 +130,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
             panel.section_tabs.setChecked(key)
             QtWidgets.QApplication.processEvents()
             context = panel._section()
-            for control, fact, verb in MatLibPanel.TOOLBAR_CONTROLS:
+            for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
                 with self.subTest(section=key, control=control):
                     self.assertEqual(
                         getattr(context, fact), self._state(control, verb),
@@ -138,7 +138,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
                         % (control, type(context).__name__, fact, key))
 
     def test_the_online_world_disables_the_local_controls_except_the_eye(self):
-        from amaze.panel.panel import MatLibPanel
+        from amaze.panel.panel import AmazePanel
 
         panel = self.panel
         self.addCleanup(self._restore)
@@ -151,7 +151,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         self.assertIsInstance(context, sections.OnlineContext,
                               "not in the online world, so this proves "
                               "nothing")
-        for control, fact, verb in MatLibPanel.TOOLBAR_CONTROLS:
+        for control, fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             with self.subTest(control=control):
                 if control == "btn_filter":    # the one exception since 2026-08-24: online the eye carries the KIND filter, so the sync block re-enables it after its table row disables
                     self.assertTrue(
@@ -166,7 +166,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
 
     def test_a_disabled_control_is_STILL_VISIBLE_in_the_online_world(self):
         """Disabled means greyed, never GONE. The table answers these by ENABLED-ness, so nothing above looks at visibility and a SECOND owner can hide one unseen - the filter menu hides its button whenever a context offers no entries."""
-        from amaze.panel.panel import MatLibPanel
+        from amaze.panel.panel import AmazePanel
 
         panel = self.panel
         self.addCleanup(self._restore)
@@ -174,7 +174,7 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
         panel.enter_online_world()
         QtWidgets.QApplication.processEvents()
-        for control, _fact, verb in MatLibPanel.TOOLBAR_CONTROLS:
+        for control, _fact, verb in AmazePanel.TOOLBAR_CONTROLS:
             if verb != "enabled":
                 continue
             with self.subTest(control=control):

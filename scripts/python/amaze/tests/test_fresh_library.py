@@ -166,8 +166,8 @@ class TheShippedStarterDoorBirthsAStampedIndex(unittest.TestCase):
     def test_panel_load_seeds_through_this_door(self):
         """Pinned from SOURCE because load() needs a panel; a bare shutil.copy of the starter must go red."""
         import inspect
-        from amaze.panel.panel import MatLibPanel
-        source = inspect.getsource(MatLibPanel.load)
+        from amaze.panel.panel import AmazePanel
+        source = inspect.getsource(AmazePanel.load)
         self.assertIn("seed_starter_index", source,
                       "panel.load() no longer seeds through the stamping "
                       "door, so a fresh library is born unstamped again")

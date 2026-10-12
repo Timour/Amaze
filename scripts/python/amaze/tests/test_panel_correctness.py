@@ -152,7 +152,7 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
     def test_the_preference_reaches_every_sidebar(self):
         """By AST: the preference reached two of the three proxies."""
         self.assertTrue(
-            self._calls("panel/panel.py", "MatLibPanel",
+            self._calls("panel/panel.py", "AmazePanel",
                         "_prefs_dialog_closed", "sidebar_proxies"),
             "the Preferences push enumerates the proxies by hand "
             "again - the enumeration that was short is exactly how "
@@ -162,7 +162,7 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
         from amaze.panel import panel as panel_mod
         self.assertEqual(
             {"material", "cop", "code", "gradient"},
-            set(panel_mod.MatLibPanel.SIDEBAR_PROXY_ATTRS),
+            set(panel_mod.AmazePanel.SIDEBAR_PROXY_ATTRS),
             "a section gained or lost a sidebar proxy without the "
             "one list that every push walks")
 
@@ -596,7 +596,7 @@ class EveryColumnIsCoveredByTheTablesHangingOffIt(unittest.TestCase):
         from amaze.core import grid_columns
 
         missing = set(grid_columns.KEYS) - set(
-            panel_mod.MatLibPanel.COLUMN_DEFAULT_WIDTH)
+            panel_mod.AmazePanel.COLUMN_DEFAULT_WIDTH)
         self.assertEqual(
             set(), missing,
             "these columns have no default width, so they take Qt's: "
@@ -992,7 +992,7 @@ class TheAccentReachesEveryDelegateAtBirth(_PanelCase):
         from amaze.panel import panel as panel_mod
 
         source = textwrap.dedent(
-            inspect.getsource(panel_mod.MatLibPanel.setup))
+            inspect.getsource(panel_mod.AmazePanel.setup))
         tree = ast.parse(source)
         sections_line = sweep_line = None
         for node in ast.walk(tree):

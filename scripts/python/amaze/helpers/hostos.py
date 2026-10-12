@@ -35,21 +35,6 @@ def _home(*parts: str) -> str:
     return os.path.join(os.path.expanduser("~"), *parts)
 
 
-def migrate_legacy_file(directory: str, old_name: str, new_name: str) -> bool:
-    """Rename `old_name` to `new_name` inside `directory` once, best-effort: True only when a rename really happened."""
-    if not directory or not old_name or not new_name:
-        return False
-    old_path = os.path.join(directory, old_name)
-    new_path = os.path.join(directory, new_name)
-    if not os.path.exists(old_path) or os.path.exists(new_path):
-        return False  # the new name always wins, so a half-migrated folder is never re-migrated over
-    try:
-        os.rename(old_path, new_path)  # same directory only, so no cross-volume fallback applies - `_migrated_dir` is the sibling that has to span volumes
-    except OSError:
-        return False  # never raises: every caller is carrying a pre-rename artifact forward (a debug log, a seed marker) and none may cost the user an action
-    return True
-
-
 _HOME_PREFIX_RE = re.compile(r"^(?:[A-Za-z]:)?/(?:Users|home)/[^/]+(?=/)")  # where each OS puts a user's home, and THE ONLY place in the package that may know it
 
 
@@ -79,24 +64,12 @@ def rehome(path: str) -> str:
     return candidate
 
 
-def _migrated_dir(new_dir: str, legacy_candidates: list) -> str:
-    """Ensure `new_dir` exists, first adopting the newest legacy dir by renaming it into place so existing caches/logs survive the move instead of regenerating."""
-    if not os.path.exists(new_dir):
-        for old in legacy_candidates:
-            if os.path.isdir(old):
-                try:
-                    os.makedirs(os.path.dirname(new_dir), exist_ok=True)
-                    os.rename(old, new_dir)
-                except OSError:
-                    try:
-                        shutil.move(old, new_dir)  # rename cannot cross drives, and a redirected %LOCALAPPDATA% lands the new dir on another volume than the legacy one
-                    except OSError:
-                        pass
-                break
+def _ensure_dir(new_dir: str) -> str:
+    """`new_dir`, made if missing; a failed write surfaces at the write site, not here."""
     try:
         os.makedirs(new_dir, exist_ok=True)
     except OSError:
-        pass  # callers treat the dir as best-effort; a failed write there surfaces at the write site, never at import time
+        pass
     return new_dir
 
 
@@ -132,51 +105,39 @@ def cache_root() -> str:
             continue  # unusable - fall through to the next
     if is_macos():
         new = _home("Library", "Caches", APP_DIR)
-        legacy = [
-            _home("Library", "Caches", "AssetLib"),
-            _home("Library", "Caches", "egMatLib"),
-        ]
     elif is_windows():
         local = os.environ.get("LOCALAPPDATA") or _home("AppData", "Local")
         new = os.path.join(local, APP_DIR, "Cache")
-        legacy = [_home("Library", "Caches", "AssetLib")]  # the old mac-style code created a literal ~/Library tree on Windows and Linux too
     else:
         base = os.environ.get("XDG_CACHE_HOME") or _home(".cache")
         new = os.path.join(base, APP_DIR)
-        legacy = [_home("Library", "Caches", "AssetLib")]
-    return _migrated_dir(new, legacy)
+    return _ensure_dir(new)
 
 
 def config_root() -> str:
     """The per-user PREFERENCES directory, per this OS's convention - never inside the install, which put a user's library path and favorites in the plugin folder."""
     if is_macos():
         new = _home("Library", "Preferences", APP_DIR)  # where Houdini keeps its own, so it is the familiar place to look
-        legacy = [_home("Library", "Preferences", "AssetLib")]
     elif is_windows():
         roaming = os.environ.get("APPDATA") or _home("AppData", "Roaming")
         new = os.path.join(roaming, APP_DIR)
-        legacy = [os.path.join(roaming, "AssetLib")]
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
         new = os.path.join(base, APP_DIR)
-        legacy = [os.path.join(base, "AssetLib")]
-    return _migrated_dir(new, legacy)
+    return _ensure_dir(new)
 
 
 def log_root() -> str:
     """The per-user log directory, per this OS's convention."""
     if is_macos():
         new = _home("Library", "Logs", APP_DIR)
-        legacy = [_home("Library", "Logs", "AssetLib")]
     elif is_windows():
         local = os.environ.get("LOCALAPPDATA") or _home("AppData", "Local")
         new = os.path.join(local, APP_DIR, "Logs")
-        legacy = [_home("Library", "Logs", "AssetLib")]
     else:
         base = os.environ.get("XDG_STATE_HOME") or _home(".local", "state")
         new = os.path.join(base, APP_DIR)
-        legacy = [_home("Library", "Logs", "AssetLib")]
-    return _migrated_dir(new, legacy)
+    return _ensure_dir(new)
 
 
 def os_tag() -> str:

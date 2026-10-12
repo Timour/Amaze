@@ -270,7 +270,7 @@ def main() -> int:
 
     restore = _protect_live_settings()
     try:
-        widget = panel_mod.MatLibPanel()
+        widget = panel_mod.AmazePanel()
         data = snapshot(widget)
     finally:
         restore()

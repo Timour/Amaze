@@ -977,8 +977,8 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
             self.dir = directory
 
     def _ensure(self):
-        from amaze.panel.panel import MatLibPanel
-        MatLibPanel.ensure_library_dirs(self._Prefs(self.dir))
+        from amaze.panel.panel import AmazePanel
+        AmazePanel.ensure_library_dirs(self._Prefs(self.dir))
 
     def _exists(self, name):
         return os.path.isdir(os.path.join(self.dir, name))
@@ -1004,8 +1004,8 @@ class TheLibraryFoldersAreEnsuredNotAssumed(unittest.TestCase):
     def test_load_actually_calls_it(self):
         """Source-derived: extracting the guard is worthless if load() keeps its own bare mkdirs."""
         import inspect
-        from amaze.panel.panel import MatLibPanel
-        source = inspect.getsource(MatLibPanel.load)
+        from amaze.panel.panel import AmazePanel
+        source = inspect.getsource(AmazePanel.load)
         self.assertIn("ensure_library_dirs", source,
                       "panel.load() no longer calls the folder guard")
         self.assertNotIn("os.mkdir", source,
@@ -1021,14 +1021,14 @@ class StarterMustNotSeedOverALibraryTest(unittest.TestCase):
 
     def _decide(self):
         """THE PANEL'S OWN decision function, never a private re-derivation of it."""
-        from amaze.panel.panel import MatLibPanel  # the first version copied the logic here and sabotaging the panel left it green; driving full panel.load() needs a UI, calling its extracted decision does not
-        return not MatLibPanel.starter_would_overwrite(self.dir)
+        from amaze.panel.panel import AmazePanel  # the first version copied the logic here and sabotaging the panel left it green; driving full panel.load() needs a UI, calling its extracted decision does not
+        return not AmazePanel.starter_would_overwrite(self.dir)
 
     def test_load_actually_consults_the_decision(self):
         """Source-derived: extracting the function is worthless if load() stops calling it."""
         import inspect
-        from amaze.panel.panel import MatLibPanel
-        source = inspect.getsource(MatLibPanel.load)
+        from amaze.panel.panel import AmazePanel
+        source = inspect.getsource(AmazePanel.load)
         self.assertIn("starter_would_overwrite", source,
                       "panel.load() no longer consults the seed guard - "
                       "the starter can overwrite a library again")
@@ -1064,8 +1064,8 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
     """An unreachable volume is not a deleted folder - the pruner must not act on a blinking network."""
 
     def _check(self, path):
-        from amaze.panel.panel import MatLibPanel  # an unmounted NAS share answers os.path.isdir exactly like a deleted folder (research.md ▸ Volume mounts on macOS)
-        return MatLibPanel._volume_unreachable(path)
+        from amaze.panel.panel import AmazePanel  # an unmounted NAS share answers os.path.isdir exactly like a deleted folder (research.md ▸ Volume mounts on macOS)
+        return AmazePanel._volume_unreachable(path)
 
     @staticmethod
     def _absent_volume_path():

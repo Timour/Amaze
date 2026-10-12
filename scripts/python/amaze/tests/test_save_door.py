@@ -199,5 +199,28 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
         self.assertNotIn("code", self.panel._save_targets([wrangle]))
 
 
+class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
+    """The menu reloads from disk and the panel does not, so a new menu can meet an old panel."""
+
+    def test_an_old_panel_gets_the_restart_sentence_and_keeps_the_selection(self):
+        import types
+        from amaze import messages
+        from amaze.utils import rc_calls
+
+        node = _geo(self, "door_unselected")
+        hou.clearAllSelected()
+        said = []
+        fake_ui = types.SimpleNamespace(
+            displayMessage=lambda text, *a, **k: said.append(text))
+        old_panel = types.SimpleNamespace()    # loaded before the update: no save_from_node
+        with mock.patch.object(rc_calls, "_find_panel",
+                               return_value=old_panel), \
+                mock.patch.object(hou, "ui", fake_ui, create=True):
+            rc_calls.save(node)
+        self.assertEqual([messages.RESTART_TO_FINISH_UPDATE], said)
+        self.assertFalse(node.isSelected(),
+                         "a refused save took the user's selection")
+
+
 if __name__ == "__main__":
     unittest.main()

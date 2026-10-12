@@ -8,16 +8,10 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze.core import debug, library, category, material, thumbnails
-from amaze.helpers import hostos, vex_syntax
+from amaze.helpers import vex_syntax
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
 _STARTER_MARKER = ".amaze_code_starter_v1"  # the marker file name is versioned, so a future batch can seed again without re-adding snippets the user may have deleted from the first
-_STARTER_MARKER_LEGACY = ".assetlib_code_starter_v1"  # pre-rename marker; renamed on sight so an old library does not re-seed the starter snippets and duplicate them
-
-
-def _migrate_marker(directory: str) -> None:
-    hostos.migrate_legacy_file(
-        directory, _STARTER_MARKER_LEGACY, _STARTER_MARKER)
 
 PREVIEW_SIZE = 512  # preview tile size, painted once per snippet content and cached in the shared engine: 2x the 256 on-tile size (font/margin doubled to match) so the sharp-edged text stays crisp when the DPI-aware delegate paints it at a Retina display's physical resolution - a 256px canvas got upscaled and looked blurry
 PREVIEW_FONT_PX = 48  # font size on the PREVIEW_SIZE canvas: 48 on 512 is the same visual size as 24 on a 256 canvas, i.e. identical layout at 2x resolution
@@ -181,9 +175,6 @@ class CodeLibrary(library.AssetLibrary):
             lib_dir = self.preferences.dir
             if not lib_dir:
                 return
-            for old in ("Starter Toolbox", "Toolbox"):  # every earlier spelling reaches "Examples"; runs BEFORE the marker check, which would otherwise short-circuit it, and `_rename_category` merges rather than duplicating, so the chain is idempotent
-                self._rename_category(category_model, old, "Examples")
-            _migrate_marker(lib_dir)
             marker = os.path.join(lib_dir, _STARTER_MARKER)
             if os.path.exists(marker):
                 return
@@ -253,23 +244,6 @@ class CodeLibrary(library.AssetLibrary):
             debug.event(
                 "session", "snippets seeded", count=added, category=cat
             )
-
-    def _rename_category(self, category_model, old: str, new: str) -> None:
-        """Rename a category in place: every snippet filed under `old` moves to `new`, and the sidebar category list follows. Idempotent (no-op when nothing uses `old`). Both models share one code.json db dict, so saving each persists the whole file."""
-        changed = False
-        for asset in self._assets:
-            if old in asset.categories:
-                cats = [new if c == old else c for c in asset.categories]
-                asset.categories = ",".join(dict.fromkeys(cats))  # dedup
-                changed = True
-        if changed:
-            self.save()
-        cats = category_model._categories
-        if old in cats:
-            if new in cats:
-                category_model.remove_category(old)  # merge, no duplicate
-            else:
-                category_model.rename_category(old, new)
 
     @staticmethod
     def _preview_key(asset):

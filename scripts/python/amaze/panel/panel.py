@@ -1,4 +1,4 @@
-"""Constructs the Python panel Widget for the MatLib and provides Views to the Models"""
+"""The Amaze panel: the Python panel widget and its views onto the models."""
 
 import time
 
@@ -156,11 +156,11 @@ MIN_PANEL_WIDTH = 500    #: design px through `theme.ui_px` at use. ONE constant
 
 
 
-class MatLibPanel(QtWidgets.QWidget):
-    """Constructs the Python panel Widget for the MatLib and provides Views to the Models"""
+class AmazePanel(QtWidgets.QWidget):
+    """The panel widget: shell, sections and the views onto their models."""
 
     def __init__(self) -> None:
-        super(MatLibPanel, self).__init__()
+        super(AmazePanel, self).__init__()
         self._construct_t0 = time.perf_counter()    # stamped before any work, so "panel ready" can report the two spans separately: everything the module body did before this point, and the construction itself
         self._first_show_logged = False
         debug.install()    # arm the always-on crash recorder before anything else, so a failure during construction lands in the log even with Debug Mode off (see core/debug.py)
@@ -663,7 +663,7 @@ class MatLibPanel(QtWidgets.QWidget):
 
     def showEvent(self, event):
         """Record construct-to-painted on the FIRST show only - reopening a tab must not look like a fresh open - and after the event loop turns once, so the number includes the first paint: "panel ready" fires while the widget is still unparented and unpainted, before Houdini shows it and Qt polishes it under the Houdini stylesheet, lays it out and paints the first page of tiles"""
-        super(MatLibPanel, self).showEvent(event)
+        super(AmazePanel, self).showEvent(event)
         if self._first_show_logged:
             return
         self._first_show_logged = True
@@ -713,7 +713,7 @@ class MatLibPanel(QtWidgets.QWidget):
             if timer is not None and timer.isActive():    # the 500ms debounce dies with its parent - flushed, or the last slider/splitter change silently reverts on the next open (show_prefs flushes the same timer for the same reason)
                 timer.stop()
                 self.prefs.save()
-        return super(MatLibPanel, self).event(event)
+        return super(AmazePanel, self).event(event)
 
     def eventFilter(self, watched, event):
         """Hover tracking for the grid's button badges, and nothing else: `thumblist` is hidden the whole time list mode is up, and the table sizes its own rows and columns in `grid.show_table` and `grid.sync_table_columns`"""
@@ -4022,7 +4022,7 @@ class MatLibPanel(QtWidgets.QWidget):
         self.prefs.save()
 
     def import_asset(self, target: str = "auto"):
-        """Import the selected materials. target: "auto" lets MatLib decide from the active network editor (double-click); "mat" forces /mat; "lop" forces a LOP materiallibrary. Materials that cannot live in the requested context are skipped and collected into a single summary dialog."""
+        """Import the selected materials: `target` "auto" follows the network, "mat"/"lop" force one."""
         if not self.material_model or not self.category_model:
             return
         failures = []

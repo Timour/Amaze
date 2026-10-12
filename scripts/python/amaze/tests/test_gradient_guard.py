@@ -322,19 +322,6 @@ class GradientRowRideTest(unittest.TestCase):
         self.assertNotEqual("", self._on_disk_row("mine").get("date", ""),
                             "a new palette should carry its birth date")
 
-    def test_a_legacy_uid_spelling_keeps_its_identity(self):
-        """`uid` was the pre-connector spelling and the value keys the palette's Comments page and tile icon, so the ride maps it onto `id` rather than minting a fresh identity."""
-        with open(self.path, "w", encoding="utf-8") as fh:
-            json.dump({"version": SCHEMA, "categories": [],
-                       "assets": [{"name": "old", "uid": "legacy-value",
-                                   "colors": []}]}, fh)
-        test_support.reset_database_singletons()
-        lib = gradient_library.GradientLibrary(
-            preferences=_fixture_prefs(self, self.dir))
-        row = _row_named(self, lib, "old")
-        self.assertEqual("legacy-value", lib.note_uid(row),
-                         "the legacy identity was replaced by a mint")
-
     def _pre_bump_library(self):
         """A v7 document holding one id-less row beside a stamped one - written at the LITERAL old version on purpose, since a fixture at the current one never reaches the step under test."""
         with open(self.path, "w", encoding="utf-8") as fh:

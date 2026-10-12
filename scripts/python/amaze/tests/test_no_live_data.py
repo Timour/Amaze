@@ -37,7 +37,7 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
                 continue
             with open(os.path.join(HERE, name), encoding="utf-8") as handle:
                 body = handle.read()
-            hits = re.findall(r"MatLibPanel\s*\(", body)
+            hits = re.findall(r"AmazePanel\s*\(", body)
             if hits:
                 offenders[name] = len(hits)
         self.assertEqual(
@@ -53,7 +53,7 @@ class NoTestBuildsItsOwnPanel(unittest.TestCase):
                   encoding="utf-8") as handle:
             body = handle.read()
         self.assertTrue(
-            re.findall(r"MatLibPanel\s*\(", body),
+            re.findall(r"AmazePanel\s*\(", body),
             "the pattern no longer matches a real panel construction - "
             "re-key it in this same change, or it is checking nothing")
 

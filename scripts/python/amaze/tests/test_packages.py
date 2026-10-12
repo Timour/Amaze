@@ -435,11 +435,10 @@ class CuratedKeysTest(unittest.TestCase):
 
     def _fresh_prefs(self, marker):
         p = test_support.fixture_prefs(self)
-        for name in (marker, marker.replace("amaze", "assetlib")):
-            try:
-                os.remove(os.path.join(p.dir, name))
-            except OSError:
-                pass
+        try:
+            os.remove(os.path.join(p.dir, marker))
+        except OSError:
+            pass
         return p
 
     def test_the_gradient_seeder_stamps_curated_keys(self):

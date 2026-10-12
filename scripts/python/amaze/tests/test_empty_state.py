@@ -37,7 +37,7 @@ class TheDeclarationsAreWellFormed(unittest.TestCase):
                 if not verb:
                     continue
                 self.assertTrue(
-                    callable(getattr(panel_module.MatLibPanel, verb, None)),
+                    callable(getattr(panel_module.AmazePanel, verb, None)),
                     "%s names the verb %r, which is not a panel method - "
                     "its button would be hidden with no error"
                     % (blank, verb))

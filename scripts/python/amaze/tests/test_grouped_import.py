@@ -41,8 +41,8 @@ class TheGroupedImportStopsAtTheFirstRefusalTest(unittest.TestCase):
     """The `break` is the aggregation: N assets must not mean N dialogs."""
 
     def setUp(self):
-        self.panel = panel_module.MatLibPanel.__new__(
-            panel_module.MatLibPanel)
+        self.panel = panel_module.AmazePanel.__new__(
+            panel_module.AmazePanel)
         self.context = hou.node("/obj").createNode("geo", "dest")
         self.addCleanup(self.context.destroy)
 

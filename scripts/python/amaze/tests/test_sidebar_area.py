@@ -54,7 +54,7 @@ class _CatList:
 class _Panel:
     """The real name reader, borrowed rather than reimplemented, since a copy would pin the copy. Wired to the PROXY as in production - the reader falls back to DisplayRole when a model has no source, so a stub would pass while the defect stood."""
 
-    from amaze.panel.panel import MatLibPanel as _Real
+    from amaze.panel.panel import AmazePanel as _Real
     _raw_category_name = _Real._raw_category_name
 
     def __init__(self, proxy):

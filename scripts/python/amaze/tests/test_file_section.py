@@ -1585,14 +1585,14 @@ class DoubleClickDispatchTest(unittest.TestCase):
                                ("", "copy_file_paths")):
             recorder = _RecordingPanel()
             recorder._apply_click_rule = (
-                panel_mod.MatLibPanel._apply_click_rule.__get__(recorder))
+                panel_mod.AmazePanel._apply_click_rule.__get__(recorder))
             section = sections.FileSection(recorder)
             section.create_image_node_in = (
                 lambda index, network, position=None:
                 recorder.calls.append("create_image_node_in") or True)
             section.open_hip_scene = (
                 lambda index: recorder.calls.append("open_hip_scene"))
-            panel_mod.MatLibPanel.click_on_row(
+            panel_mod.AmazePanel.click_on_row(
                 recorder, section, _FakeIndex(kind))
             self.assertEqual([expected], recorder.calls,
                              "kind %r dispatched %r" % (kind,
@@ -1609,8 +1609,8 @@ class CopyPathTest(unittest.TestCase):
             self.skipTest("no $HOME in this session")
         recorder = _RecordingPanel()
         recorder._scene_path = (    # the real spelling home, bound to the stub
-            lambda p: panel_mod.MatLibPanel._scene_path(recorder, p))
-        panel_mod.MatLibPanel.copy_file_paths(recorder, [
+            lambda p: panel_mod.AmazePanel._scene_path(recorder, p))
+        panel_mod.AmazePanel.copy_file_paths(recorder, [
             _FakeIndex("other", home + "/mocap/walk.bvh"),
             _FakeIndex("image", "/mnt/elsewhere/tex.png"),
         ])
@@ -2194,7 +2194,7 @@ class ReviewFixesTest(unittest.TestCase):
             prefs = None
 
         import inspect    # the pin is the GATE itself, source-checked - everything before it needs a constructed panel
-        source = inspect.getsource(panel_mod.MatLibPanel._prefs_dialog_closed)
+        source = inspect.getsource(panel_mod.AmazePanel._prefs_dialog_closed)
         self.assertIn('current_section == "file"', source,
                       "the refresh is not gated on the File section - "
                       "a prefs close can start the blocking geometry "

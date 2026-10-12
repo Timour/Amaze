@@ -88,7 +88,7 @@ class TheRendererTableIsWrittenOnce(unittest.TestCase):
         for label, attr in sections.renderer_prefs():
             setattr(fake.prefs, attr, False)
         for label, attr in sections.renderer_prefs():
-            panel_mod.MatLibPanel.enable_renderer_on_add(fake, label)
+            panel_mod.AmazePanel.enable_renderer_on_add(fake, label)
             self.assertTrue(
                 getattr(fake.prefs, attr),
                 "saving a %s material did not switch %s on, so the "

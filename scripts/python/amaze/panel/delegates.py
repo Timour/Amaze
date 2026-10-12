@@ -299,7 +299,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """A scaled tile pixmap cached per (source image, target size, dpr), rendered at the display's PHYSICAL resolution with its ratio stamped so it paints crisp on Retina while callers still position it in logical units (▸`_logical_size`); without the cache every visible tile smooth-scales again on EVERY repaint, and scrolling repaints the viewport continuously."""
         target = max(1, round(side * dpr))
         if isinstance(icon, QtGui.QImage) and not icon.isNull():
-            key = "assetlib_%s_%s_%s_%s" % (      # `cacheKey()` is stable for the stored, never-mutated thumbnails, so hits survive across paints - and a re-rendered thumbnail is a new QImage with a new key, so a stale tile cannot be served
+            key = "amaze_%s_%s_%s_%s" % (      # a re-rendered thumbnail is a new key ▸r/tile-image-cache
                 icon.cacheKey(), side, dpr, cover)
             cached = QtGui.QPixmapCache.find(key)
             if cached is not None and not cached.isNull():
@@ -309,7 +309,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         pixmap = AssetItemDelegate._to_pixmap(icon)
         if pixmap is None:
             return None
-        key = "assetlib_pm_%s_%s_%s_%s" % (     # CACHED TOO: only the QImage branch was, so a QPixmap or QIcon decoration smooth-scaled on every repaint of every visible tile. Latent today - every section delivers QImage through the engine - but the penalty is the cold-vs-warm gap measured on the other branch, 22.60ms against 8.58 for a 60-tile grid at ts=256
+        key = "amaze_pm_%s_%s_%s_%s" % (     # cached too, or it rescales every repaint ▸r/tile-image-cache
             pixmap.cacheKey(), side, dpr, cover)
         cached = QtGui.QPixmapCache.find(key)
         if cached is not None and not cached.isNull():

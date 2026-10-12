@@ -231,7 +231,7 @@ ALL_SECTION_KEYS = ("material", "gradient", "cop", "code", "file")    # every se
 
 
 def fixture_panel(testcase):
-    """A REAL MatLibPanel over a private fixture library: `hostos.config_root` redirected (AFTER importing panel.py, which reloads hostos), saves disabled, network blocked, workers stopped on cleanup, and the isolation ASSERTED rather than assumed. ▸p/harness-isolation"""
+    """A REAL AmazePanel over a private fixture library: `hostos.config_root` redirected (AFTER importing panel.py, which reloads hostos), saves disabled, network blocked, workers stopped on cleanup, and the isolation ASSERTED rather than assumed. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
     from amaze.core import matx_library, matx_sources
@@ -269,7 +269,7 @@ def fixture_panel(testcase):
     testcase.addCleanup(setattr, hostos_mod, "config_root", real_config_root)
 
     reset_database_singletons()
-    panel = panel_mod.MatLibPanel()
+    panel = panel_mod.AmazePanel()
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)    # AFTER deleteLater so it runs BEFORE it (cleanups are LIFO) - hython never emits aboutToQuit, so unstopped engines abort the process at Py_Finalize
 
@@ -305,14 +305,14 @@ def reopened_panel(testcase):
         raise RuntimeError(
             "reopened_panel without fixture_panel's redirection - "
             "config_root is %s, outside the temp directory" % probe)
-    panel = panel_mod.MatLibPanel()
+    panel = panel_mod.AmazePanel()
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)
     return panel
 
 
 def fixture_unconfigured_panel(testcase):
-    """A REAL MatLibPanel with NO library configured - the first-run state - with `fixture_panel`'s guards plus the LEGACY path blanked, so `load()` cannot migrate the real settings into the "unconfigured" panel. ▸p/harness-isolation"""
+    """A REAL AmazePanel with NO library configured - the first-run state - with `fixture_panel`'s guards plus the LEGACY path blanked, so `load()` cannot migrate the real settings into the "unconfigured" panel. ▸p/harness-isolation"""
     from amaze.panel import panel as panel_mod       # reloads hostos
     from amaze.helpers import hostos as hostos_mod
     from amaze.core import matx_sources
@@ -339,7 +339,7 @@ def fixture_unconfigured_panel(testcase):
                         real_config_root)
 
     reset_database_singletons()
-    panel = panel_mod.MatLibPanel()
+    panel = panel_mod.AmazePanel()
     testcase.addCleanup(dispose_panel, panel)
     testcase.addCleanup(stop_panel_workers, panel)
     if panel.prefs.dir:

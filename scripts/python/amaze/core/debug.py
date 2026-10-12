@@ -18,15 +18,6 @@ from amaze.helpers import hostos
 
 DEFAULT_DIR = os.environ.get("AMAZE_LOG_DIR", "").strip() or hostos.log_root()
 DEFAULT_NAME = "amaze_debug.jsonl"
-LEGACY_NAME = "assetlib_debug.jsonl"
-
-
-def _migrate_legacy_log(directory: str) -> None:
-    """Carry an existing log forward under the new name, once; a failure here costs the old file, never logging."""
-    hostos.migrate_legacy_file(directory, LEGACY_NAME, DEFAULT_NAME)
-
-
-_migrate_legacy_log(DEFAULT_DIR)
 
 import atexit  # noqa: E402 - registered once, below the log path setup
 

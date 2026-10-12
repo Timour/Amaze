@@ -24,7 +24,7 @@ if os.environ.get("AMAZE_DEV_RELOAD"):
 
 
 def onCreateInterface():
-    amaze_widget = panel.MatLibPanel()
+    amaze_widget = panel.AmazePanel()
     return amaze_widget
 
 

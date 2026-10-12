@@ -14,7 +14,6 @@ from amaze.core import material
 from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
 from amaze.core import tile_icons
-from amaze.helpers import hostos
 from amaze import messages
 
 THUMB_SIZE = 256
@@ -93,11 +92,7 @@ class GradientLibrary(library.AssetLibrary):
     @staticmethod
     def _asset_from_row(row: dict):
         """A palette rides as a `Material`, `colors` and `ramp` among its carried-through keys."""
-        row = dict(row)
-        legacy = str(row.get("uid") or "")  # `uid` was the pre-connector spelling; mapping it onto `id` keeps notes and tile icons on one key
-        if legacy and not str(row.get("id") or ""):
-            row["id"] = legacy
-        mat = material.Material.from_dict(row)
+        mat = material.Material.from_dict(dict(row))
         if not str(row.get("date") or ""):
             mat._date = ""  # a stored row without a date keeps an empty one, rather than Material fabricating today's
         return mat
@@ -112,7 +107,6 @@ class GradientLibrary(library.AssetLibrary):
             "_write_blocked", False))
 
     _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
-    _SEED_MARKER_LEGACY = ".assetlib_gradient_seed_v1"  # renamed on sight so an old library does not re-seed and duplicate
 
     def seed_curated_palettes(self, category_model) -> None:
         """First run per library: every curated combination becomes a normal user gradient. Guarded by a marker file, best-effort - never blocks panel startup."""
@@ -124,8 +118,6 @@ class GradientLibrary(library.AssetLibrary):
             if self._load_failed:
                 return  # a refused file must not earn a PERMANENT marker for a save that never happened
             marker = os.path.join(lib_dir, self._SEED_MARKER)
-            hostos.migrate_legacy_file(
-                lib_dir, self._SEED_MARKER_LEGACY, self._SEED_MARKER)
             if os.path.exists(marker):
                 return
             seeded = 0
@@ -226,7 +218,7 @@ class GradientLibrary(library.AssetLibrary):
         }
 
     def note_uid(self, row: int) -> str:
-        """A palette's identity - its record id, the same key its Comments page and tile icon are filed under; the identity tests (minted once, stable across reloads, legacy keys still valid) pin that guarantee through this row-spelling, which is its reason to stay."""
+        """A palette's identity: its record id, the key its Comments page and tile icon file under."""
         if not 0 <= row < len(self._assets):
             return ""
         return str(self._assets[row].mat_id)

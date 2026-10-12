@@ -992,7 +992,7 @@ class TileTagsTest(unittest.TestCase):
 
     def test_the_panel_applies_a_cleared_field(self):
         """`new_tags` is harvested as "" for a clear, so the apply site must test `is not None` - a truth test drops exactly the clear."""
-        source = inspect.getsource(panel_mod.MatLibPanel.edit_tile_icon)
+        source = inspect.getsource(panel_mod.AmazePanel.edit_tile_icon)
         tree = ast.parse(textwrap.dedent(source))
         calls = [node for node in ast.walk(tree)
                  if isinstance(node, ast.Call)
