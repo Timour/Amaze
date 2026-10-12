@@ -48,6 +48,8 @@ class CopLibrary(library.AssetLibrary):
 
     SAVE_CONTEXTS = ("Sop", "Cop", "Lop", "Dop", "Top", "Chop", "Object")    # what this section saves and restores; `Vop` is absent because a material builder is a material and the material section owns it, and `OPmenu.xml` keeps a literal copy of this tuple so a right-click never has to import the package
 
+    ITEM_CONTEXTS = SAVE_CONTEXTS + ("Vop",)    # a material saves here AS ITSELF, never as a network
+
     RENDERABLE = ("SOP", "COP", "")    # contexts whose tiles can hold a rendered picture at all; every other one gets the node icon, and the empty string is the pre-context COP assets ▸p/nodes-section
 
     CONTAINER_TYPES = ("geo", "copnet", "dopnet", "lopnet", "topnet",
@@ -128,6 +130,12 @@ class CopLibrary(library.AssetLibrary):
         """Is this node a network this section can put nodes INTO? The drop target test - an empty geo is a fine place to land, which is why emptiness is not part of it."""
         return (node.type().name() in cls.CONTAINER_TYPES
                 and cls.context_of(node) in cls.SAVE_CONTEXTS)
+
+    @classmethod
+    def can_save(cls, node: hou.Node) -> bool:
+        """Can this section save `node`, as itself or as the network it opens?"""
+        return (cls.context_of(node, [node]) in cls.ITEM_CONTEXTS
+                or cls.saves_whole_network(node))
 
     @classmethod
     def saves_whole_network(cls, node: hou.Node) -> bool:

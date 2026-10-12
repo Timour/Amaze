@@ -44,7 +44,7 @@ SAVE_WIDTH = 350         # ▸ the save family D09 and D13: both are this wide, 
 D14_WIDTH = 369          # ▸ D14 User Picker, the family's shape 19 wider: `Existing Users` is 69 and the family's label column is 60, so the column takes the 19 and the field keeps its 276
 D14_LABEL_RIGHT = 79     # where D14's label column ends, the family's 60 plus that 19
 SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
-SAVE_FRAME_H = {"D09": 125, "D13": 72, "D14": 100}   # each frame's drawn height; the row count is the only difference between them
+SAVE_FRAME_H = {"D09": 177, "D13": 72, "D14": 100}   # each frame's drawn height; the row count is the only difference between them
 SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
 SAVE_FIELD_X = 67        # every field starts here; 67 + 276 = 343, so the right inset is 7
 SAVE_FIRST_ROW_Y = 11    # the first field's top
@@ -463,24 +463,30 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QPushButton ▸ text", 452, 401, 9, 15, "..."),
         ),
     },
-    "D09": {   # Save to Amaze - Node
-        "frame": (350, 125),
+    "D09": {   # Save to Amaze - the Section row picks where the save lands
+        "frame": (350, 177),
         "nodes": (
-            ("QLineEdit", 67, 11, 276, 22, None),
-            ("QLabel", 30, 15, 30, 15, "Name"),
-            ("QLineEdit ▸ text", 72, 15, 33, 15, "rocks1"),
-            ("QComboBox", 67, 37, 276, 22, None),
-            ("QLabel", 15, 41, 45, 15, "Category"),
-            ("QComboBox ▸ text", 72, 41, 28, 15, "Metal"),
-            ("QLineEdit", 67, 63, 276, 22, None),
-            ("QLabel", 37, 67, 23, 15, "Tags"),
-            ("QPushButton", 254, 94, 31, 22, None),
-            ("QPushButton", 293, 94, 50, 22, None),
-            ("QPushButton ▸ text", 262, 98, 15, 15, "OK"),
-            ("QPushButton ▸ text", 301, 98, 34, 15, "Cancel"),
+            ("QComboBox", 67, 11, 276, 22, None),
+            ("QLabel", 22, 15, 38, 15, "Section"),
+            ("QComboBox ▸ text", 72, 15, 41, 15, "Material"),
+            ("QLineEdit", 67, 37, 276, 22, None),
+            ("QLabel", 30, 41, 30, 15, "Name"),
+            ("QLineEdit ▸ text", 72, 41, 33, 15, "rocks1"),
+            ("QComboBox", 67, 63, 276, 22, None),
+            ("QLabel", 15, 67, 45, 15, "Category"),
+            ("QComboBox ▸ text", 72, 67, 28, 15, "Metal"),
+            ("QComboBox", 67, 89, 276, 22, None),
+            ("QLabel", 11, 93, 49, 15, "Language"),
+            ("QComboBox ▸ text", 72, 93, 19, 15, "VEX"),
+            ("QLineEdit", 67, 115, 276, 22, None),
+            ("QLabel", 37, 119, 23, 15, "Tags"),
+            ("QPushButton", 254, 146, 31, 22, None),
+            ("QPushButton", 293, 146, 50, 22, None),
+            ("QPushButton ▸ text", 262, 150, 15, 15, "OK"),
+            ("QPushButton ▸ text", 301, 150, 34, 15, "Cancel"),
         ),
     },
-    "D11": {   # Save Code to Amaze
+    "D11": {   # Code snippet - New Snippet and Edit; a node's code saves through D09
         "frame": (638, 516),
         "nodes": (
             ("header band", 0, 0, 638, 30, None),

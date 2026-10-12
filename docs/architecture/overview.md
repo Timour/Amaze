@@ -133,7 +133,7 @@ Plus one *view mode*, not a section:
 | `rc_menu()` | right-click on the **Grid** — renders `GRID_MENU` (below) |
 | `catlist_menu()` | right-click on the **Sidebar** — renders `SIDEBAR_MENU` |
 | `edit_dialog()` | open the section's edit **Dialog** (see §6), if any |
-| `save_node(node)` | a scene node is dropped on the panel — route to this section's save flow |
+| `can_save(nodes)` / `save_categories()` / `takes_language` | the **Save Door** asks every section whether it could take these scene nodes, and what its Category row offers; `takes_language` lights the Language row (Code only). One right-click entry and the panel drop both go through `panel.save_from_node` |
 | `prefs_changed()` | Preferences closed — re-scan live filesystem/render state |
 
 The Panel's shared handlers dispatch to `panel._section().<method>()`
@@ -801,9 +801,8 @@ copied per dialog.
 | Dialog | Section | In code |
 |---|---|---|
 | **Edit Info Dialog** | Materials | `edit_material_info` / `details_dialog` |
-| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog |
-| **Save Dialog** | Materials / Cop | `dialogs/save_dialog.py` ✓ AssetDialog |
-| **Gradient save** | Colors | the one **Save Dialog** (`dialogs/save_dialog.py`) since 2026-08-30; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
+| **Code Dialog** | Code | `dialogs/code_dialog.py` ✓ AssetDialog — typing a snippet (New Snippet, Edit); a node's code saves through the Save Dialog |
+| **Save Dialog** | every section a scene node saves into | `dialogs/save_dialog.py` ✓ AssetDialog — D09: Section, Name, Category, Language, Tags. The Section row is guessed from the node and changeable; `dialogs/gradient_dialog.py` keeps only `CategoryDialog` |
 | **Preferences** | — (app-wide) | `dialogs/prefs_dialog.py` ✓ AssetDialog (live-apply: no OK/Cancel, 12px recorded margin) |
 | **Icon Dialog** | any tile | `dialogs/icon_dialog.py` ✓ AssetDialog (non-modal) |
 | **User Picker** | — (app-wide) | `dialogs/user_dialog.py` — raised after the first paint, only when the library has users and this machine is none of them |

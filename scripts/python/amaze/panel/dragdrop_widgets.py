@@ -525,7 +525,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
             return
         event.acceptProposedAction()
         nodes = [hou.node(p) for p in paths]
-        for i, n in enumerate(nodes):    # the dropped nodes become the selection, which only Material's save_node reads (it routes to save_asset); the other sections act on the ONE node handed to them
+        for i, n in enumerate(nodes):    # the dropped nodes become the selection the save reads
             n.setSelected(True, clear_all_selected=(i == 0))
         panel = _find_panel(self)
         if panel is None:
@@ -536,10 +536,7 @@ class DragDropCentralWidget(QtWidgets.QWidget):
         def _route(panel=panel, section=section, node=nodes[0]):
             debug.event("save", "drop save routed",
                         node=node.path(), section=getattr(section, "key", None))
-            if section is None:
-                panel.save_asset()
-            else:
-                section.save_node(node)
+            panel.save_from_node(node, prefer=getattr(section, "key", ""))
 
         QtCore.QTimer.singleShot(0, _route)
 

@@ -148,6 +148,11 @@ Right-click a material node in the network editor ▸ **Save to
 Amaze**. Name it, give it a category and tags. Amaze builds a scene
 around the node, renders a shaderball and files it away.
 
+**Save to Amaze** is the same entry on every node. The save dialog's
+**Section** row says where the save goes — Material, Color, Node or
+Code — and starts on the one that fits the node. Change it to save
+somewhere else, for example a material into Node.
+
 Saving a node Amaze recognises — from the ID stamp a previous save left
 on it, or a unique name match — offers **Save Version / Save New /
 Cancel**. Multi-selections always save as new.
@@ -302,8 +307,8 @@ Right-click a tile:
 <img src="docs/images/menu_apply_as.png" width="200">
 <img src="docs/images/menu_copy_color.png" width="260">
 
-To save your own: right-click a node with a colour ramp ▸ **Save
-Gradient to Amaze**.
+To save your own: right-click a node with a colour ramp ▸ **Save to
+Amaze**, with **Section** set to Color.
 
 ---
 
@@ -311,16 +316,15 @@ Gradient to Amaze**.
 
 Save node setups — a whole network, a selection, or a single node — and
 load them back. Works in any context Amaze supports: SOP, Copernicus,
-LOP, DOP, TOP, CHOP and object level. Each asset records which context
-it came from, shown on its tile.
+LOP, DOP, TOP, CHOP, object level and material networks. Each asset
+records which context it came from, shown on its tile.
 
 <img src="docs/images/node_grid.png" width="820">
 
 Right-click a network container — a `geo`, a `copnet`, a `lopnet`, a
-subnet — ▸ **Save Network to Amaze** to keep its whole interior, or
-right-click the nodes themselves ▸ **Save Selection to Amaze**. With
-several nodes selected the selection wins, and the label names which
-one you are about to get.
+subnet — ▸ **Save to Amaze** with **Section** set to Node to keep its
+whole interior, or right-click the nodes themselves to save just
+those. With several nodes selected the selection is saved.
 
 Double-click, drag a tile, or right-click ▸ **Load** to bring the nodes
 back. They land in the network you release over, or in a fresh
@@ -357,7 +361,9 @@ Right-click a tile:
 <img src="docs/images/dialog_edit_snippet.png" width="480">
 
 Double-click or drag a snippet onto a node to apply it. To save one:
-right-click any node with a code parameter ▸ **Save to Amaze**.
+right-click any node with a code parameter ▸ **Save to Amaze**. The
+**Language** row is read from the node and can be changed; it is
+greyed for every other section.
 
 ---
 

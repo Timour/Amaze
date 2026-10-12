@@ -108,11 +108,9 @@ TILE_ICON_SAVE_FAILED = '%d tile icon%s could not be saved. Verify that the libr
 
 NO_LIBRARY_CONFIGURED_2 = 'Configure a library first. Open Preferences and select one under Library Path.'
 
-NO_NODE_WITH_CODE_SELECTED = 'To save a snippet, right-click a wrangle or other node that has a code parameter.'
+NO_NODE_TO_SAVE = 'To save, right-click the node or network you want to keep.'
 
-NODE_HAS_NO_CODE_PARM = '"%s" does not have a code or snippet parameter.'
-
-NO_NETWORK_SELECTED_TO_SAVE = 'To save, right-click the network or the nodes you want to export.'
+NODE_CANNOT_BE_SAVED = '"%s" cannot be saved. It is not a material, a color ramp, a code node or a network.'
 
 NODE_SAVE_FAILED_WITH_REASON = '"%s" could not be saved: %s'
 
@@ -128,8 +126,6 @@ DROPPED_MATERIAL_IMPORT_FAILED = 'The dropped material could not be imported and
 
 MATERIAL_ASSIGN_FAILED = 'The material was imported, but assignment failed: %s'
 
-SELECT_ONE_NODE_WITH_RAMP = 'Select a single node with a color ramp first.'
-
 NO_MATERIAL_DESTINATION_NETWORK = 'Unable to create the material. Open a LOP or /mat network first.'
 
 MATERIAL_GENERATION_FAILED = 'Generation failed. See the debug log for details.'
@@ -143,8 +139,6 @@ MATERIAL_GENERATION_ERROR = 'Material generation failed (%s).'
 NO_MATERIAL_SELECTED = 'No material selected.'
 
 MATERIAL_UPDATE_FAILED = 'Update failed. The library material was not modified.'
-
-SCENE_NODE_NEEDS_ASSET_SECTION = 'This section browses files on disk — a scene node cannot be saved here. Switch to Material, Color, Node, or Code first.'
 
 SCENE_FILE_MISSING = 'That scene file is no longer there:\n%s'
 

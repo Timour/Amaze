@@ -17,6 +17,7 @@ from amaze.helpers import helpers, hostos, ui_helpers
 from amaze import messages
 from amaze.panel import grid
 from amaze.render import material_converter
+from amaze.render import nodes as nodes_mod
 
 
 AssetStack = collections.namedtuple(
@@ -121,13 +122,20 @@ class Section:
         """Preferences just closed: a section showing live filesystem or render state re-scans here. Default: nothing."""
         pass
 
-    def save_node(self, node) -> None:
-        """A scene node was handed in while this section is active; each section routes to its own save flow so the right dialog opens."""
-        ui = getattr(hou, "ui", None)
-        if ui is not None:
-            ui.displayMessage(
-                messages.SCENE_NODE_NEEDS_ASSET_SECTION
-            )
+    takes_language = False    # D09's Language row is live only for a section that stores one
+
+    def can_save(self, nodes) -> bool:
+        """Could a save of these scene nodes land here? ▸p/save-section-row"""
+        return False
+
+    def save_categories(self) -> tuple:
+        """(the categories this section's save offers, the one pre-selected)."""
+        return [], ""
+
+    @classmethod
+    def save_rank(cls, nodes) -> int:
+        """Lowest opens first when several sections can take a save."""
+        return 99
 
     def stack(self):
         """The AssetStack for the curated machinery, or None for sections that do not use it."""
@@ -711,8 +719,23 @@ class MaterialSection(AssetSection):
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
 
-    def save_node(self, node) -> None:
-        self.panel.save_asset()    # materials support multi-selection saves, so the flow is selection-based and the drop handler selects the node first
+    def can_save(self, nodes) -> bool:
+        return bool(nodes) and all(    # a fresh handler per node: it remembers the last renderer
+            nodes_mod.NodeHandler(self.panel.prefs).get_renderer_from_node(n)
+            for n in nodes)
+
+    def save_categories(self) -> tuple:
+        panel = self.panel
+        return (sorted(panel.get_category_names(), key=str.lower),
+                panel._selected_category_name())
+
+    @classmethod
+    def save_rank(cls, nodes) -> int:
+        try:
+            inside = nodes[0].parent().childTypeCategory().name() == "Vop"
+        except (AttributeError, IndexError, hou.OperationFailed):
+            inside = False
+        return 0 if inside else 4
 
 
 class CopSection(AssetSection):
@@ -794,8 +817,19 @@ class CopSection(AssetSection):
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
 
-    def save_node(self, node) -> None:
-        self.panel.save_cop_from_node(node)
+    def can_save(self, nodes) -> bool:
+        return (bool(nodes) and len({n.parent() for n in nodes}) == 1
+                and cop_library.CopLibrary.can_save(nodes[0]))
+
+    def save_categories(self) -> tuple:
+        panel = self.panel
+        current = (panel._selected_category_name()
+                   if panel.current_section == self.key else "")
+        return panel.get_cop_category_names(), current
+
+    @classmethod
+    def save_rank(cls, nodes) -> int:
+        return 3
 
 
 class CodeSection(AssetSection):
@@ -959,8 +993,19 @@ class CodeSection(AssetSection):
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
 
-    def save_node(self, node) -> None:
-        self.panel.save_code_from_node(node)
+    takes_language = True
+
+    def can_save(self, nodes) -> bool:
+        parm = helpers.find_code_parm(nodes[0]) if len(nodes) == 1 else None
+        return parm is not None and bool(parm.eval().strip())    # an empty snippet saves nothing
+
+    def save_categories(self) -> tuple:
+        panel = self.panel
+        return panel.get_code_category_names(), panel._current_code_category()
+
+    @classmethod
+    def save_rank(cls, nodes) -> int:
+        return 1
 
 
 class FolderSection(Section):
@@ -1788,8 +1833,17 @@ class GradientSection(AssetSection):
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
 
-    def save_node(self, node) -> None:
-        self.panel.save_gradient_from_node(node)
+    def can_save(self, nodes) -> bool:
+        return (len(nodes) == 1
+                and helpers.find_color_ramp_parm(nodes[0]) is not None)
+
+    def save_categories(self) -> tuple:
+        categories = self.panel.gradient_model.user_categories()
+        return categories, (categories[0] if categories else "")
+
+    @classmethod
+    def save_rank(cls, nodes) -> int:
+        return 2
 
 
 SECTION_CLASSES = (    # the section registry in tab order, built by the panel once its models exist; adding a section is one class here
@@ -1818,6 +1872,13 @@ def drop_rule(section, panel, index):
 def drop_verb(section, name):
     """The bound verb a declaration names, always the SECTION's own - the panel owns the widgets and the shared plumbing, the section owns the meaning, and the pin in test_area_bindings walks every declaration to keep a panel fallback from creeping back. A name that resolves nowhere raises, because a broken declaration must fail loudly rather than miss quietly."""
     return getattr(section, name)
+
+
+def save_guess(keys, nodes, prefer: str = "") -> str:
+    """Which of `keys` a save of `nodes` opens on. ▸p/save-section-row"""
+    if prefer in keys:    # a drop onto the open section means that section
+        return prefer
+    return min(keys, key=lambda key: SECTION_INDEX[key].save_rank(nodes))
 
 
 def all_sections() -> tuple:

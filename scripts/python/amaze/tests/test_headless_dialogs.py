@@ -277,7 +277,7 @@ class ThePanelLookupRefusesHeadlessTest(unittest.TestCase):
 
     def test_a_right_click_save_stops_instead_of_crashing(self):
         try:
-            rc_calls.save_material()
+            rc_calls.save()
         except AttributeError as crash:
             self.fail("the right-click save became a crash: %s" % crash)
 
@@ -459,28 +459,28 @@ class TheMaterialDoorFollowsTheClickTest(unittest.TestCase):
 
     def test_an_unselected_clicked_node_becomes_the_selection(self):
         self.b.setSelected(True, clear_all_selected=True)   # the premise is set EXPLICITLY - createNode selects what it creates, so trusting the post-create state would test the wrong selection
-        rc_calls.save_material(self.a)
+        rc_calls.save(self.a)
         self.assertTrue(self.a.isSelected(),
                         "the clicked node never entered the selection")
         self.assertFalse(
             self.b.isSelected(),
             "the save would have followed the selection, not the click - "
             "the bug this door exists to prevent")
-        self.panel.save_asset.assert_called_once_with()
+        self.panel.save_from_node.assert_called_once_with(self.a)
 
     def test_a_click_inside_a_multi_selection_keeps_it(self):
         self.a.setSelected(True, clear_all_selected=True)
         self.b.setSelected(True)
-        rc_calls.save_material(self.a)
+        rc_calls.save(self.a)
         self.assertTrue(
             self.a.isSelected() and self.b.isSelected(),
             "multi-save is a feature - a click inside the selection "
             "must not shrink it")
-        self.panel.save_asset.assert_called_once_with()
+        self.panel.save_from_node.assert_called_once_with(self.a)
 
     def test_no_node_still_saves_the_selection(self):
-        rc_calls.save_material()
-        self.panel.save_asset.assert_called_once_with()
+        rc_calls.save()
+        self.panel.save_from_node.assert_called_once_with(None)
 
 
 class EveryDialogKnowsWhichWindowOpenedIt(unittest.TestCase):

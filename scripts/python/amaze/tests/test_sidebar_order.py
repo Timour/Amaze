@@ -351,9 +351,13 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
             self.flat_source)
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "panel", "sections.py"),
+                  encoding="utf-8") as handle:
+            sections_flat = "".join(handle.read().split())    # the Material section offers D09 its list
         self.assertIn(
-            "cats=sorted(self.get_category_names(),key=str.lower)",
-            self.flat_source,
+            "sorted(panel.get_category_names(),key=str.lower)",
+            sections_flat,
             "the dropdown's alphabetical sort was removed - that one "
             "is deliberate (typing against an alphabetical list), and "
             "the list must come from the ONE category-names home")

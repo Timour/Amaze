@@ -214,7 +214,7 @@ class MatLibPanel(QtWidgets.QWidget):
         """The no-library shape of the panel: every model attribute present and None, so the gear (the only way to configure a library) and every guard keep working"""
         self.material_model = None
         self.category_model = None
-        self.cop_model = None    # the Cop stack gets the same unconfigured defaults: save_cop_from_node is reachable from a node right-click at any time and guards on cop_model, so without this the guard itself raises AttributeError
+        self.cop_model = None    # a right-click save asks every model before one is built
         self.cop_category_model = None
         self.code_model = None
         self.code_category_model = None
@@ -2794,30 +2794,20 @@ class MatLibPanel(QtWidgets.QWidget):
         )
         self._refresh_sidebar_categories()
 
-    def save_code_from_node(self, node: hou.Node | None = None) -> None:
-        """Node right-click `Save Code to <app>`: grab the node's code/snippet parm and open the save dialog prefilled."""
-        if node is None:
-            sel = hou.selectedNodes()
-            node = sel[0] if len(sel) == 1 else None
-        ui = getattr(hou, "ui", None)
-        if node is None:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_NODE_WITH_CODE_SELECTED
-                )
-            return
+    def _commit_code_save(self, node: hou.Node, dialog) -> None:
+        """The snippet is the node's code parm as it reads now."""
         parm = helpers.find_code_parm(node)
-        if parm is None:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NODE_HAS_NO_CODE_PARM % node.name()
-                )
-            return
-        self._add_code_snippet(
+        if dialog.categories:
+            self.code_category_model.check_add_category(dialog.categories)
+        self.code_model.add_asset(    # no layout wrapper: add_asset announces its own insert
             parm.eval(),
-            helpers.code_parm_language(parm),
-            node.name(),
+            dialog.name or node.name(),
+            dialog.language or helpers.code_parm_language(parm),
+            dialog.categories,
+            dialog.tags,
+            False,
         )
+        self._refresh_sidebar_categories()
 
     def new_code_snippet(self) -> None:
         """Create a snippet by typing/pasting into an empty editor."""
@@ -2868,24 +2858,9 @@ class MatLibPanel(QtWidgets.QWidget):
     def get_cop_category_names(self) -> list[str]:
         return self._category_names_from(self.cop_category_model)
 
-    def save_cop_from_node(self, node: hou.Node | None = None) -> None:
-        """Node right-click `Save Network/Selection to <app>` (rc_calls.save_cop passes the clicked node through). Works in any context the Nodes section supports - SOP, COP, LOP and the rest; the asset records which one."""
+    def _commit_cop_save(self, node: hou.Node, dialog) -> None:
+        """Works in any context the Nodes section supports; the asset records which one."""
         ui = getattr(hou, "ui", None)
-        if not self.cop_model:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2
-                )
-            return
-        if node is None:
-            sel = hou.selectedNodes()
-            node = sel[0] if len(sel) == 1 else None
-        if node is None:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_NETWORK_SELECTED_TO_SAVE
-                )
-            return
         net = node.parent()
         items = [i for i in hou.selectedItems() if i.parent() == net]
         if not any(i == node for i in items):
@@ -2893,17 +2868,6 @@ class MatLibPanel(QtWidgets.QWidget):
         if len(items) == 1 and self.cop_model.saves_whole_network(node):    # container vs selection: a network container right-clicked ON ITS OWN (a geo, a copnet, a lopnet, a subnet) saves the WHOLE network, anything else saves the selection inside the network that holds it and is named after the clicked node - and a multi-selection wins over the container reading, two geos selected meaning those two nodes rather than one of their interiors
             items = None
 
-        current_cat = ""    # pre-select the category active in the panel when the Cop section is showing (mirrors the material save dialog)
-        if self.current_section == "cop":
-            current_cat = self._selected_category_name()
-
-        dialog = save_dialog.SaveDialog(    # v1 keeps standard-new semantics only - no Overwrite flow yet
-            self.get_cop_category_names(), current_cat, name=node.name(),
-            parent=self
-        )
-        r = dialog.exec()
-        if dialog.canceled or not r:
-            return
         if dialog.categories:
             self.cop_category_model.check_add_category(dialog.categories)
         if dialog.tags:
@@ -2921,7 +2885,7 @@ class MatLibPanel(QtWidgets.QWidget):
                 name=dialog.name,
             )
         except Exception as exc:                        # noqa: BLE001
-            debug.exception("save_cop_from_node", exc, node=node.path())
+            debug.exception("_commit_cop_save", exc, node=node.path())
             save_error = str(exc)
         if save_error is not None:
             if ui is not None:
@@ -3399,44 +3363,13 @@ class MatLibPanel(QtWidgets.QWidget):
                     return candidate
         return None
 
-    def save_gradient_from_node(self, node: hou.Node | None = None) -> None:
-        """`Save Gradient to <app>` (node right-click, or any caller with a ramp-bearing node): serializes the node's first color ramp and registers it as a user gradient in the Gradients section, in a category chosen (or created) in the save dialog. With no node it falls back to the single selected one, as the material save flow does."""
-        ui = getattr(hou, "ui", None)
-        if not self.material_model:
-            if ui is not None:
-                ui.displayMessage(
-                    messages.NO_LIBRARY_CONFIGURED_2
-                )
-            return
-        if node is None:
-            sel = hou.selectedNodes()
-            if len(sel) != 1:
-                if ui is not None:
-                    ui.displayMessage(
-                        messages.SELECT_ONE_NODE_WITH_RAMP
-                    )
-                return
-            node = sel[0]
+    def _commit_gradient_save(self, node: hou.Node, dialog) -> None:
+        """The node's first color ramp, registered as a user gradient."""
         parm = helpers.find_color_ramp_parm(node)
-        if parm is None:
-            if ui is not None:
-                ui.displayMessage(
-                    f'"{node.name()}" ({node.type().name()}) has no color '
-                    "ramp parameter to save."
-                )
-            return
         ramp_data = helpers.ramp_to_data(parm.evalAsRamp())
-        categories = self.gradient_model.user_categories()
-        dialog = save_dialog.SaveDialog(
-            categories, default_cat=categories[0] if categories else "",
-            name=node.name(),
-            title="Save Gradient to " + branding.APP_NAME, parent=self
-        )
-        dialog.exec()
-        if dialog.canceled:
-            return
         self.gradient_model.add_user_gradient(
-            dialog.name, dialog.categories, ramp_data, tags=dialog.tags
+            dialog.name or node.name(), dialog.categories, ramp_data,
+            tags=dialog.tags
         )
         if dialog.categories:
             self.gradient_categories_model.check_add_category(    # the shared verb, which brackets its own insert - not switch_model_data(), which belongs to a library switch and only ever runs through switch_all_models()
@@ -3867,6 +3800,76 @@ class MatLibPanel(QtWidgets.QWidget):
                 % (builder.name(), destination.path())
             )
 
+    def save_from_node(self, node: hou.Node | None = None,
+                       prefer: str = "") -> None:
+        """THE door a scene node is saved through: right-click and drop. ▸p/save-section-row"""
+        ui = getattr(hou, "ui", None)
+        selected = hou.selectedNodes()
+        node = node or (selected[0] if selected else None)
+        if node is None:
+            if ui is not None:
+                ui.displayMessage(messages.NO_NODE_TO_SAVE)
+            return
+        nodes = selected if node in selected else [node]
+        keys = self._save_targets(nodes)
+        debug.event("save", "save door", node=node.path(), offered=keys,
+                    prefer=prefer)
+        if not keys:
+            if ui is not None:
+                ui.displayMessage(messages.NODE_CANNOT_BE_SAVED % node.name())
+            return
+        key = sections.save_guess(keys, nodes, prefer)
+        if key == "material":
+            self.save_asset()    # the already-in-the-library question comes first
+            return
+        self._save_new(nodes, key, node)
+
+    def _save_targets(self, nodes: list) -> list:
+        """The keys of the sections, in tab order, that could take these nodes."""
+        able = [key for key, _ in self.ALL_SECTIONS
+                if key in self.sections
+                and getattr(self, getattr(self.sections[key], "model_attr", ""),
+                            None) is not None
+                and self.sections[key].can_save(nodes)]
+        shown = [key for key in able if key in self.prefs.enabled_sections]
+        return shown or able    # a hidden tab is still a place to save
+
+    def _save_new(self, nodes: list, key: str,
+                  node: hou.Node | None = None) -> None:
+        """D09 for these nodes, opened on section `key`, then that section's save."""
+        node = node or nodes[0]
+        keys = self._save_targets(nodes) or [key]
+        cats, current = self.sections[key].save_categories()
+        one = nodes[0] if len(nodes) == 1 else None
+        code_parm = helpers.find_code_parm(one) if one is not None else None
+        dialog = save_dialog.SaveDialog(
+            cats, current, name=one.name() if one is not None else "",
+            name_enabled=one is not None, parent=self,
+            sections=[(k, self.sections[k].label) for k in keys],
+            section=key,
+            categories_for=lambda k: self.sections[k].save_categories(),
+            language=(helpers.code_parm_language(code_parm)
+                      if code_parm is not None else ""),
+            language_sections=[k for k in keys
+                               if self.sections[k].takes_language])
+        r = dialog.exec()
+        chosen = getattr(dialog, "section", "") or key
+        debug.event(
+            "save", "save dialog closed",
+            accepted=bool(r and not dialog.canceled), section=chosen,
+            category=dialog.categories, preselected=current,
+        )
+        if dialog.canceled or not r:
+            return
+        if chosen == "material":
+            self._commit_material_save(nodes, dialog)
+        elif chosen == "cop":
+            self._commit_cop_save(node, dialog)
+        elif chosen == "gradient":
+            self._commit_gradient_save(node, dialog)
+        elif chosen == "code":
+            self._commit_code_save(node, dialog)
+
     def save_asset(self) -> None:
         """Saves the selected nodes (Network Editor) to the Library, with standard file-save semantics at ANY selection size: nodes matching an EXISTING library material - by the id stamp a previous save/import left on them, or by a unique name match - raise one save-over / Save New / Cancel choice for the whole selection, with the save-over button offered only where the library allows it; anything else goes straight to the normal new-material dialog."""
         ui = getattr(hou, "ui", None)
@@ -3963,27 +3966,12 @@ class MatLibPanel(QtWidgets.QWidget):
         self.update_renderer_toggles()
 
     def get_material_info_user(self, sel: list[hou.Node]) -> None:
-        if not self.material_model or not self.category_model:
+        """The new-material save: D09 opened on Material, any section still choosable."""
+        if not self.material_model or not self.category_model or not sel:
             return
-        """Query user for input upon material-save"""
-        cats = sorted(self.get_category_names(), key=str.lower)    # the ONE home for the complete list, empty categories included - a filter regex here once dropped every category merely STARTING with `All`, and `Alloys` vanished from the save dialog
+        self._save_new(sel, "material")
 
-        current_cat = self._selected_category_name()    # defaults the dialog to the category selected in the panel, skipping the "All" pseudo-category and empty selections - ONE helper for all three save dialogs, and it falls back to live_current_index, the state _restore_section_state leaves behind by calling setCurrentIndex without a select
-
-        one = sel[0] if len(sel) == 1 else None    # a multi-selection greys the Name row: one field cannot name several materials, so each keeps its node's name
-        dialog = save_dialog.SaveDialog(
-            cats, current_cat, name=one.name() if one is not None else "",
-            name_enabled=one is not None, parent=self)
-        r = dialog.exec()
-
-        debug.event(
-            "save", "save dialog closed",
-            accepted=bool(r and not dialog.canceled),
-            category=dialog.categories, preselected=current_cat,
-        )
-        if dialog.canceled or not r:
-            return
-
+    def _commit_material_save(self, sel: list[hou.Node], dialog) -> None:
         if dialog.categories:
             self.category_model.check_add_category(dialog.categories)
         if dialog.tags:

@@ -223,12 +223,17 @@ class ACategoryIsActedOnByItsStoredName(_PanelCase):
         self.assertEqual(
             1, source.count("def _selected_category_name"),
             "the shared answer is gone or duplicated")
-        for name in ("_current_code_category", "save_cop_from_node",
-                     "get_material_info_user"):
+        self.assertIn(
+            "_selected_category_name",
+            func_source("panel/panel.py", "_current_code_category"),
+            "_current_code_category answers 'which category is selected' "
+            "on its own again")
+        for cls in ("MaterialSection", "CopSection"):
             self.assertIn(
-                "_selected_category_name", func_source("panel/panel.py", name),
+                "_selected_category_name",
+                method_source("panel/sections.py", cls, "save_categories"),
                 "%s answers 'which category is selected' on its own "
-                "again" % name)
+                "again" % cls)
 
 
 class CaptureIsDecidedInOnePlace(unittest.TestCase):
@@ -301,6 +306,15 @@ class TheMapNamesEveryModule(unittest.TestCase):
 
 
 
+def _material(test, name):
+    """A real Karma material in /mat - the save door asks the node what it is."""
+    import hou
+    node = hou.node("/mat").createNode("subnet", name)
+    node.createNode("mtlxstandard_surface")
+    test.addCleanup(node.destroy)
+    return node
+
+
 class TheSaveDialogOffersEveryCategory(unittest.TestCase):
     """The dropdown's list comes from the one category-names home - a name-anchored filter once dropped every category merely STARTING with the pseudo-category's name."""
 
@@ -317,7 +331,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
             categories = ""
 
             def __init__(self, cats, current, name="", name_enabled=True,
-                         parent=None):
+                         parent=None, **_section_rows):
                 offered["cats"] = list(cats)
 
             def exec(self):
@@ -325,7 +339,7 @@ class TheSaveDialogOffersEveryCategory(unittest.TestCase):
 
         with mock.patch.object(panel_mod.save_dialog, "SaveDialog",
                                _Dialog):
-            panel.get_material_info_user([])
+            panel.get_material_info_user([_material(self, "alloy_mat")])
         self.assertIn(
             "Alloys", offered.get("cats", []),
             "a category starting with the pseudo-category's name is "
@@ -348,7 +362,7 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
             categories = ""
 
             def __init__(self, cats, current, name="", name_enabled=True,
-                         parent=None):
+                         parent=None, **_section_rows):
                 seen["name"] = name
                 seen["enabled"] = name_enabled
 
@@ -361,10 +375,7 @@ class TheMaterialSaveOffersANameOnlyWhenOneWillDo(unittest.TestCase):
         return seen.get("name"), seen.get("enabled")
 
     def _node(self, name):
-        from unittest import mock
-        node = mock.Mock()
-        node.name.return_value = name
-        return node
+        return _material(self, name)
 
     def test_one_material_prefills_its_own_name(self):
         self.assertEqual(("rocks1", True), self._asked([self._node("rocks1")]))

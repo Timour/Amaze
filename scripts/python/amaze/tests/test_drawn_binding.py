@@ -201,10 +201,10 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
 
     def test_a_drawn_box_is_the_rect_and_not_the_label(self):
         """The pair's value is the enclosing RECT: D09 draws `OK` 15 wide inside a 31-wide button, and pinning the label's own box would draw half a button."""
-        self.assertEqual((254, 94, 31, 22),
+        self.assertEqual((254, 146, 31, 22),
                          amazetheme.drawn_boxes("D09")[("QPushButton", "OK")])
         self.assertEqual(
-            (293, 94, 50, 22),
+            (293, 146, 50, 22),
             amazetheme.drawn_boxes("D09")[("QPushButton", "Cancel")])
 
     def test_the_textless_rects_come_back_in_document_order(self):
