@@ -21,9 +21,11 @@ def _thread_finished(thread) -> bool:
 
 
 class _FileLoader(QtCore.QThread):
-    """Loads image files for a batch of keys off the main thread; failures deliberately emit nothing - a key still pending when the batch finishes is how the engine knows the file is missing."""
+    """Loads image files for a batch of keys off the main thread, naming each one that fails."""
 
     loaded = QtCore.Signal(object, QtGui.QImage)
+    failed = QtCore.Signal(object)
+    NAMES_ITS_FAILURES = True    # so an undelivered key is retried, never judged ▸p/prune-outran-deliveries
 
     def __init__(self, items) -> None:
         super().__init__()
@@ -42,7 +44,9 @@ class _FileLoader(QtCore.QThread):
             if self._canceled:
                 return
             image = QtGui.QImage(path)
-            if not image.isNull():
+            if image.isNull():
+                self.failed.emit(key)
+            else:
                 self.loaded.emit(key, image)
 
 
@@ -266,10 +270,18 @@ class ThumbnailEngine(QtCore.QObject):
             return
         loader = _FileLoader(items)
         loader.loaded.connect(self._on_loaded)
+        loader.failed.connect(self._on_failed)
         loader.finished.connect(
             functools.partial(self._prune_threads, loader))
         self._threads.append(loader)
         loader.start()
+
+    def _on_failed(self, key) -> None:
+        """A file the loader could not read: missing, until `discard()`."""
+        if self._states.get(key) != "pending":
+            return
+        self._states[key] = "missing"
+        self.ready.emit(key)
 
     def _on_loaded(self, key, image) -> None:
         if self._states.get(key) != "pending":    # discarded while in flight (library switched away, or a rerender superseded it) - drop the stale delivery
@@ -335,10 +347,15 @@ class ThumbnailEngine(QtCore.QObject):
         if getattr(finisher, "_canceled", False):
             return    # cancelled work is unrequested, not missing - the revisit re-queues it
 
+        names_failures = getattr(finisher, "NAMES_ITS_FAILURES", False)
+
         def _condemn(keys=tuple(thread_keys)):
             for key in keys:
                 if self._states.get(key) == "pending":
-                    self._states[key] = "missing"
+                    if names_failures:
+                        self._states.pop(key, None)    # undelivered, not failed: the next paint asks again
+                    else:
+                        self._states[key] = "missing"
                     try:
                         self.ready.emit(key)
                     except RuntimeError:

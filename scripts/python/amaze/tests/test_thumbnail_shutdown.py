@@ -123,6 +123,45 @@ class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
             "a key that truly never delivered must still be judged")
 
 
+class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
+    """A file key is missing only when its read FAILED. ▸p/prune-outran-deliveries"""
+
+    def setUp(self):
+        self.engine = thumbnails.ThumbnailEngine()
+        self.dir = tempfile.mkdtemp(prefix="amaze_filekeys_")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+
+    def _ran(self, key, path):
+        loader = thumbnails._FileLoader([(key, path)])
+        loader.loaded.connect(self.engine._on_loaded)
+        loader.failed.connect(self.engine._on_failed)
+        self.engine._states = {key: "pending"}
+        loader.run()    # in this thread, so both signals deliver at once
+        return loader
+
+    def test_an_undelivered_file_key_is_asked_for_again(self):
+        loader = thumbnails._FileLoader([("f1", os.path.join(self.dir, "x.png"))])
+        self.engine._threads = [loader]
+        self.engine._states = {"f1": "pending"}
+        self.engine._prune_threads(loader)    # finished, its delivery not handled yet
+        _app.processEvents()
+        self.assertIsNone(
+            self.engine._states.get("f1"),
+            "a file nobody answered for was written off for the session")
+
+    def test_an_unreadable_file_is_missing(self):
+        self._ran("f2", os.path.join(self.dir, "absent.png"))
+        self.assertEqual("missing", self.engine._states["f2"])
+
+    def test_a_readable_file_is_delivered(self):
+        path = os.path.join(self.dir, "real.png")
+        image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("red"))
+        self.assertTrue(image.save(path))
+        self._ran("f3", path)
+        self.assertEqual("done", self.engine._states["f3"])
+
+
 class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
     """A loader may condemn only its OWN pending keys - the deliveries-before-finished guarantee is PER-THREAD, so judging a sibling drops real images whose signals are still queued, and it sticks because a missing key never falls back to the disk cache."""
 
