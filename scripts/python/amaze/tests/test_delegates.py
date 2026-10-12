@@ -35,6 +35,80 @@ class _ExplodingModel(QtCore.QAbstractListModel):
         return "row %d" % index.row()
 
 
+class TheTileStandsOnItsFrame(unittest.TestCase):
+    """At the drawn size, the tile's cell and badges land where T01 draws them. ▸r/tile-from-frame"""
+
+    def setUp(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        self.px = theme.ui_px
+        self.frame = amazetheme.DIALOG_LAYOUT["T01"]
+        self.node = {n[0].split(" ▸ ")[0]: n for n in self.frame["nodes"]}
+        self.art = {n[0].split(" ▸ ")[1]: n for n in self.frame["nodes"] if " ▸ " in n[0]}
+        self.size = amazetheme.TILE_DRAWN_SIZE
+        self.D = delegates.AssetItemDelegate
+
+    def _drawn(self, badge):
+        """Where T01 draws this badge, found by its art."""
+        return tuple(self.px(n) for n in self.art[badge.art][1:5])
+
+    def test_the_cell_is_the_frame(self):
+        font = QtGui.QFont()
+        _nf, _rf, fm_name, fm_sub = self.D.fonts_for(font, False)
+        drawn_text = self.node["tile name"][4] + self.node["tile subtitle"][4]
+        width, height = self.frame["frame"]
+        cell = self.D.grid_cell_size(self.size, font)
+        self.assertEqual(self.px(width), cell.width())
+        self.assertEqual(    # the text block is the font's own height, not the drawing's
+            self.px(height) - self.px(drawn_text) + fm_name.height() + fm_sub.height(),
+            cell.height())
+
+    def test_every_badge_is_clicked_on_its_drawn_corner(self):
+        width, height = self.frame["frame"]
+        rect = QtCore.QRect(0, 0, self.px(width), self.px(height))
+        for badge in delegates.BADGES:
+            with self.subTest(badge=badge.name):
+                got = self.D._badge_rect(self.D.__new__(self.D), rect, True, badge.corner)
+                self.assertEqual(self._drawn(badge),
+                                 (got.x(), got.y(), got.width(), got.height()))
+
+    def test_every_badge_is_painted_on_its_drawn_corner(self):
+        """The paint loop places badges with its own maths, apart from the click rect."""
+        roles = {b.role_attr.lstrip("_"): QtCore.Qt.ItemDataRole.UserRole + 70 + i
+                 for i, b in enumerate(delegates.BADGES)}
+        values = {role: b.minimum or True
+                  for b, role in zip(delegates.BADGES, roles.values())}
+
+        class _Model(QtCore.QAbstractListModel):
+            def rowCount(self, parent=QtCore.QModelIndex()):
+                return 1
+
+            def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+                return values.get(role)
+
+        painted = []
+
+        class _Recorder(QtGui.QPainter):
+            def drawPixmap(self, x, y, mark):
+                painted.append((x, y, mark.width(), mark.height()))
+
+        original = self.D.__dict__["_badge_pixmap"]
+        self.D._badge_pixmap = staticmethod(
+            lambda art, side, dpr=1.0: QtGui.QPixmap(side, side))
+        self.addCleanup(setattr, self.D, "_badge_pixmap", original)
+
+        _kind, x, y, w, h, _text = self.node["thumbnail"]
+        model = _Model()
+        surface = QtGui.QPixmap(self.px(x + w), self.px(y + h))
+        painter = _Recorder(surface)
+        try:
+            self.D(None, **roles)._paint_badges(
+                painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
+        finally:
+            painter.end()
+        self.assertEqual([self._drawn(b) for b in delegates.BADGES], painted)
+
+
 class TheSvgCacheTest(unittest.TestCase):
     """Every icon used to be a fresh file read, XML parse and raster - 30-35 at construction alone, duplicates and hidden chrome included; here because a QPixmap needs a QApplication, which this module has and the database tests do not."""
 

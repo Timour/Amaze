@@ -537,6 +537,19 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLineEdit", 86, 37, 276, 22, None),
         ),
     },
+    "T01": {   # the grid tile, drawn at TILE_DRAWN_SIZE - its spacing is what the delegate paints
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("badge open (top-left) ▸ badge_open", 6, 6, 22, 22, None),
+            ("badge favourite (top-right) ▸ badge_star", 110, 6, 22, 22, None),
+            ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
+            ("badge comment (lower-right) ▸ badge_comment_75", 110, 110, 22, 22, None),
+            ("tile name", 9, 142, 74, 15, "brushed_steel"),
+            ("tile subtitle", 9, 157, 34, 15, "Karma"),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -622,4 +635,24 @@ def drawn_form(frame_key: str) -> dict:
         "row_gap": fields[1][2] - (first[2] + first[4]) if len(fields) > 1 else 0,
         "label_gap": first[1] - max(n[1] + n[3] for n in labels),
         "button_gap": button_top - (last[2] + last[4]),
+    }
+
+
+TILE_DRAWN_SIZE = 128    # the size-slider value the T frames are drawn at
+
+
+def drawn_tile(frame_key: str = "T01") -> dict:
+    """The grid tile's spacing, read off its frame drawn at TILE_DRAWN_SIZE. ▸r/tile-from-frame"""
+    layout = DIALOG_LAYOUT[frame_key]
+    node = {n[0].split(_NODE_MARK)[0]: n for n in layout["nodes"]}
+    thumb, name, sub = node["thumbnail"], node["tile name"], node["tile subtitle"]
+    badge = node["badge open (top-left)"]
+    return {
+        "pad": thumb[1],
+        "width_extra": layout["frame"][0] - TILE_DRAWN_SIZE,
+        "img_text_gap": name[2] - (thumb[2] + thumb[4]),
+        "text_inset": name[1] - thumb[1],
+        "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
+        "badge_inset": badge[1] - thumb[1],
+        "badge_cap": badge[3],
     }

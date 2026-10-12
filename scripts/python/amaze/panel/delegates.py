@@ -126,17 +126,20 @@ class CategoryCellDelegate(GridCellDelegate):
 class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     """Paints one grid tile or list row as thumbnail + name line + greyed subtitle, generic over which role feeds the subtitle so every section reuses it unchanged; any failure falls back to the default painting, so a bad row degrades to a plain name rather than breaking the view."""
 
-    PAD = theme.ui_px(4)
-    GAP = theme.ui_px(8)
+    _TILE = amazetheme.drawn_tile()    # every spacing below is the T01 frame's ▸r/tile-from-frame
+    PAD = theme.ui_px(_TILE["pad"])
+    WIDTH_EXTRA = theme.ui_px(_TILE["width_extra"])    # cell width = size + this
+    BADGE_INSET = theme.ui_px(_TILE["badge_inset"])
+    BADGE_CAP = theme.ui_px(_TILE["badge_cap"])
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
     DIM = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
     THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
 
     GRID_NAME_COLOR = theme.color("text")           # GRID tiles are quieter than list mode - the name in the neutral grey the design system already uses for unselected tabs
     GRID_SUBTITLE_COLOR = theme.color("text_dim")   # and the subtitle a dimmer grey rather than the accent, which list mode keeps
-    GRID_TEXT_INSET = theme.ui_px(5)
-    GRID_BOTTOM_PAD = theme.ui_px(5)      # text to card bottom: 16R, the same as the margins between cards, expressed as 5c because the spec measures the GLYPH bottom and the font descent (~5R) sits inside the QRect
-    GRID_IMG_TEXT_GAP = theme.ui_px(8)    # image bottom to text top; `grid_cell_size` sizes the cell to this exact layout, so there is no leftover slack making tiles read tall
+    GRID_TEXT_INSET = theme.ui_px(_TILE["text_inset"])
+    GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
+    GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
 
     CATEGORY_COLOR = QtGui.QColor(amazetheme.LIST_INK)    # list mode's Category column where the category carries no colour of its own - a fixed yellow competing with the user's choice says the wrong thing about which one means something
     LIST_INK = QtGui.QColor(amazetheme.LIST_INK)          # LIST MODE'S ONE INK: a table is read down its columns, so everything paints in this except Category, which paints in its own category's colour
@@ -149,7 +152,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     def grid_cell_size(cls, ts, base_font):
         """The grid cell (`gridSize`) matching `_paint`'s square layout: a width-filling square image, the image-to-text gap, both text lines and the bottom pad - sizing the cell to the layout is what keeps tiles tight instead of a small image adrift in a tall block."""
         pad = cls.PAD
-        width = ts + theme.ui_px(10)
+        width = ts + cls.WIDTH_EXTRA
         icon_side = max(width - 2 * pad, 1)
         _nf, _rf, fm_name, fm_rend = cls.fonts_for(base_font, False)
         block_h = fm_name.height() + fm_rend.height()
@@ -355,7 +358,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     @classmethod
     def _badge_side(cls, icon_side):
         """ONE size rule for all four corners: grow with the tile up to a cap, with a floor so LIST mode's small icons still get a legible mark."""
-        return max(theme.ui_px(12), min(icon_side // 4, theme.ui_px(22)))
+        return max(theme.ui_px(12), min(icon_side // 4, cls.BADGE_CAP))
 
     FAV_MARK_COLOR = LIST_INK      # the mark columns' ink - the table's one colour, like every other list column
     OPEN_MARK_COLOR = LIST_INK
@@ -445,7 +448,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         icon_side = option_rect.width() - 2 * pad if mode_grid \
             else max(option_rect.height() - 2 * pad, 1)
         badge = self._badge_side(icon_side)
-        inset = theme.ui_px(2)
+        inset = self.BADGE_INSET
         x = option_rect.left() + pad + (
             inset if corner in (TOP_LEFT, LOWER_LEFT)
             else icon_side - badge - inset)
@@ -509,7 +512,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                       icon_side, dpr=1.0):
         """Every badge this tile carries, in ONE pass over the table - the corners mean top-left open scene, top-right favourite, lower-left versions, lower-right comment."""
         side = self._badge_side(icon_side)
-        inset = theme.ui_px(2)
+        inset = self.BADGE_INSET
         for badge in BADGES:
             role = getattr(self, badge.role_attr)
             if role is None:
