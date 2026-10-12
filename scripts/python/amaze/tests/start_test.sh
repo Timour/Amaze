@@ -126,7 +126,7 @@ test_viewport_pick test_host_engines test_log_export \
 test_hip_section test_library_policy test_atomic_write \
 test_gradient_guard test_absent_database test_harness_reset \
 test_db_hardening test_stale_proxy_index test_alert_sink \
-test_headless_dialogs \
+test_headless_dialogs test_save_door \
 test_versions test_grid_scroll test_file_section test_notes \
 test_repair test_toolbar_filter test_shaderball_assets \
 test_cancel_conversions \
@@ -145,6 +145,9 @@ test_bug_report test_peer_read test_two_panels test_peer_merge test_peer_refresh
 # crash 10/10 with it on. Suite-only - a live Houdini keeps its defaults.
 # ▸r/vulkan-threading
 export HOUDINI_VULKAN_VIEWER_MULTITHREADING=0
+# A houdini.env line beats the shell and silently re-armed the crash.
+# ▸r/vulkan-threading
+export HOUDINI_NO_ENV_FILE_OVERRIDES=1
 echo "suite: viewport draw single-threaded for this run" \
      "(HOUDINI_VULKAN_VIEWER_MULTITHREADING=0)"
 
