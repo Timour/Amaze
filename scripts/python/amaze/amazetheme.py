@@ -595,3 +595,31 @@ def forget_drawn_boxes() -> None:
     """Drop the derived-box cache - the NAMED test seam, so no test reaches into the module dict and pins its spelling."""
     _DRAWN_BOXES.clear()
     _DRAWN_REPEATS.clear()
+
+
+_FORM_FIELDS = ("QLineEdit", "QComboBox")
+
+
+def drawn_form(frame_key: str) -> dict:
+    """A form frame's margins and gaps, read off its drawn nodes; {} if it draws no form."""
+    layout = DIALOG_LAYOUT.get(frame_key) or {}
+    nodes = layout.get("nodes", ())
+    fields = sorted((n for n in nodes if n[0] in _FORM_FIELDS and n[5] is None),
+                    key=lambda n: n[2])
+    buttons = [n for n in nodes if n[0] == "QPushButton" and n[5] is None]
+    labels = [n for n in nodes if n[0] == "QLabel" and n[5]]
+    if not (fields and buttons and labels and layout.get("frame")):
+        return {}
+    width, height = layout["frame"]
+    first, last = fields[0], fields[-1]
+    button_top = min(b[2] for b in buttons)
+    right = width - max(n[1] + n[3] for n in fields + buttons)
+    return {
+        "top": first[2],
+        "left": min([right] + [n[1] for n in labels]),    # labels right-align: the longest must fit
+        "right": right,
+        "bottom": height - max(b[2] + b[4] for b in buttons),
+        "row_gap": fields[1][2] - (first[2] + first[4]) if len(fields) > 1 else 0,
+        "label_gap": first[1] - max(n[1] + n[3] for n in labels),
+        "button_gap": button_top - (last[2] + last[4]),
+    }

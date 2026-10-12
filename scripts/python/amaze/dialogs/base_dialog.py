@@ -90,6 +90,9 @@ class AssetDialog(QtWidgets.QDialog):
 
         layout = QtWidgets.QVBoxLayout()
         self._inner_layout = layout    # the margined content layout, for a dialog whose drawn margins are per-side
+        form = (amazetheme.drawn_form(self.FRAME_KEY)
+                if self.FRAME_KEY and self._content is None
+                and not self.HEADER_BAND else {})
         if self._content is not None:
             if self._form.rowCount():
                 raise RuntimeError(
@@ -99,21 +102,31 @@ class AssetDialog(QtWidgets.QDialog):
             layout.addWidget(self._content)
             if self._buttons is not None:
                 layout.addWidget(self._buttons)
+        elif form:    # every margin and gap is the frame's ▸p/save-dialog-rows
+            self._form.setHorizontalSpacing(theme.ui_px(form["label_gap"]))
+            self._form.setVerticalSpacing(theme.ui_px(form["row_gap"]))
+            layout.setSpacing(0)
+            layout.addLayout(self._form)
+            if self._buttons is not None:
+                layout.addSpacing(theme.ui_px(form["button_gap"]))
+                layout.addWidget(self._buttons)
         else:
             if self._buttons is not None:
                 self._form.addRow(self._buttons)
             layout.addLayout(self._form)
         _m = theme.ui_px(
             amazetheme.HOUSE_MARGIN if margins is None else margins)
-        layout.setContentsMargins(_m, _m, _m, _m)
+        sides = ([theme.ui_px(form[k]) for k in ("left", "top", "right", "bottom")]
+                 if form else [_m] * 4)
+        layout.setContentsMargins(*sides)
         if self.FORM_WIDTH:
-            layout.addStrut(theme.ui_px(self.FORM_WIDTH) - 2 * _m)    # THE LAYOUT'S OWN HINT, never `setFixedWidth`: under `SetFixedSize` the hint IS the width and is re-imposed on every activation, so a hand-set width dies at `show()` ▸r/fixed-size-constraint
+            layout.addStrut(theme.ui_px(self.FORM_WIDTH) - sides[0] - sides[2])    # ▸r/fixed-size-constraint
         if not self.HEADER_BAND:
             if self._fixed_size:
                 layout.setSizeConstraint(
                     QtWidgets.QLayout.SizeConstraint.SetFixedSize)
             self.setLayout(layout)
-            self._pin_label_column(_m)
+            self._pin_label_column(sides[0] + sides[2])
             return
 
         band_text = self.header_band_text()
@@ -126,7 +139,7 @@ class AssetDialog(QtWidgets.QDialog):
             outer.setSizeConstraint(
                 QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(outer)
-        self._pin_label_column(_m)
+        self._pin_label_column(sides[0] + sides[2])
 
     def _pin_button_row(self) -> None:
         """The drawn OK/Cancel pair - fixed widths and height, no padding of the box's own, the drawn gap, and the drawn ORDER, which a style is free to disagree with. Every frame that draws the pair draws it the same, so it lives here rather than in each dialog. ▸p/one-design-document"""
@@ -157,11 +170,11 @@ class AssetDialog(QtWidgets.QDialog):
             row.addWidget(ok)
             row.addWidget(cancel)
 
-    def _pin_label_column(self, margin: int) -> None:
+    def _pin_label_column(self, sides: int) -> None:
         """Pin every label to the slack the drawn numbers leave, clipping a long one as Houdini's own panes do - unpinned, a label 1px past the slack outgrows the strut and the whole family widens; AFTER setLayout, because `horizontalSpacing` answers -1 until the style resolves ▸p/save-dialog-rows"""
         if not (self.FORM_WIDTH and self.FIELD_WIDTH):
             return
-        slack = (theme.ui_px(self.FORM_WIDTH) - 2 * margin
+        slack = (theme.ui_px(self.FORM_WIDTH) - sides
                  - self._form.horizontalSpacing()
                  - theme.ui_px(self.FIELD_WIDTH))
         if slack <= 0:

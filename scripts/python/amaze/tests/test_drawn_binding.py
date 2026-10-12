@@ -597,6 +597,53 @@ class MovingADrawnNodeMovesTheWidget(unittest.TestCase):
                 "node, so the line is bound to a number that moves")
 
 
+class TheFormFamilyStandsOnItsFrame(unittest.TestCase):
+    """D09, D13 and D14 take every margin and gap from their frames. ▸r/form-from-frame"""
+
+    def _built(self):
+        from amaze.dialogs import base_dialog, save_dialog, user_dialog
+        return (
+            ("D09", save_dialog.SaveDialog(
+                ["Metal"], "Metal", name="rocks1",
+                sections=(("material", "Material"), ("cop", "Node")),
+                section="material", language="VEX",
+                language_sections=("code",))),
+            ("D13", base_dialog.NameDialog()),
+            ("D14", user_dialog.UserPickerDialog({"u1": "Plum"})),
+        )
+
+    @staticmethod
+    def _box(widget, dialog):
+        corner = widget.mapTo(dialog, widget.rect().topLeft())
+        return (corner.x(), corner.y(), widget.width(), widget.height())
+
+    def test_fields_buttons_and_window_land_where_drawn(self):
+        for key, dialog in self._built():
+            with self.subTest(frame=key):
+                self.addCleanup(dialog.deleteLater)
+                dialog.show()
+                QtWidgets.QApplication.processEvents()
+                self.addCleanup(dialog.hide)
+                px = lambda box: tuple(theme.ui_px(n) for n in box)    # noqa: E731
+                self.assertEqual(
+                    px(amazetheme.DIALOG_LAYOUT[key]["frame"]),
+                    (dialog.width(), dialog.height()))
+                boxes = amazetheme.drawn_boxes(key)
+                drawn = sorted(boxes.get(("QLineEdit", None), ())
+                               + boxes.get(("QComboBox", None), ()),
+                               key=lambda box: box[1])
+                form = dialog._form
+                built = [form.itemAt(row, QtWidgets.QFormLayout.ItemRole.FieldRole)
+                         for row in range(form.rowCount())]
+                built = [self._box(item.widget(), dialog) for item in built
+                         if item is not None and item.widget() is not None]
+                self.assertEqual([px(box) for box in drawn], built)
+                ok = dialog._buttons.button(
+                    QtWidgets.QDialogButtonBox.StandardButton.Ok)
+                self.assertEqual(px(boxes[("QPushButton", "OK")]),
+                                 self._box(ok, dialog))
+
+
 class TheSaveFamilyWearsTheDrawnButtons(unittest.TestCase):
     """D09, D13 and D14 all draw OK 31 and Cancel 50, flush right at the field column's edge - one pair, four dialogs. ▸p/save-dialog-rows"""
 
