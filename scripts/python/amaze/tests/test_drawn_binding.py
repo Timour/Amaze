@@ -129,6 +129,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
     (lambda f, n: f.startswith("G"),
      "the sidebar's rows are drawn by Houdini's style: the panel reads its "
      "sizes through drawn_sidebar, held by TheSidebarStandsOnItsFrame"),
+    (lambda f, n: f.startswith("N"),
+     "the comments pane is a document and a painted margin: it reads its "
+     "sizes through drawn_comments, held by TheCommentsPaneStandsOnItsFrame"),
 )
 
 
@@ -519,7 +522,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness walk's "
             "silence means nothing")
         self.assertEqual(
-            {"D06", "T01", "L01", "B01", "S01", "G01"},
+            {"D06", "T01", "L01", "B01", "S01", "G01", "N01"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
             "D06 draws only switches and the tab strip, and the panel's areas "

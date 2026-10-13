@@ -19,6 +19,8 @@ SAVE_DELAY_MS = 600       # a crash loses a sentence at most, and typing is not 
 HEADER_BG = amazetheme.COMMENT_HEADER_BG
 PAGE_BG = amazetheme.COMMENT_PAGE_BG
 
+_DRAWN = amazetheme.drawn_comments()    # every size and spacing below is N01's ▸r/comments-from-frame
+
 
 def _fill(widget, hex_color: str) -> None:
     """Background via the PALETTE, never a stylesheet: one on ANY ancestor hands the subtree to Qt's stylesheet engine and its primitive scrollbars."""
@@ -71,8 +73,8 @@ ADD_ITEMS = (    # what the + offers, in order - a new item type joins by adding
 class _NoteEdit(QtWidgets.QTextEdit):
     """The flowing document: plain paragraphs and framed to-do blocks interleave freely, a to-do being any block whose userState says so."""
 
-    GLYPH_SPACE = 24   # left margin reserved on to-do blocks, where the glyph paints
-    GLYPH_SIDE = 14
+    GLYPH_SPACE = _DRAWN["todo_indent"]   # left margin reserved on to-do blocks, where the glyph paints
+    GLYPH_SIDE = _DRAWN["glyph"]
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -166,8 +168,8 @@ class _NoteEdit(QtWidgets.QTextEdit):
     def _todo_format(self) -> QtGui.QTextBlockFormat:
         fmt = QtGui.QTextBlockFormat()   # NO background: a to-do is the page's colour and separation is PADDING, 10px each side plus the glyph margin
         fmt.setBackground(QtGui.QBrush(QtCore.Qt.BrushStyle.NoBrush))
-        fmt.setTopMargin(theme.ui_px(10))
-        fmt.setBottomMargin(theme.ui_px(10))
+        fmt.setTopMargin(theme.ui_px(_DRAWN["todo_pad"]))
+        fmt.setBottomMargin(theme.ui_px(_DRAWN["todo_pad"]))
         fmt.setLeftMargin(theme.ui_px(self.GLYPH_SPACE))
         return fmt
 
@@ -340,7 +342,7 @@ class _NoteEdit(QtWidgets.QTextEdit):
                         y = (tlayout.position().y() + line.y()
                              + (line.height() - side) / 2.0 - y_scroll)
                         painter.drawPixmap(
-                            int(rect.left() - x_scroll + theme.ui_px(4)),
+                            int(rect.left() - x_scroll + theme.ui_px(_DRAWN["glyph_inset"])),
                             int(y),
                             pixmap)
             block = block.next()
@@ -429,7 +431,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
     def __init__(self, preferences, parent=None) -> None:
         super().__init__(preferences, "notes_panel_width",
-                         theme.ui_px(450), parent)
+                         theme.ui_px(_DRAWN["width"]), parent)
         self.preferences = preferences
         self._key = None
         self._loading = False
@@ -456,8 +458,8 @@ class NotesPanel(ui_helpers.HeldPane):
         header = QtWidgets.QWidget()
         _fill(header, HEADER_BG)
         head = QtWidgets.QHBoxLayout(header)
-        gap = theme.ui_px(10)
-        head.setContentsMargins(gap, gap, gap, gap)
+        pad, gap = theme.ui_px(_DRAWN["pad"]), theme.ui_px(_DRAWN["gap"])
+        head.setContentsMargins(pad, pad, pad, pad)
         head.setSpacing(gap)
         self._icon_label = QtWidgets.QLabel()
         head.addWidget(self._icon_label, 0,
@@ -496,7 +498,7 @@ class NotesPanel(ui_helpers.HeldPane):
         body_box = QtWidgets.QVBoxLayout(body)
         body_box.setContentsMargins(0, 0, 0, 0)   # ZERO chrome margins: the inset lives in the DOCUMENT margin, so scrolled text slides up to the header border
         self.text_edit = _NoteEdit()
-        self.text_edit.document().setDocumentMargin(theme.ui_px(12))
+        self.text_edit.document().setDocumentMargin(theme.ui_px(_DRAWN["doc_margin"]))
         self.text_edit.textChanged.connect(self._something_changed)
         body_box.addWidget(self.text_edit, 1)
         self.body_widget = body
@@ -512,14 +514,14 @@ class NotesPanel(ui_helpers.HeldPane):
 
         import amaze
         dpr = theme.screen_ratio(self)
-        side = theme.ui_px(39)
+        side = theme.ui_px(_DRAWN["icon"])
         # AS DRAWN, no tint map: the art carries its own colour and the toolbar chip is the one site that genuinely recolours this glyph
         pixmap = ui_helpers.device_pixmap(
             os.path.join(os.path.dirname(amaze.__file__),
                          "ui", "icon_comments.svg"),
             side, dpr)
         self._icon_label.setPixmap(pixmap)
-        plus_side = theme.ui_px(18)
+        plus_side = theme.ui_px(_DRAWN["plus"])
         plus_ink = PAGE_BG if getattr(self, "_ghost", False) \
             else COMMENT_INK
         self.add_button.setIcon(QtGui.QIcon(

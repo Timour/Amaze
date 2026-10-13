@@ -700,6 +700,33 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("grip ▸ Houdini's own, traced", 221.5, 98.5, 3, 2.5, None),
         ),
     },
+    "N01": {   # the comments pane over an invented comment - its spacing and glyph sizes are read
+        "frame": (450, 210),
+        "nodes": (
+            ("header", 0, 0, 450, 68, None),
+            ("body", 0, 68, 450, 142, None),
+            ("label ▸ section", 59, 10, 343, 16, None),
+            ("text ▸ section", 59, 10.5, 75, 15, "Material/Metal"),
+            ("label ▸ name", 59, 26, 343, 16, None),
+            ("text ▸ name", 59, 26.5, 76, 15, "brushed_steel"),
+            ("label ▸ type", 59, 42, 343, 16, None),
+            ("text ▸ type", 59, 42.5, 57, 15, "USD Karma"),
+            ("button ▸ add", 412, 20, 28, 27, None),
+            ("menu marker ▸ Houdini's own, traced", 433, 40, 4.5, 4.5, None),
+            ("line ▸ 1", 12, 80, 185.36, 16, None),
+            ("text ▸ 1", 12, 80.5, 186, 15, "The rust reads too orange in daylight."),
+            ("line ▸ 2", 36, 106, 109.41, 16, None),
+            ("text ▸ 2", 36, 106.5, 109, 15, "Darken the edge wear"),
+            ("line ▸ 3", 36, 132, 122.56, 16, None),
+            ("text ▸ 3", 36, 132.5, 123, 15, "Render a new thumbnail"),
+            ("line ▸ 4", 12, 158, 151.94, 16, None),
+            ("text ▸ 4", 12, 158.5, 153, 15, "The scale is right at one metre."),
+            ("icon ▸ header ▸ icon_comments.svg", 10, 14, 39, 39, None),
+            ("icon ▸ add ▸ plus-circle.svg", 417, 25, 18, 18, None),
+            ("glyph ▸ 2 ▸ circle.svg", 16, 107, 14, 14, None),
+            ("glyph ▸ 3 ▸ check-circle.svg", 16, 133, 14, 14, None),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -893,3 +920,28 @@ def drawn_sidebar(frame_key: str = "G01") -> dict:
 
     return {"width": first("list")[3], "bar": first("bar")[3],
             "handle": first("splitter handle")[3]}
+
+
+def drawn_comments(frame_key: str = "N01") -> dict:
+    """The comments pane's width, spacing, margins and glyphs, off its frame. ▸r/comments-from-frame"""
+    layout = DIALOG_LAYOUT[frame_key]
+    node = {n[0]: n for n in layout["nodes"]}
+
+    def kind(prefix):
+        return next(n for n in layout["nodes"] if n[0].startswith(prefix))
+
+    icon, section = kind("icon ▸ header"), node["label ▸ section"]
+    plain, todo = node["line ▸ 1"], node["line ▸ 2"]
+    glyph = kind("glyph ▸ 2")
+    return {
+        "width": layout["frame"][0],
+        "pad": icon[1] - node["header"][1],
+        "gap": section[1] - (icon[1] + icon[3]),
+        "icon": icon[3],
+        "plus": kind("icon ▸ add")[3],
+        "doc_margin": plain[1] - node["body"][1],
+        "todo_indent": todo[1] - plain[1],
+        "todo_pad": todo[2] - (plain[2] + plain[4]),
+        "glyph": glyph[3],
+        "glyph_inset": glyph[1] - plain[1],
+    }

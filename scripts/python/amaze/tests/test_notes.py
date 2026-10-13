@@ -1748,5 +1748,114 @@ class AboutBecomesAComment(unittest.TestCase):
                          "the comment refused it - the text is gone")
 
 
+class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
+    """The pane's width, header spacing, note margins and glyphs are what N01 draws."""
+
+    def setUp(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        from amaze.panel import notes_panel
+        self.px = theme.ui_px
+        self.drawn = amazetheme.drawn_comments()
+        self.frame = amazetheme.DIALOG_LAYOUT["N01"]
+        self.node = {n[0]: n for n in self.frame["nodes"]}
+        self.pane = notes_panel.NotesPanel(_Prefs(self))
+        self.addCleanup(self.pane.deleteLater)
+        pane = self.pane
+        pane._loading = True
+        pane.set_header("Material", "Metal", "brushed_steel", "USD Karma", "#c87533")
+        pane.text_edit.load_items([
+            {"t": "text", "text": "The rust reads too orange in daylight."},
+            {"t": "todo", "label": "Darken the edge wear", "done": False},
+            {"t": "todo", "label": "Render a new thumbnail", "done": True},
+            {"t": "text", "text": "The scale is right at one metre."}])
+        pane._loading = False
+        width, height = self.frame["frame"]
+        pane.resize(self.px(width), self.px(height))
+        self._lay_out(pane)
+        pane.text_edit.document().setTextWidth(pane.text_edit.viewport().width())    # what a shown edit does
+
+    def _lay_out(self, widget):
+        """A hidden widget's layouts run only when told, each one level down."""
+        if widget.layout() is not None:
+            widget.layout().setGeometry(QtCore.QRect(QtCore.QPoint(0, 0), widget.size()))
+        QtWidgets.QApplication.sendEvent(widget, QtGui.QResizeEvent(widget.size(), widget.size()))
+        for child in widget.findChildren(
+                QtWidgets.QWidget, options=QtCore.Qt.FindChildOption.FindDirectChildrenOnly):
+            self._lay_out(child)
+
+    def _x(self, widget):
+        return widget.mapTo(self.pane, QtCore.QPoint(0, 0)).x()
+
+    def test_the_frame_is_one_pane_the_code_can_follow(self):
+        """One pad round the header, one gap, one to-do pad above and below."""
+        n, width = self.node, self.frame["frame"][0]
+        icon = next(v for k, v in n.items() if k.startswith("icon ▸ header"))
+        add, section, kind = n["button ▸ add"], n["label ▸ section"], n["label ▸ type"]
+        pad = icon[1]
+        self.assertEqual(pad, section[2] - n["header"][2], "the top pad is not the left")
+        self.assertEqual(pad, width - (add[1] + add[3]), "the right pad is not the left")
+        self.assertEqual(pad, n["header"][4] - (kind[2] + kind[4]), "the bottom pad is not the left")
+        self.assertEqual(section[1] - (icon[1] + icon[3]), add[1] - (section[1] + section[3]),
+                         "the header's two gaps differ")
+        plain, todo, done, after = (n["line ▸ %d" % i] for i in (1, 2, 3, 4))
+        self.assertEqual(todo[2] - (plain[2] + plain[4]), after[2] - (done[2] + done[4]),
+                         "a to-do is padded differently above and below")
+        self.assertEqual(plain[1], after[1], "the plain lines start apart")
+
+    def test_the_pane_opens_at_its_drawn_width(self):
+        self.assertEqual(self.px(self.drawn["width"]), self.pane.sizeHint().width())
+
+    def test_the_header_is_where_it_is_drawn(self):
+        pane, d = self.pane, self.drawn
+        pad, gap = self.px(d["pad"]), self.px(d["gap"])
+        margins = pane.header_widget.layout().contentsMargins()
+        self.assertEqual((pad,) * 4, (margins.left(), margins.top(), margins.right(), margins.bottom()))
+        self.assertEqual(gap, pane.header_widget.layout().spacing())
+        self.assertEqual((pad, self.px(d["icon"])), (self._x(pane._icon_label), pane._icon_label.width()))
+        self.assertEqual(pad + self.px(d["icon"]) + gap, self._x(pane.section_label))
+        self.assertEqual(pane.width() - pad, self._x(pane.add_button) + pane.add_button.width())
+        self.assertEqual(self.px(d["plus"]), pane.add_button.iconSize().width())
+
+    def test_the_note_is_where_it_is_drawn(self):
+        doc, d = self.pane.text_edit.document(), self.drawn
+        self.assertEqual(self.px(d["doc_margin"]), doc.documentMargin())
+        lines, block = [], doc.begin()
+        while block.isValid():
+            doc.documentLayout().blockBoundingRect(block)    # lays the block out: lineAt on an unlaid one CRASHES
+            layout = block.layout()
+            self.assertGreater(layout.lineCount(), 0, "a block was never laid out - not a test")
+            line = layout.lineAt(0)
+            lines.append((layout.position().x() + line.x(),
+                          layout.position().y() + line.y(), line.height()))
+            block = block.next()
+        plain, todo = lines[0], lines[1]
+        self.assertEqual(self.px(d["todo_indent"]), todo[0] - plain[0], "the to-do indent")
+        self.assertEqual(self.px(d["todo_pad"]), todo[1] - (plain[1] + plain[2]),
+                         "the pad above a to-do")
+        done, after = lines[2], lines[3]
+        self.assertEqual(self.px(d["todo_pad"]), after[1] - (done[1] + done[2]),
+                         "the pad below a to-do")
+
+    def test_every_glyph_is_where_it_is_drawn(self):
+        recorded = []
+
+        class _Recorder(QtGui.QPainter):
+            def drawPixmap(self, x, y, pixmap):
+                recorded.append((x, pixmap.width() / pixmap.devicePixelRatio()))
+
+        edit, d = self.pane.text_edit, self.drawn
+        surface = QtGui.QPixmap(max(edit.viewport().width(), 1), max(edit.viewport().height(), 1))
+        painter = _Recorder(surface)
+        try:
+            edit._paint_todo_glyphs(painter)
+        finally:
+            painter.end()
+        self.assertEqual(2, len(recorded), "the two to-dos did not each paint a glyph")
+        for x, side in recorded:
+            self.assertEqual(self.px(d["doc_margin"]) + self.px(d["glyph_inset"]), x)
+            self.assertEqual(self.px(d["glyph"]), side)
+
+
 if __name__ == "__main__":
     unittest.main()
