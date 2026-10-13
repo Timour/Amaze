@@ -64,7 +64,35 @@ def role_color(index, role):
 class GridCellDelegate(QtWidgets.QStyledItemDelegate):
     """Every cell of the Grid's TABLE, and deliberately nothing else: the panel applies `hou.qt.styleSheet()` to its own root and every child inherits Houdini's item rules, so the table wears the host's selection band rather than a second opinion about it. ▸r/pluto-theme"""
 
-    pass    # NO CELL PADDING, and the emptiness is the point: a `QTableView::item` stylesheet hands item drawing to `QStyleSheetStyle` and takes the font and every colour with it; a `QProxyStyle` on `PM_FocusFrameHMargin` via `setStyle` bus-errored at teardown (measured 2026-08-04); and insetting `option.rect` in `paint` shrinks the CELL, so the selection band stopped short at every column edge
+    TEXT_INSET = theme.ui_px(amazetheme.drawn_list()["text_inset"])    # paint draws the cell, then its text here ▸r/list-from-frame
+
+    @staticmethod
+    def _style(widget):
+        return widget.style() if widget is not None else QtWidgets.QApplication.style()
+
+    def text_shift(self, widget) -> int:
+        """How far right of the style's own text margin the text is drawn, to sit at TEXT_INSET."""
+        margin = self._style(widget).pixelMetric(
+            QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, widget) + 1
+        return max(self.TEXT_INSET - margin, 0)
+
+    def paint(self, painter, option, index):
+        cell = QtWidgets.QStyleOptionViewItem(option)
+        self.initStyleOption(cell, index)
+        extras = (QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasDecoration
+                  | QtWidgets.QStyleOptionViewItem.ViewItemFeature.HasCheckIndicator)
+        shift = self.text_shift(option.widget)
+        if not shift or not cell.text or cell.features & extras:
+            return super().paint(painter, option, index)
+        style, text = self._style(option.widget), cell.text
+        cell.text = ""
+        style.drawControl(QtWidgets.QStyle.ControlElement.CE_ItemViewItem,
+                          cell, painter, option.widget)
+        cell.text = text
+        cell.rect = option.rect.adjusted(shift, 0, 0, 0)
+        cell.state &= ~QtWidgets.QStyle.StateFlag.State_HasFocus
+        style.drawControl(QtWidgets.QStyle.ControlElement.CE_ItemViewItem,
+                          cell, painter, option.widget)
 
 
 class TickCellDelegate(GridCellDelegate):

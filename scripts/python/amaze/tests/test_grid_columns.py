@@ -433,7 +433,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
 
 
 class EveryCellHasAIREitherSide(unittest.TestCase):
-    """Cell text sits at the style's own margin: no stylesheet, no style. ▸r/list-from-frame"""
+    """Cell text sits at L01's inset, drawn by the delegate: no stylesheet, no style object."""
 
     @classmethod
     def setUpClass(cls):
@@ -1159,6 +1159,69 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         ticks = {n[1] - self.column[n[0].split(" ▸ ")[1]][1]
                  for n in self.nodes if n[0].startswith("tick box ▸ ")}
         self.assertEqual(1, len(ticks), "the ticks sit at insets %s" % sorted(ticks))
+        texts = {n[1] - self.column[n[0].split(" ▸ ")[1]][1]
+                 for n in self.nodes if n[0].startswith("cell ▸ ")}
+        self.assertEqual(1, len(texts), "the row texts sit at insets %s" % sorted(texts))
+
+    def _render(self, delegate, index, selected=False):
+        option = QtWidgets.QStyleOptionViewItem()
+        self.table.initViewItemOption(option)
+        row = next(n for n in self.nodes if n[0].startswith("row ▸ "))
+        option.rect = QtCore.QRect(0, 0, self.px(self.column["name"][3]), self.px(row[4]))
+        if selected:
+            option.state |= QtWidgets.QStyle.StateFlag.State_Selected
+        image = QtGui.QImage(option.rect.size(), QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("#ff00ff"))
+        painter = QtGui.QPainter(image)
+        try:
+            delegate.paint(painter, option, index)
+        finally:
+            painter.end()
+        return image
+
+    @staticmethod
+    def _ink_left(image):
+        ground = image.pixelColor(1, 1)
+        for x in range(image.width()):
+            for y in range(image.height()):
+                c = image.pixelColor(x, y)
+                if (abs(c.red() - ground.red()) + abs(c.green() - ground.green())
+                        + abs(c.blue() - ground.blue())) > 90:
+                    return x
+        return None
+
+    def _name_cell(self):
+        model, column = self.table.model(), grid_columns.KEYS.index("name")
+        index = next((model.index(r, column) for r in range(model.rowCount())
+                      if model.index(r, column).data()), None)
+        self.assertIsNotNone(index, "no row of %d has a name to draw - not a test"
+                             % model.rowCount())
+        plain = QtWidgets.QStyledItemDelegate(self.table)
+        self.addCleanup(plain.deleteLater)
+        return index, self.table.itemDelegate(), plain
+
+    def test_every_row_text_starts_where_it_is_drawn(self):
+        index, delegate, plain = self._name_cell()
+        margin = self.table.style().pixelMetric(
+            QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, self.table) + 1
+        shift = delegate.text_shift(self.table)
+        cell = next(n for n in self.nodes if n[0] == "cell ▸ name")
+        self.assertEqual(self.px(cell[1] - self.column["name"][1]), margin + shift)
+        self.assertEqual(shift, self._ink_left(self._render(delegate, index))
+                         - self._ink_left(self._render(plain, index)),
+                         "the text is not drawn where the shift puts it")
+
+    def test_the_selection_band_still_covers_the_whole_cell(self):
+        index, delegate, plain = self._name_cell()
+        ours = self._render(delegate, index, selected=True)
+        theirs = self._render(plain, index, selected=True)
+        self.assertNotEqual("#ff00ff", theirs.pixelColor(0, 1).name(),
+                            "the style paints no band here - not a test")
+        for x in range(delegate.text_shift(self.table) + 2):
+            for y in (1, ours.height() - 2):
+                with self.subTest(x=x, y=y):
+                    self.assertEqual(theirs.pixelColor(x, y).name(),
+                                     ours.pixelColor(x, y).name())
 
     def test_the_header_is_its_drawn_height(self):
         height = self.px(self.column["name"][4])

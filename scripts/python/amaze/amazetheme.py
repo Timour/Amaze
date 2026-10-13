@@ -587,38 +587,38 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("divider ▸ id", 1541, 0, 1, 20, None),
             ("heading ▸ id", 1307, 2.5, 11, 15, "ID"),
             ("row ▸ plain", 0, 20, 1542, 19, None),
-            ("cell ▸ name", 3, 22, 72, 15, "brushed_steel"),
-            ("cell ▸ type", 179, 22, 48, 15, "USD Re…"),
-            ("cell ▸ category", 238, 22, 28, 15, "Metal"),
-            ("cell ▸ version", 383, 22, 46, 15, "Version 2"),
-            ("cell ▸ tags", 588, 22, 55, 15, "steel, worn"),
-            ("cell ▸ license", 888, 22, 20, 15, "CC0"),
-            ("cell ▸ date", 1175, 22, 100, 15, "2026-09-04 01:51:48"),
-            ("cell ▸ id", 1305, 22, 188, 15, "8f3c2a71d4e94b0c9a6e1f5b2d7c3e90"),
+            ("cell ▸ name", 5, 22, 72, 15, "brushed_steel"),
+            ("cell ▸ type", 181, 22, 48, 15, "USD Re…"),
+            ("cell ▸ category", 240, 22, 28, 15, "Metal"),
+            ("cell ▸ version", 385, 22, 46, 15, "Version 2"),
+            ("cell ▸ tags", 590, 22, 55, 15, "steel, worn"),
+            ("cell ▸ license", 890, 22, 20, 15, "CC0"),
+            ("cell ▸ date", 1177, 22, 100, 15, "2026-09-04 01:51:48"),
+            ("cell ▸ id", 1307, 22, 188, 15, "8f3c2a71d4e94b0c9a6e1f5b2d7c3e90"),
             ("tick box ▸ favorite", 316, 20, 12, 19, None),
             ("tick box ▸ comments", 505, 20, 12, 19, None),
             ("row ▸ plain", 0, 39, 1542, 19, None),
-            ("cell ▸ name", 3, 41, 58, 15, "oak_planks"),
-            ("cell ▸ type", 179, 41, 48, 15, "USD Re…"),
-            ("cell ▸ category", 238, 41, 30, 15, "Wood"),
-            ("cell ▸ date", 1175, 41, 100, 15, "2026-08-21 14:02:10"),
-            ("cell ▸ id", 1305, 41, 189, 15, "1b7e9d0c3a5f4e2b8c6d9a0f7e3b5c1d"),
+            ("cell ▸ name", 5, 41, 58, 15, "oak_planks"),
+            ("cell ▸ type", 181, 41, 48, 15, "USD Re…"),
+            ("cell ▸ category", 240, 41, 30, 15, "Wood"),
+            ("cell ▸ date", 1177, 41, 100, 15, "2026-08-21 14:02:10"),
+            ("cell ▸ id", 1307, 41, 189, 15, "1b7e9d0c3a5f4e2b8c6d9a0f7e3b5c1d"),
             ("row ▸ selected", 0, 58, 1542, 19, None),
-            ("cell ▸ name", 3, 60, 33, 15, "rocks1"),
-            ("cell ▸ type", 179, 60, 48, 15, "USD Re…"),
-            ("cell ▸ category", 238, 60, 30, 15, "Stone"),
-            ("cell ▸ tags", 588, 60, 64, 15, "rock, ground"),
-            ("cell ▸ license", 888, 60, 94, 15, "MIT Public Domain"),
-            ("cell ▸ date", 1175, 60, 100, 15, "2026-10-12 22:41:05"),
-            ("cell ▸ id", 1305, 60, 189, 15, "c4d2e8f1a9b3470d8e6f2a5c1b9d7e30"),
+            ("cell ▸ name", 5, 60, 33, 15, "rocks1"),
+            ("cell ▸ type", 181, 60, 48, 15, "USD Re…"),
+            ("cell ▸ category", 240, 60, 30, 15, "Stone"),
+            ("cell ▸ tags", 590, 60, 64, 15, "rock, ground"),
+            ("cell ▸ license", 890, 60, 94, 15, "MIT Public Domain"),
+            ("cell ▸ date", 1177, 60, 100, 15, "2026-10-12 22:41:05"),
+            ("cell ▸ id", 1307, 60, 189, 15, "c4d2e8f1a9b3470d8e6f2a5c1b9d7e30"),
             ("tick box ▸ favorite", 316, 58, 12, 19, None),
             ("tick box ▸ open", 451, 58, 12, 19, None),
             ("row ▸ plain", 0, 77, 1542, 19, None),
-            ("cell ▸ name", 3, 79, 53, 15, "red_velvet"),
-            ("cell ▸ type", 179, 79, 48, 15, "USD Re…"),
-            ("cell ▸ category", 238, 79, 31, 15, "Fabric"),
-            ("cell ▸ date", 1175, 79, 100, 15, "2026-07-30 09:15:33"),
-            ("cell ▸ id", 1305, 79, 188, 15, "e5a1c7b3d9f2468a0c4e8b2d6f1a3c57"),
+            ("cell ▸ name", 5, 79, 53, 15, "red_velvet"),
+            ("cell ▸ type", 181, 79, 48, 15, "USD Re…"),
+            ("cell ▸ category", 240, 79, 31, 15, "Fabric"),
+            ("cell ▸ date", 1177, 79, 100, 15, "2026-07-30 09:15:33"),
+            ("cell ▸ id", 1307, 79, 188, 15, "e5a1c7b3d9f2468a0c4e8b2d6f1a3c57"),
             ("tick box ▸ comments", 505, 77, 12, 19, None),
         ),
     },
@@ -731,19 +731,20 @@ def drawn_tile(frame_key: str = "T01") -> dict:
 
 
 def drawn_list(frame_key: str = "L01") -> dict:
-    """The list's header, column widths and tick box, read off its frame. ▸r/list-from-frame"""
+    """The list's header, widths, text inset and tick box, off its frame. ▸r/list-from-frame"""
     nodes = DIALOG_LAYOUT[frame_key]["nodes"]
 
     def by_key(kind):
         return {n[0].split(_NODE_MARK)[1]: n for n in nodes
                 if n[0].startswith(kind + _NODE_MARK)}
 
-    columns, headings = by_key("column"), by_key("heading")
+    columns, headings, cells = by_key("column"), by_key("heading"), by_key("cell")
     tick = next(n for n in nodes if n[0].startswith("tick box" + _NODE_MARK))
     first = next(iter(columns))
     return {
         "header_h": columns[first][4],
         "cell_pad": headings[first][1] - columns[first][1],
+        "text_inset": cells[first][1] - columns[first][1],
         "widths": {key: n[3] for key, n in columns.items()},
         "tick_pad": tick[1] - columns[tick[0].split(_NODE_MARK)[1]][1],
         "tick_side": tick[3],
