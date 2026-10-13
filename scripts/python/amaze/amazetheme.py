@@ -670,6 +670,36 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("label ▸ file", 204.5, 9, 18, 15, "File"),
         ),
     },
+    "G01": {   # the sidebar at its design width - its width, colour bar and splitter handle are read
+        "frame": (226, 190),
+        "nodes": (
+            ("list", 0, 0, 220, 190, None),
+            ("row ▸ selected", 0, 0, 220, 19, None),
+            ("text ▸ All", 13, 2, 44, 15, "All (128)"),
+            ("row ▸ plain", 0, 19, 220, 19, None),
+            ("bar ▸ Metal", 3, 21, 4, 15, None),
+            ("text ▸ Metal", 13, 21, 50, 15, "Metal (12)"),
+            ("row ▸ plain", 0, 38, 220, 19, None),
+            ("bar ▸ Wood", 3, 40, 4, 15, None),
+            ("text ▸ Wood", 13, 40, 45, 15, "Wood (9)"),
+            ("row ▸ plain", 0, 57, 220, 19, None),
+            ("text ▸ Stone", 13, 59, 45, 15, "Stone (4)"),
+            ("row ▸ plain", 0, 76, 220, 19, None),
+            ("bar ▸ Fabric", 3, 78, 4, 15, None),
+            ("text ▸ Fabric", 13, 78, 53, 15, "Fabric (21)"),
+            ("row ▸ plain", 0, 95, 220, 19, None),
+            ("text ▸ Glass", 13, 97, 43, 15, "Glass (6)"),
+            ("row ▸ plain", 0, 114, 220, 19, None),
+            ("text ▸ Plastic", 13, 116, 55, 15, "Plastic (17)"),
+            ("row ▸ plain", 0, 133, 220, 19, None),
+            ("bar ▸ Paint", 3, 135, 4, 15, None),
+            ("text ▸ Paint", 13, 135, 48, 15, "Paint (11)"),
+            ("splitter handle", 220, 0, 6, 190, None),
+            ("grip ▸ Houdini's own, traced", 221.5, 89, 3, 2.5, None),
+            ("grip ▸ Houdini's own, traced", 221.5, 94, 3, 2.5, None),
+            ("grip ▸ Houdini's own, traced", 221.5, 98.5, 3, 2.5, None),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -852,3 +882,14 @@ def drawn_tabs(frame_key: str = "S01") -> dict:
         "chip_gap": chips[1][1] - (chips[0][1] + chips[0][3]),
         "chip_pad": box[1] - chips[0][1],
     }
+
+
+def drawn_sidebar(frame_key: str = "G01") -> dict:
+    """The sidebar's width, colour bar and splitter handle, off its frame. ▸r/sidebar-from-frame"""
+    nodes = DIALOG_LAYOUT[frame_key]["nodes"]
+
+    def first(kind):
+        return next(n for n in nodes if n[0].split(_NODE_MARK)[0] == kind)
+
+    return {"width": first("list")[3], "bar": first("bar")[3],
+            "handle": first("splitter handle")[3]}

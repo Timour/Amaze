@@ -722,7 +722,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         """This row's category colour, or None; invalid values are ignored rather than painted."""
         return role_color(index, self.color_role)
 
-    BAR = theme.ui_px(4)    # the colour bar's width. EVERY row reserves it - a coloured category fills it, a plain one leaves it transparent - so all labels start at the same x; indenting only the coloured rows sat neighbouring labels 4px apart
+    BAR = theme.ui_px(amazetheme.drawn_sidebar()["bar"])    # G01's; EVERY row reserves it, so all labels start level
 
     def initStyleOption(self, option, index):
         """Everything the STYLE needs to draw the row itself, set up as ordinary view-item fields so nothing is painted by hand; `option.text` is DISPLAY ONLY and never touches `DisplayRole`, which stays the clean name because category matching, restore-by-text and the filters all key off it."""

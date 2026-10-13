@@ -210,5 +210,58 @@ class WhatMayBeDroppedOnASidebarRowIsTheCONTEXTsAnswer(unittest.TestCase):
             sections.AssetSection.accepts_category_drop(None, None, "Metal"))
 
 
+class TheSidebarStandsOnItsFrame(unittest.TestCase):
+    """The sidebar's width, colour bar and splitter handle are what G01 draws. ▸r/sidebar-from-frame"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        self.px = theme.ui_px
+        self.frame = amazetheme.DIALOG_LAYOUT["G01"]
+
+    def _kind(self, kind):
+        return [n for n in self.frame["nodes"] if n[0].split(" ▸ ")[0] == kind]
+
+    def test_the_frame_is_one_sidebar_the_code_can_follow(self):
+        """Rows edge to edge at one height, one bar, one text x, the handle at the list's edge."""
+        rows = sorted(self._kind("row"), key=lambda n: n[2])
+        self.assertEqual(1, len({r[4] for r in rows}), "the rows are drawn at different heights")
+        for a, b in zip(rows, rows[1:]):
+            self.assertEqual(a[2] + a[4], b[2], "two rows do not meet")
+        self.assertEqual(1, len({(b[1], b[3], b[4]) for b in self._kind("bar")}),
+                         "the colour bars are drawn at different places or sizes")
+        self.assertEqual(1, len({t[1] for t in self._kind("text")}), "the labels start apart")
+        listed, handle = self._kind("list")[0], self._kind("splitter handle")[0]
+        self.assertEqual(listed[1] + listed[3], handle[1], "the handle is not at the list's edge")
+        self.assertEqual(self.frame["frame"][0], handle[1] + handle[3])
+
+    def test_the_sidebar_opens_at_its_drawn_width(self):
+        width = self.px(self._kind("list")[0][3])
+        panel = self.panel
+        self.addCleanup(setattr, panel.prefs, "sidebar_width", panel.prefs.sidebar_width)
+        panel.prefs.sidebar_width = 0    # nothing remembered: the pane asks for its default
+        self.assertEqual(width, panel.cat_wrapper.sizeHint().width())
+        self.assertEqual((width, width),
+                         (panel.cat_wrapper.maximumWidth(), panel.cat_list.maximumWidth()))
+
+    def test_the_handle_is_its_drawn_width(self):
+        splitter = self.panel.cat_wrapper.parentWidget()
+        self.assertIsInstance(splitter, QtWidgets.QSplitter)
+        self.assertEqual(self.px(self._kind("splitter handle")[0][3]), splitter.handleWidth())
+
+    def test_every_row_reserves_the_drawn_bar(self):
+        view = self.panel.cat_list
+        model = view.model()
+        self.assertTrue(model is not None and model.rowCount(), "no sidebar rows - not a test")
+        option = QtWidgets.QStyleOptionViewItem()
+        view.initViewItemOption(option)
+        self.panel.sidebar_delegate.initStyleOption(option, model.index(0, 0))
+        self.assertEqual(self.px(self._kind("bar")[0][3]), option.decorationSize.width())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -641,6 +641,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     _LIST = amazetheme.drawn_list()    # header, heading inset and column widths are L01's ▸r/list-from-frame
     _TOOLBAR = amazetheme.drawn_toolbar()    # the toolbar's height, edges, gaps and sizes are B01's
+    _SIDEBAR = amazetheme.drawn_sidebar()    # the sidebar's width and its splitter handle are G01's
     CELL_PAD = theme.ui_px(_LIST["cell_pad"])    #: a heading's inset from its column edge; row text is the style's
     HEADER_BG = QtGui.QColor(amazetheme.LIST_HEADER_BG)    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
     HEADER_DIVIDER = QtGui.QColor(amazetheme.LIST_HEADER_DIVIDER)
@@ -986,11 +987,11 @@ class AmazePanel(QtWidgets.QWidget):
             self.notes_panel.changed.connect(self._on_note_saved)
             self.notes_panel.setVisible(bool(self.prefs.show_notes))
             self.notes_panel.set_note_accent(theme.color_hex("star"))
-            splitter.setHandleWidth(theme.ui_px(6))    # WIDTH only, painting left fully native: setHandleWidth changes how much room native painting has, never how the handle is drawn, so Houdini's own grip dots and hover survive
+            splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
         self.cat_wrapper = ui_helpers.HeldPane(    # the sidebar OWNS its width like the notes pane does: the remembered drag, or the 220 design width, asked of the splitter rather than left to cat_list's bare size hint
-            self.prefs, "sidebar_width", theme.ui_px(220))
-        self.cat_wrapper.setMaximumWidth(theme.ui_px(220))    # the splitter's pane widget is cat_wrapper, and catview's own <maximumSize width="220"> in amaze.ui constrains catview alone, so the cap is re-declared here or the category pane has no width limit at all
-        self.cat_list.setMaximumWidth(theme.ui_px(220))    # and again on the list, this time AT UI SCALE: catview's own maximumSize in amaze.ui is a flat 220, so without this override a scaled display (Windows/Linux at 1.5x) would grow the wrapper while the list stayed at 220 and open a dead band of wrapper backdrop between list and grid. Runtime override, .ui untouched - the standing practice
+            self.prefs, "sidebar_width", theme.ui_px(self._SIDEBAR["width"]))
+        self.cat_wrapper.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # the pane's cap ▸r/sidebar-from-frame
+        self.cat_list.setMaximumWidth(theme.ui_px(self._SIDEBAR["width"]))    # and the list's, at UI scale
         self.cat_wrapper.setAutoFillBackground(True)    # backdrop fill for the whole category section - the tab row's margins and any space the list does not cover - darker than the list's own BG1 so the section reads as one frame. Via QPalette, NEVER setStyleSheet/WA_StyledBackground on this ancestor: a stylesheet here pushes cat_list onto Qt's CSS rendering path for the parts it does not style itself (its scrollbar) and off Houdini's native look, where a palette change does not cascade
         cat_wrapper_palette = self.cat_wrapper.palette()
         cat_wrapper_palette.setColor(QtGui.QPalette.ColorRole.Window, theme.color("surface_low"))
