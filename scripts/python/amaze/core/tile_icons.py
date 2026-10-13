@@ -1,4 +1,4 @@
-"""Tile icons: a chosen Feather symbol on a chosen background colour for any tile with no picture to render - composed from ui/icon_template.svg's measured geometry (24-unit grid at scale 12.5 on a 512 canvas = 250px ink, 0.8-grid-unit stroke) and written as a normal PNG BESIDE the rendered thumbnail (`<id>_icon.png`, never over it), so the thumbnail engine, LRU cache, list mode and drag previews need no special case and clearing an icon brings the render back."""
+"""Tile faces: Preview, Generic, or a custom icon written beside the render ▸r/tile-faces"""
 
 from __future__ import annotations
 
@@ -16,8 +16,8 @@ from amaze.helpers import hostos
 ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, through the package's one path join
 
 CANVAS = 512
-ICON_SCALE = 12.5  # straight from the template - change these and every existing tile silently re-renders differently, so they are constants, not preferences
-STROKE_UNITS = 0.8  # the template's thin stroke - the one number that is a LOOK rather than a measurement
+ICON_SCALE = 12.5  # 24-unit grid on CANVAS: 250px of ink; a change re-renders every tile
+STROKE_UNITS = 0.8  # the thin stroke - the one number that is a LOOK rather than a measurement
 FEATHER_STROKE_UNITS = 2.0  # Feather's own default weight, the other half of the Look preference
 INK_SPAN = 250.0      # the rule the numbers above satisfy: no icon's ink past this on a 512 tile, asserted by the tests against rendered pixels (Feather's 20 drawn units at ICON_SCALE)
 
