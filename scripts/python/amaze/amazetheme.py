@@ -549,6 +549,21 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 34, 15, "Karma"),
         ),
     },
+    "T05": {   # the code tile: Execute and Edit take the corners Open and Versions have elsewhere
+        "frame": (138, 177),
+        "nodes": (
+            ("tile card", 4, 4, 130, 173, None),
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("bg", 4, 4, 130, 130, None),
+            ("Icon code execute", 43, 32, 52, 73, None),
+            ("tile name", 9, 142, 52, 15, "Mtxl to RS"),
+            ("tile subtitle", 9, 157, 37, 15, "Python"),
+            ("badge favourite (top-right) ▸ badge_star", 110, 6, 22, 22, None),
+            ("badge execute (top-left) ▸ badge_execute", 6, 6, 22, 22, None),
+            ("badge edit (lower-left) ▸ badge_edit", 6, 110, 22, 22, None),
+            ("badge comment (lower-right) ▸ badge_comment_75", 110, 110, 22, 22, None),
+        ),
+    },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
         "frame": (1542, 96),
         "nodes": (
@@ -823,16 +838,33 @@ def drawn_tile(frame_key: str = "T01") -> dict:
     layout = DIALOG_LAYOUT[frame_key]
     node = {n[0].split(_NODE_MARK)[0]: n for n in layout["nodes"]}
     thumb, name, sub = node["thumbnail"], node["tile name"], node["tile subtitle"]
-    badge = node["badge open (top-left)"]
     return {
         "pad": thumb[1],
         "width_extra": layout["frame"][0] - TILE_DRAWN_SIZE,
         "img_text_gap": name[2] - (thumb[2] + thumb[4]),
         "text_inset": name[1] - thumb[1],
         "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
-        "badge_inset": badge[1] - thumb[1],
-        "badge_cap": badge[3],
     }
+
+
+def drawn_badges() -> dict:
+    """{badge: (right, inset x, bottom, inset y, side)} off every T frame; a badge drawn twice agrees."""
+    out = {}
+    for key, layout in DIALOG_LAYOUT.items():
+        if not key.startswith("T"):
+            continue
+        thumb = next(n for n in layout["nodes"] if n[0] == "thumbnail")
+        left, top, side = thumb[1], thumb[2], thumb[3]
+        for kind, x, y, w, _h, _text in layout["nodes"]:
+            if not kind.startswith("badge "):
+                continue
+            right, bottom = x + w / 2 > left + side / 2, y + w / 2 > top + side / 2
+            place = (right, left + side - x - w if right else x - left,
+                     bottom, top + side - y - w if bottom else y - top, w)
+            badge = kind[len("badge "):].split(" (")[0]
+            if out.setdefault(badge, place) != place:
+                raise ValueError("badge %s is drawn in two places" % badge)
+    return out
 
 
 def drawn_list(frame_key: str = "L01") -> dict:

@@ -1158,11 +1158,10 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         return model.index(0, 0)
 
     def test_the_badge_answers_only_inside_itself(self):
-        from amaze.panel import delegates
         delegate = self._delegate()
         index = self._index(3)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._badge_rect(rect, True, delegates.LOWER_LEFT)
+        badge = delegate._badge_rect(rect, True, "versions")
         self.assertTrue(
             delegate.button_badge_at(index, rect, badge.center(), True),
             "the badge does not answer at its own centre")
@@ -1173,11 +1172,10 @@ class VersionsBadgeHoverTest(unittest.TestCase):
 
     def test_a_single_version_asset_has_no_badge_to_hover(self):
         """One version paints no badge, so nothing there takes the pointer."""
-        from amaze.panel import delegates
         delegate = self._delegate()
         index = self._index(1)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._badge_rect(rect, True, delegates.LOWER_LEFT)
+        badge = delegate._badge_rect(rect, True, "versions")
         self.assertFalse(
             delegate.button_badge_at(index, rect, badge.center(), True),
             "an asset with one version offers a badge to hover")

@@ -36,21 +36,25 @@ class _ExplodingModel(QtCore.QAbstractListModel):
 
 
 class TheTileStandsOnItsFrame(unittest.TestCase):
-    """At the drawn size, the tile's cell and badges land where T01 draws them. ▸r/tile-from-frame"""
+    """The tile's cell and every badge land where the T frames draw them. ▸r/tile-from-frame"""
 
     def setUp(self):
         from amaze import amazetheme
         from amaze.helpers import theme
         self.px = theme.ui_px
+        self.layout = amazetheme.DIALOG_LAYOUT
         self.frame = amazetheme.DIALOG_LAYOUT["T01"]
         self.node = {n[0].split(" ▸ ")[0]: n for n in self.frame["nodes"]}
-        self.art = {n[0].split(" ▸ ")[1]: n for n in self.frame["nodes"] if " ▸ " in n[0]}
         self.size = amazetheme.TILE_DRAWN_SIZE
         self.D = delegates.AssetItemDelegate
 
     def _drawn(self, badge):
-        """Where T01 draws this badge, found by its art."""
-        return tuple(self.px(n) for n in self.art[badge.art][1:5])
+        """Where a T frame draws this badge, found by its name."""
+        for key, frame in sorted(self.layout.items()):
+            for node in frame["nodes"] if key.startswith("T") else ():
+                if node[0].startswith("badge %s (" % badge.name):
+                    return tuple(self.px(n) for n in node[1:5])
+        self.fail("no T frame draws the %s badge" % badge.name)
 
     def test_the_cell_is_the_frame(self):
         font = QtGui.QFont()
@@ -68,9 +72,40 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         rect = QtCore.QRect(0, 0, self.px(width), self.px(height))
         for badge in delegates.BADGES:
             with self.subTest(badge=badge.name):
-                got = self.D._badge_rect(self.D.__new__(self.D), rect, True, badge.corner)
+                got = self.D._badge_rect(self.D.__new__(self.D), rect, True, badge.name)
                 self.assertEqual(self._drawn(badge),
                                  (got.x(), got.y(), got.width(), got.height()))
+
+    def test_a_badge_drawn_in_two_places_refuses(self):
+        """Two frames disagreeing on a badge's place is a document error, not a choice."""
+        from unittest import mock
+        from amaze import amazetheme
+        moved = dict(self.layout["T01"])
+        moved["nodes"] = tuple(
+            ("badge open (top-left) ▸ badge_open", 9, 6, 22, 22, None)
+            if n[0].startswith("badge open (") else n for n in moved["nodes"])
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T99": moved}):
+            with self.assertRaises(ValueError):
+                amazetheme.drawn_badges()
+
+    def test_a_badge_is_placed_by_its_own_inset_on_each_axis(self):
+        """Each badge carries two insets of its own; nothing assumes the corners agree."""
+        delegate = self.D.__new__(self.D)
+        delegate.PLACES = {"open": (True, 5, False, 7, 18)}
+        side = self.D._badge_side(130, 18)
+        self.assertEqual((10 + 130 - side - 5, 20 + 7, side, side),
+                         delegate._badge_at("open", 10, 20, 130))
+
+    def test_a_badge_takes_its_corner_from_where_it_is_drawn(self):
+        """A badge moved to the other side of the thumbnail measures from that side."""
+        from unittest import mock
+        from amaze import amazetheme
+        frame = {"frame": (138, 177), "nodes": (
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("badge open (top-left) ▸ badge_open", 107, 105, 22, 22, None))}
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
+            self.assertEqual({"open": (True, 5, True, 7, 22)},
+                             amazetheme.drawn_badges())
 
     def test_every_badge_is_painted_on_its_drawn_corner(self):
         """The paint loop places badges with its own maths, apart from the click rect."""

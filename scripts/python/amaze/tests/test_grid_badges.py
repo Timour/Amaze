@@ -82,7 +82,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
             option.rect,
             option.decorationPosition
             == QtWidgets.QStyleOptionViewItem.Position.Top,
-            delegates.LOWER_LEFT)
+            "versions")
         return _release(rect.center())
 
     def test_a_click_on_the_badge_opens_versions_in_GRID_mode(self):
@@ -123,7 +123,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
                 option = _view_option(
                     self.view, list_mode=True, decoration=decoration)
                 rect = self.delegate._badge_rect(
-                    option.rect, True, delegates.LOWER_LEFT)
+                    option.rect, True, "versions")
                 event = QtGui.QHelpEvent(
                     QtCore.QEvent.Type.ToolTip, rect.center(),
                     self.view.mapToGlobal(rect.center()))
@@ -184,7 +184,7 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
             option.rect,
             option.decorationPosition
             == QtWidgets.QStyleOptionViewItem.Position.Top,
-            delegates.TOP_RIGHT)
+            "favourite")
         return delegate.editorEvent(
             _release(rect.center()), self.model, option,
             self.model.index(0, 0))
@@ -264,8 +264,7 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
         view.setItemDelegate(delegate)
         option = _view_option(view, list_mode=False)
         index = model.index(0, 0)
-        rect = delegate._badge_rect(option.rect, True,
-                                    delegates.LOWER_RIGHT)
+        rect = delegate._badge_rect(option.rect, True, "comment")
         handled = delegate.editorEvent(
             _release(rect.center()), model, option, index)
         self.assertTrue(handled, "the comment badge swallowed nothing")

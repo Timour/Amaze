@@ -12,23 +12,16 @@ from amaze.helpers import theme, ui_helpers
 
 QtGui.QPixmapCache.setCacheLimit(65536)   # APP-WIDE, for the whole of Houdini, which is why it is set once here and not in `__init__` - that runs one per section and again on every reload; 64MB covers a full screen of scaled tiles several times over
 
-TOP_LEFT = "top-left"
-TOP_RIGHT = "top-right"
-LOWER_LEFT = "lower-left"
-LOWER_RIGHT = "lower-right"
-
-
 class Badge:
-    """One tile badge as DATA - art, corner, and the delegate attribute holding its role - so `_paint_badges` is the only code that draws one and a section cannot lose a badge to silence."""
+    """One tile badge as data: its arts and its role. Its place comes from the T frames."""
 
-    __slots__ = ("name", "art", "corner", "role_attr", "minimum",
+    __slots__ = ("name", "art", "role_attr", "minimum",
                  "hover_art", "off_art", "off_hover_art")
 
-    def __init__(self, name, art, corner, role_attr, minimum=0,
+    def __init__(self, name, art, role_attr, minimum=0,
                  hover_art="", off_art="", off_hover_art="") -> None:
         self.name = name
         self.art = art
-        self.corner = corner
         self.role_attr = role_attr    # the delegate attribute holding this badge's role, or None where the section does not have it
         self.minimum = minimum        # a count badge draws only at or above this - versions is the only one, because an asset with a single version has no history to show
         self.hover_art = hover_art    # the ON state's answer to the pointer, where it has one
@@ -39,14 +32,14 @@ class Badge:
         return "<Badge %s>" % (self.name,)
 
 
-BADGES = (      # THE TABLE, in paint order; no two share a corner, and the art lives in `ui/badge_*.svg` with the palette in the ART rather than in code - all render AS DRAWN, no re-tinting
-    Badge("open", "badge_open", TOP_LEFT, "_open_role"),                 # the scene currently open
-    Badge("favourite", "badge_star", TOP_RIGHT, "_favorite_role",
-          off_art="badge_star_40", off_hover_art="badge_star_75"),       # a BUTTON: dim star at rest, brighter under the pointer, amber when favourite - and amber answers no hover, because a state carried by COLOUR does not lighten (the toolbar chips' rule)
-    Badge("versions", "badge_versions", LOWER_LEFT, "_versions_role",
-          minimum=2, hover_art="badge_versions_hover"),                  # more than one version - a BUTTON: click opens the Versions dialog
-    Badge("comment", "badge_comment_75", LOWER_RIGHT, "_notes_role",
-          hover_art="badge_comment"),                                    # carries a comment - a BUTTON: 75% at rest, full under the pointer, no open-state look; click OPENS the Comments pane, one-way
+BADGES = (      # in paint order; art in `ui/badge_*.svg`, painted as drawn ▸r/tile-from-frame
+    Badge("open", "badge_open", "_open_role"),                 # the scene currently open
+    Badge("favourite", "badge_star", "_favorite_role",
+          off_art="badge_star_40", off_hover_art="badge_star_75"),    # a button; the on state ignores hover
+    Badge("versions", "badge_versions", "_versions_role",
+          minimum=2, hover_art="badge_versions_hover"),    # a button: opens the Versions dialog
+    Badge("comment", "badge_comment_75", "_notes_role",
+          hover_art="badge_comment"),    # a button: opens the Comments pane
 )
 
 
@@ -158,8 +151,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     _TILE = amazetheme.drawn_tile()    # every spacing below is the T01 frame's ▸r/tile-from-frame
     PAD = theme.ui_px(_TILE["pad"])
     WIDTH_EXTRA = theme.ui_px(_TILE["width_extra"])    # cell width = size + this
-    BADGE_INSET = theme.ui_px(_TILE["badge_inset"])
-    BADGE_CAP = theme.ui_px(_TILE["badge_cap"])
+    PLACES = {name: (right, theme.ui_px(ix), bottom, theme.ui_px(iy), theme.ui_px(side))
+              for name, (right, ix, bottom, iy, side) in amazetheme.drawn_badges().items()}
+    BADGE_CAP = max(place[4] for place in PLACES.values())
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
     DIM = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
     THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
@@ -385,9 +379,19 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return pixmap
 
     @classmethod
-    def _badge_side(cls, icon_side):
-        """ONE size rule for all four corners: grow with the tile up to a cap, with a floor so LIST mode's small icons still get a legible mark."""
-        return max(theme.ui_px(12), min(icon_side // 4, cls.BADGE_CAP))
+    def _badge_side(cls, icon_side, cap=None):
+        """A badge grows with the tile up to its drawn size, never below 12px."""
+        return max(theme.ui_px(12), min(icon_side // 4, cap or cls.BADGE_CAP))
+
+    def _badge_at(self, name, area_x, area_y, icon_side, mark_w=None, mark_h=None):
+        """(x, y, w, h) of a badge on a thumbnail, from its drawn corner and inset."""
+        right, inset_x, bottom, inset_y, cap = self.PLACES[name]
+        side = self._badge_side(icon_side, cap)
+        w = side if mark_w is None else mark_w
+        h = side if mark_h is None else mark_h
+        x = area_x + icon_side - w - inset_x if right else area_x + inset_x
+        y = area_y + icon_side - h - inset_y if bottom else area_y + inset_y
+        return int(x), int(y), int(w), int(h)
 
     FAV_MARK_COLOR = LIST_INK      # the mark columns' ink - the table's one colour, like every other list column
     OPEN_MARK_COLOR = LIST_INK
@@ -467,24 +471,17 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             elif not badge.off_art:
                 continue
             if self._badge_rect(option_rect, mode_grid,
-                                badge.corner).contains(point):
+                                badge.name).contains(point):
                 return badge
         return None
 
-    def _badge_rect(self, option_rect, mode_grid, corner):
-        """Where `corner`'s badge sits, for hit-testing - it MIRRORS the paint maths, and a few pixels of drift is tolerable on a 35px target."""
+    def _badge_rect(self, option_rect, mode_grid, name):
+        """Where the badge `name` sits, for hit-testing - the paint's own placement."""
         pad = self.PAD
         icon_side = option_rect.width() - 2 * pad if mode_grid \
             else max(option_rect.height() - 2 * pad, 1)
-        badge = self._badge_side(icon_side)
-        inset = self.BADGE_INSET
-        x = option_rect.left() + pad + (
-            inset if corner in (TOP_LEFT, LOWER_LEFT)
-            else icon_side - badge - inset)
-        y = option_rect.top() + pad + (
-            inset if corner in (TOP_LEFT, TOP_RIGHT)
-            else icon_side - badge - inset)
-        return QtCore.QRect(int(x), int(y), int(badge), int(badge))
+        return QtCore.QRect(*self._badge_at(
+            name, option_rect.left() + pad, option_rect.top() + pad, icon_side))
 
     def _badge_tooltip(self, badge, index):
         """The words a button badge shows on hover - state-aware, so the star names the ACTION a click would take, not the state it is in."""
@@ -539,9 +536,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def _paint_badges(self, painter, index, area_x, area_y,
                       icon_side, dpr=1.0):
-        """Every badge this tile carries, in ONE pass over the table - the corners mean top-left open scene, top-right favourite, lower-left versions, lower-right comment."""
-        side = self._badge_side(icon_side)
-        inset = self.BADGE_INSET
+        """Every badge this tile carries, in one pass, each where the T frames draw it."""
         for badge in BADGES:
             role = getattr(self, badge.role_attr)
             if role is None:
@@ -559,14 +554,13 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                     continue    # an off state exists only as a BUTTON's rest - a delegate with no click wired (the online grid) keeps its empty corner
                 art = badge.off_hover_art if (
                     hovered and badge.off_hover_art) else badge.off_art
+            side = self._badge_side(icon_side, self.PLACES[badge.name][4])
             mark = self._badge_pixmap(art, side, dpr)
             if mark.isNull():
                 continue
             mark_w, mark_h = self._logical_size(mark)    # LOGICAL size: `width()` is PHYSICAL pixels once the ratio is stamped, which would push a badge off the tile on a Retina display
-            x = (area_x + inset if badge.corner in (TOP_LEFT, LOWER_LEFT)
-                 else int(area_x + icon_side - mark_w - inset))
-            y = (area_y + inset if badge.corner in (TOP_LEFT, TOP_RIGHT)
-                 else int(area_y + icon_side - mark_h - inset))
+            x, y, _w, _h = self._badge_at(badge.name, area_x, area_y, icon_side,
+                                          mark_w, mark_h)
             painter.drawPixmap(x, y, mark)
 
     def sizeHint(self, option, index):
