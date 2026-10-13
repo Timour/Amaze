@@ -565,15 +565,16 @@ class SectionTabBar(QtWidgets.QWidget):
 
     CANCEL_LABEL = "Cancel"
 
-    HEIGHT = theme.ui_px(28)
-    TRAY_HEIGHT = theme.ui_px(23)
+    _DRAWN = amazetheme.drawn_tabs()    # every size but the two radii is S01's ▸r/tabs-from-frame
+    HEIGHT = theme.ui_px(_DRAWN["height"])
+    TRAY_HEIGHT = theme.ui_px(_DRAWN["tray_height"])
     TRAY_RADIUS = theme.ui_px(4)
-    TRAY_LEFT = theme.ui_px(3)
-    CHIP_HEIGHT = theme.ui_px(17)
+    TRAY_LEFT = theme.ui_px(_DRAWN["tray_left"])
+    CHIP_HEIGHT = theme.ui_px(_DRAWN["chip_height"])
     CHIP_RADIUS = theme.ui_px(4)
-    CHIP_PAD_X = theme.ui_px(7.5)
-    CHIP_GAP = theme.ui_px(2.5)
-    CHIP_INSET = theme.ui_px(3)
+    CHIP_PAD_X = theme.ui_px(_DRAWN["chip_pad"])
+    CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
+    CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
 
     STRIP_COLOR = theme.color("surface")   # theme-derived, identical to the old literal constants under Houdini's default theme and following any other one automatically; matches the toolbar row
     TRAY_COLOR = theme.color("surface_low")   # matches the category backdrop, so the tray reads as connected to the sidebar below
@@ -694,23 +695,26 @@ class SectionTabBar(QtWidgets.QWidget):
             self.unsetCursor()
             self.update()
 
+    def _tray_rect(self):
+        """The tray behind the tabs, flush with the strip's bottom, or None with no tabs."""
+        rects = self._chip_rects()
+        if not rects:
+            return None
+        top = self.height() - self.TRAY_HEIGHT
+        right = rects[-1][1].right() + self.CHIP_INSET
+        return QtCore.QRectF(self.TRAY_LEFT, top, right - self.TRAY_LEFT, self.TRAY_HEIGHT)
+
     def paintEvent(self, event: QtGui.QPaintEvent) -> None:
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
         painter.fillRect(self.rect(), self.STRIP_COLOR)
 
         rects = self._chip_rects()
-        if rects:
-            tray_top = self.height() - self.TRAY_HEIGHT   # the tray has rounded TOP corners only: the rect below runs one radius past the widget bottom so the bottom rounding is clipped off and the tray sits flush against the sidebar
-            tray_right = rects[-1][1].right() + self.CHIP_INSET
+        tray = self._tray_rect()
+        if tray is not None:
             tray_path = QtGui.QPainterPath()
-            tray_path.addRoundedRect(
-                QtCore.QRectF(
-                    self.TRAY_LEFT,
-                    tray_top,
-                    tray_right - self.TRAY_LEFT,
-                    self.TRAY_HEIGHT + self.TRAY_RADIUS,
-                ),
+            tray_path.addRoundedRect(    # one radius past the bottom, so only the top corners round
+                tray.adjusted(0, 0, 0, self.TRAY_RADIUS),
                 self.TRAY_RADIUS,
                 self.TRAY_RADIUS,
             )

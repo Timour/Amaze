@@ -649,6 +649,27 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("icon ▸ btn_prefs ▸ icon_library.svg", 1487, 6, 18, 18, None),
         ),
     },
+    "S01": {   # the section tab strip from the live panel - its height, tray and chip spacing are read
+        "frame": (1510, 28),
+        "nodes": (
+            ("tray", 3, 5, 230, 23, None),
+            ("chip ▸ material", 6, 8, 56, 17, None),
+            ("chip ▸ gradient", 64.5, 8, 42, 17, None),
+            ("chip ▸ cop", 109, 8, 42, 17, None),
+            ("chip ▸ code", 153.5, 8, 41, 17, None),
+            ("chip ▸ file", 197, 8, 33, 17, None),
+            ("text box ▸ material", 13.5, 9, 41, 15, None),
+            ("label ▸ material", 13.5, 9, 41, 15, "Material"),
+            ("text box ▸ gradient", 72, 9, 27, 15, None),
+            ("label ▸ gradient", 71.5, 9, 28, 15, "Color"),
+            ("text box ▸ cop", 116.5, 9, 27, 15, None),
+            ("label ▸ cop", 116.5, 9, 27, 15, "Node"),
+            ("text box ▸ code", 161, 9, 26, 15, None),
+            ("label ▸ code", 161, 9, 26, 15, "Code"),
+            ("text box ▸ file", 204.5, 9, 18, 15, None),
+            ("label ▸ file", 204.5, 9, 18, 15, "File"),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -808,4 +829,26 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
         "field_h": field[4],
         "search_icon": search[3],
         "search_pad": search[1] - field[1],
+    }
+
+
+def drawn_tabs(frame_key: str = "S01") -> dict:
+    """The section strip's height, tray and chip spacing, read off its frame. ▸r/tabs-from-frame"""
+    layout = DIALOG_LAYOUT[frame_key]
+
+    def of_kind(kind):
+        return [n for n in layout["nodes"] if n[0].split(_NODE_MARK)[0] == kind]
+
+    tray = of_kind("tray")[0]
+    chips = sorted(of_kind("chip"), key=lambda n: n[1])
+    first = chips[0][0].split(_NODE_MARK)[1]
+    box = next(n for n in of_kind("text box") if n[0].split(_NODE_MARK)[1] == first)
+    return {
+        "height": layout["frame"][1],
+        "tray_left": tray[1],
+        "tray_height": layout["frame"][1] - tray[2],
+        "chip_height": chips[0][4],
+        "chip_inset": chips[0][1] - tray[1],
+        "chip_gap": chips[1][1] - (chips[0][1] + chips[0][3]),
+        "chip_pad": box[1] - chips[0][1],
     }
