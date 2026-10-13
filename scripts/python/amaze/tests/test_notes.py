@@ -703,9 +703,10 @@ class ModelRoleTest(unittest.TestCase):
     def test_the_badge_renders_the_family_art_as_drawn(self):
         """The tile gets the ARTWORK's own colours, no re-tint in code. Keyed on the DOMINANT paint, never a fixed alpha: the disc ships at whatever opacity the design chooses, and the highest-alpha pixels are the glyph's antialiased edge rather than the art."""
         from amaze.panel import delegates
+        from amaze import amazetheme
         declared = test_support.art_colours("badge_comment")
-        pixmap = delegates.AssetItemDelegate._badge_pixmap(
-            "badge_comment", 24)
+        pixmap = delegates.AssetItemDelegate._badge_pixmap(    # as the tile paints it under the pointer
+            "badge_comment", 24, 1.0, amazetheme.BADGE_HOVER_OPACITY)
         image = pixmap.toImage()
         import collections
         painted = collections.Counter(

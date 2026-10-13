@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(   # THREE dirnames up = scripts/python, holding the `amaze` package - the DEV tree, not the install on Houdini's path
     0, os.path.dirname(os.path.dirname(
@@ -14,6 +15,7 @@ from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
+from amaze import amazetheme  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the debug log
 
@@ -147,7 +149,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
 
         original = self.D.__dict__["_badge_pixmap"]
         self.D._badge_pixmap = staticmethod(
-            lambda art, side, dpr=1.0: QtGui.QPixmap(side, side))
+            lambda art, side, dpr=1.0, opacity=None: QtGui.QPixmap(side, side))
         self.addCleanup(setattr, self.D, "_badge_pixmap", original)
 
         _kind, x, y, w, h, _text = self.node["thumbnail"]
@@ -161,6 +163,23 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         finally:
             painter.end()
         self.assertEqual([self._drawn(b) for b in delegates.BADGES], painted)
+
+
+class TheColourSwapIgnoresCase(unittest.TestCase):
+    """Figma writes `#5CC9F5`; a tint keyed `#5cc9f5` must still find it."""
+
+    def test_a_lowercase_key_recolours_capital_hex(self):
+        import tempfile
+        from amaze.helpers import ui_helpers
+        folder = tempfile.mkdtemp(prefix="amaze_tint_")
+        self.addCleanup(__import__("shutil").rmtree, folder, ignore_errors=True)
+        path = os.path.join(folder, "capital.svg")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write('<svg width="8" height="8" viewBox="0 0 8 8" '
+                         'xmlns="http://www.w3.org/2000/svg">'
+                         '<rect width="8" height="8" fill="#5CC9F5"/></svg>')
+        image = ui_helpers.render_svg_pixmap(path, 8, {"#5cc9f5": "#ff0000"}).toImage()
+        self.assertEqual("#ff0000", image.pixelColor(4, 4).name())
 
 
 class TheSvgCacheTest(unittest.TestCase):
@@ -202,7 +221,7 @@ class TheSvgCacheTest(unittest.TestCase):
         first = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         second = self.ui_helpers.render_svg_pixmap(self.icon, 32)
         self.assertIsNot(first, second)
-        cached = self.ui_helpers._SVG_CACHE[(self.icon, 32, ())]
+        cached = self.ui_helpers._SVG_CACHE[(self.icon, 32, (), None)]
         self.assertIsNot(first, cached)
 
 
@@ -539,8 +558,8 @@ class PaintCostTest(unittest.TestCase):
 class BadgeFamilyTest(unittest.TestCase):
     """The four tile badges are ONE drawn family: one art set (each glyph on its own dark disc), one rasteriser (`_badge_pixmap`), one size rule (`_badge_side`) and rendered AS DRAWN with no re-tinting - four accreted looks with three size formulas made the corners hard to read on busy thumbnails."""
 
-    NAMES = ("badge_open", "badge_favourite", "badge_versions",
-             "badge_comment", "badge_comment_75")
+    NAMES = ("badge_open", "badge_favourite", "badge_favourite_off", "badge_versions",
+             "badge_comment", "badge_edit")
 
     def test_all_four_arts_exist_and_render(self):
         for name in self.NAMES:
@@ -564,8 +583,8 @@ class BadgeFamilyTest(unittest.TestCase):
         """Wire ONE badge role, run the paint pass, record what it asks the rasteriser for - driving `_paint_badges` rather than a per-badge painter, so the loop is asserted to ask for the wired badge and NOTHING ELSE and a row reading the wrong role shows up as an extra request; behavioural rather than source-derived, and the dpr is recorded too, because recording only the side let a hardcoded 1.0 through and that rasterises at half size on a 2x display while every case stays green."""
         asked = []
 
-        def spy(name, side, dpr=1.0):
-            asked.append((name, side, dpr))
+        def spy(name, side, dpr=1.0, opacity=None):
+            asked.append((name, side, dpr, opacity))
             return QtGui.QPixmap()          # null - nothing is drawn
 
         role = QtCore.Qt.ItemDataRole.UserRole + 77
@@ -596,24 +615,83 @@ class BadgeFamilyTest(unittest.TestCase):
     def test_every_corner_asks_for_its_own_art_at_the_family_size(self):
         """All four painters, one engine: each corner requests ITS art by name, at `_badge_side`'s size, at the real dpr - a painter hand-rolling its own size or art goes red here."""
         corner = delegates.AssetItemDelegate._badge_side(128)
-        cases = (
-            ("open", True, "badge_open", corner),
-            ("favourite", True, "badge_favourite", corner),
-            ("versions", 3, "badge_versions", corner),
-            ("comment", True, "badge_comment_75", corner),
-            ("execute", "Python", "badge_execute", min(36, round(36 * 128 / 130.0))),
-            ("edit", True, "badge_edit", corner),
+        rest = amazetheme.BADGE_REST_OPACITY
+        cases = (    # (badge, its value, art, size, opacity: None = as drawn)
+            ("open", True, "badge_open", corner, None),
+            ("favourite", True, "badge_favourite", corner, None),
+            ("versions", 3, "badge_versions", corner, rest),
+            ("comment", True, "badge_comment", corner, rest),
+            ("execute", "Python", "badge_execute", min(36, round(36 * 128 / 130.0)), None),
+            ("edit", True, "badge_edit", corner, rest),
         )
         self.assertEqual(
             len(cases), len(delegates.BADGES),
             "the badge table and this test disagree about how many "
             "badges there are - a new row must be driven here too")
-        for role_kw, value, art, expected in cases:
+        for role_kw, value, art, expected, opacity in cases:
             asked = self._asked_for(role_kw, value, 128)
             self.assertEqual(
-                [(art, expected, 2.0)], asked,
+                [(art, expected, 2.0, opacity)], asked,
                 "%s does not go through the family engine, or the pass "
                 "asked for a badge nothing wired" % role_kw)
+
+    def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
+        """Change the rest or hover strength once and every button badge follows."""
+        role = QtCore.Qt.ItemDataRole.UserRole + 66
+        family = {b.name for b in delegates.BADGES if b.dims or b.off_art}
+        self.assertEqual({"favourite", "versions", "comment", "edit"}, family)
+        values = {"favourite": False, "versions": 3, "comment": True, "edit": True}    # each in its family state
+        current = {}
+
+        class _Model(QtCore.QAbstractListModel):
+            def rowCount(self, parent=QtCore.QModelIndex()):
+                return 1
+
+            def data(self, index, r=QtCore.Qt.ItemDataRole.DisplayRole):
+                return current.get("value") if r == role else None
+
+        asked = []
+        cls = delegates.AssetItemDelegate
+        original = cls.__dict__["_badge_pixmap"]
+        cls._badge_pixmap = staticmethod(
+            lambda name, side, dpr=1.0, opacity=None: asked.append((name, opacity))
+            or QtGui.QPixmap())
+        self.addCleanup(setattr, cls, "_badge_pixmap", original)
+        model = _Model()
+        index = model.index(0, 0)
+        for rest, hover in ((0.4, 0.75), (0.3, 0.9)):
+            with mock.patch.object(amazetheme, "BADGE_REST_OPACITY", rest), \
+                    mock.patch.object(amazetheme, "BADGE_HOVER_OPACITY", hover):
+                for name in sorted(family):
+                    current["value"] = values[name]
+                    badge = delegates.BADGE[name]
+                    art = badge.off_art if values[name] is False else badge.art
+                    for hovered, want in ((False, rest), (True, hover)):
+                        delegate = test_support.tile_delegate({name: role})
+                        delegate.set_badge_click(name, lambda index: None)
+                        if hovered:
+                            delegate.set_button_hover(name, index)
+                        asked.clear()
+                        surface = QtGui.QPixmap(140, 140)
+                        painter = QtGui.QPainter(surface)
+                        try:
+                            delegate._paint_badges(painter, index, 0, 0, 130)
+                        finally:
+                            painter.end()
+                        self.assertEqual([(art, want)], asked,
+                                         "%s at %s" % (name, "hover" if hovered else "rest"))
+
+    def test_the_opacity_reaches_every_part_of_the_art(self):
+        """Ground and icon alike take the state's strength, read off the rendered pixels."""
+        for name in ("badge_favourite_off", "badge_versions", "badge_comment", "badge_edit"):
+            for opacity in (0.4, 0.75):
+                image = delegates.AssetItemDelegate._badge_pixmap(
+                    name, 44, 1.0, opacity).toImage()
+                if image.isNull():
+                    self.skipTest("%s.svg not resolvable outside an install" % name)
+                ground = image.pixelColor(22, 3).alpha()    # the dark ground, clear of the icon
+                self.assertAlmostEqual(opacity * 255, ground, delta=3,
+                                       msg="%s ground at %s" % (name, opacity))
 
     def test_each_badge_lands_in_its_own_corner(self):
         """Four marks, four corners, none on top of another - found by a GREEN sabotage, since collapsing the corner arithmetic so every badge drew top-left failed nothing, and the failure it allows is silent because a stack of badges in one corner still paints a badge; each badge is rasterised as its own flat colour, so one pixel per corner says WHICH mark landed there."""
@@ -621,10 +699,10 @@ class BadgeFamilyTest(unittest.TestCase):
             "badge_open": QtGui.QColor(255, 0, 0),
             "badge_favourite": QtGui.QColor(0, 255, 0),
             "badge_versions": QtGui.QColor(0, 0, 255),
-            "badge_comment_75": QtGui.QColor(255, 255, 0),
+            "badge_comment": QtGui.QColor(255, 255, 0),
         }
 
-        def flat(name, side, dpr=1.0):
+        def flat(name, side, dpr=1.0, opacity=None):
             pixmap = QtGui.QPixmap(side, side)
             pixmap.fill(colors[name])
             return pixmap
@@ -666,7 +744,7 @@ class BadgeFamilyTest(unittest.TestCase):
             "badge_open": (middle, middle),
             "badge_favourite": (far, middle),
             "badge_versions": (middle, far),
-            "badge_comment_75": (far, far),
+            "badge_comment": (far, far),
         }
         for name, (x, y) in corners.items():
             self.assertEqual(

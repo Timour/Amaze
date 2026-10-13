@@ -15,11 +15,11 @@ QtGui.QPixmapCache.setCacheLimit(65536)   # APP-WIDE, for the whole of Houdini, 
 class Badge:
     """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
 
-    __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals",
-                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip")
+    __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals", "dims",
+                 "hover_art", "press_art", "off_art", "tip", "off_tip")
 
     def __init__(self, name, art, role="", role_attr="", verb="", minimum=0, equals="",
-                 hover_art="", press_art="", off_art="", off_hover_art="",
+                 dims=False, hover_art="", press_art="", off_art="",
                  tip="", off_tip="") -> None:
         self.name = name
         self.art = art
@@ -28,11 +28,11 @@ class Badge:
         self.verb = verb              # the section verb a click runs; "" draws an indicator
         self.minimum = minimum        # a count draws at or above this: one version has no history
         self.equals = equals          # the role's value this badge draws for; "" = any truthy one
-        self.hover_art = hover_art    # the ON state's answer to the pointer, where it has one
+        self.dims = dims              # its ON art wears the button opacities, rest and hover
+        self.hover_art = hover_art    # a hover state drawn as its own art, where it has one
         self.press_art = press_art    # while the button is held down, where it has one
-        self.off_art = off_art        # drawn while the role is falsy, on a button only
-        self.off_hover_art = off_hover_art    # the off state's answer to the pointer
-        self.tip = tip                # the hover words, from tooltips.py; "" = silent
+        self.off_art = off_art        # drawn while the role is falsy, at the button opacities
+        self.tip = tip               # the hover words, from tooltips.py; "" = silent
         self.off_tip = off_tip        # the words in the off state, where a click does the opposite
 
     def shows(self, value) -> bool:
@@ -45,19 +45,19 @@ class Badge:
         return "<Badge %s>" % (self.name,)
 
 
-BADGES = (      # in paint order; art in `ui/badge_*.svg`, painted as drawn ▸r/tile-from-frame
+BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/tile-from-frame
     Badge("open", "badge_open", "OpenSceneRole", "_open_role"),    # the scene currently open
     Badge("favourite", "badge_favourite", "FavoriteRole", "_favorite_role", "menu_favourite",
-          off_art="badge_favourite_40", off_hover_art="badge_favourite_75",    # on ignores hover
+          off_art="badge_favourite_off",    # on is the colour as drawn, and ignores hover
           tip=tooltips.BADGE_FAVORITE_REMOVE, off_tip=tooltips.BADGE_FAVORITE_ADD),
     Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
-          minimum=2, hover_art="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
-    Badge("comment", "badge_comment_75", "NotesRole", "_notes_role", "menu_comments",
-          hover_art="badge_comment", tip=tooltips.BADGE_COMMENTS),
+          minimum=2, dims=True, tip=tooltips.BADGE_VERSIONS),
+    Badge("comment", "badge_comment", "NotesRole", "_notes_role", "menu_comments",
+          dims=True, tip=tooltips.BADGE_COMMENTS),
     Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
           equals="Python", hover_art="badge_execute_hover", press_art="badge_execute_press",
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
-    Badge("edit", "badge_edit", verb="menu_edit", tip=tooltips.BADGE_EDIT),
+    Badge("edit", "badge_edit", verb="menu_edit", dims=True, tip=tooltips.BADGE_EDIT),
 )
 BADGE = {badge.name: badge for badge in BADGES}
 
@@ -391,18 +391,23 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return round(pixmap.width() / r), round(pixmap.height() / r)
 
     @classmethod
-    def _badge_pixmap(cls, name, side, dpr=1.0):
-        """One tile badge at DEVICE resolution, cached per (art, size, dpr) - AS DRAWN, with no colour substitution, because the art's own disc-and-stroke palette IS the design."""
-        key = (name, side, round(dpr, 3))
+    def _badge_pixmap(cls, name, side, dpr=1.0, opacity=None):
+        """One tile badge at DEVICE resolution, as drawn or at a button opacity, cached per all four."""
+        key = (name, side, round(dpr, 3), opacity)
         pixmap = cls._badge_cache.get(key)
         if pixmap is None:
             path = ui_helpers.ui_asset(name + ".svg")
             if os.path.exists(path):
-                pixmap = ui_helpers.device_pixmap(path, side, dpr)
+                pixmap = ui_helpers.device_pixmap(path, side, dpr, opacity=opacity)
             else:
                 pixmap = QtGui.QPixmap()    # a NULL pixmap, never a sized transparent one, or a missing badge paints a blank square over the thumbnail
             cls._badge_cache[key] = pixmap
         return pixmap
+
+    @staticmethod
+    def _button_opacity(hovered) -> float:
+        """The one rest and hover strength every button badge wears."""
+        return amazetheme.BADGE_HOVER_OPACITY if hovered else amazetheme.BADGE_REST_OPACITY
 
     @classmethod
     def _badge_side(cls, icon_side, cap=None):
@@ -582,16 +587,18 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             if not state:
                 continue
             hovered = self._is_button_hovered(badge.name, index)
-            if state == "on":
-                art = (badge.press_art
-                       if badge.press_art and self._is_button_pressed(badge.name, index)
-                       else badge.hover_art if (badge.hover_art and hovered)
-                       else badge.art)    # one mark per button, differing only in paint
+            opacity = self._button_opacity(hovered)
+            if state == "off":
+                art = badge.off_art
+            elif badge.press_art and self._is_button_pressed(badge.name, index):
+                art, opacity = badge.press_art, None
+            elif badge.hover_art and hovered:
+                art, opacity = badge.hover_art, None
             else:
-                art = badge.off_hover_art if (
-                    hovered and badge.off_hover_art) else badge.off_art
+                art = badge.art
+                opacity = opacity if badge.dims else None    # as drawn, the on heart's colour
             side = self._placed_side(badge.name, icon_side)
-            mark = self._badge_pixmap(art, side, dpr)
+            mark = self._badge_pixmap(art, side, dpr, opacity)
             if mark.isNull():
                 continue
             mark_w, mark_h = self._logical_size(mark)    # LOGICAL size: `width()` is PHYSICAL pixels once the ratio is stamped, which would push a badge off the tile on a Retina display

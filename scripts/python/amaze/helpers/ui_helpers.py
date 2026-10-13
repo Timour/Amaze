@@ -2,6 +2,7 @@
 
 import contextlib
 import os
+import re
 
 from PySide6 import QtWidgets, QtCore, QtGui, QtSvg
 
@@ -140,10 +141,20 @@ def _might_be_rich(text: str) -> bool:
 _SVG_CACHE: dict = globals().get("_SVG_CACHE", {})   # rasterised SVGs keyed by (path, size, tint), read back out of `globals()` because panel.py reloads this module on every panel open and a plain literal would throw the cache away exactly when a reopen is paying for it
 
 
-def render_svg_pixmap(path, size, color_replacements=None):
+_PAINT_OPACITY = re.compile(r'((?:fill|stroke)-opacity)(="|:)[0-9.]+')
+
+
+def at_opacity(text: str, opacity) -> str:
+    """SVG text with every fill and stroke opacity set to `opacity`; None leaves it as drawn."""
+    if opacity is None:
+        return text
+    return _PAINT_OPACITY.sub(lambda m: "%s%s%g" % (m.group(1), m.group(2), opacity), text)
+
+
+def render_svg_pixmap(path, size, color_replacements=None, opacity=None):
     """An SVG rendered onto a transparent square QPixmap, with literal colour strings swapped first; a missing file gives a blank pixmap, and what comes back is always a COPY, because QPixmap is mutable and a caller that paints into it would poison every later ask for the same icon."""
     tint = tuple(sorted((color_replacements or {}).items()))
-    key = (path, int(size), tint)
+    key = (path, int(size), tint, opacity)
     cached = _SVG_CACHE.get(key)
     if cached is not None:
         return cached.copy()
@@ -152,8 +163,9 @@ def render_svg_pixmap(path, size, color_replacements=None):
     if path and os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
-        for old, new in (color_replacements or {}).items():
-            text = text.replace(old, new)
+        for old, new in (color_replacements or {}).items():    # either case: Figma writes hex in capitals
+            text = re.sub(re.escape(old), lambda _m, new=new: new, text, flags=re.IGNORECASE)
+        text = at_opacity(text, opacity)
         painter = QtGui.QPainter(pixmap)
         QtSvg.QSvgRenderer(QtCore.QByteArray(text.encode("utf-8"))).render(painter)   # QSvgRenderer onto our OWN transparent pixmap: ONE size, dpr and cache rule for every icon in the package - not because QIcon's engine is broken, which was measured and is not ▸r/qicon-svg-engine
         painter.end()
@@ -161,10 +173,10 @@ def render_svg_pixmap(path, size, color_replacements=None):
     return pixmap.copy()
 
 
-def device_pixmap(path, side, dpr, color_replacements=None):
+def device_pixmap(path, side, dpr, color_replacements=None, opacity=None):
     """One SVG rasterised at DEVICE resolution with the ratio stamped, so it draws `side` logical pixels wide and stays sharp on a Retina screen. Pass the ratio of the widget being painted, never the primary's. ROUND, do not truncate: `QPixmap` truncates a float size, which loses a device pixel at every fractional ratio. ▸r/screen-dpr"""
     pixmap = render_svg_pixmap(
-        path, max(1, int(round(side * dpr))), color_replacements)
+        path, max(1, int(round(side * dpr))), color_replacements, opacity)
     pixmap.setDevicePixelRatio(dpr)
     return pixmap
 

@@ -101,6 +101,8 @@ LIST_HEADER_DIVIDER = "#454545"
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the accent DEFAULT only - overwritten per instance from `prefs.accent_color`
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
+BADGE_REST_OPACITY = 0.4        # every button badge at rest, ground and icon alike
+BADGE_HOVER_OPACITY = 0.75      # and under the pointer
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
 LIST_SELECTED_TEXT = "#000000"  # selection turns EVERY column black: the palette's highlightedText was not reliably dark against the amber highlight
 BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
@@ -547,7 +549,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("badge open (top-left) ▸ badge_open", 6, 6, 22, 22, None),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
-            ("badge comment (lower-right) ▸ badge_comment_75", 110, 110, 22, 22, None),
+            ("badge comment (lower-right) ▸ badge_comment", 110, 110, 22, 22, None),
             ("tile name", 9, 142, 74, 15, "brushed_steel"),
             ("tile subtitle", 9, 157, 34, 15, "Karma"),
         ),
@@ -562,7 +564,7 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 37, 15, "Python"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge edit (lower-left) ▸ badge_edit", 6, 110, 22, 22, None),
-            ("badge comment (lower-right) ▸ badge_comment_75", 110, 110, 22, 22, None),
+            ("badge comment (lower-right) ▸ badge_comment", 110, 110, 22, 22, None),
             ("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None),
         ),
     },

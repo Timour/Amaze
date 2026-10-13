@@ -847,36 +847,29 @@ class IconAssetsTest(unittest.TestCase):
         r, g, b = (int(value[i:i + 2], 16) / 255.0 for i in (0, 2, 4))
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
-    def test_the_versions_badge_has_a_hover_twin(self):
-        """Versions is a BUTTON, so it has a second state - and the pair must stay a pair: SAME MARKS, with a difference that is only in the paint, because a hover file whose geometry has drifted is a button that changes shape under the cursor. Geometry, not colour: how the hover state reads is the design's call and may change; that the two files draw the same thing is not."""
-        base = self._paths("badge_versions.svg")
-        hover = self._paths("badge_versions_hover.svg")
-        self.assertTrue(base, "the versions badge draws nothing")
-        self.assertEqual(
-            base, hover,
-            "the hover twin no longer draws the same marks as its "
-            "base - the button changes shape under the cursor")
-        self.assertNotEqual(
-            self._paint("badge_versions.svg"),
-            self._paint("badge_versions_hover.svg"),
-            "the hover twin is painted exactly like its base, so "
-            "hovering the versions badge shows no answer at all")
-
-    def test_the_favourite_button_keeps_its_shape_under_the_pointer(self):
-        """Rest and hover draw one outline heart; only a favourite fills it. ▸r/tile-from-frame"""
-        rest = self._paths("badge_favourite_40.svg")
-        self.assertTrue(rest, "the favourite badge's rest art draws nothing")
-        self.assertEqual(
-            rest, self._paths("badge_favourite_75.svg"),
-            "the hover art no longer draws the rest art's marks - the "
-            "button changes shape under the pointer")
+    def test_a_button_badge_is_one_art_at_two_strengths(self):
+        """Rest and hover are ONE file at the two `amazetheme` opacities, every part of it changed."""
+        from amaze import amazetheme
+        from amaze.helpers import ui_helpers
+        from amaze.panel import delegates
+        arts = sorted({b.off_art for b in delegates.BADGES if b.off_art}
+                      | {b.art for b in delegates.BADGES if b.dims})
+        self.assertEqual(["badge_comment", "badge_edit", "badge_favourite_off",
+                          "badge_versions"], arts)
+        for art in arts:
+            self.assertTrue(self._paths(art + ".svg"), "%s draws nothing" % art)
+            with open(self._ui(art + ".svg"), encoding="utf-8") as fh:
+                text = fh.read()
+            rest = ui_helpers.at_opacity(text, amazetheme.BADGE_REST_OPACITY)
+            hover = ui_helpers.at_opacity(text, amazetheme.BADGE_HOVER_OPACITY)
+            self.assertNotEqual(self._paint_of(rest), self._paint_of(hover),
+                                "%s looks the same at rest and under the pointer" % art)
+            alphas = {float(v) for _k, v in re.findall(
+                r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', hover)}
+            self.assertEqual({amazetheme.BADGE_HOVER_OPACITY}, alphas,
+                             "%s keeps a part the hover strength does not reach" % art)
         self.assertTrue(self._paths("badge_favourite.svg"),
                         "the favourite state draws nothing")
-        self.assertNotEqual(
-            self._paint("badge_favourite_40.svg"),
-            self._paint("badge_favourite_75.svg"),
-            "rest and hover are painted identically, so the resting "
-            "heart shows no answer to the pointer")
 
     def test_the_run_button_keeps_its_shape_and_changes_its_paint(self):
         """Rest, hover and press draw one play mark; only the disc's colour answers. ▸r/tile-from-frame"""
@@ -888,20 +881,6 @@ class IconAssetsTest(unittest.TestCase):
         paints = {self._paint(name).__repr__() for name in (
             "badge_execute.svg", "badge_execute_hover.svg", "badge_execute_press.svg")}
         self.assertEqual(3, len(paints), "two of the run button's states look the same")
-
-    def test_the_comment_button_states_draw_the_same_bubble(self):
-        """The third state-pair button: rest and hover are one geometry differing only in paint, so the badge cannot jump shape as the pointer crosses it."""
-        base = self._paths("badge_comment_75.svg")
-        self.assertTrue(base, "the comment badge's rest art draws nothing")
-        self.assertEqual(
-            base, self._paths("badge_comment.svg"),
-            "the comment badge's hover art no longer draws the same "
-            "marks as its rest art - one state changed shape")
-        self.assertNotEqual(
-            self._paint("badge_comment_75.svg"),
-            self._paint("badge_comment.svg"),
-            "rest and hover are painted identically, so the resting "
-            "comment badge shows no answer to the pointer")
 
     @staticmethod
     def _effective_paint(tag):
@@ -919,12 +898,9 @@ class IconAssetsTest(unittest.TestCase):
 
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
-        expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,
-                          "badge_versions": 0.4, "badge_comment": 0.75,
-                          "badge_comment_75": 0.4,
-                          "badge_versions_hover": 0.75,
-                          "badge_favourite_40": 0.4, "badge_favourite_75": 0.75,
-                          "badge_edit": 0.75}   # read from the art, changed with it
+        expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,    # as drawn; the button
+                          "badge_versions": 0.4, "badge_comment": 0.4,    # arts' own value is
+                          "badge_favourite_off": 0.4, "badge_edit": 0.75}    # replaced when painted
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:
@@ -958,9 +934,11 @@ class IconAssetsTest(unittest.TestCase):
     def _paint(self, name):
         """How that geometry is PAINTED: fills, strokes, opacities and style attributes, in order - deliberately not a colour set, because the hover state's difference has been an opacity and could as easily become a colour next time. Style attributes carry paint too, and outrank the plain ones beside them. ▸r/svg-style-wins"""
         with open(self._ui(name), encoding="utf-8") as fh:
-            return re.findall(
-                r'((?:fill|stroke)(?:-opacity)?|opacity|style)="([^"]+)"',
-                fh.read())
+            return self._paint_of(fh.read())
+
+    @staticmethod
+    def _paint_of(text):
+        return re.findall(r'((?:fill|stroke)(?:-opacity)?|opacity|style)="([^"]+)"', text)
 
 
 class CaptureButtonTest(unittest.TestCase):

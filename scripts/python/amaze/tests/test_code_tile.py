@@ -159,7 +159,7 @@ class TheRunButtonAnswersThePointer(unittest.TestCase):
         cls = delegates.AssetItemDelegate
         original = cls.__dict__["_badge_pixmap"]
         cls._badge_pixmap = staticmethod(
-            lambda name, side, dpr=1.0: asked.append(name) or QtGui.QPixmap())
+            lambda name, side, dpr=1.0, opacity=None: asked.append(name) or QtGui.QPixmap())
         self.addCleanup(setattr, cls, "_badge_pixmap", original)
         delegate = test_support.tile_delegate({"execute": role})
         model = _RoleModel()
