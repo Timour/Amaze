@@ -611,7 +611,7 @@ class NotesPanel(ui_helpers.HeldPane):
 
 
     def _build_add_menu(self) -> None:
-        """Hang the + button's menu on it ONCE, Qt's own way - `InstantPopup` opens it on press and adds no arrow, so the button looks exactly as it did. ▸p/comment-images"""
+        """The + menu, hung ONCE: it opens on press; the corner triangle marks it. ▸p/comment-images"""
         menu = QtWidgets.QMenu(self.add_button)    # a CHILD of the button: one menu for the session, not a new one per click ▸r/menu-lifetime
         for label, handler in ADD_ITEMS:
             menu.addAction(label).triggered.connect(    # addAction(str) returns the QAction despite the stub ▸r/menu-lifetime
