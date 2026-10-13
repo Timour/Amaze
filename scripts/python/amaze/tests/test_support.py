@@ -405,6 +405,17 @@ BADGE_FAMILY = ("badge_open", "badge_favourite", "badge_versions",
                 "badge_comment")    # the tile badges, by art name - the family, in corner order
 
 
+def tile_delegate(roles, subtitle_role=None, **kwargs):
+    """A tile delegate showing the badges in `roles`, each reading the number given (None: no role)."""
+    from amaze.panel import delegates
+    model = type("TileModel", (), {})
+    for name, role in roles.items():
+        if delegates.BADGE[name].role:
+            setattr(model, delegates.BADGE[name].role, role)
+    return delegates.AssetItemDelegate(
+        subtitle_role, tile_badges=tuple(roles), tile_model=model, **kwargs)
+
+
 def art_colours(name: str) -> set:
     """Every colour an SVG in ui/ actually declares - badge tests assert the SHAPE of the family from these, never literal hexes, because the art is redrawn whenever the design moves. ▸p/harness-isolation"""
     import os

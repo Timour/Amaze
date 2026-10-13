@@ -7,6 +7,7 @@ import hou
 from PySide6 import QtCore, QtGui
 
 import amaze
+from amaze import amazetheme
 from amaze.core import debug, library, category, material, thumbnails
 from amaze.helpers import vex_syntax
 
@@ -24,7 +25,10 @@ def paint_code_preview(code: str) -> QtGui.QImage:
         PREVIEW_SIZE, PREVIEW_SIZE, QtGui.QImage.Format.Format_RGB32
     )
     image.fill(vex_syntax.BACKGROUND)  # black field like Houdini's wrangle editor, same palette
-    painter = QtGui.QPainter(image)
+    text = QtGui.QImage(PREVIEW_SIZE, PREVIEW_SIZE,
+                        QtGui.QImage.Format.Format_ARGB32_Premultiplied)
+    text.fill(QtCore.Qt.GlobalColor.transparent)
+    painter = QtGui.QPainter(text)    # one layer, faded whole below: overlapping glyphs stay even
     try:
         font = QtGui.QFont("Courier New")
         font.setStyleHint(QtGui.QFont.StyleHint.Monospace)
@@ -68,7 +72,27 @@ def paint_code_preview(code: str) -> QtGui.QImage:
                 y += line_h
     finally:
         painter.end()
+    layer = QtGui.QPainter(image)
+    layer.setOpacity(amazetheme.CODE_TEXT_OPACITY)
+    layer.drawImage(0, 0, text)
+    layer.end()
     return image
+
+
+def run_python(name: str, code: str) -> str:
+    """Run a Python snippet in this Houdini as one undo step: "" or its error's last line."""
+    import traceback
+    try:
+        compiled = compile(str(code or ""), "<snippet %s>" % name, "exec")
+    except SyntaxError as exc:
+        return "line %s: %s" % (exc.lineno, exc.msg)
+    try:
+        with hou.undos.group("Run %s" % name):
+            exec(compiled, {"__name__": "__main__", "hou": hou})    # noqa: S102
+    except (Exception, SystemExit):                          # noqa: BLE001
+        traceback.print_exc()
+        return traceback.format_exc().strip().splitlines()[-1]
+    return ""
 
 
 class CodeCategories(category.Categories):

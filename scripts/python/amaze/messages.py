@@ -209,6 +209,8 @@ HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on ev
 
 SNIPPET_HAS_NO_CODE = 'There is no code to save.'
 
+SNIPPET_RUN_FAILED = '"%s" stopped: %s'
+
 CONFIRM_CLEAR_THUMBNAIL_CACHE = 'This deletes all cached image and geometry thumbnails from disk. They will regenerate as you browse.'
 
 LOG_NOT_SAVED_UNEXPECTED = 'The log could not be saved. Unexpected error: %s'

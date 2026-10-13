@@ -875,6 +875,17 @@ class IconAssetsTest(unittest.TestCase):
             "rest and hover are painted identically, so the resting "
             "heart shows no answer to the pointer")
 
+    def test_the_run_button_keeps_its_shape_and_changes_its_paint(self):
+        """Rest, hover and press draw one play mark; only the disc's colour answers. ▸r/tile-from-frame"""
+        rest = self._paths("badge_execute.svg")
+        self.assertTrue(rest, "the run button draws nothing")
+        for state in ("badge_execute_hover.svg", "badge_execute_press.svg"):
+            self.assertEqual(rest, self._paths(state),
+                             "%s changed the play mark's shape" % state)
+        paints = {self._paint(name).__repr__() for name in (
+            "badge_execute.svg", "badge_execute_hover.svg", "badge_execute_press.svg")}
+        self.assertEqual(3, len(paints), "two of the run button's states look the same")
+
     def test_the_comment_button_states_draw_the_same_bubble(self):
         """The third state-pair button: rest and hover are one geometry differing only in paint, so the badge cannot jump shape as the pointer crosses it."""
         base = self._paths("badge_comment_75.svg")
@@ -910,7 +921,7 @@ class IconAssetsTest(unittest.TestCase):
                           "badge_comment_75": 0.4,
                           "badge_versions_hover": 0.75,
                           "badge_favourite_40": 0.4, "badge_favourite_75": 0.75,
-                          "badge_execute": 0.75, "badge_edit": 0.75}   # read from the art, changed with it
+                          "badge_edit": 0.75}   # read from the art, changed with it
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:

@@ -507,8 +507,8 @@ class NodeAndCodeDoNotBorrowTheVersionColumn(unittest.TestCase):
         sections = importlib.import_module("amaze.panel.sections")
         self.assertEqual("asset_delegate", sections.CopSection.delegate_attr,
                          "Node points the grid at the Materials delegate")
-        self.assertEqual("asset_delegate", sections.CodeSection.delegate_attr,
-                         "Code points the grid at the Materials delegate")
+        self.assertEqual("code_delegate", sections.CodeSection.delegate_attr,
+                         "Code lost its own delegate, and with it the Run button")
         self.assertEqual("thumb_delegate",
                          sections.MaterialSection.delegate_attr,
                          "Materials lost its own delegate")
@@ -525,13 +525,15 @@ class NodeAndCodeDoNotBorrowTheVersionColumn(unittest.TestCase):
                 continue
             target = node.targets[0]
             if not (isinstance(target, ast.Attribute)
-                    and target.attr in ("thumb_delegate", "asset_delegate")):
+                    and target.attr in ("thumb_delegate", "asset_delegate",
+                                        "code_delegate")):
                 continue
             version_roles[target.attr] = any(
                 kw.arg in ("versions_role", "active_version_role")
                 for kw in getattr(node.value, "keywords", []))
         self.assertEqual(
-            {"thumb_delegate": True, "asset_delegate": False}, version_roles,
+            {"thumb_delegate": True, "asset_delegate": False,
+             "code_delegate": False}, version_roles,
             "the Node/Code delegate carries the version roles, so those "
             "two sections paint a Version column again")
 

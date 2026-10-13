@@ -303,36 +303,34 @@ class AmazePanel(QtWidgets.QWidget):
             self.material_model.RendererLabelRole,
             self.thumblist,
             category_role=self.material_model.CategoryRole,
-            favorite_role=self.material_model.FavoriteRole,
-            tag_role=self.material_model.TagRole,
-            licence_role=self.material_model.LicenceRole,
-            category_color_role=self.material_model.CategoryColorRole,    # Nodes and Code share this delegate (one grid view, models swapped) and share the role NUMBER, both models subclassing MaterialLibrary, so one wiring here colours all three
-            versions_role=self.material_model.VersionsRole,
-            notes_role=self.material_model.NotesRole,
-            active_version_role=self.material_model.ActiveVersionRole,
-            date_role=self.material_model.DateRole,
-            id_role=self.material_model.IdRole,
-        )
-        self.thumb_delegate.set_badge_click("versions", self._open_versions_dialog)    # a click on the versions badge opens the Versions dialog: the delegate only detects the hit, the panel owns the dialog
-        self.thumb_delegate.set_badge_click("favourite", self._favourite_badge_clicked)    # wiring the click is what makes the star a BUTTON with a visible rest state; the online delegate wires neither, so its corner stays empty
-        self.thumb_delegate.set_badge_click("comment", self._open_comments_from_badge)
-
-        self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
-            self.material_model.RendererLabelRole,
-            self.thumblist,
-            category_role=self.material_model.CategoryRole,
-            favorite_role=self.material_model.FavoriteRole,
             tag_role=self.material_model.TagRole,
             licence_role=self.material_model.LicenceRole,
             category_color_role=self.material_model.CategoryColorRole,
-            notes_role=self.material_model.NotesRole,
+            active_version_role=self.material_model.ActiveVersionRole,
             date_role=self.material_model.DateRole,
             id_role=self.material_model.IdRole,
+            tile_badges=sections.MaterialSection.tile_badges,
+            tile_model=library.MaterialLibrary,
+            on_badge=self._badge_verb,
         )
-        self.asset_delegate.set_badge_click(
-            "favourite", self._favourite_badge_clicked)
-        self.asset_delegate.set_badge_click(
-            "comment", self._open_comments_from_badge)
+
+        node_roles = dict(
+            category_role=self.material_model.CategoryRole,
+            tag_role=self.material_model.TagRole,
+            licence_role=self.material_model.LicenceRole,
+            category_color_role=self.material_model.CategoryColorRole,
+            date_role=self.material_model.DateRole,
+            id_role=self.material_model.IdRole,
+            on_badge=self._badge_verb,
+        )
+        self.asset_delegate = AssetItemDelegate(    # Node and Code get their OWN delegate, without the version roles. `grid.sync_table_columns` decides a column exists from the active delegate's roles, so borrowing thumb_delegate painted a "Version" column reading "none" on every row, floored at the width of "Version 99". Latent and worse: editorEvent and _sync_versions_hover run against that delegate too, and _open_versions_dialog maps through the MATERIAL proxy and indexes material_model.assets - so a Node or Code asset with a versions ledger would open an unrelated MATERIAL. overview.md §2 and ListColumnHeader.COLUMNS both say Version is materials-only and Open is File-only; this is what delivers it
+            self.material_model.RendererLabelRole, self.thumblist,
+            tile_badges=sections.CopSection.tile_badges,
+            tile_model=cop_library.CopLibrary, **node_roles)
+        self.code_delegate = AssetItemDelegate(
+            self.material_model.RendererLabelRole, self.thumblist,
+            tile_badges=sections.CodeSection.tile_badges,
+            tile_model=code_library.CodeLibrary, **node_roles)
 
         self.file_sorted_model = texture_library.TextureFilterProxyModel(self)    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered here for the search box and favourites star; see core/file_library.py
         self.file_sorted_model.setSourceModel(self.file_files_model)
@@ -345,15 +343,11 @@ class AmazePanel(QtWidgets.QWidget):
             self.thumblist,
             category_role=self.file_files_model.FolderRole,
             category_color_role=self.file_files_model.CategoryColorRole,
-            favorite_role=self.file_files_model.FavoriteRole,
-            open_role=self.file_files_model.OpenSceneRole,
             crop_role=self.file_files_model.CropRole,
-            notes_role=self.file_files_model.NotesRole,
+            tile_badges=sections.FileSection.tile_badges,
+            tile_model=file_library.FileFiles,
+            on_badge=self._badge_verb,
         )
-        self.file_delegate.set_badge_click(
-            "favourite", self._favourite_badge_clicked)
-        self.file_delegate.set_badge_click(
-            "comment", self._open_comments_from_badge)
         self._sync_notes_button_pixmaps()    # the star preference colours the NOTES surfaces (chip lit + pane accent); tile badges render as drawn and take no colour push. The accent sweep for the tile delegates runs at the END of setup() instead, because tile_delegates() derives from self.sections, which do not exist yet here - a sweep at this point walks an empty tuple. The "Type" header label follows the same accent as the type entries the delegates paint
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
@@ -376,13 +370,10 @@ class AmazePanel(QtWidgets.QWidget):
             self.thumblist,
             category_role=self.gradient_model.CategoryLabelRole,
             category_color_role=self.gradient_model.CategoryColorRole,
-            favorite_role=self.gradient_model.FavoriteRole,
-            notes_role=self.gradient_model.NotesRole,
+            tile_badges=sections.GradientSection.tile_badges,
+            tile_model=gradient_library.GradientLibrary,
+            on_badge=self._badge_verb,
         )    # no per-delegate accent is set here: the one sweep at the end of setup() covers every tile delegate, and a hand-set on this one masked the dead early sweep for exactly one of five
-        self.gradient_delegate.set_badge_click(
-            "favourite", self._favourite_badge_clicked)
-        self.gradient_delegate.set_badge_click(
-            "comment", self._open_comments_from_badge)
 
         self.cop_category_sorted_model = category.CategoriesSidebarProxy(self)    # the Cop section is standalone COP-network assets over its own cops.json (core/cop_library.py), mirroring the material proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
         self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
@@ -432,8 +423,9 @@ class AmazePanel(QtWidgets.QWidget):
             self.matx_online_model.RendererLabelRole,
             self.thumblist,
             category_role=self.matx_online_model.CategoryRole,
-            favorite_role=self.matx_online_model.FavoriteRole,
             tag_role=self.matx_online_model.TagRole,
+            tile_badges=sections.OnlineContext.tile_badges,
+            tile_model=matx_library.MatxOnlineLibrary,
         )
         self.matx_online_model.progress_changed.connect(    # preview downloads drive the same thin bar as texture/geo thumbs
             self._on_online_preview_progress
@@ -718,13 +710,18 @@ class AmazePanel(QtWidgets.QWidget):
         if (getattr(self, "thumblist", None) is not None
                 and watched is self.thumblist.viewport()
                 and hasattr(self, "thumb_delegate")):
-            if event.type() == QtCore.QEvent.Type.MouseMove:
-                self._sync_badge_hover(event.position().toPoint())
-            elif event.type() == QtCore.QEvent.Type.Leave:
+            kind = event.type()
+            if kind in (QtCore.QEvent.Type.MouseMove,
+                        QtCore.QEvent.Type.MouseButtonPress,
+                        QtCore.QEvent.Type.MouseButtonRelease):
+                self._sync_badge_hover(
+                    event.position().toPoint(),
+                    bool(event.buttons() & QtCore.Qt.MouseButton.LeftButton))
+            elif kind == QtCore.QEvent.Type.Leave:
                 self._sync_badge_hover(None)
         return False
 
-    def _sync_badge_hover(self, point) -> None:
+    def _sync_badge_hover(self, point, down=False) -> None:
         """Light the button badge the cursor is on, and only that one. Repaints ONLY when the answer changed - this runs on every mouse move across the grid"""
         delegate = self.thumblist.itemDelegate()    # THE ACTIVE delegate, never thumb_delegate by name: Node and Code have their own (no version roles), and hard-coding the Materials one runs the hit-test and hover state against a delegate that is not the one painting
         if not hasattr(delegate, "button_badge_at"):
@@ -744,7 +741,7 @@ class AmazePanel(QtWidgets.QWidget):
                     index = candidate
         previous = delegate._button_hover
         if delegate.set_button_hover(
-                badge.name if badge is not None else None, index):
+                badge.name if badge is not None else None, index, down):
             if previous is not None and previous[1].isValid():
                 self.thumblist.update(QtCore.QModelIndex(previous[1]))
             if index.isValid():
@@ -1595,14 +1592,16 @@ class AmazePanel(QtWidgets.QWidget):
         else:
             self._refresh_notes_subject()    # NoUpdate emits no selectionChanged, and that signal is the pane's only wire
 
-    def _favourite_badge_clicked(self, index) -> None:
-        """The tile's star button: flip the whole SELECTION when the clicked tile is in it - the press that preceded this release has already selected a lone tile, so one gesture stars a multi-selection - and just the clicked tile when it somehow is not."""
-        selmodel = self.thumblist.selectionModel()
-        rows = grid_columns.selected_rows(selmodel) \
-            if selmodel is not None else []
-        if index not in rows:
-            rows = [index]
-        self.grid_toggle_favourite(rows)
+    def _badge_verb(self, verb):
+        """A badge click as the active section's verb: on the selection when the tile is in it."""
+        def click(index):
+            context = self._section()
+            if context is None or not hasattr(context, verb):
+                return
+            selmodel = self.thumblist.selectionModel()
+            rows = grid_columns.selected_rows(selmodel) if selmodel is not None else []
+            getattr(context, verb)(rows if index in rows else [index], index)
+        return click
 
     def grid_toggle_favourite(self, indexes) -> None:
         """Flip the star on the grid's selection - one entry point for every section's menu, and all it decides is which selection to act on."""

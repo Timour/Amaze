@@ -728,15 +728,12 @@ class ModelRoleTest(unittest.TestCase):
             "the colour push is back - the star preference can reach "
             "the tile badges again")
 
-    def test_every_tile_delegate_carries_the_role(self):
-        """Source pin: all four delegates wire notes_role - every section takes notes."""
-        import inspect
-        from amaze.panel import panel as panel_mod
-        source = inspect.getsource(panel_mod)
-        self.assertEqual(
-            4, source.count("notes_role="),
-            "the notes role is wired somewhere new, or a delegate "
-            "lost it - the badge follows the wiring")
+    def test_every_section_tile_shows_the_comment_badge(self):
+        """Every section takes comments, so every section's tile lists the comment badge."""
+        from amaze.panel import sections
+        for cls in sections.SECTION_CLASSES:
+            self.assertIn("comment", cls.tile_badges,
+                          "%s's tile lost the comment badge" % cls.__name__)
 
 
 def _curated_notes() -> int:
@@ -1142,10 +1139,8 @@ class VersionsBadgeHoverTest(unittest.TestCase):
     ROLE = QtCore.Qt.ItemDataRole.UserRole + 77  # these DRIVE the delegate rather than reading panel.py - the icon_side lesson (practice.md, 2026-07-29)
 
     def _delegate(self):
-        from amaze.panel import delegates
-        delegate = delegates.AssetItemDelegate(
-            QtCore.Qt.ItemDataRole.UserRole + 78,   # subtitle_role
-            versions_role=self.ROLE)
+        delegate = test_support.tile_delegate(
+            {"versions": self.ROLE}, QtCore.Qt.ItemDataRole.UserRole + 78)
         delegate.set_badge_click("versions", lambda index: None)    # a badge with no click wired is not a button, and button_badge_at answers for buttons only - production always wires versions where the role exists
         return delegate
 
@@ -1210,14 +1205,29 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         self.assertFalse(delegate._is_button_hovered("versions", index))
 
     def test_the_tooltip_says_what_a_click_does(self):
+        """Each button names its action; the heart names the one a click takes from where it is."""
         from amaze import tooltips
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
         import inspect
-        body = inspect.getsource(delegates.AssetItemDelegate._badge_tooltip)
-        self.assertIn("tooltips.BADGE_VERSIONS", body)   # the WORDS live in tooltips.py; the badge still has to reach for each one
-        self.assertIn("tooltips.BADGE_FAVORITE_ADD", body)
-        self.assertIn("tooltips.BADGE_FAVORITE_REMOVE", body)
+        favourite = QtCore.Qt.ItemDataRole.UserRole + 79
+        delegate = test_support.tile_delegate(
+            {"versions": self.ROLE, "favourite": favourite},
+            QtCore.Qt.ItemDataRole.UserRole + 78)
+        delegate.set_badge_click("favourite", lambda index: None)
+        index = self._index(3)
+
+        def words(name):
+            return delegate._badge_tooltip(delegates.BADGE[name], index)
+
+        self.assertEqual(tooltips.BADGE_VERSIONS, words("versions"))
+        self.assertEqual(tooltips.BADGE_FAVORITE_ADD, words("favourite"))
+        self._model.setData(index, True, favourite)
+        self.assertEqual(tooltips.BADGE_FAVORITE_REMOVE, words("favourite"))
+        for badge in delegates.BADGES:
+            self.assertEqual(bool(badge.verb), bool(badge.tip),
+                             "%s: a button names its action and an indicator "
+                             "says nothing" % badge.name)
         help_body = inspect.getsource(delegates.AssetItemDelegate.helpEvent)
         self.assertIn("ui_helpers.tooltip_text", help_body)  # through the shared cap: a raw plain-text tooltip renders as one endless line (research.md)
         self.assertTrue(
@@ -1231,10 +1241,8 @@ class StarButtonPaintTest(unittest.TestCase):
     FAV = QtCore.Qt.ItemDataRole.UserRole + 79
 
     def _delegate(self, wired=True):
-        from amaze.panel import delegates
-        delegate = delegates.AssetItemDelegate(
-            QtCore.Qt.ItemDataRole.UserRole + 78,   # subtitle_role
-            favorite_role=self.FAV)
+        delegate = test_support.tile_delegate(
+            {"favourite": self.FAV}, QtCore.Qt.ItemDataRole.UserRole + 78)
         if wired:
             delegate.set_badge_click("favourite", lambda index: None)
         return delegate

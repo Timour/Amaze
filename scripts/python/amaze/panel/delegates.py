@@ -13,34 +13,53 @@ from amaze.helpers import theme, ui_helpers
 QtGui.QPixmapCache.setCacheLimit(65536)   # APP-WIDE, for the whole of Houdini, which is why it is set once here and not in `__init__` - that runs one per section and again on every reload; 64MB covers a full screen of scaled tiles several times over
 
 class Badge:
-    """One tile badge as data: its arts and its role. Its place comes from the T frames."""
+    """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
 
-    __slots__ = ("name", "art", "role_attr", "minimum",
-                 "hover_art", "off_art", "off_hover_art")
+    __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals",
+                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip")
 
-    def __init__(self, name, art, role_attr, minimum=0,
-                 hover_art="", off_art="", off_hover_art="") -> None:
+    def __init__(self, name, art, role="", role_attr="", verb="", minimum=0, equals="",
+                 hover_art="", press_art="", off_art="", off_hover_art="",
+                 tip="", off_tip="") -> None:
         self.name = name
         self.art = art
-        self.role_attr = role_attr    # the delegate attribute holding this badge's role, or None where the section does not have it
-        self.minimum = minimum        # a count badge draws only at or above this - versions is the only one, because an asset with a single version has no history to show
+        self.role = role              # the model's role, by name, that says whether it draws; "" = always
+        self.role_attr = role_attr    # where the delegate keeps that role's number; list columns read it
+        self.verb = verb              # the section verb a click runs; "" draws an indicator
+        self.minimum = minimum        # a count draws at or above this: one version has no history
+        self.equals = equals          # the role's value this badge draws for; "" = any truthy one
         self.hover_art = hover_art    # the ON state's answer to the pointer, where it has one
-        self.off_art = off_art        # drawn while the role is FALSY - only on a delegate that wired this badge's click, so the off state is a button's rest and never a dead indicator
+        self.press_art = press_art    # while the button is held down, where it has one
+        self.off_art = off_art        # drawn while the role is falsy, on a button only
         self.off_hover_art = off_hover_art    # the off state's answer to the pointer
+        self.tip = tip                # the hover words, from tooltips.py; "" = silent
+        self.off_tip = off_tip        # the words in the off state, where a click does the opposite
+
+    def shows(self, value) -> bool:
+        """Whether a truthy role value draws this badge's ON state: its count, or its one value."""
+        if self.minimum:
+            return int(value) >= self.minimum
+        return not self.equals or value == self.equals
 
     def __repr__(self) -> str:                                # pragma: no cover
         return "<Badge %s>" % (self.name,)
 
 
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, painted as drawn ▸r/tile-from-frame
-    Badge("open", "badge_open", "_open_role"),                 # the scene currently open
-    Badge("favourite", "badge_favourite", "_favorite_role",
-          off_art="badge_favourite_40", off_hover_art="badge_favourite_75"),    # on ignores hover
-    Badge("versions", "badge_versions", "_versions_role",
-          minimum=2, hover_art="badge_versions_hover"),    # a button: opens the Versions dialog
-    Badge("comment", "badge_comment_75", "_notes_role",
-          hover_art="badge_comment"),    # a button: opens the Comments pane
+    Badge("open", "badge_open", "OpenSceneRole", "_open_role"),    # the scene currently open
+    Badge("favourite", "badge_favourite", "FavoriteRole", "_favorite_role", "menu_favourite",
+          off_art="badge_favourite_40", off_hover_art="badge_favourite_75",    # on ignores hover
+          tip=tooltips.BADGE_FAVORITE_REMOVE, off_tip=tooltips.BADGE_FAVORITE_ADD),
+    Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
+          minimum=2, hover_art="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
+    Badge("comment", "badge_comment_75", "NotesRole", "_notes_role", "menu_comments",
+          hover_art="badge_comment", tip=tooltips.BADGE_COMMENTS),
+    Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
+          equals="Python", hover_art="badge_execute_hover", press_art="badge_execute_press",
+          tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
+    Badge("edit", "badge_edit", verb="menu_edit", tip=tooltips.BADGE_EDIT),
 )
+BADGE = {badge.name: badge for badge in BADGES}
 
 
 def role_color(index, role):
@@ -151,9 +170,11 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     _TILE = amazetheme.drawn_tile()    # every spacing below is the T01 frame's ▸r/tile-from-frame
     PAD = theme.ui_px(_TILE["pad"])
     WIDTH_EXTRA = theme.ui_px(_TILE["width_extra"])    # cell width = size + this
-    PLACES = {name: (right, theme.ui_px(ix), bottom, theme.ui_px(iy), theme.ui_px(side))
-              for name, (right, ix, bottom, iy, side) in amazetheme.drawn_badges().items()}
-    BADGE_CAP = max(place[4] for place in PLACES.values())
+    PLACES = {name: (edge_x, theme.ui_px(ix), edge_y, theme.ui_px(iy), theme.ui_px(side))
+              for name, (edge_x, ix, edge_y, iy, side) in amazetheme.drawn_badges().items()}
+    BADGE_CAP = max(place[4] for place in PLACES.values()
+                    if "centre" not in (place[0], place[2]))    # the corner badges' drawn size
+    DRAWN_THUMB = theme.ui_px(_TILE["thumb"])    # the thumbnail side the T frames draw
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
     DIM = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
     THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
@@ -263,22 +284,19 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def __init__(
         self, subtitle_role, parent=None, category_role=None,
-        favorite_role=None, tag_role=None, licence_role=None,
-        open_role=None, crop_role=None,
+        tag_role=None, licence_role=None,
+        crop_role=None,
         category_color_role=None,
-        versions_role=None,
-        notes_role=None,
         active_version_role=None,
         date_role=None,
         id_role=None,
+        tile_badges=(),
+        tile_model=None,
+        on_badge=None,
     ):
         """Every role is optional and None means the delegate simply does not paint that thing, which is how one delegate serves sections that answer different questions."""
         super().__init__(parent)
-        self._favorite_role = favorite_role    # the amber star badge, drawn LIVE from this role in every section; it replaced a material-only mechanism that baked a star into the cached thumbnail and never visibly worked
-        self._open_role = open_role            # File section only: badges the tile of the scene currently open. None everywhere else, so no other section pays for it
-        self._versions_role = versions_role    # Materials only today: the badge for an asset with more than one version
         self._active_version_role = active_version_role    # the active version's NAME, for list mode's Version column - the count above answers whether there are versions, this answers which one you are looking at
-        self._notes_role = notes_role          # the comment badge in the tile's last free corner
         self._crop_role = crop_role            # a PER-ROW crop decision: a truthy value fills the tile and crops rather than letterboxing, so a File row's wide viewport capture fills its tile while image and geometry rows in the same view letterbox. None = never crop
         self._subtitle_role = subtitle_role
         self._category_role = category_role    # list mode's Category column source - the asset's category, the containing folder, or a palette's curated set. None = the column stays empty
@@ -289,6 +307,14 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         self._category_color_role = category_color_role    # a category can carry a colour, which paints the text band under the tile. None = this section has no category colours (folders and palette groups do not)
         self._badge_clicks = {}       # badge name -> the panel's handler; wiring one is what MAKES that badge a button, so the online delegate's star stays an indicator that never draws its off state. Per instance, never a class default: a shared dict would wire every delegate at once
         self._button_hover = None     # (badge name, QPersistentModelIndex) while the cursor is on a button badge
+        self._button_down = False     # and whether the left button is held on it
+        self._tile = tuple(BADGE[name].name for name in tile_badges)    # the section's badge IDs
+        for badge in BADGES:    # each role read off the model, None where this tile lacks it
+            if badge.role_attr:
+                setattr(self, badge.role_attr, getattr(tile_model, badge.role)
+                        if badge.name in self._tile else None)
+            if badge.name in self._tile and badge.verb and on_badge is not None:
+                self.set_badge_click(badge.name, on_badge(badge.verb))
 
     @staticmethod
     def _to_pixmap(icon):
@@ -384,14 +410,31 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return max(theme.ui_px(12), min(icon_side // 4, cap or cls.BADGE_CAP))
 
     def _badge_at(self, name, area_x, area_y, icon_side, mark_w=None, mark_h=None):
-        """(x, y, w, h) of a badge on a thumbnail, from its drawn corner and inset."""
-        right, inset_x, bottom, inset_y, cap = self.PLACES[name]
-        side = self._badge_side(icon_side, cap)
+        """(x, y, w, h) of a badge on a thumbnail, from its drawn edges and insets."""
+        edge_x, inset_x, edge_y, inset_y, cap = self.PLACES[name]
+        side = self._placed_side(name, icon_side)
         w = side if mark_w is None else mark_w
         h = side if mark_h is None else mark_h
-        x = area_x + icon_side - w - inset_x if right else area_x + inset_x
-        y = area_y + icon_side - h - inset_y if bottom else area_y + inset_y
-        return int(x), int(y), int(w), int(h)
+        scale = icon_side / float(self.DRAWN_THUMB)
+        return (int(self._along(area_x, icon_side, w, edge_x, inset_x, scale)),
+                int(self._along(area_y, icon_side, h, edge_y, inset_y, scale)),
+                int(w), int(h))
+
+    def _placed_side(self, name, icon_side):
+        """A corner badge's side follows `_badge_side`; a centred one scales with the tile."""
+        edge_x, _ix, edge_y, _iy, cap = self.PLACES[name]
+        if "centre" in (edge_x, edge_y):
+            return max(theme.ui_px(12),
+                       min(cap, int(round(cap * icon_side / float(self.DRAWN_THUMB)))))
+        return self._badge_side(icon_side, cap)
+
+    @staticmethod
+    def _along(start, span, size, edge, inset, scale):
+        if edge == "centre":
+            return start + span / 2.0 + inset * scale - size / 2.0
+        if edge == "end":
+            return start + span - size - inset
+        return start + inset
 
     FAV_MARK_COLOR = LIST_INK      # the mark columns' ink - the table's one colour, like every other list column
     OPEN_MARK_COLOR = LIST_INK
@@ -424,25 +467,30 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """Wire `name`'s badge to the panel's handler, making it a BUTTON: the delegate DETECTS the hit; what a click means is the panel's."""
         self._badge_clicks[name] = callback
 
-    def set_button_hover(self, name, index) -> bool:
-        """Remember which tile's `name` badge the cursor is over and answer whether that CHANGED, so the caller repaints only then - a repaint per mouse move across a 500-tile grid is not free. Stored as a persistent index, because rows move under filtering and renaming and a stale row number would light the wrong tile."""
+    def set_button_hover(self, name, index, down=False) -> bool:
+        """Remember the button badge under the cursor and whether it is held; True when either changed."""
         current = self._button_hover
         new = (name, QtCore.QPersistentModelIndex(index)) if (
-            name and index is not None and index.isValid()) else None
-        if (current is None) != (new is None) or (
-                new is not None and current is not None
-                and (current[0] != new[0]
-                     or QtCore.QModelIndex(current[1])
-                     != QtCore.QModelIndex(new[1]))):
-            self._button_hover = new
-            return True
-        return False
+            name and index is not None and index.isValid()) else None    # rows move under filters
+        down = bool(down and new is not None)
+        moved = (current is None) != (new is None) or (
+            new is not None and current is not None
+            and (current[0] != new[0]
+                 or QtCore.QModelIndex(current[1]) != QtCore.QModelIndex(new[1])))
+        if not moved and down == self._button_down:
+            return False
+        self._button_hover = new
+        self._button_down = down
+        return True
 
     def _is_button_hovered(self, name, index) -> bool:
         hover = self._button_hover
         return (hover is not None and hover[0] == name
                 and hover[1].isValid()
                 and QtCore.QModelIndex(hover[1]) == index)
+
+    def _is_button_pressed(self, name, index) -> bool:
+        return self._button_down and self._is_button_hovered(name, index)
 
     def _is_list(self, option) -> bool:
         """IS THIS A LIST ROW? One question asked one way - it was asked three (the view's `viewMode()`, `option.decorationPosition`, and `prefs.view_mode`), nothing kept them in step, and the click was the one that drifted: it fired in list mode over a badge that mode never draws."""
@@ -459,21 +507,21 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         if not index.isValid():
             return None
         for badge in BADGES:
-            if badge.name not in self._badge_clicks:
-                continue
-            role = getattr(self, badge.role_attr)
-            if role is None:
-                continue
-            value = index.data(role)
-            if value:
-                if badge.minimum and int(value) < badge.minimum:
-                    continue
-            elif not badge.off_art:
-                continue
-            if self._badge_rect(option_rect, mode_grid,
-                                badge.name).contains(point):
+            if (badge.name in self._badge_clicks
+                    and self._badge_state(badge, index)
+                    and self._badge_rect(option_rect, mode_grid,
+                                         badge.name).contains(point)):
                 return badge
         return None
+
+    def _badge_state(self, badge, index) -> str:
+        """"on", "off" or "" (not drawn) for one badge on one tile: paint, click and words read it."""
+        if badge.name not in self._tile:
+            return ""
+        value = index.data(getattr(self, badge.role_attr)) if badge.role else True
+        if value:
+            return "on" if badge.shows(value) else ""
+        return "off" if badge.off_art and badge.name in self._badge_clicks else ""    # a button's rest
 
     def _badge_rect(self, option_rect, mode_grid, name):
         """Where the badge `name` sits, for hit-testing - the paint's own placement."""
@@ -484,17 +532,10 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             name, option_rect.left() + pad, option_rect.top() + pad, icon_side))
 
     def _badge_tooltip(self, badge, index):
-        """The words a button badge shows on hover - state-aware, so the star names the ACTION a click would take, not the state it is in."""
-        if badge.name == "versions":
-            return tooltips.BADGE_VERSIONS
-        if badge.name == "comment":
-            return tooltips.BADGE_COMMENTS
-        if badge.name == "favourite":
-            role = getattr(self, badge.role_attr)
-            return (tooltips.BADGE_FAVORITE_REMOVE
-                    if role is not None and index.data(role)
-                    else tooltips.BADGE_FAVORITE_ADD)
-        return ""
+        """A button badge's hover words: the action a click takes from the state it is in."""
+        if badge.off_tip and self._badge_state(badge, index) == "off":
+            return badge.off_tip
+        return badge.tip
 
     def helpEvent(self, event, view, option, index):
         """A button badge names itself on hover and the rest of the tile stays silent; Qt asks the delegate first, so this is the hook - a tooltip set on the ITEM would follow the cursor across the whole tile."""
@@ -530,31 +571,26 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         return super().editorEvent(event, model, option, index)
 
     def badges(self) -> tuple:
-        """Which badges this delegate actually shows, by name - DERIVED from the wired roles rather than declared a second time, so a delegate cannot claim a badge it cannot read. Which badges a SECTION ought to have is a different question, asked by `test_panel_correctness` against every section's model."""
-        return tuple(badge.name for badge in BADGES
-                     if getattr(self, badge.role_attr) is not None)
+        """The badge IDs this tile shows, in paint order."""
+        return tuple(badge.name for badge in BADGES if badge.name in self._tile)
 
     def _paint_badges(self, painter, index, area_x, area_y,
                       icon_side, dpr=1.0):
         """Every badge this tile carries, in one pass, each where the T frames draw it."""
         for badge in BADGES:
-            role = getattr(self, badge.role_attr)
-            if role is None:
+            state = self._badge_state(badge, index)
+            if not state:
                 continue
-            value = index.data(role)
             hovered = self._is_button_hovered(badge.name, index)
-            if value:
-                if badge.minimum and int(value) < badge.minimum:
-                    continue
-                art = badge.hover_art if (badge.hover_art and hovered) \
-                    else badge.art    # a hover art is the SAME mark, differing only in paint - a button that answers the pointer
+            if state == "on":
+                art = (badge.press_art
+                       if badge.press_art and self._is_button_pressed(badge.name, index)
+                       else badge.hover_art if (badge.hover_art and hovered)
+                       else badge.art)    # one mark per button, differing only in paint
             else:
-                if not (badge.off_art
-                        and badge.name in self._badge_clicks):
-                    continue    # an off state exists only as a BUTTON's rest - a delegate with no click wired (the online grid) keeps its empty corner
                 art = badge.off_hover_art if (
                     hovered and badge.off_hover_art) else badge.off_art
-            side = self._badge_side(icon_side, self.PLACES[badge.name][4])
+            side = self._placed_side(badge.name, icon_side)
             mark = self._badge_pixmap(art, side, dpr)
             if mark.isNull():
                 continue

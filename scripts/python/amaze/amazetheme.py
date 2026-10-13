@@ -99,6 +99,7 @@ LIST_HEADER_DIVIDER = "#454545"
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the accent DEFAULT only - overwritten per instance from `prefs.accent_color`
+CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
 LIST_SELECTED_TEXT = "#000000"  # selection turns EVERY column black: the palette's highlightedText was not reliably dark against the amber highlight
 BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
@@ -549,19 +550,19 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 34, 15, "Karma"),
         ),
     },
-    "T05": {   # the code tile: Execute and Edit take the corners Open and Versions have elsewhere
+    "T05": {   # the code tile on its generic face: Run in the middle, Edit where Versions is elsewhere
         "frame": (138, 177),
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
             ("bg", 4, 4, 130, 130, None),
-            ("Icon code execute", 43, 32, 52, 73, None),
             ("tile name", 9, 142, 52, 15, "Mtxl to RS"),
             ("tile subtitle", 9, 157, 37, 15, "Python"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
-            ("badge execute (top-left) ▸ badge_execute", 6, 6, 22, 22, None),
             ("badge edit (lower-left) ▸ badge_edit", 6, 110, 22, 22, None),
             ("badge comment (lower-right) ▸ badge_comment_75", 110, 110, 22, 22, None),
+            ("Floor", 33, 28.63, 72.06, 83.21, None),
+            ("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
@@ -844,27 +845,36 @@ def drawn_tile(frame_key: str = "T01") -> dict:
         "img_text_gap": name[2] - (thumb[2] + thumb[4]),
         "text_inset": name[1] - thumb[1],
         "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
+        "thumb": thumb[3],
     }
 
 
 def drawn_badges() -> dict:
-    """{badge: (right, inset x, bottom, inset y, side)} off every T frame; a badge drawn twice agrees."""
+    """{badge: (edge x, inset x, edge y, inset y, side)} off every T frame; a badge drawn twice agrees."""
     out = {}
     for key, layout in DIALOG_LAYOUT.items():
         if not key.startswith("T"):
             continue
         thumb = next(n for n in layout["nodes"] if n[0] == "thumbnail")
-        left, top, side = thumb[1], thumb[2], thumb[3]
         for kind, x, y, w, _h, _text in layout["nodes"]:
             if not kind.startswith("badge "):
                 continue
-            right, bottom = x + w / 2 > left + side / 2, y + w / 2 > top + side / 2
-            place = (right, left + side - x - w if right else x - left,
-                     bottom, top + side - y - w if bottom else y - top, w)
+            place = (_badge_edge(x, w, thumb[1], thumb[3])
+                     + _badge_edge(y, w, thumb[2], thumb[4]) + (w,))
             badge = kind[len("badge "):].split(" (")[0]
             if out.setdefault(badge, place) != place:
                 raise ValueError("badge %s is drawn in two places" % badge)
     return out
+
+
+def _badge_edge(at, size, start, span):
+    """("start"|"end", inset from that edge), or ("centre", its middle's offset) if it straddles."""
+    middle = start + span / 2
+    if at < middle < at + size:
+        return "centre", at + size / 2 - middle
+    if at + size / 2 > middle:
+        return "end", start + span - at - size
+    return "start", at - start
 
 
 def drawn_list(frame_key: str = "L01") -> dict:

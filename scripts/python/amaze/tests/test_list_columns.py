@@ -41,14 +41,10 @@ class ListRowPainting(unittest.TestCase):
 
     def setUp(self):
         self.view = QtWidgets.QListView()  # a GRID view: this class rendered LIST rows until the table took list mode, and the delegate has no list branch left
-        self.delegate = delegates.AssetItemDelegate(
-            SUBTITLE_ROLE,
-            favorite_role=FAV_ROLE,
-            open_role=OPEN_ROLE,
-            notes_role=NOTE_ROLE,
-            versions_role=VERSIONS_ROLE,
-            active_version_role=ACTIVE_ROLE,
-        )
+        self.delegate = test_support.tile_delegate(
+            {"favourite": FAV_ROLE, "open": OPEN_ROLE, "comment": NOTE_ROLE,
+             "versions": VERSIONS_ROLE},
+            SUBTITLE_ROLE, active_version_role=ACTIVE_ROLE)
 
     def _index(self, fav=False, is_open=False, note=False,
                versions=0, active_name=""):

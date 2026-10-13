@@ -91,7 +91,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
     def test_a_badge_is_placed_by_its_own_inset_on_each_axis(self):
         """Each badge carries two insets of its own; nothing assumes the corners agree."""
         delegate = self.D.__new__(self.D)
-        delegate.PLACES = {"open": (True, 5, False, 7, 18)}
+        delegate.PLACES = {"open": ("end", 5, "start", 7, 18)}
         side = self.D._badge_side(130, 18)
         self.assertEqual((10 + 130 - side - 5, 20 + 7, side, side),
                          delegate._badge_at("open", 10, 20, 130))
@@ -104,15 +104,33 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
             ("thumbnail", 4, 4, 130, 130, None),
             ("badge open (top-left) ▸ badge_open", 107, 105, 22, 22, None))}
         with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
-            self.assertEqual({"open": (True, 5, True, 7, 22)},
+            self.assertEqual({"open": ("end", 5, "end", 7, 22)},
                              amazetheme.drawn_badges())
+
+    def test_a_badge_across_the_middle_is_centred_and_scales_with_the_tile(self):
+        """The run button is drawn across the thumbnail's middle: it stays there at any size."""
+        from unittest import mock
+        from amaze import amazetheme
+        frame = {"frame": (138, 177), "nodes": (
+            ("thumbnail", 4, 4, 130, 130, None),
+            ("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None))}
+        with mock.patch.dict(amazetheme.DIALOG_LAYOUT, {"T01": frame}, clear=True):
+            self.assertEqual({"execute": ("centre", 0.0, "centre", 4.0, 36)},
+                             amazetheme.drawn_badges())
+        delegate = self.D.__new__(self.D)
+        delegate.PLACES = {"execute": ("centre", 0.0, "centre", 4.0, 36)}
+        self.assertEqual((51, 55, 36, 36), delegate._badge_at("execute", 4, 4, 130))
+        x, y, w, _h = delegate._badge_at("execute", 0, 0, 65)
+        self.assertEqual((23, 25, 18), (x, y, w),
+                         "at half the tile the button is half as big and still centred")
 
     def test_every_badge_is_painted_on_its_drawn_corner(self):
         """The paint loop places badges with its own maths, apart from the click rect."""
-        roles = {b.role_attr.lstrip("_"): QtCore.Qt.ItemDataRole.UserRole + 70 + i
-                 for i, b in enumerate(delegates.BADGES)}
-        values = {role: b.minimum or True
-                  for b, role in zip(delegates.BADGES, roles.values())}
+        roles, values = {}, {}    # one number per role NAME, holding the value that turns it on
+        for i, b in enumerate(delegates.BADGES):
+            if b.role:
+                role = roles.setdefault(b.role, QtCore.Qt.ItemDataRole.UserRole + 70 + i)
+                values.setdefault(role, b.minimum or b.equals or True)
 
         class _Model(QtCore.QAbstractListModel):
             def rowCount(self, parent=QtCore.QModelIndex()):
@@ -137,7 +155,8 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         surface = QtGui.QPixmap(self.px(x + w), self.px(y + h))
         painter = _Recorder(surface)
         try:
-            self.D(None, **roles)._paint_badges(
+            test_support.tile_delegate(
+                {b.name: roles.get(b.role) for b in delegates.BADGES})._paint_badges(
                 painter, model.index(0, 0), self.px(x), self.px(y), self.px(w))
         finally:
             painter.end()
@@ -558,7 +577,7 @@ class BadgeFamilyTest(unittest.TestCase):
             def data(self, index, r=QtCore.Qt.ItemDataRole.DisplayRole):
                 return value if r == role else None
 
-        delegate = delegates.AssetItemDelegate(None, **{role_kw: role})
+        delegate = test_support.tile_delegate({role_kw: role})
         model = _RoleModel()
         cls = delegates.AssetItemDelegate
         original = cls.__dict__["_badge_pixmap"]
@@ -576,18 +595,20 @@ class BadgeFamilyTest(unittest.TestCase):
 
     def test_every_corner_asks_for_its_own_art_at_the_family_size(self):
         """All four painters, one engine: each corner requests ITS art by name, at `_badge_side`'s size, at the real dpr - a painter hand-rolling its own size or art goes red here."""
+        corner = delegates.AssetItemDelegate._badge_side(128)
         cases = (
-            ("open_role", True, "badge_open"),
-            ("favorite_role", True, "badge_favourite"),
-            ("versions_role", 3, "badge_versions"),
-            ("notes_role", True, "badge_comment_75"),
+            ("open", True, "badge_open", corner),
+            ("favourite", True, "badge_favourite", corner),
+            ("versions", 3, "badge_versions", corner),
+            ("comment", True, "badge_comment_75", corner),
+            ("execute", "Python", "badge_execute", min(36, round(36 * 128 / 130.0))),
+            ("edit", True, "badge_edit", corner),
         )
-        expected = delegates.AssetItemDelegate._badge_side(128)
         self.assertEqual(
             len(cases), len(delegates.BADGES),
             "the badge table and this test disagree about how many "
             "badges there are - a new row must be driven here too")
-        for role_kw, value, art in cases:
+        for role_kw, value, art, expected in cases:
             asked = self._asked_for(role_kw, value, 128)
             self.assertEqual(
                 [(art, expected, 2.0)], asked,
@@ -617,9 +638,8 @@ class BadgeFamilyTest(unittest.TestCase):
             def data(self, index, r=QtCore.Qt.ItemDataRole.DisplayRole):
                 return 3 if r == role else None  # 3 satisfies the versions badge's minimum of 2 and is truthy for the other three
 
-        delegate = delegates.AssetItemDelegate(
-            None, open_role=role, favorite_role=role, versions_role=role,
-            notes_role=role)
+        delegate = test_support.tile_delegate(
+            {"open": role, "favourite": role, "versions": role, "comment": role})
         cls = delegates.AssetItemDelegate
         original = cls.__dict__["_badge_pixmap"]
         cls._badge_pixmap = staticmethod(flat)

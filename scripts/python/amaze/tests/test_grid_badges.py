@@ -14,6 +14,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.panel import delegates  # noqa: E402
+from amaze.tests import test_support  # noqa: E402
 
 VERSIONS_ROLE = QtCore.Qt.ItemDataRole.UserRole + 30
 SUBTITLE_ROLE = QtCore.Qt.ItemDataRole.UserRole + 31
@@ -70,8 +71,7 @@ class TheVersionsBadgeAnswersOnlyWhereItIsDrawn(unittest.TestCase):
         self.model = _Rows()
         self.view = QtWidgets.QListView()
         self.view.setModel(self.model)
-        self.delegate = delegates.AssetItemDelegate(
-            SUBTITLE_ROLE, versions_role=VERSIONS_ROLE)
+        self.delegate = test_support.tile_delegate({"versions": VERSIONS_ROLE}, SUBTITLE_ROLE)
         self.delegate.set_badge_click("versions", self.clicked.append)
         self.view.setItemDelegate(self.delegate)
         self.addCleanup(self.view.deleteLater)
@@ -173,8 +173,7 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
         self.model = _StarRows()
         self.view = QtWidgets.QListView()
         self.view.setModel(self.model)
-        self.delegate = delegates.AssetItemDelegate(
-            SUBTITLE_ROLE, favorite_role=FAVORITE_ROLE)
+        self.delegate = test_support.tile_delegate({"favourite": FAVORITE_ROLE}, SUBTITLE_ROLE)
         self.delegate.set_badge_click("favourite", self.clicked.append)
         self.view.setItemDelegate(self.delegate)
         self.addCleanup(self.view.deleteLater)
@@ -206,8 +205,7 @@ class TheStarBadgeIsAButtonInBOTHItsStates(unittest.TestCase):
 
     def test_an_UNWIRED_delegate_offers_no_star_button(self):
         """The online grid: same role wired, no click - a click there must fall through to plain selection, because a button that does nothing is a lie."""
-        bare = delegates.AssetItemDelegate(
-            SUBTITLE_ROLE, favorite_role=FAVORITE_ROLE)
+        bare = test_support.tile_delegate({"favourite": FAVORITE_ROLE}, SUBTITLE_ROLE)
         self.view.setItemDelegate(bare)
         option = _view_option(self.view, list_mode=False)
         self.assertFalse(self._click_the_star(bare, option),
@@ -258,8 +256,7 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
         self.addCleanup(view.deleteLater)
         model = _NotedRow()
         view.setModel(model)
-        delegate = delegates.AssetItemDelegate(
-            SUBTITLE_ROLE, notes_role=NOTES_ROLE)
+        delegate = test_support.tile_delegate({"comment": NOTES_ROLE}, SUBTITLE_ROLE)
         delegate.set_badge_click("comment", clicked.append)
         view.setItemDelegate(delegate)
         option = _view_option(view, list_mode=False)

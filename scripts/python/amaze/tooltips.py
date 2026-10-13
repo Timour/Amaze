@@ -131,4 +131,8 @@ BADGE_FAVORITE_REMOVE = 'Remove from favorites.'
 
 BADGE_FAVORITE_ADD = 'Add to favorites.'
 
+BADGE_EXECUTE = 'Run this snippet.'
+
+BADGE_EDIT = 'Edit this snippet.'
+
 NOTES_ADD_TODO = 'Add a to-do where the cursor is.'   # ▸ Comments pane

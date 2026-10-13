@@ -9,7 +9,7 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (cop_library, debug, dragengine, file_library,
+from amaze.core import (code_library, cop_library, debug, dragengine, file_library,
                         grid_columns, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
@@ -74,6 +74,7 @@ class Section:
 
     sidebar_attr = ""
     delegate_attr = ""
+    tile_badges: tuple = ()    # the badge IDs this section's tile shows ▸r/tile-from-frame
     library_model_attrs: tuple = ()  # re-pointed on a library switch; () is real
     selection_attr = ""   # a menu acts on THIS section's selection
     activate_method = ""  # panel method pointing the widgets at these models
@@ -277,6 +278,12 @@ class Section:
 
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
+
+    def menu_versions(self, indexes, current, payload=None) -> None:
+        self.panel._open_versions_dialog(current)
+
+    def menu_comments(self, indexes, current, payload=None) -> None:
+        self.panel._open_comments_from_badge(current)
 
     def menu_delete(self, indexes, current, payload=None) -> None:
         self.panel.grid_delete(indexes)
@@ -701,6 +708,7 @@ class MaterialSection(AssetSection):
     category_attr = "category_model"
     sidebar_attr = "category_sorted_model"
     delegate_attr = "thumb_delegate"
+    tile_badges = ("favourite", "versions", "comment")
     filter_tooltip = "Show materials for one renderer."
 
     RENDERER_PREFS = (    # (label, the preference deciding whether it is offered); the labels are also the VALUES, matched against the renderer string stored on the material, so the two cannot drift
@@ -802,6 +810,7 @@ class CopSection(AssetSection):
     category_attr = "cop_category_model"
     sidebar_attr = "cop_category_sorted_model"
     delegate_attr = "asset_delegate"    # NOT thumb_delegate: Node and Code have no versions, and that shared delegate paints a "Version" column reading "none" on every row
+    tile_badges = ("favourite", "comment")
     filter_tooltip = "Show setups saved from one context."
 
     FILTER_CHOICES = (    # the contexts this section saves, spelled the way Houdini's own network tabs do; CopLibrary.SAVE_CONTEXTS is the same list in Houdini's capitalisation and the match is case-insensitive, so these can read as the user sees them on the node itself. An asset saved before the section learned about contexts carries an empty one and appears under All only - there is nothing truthful to file it under
@@ -942,12 +951,27 @@ class CodeSection(AssetSection):
     def menu_apply(self, indexes, current, payload=None) -> None:
         self.panel.click_on_row(self, current)    # THE CLICK DOOR, never a second reading of the same policy: a body of its own vetoes on a selected node with no snippet parm, where the double-click beside it falls through to the creation walk
 
-    def menu_edit(self, indexes, current, payload=None) -> None:
+    def _code_row(self, current):
+        """The code model's row under a grid index, or None."""
         if current is None or not current.isValid():
-            return
+            return None
         source = self.panel.code_sorted_model.mapToSource(current)
-        if source.isValid():
-            self._edit_code_row(source.row())
+        return source.row() if source.isValid() else None
+
+    def menu_edit(self, indexes, current, payload=None) -> None:
+        row = self._code_row(current)
+        if row is not None:
+            self._edit_code_row(row)
+
+    def menu_run(self, indexes, current, payload=None) -> None:
+        """Run the snippet in this Houdini; a failure is said on the status line."""
+        row = self._code_row(current)
+        if row is None:
+            return
+        asset = self.panel.code_model.assets[row]
+        problem = code_library.run_python(asset.name, asset.code)
+        if problem:
+            debug.refuse(messages.SNIPPET_RUN_FAILED % (asset.name, problem))
 
     def _edit_code_row(self, row: int) -> None:
         panel = self.panel
@@ -980,7 +1004,8 @@ class CodeSection(AssetSection):
     selection_attr = "code_selection_model"
     category_attr = "code_category_model"
     sidebar_attr = "code_category_sorted_model"
-    delegate_attr = "asset_delegate"
+    delegate_attr = "code_delegate"
+    tile_badges = ("favourite", "execute", "edit", "comment")
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the same four code_dialog.LANGUAGES offers, "Code" being the catch-all; deliberately not imported from there, because this list is what the STORED strings are and a dialog is free to stop offering one while snippets saved under it are still in the library
@@ -1514,6 +1539,7 @@ class FileSection(FolderSection):
     files_proxy_attr = "file_sorted_model"
     selection_attr = "file_selection_model"
     delegate_attr = "file_delegate"
+    tile_badges = ("open", "favourite", "comment")
     sidebar_attr = "file_folders_model"
     takes_capture = True  # the only context with scene tiles to capture onto
     folders_pref = "file_folders"
@@ -1537,6 +1563,7 @@ class OnlineContext(Section):
 
     key = "online"
     label = "Online"
+    tile_badges = ("favourite",)    # an indicator with no click: the list keeps its Favourite column
     sidebar_attr = "matx_source_model"
     proxy_attr = "matx_sorted_model"
     selection_attr = "matx_selection_model"
@@ -1666,6 +1693,7 @@ class GradientSection(AssetSection):
     category_attr = "gradient_categories_model"
     sidebar_attr = "gradient_category_sorted_model"    # the same CategoriesSidebarProxy the asset sidebars go through; nothing hides here, because no renderer filter is ever pushed at Colors
     delegate_attr = "gradient_delegate"
+    tile_badges = ("favourite", "comment")
     proxy_attr = "gradient_sorted_model"
     selection_attr = "gradient_selection_model"
 

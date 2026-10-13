@@ -582,7 +582,7 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
     def test_a_click_INSIDE_the_selection_flips_every_selected_row(self):
         before = [self._fav(0), self._fav(1)]
         self._select(0, 1)
-        self.panel._favourite_badge_clicked(self.proxy.index(1, 0))
+        self.panel.thumb_delegate._badge_clicks["favourite"](self.proxy.index(1, 0))
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             [not b for b in before], [self._fav(0), self._fav(1)],
@@ -592,7 +592,7 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
     def test_a_click_OUTSIDE_the_selection_flips_only_the_clicked_tile(self):
         before = [self._fav(0), self._fav(2)]
         self._select(0)
-        self.panel._favourite_badge_clicked(self.proxy.index(2, 0))
+        self.panel.thumb_delegate._badge_clicks["favourite"](self.proxy.index(2, 0))
         QtWidgets.QApplication.processEvents()
         self.assertEqual(
             [before[0], not before[1]], [self._fav(0), self._fav(2)],

@@ -35,13 +35,13 @@ BINDINGS = {   # context key -> what it binds into each area, by ATTRIBUTE NAME,
     "cop": {
         "grid": "cop_sorted_model",
         "selection": "cop_selection_model",
-        "delegate": "asset_delegate",  # SHARED with Code, deliberately - the roles are inherited from the material model, which is why this table names instances
+        "delegate": "asset_delegate",
         "sidebar": "cop_category_sorted_model",
     },
     "code": {
         "grid": "code_sorted_model",
         "selection": "code_selection_model",
-        "delegate": "asset_delegate",
+        "delegate": "code_delegate",  # CHANGED 2026-10-13, deliberately: its tile adds Run and Edit
         "sidebar": "code_category_sorted_model",
     },
     "file": {
@@ -173,12 +173,14 @@ BADGE_ROLES = {   # which badge each context's tiles carry and the role its own 
     "favourite": "FavoriteRole",
     "versions": "VersionsRole",
     "comment": "NotesRole",
+    "execute": "RendererRole",    # the language: drawn for one value, so the role alone says nothing
+    "edit": "",                   # no role: on every tile that lists it
 }
 
 EXPECTED_BADGES = {
     "material": {"favourite", "versions", "comment"},
     "cop": {"favourite", "comment"},  # NOT versions, although these three subclass MaterialLibrary and inherit VersionsRole: a version can only be minted by `MaterialLibrary.update_asset_content`, reached from one call site on `material_model` alone, so no Node, Code or Color asset can ever hold a second version - wiring it anyway gave both a Version column reading none on every row and a badge click that mapped through the MATERIAL proxy into an unrelated asset
-    "code": {"favourite", "comment"},
+    "code": {"favourite", "execute", "edit", "comment"},
     "file": {"favourite", "open", "comment"},  # File has the OPEN badge, which nothing else does: only a scene can be the one Houdini currently has open
     "gradient": {"favourite", "comment"},
 }
@@ -202,10 +204,13 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
 
     def test_a_model_that_can_answer_a_badge_has_it_wired(self):
         """The gate. A section whose model grows one of these roles and whose delegate is not updated fails HERE, rather than shipping a badge that never appears."""
+        from amaze.panel import delegates
         for key, expected in EXPECTED_BADGES.items():
             panel = self.activate(key)
             model = getattr(panel, BINDINGS[key]["grid"]).sourceModel()
             for badge, role_name in BADGE_ROLES.items():
+                if not role_name or delegates.BADGE[badge].equals:
+                    continue    # no role, or one value of a shared one: a model having it says nothing
                 if not hasattr(model, role_name):
                     continue
                 if badge in expected:
@@ -233,9 +238,10 @@ class EveryContextCarriesTheBadgesItsModelCanAnswer(AreaBindingCase):
         """Re-keyed with the table, not against a literal: a badge added to `delegates.BADGES` and to no section at all would otherwise pass every assertion above by being invisible to them."""
         from amaze.panel import delegates
         self.assertEqual(
-            {badge.name for badge in delegates.BADGES}, set(BADGE_ROLES),
+            {badge.name: badge.role for badge in delegates.BADGES}, BADGE_ROLES,
             "delegates.BADGES and this file disagree about which badges "
-            "exist - a new one needs a role name and a line per section")
+            "exist or what they read - a new one needs a role name and a "
+            "line per section")
 
 
 class TheGridIsBoundToItsOwnContext(AreaBindingCase):
