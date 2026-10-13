@@ -164,7 +164,7 @@ EMPTY_SHARED = {    # ▸ E06-E08, the blanks EVERY section shares. Each row is 
         BTN_SHOW_ALL, "show_all_categories"),
     "no-favourites": (
         "No favorites yet",
-        "Click the star on a tile to favorite it.",
+        "Click the favorites button on a tile to favorite it.",
         BTN_SHOW_ALL, "clear_favourites_filter"),
     "unreachable": (
         "Can't find the folder",
