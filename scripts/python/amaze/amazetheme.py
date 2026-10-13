@@ -622,6 +622,33 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tick box ▸ comments", 505, 77, 12, 19, None),
         ),
     },
+    "B01": {   # the toolbar from the live panel - its height, edges, gaps and control sizes are read
+        "frame": (1510, 30),
+        "nodes": (
+            ("bottom border", 0, 29, 1510, 1, None),
+            ("button ▸ btn_categories", 2, 3, 24, 24, None),
+            ("button ▸ btn_menu_view", 28, 3, 24, 24, None),
+            ("button ▸ btn_menu_filter", 54, 3, 24, 24, None),
+            ("button ▸ btn_online", 80, 3, 24, 24, None),
+            ("button ▸ btn_notes", 106, 3, 24, 24, None),
+            ("button ▸ cb_viewmode", 132, 3, 24, 24, None),
+            ("button ▸ cb_favsonly", 158, 3, 24, 24, None),
+            ("slider ▸ click_slider (disabled)", 202, 3, 200, 23, None),
+            ("label ▸ filter_label", 422, 0, 40, 30, None),
+            ("text ▸ filter_label", 424, 7, 35, 15, "Search"),
+            ("field ▸ line_filter", 474, 5, 200, 20, None),
+            ("button ▸ btn_prefs", 1484, 3, 24, 24, None),
+            ("icon ▸ btn_categories ▸ icon_categories.svg", 6, 7, 16, 16, None),
+            ("icon ▸ btn_menu_view ▸ icon_renderer.svg", 31, 6, 18, 18, None),
+            ("icon ▸ btn_menu_filter ▸ icon_view.svg", 57, 6, 18, 18, None),
+            ("icon ▸ btn_online ▸ icon_online.svg", 84, 7, 16, 16, None),
+            ("icon ▸ btn_notes ▸ icon_comments.svg", 110, 7, 16, 16, None),
+            ("icon ▸ cb_viewmode ▸ list.svg", 136, 7, 16, 16, None),
+            ("icon ▸ cb_favsonly ▸ star.svg", 162, 7, 16, 16, None),
+            ("icon ▸ line_filter ▸ icon_search.svg", 478, 8, 13, 13, None),
+            ("icon ▸ btn_prefs ▸ icon_library.svg", 1487, 6, 18, 18, None),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -748,4 +775,37 @@ def drawn_list(frame_key: str = "L01") -> dict:
         "widths": {key: n[3] for key, n in columns.items()},
         "tick_pad": tick[1] - columns[tick[0].split(_NODE_MARK)[1]][1],
         "tick_side": tick[3],
+    }
+
+
+def drawn_toolbar(frame_key: str = "B01") -> dict:
+    """The toolbar's height, edges, gaps and control sizes, off its frame. ▸r/toolbar-from-frame"""
+    layout = DIALOG_LAYOUT[frame_key]
+
+    def node(kind, owner):
+        return next(n for n in layout["nodes"]
+                    if n[0].split(_NODE_MARK)[:2] == [kind, owner]
+                    or n[0].startswith(kind + _NODE_MARK + owner + " ("))
+
+    def right(n):
+        return n[1] + n[3]
+
+    first, second = node("button", "btn_categories"), node("button", "btn_menu_view")
+    slider, label = node("slider", "click_slider"), node("label", "filter_label")
+    field, search = node("field", "line_filter"), node("icon", "line_filter")
+    return {
+        "height": layout["frame"][1],
+        "edge": first[1],
+        "gap": second[1] - right(first),
+        "slider_gap": slider[1] - right(node("button", "cb_favsonly")),
+        "label_gap": field[1] - right(label),
+        "button": first[3],
+        "chip_icon": node("icon", "btn_categories")[3],
+        "menu_icon": node("icon", "btn_menu_view")[3],
+        "slider_w": slider[3],
+        "slider_h": slider[4],
+        "field_w": field[3],
+        "field_h": field[4],
+        "search_icon": search[3],
+        "search_pad": search[1] - field[1],
     }

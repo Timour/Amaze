@@ -120,6 +120,9 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
     (lambda f, n: f.startswith("L"),
      "the list is painted by Houdini's style and our cell delegates: the "
      "panel reads it through drawn_list, held by TheListStandsOnItsFrame"),
+    (lambda f, n: f.startswith("B"),
+     "the toolbar is a layout of gaps and self-painted controls: the panel "
+     "reads it through drawn_toolbar, held by TheToolbarStandsOnItsFrame"),
 )
 
 
@@ -510,12 +513,12 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness walk's "
             "silence means nothing")
         self.assertEqual(
-            {"D06", "T01", "L01"},
+            {"D06", "T01", "L01", "B01"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
-            "D06 draws only switches and the tab strip, and T01 and L01 are "
-            "painted rather than built - any other frame listed here built "
-            "no widget the document reached")
+            "D06 draws only switches and the tab strip, and T01, L01 and B01 "
+            "are read through their own drawn_* - any other frame listed here "
+            "built no widget the document reached")
 
     def test_no_exemption_stands_over_a_node_that_IS_pinned(self):
         """An exemption kept over a pinned node reads as a reason while covering nothing, and would let the pin be deleted without a word."""

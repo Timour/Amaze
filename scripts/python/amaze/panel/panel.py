@@ -640,6 +640,7 @@ class AmazePanel(QtWidgets.QWidget):
             grid.bind_table_cell_delegates(self, delegate)    # THE TABLE DOES NOT WEAR THE TILE DELEGATE: that one paints a whole TILE per index, right where an index is a tile and catastrophic where a row is ten of them. Qt paints every text cell itself; only the picture and the tick columns get a delegate, and those are per COLUMN
 
     _LIST = amazetheme.drawn_list()    # header, heading inset and column widths are L01's ▸r/list-from-frame
+    _TOOLBAR = amazetheme.drawn_toolbar()    # the toolbar's height, edges, gaps and sizes are B01's
     CELL_PAD = theme.ui_px(_LIST["cell_pad"])    #: a heading's inset from its column edge; row text is the style's
     HEADER_BG = QtGui.QColor(amazetheme.LIST_HEADER_BG)    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
     HEADER_DIVIDER = QtGui.QColor(amazetheme.LIST_HEADER_DIVIDER)
@@ -782,14 +783,15 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _build_slider_and_layout(self) -> None:
         """The size slider, the filter box's icon, and the panel's own layout."""
-        self.click_slider.setMaximumWidth(theme.ui_px(200))    # the slider paints its own Houdini-22-style groove and handle in ClickSlider.paintEvent: QSS sub-page/add-page styling is unreliable for it (colours land on the correct side, the declared heights do not), so it draws itself deterministically and a stylesheet is not the way to change its look
+        self.click_slider.setMaximumWidth(theme.ui_px(self._TOOLBAR["slider_w"]))    # ▸r/toolbar-from-frame
+        self.click_slider.setFixedHeight(theme.ui_px(self._TOOLBAR["slider_h"]))
         if self.toolbar_layout is not None:
             idx = getattr(    # the design's order is [Filter box] [slider] [star] [toggle] [menus] but this block runs AFTER the star/toggle blocks, so the slider goes in at the spot remembered right after the filter box was added; both slider-side gaps are 20 design px
                 self, "_after_filter_index", self.toolbar_layout.count()
             )
-            self.toolbar_layout.insertSpacing(idx, theme.ui_px(20))
+            self.toolbar_layout.insertSpacing(idx, theme.ui_px(self._TOOLBAR["slider_gap"]))
             self.toolbar_layout.insertWidget(idx + 1, self.click_slider)
-            self.toolbar_layout.insertSpacing(idx + 2, theme.ui_px(20))
+            self.toolbar_layout.insertSpacing(idx + 2, theme.ui_px(self._TOOLBAR["slider_gap"]))
         self._thumbsize_save_timer = QtCore.QTimer(self)    # debounce for persisting the per-mode icon size: slide() fires on every pixel of a drag and settings.json lives in the cloud-synced install folder, so write once shortly after the drag settles rather than dozens of times a second
         self._thumbsize_save_timer.setSingleShot(True)
         self._thumbsize_save_timer.setInterval(500)
@@ -820,7 +822,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_notes.setChecked(bool(self.prefs.show_notes))
             self.btn_notes.toggled.connect(self._on_notes_toggled)    # connected AFTER the initial state, so restoring a saved "open" does not re-save preferences mid-construction
             self.toolbar_layout.addWidget(self.btn_notes)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_online = ui_helpers.ChipToggleButton()    # Online sits immediately LEFT of Comments once the row is mirrored, so it is added right after it here. The AMBER is the whole signal that you are in the other world - the favourites star's pattern exactly, so it is built the same way by the same engine, and does not lighten on hover because the colour is what carries the state
             self.btn_online.setObjectName("btn_online")
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
@@ -829,11 +831,11 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_online.setChecked(self._is_online())
             self.btn_online.toggled.connect(self._on_online_button)
             self.toolbar_layout.addWidget(self.btn_online)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_filter = self._make_menu_button(self.menu_filter)    # held on self, unlike the other two menu buttons: this one is disabled online and its tooltip is rewritten on every section change, so the layout is no longer the only thing that needs to reach it
             self.toolbar_layout.addWidget(self.btn_filter)
             if menu_view is not None:
-                self.toolbar_layout.addSpacing(theme.ui_px(2))
+                self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
                 btn_view = self._make_menu_button(menu_view)
                 btn_view.setToolTip(ui_helpers.tooltip_text(
                     tooltips.PANEL_VIEW_MENU))
@@ -853,7 +855,7 @@ class AmazePanel(QtWidgets.QWidget):
                         lambda _c=False, s=section:
                         self.matx_online_model.set_kind_filter(s))
                 self.online_view_menu.actions()[0].setChecked(True)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             btn_prefs = ui_helpers.IconMenuButton(
                 None,
                 self._ui_icon_path("icon_library.svg"),
@@ -864,7 +866,7 @@ class AmazePanel(QtWidgets.QWidget):
             btn_prefs.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_categories = ui_helpers.ChipToggleButton()    # Show Categories, promoted out of the View menu to a button of its own. Added AFTER the gear because the row is mirrored at the end of construction, so the last widget added is the leftmost drawn. It DRIVES action_catview rather than repeating it: the action owns the behaviour and the persistence, and two paths to one preference is how a toggle ends up disagreeing with the thing it toggles
             self.btn_categories.setObjectName("btn_categories")
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
@@ -875,7 +877,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_categories.toggled.connect(
                 self._on_categories_button)
             self.toolbar_layout.addWidget(self.btn_categories)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
             self.btn_hip_capture = ui_helpers.IconMenuButton(    # Capture, outermost and HIP only: same button class and same 2px gap as the cluster left of it, so it reads as one row rather than an afterthought. Hidden for every other section, because it acts on the open SCENE, which is meaningless where the tiles are materials
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
@@ -955,7 +957,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.cb_favsonly.toggled.connect(self.filter_favs)
         if self.toolbar_layout is not None:
             self.toolbar_layout.addWidget(self.cb_favsonly)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))    # tight 2px gaps through the right-hand icon cluster: the design's ~21px rendered icon-to-icon spacing is mostly each button's own internal padding already
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))    # B01's gap between buttons
 
         self.ui.cb_ViewMode.setVisible(False)  # type: ignore
         self.cb_viewmode = ui_helpers.ChipToggleButton()    # the Grid/List view-mode toggle, the same hand-painted chip treatment as the star: unchecked = grid (icon mode), checked = list mode, and the icon shows the CURRENT mode
@@ -1078,9 +1080,9 @@ class AmazePanel(QtWidgets.QWidget):
                 + " border-bottom: 1px solid "
                 + theme.color_hex("field") + ";"
             )
-            self.toolbar_row.setFixedHeight(theme.ui_px(30))    # 30 code px = the design's 60px bar
+            self.toolbar_row.setFixedHeight(theme.ui_px(self._TOOLBAR["height"]))    # ▸r/toolbar-from-frame
             self.toolbar_layout = QtWidgets.QHBoxLayout(self.toolbar_row)
-            self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(2), 0)    # no top/bottom bias, content dead-centred; the right margin is the design's edge inset, most of which the last icon button's own padding provides
+            self.toolbar_layout.setContentsMargins(0, 0, theme.ui_px(self._TOOLBAR["edge"]), 0)
             self.toolbar_layout.setSpacing(0)
 
             self.toolbar_layout.addStretch()    # the three icon controls at the toolbar's RIGHT end are Filter, View and Preferences (`_build_menus` names them, and the gear is a plain button rather than a menu); this leading stretch pushes the cluster right and leaves the design's empty left region
@@ -1164,13 +1166,13 @@ class AmazePanel(QtWidgets.QWidget):
             + theme.color_hex("field")
             + "; padding-left: %dpx; }" % theme.ui_px(20)
         )
-        self.line_filter.setFixedHeight(theme.ui_px(20))    # 20 code px = the design's 40px rendered box; the plain 2x relationship holds because the box is borderless, where a 1px QSS border would eat into the fill
+        self.line_filter.setFixedHeight(theme.ui_px(self._TOOLBAR["field_h"]))    # ▸r/toolbar-from-frame
         self.line_filter.setMinimumWidth(theme.ui_px(38))    # overrides the .ui's own 80 minimum - setMinimumWidth wins at runtime
-        self.line_filter.setMaximumWidth(theme.ui_px(200))    # 400px rendered, raised with the slider's to match
+        self.line_filter.setMaximumWidth(theme.ui_px(self._TOOLBAR["field_w"]))
         try:    # the magnifier is an overlay QLabel + SideIconPinner, NOT a QLineEdit addAction() icon: that API does not expose the exact margin, and this design asks for one
             filter_icon_path = self._ui_icon_path("icon_search.svg")
             if filter_icon_path and os.path.exists(filter_icon_path):
-                icon_size = theme.ui_px(13)    # ~25px rendered magnifier, ~9px in from the box edge, at a 4px pin margin
+                icon_size = theme.ui_px(self._TOOLBAR["search_icon"])
                 pixmap = ui_helpers.render_svg_pixmap(    # through the package's one SVG rasteriser, so this icon obeys the same size and dpr rule as the rest ▸r/qicon-svg-engine
                     filter_icon_path, icon_size
                 )
@@ -1186,7 +1188,7 @@ class AmazePanel(QtWidgets.QWidget):
                 self.filter_icon_label.setStyleSheet("background: transparent;")
                 self._filter_icon_pinner = ui_helpers.SideIconPinner(
                     self.line_filter, self.filter_icon_label,
-                    theme.ui_px(4), side="left"
+                    theme.ui_px(self._TOOLBAR["search_pad"]), side="left"
                 )
         except (TypeError, AttributeError):
             pass
@@ -1197,7 +1199,7 @@ class AmazePanel(QtWidgets.QWidget):
                 "color: " + theme.color_hex("text_bright") + ";"
             )
             self.toolbar_layout.addWidget(self.filter_label)
-            self.toolbar_layout.addSpacing(theme.ui_px(12))
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["label_gap"]))
             self.toolbar_layout.addWidget(self.line_filter)
             self._after_filter_index = self.toolbar_layout.count()    # the size slider is built much later in this method but sits between the box and the star, so its block inserts itself back at this remembered spot
 
@@ -1210,7 +1212,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.cb_viewmode.toggled.connect(self.on_viewmode_button)
         if self.toolbar_layout is not None:
             self.toolbar_layout.addWidget(self.cb_viewmode)
-            self.toolbar_layout.addSpacing(theme.ui_px(2))    # fixed gap to the icon-menu cluster appended right after; the design right-anchors everything from the star outward
+            self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
 
         self.ui.details_widget.setParent(None)  # type: ignore  -- the Material Info form retired with D03: its nine fields all have better homes. OUT OF THE SPLITTER, not merely hidden - a hidden pane is still a pane and still takes a stretch, which is the invariant `test_one_flexible_pane_is_the_construction` holds. The widget stays in the externally-maintained .ui rather than being cut out of it ▸p/d03-retired
 
@@ -1249,8 +1251,8 @@ class AmazePanel(QtWidgets.QWidget):
         self._move_to_toolbar_end(getattr(self, "btn_hip_capture", None))    # second exception: the capture button is the OUTERMOST control in both orders, and the mirror would leave it outermost-LEFT
         self._move_to_toolbar_end(self._toolbar_widget("btn_prefs"))    # capture first, then the gear, so the row ends ... stretch, Capture, gear
 
-        self.toolbar_layout.setContentsMargins(    # both edges hold a control once the capture button is back at the end, so both are inset by 2
-            theme.ui_px(2), 0, theme.ui_px(2), 0)
+        edge = theme.ui_px(self._TOOLBAR["edge"])    # both edges hold a control once the capture button is back at the end
+        self.toolbar_layout.setContentsMargins(edge, 0, edge, 0)
 
     def _toolbar_widget(self, name: str):
         """A toolbar item by objectName - the gear is deliberately not kept on self, so the row is where to look for it."""

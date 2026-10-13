@@ -877,8 +877,8 @@ class IconMenuButton(QtWidgets.QWidget):
         self,
         menu: QtWidgets.QMenu | None,
         svg_path: str,
-        icon_size: int = 18,     # 18 against the 36-unit body-centred viewBoxes holds the icon body at the design's ~29px; DESIGN px, with the UI scale applied here so every call site stays scale-agnostic
-        button_size: int = 24,
+        icon_size: int | None = None,     # DESIGN px, scaled here; None is B01's ▸r/toolbar-from-frame
+        button_size: int | None = None,
         on_click=None,           # with menu=None this is a plain ACTION button and a click calls this instead of popping a menu - the gear goes straight into Preferences, and its icon carries no menu triangle
         fallback_label: str = "",
     ) -> None:
@@ -887,8 +887,9 @@ class IconMenuButton(QtWidgets.QWidget):
         self._on_click = on_click
         self._hovered = False
         self._open = False
-        self._icon_size = theme.ui_px(icon_size)
-        button_size = theme.ui_px(button_size)
+        drawn = amazetheme.drawn_toolbar()
+        self._icon_size = theme.ui_px(drawn["menu_icon"] if icon_size is None else icon_size)
+        button_size = theme.ui_px(drawn["button"] if button_size is None else button_size)
         self.setFixedSize(button_size, button_size)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         render_size = self._icon_size * self.RENDER_SCALE
@@ -1005,13 +1006,14 @@ class ChipToggleButton(QtWidgets.QToolButton):
 
     RENDER_SCALE = 4
 
-    def __init__(self, button_size: int = 24, icon_size: int = 16) -> None:
+    def __init__(self, button_size: int | None = None, icon_size: int | None = None) -> None:
         super().__init__()
         self.setCheckable(True)
-        button_size = theme.ui_px(button_size)   # DESIGN px in, UI scale applied HERE so call sites stay scale-agnostic, matching IconMenuButton
+        drawn = amazetheme.drawn_toolbar()    # DESIGN px, scaled here; None is B01's ▸r/toolbar-from-frame
+        button_size = theme.ui_px(drawn["button"] if button_size is None else button_size)
         self.setFixedSize(button_size, button_size)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self._icon_size = theme.ui_px(icon_size)
+        self._icon_size = theme.ui_px(drawn["chip_icon"] if icon_size is None else icon_size)
         self._hovered = False
         self._pms = {}
 

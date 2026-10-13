@@ -194,5 +194,111 @@ class TheToolbarFollowsTheContextLive(unittest.TestCase):
         QtWidgets.QApplication.processEvents()
 
 
+class TheToolbarStandsOnItsFrame(unittest.TestCase):
+    """The toolbar's height, edges, gaps and controls land where B01 draws them. ▸r/toolbar-from-frame"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        from PySide6 import QtCore
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        panel.prefs.view_mode = "list"
+        panel.apply_view_mode()
+        self.addCleanup(panel.apply_view_mode)
+        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.px = theme.ui_px
+        self.frame = amazetheme.DIALOG_LAYOUT["B01"]
+        self.node = {}
+        for n in self.frame["nodes"]:
+            parts = n[0].split(" ▸ ")
+            if len(parts) > 1:
+                self.node[(parts[0], parts[1].split(" (")[0])] = n
+        width, height = self.frame["frame"]
+        panel.toolbar_layout.setGeometry(QtCore.QRect(0, 0, self.px(width), self.px(height)))
+        QtWidgets.QApplication.processEvents()
+
+    def _widget(self, name):
+        layout = self.panel.toolbar_layout
+        for i in range(layout.count()):
+            widget = layout.itemAt(i).widget()
+            if widget is not None and widget.objectName() == name:
+                return widget
+        self.fail("the toolbar has no %s" % name)
+
+    def _drawn(self, kind):
+        return {owner: n for (k, owner), n in self.node.items() if k == kind}
+
+    def test_the_frame_is_one_row_the_code_can_follow(self):
+        """One gap between buttons, one edge, one slider gap, one size per kind of control."""
+        width, _height = self.frame["frame"]
+        buttons = sorted(self._drawn("button").values(), key=lambda n: n[1])
+        cluster = [b for b in buttons if b[1] < self.node[("slider", "click_slider")][1]]
+        gaps = {b[1] - (a[1] + a[3]) for a, b in zip(cluster, cluster[1:])}
+        self.assertEqual(1, len(gaps), "the buttons sit at gaps %s" % sorted(gaps))
+        self.assertEqual(buttons[0][1], width - (buttons[-1][1] + buttons[-1][3]),
+                         "the two edges are drawn different")
+        self.assertEqual(1, len({(b[3], b[4]) for b in buttons}), "the buttons are different sizes")
+        slider, label = self.node[("slider", "click_slider")], self.node[("label", "filter_label")]
+        self.assertEqual(slider[1] - (cluster[-1][1] + cluster[-1][3]),
+                         label[1] - (slider[1] + slider[3]),
+                         "the slider's two gaps are drawn different")
+
+    def test_the_row_is_its_drawn_height(self):
+        height = self.px(self.frame["frame"][1])
+        row = self.panel.toolbar_row
+        self.assertEqual((height, height), (row.minimumHeight(), row.maximumHeight()))
+
+    def test_every_control_left_of_the_label_is_where_it_is_drawn(self):
+        """Left of the label nothing depends on the font, so every box is exact."""
+        drawn = dict(self._drawn("button"), click_slider=self.node[("slider", "click_slider")])
+        label_x = self.node[("label", "filter_label")][1]
+        checked = 0
+        for name, n in drawn.items():
+            if n[1] >= label_x:
+                continue
+            geometry = self._widget(name).geometry()
+            with self.subTest(control=name):
+                self.assertEqual(tuple(self.px(v) for v in n[1:5]),
+                                 (geometry.x(), geometry.y(), geometry.width(), geometry.height()))
+            checked += 1
+        self.assertGreater(checked, 5, "too few controls checked to be a test")
+        self.assertEqual(self.px(label_x), self._widget("filter_label").x(),
+                         "the label does not start where it is drawn")
+
+    def test_the_box_and_the_gear_are_where_they_are_drawn(self):
+        """Right of the label positions move with the font, so the box is held by its gap."""
+        label = self._widget("filter_label").geometry()
+        field, box = self.node[("field", "line_filter")], self._widget("line_filter").geometry()
+        drawn_label = self.node[("label", "filter_label")]
+        self.assertEqual(self.px(field[1] - (drawn_label[1] + drawn_label[3])),
+                         box.x() - (label.x() + label.width()))
+        self.assertEqual((self.px(field[3]), self.px(field[4])), (box.width(), box.height()))
+        gear, drawn_gear = self._widget("btn_prefs").geometry(), self.node[("button", "btn_prefs")]
+        self.assertEqual(tuple(self.px(v) for v in drawn_gear[1:5]),
+                         (gear.x(), gear.y(), gear.width(), gear.height()))
+
+    def test_every_icon_is_its_drawn_size_and_place(self):
+        for owner, icon in self._drawn("icon").items():
+            if owner == "line_filter":
+                continue
+            button, widget = self.node[("button", owner)], self._widget(owner)
+            with self.subTest(control=owner):
+                self.assertEqual(self.px(icon[3]), widget._icon_size)
+                self.assertEqual(icon[1] - button[1], (button[3] - icon[3]) // 2,
+                                 "the drawn icon is not where the button paints it")
+
+    def test_the_magnifier_is_where_it_is_drawn(self):
+        icon, field = self.node[("icon", "line_filter")], self.node[("field", "line_filter")]
+        magnifier = self.panel.filter_icon_label.geometry()
+        self.assertEqual(tuple(self.px(v) for v in (icon[1] - field[1], icon[2] - field[2],
+                                                    icon[3], icon[4])),
+                         (magnifier.x(), magnifier.y(), magnifier.width(), magnifier.height()))
+
+
 if __name__ == "__main__":
     unittest.main()
