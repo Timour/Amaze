@@ -762,6 +762,43 @@ class FileFiles(grid_columns.GridColumnsMixin,
         """Generic for a file Amaze makes no preview of - its preview is only the system's icon."""
         return "generic" if self._kind(row) == KIND_OTHER else "preview"
 
+    def preview_image(self, row: int):
+        """The row's own picture as far as it has landed: the tile's Preview, and Customize's."""
+        if not 0 <= row < len(self._row_specs):
+            return None
+        key, source, payload = self._row_specs[row]
+        if source == "os-icon":
+            return self._os_icon_image(payload)
+        if source == "missing":
+            return tile_icons.generic_image(self.tile_face_art(row))    # nothing could read it: T11
+        if source == "file":
+            return thumbnails.engine.request_file(key, payload)
+        if source == "capture":
+            png = self._capture_png(payload)
+            if png:
+                image = thumbnails.engine.request_file(key, png)
+                if image is not None:
+                    return image
+            return tile_icons.generic_image(self.tile_face_art(row))    # no capture yet: T08
+        image = thumbnails.engine.peek(key)    # convert/render rows: what has landed so far
+        if image is not None:
+            return image
+        if source == "convert":
+            if not thumbnails.engine.is_pending(key) and not (
+                thumbnails.engine.is_missing(key)
+            ):
+                cache = self._image_cache
+                cached_png = (
+                    cache.valid_path(payload) if cache else None)
+                if cached_png is not None:
+                    return thumbnails.engine.request_file(
+                        key, cached_png)
+            return None
+        cached_png = self._get_geo_cache().valid_path(payload)
+        if cached_png is not None:
+            return thumbnails.engine.request_file(key, cached_png)
+        return None
+
     def data(self, index, role: int = 0):
         if index.column() > 0:  # LATER COLUMNS are the table's, not the row's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell any of this happened
             return self.column_data(index, role)
@@ -777,40 +814,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
             if tile_icons.face_for(self, row) != "preview":
                 return tile_icons.chosen_image(self, row)
-            if not 0 <= row < len(self._row_specs):
-                return None
-            key, source, payload = self._row_specs[row]
-            if source == "os-icon":
-                return self._os_icon_image(payload)
-            if source == "missing":
-                return tile_icons.generic_image(self.tile_face_art(row))    # nothing could read it: T11
-            if source == "file":
-                return thumbnails.engine.request_file(key, payload)
-            if source == "capture":
-                png = self._capture_png(payload)
-                if png:
-                    image = thumbnails.engine.request_file(key, png)
-                    if image is not None:
-                        return image
-                return tile_icons.generic_image(self.tile_face_art(row))    # no capture yet: T08
-            image = thumbnails.engine.peek(key)  # convert/render rows: serve what has landed; after eviction the disk cache takes over as a file load
-            if image is not None:
-                return image
-            if source == "convert":
-                if not thumbnails.engine.is_pending(key) and not (
-                    thumbnails.engine.is_missing(key)
-                ):
-                    cache = self._image_cache
-                    cached_png = (
-                        cache.valid_path(payload) if cache else None)
-                    if cached_png is not None:
-                        return thumbnails.engine.request_file(
-                            key, cached_png)
-                return None
-            cached_png = self._get_geo_cache().valid_path(payload)
-            if cached_png is not None:
-                return thumbnails.engine.request_file(key, cached_png)
-            return None
+            return self.preview_image(row)
         if role == self.FormatRole:
             if kind == KIND_GEO:
                 return geo_library.matched_extension(

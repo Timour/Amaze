@@ -2658,8 +2658,8 @@ class AmazePanel(QtWidgets.QWidget):
         if hasattr(model, "set_tile_category"):
             categories = self.get_category_names()
             tile_category = model.tile_category(rows[0]) if single else ""
-        face = model.data(model.index(rows[0], 0),    # the tile's CURRENT grid face - every section answers its own kind here, render, swatches or painted code
-                          QtCore.Qt.ItemDataRole.DecorationRole)
+        faces = {"preview": model.preview_image(rows[0]),    # what the preview square shows per face
+                 "generic": tile_icons.generic_image(model.tile_face_art(rows[0]))}
         dialog = icon_dialog.IconDialog(
             model.tile_icon(rows[0]),
             tile_icons.stroke_for(self.prefs),
@@ -2669,7 +2669,9 @@ class AmazePanel(QtWidgets.QWidget):
             tile_tags=tile_tags,
             categories=categories,
             tile_category=tile_category,
-            tile_face=face,
+            face=tile_icons.face_for(model, rows[0]),
+            faces=faces,
+            can_preview=any(model.can_preview(row) for row in rows),
         )
         self._icon_dialog = dialog
 

@@ -192,9 +192,13 @@ def forget_drawn_pins() -> None:
     _DRAWN_PINS.clear()
 
 
-def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool) -> None:
+def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool,
+                grow: bool = False) -> None:
     """Wear one drawn box and record WHICH node it was, keyed by the position that identifies it in the frame."""
-    widget.setFixedWidth(theme.ui_px(box[2]))
+    if grow:
+        widget.setMinimumWidth(theme.ui_px(box[2]))    # a floor: a wider font grows it, never clips it
+    else:
+        widget.setFixedWidth(theme.ui_px(box[2]))
     if height:
         widget.setFixedHeight(theme.ui_px(box[3]))
     widget.drawn_box = tuple(box)    # WHERE it is drawn, for a caller placing several pinned widgets in one row - a plain attribute, the way `snap_marks` rides a slider
@@ -202,14 +206,14 @@ def _wear_drawn(widget, frame_key: str, kind: str, box, height: bool) -> None:
 
 
 def pin_drawn(widget, frame_key: str, kind: str, text: str,
-              height: bool = True, nth: int = 0) -> None:
+              height: bool = True, nth: int = 0, grow: bool = False) -> None:
     """Size `widget` to the box the design draws for `<kind> ▸ <text>` in `frame_key`, so a node resized in Figma resizes the widget. `text=None` addresses the frame's plain `<kind>` rects instead, `nth` picks among the boxes when there is more than one, and `height=False` takes the WIDTH alone, which is what a label wants - the drawn 15 is its text, not a box to sit in. A label the document does not draw pins NOTHING and records the miss - a renamed drawn label costs one widget's size, never the dialog. ▸p/one-design-document"""
     found = amazetheme.drawn_repeats(frame_key, kind, text)
     if nth >= len(found):
         debug.event("ui", "no drawn box for this widget",
                     frame=frame_key, kind=kind, text=text, nth=nth)
         return
-    _wear_drawn(widget, frame_key, kind, found[nth], height)
+    _wear_drawn(widget, frame_key, kind, found[nth], height, grow)
 
 
 def pin_drawn_stem(widget, frame_key: str, kind: str, stem: str,

@@ -424,45 +424,60 @@ class DialogTest(unittest.TestCase):
         self.assertEqual({"name": "layers", "bg": "#4af2a1",
                           "ink": "dark"}, dialog.spec)
 
-    def test_toggling_custom_icon_off_returns_an_empty_choice(self):
-        """Empty spec is what the models read as "clear it" - the toggle's OFF is what Remove used to be."""
+    def _pick(self, dialog, face):
+        dialog.face_combo.setCurrentIndex(tile_icons.FACES.index(face))
+
+    def test_a_tile_with_an_icon_opens_on_custom(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
-        self.assertTrue(dialog.custom_toggle.isChecked(),
-                        "a tile WITH an icon must open with the toggle on")
-        dialog.custom_toggle.setChecked(False)
+        self.assertEqual("custom", dialog.face_combo.currentData())
+        self._pick(dialog, "preview")
         dialog.accept_button.click()
         self.assertFalse(dialog.canceled)
-        self.assertEqual({}, dialog.spec)
+        self.assertEqual({"face": "preview"}, dialog.spec)
 
-    def test_a_tile_without_an_icon_opens_with_the_toggle_off(self):
+    def test_only_custom_has_an_icon_and_colours_to_choose(self):
         dialog = self._dialog()
-        self.assertFalse(dialog.custom_toggle.isChecked())
-        self.assertFalse(dialog._chooser_area.isEnabled(),
-                         "the chooser is live while the toggle is off")
-        dialog.custom_toggle.setChecked(True)
+        self.assertEqual("preview", dialog.face_combo.currentData())
+        self.assertFalse(dialog._chooser_area.isEnabled(), "the chooser is live on Preview")
+        self.assertFalse(dialog.light_toggle.isEnabled())
+        self._pick(dialog, "custom")
         self.assertTrue(dialog._chooser_area.isEnabled())
+        self.assertTrue(dialog.light_toggle.isEnabled())
 
-    def test_the_preview_shows_the_tile_s_own_face_while_off(self):
-        """Off = what the grid shows today; on = the composed icon. The face is whatever the section paints - a render, swatches, code."""
-        face = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
-        face.fill(QtGui.QColor("#12b886"))
-        dialog = icon_dialog.IconDialog(None, tile_face=face)
+    def test_generic_is_a_choice_of_its_own(self):
+        dialog = icon_dialog.IconDialog(None, face="generic")
         self.addCleanup(dialog.deleteLater)
-        shown = dialog.preview.pixmap().toImage()
-        self.assertEqual(
-            "#12b886",
-            shown.pixelColor(shown.width() // 2,
-                             shown.height() // 2).name(),
-            "the off-state preview is not the tile's current face")
-        self.assertTrue(dialog.preview.isEnabled(),
-                        "the real face must not draw greyed")
-        dialog.custom_toggle.setChecked(True)
-        shown = dialog.preview.pixmap().toImage()
-        self.assertNotEqual(
-            "#12b886",
-            shown.pixelColor(shown.width() // 2,
-                             shown.height() // 2).name(),
-            "toggling on did not swap to the composed icon")
+        self.assertEqual("generic", dialog.face_combo.currentData())
+        dialog.accept_button.click()
+        self.assertEqual({"face": "generic"}, dialog.spec)
+
+    def test_preview_is_greyed_where_no_picture_can_exist(self):
+        dialog = icon_dialog.IconDialog(None, face="generic", can_preview=False)
+        self.addCleanup(dialog.deleteLater)
+        self.assertFalse(dialog.face_combo.model().item(0).isEnabled())
+        self.assertTrue(dialog.face_combo.model().item(1).isEnabled())
+
+    def test_the_preview_square_shows_the_chosen_face(self):
+        """Preview shows the tile's own picture, Generic the section's face, Custom the composed icon."""
+        def solid(colour):
+            image = QtGui.QImage(64, 64, QtGui.QImage.Format.Format_RGB32)
+            image.fill(QtGui.QColor(colour))
+            return image
+
+        dialog = icon_dialog.IconDialog(
+            None, faces={"preview": solid("#12b886"), "generic": solid("#1c7ed6")})
+        self.addCleanup(dialog.deleteLater)
+
+        def middle():
+            shown = dialog.preview.pixmap().toImage()
+            return shown.pixelColor(shown.width() // 2, shown.height() // 2).name()
+
+        self.assertEqual("#12b886", middle(), "Preview does not show the tile's picture")
+        self.assertTrue(dialog.preview.isEnabled(), "the real face must not draw greyed")
+        self._pick(dialog, "generic")
+        self.assertEqual("#1c7ed6", middle(), "Generic does not show the section's face")
+        self._pick(dialog, "custom")
+        self.assertNotIn(middle(), ("#12b886", "#1c7ed6"), "Custom did not compose the icon")
 
     def test_apply_commits_without_closing(self):
         """Houdini's own pair: Apply commits and stays open, Accept closes. `canceled` stays True after Apply, so a later X re-applies nothing."""
@@ -514,10 +529,10 @@ class DialogTest(unittest.TestCase):
                       "the chip did not follow a preset click")
         self.assertEqual(theme.ui_px(amazetheme.D02_CHIP_W),
                          dialog.custom_chip.width())
-        self.assertEqual(    # chip and the switch pills are drawn flush LEFT at the stack's edge, so their x agree whatever the style's fonts do
+        self.assertEqual(    # chip and pill are drawn flush LEFT at the stack's edge, whatever the fonts do
             dialog.custom_chip.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
-            dialog.custom_toggle.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
-            "the chip and the switch pills start at different edges")
+            dialog.light_toggle.mapTo(dialog, QtCore.QPoint(0, 0)).x(),
+            "the chip and the Light Icon pill start at different edges")
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
                          dialog.apply_button.width())
         self.assertEqual(theme.ui_px(amazetheme.D02_BUTTON_W),
@@ -717,6 +732,40 @@ class MenuWiringTest(unittest.TestCase):
                 applied.called,
                 "%s: Edit Icon did not reach the model" % model_attr)
             self.assertEqual(spec, applied.call_args[0][1])
+
+    def test_every_section_opens_customize_on_its_face(self):
+        """Each model answers its face, its picture and its generic art - the dialog shows all three."""
+        opened = []
+
+        class _Dialog:
+            def __init__(self, *a, **k):
+                opened.append(k)
+                self.applied = self.finished = mock.Mock()
+
+            def show(self):
+                pass
+
+        checked = 0
+        for model_attr, proxy_attr in self.SECTIONS:
+            model = getattr(self.panel, model_attr)
+            proxy = getattr(self.panel, proxy_attr)
+            if not model.rowCount():
+                continue
+            row = proxy.mapToSource(proxy.index(0, 0)).row()
+            opened.clear()
+            self.panel._icon_dialog = None
+            with mock.patch.object(icon_dialog, "IconDialog", _Dialog):
+                self.panel.edit_tile_icon(model, proxy, [proxy.index(0, 0)])
+            self.panel._icon_dialog = None
+            self.assertEqual(1, len(opened), model_attr)
+            given = opened[0]
+            self.assertEqual(tile_icons.face_for(model, row), given["face"], model_attr)
+            self.assertEqual(tile_icons.generic_image(model.tile_face_art(row)),
+                             given["faces"]["generic"], model_attr)
+            self.assertIn("preview", given["faces"], model_attr)
+            self.assertEqual(model.can_preview(row), given["can_preview"], model_attr)
+            checked += 1
+        self.assertTrue(checked, "no section had a tile - this test proves nothing")
 
 
 class ComposedCacheTest(unittest.TestCase):

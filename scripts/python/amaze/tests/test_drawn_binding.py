@@ -50,13 +50,13 @@ LABEL_RIGHT = {    # where a form label's drawn box ENDS - the label column's ri
 }
 
 STRETCHED_FIELDS = {    # frame and kind whose fields fill the column instead of wearing a width
-    ("D02", "QLineEdit"), ("D02", "QComboBox"),
+    ("D02", "QLineEdit"), ("D02", "QComboBox", 71, 67),    # Category; the Icon menu is pinned
     ("D11", "QLineEdit"), ("D11", "QComboBox"),
 }
 
 LOOSE_LABELS = {    # (frame, kind, x, y) of a label drawn BESIDE or ABOVE its control rather than in a column
     ("D01", "QLabel", 18, 81),
-    ("D02", "QLabel", 202, 160),
+    ("D02", "QLabel", 202, 189),
     ("D02", "QLabel", 212, 220),
 }
 
@@ -104,7 +104,7 @@ DRAWN_EXEMPT = (    # (does this node need no pin, why) - EVERY drawn node off t
      and any(inside(n, box) for box in plain_rects(f, "QSpinBox")),
      "the editor INSIDE a spin box, which Qt insets by 1 - pinning it "
      "takes back the 2 the document gives the box around it"),
-    (lambda f, n: (f, n[0]) in STRETCHED_FIELDS,
+    (lambda f, n: (f, n[0]) in STRETCHED_FIELDS or (f,) + n[:3] in STRETCHED_FIELDS,
      "D02 and D11 are the frames that RESIZE: their fields fill the "
      "column, and the drawn width is the width at the drawn size"),
     (lambda f, n: n[0] == "CodeEditor",

@@ -27,7 +27,7 @@ class IconDialog(base_dialog.AssetDialog):
                  parent=None, tile_name=None,
                  tile_name_enabled: bool = True, tile_tags=None,
                  categories=None, tile_category="",
-                 tile_face=None) -> None:
+                 face=None, faces=None, can_preview=True) -> None:
         super().__init__(tile_name if tile_name and tile_name_enabled
                          else amazetheme.TITLE_TILE_ICON,    # the WINDOW TITLE is the asset's own name, as drawn - a multi-selection has none, so it keeps the generic one
                          fixed_size=False, parent=parent)
@@ -36,13 +36,15 @@ class IconDialog(base_dialog.AssetDialog):
         self._tile_tags = tile_tags   # None = this section has no tags; on a multi-selection the field opens empty and ADDS
         self._categories = list(categories or [])   # None = this section has no categories, so no field at all
         self._tile_category = tile_category or ""
-        self._tile_face = tile_face   # the tile's CURRENT grid face - what the preview shows while Custom Icon is off
+        self._face = face if face in tile_icons.FACES else tile_icons.face_of(
+            tile_icons.normalise(current))    # what the tile shows now
+        self._faces = dict(faces or {})    # {"preview": image, "generic": image} for the preview square
+        self._can_preview = bool(can_preview)
         self.new_tile_name = None
         self.new_tags = None
         self.new_category = None    # NOT greyed on a multi-selection: moving a whole selection to one category is the point of it
         self._stroke = stroke_units or tile_icons.STROKE_UNITS
         current = tile_icons.normalise(current)
-        self._has_icon = bool(current)   # what the Custom Icon toggle opens on: OFF = the tile's own thumbnail
         self.spec = dict(current)
         self._name = current.get("name", "") or "box"
         self._bg = current.get("bg", "") or tile_icons.PRESETS[0][1]
@@ -68,9 +70,8 @@ class IconDialog(base_dialog.AssetDialog):
                     margins=(margins[0] + margins[2]) // 2)
         self._inner_layout.setContentsMargins(
             *(theme.ui_px(m) for m in margins))
-        self.custom_toggle.toggled.connect(self._set_custom_enabled)
-        self._set_custom_enabled(self._has_icon)
-        self._refresh_preview()
+        self.face_combo.currentIndexChanged.connect(self._face_changed)
+        self._face_changed()
         self.resize(theme.ui_px(amazetheme.D02_FORM_WIDTH),   # the drawn OPENING size; the grid is the part that grows if the user resizes
                     theme.ui_px(amazetheme.D02_FRAME_H))
 
@@ -180,15 +181,19 @@ class IconDialog(base_dialog.AssetDialog):
         return area
 
     def _build_preview_block(self):
-        """The preview square with the switch stack beside it - Custom Icon, Light Icon, the current-colour chip, the four presets. The stack's fixed heights sum to the preview's own 150."""
+        """The preview square beside the stack: the Icon menu, Light Icon, the colour chip, the presets."""
         block = QtWidgets.QHBoxLayout()
         block.setSpacing(theme.ui_px(amazetheme.D02_STACK_GAP))
 
         self.preview = QtWidgets.QLabel()
         ui_helpers.pin_drawn(self.preview, self.FRAME_KEY, "QLabel", None)
         self.preview.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        block.addWidget(self.preview,
-                        alignment=QtCore.Qt.AlignmentFlag.AlignTop)
+        preview_column = QtWidgets.QVBoxLayout()
+        preview_column.setSpacing(0)
+        preview_column.addSpacing(theme.ui_px(amazetheme.D02_PREVIEW_DROP))
+        preview_column.addWidget(self.preview)
+        preview_column.addStretch(1)
+        block.addLayout(preview_column)
 
         stack = QtWidgets.QVBoxLayout()
         stack.setSpacing(0)
@@ -205,12 +210,23 @@ class IconDialog(base_dialog.AssetDialog):
             row.addStretch(1)
             return row, toggle
 
-        row, self.custom_toggle = switch_row(
-            amazetheme.LABEL_CUSTOM_ICON,
-            tooltips.CUSTOMIZE_CUSTOM_ICON)
-        self.custom_toggle.setChecked(self._has_icon)
-        stack.addLayout(row)
-        stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
+        face_row = QtWidgets.QHBoxLayout()    # the Icon menu: Preview, Generic or Custom ▸r/tile-faces
+        face_row.setSpacing(theme.ui_px(amazetheme.D02_LABEL_GAP))
+        face_label = QtWidgets.QLabel(amazetheme.LABEL_ICON)
+        ui_helpers.pin_drawn(face_label, self.FRAME_KEY, "QLabel", amazetheme.LABEL_ICON,
+                             height=False, grow=True)
+        face_row.addWidget(face_label)
+        self.face_combo = ui_helpers.DesignedComboBox()
+        ui_helpers.pin_drawn(self.face_combo, self.FRAME_KEY, "QComboBox", None, nth=1)
+        self.face_combo.setToolTip(ui_helpers.tooltip_text(tooltips.CUSTOMIZE_ICON))
+        for face, label in zip(tile_icons.FACES, amazetheme.FACE_LABELS):
+            self.face_combo.addItem(label, face)
+        self.face_combo.model().item(0).setEnabled(self._can_preview)    # no picture: no Preview
+        self.face_combo.setCurrentIndex(tile_icons.FACES.index(self._face))
+        face_row.addWidget(self.face_combo)
+        face_row.addStretch(1)
+        stack.addLayout(face_row)
+        stack.addSpacing(theme.ui_px(amazetheme.D02_SECTION_GAP))
 
         row, self.light_toggle = switch_row(
             amazetheme.LABEL_LIGHT_ICON,
@@ -218,7 +234,7 @@ class IconDialog(base_dialog.AssetDialog):
         self.light_toggle.setChecked(self._ink == "light")
         self.light_toggle.toggled.connect(self._set_ink_light)
         stack.addLayout(row)
-        stack.addSpacing(theme.ui_px(amazetheme.D02_SECTION_GAP))
+        stack.addSpacing(theme.ui_px(amazetheme.D02_ROW_GAP))
 
         colour_row = QtWidgets.QHBoxLayout()
         colour_row.setSpacing(theme.ui_px(amazetheme.D02_SWATCH_GAP))   # the drawn 6: the chip is swatch-sized and the row rides the swatch rhythm
@@ -281,11 +297,12 @@ class IconDialog(base_dialog.AssetDialog):
         actions.addWidget(self.accept_button)
         return actions
 
-    def _set_custom_enabled(self, on: bool) -> None:
-        """The chooser follows the toggle; Name, Category and Tags do not - they are the asset's, not the icon's. The preview stays live either way: off, it shows the tile's current face."""
+    def _face_changed(self, _index=None) -> None:
+        """Only Custom has an icon and colours to choose; Name, Category and Tags are the asset's."""
+        custom = self.face_combo.currentData() == "custom"
         for widget in (self._chooser_area, self.search, self.custom_chip,
                        self.light_toggle, *self._swatches):
-            widget.setEnabled(bool(on))
+            widget.setEnabled(custom)
         self._refresh_preview()
 
 
@@ -347,11 +364,12 @@ class IconDialog(base_dialog.AssetDialog):
         button = self._buttons_by_name.get(self._name)
         if button is not None and not button.isChecked():
             button.setChecked(True)
-        if self.custom_toggle.isChecked():
+        face = self.face_combo.currentData()
+        if face == "custom":
             image = tile_icons.compose(self._name, self._bg, 256,
                                        self._stroke, self._ink)
         else:
-            image = self._tile_face   # off = what the grid shows today: the render, the swatches, the painted code
+            image = self._faces.get(face) or self._faces.get("generic")    # no picture yet: generic
         if image is None:
             self.preview.clear()
             return
@@ -387,12 +405,13 @@ class IconDialog(base_dialog.AssetDialog):
             self.new_category = text
 
     def _harvest(self) -> None:
-        """Everything a commit writes: the spec per the toggle - OFF is `{}`, which the models read as "clear it" - and the name, tags and category."""
-        if self.custom_toggle.isChecked():
+        """Everything a commit writes: the chosen face, and the name, tags and category."""
+        face = self.face_combo.currentData()
+        if face == "custom":
             self.spec = tile_icons.normalise(
                 {"name": self._name, "bg": self._bg, "ink": self._ink})
         else:
-            self.spec = {}
+            self.spec = {"face": face}    # the model stores it only where it is not the default
         self._harvest_tile_name()
         self._harvest_tags()
         self._harvest_category()

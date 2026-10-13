@@ -475,19 +475,26 @@ material you deleted.
 
 ## Tile icons
 
-A LOP setup, a DOP network and a snippet have nothing to render, so
-they fall back to the node icon. A tile icon replaces that with a
-symbol and a colour of your choosing.
-
 Right-click any tile ▸ **Customize**.
 
 <img src="docs/images/dialog_customize.png" width="460">
 
-The **Custom Icon** switch is the door: off, the tile keeps its own
-thumbnail; on, pick one of 287 Feather icons on a background colour —
-four presets, or the colour chip beside **Custom Color** for any other.
-The preview shows the finished tile. **Light Icon** switches the symbol
-between dark and light.
+The **Icon** menu sets what the tile shows:
+
+- **Preview** — the tile's own picture: a material's or a node
+  network's render, a snippet's code, a palette's swatches, a scene's
+  capture, or a file's preview.
+- **Generic** — the section's own icon.
+- **Custom** — one of 287 Feather icons on a background colour: four
+  presets, or the colour chip beside **Custom Color** for any other.
+  **Light Icon** draws the symbol light instead of dark.
+
+Preview is the default wherever Amaze makes a picture, and a tile with
+no picture yet shows its Generic icon. A node network outside SOP and
+COP has nothing to render, so it defaults to Generic and Preview is
+greyed. A file Amaze makes no preview of defaults to Generic; its
+Preview is the system's icon for that file type. The preview square
+shows the finished tile.
 
 The dialog also carries the asset's **Name**, **Category** and
 **Tags**. On a multi-selection, Category moves every selected tile and
@@ -495,12 +502,10 @@ Tags adds to what each tile already has. **Apply** commits and stays
 open; **Accept** commits and closes. Closing the window any other way
 changes nothing.
 
-- Works on every section that has tiles — Material, Node, Code and
-  File, scenes included. Color keeps its own swatches.
 - Applies to the whole selection, so twelve LOP setups take one icon in
   one go.
-- A tile with a rendered thumbnail keeps it. The icon sits beside it,
-  and switching **Custom Icon** off brings the render back.
+- A custom icon is stored beside the render, so **Preview** shows the
+  render again.
 - Your choice is stored with the library and travels with it.
 
 The line weight is in Preferences ▸ Look ▸ **Tile Icon Line**.

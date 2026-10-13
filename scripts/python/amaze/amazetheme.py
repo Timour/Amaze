@@ -31,9 +31,10 @@ D02_STACK_GAP = 13       # preview to the switch stack, and its label column to 
 D02_ROW_GAP = 9          # between the stacked field rows, and the column rhythm below them
 D02_LABEL_GAP = 8        # a label to its field in the top form
 D02_GRID_GAP = 6         # search to the grid
-D02_SECTION_GAP = 37     # the switch pair to the Custom Color row - with PRESET_GAP it makes the stack exactly the preview's 150
+D02_SECTION_GAP = 37     # the Icon menu's row to the Light Icon row
 D02_PRESET_GAP = 10      # the current-colour chip to the preset row
-D02_TOP_GAP = 11         # the Tags row to the preview block
+D02_TOP_GAP = 9          # the Tags row to the Icon menu
+D02_PREVIEW_DROP = 2     # the Icon menu's top to the preview square's
 D02_BUTTON_GAP = 8       # grid to the button row
 D02_GRID_SPACING = 2     # the chooser grid's cell gap, UNSCALED: D02_COLUMNS is the count the drawn 319 column fits at exactly this gap
 D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, like the two below
@@ -142,7 +143,8 @@ BTN_NEW_FILE = "New File"
 LABEL_CHANGE_NAME = "Change Name"       # ▸ field labels and placeholders
 LABEL_TAGS = "Tags"
 LABEL_CATEGORY = "Category"
-LABEL_CUSTOM_ICON = "Custom Icon"   # the D02 toggle: OFF = the tile's own thumbnail, ON = the chooser applies
+LABEL_ICON = "Icon"                 # the D02 menu choosing the tile's face
+FACE_LABELS = ("Preview", "Generic", "Custom")    # its items, in `tile_icons.FACES` order
 LABEL_LIGHT_ICON = "Light Icon"     # the D02 toggle that replaced the Lines dropdown: OFF = dark lines, ON = light
 LABEL_NAME = "Name"
 PLACEHOLDER_SEARCH_ICONS = "Search"     # D02 drew the count in it; it does not any more
@@ -244,11 +246,11 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("QLabel", 18, 71, 45, 15, "Category"),
             ("QLineEdit", 71, 98, 255, 22, None),
             ("QLabel", 40, 101, 23, 15, "Tags"),
-            ("ToggleSwitch", 171, 132, 23, 15, None),
             ("QLabel", 8, 131, 150, 150, None),
-            ("ToggleSwitch ▸ text", 202, 132, 63, 15, "Custom Icon"),
-            ("QLabel", 202, 160, 50, 15, "Light Icon"),
-            ("ToggleSwitch", 171, 160, 23, 15, None),
+            ("QLabel", 171, 133, 22, 15, "Icon"),
+            ("QComboBox", 201, 129, 125, 22, None),
+            ("QLabel", 202, 189, 50, 15, "Light Icon"),
+            ("ToggleSwitch", 171, 189, 23, 15, None),
             ("QToolButton", 171, 214, 35, 28, None),
             ("QLabel", 212, 220, 68, 15, "Custom Color"),
             ("QToolButton", 171, 252, 35, 28, None),

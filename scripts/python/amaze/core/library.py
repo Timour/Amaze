@@ -5,7 +5,7 @@ import json
 import shutil
 import time
 from typing import Any
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 
 import hou
 
@@ -284,6 +284,13 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def default_face(self, row: int) -> str:
         """Preview where the row can have a picture, Generic where it cannot."""
         return "preview" if self.can_preview(row) else "generic"
+
+    def preview_image(self, row: int):
+        """The row's own picture, read now for the Customize preview; None where there is none yet."""
+        if not 0 <= row < len(self._assets):
+            return None
+        image = QtGui.QImage(tile_icons.thumbnail_path(self.preferences, self._assets[row].mat_id))
+        return None if image.isNull() else image
 
     def _missing_thumb_image(self, row: int = -1):
         """A row with no picture shows its chosen face."""

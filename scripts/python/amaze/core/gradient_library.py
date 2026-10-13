@@ -365,7 +365,6 @@ class GradientLibrary(library.AssetLibrary):
     def _decoration_image(self, index: QtCore.QModelIndex):
         """The painted swatch (or chosen icon) over the engine's PAINT path - this section has no thumbnail files, so the base's file loader never applies."""
         row = index.row()
-        asset = self._assets[row]
         key = self._swatch_key(row)
         image = thumbnails.engine.peek(key)
         if image is not None:
@@ -375,9 +374,16 @@ class GradientLibrary(library.AssetLibrary):
             if face is not None:
                 thumbnails.engine.deposit(key, face)
                 return face
-        image = paint_swatch(self._colors_of(asset), self._ramp_of(asset))
+        image = self.preview_image(row)
         thumbnails.engine.deposit(key, image)
         return image
+
+    def preview_image(self, row: int):
+        """The painted swatch, for the tile and the Customize preview."""
+        if not 0 <= row < len(self._assets):
+            return None
+        asset = self._assets[row]
+        return paint_swatch(self._colors_of(asset), self._ramp_of(asset))
 
     @staticmethod
     def _paint_ramp(painter: QtGui.QPainter, ramp_data: dict) -> None:

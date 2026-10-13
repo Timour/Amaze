@@ -306,6 +306,10 @@ class CodeLibrary(library.AssetLibrary):
         thumbnails.engine.deposit(key, image)
         return image
 
+    def preview_image(self, row: int):
+        """The painted code, for the Customize preview."""
+        return self._paint_preview(self._assets[row]) if 0 <= row < len(self._assets) else None
+
     def _paint_preview(self, asset) -> QtGui.QImage:
         return paint_code_preview(asset.code)
 

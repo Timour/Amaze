@@ -87,7 +87,7 @@ CUSTOMIZE_TAGS_ONE_TILE = 'Tags for this tile, separated by commas.'
 
 CUSTOMIZE_TAGS_MANY_TILES = 'Tags to add to every selected tile, separated by commas. Each tile keeps the tags it already has.'
 
-CUSTOMIZE_CUSTOM_ICON = 'Off shows the tile own thumbnail; on uses the icon you choose.'
+CUSTOMIZE_ICON = 'What the tile shows: its own picture, its section\'s icon, or an icon you choose.'
 
 CUSTOMIZE_LIGHT_ICON = 'Draw the icon lines light for a dark background.'
 
