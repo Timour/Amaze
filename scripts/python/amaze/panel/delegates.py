@@ -80,8 +80,9 @@ class TickCellDelegate(GridCellDelegate):
         super().initStyleOption(option, index)
         option.text = ""    # no TEXT: `DisplayRole` still carries the raw yes/no because the SORT compares it, and this is cleared HERE rather than in `paint`, which re-runs `initStyleOption` on its own copy and would put the word back
 
-    SIDE = theme.ui_px(12)    # the mark's own side, and the air around it - a tick column is this wide and no wider, see `sizeHint`
-    PAD = theme.ui_px(5)
+    _LIST = amazetheme.drawn_list()    # the tick box is L01's ▸r/list-from-frame
+    SIDE = theme.ui_px(_LIST["tick_side"])    # the mark's own side; a tick column is this plus PAD each side
+    PAD = theme.ui_px(_LIST["tick_pad"])
 
     def _box(self, rect):
         """The tick's square at the cell's LEFT edge, where every other column and its own heading start - centring it (tried, reverted 2026-08-04) made the two mark columns read as a different table from the eight beside them."""

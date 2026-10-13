@@ -96,7 +96,6 @@ COMMENT_PAGE_BG = "#2b2c34"
 
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip states them
 LIST_HEADER_DIVIDER = "#454545"
-LIST_HEADER_HEIGHT = 20
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the accent DEFAULT only - overwritten per instance from `prefs.accent_color`
@@ -550,6 +549,79 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 34, 15, "Karma"),
         ),
     },
+    "L01": {   # the list table from the live panel - its header, widths and ticks are read
+        "frame": (1542, 96),
+        "nodes": (
+            ("column ▸ name", 0, 0, 176, 20, None),
+            ("divider ▸ name", 175, 0, 1, 20, None),
+            ("heading ▸ name", 5, 2.5, 30, 15, "Name"),
+            ("sort arrow ▸ name (Qt's own, traced)", 155, 2, 16, 16, None),
+            ("column ▸ type", 176, 0, 59, 20, None),
+            ("divider ▸ type", 234, 0, 1, 20, None),
+            ("heading ▸ type", 181, 2.5, 25, 15, "Type"),
+            ("column ▸ category", 235, 0, 76, 20, None),
+            ("divider ▸ category", 310, 0, 1, 20, None),
+            ("heading ▸ category", 240, 2.5, 45, 15, "Category"),
+            ("column ▸ favorite", 311, 0, 69, 20, None),
+            ("divider ▸ favorite", 379, 0, 1, 20, None),
+            ("heading ▸ favorite", 316, 2.5, 41, 15, "Favorite"),
+            ("column ▸ version", 380, 0, 66, 20, None),
+            ("divider ▸ version", 445, 0, 1, 20, None),
+            ("heading ▸ version", 385, 2.5, 38, 15, "Version"),
+            ("column ▸ open", 446, 0, 54, 20, None),
+            ("divider ▸ open", 499, 0, 1, 20, None),
+            ("heading ▸ open", 451, 2.5, 28, 15, "Open"),
+            ("column ▸ comments", 500, 0, 85, 20, None),
+            ("divider ▸ comments", 584, 0, 1, 20, None),
+            ("heading ▸ comments", 505, 2.5, 55, 15, "Comments"),
+            ("column ▸ tags", 585, 0, 300, 20, None),
+            ("divider ▸ tags", 884, 0, 1, 20, None),
+            ("heading ▸ tags", 590, 2.5, 23, 15, "Tags"),
+            ("column ▸ license", 885, 0, 287, 20, None),
+            ("divider ▸ license", 1171, 0, 1, 20, None),
+            ("heading ▸ license", 890, 2.5, 38, 15, "License"),
+            ("column ▸ date", 1172, 0, 130, 20, None),
+            ("divider ▸ date", 1301, 0, 1, 20, None),
+            ("heading ▸ date", 1177, 2.5, 24, 15, "Date"),
+            ("column ▸ id", 1302, 0, 240, 20, None),
+            ("divider ▸ id", 1541, 0, 1, 20, None),
+            ("heading ▸ id", 1307, 2.5, 11, 15, "ID"),
+            ("row ▸ plain", 0, 20, 1542, 19, None),
+            ("cell ▸ name", 3, 22, 72, 15, "brushed_steel"),
+            ("cell ▸ type", 179, 22, 48, 15, "USD Re…"),
+            ("cell ▸ category", 238, 22, 28, 15, "Metal"),
+            ("cell ▸ version", 383, 22, 46, 15, "Version 2"),
+            ("cell ▸ tags", 588, 22, 55, 15, "steel, worn"),
+            ("cell ▸ license", 888, 22, 20, 15, "CC0"),
+            ("cell ▸ date", 1175, 22, 100, 15, "2026-09-04 01:51:48"),
+            ("cell ▸ id", 1305, 22, 188, 15, "8f3c2a71d4e94b0c9a6e1f5b2d7c3e90"),
+            ("tick box ▸ favorite", 316, 20, 12, 19, None),
+            ("tick box ▸ comments", 505, 20, 12, 19, None),
+            ("row ▸ plain", 0, 39, 1542, 19, None),
+            ("cell ▸ name", 3, 41, 58, 15, "oak_planks"),
+            ("cell ▸ type", 179, 41, 48, 15, "USD Re…"),
+            ("cell ▸ category", 238, 41, 30, 15, "Wood"),
+            ("cell ▸ date", 1175, 41, 100, 15, "2026-08-21 14:02:10"),
+            ("cell ▸ id", 1305, 41, 189, 15, "1b7e9d0c3a5f4e2b8c6d9a0f7e3b5c1d"),
+            ("row ▸ selected", 0, 58, 1542, 19, None),
+            ("cell ▸ name", 3, 60, 33, 15, "rocks1"),
+            ("cell ▸ type", 179, 60, 48, 15, "USD Re…"),
+            ("cell ▸ category", 238, 60, 30, 15, "Stone"),
+            ("cell ▸ tags", 588, 60, 64, 15, "rock, ground"),
+            ("cell ▸ license", 888, 60, 94, 15, "MIT Public Domain"),
+            ("cell ▸ date", 1175, 60, 100, 15, "2026-10-12 22:41:05"),
+            ("cell ▸ id", 1305, 60, 189, 15, "c4d2e8f1a9b3470d8e6f2a5c1b9d7e30"),
+            ("tick box ▸ favorite", 316, 58, 12, 19, None),
+            ("tick box ▸ open", 451, 58, 12, 19, None),
+            ("row ▸ plain", 0, 77, 1542, 19, None),
+            ("cell ▸ name", 3, 79, 53, 15, "red_velvet"),
+            ("cell ▸ type", 179, 79, 48, 15, "USD Re…"),
+            ("cell ▸ category", 238, 79, 31, 15, "Fabric"),
+            ("cell ▸ date", 1175, 79, 100, 15, "2026-07-30 09:15:33"),
+            ("cell ▸ id", 1305, 79, 188, 15, "e5a1c7b3d9f2468a0c4e8b2d6f1a3c57"),
+            ("tick box ▸ comments", 505, 77, 12, 19, None),
+        ),
+    },
 }
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
@@ -655,4 +727,24 @@ def drawn_tile(frame_key: str = "T01") -> dict:
         "bottom_pad": layout["frame"][1] - (sub[2] + sub[4]),
         "badge_inset": badge[1] - thumb[1],
         "badge_cap": badge[3],
+    }
+
+
+def drawn_list(frame_key: str = "L01") -> dict:
+    """The list's header, column widths and tick box, read off its frame. ▸r/list-from-frame"""
+    nodes = DIALOG_LAYOUT[frame_key]["nodes"]
+
+    def by_key(kind):
+        return {n[0].split(_NODE_MARK)[1]: n for n in nodes
+                if n[0].startswith(kind + _NODE_MARK)}
+
+    columns, headings = by_key("column"), by_key("heading")
+    tick = next(n for n in nodes if n[0].startswith("tick box" + _NODE_MARK))
+    first = next(iter(columns))
+    return {
+        "header_h": columns[first][4],
+        "cell_pad": headings[first][1] - columns[first][1],
+        "widths": {key: n[3] for key, n in columns.items()},
+        "tick_pad": tick[1] - columns[tick[0].split(_NODE_MARK)[1]][1],
+        "tick_side": tick[3],
     }

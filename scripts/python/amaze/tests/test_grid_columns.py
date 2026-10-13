@@ -433,7 +433,7 @@ class TheSortArrowIsPAIDFORByTheColumnThatHasIt(unittest.TestCase):
 
 
 class EveryCellHasAIREitherSide(unittest.TestCase):
-    """Five pixels of air either side of a cell's text (2026-08-04). - Through the STYLE's own metric, not a stylesheet. The first answer was `QTableView::item { padding-left: 5px; ... }` and it cost four unrelated things - the widget's font, the selection band's colour, the selected text's colour, and a second copy of each in the rule."""
+    """Cell text sits at the style's own margin: no stylesheet, no style. ▸r/list-from-frame"""
 
     @classmethod
     def setUpClass(cls):
@@ -1115,6 +1115,96 @@ class TheHeaderTakesTheClick(unittest.TestCase):
         self.assertEqual(
             sorted(descending, key=str.lower, reverse=True), descending,
             "the arrow flipped and the rows did not")
+
+
+class TheListStandsOnItsFrame(unittest.TestCase):
+    """The list's header, widths and tick boxes land where L01 draws them. ▸r/list-from-frame"""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        from amaze import amazetheme
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        panel.prefs.view_mode = "list"
+        panel.apply_view_mode()
+        QtWidgets.QApplication.processEvents()
+        self.addCleanup(panel.apply_view_mode)
+        self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
+        self.px = theme.ui_px
+        self.nodes = amazetheme.DIALOG_LAYOUT["L01"]["nodes"]
+        self.column = self._by_key("column")
+        self.heading = self._by_key("heading")
+        self.table = panel.thumbtable
+        self.header = self.table.horizontalHeader()
+
+    def _by_key(self, kind):
+        return {n[0].split(" ▸ ")[1]: n for n in self.nodes
+                if n[0].startswith(kind + " ▸ ")}
+
+    def test_the_frame_is_one_table_the_code_can_follow(self):
+        """Columns in the table's order, edge to edge; one heading inset; one tick inset."""
+        self.assertEqual([k for k in grid_columns.KEYS if k != "thumb"],
+                         list(self.column))
+        x = 0
+        for key, node in self.column.items():
+            self.assertEqual(x, node[1], "%s is not where the column before it ends" % key)
+            x += node[3]
+        self.assertEqual(1, len({n[4] for n in self.column.values()}),
+                         "the headings are drawn at different heights")
+        insets = {self.heading[k][1] - n[1] for k, n in self.column.items()}
+        self.assertEqual(1, len(insets), "the headings sit at insets %s" % sorted(insets))
+        ticks = {n[1] - self.column[n[0].split(" ▸ ")[1]][1]
+                 for n in self.nodes if n[0].startswith("tick box ▸ ")}
+        self.assertEqual(1, len(ticks), "the ticks sit at insets %s" % sorted(ticks))
+
+    def test_the_header_is_its_drawn_height(self):
+        height = self.px(self.column["name"][4])
+        self.assertEqual((height, height),
+                         (self.header.minimumHeight(), self.header.maximumHeight()))
+
+    def test_every_heading_starts_where_it_is_drawn(self):
+        style = self.header.style()
+        for key, node in self.column.items():
+            column = grid_columns.KEYS.index(key)
+            x = self.header.sectionPosition(column)
+            option = QtWidgets.QStyleOptionHeader()
+            option.initFrom(self.header)
+            option.rect = QtCore.QRect(x, 0, self.px(node[3]), self.px(node[4]))
+            option.section = column
+            option.text = grid_columns.LABELS[column]
+            label = style.subElementRect(
+                QtWidgets.QStyle.SubElement.SE_HeaderLabel, option, self.header)
+            with self.subTest(column=key):
+                self.assertEqual(self.px(self.heading[key][1] - node[1]), label.x() - x)
+
+    def test_every_shown_column_starts_at_its_drawn_width(self):
+        shown = [c for c in range(len(grid_columns.KEYS))
+                 if not self.table.isColumnHidden(c)]
+        self.assertGreater(len(shown), 2, "too few columns shown to be a test")
+        for key, node in self.column.items():
+            column = grid_columns.KEYS.index(key)
+            with self.subTest(column=key):
+                self.assertEqual(node[3], self.panel.COLUMN_DEFAULT_WIDTH[key])
+                if column in shown[:-1]:    # the last shown column takes the slack
+                    self.assertEqual(self.px(node[3]), self.table.columnWidth(column))
+
+    def test_every_tick_box_is_where_it_is_drawn(self):
+        rows = [n for n in self.nodes if n[0].startswith("row ▸ ")]
+        ticks = [n for n in self.nodes if n[0].startswith("tick box ▸ ")]
+        self.assertTrue(ticks, "L01 draws no tick - not a test")
+        for node in ticks:
+            key = node[0].split(" ▸ ")[1]
+            column = self.column[key]
+            row = next(r for r in rows if r[2] <= node[2] < r[2] + r[4])
+            delegate = self.table.itemDelegateForColumn(grid_columns.KEYS.index(key))
+            box = delegate._box(QtCore.QRect(*(self.px(v) for v in (
+                column[1], row[2], column[3], row[4]))))
+            with self.subTest(tick=key, y=node[2]):
+                self.assertEqual(tuple(self.px(v) for v in node[1:5]),
+                                 (box.x(), box.y(), box.width(), box.height()))
 
 
 if __name__ == "__main__":

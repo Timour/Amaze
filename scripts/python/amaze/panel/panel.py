@@ -639,21 +639,17 @@ class AmazePanel(QtWidgets.QWidget):
             self.thumblist.setItemDelegate(delegate)
             grid.bind_table_cell_delegates(self, delegate)    # THE TABLE DOES NOT WEAR THE TILE DELEGATE: that one paints a whole TILE per index, right where an index is a tile and catastrophic where a row is ten of them. Qt paints every text cell itself; only the picture and the tick columns get a delegate, and those are per COLUMN
 
-    CELL_PAD = theme.ui_px(5)    #: air either side of a cell's text; ONE home, named here only because the header must start its label where the rows start theirs. NOT a `QTableView::item` sheet (that hands item drawing to QStyleSheetStyle and takes the font and selection colours with it) and not a QProxyStyle (setStyle does not own it)
+    _LIST = amazetheme.drawn_list()    # header, heading inset and column widths are L01's ▸r/list-from-frame
+    CELL_PAD = theme.ui_px(_LIST["cell_pad"])    #: a heading's inset from its column edge; row text is the style's
     HEADER_BG = QtGui.QColor(amazetheme.LIST_HEADER_BG)    #: the strip's own colours and height, kept so the table matches the painted header it replaced - a QHeaderView picks up none of them. The LABEL colour is the rows' ink, read from the delegate
     HEADER_DIVIDER = QtGui.QColor(amazetheme.LIST_HEADER_DIVIDER)
-    HEADER_HEIGHT = theme.ui_px(amazetheme.LIST_HEADER_HEIGHT)
+    HEADER_HEIGHT = theme.ui_px(_LIST["header_h"])
 
     def sync_list_columns(self) -> None:
         """Re-fit list mode's columns for the context now showing - THE SECTIONS' entry point, called from every `activate()`."""
         return grid.sync_table_columns(self)
 
-    COLUMN_DEFAULT_WIDTH = {    #: starting widths, derived offscreen from the real library and never measured at runtime: a fit cost 13.5ms over every row and re-ran on every row-set change, which is what made a big category slow to open. Each is the wider of its heading and the p90 of its values, capped at 300 so one long Tags entry cannot eat the row
-
-        "thumb": 24, "name": 176, "type": 59, "category": 76,
-        "favorite": 69, "version": 66, "open": 54, "comments": 85,
-        "tags": 300, "license": 287, "date": 130, "id": 240,
-    }
+    COLUMN_DEFAULT_WIDTH = dict(_LIST["widths"], thumb=24)    #: starting widths; "thumb" is never shown, so L01 draws no column for it
 
     COLUMN_MIN_WIDTH = 24    #: the floor for ANY column: `minimumSectionSize` is global rather than per-column, so License cannot be given one of its own; small enough that a tick column is not forced wide
 
