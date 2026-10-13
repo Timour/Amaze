@@ -1,6 +1,8 @@
 """The code tile: its Run button and pencil, and its text at half strength. ▸r/tile-from-frame"""
 
 import os
+import sys
+import types
 import unittest
 from unittest import mock
 
@@ -13,7 +15,7 @@ import hou  # noqa: E402
 
 from amaze import amazetheme  # noqa: E402
 from amaze.core import code_library  # noqa: E402
-from amaze.helpers import vex_syntax  # noqa: E402
+from amaze.helpers import hostos, vex_syntax  # noqa: E402
 from amaze.panel import delegates  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -49,6 +51,67 @@ class ASnippetRunsInThisHoudini(unittest.TestCase):
 
     def test_a_syntax_error_names_its_line(self):
         self.assertTrue(code_library.run_python("probe", "x = (\n").startswith("line "))
+
+
+SHELF_KEYS = {    # hom.zip ▸ tool_script.txt; `bbox` is "may not be present" ▸r/shelf-kwargs
+    "pane", "viewport", "panename", "toolname",
+    "shiftclick", "ctrlclick", "altclick", "cmdclick",
+    "requestnew", "branch", "autoplace",
+    "inputs", "inputnodename", "outputindex",
+    "outputs", "outputnodename", "inputindex",
+}
+
+
+class AShelfScriptGetsItsKwargs(unittest.TestCase):
+    """Run hands a snippet the `kwargs` a shelf click would, modifiers mapped per OS."""
+
+    def test_a_shelf_script_reads_kwargs(self):
+        probe = types.ModuleType("_amaze_kwargs_probe")
+        sys.modules[probe.__name__] = probe
+        self.addCleanup(sys.modules.pop, probe.__name__, None)
+        problem = code_library.run_python(
+            "probe", "import sys\nsys.modules['_amaze_kwargs_probe'].seen = dict(kwargs)\n")
+        self.assertEqual("", problem)
+        seen = probe.seen
+        self.assertEqual(SHELF_KEYS, set(seen))
+        self.assertIsNone(seen["pane"], "a shelf click has no pane")
+        self.assertIsNone(seen["viewport"])
+        self.assertEqual("probe", seen["toolname"])
+        self.assertEqual(([], [], "", "", -1, -1),
+                         (seen["inputs"], seen["outputs"], seen["inputnodename"],
+                          seen["outputnodename"], seen["outputindex"], seen["inputindex"]))
+        self.assertEqual((True, False, False),
+                         (seen["requestnew"], seen["branch"], seen["autoplace"]))
+
+    def _flags(self, held, platform, swapped=True):
+        with mock.patch.object(QtGui.QGuiApplication, "keyboardModifiers", return_value=held), \
+                mock.patch.object(hostos, "is_macos", return_value=platform == "darwin"), \
+                mock.patch.object(QtCore.QCoreApplication, "testAttribute",
+                                  return_value=not swapped):
+            kwargs = code_library.shelf_kwargs("probe")
+        return {k for k in ("shiftclick", "ctrlclick", "altclick", "cmdclick") if kwargs[k]}
+
+    def test_ctrl_is_ctrl_on_windows_and_linux(self):
+        keys = QtCore.Qt.KeyboardModifier
+        for platform in ("win32", "linux"):
+            self.assertEqual({"ctrlclick"}, self._flags(keys.ControlModifier, platform))
+            self.assertEqual(set(), self._flags(keys.MetaModifier, platform),
+                             "the Windows key is neither Ctrl nor Command")
+
+    def test_a_mac_reads_command_and_control_whichever_way_qt_maps_them(self):
+        keys = QtCore.Qt.KeyboardModifier
+        self.assertEqual({"cmdclick"}, self._flags(keys.ControlModifier, "darwin"))
+        self.assertEqual({"ctrlclick"}, self._flags(keys.MetaModifier, "darwin"))
+        self.assertEqual({"ctrlclick"},
+                         self._flags(keys.ControlModifier, "darwin", swapped=False))
+        self.assertEqual({"cmdclick"},
+                         self._flags(keys.MetaModifier, "darwin", swapped=False))
+
+    def test_shift_and_alt_everywhere(self):
+        keys = QtCore.Qt.KeyboardModifier
+        for platform in ("win32", "linux", "darwin"):
+            self.assertEqual({"shiftclick", "altclick"},
+                             self._flags(keys.ShiftModifier | keys.AltModifier, platform))
 
 
 class OnlyAPythonSnippetCanRun(unittest.TestCase):

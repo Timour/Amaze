@@ -365,6 +365,13 @@ right-click any node with a code parameter ▸ **Save to Amaze**. The
 **Language** row is read from the node and can be changed; it is
 greyed for every other section.
 
+A Python snippet's tile has a run button in the middle. It hands the
+snippet the same `kwargs` a shelf tool's script receives on a shelf
+click, and everything the snippet changes is one step in
+**Edit ▸ Undo**. If it stops on an error, Houdini's status bar names
+the snippet and the error. The pencil in the lower left opens the
+editor, like **Edit**.
+
 ---
 
 ## File
