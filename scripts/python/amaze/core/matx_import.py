@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 
@@ -139,34 +138,6 @@ def package_dirname(record) -> str:
     return "%s__%s" % (record_name(record), tail)
 
 
-def _catalogue_records() -> list:
-    """Every record in the cached online catalogue as plain dicts, [] when there is none - read once per import, never fetched."""
-    from amaze.core import matx_library    # late: matx_library imports this module
-    try:
-        with open(matx_library.catalogue_cache(), "r", encoding="utf-8") as handle:
-            return json.load(handle).get("records", [])
-    except (OSError, ValueError):
-        return []
-
-
-def _title_shared_across_sources(record) -> bool:
-    """Whether another source offers a package whose folder name would be this record's - the case a bare pre-identity folder cannot settle."""
-    mine = record_name(record)
-    for other in _catalogue_records():
-        if (other.get("source") or "") == (record.source or ""):
-            continue
-        if (other.get("kind") or "package") == "values":
-            continue
-        if record_name(_Titled(other.get("title") or "")) == mine:
-            return True
-    return False
-
-
-class _Titled:
-    def __init__(self, title: str) -> None:
-        self.title = title
-
-
 def _producer_for(record, source, resolution, preferences, progress=None):
     """Resolve one record to a `produce` callback for the Karma material engine: returns (produce, note, error). - This is the half of an online import that reaches the NETWORK - the download, the .mtlx repair, the measured values. It is deliberately separate from what the caller then does with the material (save it to the library, or build it straight into the scene), so both destinations share exactly one download path and one shader translation."""
     name = record_name(record)
@@ -190,13 +161,6 @@ def _producer_for(record, source, resolution, preferences, progress=None):
         return (produce, note, "")
 
     dest = os.path.join(matx_dir(preferences.dir), package_dirname(record))
-    legacy = os.path.join(matx_dir(preferences.dir), record_name(record))    # the pre-identity folder, matX/<title>, that every download before 2026-08-05 landed in
-    if not (os.path.isdir(dest) and os.listdir(dest)) \
-            and os.path.isdir(legacy) and matx_sources._find_mtlx(legacy) \
-            and not _title_shared_across_sources(record):    # a bare folder names no source: when another source offers the same title it could be theirs, so this record downloads into its own identity folder instead
-        debug.event("import", "package already on disk under its old "
-                              "name - reusing", dest=legacy)
-        dest = legacy    # reused IN PLACE, never renamed: every material saved from it references matX/<title>/textures through the $AMAZELIB token
     if os.path.isdir(dest) and os.listdir(dest):   # REFUSE AN OCCUPIED DESTINATION: with identity in the name, an existing directory means THIS record was already downloaded, and extracting over it replaces texture files a saved material may be referencing at render time
         debug.event("import", "package already on disk - reusing",
                     dest=dest)
