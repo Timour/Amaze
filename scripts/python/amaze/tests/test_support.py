@@ -401,7 +401,7 @@ def toolbar_row(panel) -> list:
     return row
 
 
-BADGE_FAMILY = ("badge_open", "badge_star", "badge_versions",
+BADGE_FAMILY = ("badge_open", "badge_favourite", "badge_versions",
                 "badge_comment")    # the tile badges, by art name - the family, in corner order
 
 

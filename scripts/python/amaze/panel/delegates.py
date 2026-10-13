@@ -34,8 +34,8 @@ class Badge:
 
 BADGES = (      # in paint order; art in `ui/badge_*.svg`, painted as drawn ▸r/tile-from-frame
     Badge("open", "badge_open", "_open_role"),                 # the scene currently open
-    Badge("favourite", "badge_star", "_favorite_role",
-          off_art="badge_star_40", off_hover_art="badge_star_75"),    # a button; the on state ignores hover
+    Badge("favourite", "badge_favourite", "_favorite_role",
+          off_art="badge_favourite_40", off_hover_art="badge_favourite_75"),    # on ignores hover
     Badge("versions", "badge_versions", "_versions_role",
           minimum=2, hover_art="badge_versions_hover"),    # a button: opens the Versions dialog
     Badge("comment", "badge_comment_75", "_notes_role",

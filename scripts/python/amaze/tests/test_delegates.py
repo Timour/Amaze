@@ -491,11 +491,11 @@ class PaintCostTest(unittest.TestCase):
     def test_a_badge_is_rendered_at_device_resolution(self):
         """It rasterised at the logical size and drew 1:1, so on Retina a 22x22 badge was upscaled onto a 44x44 area - soft on top of thumbnails `_icon_pixmap` renders at side*dpr."""
         normal = delegates.AssetItemDelegate._badge_pixmap(
-            "badge_star", 22, 1.0)
+            "badge_favourite", 22, 1.0)
         retina = delegates.AssetItemDelegate._badge_pixmap(
-            "badge_star", 22, 2.0)
+            "badge_favourite", 22, 2.0)
         if normal.isNull() or retina.isNull():
-            self.skipTest("badge_star.svg not resolvable outside an install")
+            self.skipTest("badge_favourite.svg not resolvable outside an install")
         self.assertEqual(
             44, retina.width(),
             "the Retina badge is still rasterised at logical size")
@@ -505,9 +505,9 @@ class PaintCostTest(unittest.TestCase):
     def test_badge_placement_uses_logical_size(self):
         """width() is PHYSICAL pixels once devicePixelRatio is set, so placing by it pushes the badge off the tile on Retina."""
         retina = delegates.AssetItemDelegate._badge_pixmap(
-            "badge_star", 22, 2.0)
+            "badge_favourite", 22, 2.0)
         if retina.isNull():
-            self.skipTest("badge_star.svg not resolvable outside an install")
+            self.skipTest("badge_favourite.svg not resolvable outside an install")
         logical_w, _h = delegates.AssetItemDelegate._logical_size(retina)
         self.assertEqual(
             22, logical_w,
@@ -520,7 +520,7 @@ class PaintCostTest(unittest.TestCase):
 class BadgeFamilyTest(unittest.TestCase):
     """The four tile badges are ONE drawn family: one art set (each glyph on its own dark disc), one rasteriser (`_badge_pixmap`), one size rule (`_badge_side`) and rendered AS DRAWN with no re-tinting - four accreted looks with three size formulas made the corners hard to read on busy thumbnails."""
 
-    NAMES = ("badge_open", "badge_star", "badge_versions",
+    NAMES = ("badge_open", "badge_favourite", "badge_versions",
              "badge_comment", "badge_comment_75")
 
     def test_all_four_arts_exist_and_render(self):
@@ -578,7 +578,7 @@ class BadgeFamilyTest(unittest.TestCase):
         """All four painters, one engine: each corner requests ITS art by name, at `_badge_side`'s size, at the real dpr - a painter hand-rolling its own size or art goes red here."""
         cases = (
             ("open_role", True, "badge_open"),
-            ("favorite_role", True, "badge_star"),
+            ("favorite_role", True, "badge_favourite"),
             ("versions_role", 3, "badge_versions"),
             ("notes_role", True, "badge_comment_75"),
         )
@@ -598,7 +598,7 @@ class BadgeFamilyTest(unittest.TestCase):
         """Four marks, four corners, none on top of another - found by a GREEN sabotage, since collapsing the corner arithmetic so every badge drew top-left failed nothing, and the failure it allows is silent because a stack of badges in one corner still paints a badge; each badge is rasterised as its own flat colour, so one pixel per corner says WHICH mark landed there."""
         colors = {
             "badge_open": QtGui.QColor(255, 0, 0),
-            "badge_star": QtGui.QColor(0, 255, 0),
+            "badge_favourite": QtGui.QColor(0, 255, 0),
             "badge_versions": QtGui.QColor(0, 0, 255),
             "badge_comment_75": QtGui.QColor(255, 255, 0),
         }
@@ -644,7 +644,7 @@ class BadgeFamilyTest(unittest.TestCase):
         far = side - inset - badge // 2
         corners = {
             "badge_open": (middle, middle),
-            "badge_star": (far, middle),
+            "badge_favourite": (far, middle),
             "badge_versions": (middle, far),
             "badge_comment_75": (far, far),
         }

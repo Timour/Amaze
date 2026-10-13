@@ -80,7 +80,7 @@ The **toolbar** runs along the top of the panel. Left to right:
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches to the online sources and back. |
 | <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens the [Comments pane](#comments). |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Two views of the same assets. |
-| <img src="scripts/python/amaze/ui/star_on.svg" width="20"> | **Favorites** | Shows favorited assets only. |
+| <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorited assets only. |
 | <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags: `:metal` finds everything tagged metal. |
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Takes a preview of the open scene. File section only. |
@@ -91,7 +91,7 @@ The **toolbar** runs along the top of the panel. Left to right:
 <img src="docs/images/menu_import_generate.png" width="230">
 <img src="docs/images/menu_filter.png" width="180">
 
-**Favorites** filters the grid down to what you have starred.
+**Favorites** filters the grid down to what you have marked as favorites.
 
 <img src="docs/images/favorites_filter.png" width="820">
 
@@ -130,7 +130,7 @@ a dark backdrop:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | the scene you currently have open (File) |
-| <img src="scripts/python/amaze/ui/badge_star.svg" width="100"> | top-right | the favorite button — on every tile: dim when not a favorite, brighter under the cursor, amber when favorited. Click to toggle; with several tiles selected, clicking a selected tile's star toggles them all |
+| <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | the favorite button — on every tile: an outline heart when not a favorite, brighter under the cursor, a filled yellow heart when favorited. Click to toggle; with several tiles selected, clicking a selected tile's heart toggles them all |
 | <img src="scripts/python/amaze/ui/badge_versions_hover.svg" width="100"> | lower-left | has more than one [version](#versions) — click it to browse them |
 | <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | carries a [comment](#comments) — click it to open the Comments pane on that asset |
 

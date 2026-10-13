@@ -742,15 +742,16 @@ class IconAssetsTest(unittest.TestCase):
             "ui", name)
 
     def test_the_shipped_icons_exist(self):
-        for name in ("badge_open.svg", "badge_star.svg",  # the badge_* four are the unified tile-badge family - a missing one is a silent no-badge at paint time, the exact failure this class exists for
+        for name in ("badge_open.svg", "badge_favourite.svg",  # a missing badge paints nothing
                      "badge_versions.svg", "badge_comment.svg",
+                     "badge_execute.svg", "badge_edit.svg",
                      "icon_screenshot.svg", "logo.svg"):
             self.assertTrue(os.path.isfile(self._ui(name)),
                             "ui/%s is missing" % name)
 
     BUTTON_ICONS = ("icon_library.svg", "icon_renderer.svg",  # consumed by IconMenuButton/ChipToggleButton, which generate hover and pressed themselves
                     "icon_view.svg", "icon_screenshot.svg",
-                    "grid.svg", "list.svg", "star.svg", "star_on.svg")
+                    "grid.svg", "list.svg", "favourite.svg", "favourite_on.svg")
 
     def test_button_icons_ship_one_state_only(self):
         """A toolbar icon carries BARE artwork - no ids, no state layers: design exports draw hover and pressed as extra layers, and unhidden they render stacked on the base icon, which is how the capture button shipped with a click rectangle and a download circle drawn over it; the button classes produce those states at runtime, so the asset must carry exactly one. Measured, not invented: every other button icon in ui/ already has zero ids and zero hidden elements."""
@@ -858,20 +859,21 @@ class IconAssetsTest(unittest.TestCase):
             "the hover twin is painted exactly like its base, so "
             "hovering the versions badge shows no answer at all")
 
-    def test_the_star_button_states_draw_the_same_star(self):
-        """The star is the second button and carries THREE files - rest, hover, favourite - one geometry, differing only in paint, so the button cannot change shape under the cursor or on click."""
-        base = self._paths("badge_star.svg")
-        self.assertTrue(base, "the star badge draws nothing")
-        for state in ("badge_star_40.svg", "badge_star_75.svg"):
-            self.assertEqual(
-                base, self._paths(state),
-                "%s no longer draws the same marks as badge_star - a "
-                "state of one button changed shape" % state)
+    def test_the_favourite_button_keeps_its_shape_under_the_pointer(self):
+        """Rest and hover draw one outline heart; only a favourite fills it. ▸r/tile-from-frame"""
+        rest = self._paths("badge_favourite_40.svg")
+        self.assertTrue(rest, "the favourite badge's rest art draws nothing")
+        self.assertEqual(
+            rest, self._paths("badge_favourite_75.svg"),
+            "the hover art no longer draws the rest art's marks - the "
+            "button changes shape under the pointer")
+        self.assertTrue(self._paths("badge_favourite.svg"),
+                        "the favourite state draws nothing")
         self.assertNotEqual(
-            self._paint("badge_star_40.svg"),
-            self._paint("badge_star_75.svg"),
+            self._paint("badge_favourite_40.svg"),
+            self._paint("badge_favourite_75.svg"),
             "rest and hover are painted identically, so the resting "
-            "star shows no answer to the pointer")
+            "heart shows no answer to the pointer")
 
     def test_the_comment_button_states_draw_the_same_bubble(self):
         """The third state-pair button: rest and hover are one geometry differing only in paint, so the badge cannot jump shape as the pointer crosses it."""
@@ -903,11 +905,12 @@ class IconAssetsTest(unittest.TestCase):
 
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
-        expected_alpha = {"badge_open": 0.75, "badge_star": 0.75,
+        expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,
                           "badge_versions": 0.4, "badge_comment": 0.75,
                           "badge_comment_75": 0.4,
                           "badge_versions_hover": 0.75,
-                          "badge_star_40": 0.4, "badge_star_75": 0.75}   # the DELIVERED values, read from the art - they change only WITH new art, in its commit
+                          "badge_favourite_40": 0.4, "badge_favourite_75": 0.75,
+                          "badge_execute": 0.75, "badge_edit": 0.75}   # read from the art, changed with it
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:

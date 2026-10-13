@@ -943,15 +943,16 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""
-        self.cb_favsonly = ui_helpers.ChipToggleButton()
+        self.cb_favsonly = ui_helpers.ChipToggleButton(
+            icon_size=self._TOOLBAR["fav_icon"])    # B01 draws the heart 15, not 16
         self.cb_favsonly.setObjectName("cb_favsonly")
         self.cb_favsonly.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_FAVORITES))
         try:
             self.cb_favsonly.set_art(
-                self._ui_icon_path("star.svg"),
-                self._ui_icon_path("star_on.svg"),
-                lighten_on_hover=False,    # the amber fill IS the on/off signal here, so hover must not whiten it: the two states would be indistinguishable mid-hover
+                self._ui_icon_path("favourite.svg"),
+                self._ui_icon_path("favourite_on.svg"),
+                lighten_on_hover=False,    # the yellow fill IS the on/off signal; hover must not whiten it
             )
         except (TypeError, AttributeError):
             pass
