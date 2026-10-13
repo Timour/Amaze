@@ -206,6 +206,85 @@ class ChoiceTest(unittest.TestCase):
         self.assertEqual("#4af2a1", QtGui.QColor(image.pixel(4, 4)).name())
 
 
+class FaceRuleTest(unittest.TestCase):
+    """Preview, Generic or Custom: one rule decides which face a tile shows ▸r/tile-faces."""
+
+    def test_a_custom_icon_wins_over_any_default(self):
+        for default in ("preview", "generic"):
+            self.assertEqual("custom", tile_icons.face_of(
+                {"name": "box", "bg": "#4af2a1"}, default))
+
+    def test_nothing_stored_shows_the_rows_default(self):
+        self.assertEqual("preview", tile_icons.face_of({}, "preview"))
+        self.assertEqual("generic", tile_icons.face_of({}, "generic"))
+
+    def test_a_stored_face_beats_the_default(self):
+        self.assertEqual("generic", tile_icons.face_of({"face": "generic"}, "preview"))
+        self.assertEqual("preview", tile_icons.face_of({"face": "preview"}, "generic"))
+
+    def test_a_row_with_no_picture_shows_generic(self):
+        self.assertEqual("generic", tile_icons.face_of(
+            {"face": "preview"}, "preview", can_preview=False))
+
+    def test_a_face_choice_survives_cleaning(self):
+        self.assertEqual({"face": "generic"}, tile_icons.normalise({"face": "generic"}))
+        self.assertEqual({"face": "preview"}, tile_icons.normalise({"face": "preview"}))
+        self.assertEqual({}, tile_icons.normalise({"face": "sideways"}))
+
+    def test_every_face_is_shipped_art(self):
+        from amaze.core import code_library, gradient_library, library
+        for art in (library.MaterialLibrary.TILE_FACE, cop_library.CopLibrary.TILE_FACE,
+                    code_library.CodeLibrary.TILE_FACE,
+                    gradient_library.GradientLibrary.TILE_FACE, "icon_hip", "face_file"):
+            image = tile_icons.generic_image(art)
+            self.assertIsNotNone(image, "ui/%s.svg is missing or does not render" % art)
+            self.assertEqual(image.width(), image.height(), art)
+
+
+class FaceChoiceTest(unittest.TestCase):
+    """A face choice reaches the tile through the shared model; a row's own default is not stored."""
+
+    def setUp(self):
+        test_support.reset_database_singletons()
+        tile_icons.forget_overrides()
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        self.model = cop_library.CopLibrary(preferences=self.prefs)
+        self.addCleanup(lambda: [child.destroy() for child in hou.node("/obj").children()])
+
+    def _asset(self, container: str) -> int:
+        network = hou.node("/obj").createNode(container, "face_src")
+        network.createNode("sphere")
+        self.model.add_asset(network, "", "", False, name="FaceMe")
+        return len(self.model.assets) - 1
+
+    def _shown(self, row):
+        return self.model.data(self.model.index(row, 0),
+                               QtCore.Qt.ItemDataRole.DecorationRole)
+
+    def test_generic_reaches_the_tile_and_writes_no_picture(self):
+        row = self._asset("geo")
+        self.assertEqual("preview", tile_icons.face_for(self.model, row))
+        self.model.set_tile_icon(row, {"face": "generic"})
+        self.assertEqual({"face": "generic"}, self.model.tile_icon(row))
+        self.assertEqual(tile_icons.generic_image(self.model.TILE_FACE), self._shown(row))
+        self.assertFalse(os.path.exists(tile_icons.icon_image_path(
+            self.prefs, self.model.assets[row].mat_id)), "Generic composed an icon file")
+
+    def test_the_rows_own_default_is_not_stored(self):
+        row = self._asset("geo")
+        self.model.set_tile_icon(row, {"face": "generic"})
+        self.model.set_tile_icon(row, {"face": "preview"})
+        self.assertEqual({}, self.model.tile_icon(row), "choosing the default left an entry")
+
+    def test_a_lop_setup_has_no_preview_to_choose(self):
+        row = self._asset("lopnet")
+        self.assertEqual("generic", tile_icons.face_for(self.model, row))
+        self.model.set_tile_icon(row, {"face": "preview"})
+        self.assertEqual({}, self.model.tile_icon(row), "a Preview it cannot show was stored")
+        self.assertEqual(tile_icons.generic_image(self.model.TILE_FACE), self._shown(row))
+
+
 class FileRowTest(unittest.TestCase):
     """The File section's rows are files with no asset record, so their choices live in the library's icons.json, keyed by path - hip rows included since the merge closed that gap."""
 

@@ -439,12 +439,11 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                         continue
                     self._requested.discard(key)
                     continue
-                if str(rec.payload.get("section") or "") == "cop":
-                    from amaze.core import cop_library
-                    face = cop_library.default_face(row.get("renderer"))    # the Node section's own rule - node icon for unrenderable contexts
-                else:
-                    from amaze.helpers import ui_helpers
-                    face = ui_helpers.svg_image("missing_thumbnail.svg")
+                from amaze.core import cop_library, library, tile_icons
+                face = tile_icons.generic_image(    # the local section's own generic face
+                    cop_library.CopLibrary.TILE_FACE
+                    if str(rec.payload.get("section") or "") == "cop"
+                    else library.MaterialLibrary.TILE_FACE)
                 thumbnails.engine.deposit(key, face)    # no icon member, no colours, no code: the LOCAL section's face, never a blank tile
                 self._requested.discard(key)
                 continue

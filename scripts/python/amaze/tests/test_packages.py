@@ -1347,9 +1347,8 @@ class OnlineTilePaintingTest(unittest.TestCase):
             "for the same colours - a second painter has crept in")
 
     def test_a_thumbless_tile_shows_its_sections_own_face(self):
-        from amaze.core import cop_library, matx_library, matx_sources, \
-            thumbnails
-        from amaze.helpers import ui_helpers
+        from amaze.core import cop_library, library, matx_library, \
+            matx_sources, thumbnails, tile_icons
         model = matx_library.MatxOnlineLibrary(
             preferences=type("P", (), {"rendersize": 64})())
 
@@ -1368,13 +1367,22 @@ class OnlineTilePaintingTest(unittest.TestCase):
         self.assertIsNotNone(
             node, "a node tile with no packed thumbnail stayed BLANK")
         self.assertEqual(
-            cop_library.default_face("LOP"), node,
-            "an unrenderable node must wear the Node section's own "
-            "node icon online, not a hand-picked face")
+            tile_icons.generic_image(cop_library.CopLibrary.TILE_FACE), node,
+            "a node tile online must wear the Node section's own generic "
+            "face, not a hand-picked one")
         self.assertEqual(
-            ui_helpers.svg_image("missing_thumbnail.svg"),
+            tile_icons.generic_image(library.MaterialLibrary.TILE_FACE),
             face_of("material", {"name": "bare"}),
-            "a thumbless material wears the base missing face")
+            "a thumbless material wears the Material section's generic face")
+
+    def test_the_value_only_template_takes_both_swatches(self):
+        """T09's two placeholder colours are swapped for the values in either case of hex."""
+        from amaze.core import matx_icon
+        svg = matx_icon.icon_svg({"color": [1.0, 0.0, 0.0], "transmission": 0.5}).lower()
+        self.assertNotIn(matx_icon._BASE_PLACEHOLDER, svg, "the base colour swatch kept its placeholder")
+        self.assertNotIn(matx_icon._SWATCH2_PLACEHOLDER, svg, "the second swatch kept its placeholder")
+        self.assertIn('fill="#ff0000"', svg)
+        self.assertIn('fill-opacity="%s"' % matx_icon.TRANSMISSIVE_ALPHA, svg)
 
     def test_a_thumb_member_outranks_the_swatch_and_the_code_paint(self):
         from amaze.core import matx_library, matx_sources, thumbnails

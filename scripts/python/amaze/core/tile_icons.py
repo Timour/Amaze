@@ -32,6 +32,52 @@ def ink_colour(token: str) -> str:
     """Hex for an ink token, falling back to dark for anything odd."""
     return INKS.get(str(token or "").strip().lower(), INKS[DEFAULT_INK])
 
+
+FACES = ("preview", "generic", "custom")    # the Icon menu's three, in its order ▸r/tile-faces
+
+
+def is_custom(spec) -> bool:
+    """Whether a stored choice is a custom icon - the one face with a composed picture."""
+    return bool((spec or {}).get("name"))
+
+
+def face_of(spec, default: str = "preview", can_preview: bool = True) -> str:
+    """The face a stored choice shows: "custom", "preview" or "generic", the row's default if unset."""
+    if is_custom(spec):
+        return "custom"
+    face = (spec or {}).get("face") or default
+    if face == "preview" and not can_preview:
+        return "generic"
+    return face
+
+
+def face_for(model, row: int) -> str:
+    """`face_of` for one row: its stored choice, its default face, whether it can preview."""
+    return face_of(model.tile_icon(row), model.default_face(row), model.can_preview(row))
+
+
+def choice_for(model, row: int, spec) -> dict:
+    """What to store for a row: the choice cleaned, and {} when it shows the row's own default."""
+    spec = normalise(spec)
+    default = model.default_face(row)
+    if not is_custom(spec) and face_of(spec, default, model.can_preview(row)) == default:
+        return {}
+    return spec
+
+
+def generic_image(art: str):
+    """A generic face: the T frame's `face ▸ <art>.svg`, exported whole, or None for no art."""
+    from amaze.helpers import ui_helpers
+    return ui_helpers.svg_image(art + ".svg") if art else None
+
+
+def chosen_image(model, row: int):
+    """A row's face when it shows no preview: its custom icon composed in memory, else generic."""
+    spec = model.tile_icon(row)
+    if is_custom(spec):
+        return compose_for(model.preferences, spec)    # in memory: painting never writes
+    return generic_image(model.tile_face_art(row))
+
 PRESETS = (  # FOUR presets plus the current-colour chip (the picker) - the D02 swatches, hex-for-hex from the drawing ▸p/one-design-document
     ("Red", "#e0523a"),
     ("Green", "#a4c18a"),
@@ -224,6 +270,8 @@ def normalise(spec) -> dict:
     name = str(spec.get("name", "") or "").strip()
     background = str(spec.get("bg", "") or "").strip()
     if not name or name not in icon_names():
+        if spec.get("face") in ("preview", "generic"):    # a face choice: no icon to clean
+            return {k: v for k, v in spec.items() if k not in ("name", "bg", "ink")}
         return {}
     if not is_valid_colour(background):
         background = PRESETS[0][1]
@@ -270,7 +318,7 @@ def render_size(preferences) -> int:
 def compose_for(preferences, spec):
     """One normalised spec composed in memory at the preferences' size - the one call the models share, so an icon looks the same in every section."""
     spec = normalise(spec)
-    if not spec:
+    if not is_custom(spec):
         return None
     return compose(spec["name"], spec["bg"], render_size(preferences),
                    stroke_for(preferences), spec["ink"])
@@ -279,7 +327,7 @@ def compose_for(preferences, spec):
 def render_for(preferences, asset_id: str, spec) -> str:
     """Compose an asset's icon onto disk and return the path, or "" if there is no icon to make - deleting the file when the icon is cleared is the caller's job (it knows whether a render exists)."""
     spec = normalise(spec)
-    if not spec:
+    if not is_custom(spec):
         return ""
     path = icon_image_path(preferences, asset_id)
     if not write(path, spec["name"], spec["bg"], render_size(preferences),

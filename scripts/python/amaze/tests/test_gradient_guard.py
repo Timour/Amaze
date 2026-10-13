@@ -392,6 +392,17 @@ class GradientTileIconTest(unittest.TestCase):
         self.lib = gradient_library.GradientLibrary(preferences=self.prefs)
         self.row = _row_named(self, self.lib, "ours")
 
+    def test_generic_shows_the_drop_and_preview_the_swatch(self):
+        from PySide6 import QtCore
+        index = self.lib.index(self.row, 0)
+        painted = self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
+        self.lib.set_tile_icon(self.row, {"face": "generic"})
+        drop = tile_icons.generic_image(gradient_library.GradientLibrary.TILE_FACE)
+        self.assertEqual(drop, self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole))
+        self.lib.set_tile_icon(self.row, {"face": "preview"})
+        self.assertEqual(painted, self.lib.data(index, QtCore.Qt.ItemDataRole.DecorationRole))
+        self.assertNotEqual(drop, painted)
+
     def test_an_icon_is_stored_and_read_back(self):
         self.assertEqual({}, self.lib.tile_icon(self.row))
         self.assertTrue(self.lib.set_tile_icon(

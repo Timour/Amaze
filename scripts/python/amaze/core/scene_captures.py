@@ -10,7 +10,7 @@ import hou
 from PySide6 import QtCore
 
 from amaze.core import debug
-from amaze.helpers import hostos, ui_helpers
+from amaze.helpers import hostos
 
 HIP_EXTENSIONS = (".hiplc", ".hipnc", ".hip")  # every Houdini scene extension is ONE file type - a mixed library must not sort them into different sections or show one and hide the other
 
@@ -121,12 +121,6 @@ def _record_manifest(hip_path: str, png: str) -> None:
     except OSError as exc:
         debug.event("hip", "manifest not written", error=str(exc))
 
-
-
-
-def placeholder_image():
-    """The tile shown for a scene with no capture yet - not a loading state that resolves on its own but the RESTING state until someone presses Capture, so it has to look deliberate; the render and its cache are `ui_helpers.svg_image`, and this stays because which SVG stands for an uncaptured scene is this section's concept."""
-    return ui_helpers.svg_image("icon_hip.svg")
 
 
 

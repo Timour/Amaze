@@ -738,6 +738,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
         key = self.file_key(row)
         if not key:
             return False
+        spec = tile_icons.choice_for(self, row, spec)
         written = tile_icons.set_override(self.preferences, key, spec)  # report what actually happened - a read-only library must not take icons it will lose at restart
         model_index = self.index(row, 0)
         self.row_changed(model_index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -746,9 +747,20 @@ class FileFiles(grid_columns.GridColumnsMixin,
     def commit_tile_icons(self, rows=None) -> None:
         """Signature parity with the asset models; already persisted."""
 
-    def _tile_icon_image(self, row: int):
-        return tile_icons.compose_for(self.preferences,
-                                      self.tile_icon(row))
+    def _kind(self, row: int) -> str:
+        return self._kinds[row] if 0 <= row < len(self._kinds) else ""
+
+    def tile_face_art(self, row: int) -> str:
+        """A scene's generic face is T08's Houdini icon, every other file's T11's."""
+        return "icon_hip" if self._kind(row) == KIND_HIP else "face_file"
+
+    def can_preview(self, row: int) -> bool:
+        """Every file has one: a capture, a render, the image, or the system's icon for its type."""
+        return True
+
+    def default_face(self, row: int) -> str:
+        """Generic for a file Amaze makes no preview of - its preview is only the system's icon."""
+        return "generic" if self._kind(row) == KIND_OTHER else "preview"
 
     def data(self, index, role: int = 0):
         if index.column() > 0:  # LATER COLUMNS are the table's, not the row's (QTableView migration step 1); column 0 falls through unchanged, so grid mode cannot tell any of this happened
@@ -763,16 +775,15 @@ class FileFiles(grid_columns.GridColumnsMixin,
         if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return name
         if role == QtCore.Qt.ItemDataRole.DecorationRole:
-            chosen = self._tile_icon_image(row)
-            if chosen is not None:
-                return chosen
+            if tile_icons.face_for(self, row) != "preview":
+                return tile_icons.chosen_image(self, row)
             if not 0 <= row < len(self._row_specs):
                 return None
             key, source, payload = self._row_specs[row]
             if source == "os-icon":
                 return self._os_icon_image(payload)
             if source == "missing":
-                return None  # remembered: nothing could read this file as it stands, so the tile rests on its placeholder rather than paying every converter's timeout again
+                return tile_icons.generic_image(self.tile_face_art(row))    # nothing could read it: T11
             if source == "file":
                 return thumbnails.engine.request_file(key, payload)
             if source == "capture":
@@ -781,7 +792,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                     image = thumbnails.engine.request_file(key, png)
                     if image is not None:
                         return image
-                return scene_captures.placeholder_image()  # no capture yet - the resting state, not a wait
+                return tile_icons.generic_image(self.tile_face_art(row))    # no capture yet: T08
             image = thumbnails.engine.peek(key)  # convert/render rows: serve what has landed; after eviction the disk cache takes over as a file load
             if image is not None:
                 return image

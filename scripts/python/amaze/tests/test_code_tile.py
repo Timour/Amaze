@@ -223,6 +223,20 @@ class ThePanelWiresTheCodeButtons(unittest.TestCase):
         self.assertIn(name, refuse.call_args[0][0])
         self.assertIn("ZeroDivisionError", refuse.call_args[0][0])
 
+    def test_generic_shows_the_brick_and_preview_the_code(self):
+        from amaze.core import tile_icons
+        _index, row = self._proxy_index("print(1)")
+        model = self.panel.code_model
+        self.addCleanup(model.set_tile_icon, row, {})
+        brick = tile_icons.generic_image(code_library.CodeLibrary.TILE_FACE)
+
+        def shown():
+            return model.data(model.index(row, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+
+        self.assertNotEqual(brick, shown(), "a code tile's default is not its painted code")
+        model.set_tile_icon(row, {"face": "generic"})
+        self.assertEqual(brick, shown())
+
     def test_the_pencil_opens_the_same_editor_as_right_click_edit(self):
         index, row = self._proxy_index("print(1)")
         section = self.panel.sections["code"]

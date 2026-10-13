@@ -91,7 +91,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         "date": "DateRole",
         "id": "IdRole",    # the two read-only rows the Material Info dialog used to carry, now list-mode columns ▸p/d03-retired
     }
-    NOTES_SECTION = ""  # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
+    TILE_FACE = ""      # the section's generic face, `ui/<TILE_FACE>.svg` from its T frame ▸r/tile-faces
+    NOTES_SECTION = "" # this model's notes-store key prefix - notes.note_key(NOTES_SECTION, id); every subclass names its own
 
     IdRole = QtCore.Qt.ItemDataRole.UserRole  # 256. THE FAMILY'S Qt ROLES ARE CLASS ATTRIBUTES, never assigned in __init__: an instance attribute SHADOWS a subclass's class attribute, and the base's __init__ runs last, so it would win every shared name (practice.md ▸ AN INSTANCE ATTRIBUTE SHADOWS THE CLASS ONE). test_role_numbers holds the whole table
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 1  # 257 - 257-260 are what MultiFilterProxyModel switches on BY NUMBER
@@ -176,7 +177,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 + mat_id
                 + self.preferences.img_ext
             )
-            if self.tile_icon(elem):  # a chosen icon is loaded like any other thumbnail - swapping the PATH, not the pipeline, so engine, LRU cache, list mode and drag previews are untouched and clearing it restores the render
+            if tile_icons.is_custom(self.tile_icon(elem)):  # loaded like a render: the PATH swaps
                 path = tile_icons.icon_image_path(self.preferences, mat_id)
             self._mat_paths.append((path, is_fav, elem))
 
@@ -222,7 +223,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         mat_id = self._assets[row].mat_id
         path = (self.preferences.dir + self.preferences.img_dir
                 + mat_id + self.preferences.img_ext)
-        if self.tile_icon(row):
+        if tile_icons.is_custom(self.tile_icon(row)):
             path = tile_icons.icon_image_path(self.preferences, mat_id)
         entry = (path, self._assets[row].fav, row)
         if row < len(self._mat_paths):
@@ -265,26 +266,30 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         """Shared-RAM-cache key for one row's picture: stable across reloads and collision-free across the models sharing the budget. EVERY input to the picture belongs in it - the library, the icon choice, the line weight - because nothing clears the app-wide cache on a library switch."""
         home = hostos.canonical_path_key(str(self.preferences.dir or ""))
         spec = self.tile_icon(row)
-        if not spec:
+        if not tile_icons.is_custom(spec):
             return (home, self.DB_FILENAME, self._assets[row].mat_id,
                     "", "", "", 0)
         return (home, self.DB_FILENAME, self._assets[row].mat_id,
                 spec["name"], spec["bg"], spec["ink"],
                 tile_icons.stroke_for(self.preferences))
 
-    @classmethod
-    def _placeholder_image(cls, svg_name: str):
-        """One of ui/'s SVGs rendered once as a tile-sized image. The name stays because the subclasses call it; the render and its cache live in `ui_helpers.svg_image`."""
-        from amaze.helpers import ui_helpers
-        return ui_helpers.svg_image(svg_name)
+    def tile_face_art(self, row: int) -> str:
+        """This row's generic face art, "" where it has none."""
+        return self.TILE_FACE
+
+    def can_preview(self, row: int) -> bool:
+        """Whether this row can have a picture of its own."""
+        return True
+
+    def default_face(self, row: int) -> str:
+        """Preview where the row can have a picture, Generic where it cannot."""
+        return "preview" if self.can_preview(row) else "generic"
 
     def _missing_thumb_image(self, row: int = -1):
-        """What a row with no thumbnail file shows. The row is passed because sections differ on what "no thumbnail" MEANS - for a material it is a failure, for a LOP node asset it is normal."""
+        """A row with no picture shows its chosen face."""
         if 0 <= row < len(self._assets):
-            spec = self.tile_icon(row)
-            if spec:
-                return tile_icons.compose_for(self.preferences, spec)  # composed in memory, never written: painting must not touch the disk, and this is what makes a library copied without its _icon.png files still show them
-        return self._placeholder_image("missing_thumbnail.svg")
+            return tile_icons.chosen_image(self, row)
+        return tile_icons.generic_image(self.TILE_FACE)
 
     def tile_name(self, row: int) -> str:
         """The asset's display name - what the Customize dialog's Name field shows."""
@@ -383,11 +388,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if not 0 <= row < len(self._assets):
             return False
         asset = self._assets[row]
-        spec = tile_icons.normalise(spec)
+        spec = tile_icons.choice_for(self, row, spec)
         stored = tile_icons.set_override(  # the store is the ONE home since schema 5 stripped the record field, so a clear here is the whole delete
             self.preferences, str(asset.mat_id), spec)
         written = bool(stored)
-        if spec:
+        if tile_icons.is_custom(spec):
             written = written and bool(
                 tile_icons.render_for(self.preferences, asset.mat_id, spec)
             )
@@ -407,7 +412,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         made = 0
         for row, asset in enumerate(self._assets):
             spec = self.tile_icon(row)
-            if not spec:
+            if not tile_icons.is_custom(spec):
                 continue
             if tile_icons.render_for(self.preferences, asset.mat_id, spec):
                 made += 1
@@ -417,6 +422,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def _decoration_image(self, index: QtCore.QModelIndex):
         """The tile thumbnail for a row - the engine's FILE loader over the library's own PNG. Overridden by the Code section, which has no PNGs and paints a preview via the engine's PAINT path."""
         row = index.row()
+        if tile_icons.face_for(self, row) == "generic":
+            return tile_icons.chosen_image(self, row)
         key = self._thumb_key(row)
         image = thumbnails.engine.request_file(key, self._mat_paths[row][0])
         if image is not None:
@@ -1310,6 +1317,7 @@ class MaterialLibrary(AssetLibrary):
     """The Material tab's model - the shared engine plus what a MATERIAL is: renderer detection on save, USD-ness and shader-type labels read from the saved files, the Karma-scaffold render batch, MAT/LOP import routing and the Redshift conversion."""
 
     NOTES_SECTION = "material"
+    TILE_FACE = "face_material"    # T06
 
     DB_FILENAME = "library.json"
 

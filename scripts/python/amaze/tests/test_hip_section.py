@@ -411,6 +411,9 @@ class PlaceholderTest(unittest.TestCase):
                            _QtCore.Qt.ItemDataRole.DecorationRole)
         self.assertIsNotNone(
             shown, "an un-captured scene showed nothing at all")
+        from amaze.core import tile_icons
+        self.assertEqual(tile_icons.generic_image("icon_hip"), shown,
+                         "an un-captured scene does not show T08's face")
 
     def test_the_placeholder_asset_exists(self):
         path = os.path.join(

@@ -21,6 +21,7 @@ sys.path.insert(
 
 from amaze.core import file_library  # noqa: E402
 from amaze.core import locations as locations_mod  # noqa: E402
+from amaze.core import tile_icons  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.prefs import prefs as prefs_module  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
@@ -1519,11 +1520,22 @@ class OsIconTest(unittest.TestCase):
         self.assertIsNotNone(image)
         self.assertFalse(image.isNull())
 
+    def test_an_unknown_file_shows_the_file_face_until_preview_is_chosen(self):
+        """T11 is the default for a file Amaze makes no preview of; its Preview is the system icon."""
+        model = self._model_with("mocap.bvh")
+        face = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertEqual(tile_icons.generic_image("face_file"), face)
+        with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
+            shown = model.data(model.index(0, 0), QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertNotEqual(face, shown, "Preview still shows the file face")
+        self.assertEqual(1, len(model._os_icons), "Preview did not ask for the system icon")
+
     def test_one_icon_is_composed_per_extension_not_per_file(self):
         model = self._model_with("a.log", "b.log", "c.log")
-        for row in range(3):
-            model.data(model.index(row, 0),
-                       QtCore.Qt.ItemDataRole.DecorationRole)
+        with mock.patch.object(model, "tile_icon", return_value={"face": "preview"}):
+            for row in range(3):
+                model.data(model.index(row, 0),
+                           QtCore.Qt.ItemDataRole.DecorationRole)
         self.assertEqual(1, len(model._os_icons),
                          "a folder of logs composed three identical "
                          "icons instead of one")

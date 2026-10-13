@@ -15,13 +15,6 @@ def accepts_context(node, context: str) -> bool:
         return False
 
 
-def default_face(renderer: str):
-    """The Node section's face for a row with no thumbnail: the node icon for anything unrenderable (see RENDERABLE), the base missing face otherwise - the one rule, shared with the online browser."""
-    if str(renderer or "").upper() not in CopLibrary.RENDERABLE:
-        return CopLibrary._placeholder_image("icon_nodes.svg")
-    return CopLibrary._placeholder_image("missing_thumbnail.svg")
-
-
 class CopCategories(category.Categories):
     """The Cop section's category sidebar - same model, own database."""
 
@@ -30,6 +23,8 @@ class CopCategories(category.Categories):
 
 class CopLibrary(library.AssetLibrary):
     """The Cop section's asset model - the shared engine over cops.json."""
+
+    TILE_FACE = "icon_nodes"    # T07
 
     NOTES_SECTION = "cop"    # the section was Copernicus-only once, so every `cop` name here and in the saved data is load-bearing and stayed put when the section widened
 
@@ -185,14 +180,11 @@ class CopLibrary(library.AssetLibrary):
             pass
         return label
 
-    def _missing_thumb_image(self, row: int = -1):
-        """The node icon for anything unrenderable - see RENDERABLE. A CHOSEN tile icon outranks it, since a user who picked one has given us a picture, so the base class answers in that case."""
-        if self.tile_icon(row):
-            return super()._missing_thumb_image(row)
-        if 0 <= row < len(self._assets):
-            return default_face(
-                getattr(self._assets[row], "renderer", ""))
-        return super()._missing_thumb_image(row)
+    def can_preview(self, row: int) -> bool:
+        """Only a RENDERABLE context can hold a picture; any other node asset shows its node icon."""
+        if not 0 <= row < len(self._assets):
+            return False
+        return str(getattr(self._assets[row], "renderer", "") or "").upper() in self.RENDERABLE
 
     def import_asset_to_scene(
         self, index, target: str = "auto", context_node=None

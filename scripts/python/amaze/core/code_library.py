@@ -8,7 +8,7 @@ from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import amazetheme
-from amaze.core import debug, library, category, material, thumbnails
+from amaze.core import debug, library, category, material, thumbnails, tile_icons
 from amaze.helpers import hostos, vex_syntax
 
 _STARTER_DEF = "res/def/starter_snippets.json"  # example snippets shipped with the plugin, seeded ONCE per library into an "Examples" category (see seed_starter_snippets)
@@ -123,6 +123,7 @@ class CodeLibrary(library.AssetLibrary):
     """The Code section's asset model - the shared engine over code.json, storing snippet text inline and painting a preview."""
 
     NOTES_SECTION = "code"
+    TILE_FACE = "face_code"    # T05
 
     DB_FILENAME = "code.json"
 
@@ -295,10 +296,8 @@ class CodeLibrary(library.AssetLibrary):
     def _decoration_image(self, index: QtCore.QModelIndex):
         """The tile image: a chosen tile icon when the row has one, else the painted code preview - taken from the shared thumbnail engine, painted and deposited on a miss."""
         asset = self._assets[index.row()]
-        chosen = self._missing_thumb_image(index.row()) \
-            if self.tile_icon(index.row()) else None  # a chosen tile icon replaces the code preview: this section has no thumbnail FILE, so the base class's path (which swaps the file path) never applies here and the choice would be accepted, saved, and then ignored forever
-        if chosen is not None:
-            return chosen
+        if tile_icons.face_for(self, index.row()) != "preview":    # no thumbnail FILE to swap here
+            return self._missing_thumb_image(index.row())
         key = self._preview_key(asset)
         image = thumbnails.engine.peek(key)
         if image is not None:

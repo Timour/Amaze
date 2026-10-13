@@ -74,6 +74,7 @@ class GradientLibrary(library.AssetLibrary):
     """The Colors section's asset model - the shared engine over gradients.json, with the palette payload inline and a painted preview."""
 
     NOTES_SECTION = "gradient"
+    TILE_FACE = "face_color"    # T10
 
     DB_FILENAME = "gradients.json"
 
@@ -330,7 +331,7 @@ class GradientLibrary(library.AssetLibrary):
         row = index.row() if hasattr(index, "row") else int(index)
         if not 0 <= row < len(self._assets):
             return False
-        spec = tile_icons.normalise(spec)
+        spec = tile_icons.choice_for(self, row, spec)
         stored = tile_icons.set_override(
             self.preferences, str(self._assets[row].mat_id), spec)
         if save:
@@ -356,8 +357,8 @@ class GradientLibrary(library.AssetLibrary):
         stops = tuple(round(float(k), 6) for k in (ramp.get("keys") or ())  # positions too: same colours in different places paint differently
                       if isinstance(k, (int, float)))
         icon = self.tile_icon(row)
-        icon_key = (icon.get("name"), icon.get("bg"), icon.get("ink")) \
-            if icon else None
+        icon_key = (tile_icons.face_for(self, row), icon.get("name"), icon.get("bg"),
+                    icon.get("ink"))
         return ("grad", self._is_banded(colors, ramp), hexes, bases,
                 stops, icon_key, THUMB_SIZE)
 
@@ -369,11 +370,11 @@ class GradientLibrary(library.AssetLibrary):
         image = thumbnails.engine.peek(key)
         if image is not None:
             return image
-        if self.tile_icon(row):
-            composed = self._missing_thumb_image(row)
-            if composed is not None:
-                thumbnails.engine.deposit(key, composed)
-                return composed
+        if tile_icons.face_for(self, row) != "preview":
+            face = self._missing_thumb_image(row)
+            if face is not None:
+                thumbnails.engine.deposit(key, face)
+                return face
         image = paint_swatch(self._colors_of(asset), self._ramp_of(asset))
         thumbnails.engine.deposit(key, image)
         return image

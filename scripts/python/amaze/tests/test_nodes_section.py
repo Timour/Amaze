@@ -412,21 +412,22 @@ class NodesSectionTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self._image_for(
             self.model.assets[-1])))
 
-    def test_unrenderable_tile_falls_back_to_the_node_icon(self):
-        """A LOP tile shows the node icon, NOT `Missing Thumbnail` - two different designed SVGs."""
+    def test_a_tile_with_no_picture_shows_the_node_face(self):
+        """T07 is the face of any node tile with no picture; only a SOP or COP can have one ▸r/tile-faces."""
+        from amaze.core import tile_icons
         lop = hou.node("/obj").createNode("lopnet", "icon_lop")
         lop.createNode("sphere")
         self.model.add_asset(lop, "", "", False, name="icon_test")
         geo = _sop_network("icon_sop")
         self.model.add_asset(geo, "", "", False, name="rendered_test")
 
-        node_icon = self.model._missing_thumb_image(0)
-        material_missing = self.model._missing_thumb_image(1)
-        if node_icon is None:  # $AMAZE unset - the SVGs cannot be found
-            self.skipTest("placeholder SVGs not resolvable from $AMAZE")
-        self.assertIsNotNone(material_missing)
-        self.assertNotEqual(node_icon, material_missing,
-                            "the LOP tile is showing Missing Thumbnail")
+        face = tile_icons.generic_image(self.model.TILE_FACE)
+        self.assertIsNotNone(face, "ui/%s.svg does not render" % self.model.TILE_FACE)
+        self.assertEqual(face, self.model._missing_thumb_image(0))
+        self.assertEqual(face, self.model._missing_thumb_image(1))
+        self.assertEqual(("generic", "preview"),
+                         (self.model.default_face(0), self.model.default_face(1)),
+                         "a LOP tile can have no picture, a SOP tile can")
 
 
     def test_only_real_networks_save_their_interior(self):

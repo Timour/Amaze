@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 
 from PySide6 import QtCore, QtGui, QtSvg
 
@@ -52,18 +53,18 @@ def _srgb_hex(color) -> str:
     return "#%02x%02x%02x" % tuple(out)
 
 
+def _fill(svg: str, placeholder: str, paint: str) -> str:
+    """Every `fill` naming `placeholder`, in either case - Figma writes hex in capitals."""
+    return re.sub('fill="%s"' % re.escape(placeholder), lambda _m: paint, svg,
+                  flags=re.IGNORECASE)
+
+
 def icon_svg(values: dict, source: str = "") -> str:
     """The template with both swatches filled in. Keyed on the placeholder FILLS rather than element ids, so one substitution serves any template the designer exports, and the authoring `visibility=hidden` must go or the swatch never draws."""
     svg = _template(source)
-    svg = svg.replace(
-        'fill="%s"' % _BASE_PLACEHOLDER,
-        'fill="%s"' % _srgb_hex(values.get("color")),
-    )
+    svg = _fill(svg, _BASE_PLACEHOLDER, 'fill="%s"' % _srgb_hex(values.get("color")))
     alpha = TRANSMISSIVE_ALPHA if values.get("transmission") else 1.0
-    svg = svg.replace(
-        'fill="%s"' % _SWATCH2_PLACEHOLDER,
-        'fill="#000000" fill-opacity="%s"' % alpha,
-    )
+    svg = _fill(svg, _SWATCH2_PLACEHOLDER, 'fill="#000000" fill-opacity="%s"' % alpha)
     svg = svg.replace(' visibility="hidden"', "")
     return svg
 
