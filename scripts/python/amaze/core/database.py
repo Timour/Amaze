@@ -309,13 +309,17 @@ def section_noun(filename: str, count: int = 2) -> str:
 
 
 def load_survivable(db, path: str, reload: bool = False):
-    """load() for a model built or switched during panel setup: the primary index raises through to the repair dialog, while an unreadable secondary latches `_write_blocked`, preserves the file beside itself, alerts once and returns a fresh empty document - never the connector cache, whose falsy state is what makes the next load retry; `reload` must be true on a library switch, because `load()` returns any cached document."""
+    """Like load(), surviving an unreadable secondary file; `reload` re-reads, as a switch needs."""
     try:
         return db.reload_with_path(path) if reload else db.load(path)
     except (OSError, ValueError) as exc:
         if db._filename == "library.json":
-            raise
-        db._write_blocked = True
+            raise    # the primary index raises through to the repair dialog
+        empty = {"categories": ["_All"], "assets": []}
+        if reload or not db.serves(path):    # a failed switch put the PREVIOUS library back
+            db._hold_unreadable(path, empty)
+        else:
+            db._write_blocked = True    # left unread, so the next load reads the file again
         hostos.preserve_unreadable(
             os.path.join(str(path), db._filename),
             why=section_label(db._filename))
@@ -325,7 +329,7 @@ def load_survivable(db, path: str, reload: bool = False):
             messages.SECTION_UNREADABLE_SAVING_DISABLED
             % section_noun(db._filename),
             key="unreadable-" + db._filename)
-        return {"categories": ["_All"], "assets": []}
+        return empty
 
 
 class DatabaseConnector:
@@ -882,6 +886,27 @@ class DatabaseConnector:
 
         return True
 
+    def _forget_file_state(self) -> None:
+        """Drop every latch, stamp and baseline - they belong to the FILE, so a new one re-derives them."""
+        self._disk_stat = None    # if kept, load()'s normalising save merges the new file with itself
+        self._loaded_ids = set()    # with the stat, or library B's rows are judged by library A's ids
+        self._loaded_rows = {}
+        self._loaded_containers = {}
+        self._write_blocked = False
+        self._block_reported = False
+        self._migration_incomplete = False
+        self._loaded_version = SCHEMA_VERSION
+        self._loaded_format = 0
+        self._format_ahead = False
+        self._format_reported = False
+
+    def _hold_unreadable(self, path: str, document: dict) -> None:
+        """Serve `path` with `document` and refuse every write there: its file would not read."""
+        self._forget_file_state()
+        self._path = path
+        self._data = document
+        self._write_blocked = True
+
     def reload_with_path(self, path: str) -> dict:
         """Point this connector at a DIFFERENT library and read it - every latch and stamp belongs to the FILE, not the session, so all are reset for `load()` to re-derive from the new path; a failed load restores the previous library state and re-raises."""
         previous = (self._data, self._path, self._disk_stat,
@@ -896,17 +921,7 @@ class DatabaseConnector:
                     getattr(self, "_format_ahead", False),
                     getattr(self, "_format_reported", False))
         self._data = None
-        self._disk_stat = None    # the OLD library's stat and baseline must not survive into the new load - the normalisation save inside load() would merge the new file against them, with itself
-        self._loaded_ids = set()
-        self._loaded_rows = {}          # ALL FIVE move together or the merge judges library B's rows against library A's ids
-        self._loaded_containers = {}
-        self._write_blocked = False
-        self._block_reported = False
-        self._migration_incomplete = False
-        self._loaded_version = SCHEMA_VERSION
-        self._loaded_format = 0
-        self._format_ahead = False
-        self._format_reported = False
+        self._forget_file_state()
         try:
             return self.load(path)
         except Exception:

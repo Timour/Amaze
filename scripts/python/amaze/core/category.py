@@ -112,7 +112,8 @@ class Categories(QtCore.QAbstractListModel):
         try:
             self.preferences.load()
             db = database.DatabaseConnector(self.DB_FILENAME)
-            data = db.reload_with_path(self.preferences.dir)
+            data = database.load_survivable(
+                db, self.preferences.dir, reload=True)    # one unreadable file must not stop the switch
             self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
             self._categories = data["categories"]
             self._shown = list(self._categories)    # a switch has told the views everything already

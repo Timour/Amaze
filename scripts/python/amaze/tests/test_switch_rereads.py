@@ -7,7 +7,8 @@ import unittest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
 from PySide6 import QtWidgets  # noqa: E402
 
-from amaze.core import keyed_store, tile_icons
+from amaze import messages
+from amaze.core import database, keyed_store, tile_icons
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
@@ -96,6 +97,54 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
         self.assertTrue(
             seen, "switch_all_models never reached the File section's "
                   "folders, so the pane keeps the previous library's")
+
+
+class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
+    """A library whose cops.json will not parse: every model still switches, and saving says why not."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.other = test_support.fresh_library(self)
+        with open(os.path.join(self.other, "cops.json"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('{"assets": [')    # cut off mid-sync
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = self.other    # what Preferences saves before it switches
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+
+    def test_every_model_reaches_the_new_library(self):
+        try:
+            self.panel.switch_all_models()
+        except (OSError, ValueError) as exc:
+            self.fail("the switch stopped at the Node sidebar and left the "
+                      "models after it on the previous library: %s" % exc)
+        stranded = [name for name in database.DATABASES
+                    if not database.DatabaseConnector(name).serves(self.other)]
+        self.assertEqual([], stranded,
+                         "still serving the previous library: %s" % stranded)
+        sidebar = self.panel.cop_category_model
+        self.assertEqual(
+            ["_All"], [sidebar.data(sidebar.index(row, 0), sidebar.CatSortRole)
+                       for row in range(sidebar.rowCount())],
+            "the Node sidebar shows categories from a file it could not read")
+        self.assertEqual(0, self.panel.cop_model.rowCount())
+
+    def test_a_node_save_is_refused_for_the_file_it_could_not_read(self):
+        self.panel.cop_model.switch_model_data()
+        with test_support.captured_log() as log:
+            self.assertFalse(self.panel.cop_model.save(),
+                             "premise: a save over an unread file went ahead")
+        self.assertNotIn(
+            messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL, log.messages("alert"),
+            "the refusal blamed another panel: the failed switch had left "
+            "the shared database connection on the previous library")
+        self.assertTrue(
+            log.matching("could not be read"),
+            "the refusal never said the Node file could not be read: %s"
+            % log.messages())
 
 
 if __name__ == "__main__":
