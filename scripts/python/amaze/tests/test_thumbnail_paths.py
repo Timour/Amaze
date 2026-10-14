@@ -525,6 +525,38 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "stack; destroying the per-material nodes does not remove "
             "them, so one Ctrl+Z after a thumbnail is spent on noise")
 
+    def test_update_preview_adds_no_undo_entries(self):
+        """The import feeding the render and the cleanup ending it are a pair too. ▸r/undo-groups"""
+        from amaze.core import material
+        from amaze.render import nodes
+        test_support.reset_database_singletons()
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        asset = next(a for a in model.assets
+                     if material.is_karma_renderer(a.renderer))
+        scaffold = self._scaffold()
+        imported = []
+        real = nodes.NodeHandler.import_asset_to_scene
+
+        def spy(handler, *args, **kwargs):
+            answer = real(handler, *args, **kwargs)
+            imported.append(answer[0])
+            return answer
+
+        hou.undos.clear()
+        with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",
+                               spy):
+            thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
+                scaffold)
+        self.assertEqual(
+            [True], imported,
+            "the material never imported - this test cannot see its "
+            "subject")
+        self.assertEqual(
+            (), hou.undos.undoLabels(),
+            "Update Preview left entries on the live undo stack: the "
+            "import into /mat and the cleanup that removes it, so the "
+            "next Ctrl+Z puts the material back into /mat")
+
     def test_a_render_puts_the_selection_back(self):
         scaffold = self._scaffold()
         mat = self._material()

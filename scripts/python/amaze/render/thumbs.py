@@ -38,38 +38,38 @@ class ThumbNailRenderer:
     def create_thumbnail(self, scaffold=None) -> None:
         """Render this material's thumbnail; pass the scaffold from `karma_batch` when this render is one of a batch, or leave it None for a single render that builds and destroys its own."""
         node_handler = nodes.NodeHandler(self._preferences)
-        if self._mat:
-            ok, reason, _created = node_handler.import_asset_to_scene(
-                self._mat, target="mat")  # target="mat", NOT "auto": "auto" resolves to whichever editor is ACTIVE, so a rerender with a LOP network in front imports into the user's materiallibrary, where register_in_materiallibrary appends an explicit entry that nothing removes when cleanup() destroys the node - leaving an entry naming a node that no longer exists, which is the `Ignoring missing explicit primitive` error on every cook from then on
-            if not ok:  # the import refused - a missing, empty or unreadable material file, or a node type this session does not have - so there is no builder node and the render must not proceed
-                ui = getattr(hou, "ui", None)
-                if reason and ui is not None:
-                    ui.displayMessage(reason)
-                return
+        with hou.undos.disabler():    # the import into /mat and its cleanup are a pair ▸r/undo-groups
+            if self._mat:
+                ok, reason, _created = node_handler.import_asset_to_scene(
+                    self._mat, target="mat")  # `mat`, never `auto`: from a LOP editor, auto leaves a dead entry
+                if not ok:  # refused: there is no builder node to render
+                    ui = getattr(hou, "ui", None)
+                    if reason and ui is not None:
+                        ui.displayMessage(reason)
+                    return
 
-        try:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                if material.is_karma_renderer(self._mat.renderer):
-                    if scaffold is not None:
-                        preview.render_karma_into(  # the batch's scaffold is rendered into, never destroyed here - karma_batch owns both ends
-                            scaffold, node_handler.builder_node,
-                            self._mat.mat_id,
-                            tile_icons.thumbnail_path(
-                                self._preferences, self._mat.mat_id))
-                    else:
-                        self.create_thumb_mtlx(
+            try:
+                with hou.InterruptableOperation(
+                    "Rendering", "Performing Tasks", open_interrupt_dialog=True
+                ):
+                    if material.is_karma_renderer(self._mat.renderer):
+                        if scaffold is not None:
+                            preview.render_karma_into(  # the batch's scaffold, which karma_batch destroys
+                                scaffold, node_handler.builder_node,
+                                self._mat.mat_id,
+                                tile_icons.thumbnail_path(
+                                    self._preferences, self._mat.mat_id))
+                        else:
+                            self.create_thumb_mtlx(
+                                node_handler.builder_node, self._mat.mat_id)
+                    elif self._mat.renderer == "Redshift":
+                        self.create_thumb_redshift(
                             node_handler.builder_node, self._mat.mat_id)
-                elif self._mat.renderer == "Redshift":
-                    self.create_thumb_redshift(node_handler.builder_node, self._mat.mat_id)
-                elif self._mat.renderer == "Octane":
-                    self.create_thumb_octane(node_handler.builder_node, self._mat.mat_id)
-
-                else:
-                    pass
-        finally:
-            node_handler.cleanup()  # in the finally, so an interrupted render (ESC) never leaves the imported material copy lingering in /mat
+                    elif self._mat.renderer == "Octane":
+                        self.create_thumb_octane(
+                            node_handler.builder_node, self._mat.mat_id)
+            finally:
+                node_handler.cleanup()  # in the finally: an interrupted render leaves no copy in /mat
 
     def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
         """Single Karma thumbnail: build a throwaway scaffold, render one material into it, destroy it; False when no scaffold could be built. A whole batch shares ONE scaffold through `karma_batch` instead."""
