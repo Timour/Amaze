@@ -490,13 +490,9 @@ class Store:
                 with open(self.path, "rb") as handle:
                     raw = handle.read()
                 loaded = json.loads(raw.decode("utf-8-sig"))  # -sig: a BOM would latch it
-                wrong = database.wrong_table_shape(loaded, spec.payload)
+                wrong = self._not_this_stores(loaded)
                 if wrong:
                     raise ValueError(wrong)
-                if spec.payload and spec.payload not in loaded:
-                    raise ValueError(
-                        "%s holds no %r - this is not the %s file"
-                        % (spec.filename, spec.payload, spec.label))
                 table = {}
                 orphans = 0
                 for key, value in self._table_in(loaded).items():
@@ -550,6 +546,15 @@ class Store:
             self._refuse_and_alert(str(exc))
         self._remember_disk_state()
         self._remember_base(self._table)
+
+    def _not_this_stores(self, loaded) -> str:
+        """Why `loaded` is not this store's file, "" when it is - asked by the load and the commit alike."""
+        spec = self.spec
+        wrong = database.wrong_table_shape(loaded, spec.payload)
+        if not wrong and spec.payload and spec.payload not in loaded:
+            wrong = ("%s holds no %r - this is not the %s file"
+                     % (spec.filename, spec.payload, spec.label))
+        return wrong
 
     def _refuse_and_alert(self, why: str) -> None:
         spec = self.spec
@@ -826,17 +831,19 @@ class Store:
         self._disk_state = hostos.fingerprint_of(self.path)
 
     def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:
-        """Fold in keys another session added since this one read; ADDS only, and a same-session delete can come back. FALSE means the file is there and will not parse, and the caller must refuse rather than write over it. ▸p/store-commit-order"""
+        """Merge another session's writes in; False: do not replace the file. ▸p/store-commit-order"""
         answer = hostos.peer_read(self.path, self._disk_state)  # ▸r/peer-read
         if answer.verdict in (hostos.PEER_UNCHANGED, hostos.PEER_ABSENT):
             return True     # nothing moved, or a hold: the peer's bytes are intact
         if answer.verdict == hostos.PEER_UNREADABLE:
             return False
-        peer = self._table_in(answer.document)
-        if peer is None:
-            return True                     # a table this store does not own
-        if not isinstance(peer, dict):
+        wrong = self._not_this_stores(answer.document)
+        if wrong:
+            debug.event(self.spec.category, "the file on disk is not this "
+                        "store's - write refused", path=self.path,
+                        reason=wrong)
             return False
+        peer = self._table_in(answer.document)
         adopted = 0
         base = self._base
         seen = set()

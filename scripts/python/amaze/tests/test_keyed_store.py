@@ -728,6 +728,26 @@ class TheFileMustBeTHISStoresFile(StoreCase):
         self.assertEqual(keyed_store.BLIND, store.state)
         self.assertFalse(store.set("material:1", self.page()))
 
+    def _arrives_mid_session(self, document):
+        store = self.store()
+        self.assertTrue(store.set("material:1", self.page()).ok,
+                        "premise: it writes")
+        wrong = json.dumps(document).encode("utf-8")
+        with open(self.path(), "wb") as handle:
+            handle.write(wrong)
+        written = store.set("material:2", self.page("second"))
+        self.assertFalse(written.ok,
+                         "a notes save wrote over a file that is not notes")
+        with open(self.path(), "rb") as handle:
+            self.assertEqual(wrong, handle.read(),
+                             "the file the load would refuse was replaced")
+
+    def test_another_stores_file_copied_over_it_is_not_overwritten(self):
+        self._arrives_mid_session({"icons": {"/a.exr": {"name": "box"}}})
+
+    def test_a_null_table_copied_over_it_is_not_overwritten(self):
+        self._arrives_mid_session({"notes": None})
+
     def test_a_byte_order_mark_is_read_not_latched(self):
         """A BOM is what a Windows editor leaves behind; plain utf-8 reads it as damaged and latches."""
         with open(self.path(), "wb") as handle:
