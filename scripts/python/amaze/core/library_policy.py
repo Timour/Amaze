@@ -16,7 +16,8 @@ DEFAULTS = {
 
 
 def path_for(library_dir: str) -> str:
-    return os.path.join(library_dir or "", FILENAME)
+    """The policy file's path, "" with no library - never one relative to the working folder."""
+    return os.path.join(library_dir, FILENAME) if library_dir else ""
 
 
 def read(library_dir: str) -> dict:
@@ -92,12 +93,12 @@ def set_allow_overwrite(library_dir: str, allowed: bool) -> bool:
 def _write(library_dir: str, changes: dict) -> bool:
     """Merges `changes` into the library's policy. `created` is asked BEFORE the write and seeds the restore floor after it - without that floor, `read()` cannot tell a library that never had a policy from one whose file is momentarily missing."""
     path = path_for(library_dir)
-    hostos.snapshot_before_write(path)
-    created = not os.path.isfile(path)
-    if not library_dir or not os.path.isdir(library_dir):
+    if not path or not os.path.isdir(library_dir):
         debug.event("policy", "not written - no library directory",
                     path=path)
         return False
+    hostos.snapshot_before_write(path)
+    created = not os.path.isfile(path)
     current = {}
     if os.path.isfile(path):
         try:

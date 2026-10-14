@@ -104,6 +104,31 @@ class PolicyFileTest(unittest.TestCase):
             self.assertEqual(42, json.load(handle)["some_future_setting"])
 
 
+class NoLibraryMeansNoPolicyFileTest(unittest.TestCase):
+    """With no library open, nothing reads or writes a policy.json in the working folder."""
+
+    def setUp(self):
+        self.cwd = tempfile.mkdtemp(prefix="amaze_policy_cwd_")
+        self.addCleanup(shutil.rmtree, self.cwd, ignore_errors=True)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.cwd)
+        with open("policy.json", "w", encoding="utf-8") as handle:
+            json.dump({"allow_overwrite": False}, handle)
+
+    def test_no_library_answers_the_defaults(self):
+        self.assertEqual(
+            library_policy.DEFAULTS, library_policy.read(""),
+            "with no library the policy was read from the working folder")
+        self.assertTrue(library_policy.allow_overwrite(""))
+
+    def test_no_library_writes_nothing_into_the_working_folder(self):
+        before = sorted(os.listdir(self.cwd))
+        self.assertFalse(library_policy.set_allow_overwrite("", True))
+        self.assertEqual(before, sorted(os.listdir(self.cwd)),
+                         "a refused write still left files in the working "
+                         "folder")
+
+
 class OverwriteIsGatedInTheMODELTest(unittest.TestCase):
     """The refusal has to sit where every caller passes: the dialog also stops offering Overwrite, but a UI check is only a suggestion."""
 
