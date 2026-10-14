@@ -106,6 +106,22 @@ class RetiredLabelsAreGone(unittest.TestCase):
             "the shipped manual documents a control that does not "
             "exist:\n%s" % self._report(hits))
 
+    def test_every_picture_the_docs_show_is_a_file_that_exists(self):
+        """A deleted or renamed art file leaves a blank picture in the manual."""
+        import re
+        pictures = re.compile(r'<img[^>]*\bsrc="([^"]+)"|!\[[^\]]*\]\(([^)\s]+)\)')
+        missing, seen = [], 0
+        for doc in ("MANUAL.md", "README.md"):
+            with open(os.path.join(REPO, doc), encoding="utf-8") as handle:
+                for number, text in enumerate(handle, 1):
+                    for found in pictures.findall(text):
+                        src = found[0] or found[1]
+                        seen += 1
+                        if "://" not in src and not os.path.exists(os.path.join(REPO, src)):
+                            missing.append("%s:%d %s" % (doc, number, src))
+        self.assertGreater(seen, 10, "the scan found almost no pictures - it is not reading them")
+        self.assertEqual([], missing, "the docs show pictures that are not there")
+
     def test_the_scanner_can_actually_see_a_bad_string(self):
         """Passing by finding nothing is what a scanner reading NO files also reports, so plant one - on the literal, not the docstring or the comment beside it."""
         planted = os.path.join(

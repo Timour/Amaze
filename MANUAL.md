@@ -131,7 +131,7 @@ a dark backdrop:
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | the scene you currently have open (File) |
 | <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | the favorite button — on every tile: an outline heart when not a favorite, brighter under the cursor, a filled yellow heart when favorited. Click to toggle; with several tiles selected, clicking a selected tile's heart toggles them all |
-| <img src="scripts/python/amaze/ui/badge_versions_hover.svg" width="100"> | lower-left | has more than one [version](#versions) — click it to browse them |
+| <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | has more than one [version](#versions) — click it to browse them |
 | <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | carries a [comment](#comments) — click it to open the Comments pane on that asset |
 
 ---
@@ -566,7 +566,7 @@ frame keeps its marker.
 Comments are stored **in the library**, so they travel across machines
 and survive a folder being removed and re-added. A tile that carries a
 comment shows the
-<img src="scripts/python/amaze/ui/badge_comment_75.svg" width="14"> badge in
+<img src="scripts/python/amaze/ui/badge_comment.svg" width="14"> badge in
 its lower-right corner; click it to open this pane on that asset.
 
 Every section takes comments — materials, palettes, nodes, snippets and
