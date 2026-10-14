@@ -406,6 +406,7 @@ class IconDialog(base_dialog.AssetDialog):
 
     def _harvest(self) -> None:
         """Everything a commit writes: the chosen face, and the name, tags and category."""
+        self.new_tile_name = self.new_tags = self.new_category = None    # THIS commit's answer only
         face = self.face_combo.currentData()
         if face == "custom":
             self.spec = tile_icons.normalise(
@@ -420,6 +421,16 @@ class IconDialog(base_dialog.AssetDialog):
         """Commit and STAY OPEN; `canceled` stays True, so a later X re-applies nothing."""
         self._harvest()
         self.applied.emit()
+        self._rebase()
+
+    def _rebase(self) -> None:
+        """What Apply just committed is what the next commit compares against."""
+        if self.new_tile_name is not None:
+            self._tile_name = self.new_tile_name
+        if self.new_tags is not None:
+            self._tile_tags = self.new_tags
+        if self.new_category is not None:
+            self._tile_category = self.new_category
 
     def _accept(self) -> None:
         self._harvest()

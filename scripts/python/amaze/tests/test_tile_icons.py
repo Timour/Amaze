@@ -1039,6 +1039,47 @@ class TileNameTest(unittest.TestCase):
         multi.deleteLater()
 
 
+class AnApplyIsWhatTheNextCommitComparesAgainst(unittest.TestCase):
+    """Apply commits and stays open, so a later Accept carries only what changed since."""
+
+    def _applied(self):
+        """A rename, a retag and a move, committed by Apply."""
+        dialog = icon_dialog.IconDialog(
+            None, 0.0, None, tile_name="Brick", tile_name_enabled=True,
+            tile_tags="red", categories=["Floors", "Walls"],
+            tile_category="Walls")
+        self.addCleanup(dialog.deleteLater)
+        committed = []
+        dialog.applied.connect(lambda: committed.append(
+            (dialog.new_tile_name, dialog.new_tags, dialog.new_category)))
+        dialog.tile_name_edit.setText("Brick2")
+        dialog.tags_edit.setText("red, rough")
+        dialog.category_combo.setCurrentIndex(
+            dialog.category_combo.findData("Floors"))
+        dialog.apply_button.click()
+        self.assertEqual([("Brick2", "red, rough", "Floors")], committed,
+                         "premise: Apply did not commit the three edits")
+        return dialog
+
+    def _accepted(self, dialog):
+        dialog.accept_button.click()
+        return (dialog.new_tile_name, dialog.new_tags, dialog.new_category)
+
+    def test_an_accept_after_an_apply_commits_nothing_again(self):
+        self.assertEqual((None, None, None), self._accepted(self._applied()),
+                         "the Accept committed the Apply's values again")
+
+    def test_reverting_after_an_apply_commits_the_revert(self):
+        dialog = self._applied()
+        dialog.tile_name_edit.setText("Brick")
+        dialog.tags_edit.setText("red")
+        dialog.category_combo.setCurrentIndex(
+            dialog.category_combo.findData("Walls"))
+        self.assertEqual(("Brick", "red", "Walls"), self._accepted(dialog),
+                         "the Accept wrote the Apply's values over the "
+                         "revert")
+
+
 class TileTagsTest(unittest.TestCase):
     """The Customize dialog's Tags field - a comma-separated line that REPLACES the asset's tags, on EVERY selected row. Live on a multi-selection, like Category and unlike Name."""
 
