@@ -551,7 +551,7 @@ class AmazePanel(QtWidgets.QWidget):
         models = self.library_models()
         if not models:
             return
-        with ui_helpers.relayout(*models):
+        with ui_helpers.relayout(*models), database.one_read_per_file():    # grid and sidebar share one read
             for m in models:
                 m.switch_model_data()
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows

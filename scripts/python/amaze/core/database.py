@@ -1,5 +1,6 @@
 """JSON documents on disk, one live connection per file, migrated stepwise. ▸r/chain-starts-at-four"""
 
+import contextlib
 import copy
 import json
 import os
@@ -314,8 +315,26 @@ def section_noun(filename: str, count: int = 2) -> str:
     return noun if count == 1 else noun + "s"
 
 
+_SWITCH_READS = None    # the files the switch now running has read; None outside one
+
+
+@contextlib.contextmanager
+def one_read_per_file():
+    """A switch inside it reads each file once: every later model on the file shares that document."""
+    global _SWITCH_READS
+    outer, _SWITCH_READS = _SWITCH_READS, set()
+    try:
+        yield
+    finally:
+        _SWITCH_READS = outer
+
+
 def load_survivable(db, path: str, reload: bool = False):
-    """Like load(), surviving an unreadable secondary file; `reload` re-reads, as a switch needs."""
+    """Like load(), surviving an unreadable secondary file; `reload` re-reads, once per switch."""
+    if reload and _SWITCH_READS is not None:
+        if db._filename in _SWITCH_READS and db.serves(path) and db._data:
+            return db._data
+        _SWITCH_READS.add(db._filename)
     try:
         return db.reload_with_path(path) if reload else db.load(path)
     except (OSError, ValueError) as exc:

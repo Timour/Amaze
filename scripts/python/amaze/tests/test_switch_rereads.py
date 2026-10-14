@@ -99,6 +99,44 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
                   "folders, so the pane keeps the previous library's")
 
 
+class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
+    """Every model re-read its file on a switch, so the grid kept a copy the sidebar never writes."""
+
+    PAIRS = (("material_model", "category_model"),
+             ("cop_model", "cop_category_model"),
+             ("code_model", "code_category_model"),
+             ("gradient_model", "gradient_categories_model"))
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        other = test_support.fresh_library(self)
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = other    # what Preferences saves before it switches
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        self.panel.switch_all_models()
+        QtWidgets.QApplication.processEvents()
+
+    def test_a_sidebar_recolour_reaches_the_grid(self):
+        grid = self.panel.material_model
+        row = next(index for index, asset in enumerate(grid.assets)
+                   if list(asset.categories)[:1] == ["Karma_Mats"])
+        self.panel.category_model.set_color("Karma_Mats", "#4af2a1")
+        self.assertEqual(
+            "#4af2a1", grid.category_color(row),
+            "after a switch the grid reads colours from a copy the sidebar "
+            "no longer writes")
+
+    def test_each_grid_reads_its_sidebars_document(self):
+        apart = [grid for grid, sidebar in self.PAIRS
+                 if getattr(self.panel, grid)._data
+                 is not getattr(self.panel, sidebar)._data]
+        self.assertEqual([], apart,
+                         "these grids hold a document their sidebar does not")
+
+
 class AnUnreadableNodeFileDoesNotStopTheSwitch(unittest.TestCase):
     """A library whose cops.json will not parse: every model still switches, and saving says why not."""
 
