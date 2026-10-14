@@ -771,8 +771,8 @@ class Store:
             return False
         if answer.verdict == hostos.PEER_ABSENT and self._disk_state is None:
             return False    # absent, and it was absent when we looked: nothing has happened
-        if answer.verdict == hostos.PEER_UNREADABLE:
-            return False    # half-written or a placeholder: keep it all ▸p/store-refuses-unreadable-peer
+        if answer.verdict in (hostos.PEER_UNREADABLE, hostos.PEER_HELD):
+            return False    # half-written, a placeholder or held open: keep it all ▸p/store-refuses-unreadable-peer
         self.reread()
         return True
 
@@ -833,8 +833,9 @@ class Store:
     def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:
         """Merge another session's writes in; False: do not replace the file. ▸p/store-commit-order"""
         answer = hostos.peer_read(self.path, self._disk_state)  # ▸r/peer-read
-        if answer.verdict in (hostos.PEER_UNCHANGED, hostos.PEER_ABSENT):
-            return True     # nothing moved, or a hold: the peer's bytes are intact
+        if answer.verdict in (hostos.PEER_UNCHANGED, hostos.PEER_ABSENT,
+                              hostos.PEER_HELD):
+            return True     # nothing moved, or a hold, which the write meets ▸p/store-refuses-unreadable-peer
         if answer.verdict == hostos.PEER_UNREADABLE:
             return False
         wrong = self._not_this_stores(answer.document)

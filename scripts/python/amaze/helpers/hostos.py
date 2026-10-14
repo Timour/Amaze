@@ -275,6 +275,7 @@ PEER_ABSENT = "absent"          # nothing there to merge with
 PEER_UNCHANGED = "unchanged"    # the same bytes this caller last saw
 PEER_CHANGED = "changed"        # `document` holds what is on disk now
 PEER_UNREADABLE = "unreadable"  # it is there and will not parse - REFUSE, never write over it
+PEER_HELD = "held"              # it is there and would not open just now - keep what you hold
 
 
 class PeerFile(typing.NamedTuple):
@@ -303,8 +304,10 @@ def peer_read(path: str, fingerprint=None) -> PeerFile:
     try:
         with open(path, "rb") as handle:
             raw = handle.read()
-    except OSError:
+    except (FileNotFoundError, NotADirectoryError):
         return PeerFile(PEER_ABSENT, None, None)
+    except OSError as exc:    # a lock or a permission: the file is still there
+        return PeerFile(PEER_HELD, None, None, str(exc))
     current = file_fingerprint(raw)
     if fingerprint is not None and tuple(fingerprint) == current:
         return PeerFile(PEER_UNCHANGED, None, current)

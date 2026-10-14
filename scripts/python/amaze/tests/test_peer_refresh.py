@@ -10,6 +10,7 @@ from unittest import mock
 from PySide6 import QtWidgets
 
 from amaze.core import keyed_store, users
+from amaze.helpers import hostos
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
@@ -218,6 +219,52 @@ class AnUnreadableFileMetByARefreshWipesNothing(_Case):
 
     def test_a_half_written_document(self):
         self._refresh_over(b'{"users": {"u-me": ')
+
+
+class ALockedFileMetByARefreshWipesNothing(_Case):
+    """A sync client or a virus scanner holding the file for a moment is not the file being gone."""
+
+    def _held_open(self, locked):
+        real_open = open
+
+        def held(path, *args, **kwargs):
+            if (isinstance(path, (str, os.PathLike))
+                    and os.path.abspath(path) == os.path.abspath(locked)):
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, *args, **kwargs)
+
+        return mock.patch("builtins.open", held)
+
+    def test_a_locked_file_keeps_the_table_and_says_nothing(self):
+        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
+        store = keyed_store.open_store(users.SPEC, self.prefs)
+        base, seen = dict(store._base), store._disk_state
+        with self._held_open(self.path("users.json")), \
+                mock.patch.object(keyed_store.debug, "alert") as spoke:
+            moved = store.refresh()
+        self.assertEqual(
+            {"moved": False, "rows": {"u-me": "Me"}, "writable": True,
+             "alerted": False},
+            {"moved": moved, "rows": users.all_users(self.prefs),
+             "writable": store.writable, "alerted": spoke.called},
+            "a moment's lock was read as the file being gone")
+        self.assertEqual((base, seen), (store._base, store._disk_state),
+                         "the merge base or the fingerprint moved")
+
+    def test_a_locked_file_is_not_read_as_absent(self):
+        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
+        with self._held_open(self.path("users.json")):
+            answer = hostos.peer_read(self.path("users.json"))
+        self.assertNotEqual(hostos.PEER_ABSENT, answer.verdict,
+                            "a file that is there read as gone")
+
+    def test_a_missing_file_still_reads_as_absent(self):
+        self.assertEqual(hostos.PEER_ABSENT,
+                         hostos.peer_read(self.path("users.json")).verdict)
+        under_a_file = os.path.join(self.path("users.json"), "x.json")
+        self._write("users.json", {"users": {}})
+        self.assertEqual(hostos.PEER_ABSENT,
+                         hostos.peer_read(under_a_file).verdict)
 
 
 if __name__ == "__main__":
