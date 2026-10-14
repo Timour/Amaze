@@ -555,6 +555,38 @@ class AddingUnlistedFilesBackTest(_Case):
                       "the Nodes section cannot see what Repair added")
 
 
+class ADateOnAWholeSecondKeepsItsSecondsTest(_Case):
+    """The stored date is `YYYY-MM-DD HH:MM:SS`; a clock on a whole second prints no fraction."""
+
+    WHOLE = datetime.datetime(2026, 10, 14, 13, 45, 12)    # microsecond 0
+    STORED = "2026-10-14 13:45:12"
+
+    def _frozen(self, module):
+        clock = MagicMock()
+        clock.datetime.now.return_value = self.WHOLE
+        return patch.object(module, "datetime", clock, create=True)    # every clock the path may read
+
+    def test_a_material_stamped_on_a_whole_second(self):
+        from amaze.core import material as material_mod
+        asset = material_mod.Material(name="whole_second")
+        with self._frozen(material_mod):
+            asset.set_current_date()
+        self.assertEqual(self.STORED, asset.date,
+                         "the stamp lost its seconds")
+
+    def test_a_reattached_pair_minted_on_a_whole_second(self):
+        from amaze.core import material as material_mod
+        self._cops([])
+        self._pair()
+        with self._frozen(material_mod), self._frozen(repair):
+            repair.reattach(self._survey(), "library.json")
+        document = self._read(os.path.join(self.dir, "library.json"))
+        row = [r for r in document["assets"]
+               if r.get("id") == self.COP_ID][0]
+        self.assertEqual(self.STORED, row.get("date"),
+                         "Repair minted a date with its seconds cut off")
+
+
 class PuttingASavedCopyBackTest(_Case):
     """One restore, shared with the terminal tool."""
 

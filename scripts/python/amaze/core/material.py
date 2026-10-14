@@ -8,6 +8,8 @@ import datetime
 
 REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
+DATE_FORMAT = "%Y-%m-%d %H:%M:%S"    # the stored `date`, seconds always present
+
 
 def is_surface_shader_type(type_name: str) -> bool:
     """Whether a Redshift node TYPE NAME looks like a surface material - the ONE spelling of the heuristic the converter and the shaderball share, so a renamed default shader is fixed in one place."""
@@ -219,7 +221,8 @@ class Material:
 
     @date.setter
     def date(self, date: str = "") -> None:
-        self._date = date if date != "" else str(datetime.datetime.now())[:-7]
+        self._date = date if date != "" else datetime.datetime.now().strftime(
+            DATE_FORMAT)
 
     def set_current_date(self) -> None:
         self.date = ""

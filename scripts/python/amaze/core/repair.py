@@ -1,6 +1,5 @@
 """Repair: never deletes, only reports and moves. ▸p/db-restore"""
 
-import datetime
 import json
 import os
 
@@ -502,7 +501,6 @@ def reattach(findings: dict, filename: str) -> dict:
                 tags=[],
                 fav=False,
                 renderer="",
-                date=str(datetime.datetime.now())[:-7],
                 mat_id=asset_id,
             ).get_as_dict()
             minted.append(asset_id)
