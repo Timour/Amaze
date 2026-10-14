@@ -199,6 +199,29 @@ class TheChosenSectionIsWhereTheSaveLands(unittest.TestCase):
         self.assertNotIn("code", self.panel._save_targets([wrangle]))
 
 
+class ASaveKeepsTheArtistsSelection(unittest.TestCase):
+    """The save stages a COPY, and `hou.copyNodesTo` selects what it makes."""
+
+    def setUp(self):
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+        self.panel = test_support.fixture_panel(self)
+        self.panel.prefs.render_on_import = 0
+
+    def test_the_saved_node_is_still_the_selection(self):
+        node = _material(self, "door_selected")
+        hou.clearAllSelected()
+        node.setSelected(True)
+        before = self.panel.material_model.rowCount()
+        with _choosing("material"):
+            self.panel._save_new([node], "material", node)
+        self.assertEqual(before + 1, self.panel.material_model.rowCount(),
+                         "premise: the material did not save")
+        self.assertEqual(
+            [node], list(hou.selectedNodes()),
+            "after Save to Amaze the saved node is no longer selected")
+
+
 class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
     """The menu reloads from disk and the panel does not, so a new menu can meet an old panel."""
 

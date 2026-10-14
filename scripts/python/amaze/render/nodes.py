@@ -1586,9 +1586,10 @@ class NodeHandler:
                 ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
             return False
         try:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
+            with helpers.preserving_selection_and_current(), \
+                    hou.InterruptableOperation(    # the staging copies select themselves
+                        "Rendering", "Performing Tasks",
+                        open_interrupt_dialog=True):
                 return saver(node, asset_id, update)
         finally:
             self._discard_pending_cop_promote()    # a save that never reached the pair keeps no companion
