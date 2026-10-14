@@ -263,20 +263,25 @@ def _legacy_spelling(preferences, ident: str) -> str:
     return base + ("/" + rel if rel else "")
 
 
+def _ident_under(owners: dict, stored: str) -> str:
+    """The `loc:` ident of a stored path under the innermost of `owners` ({path: id}), or ""."""
+    best, found = "", ""
+    for base, lid in owners.items():
+        if (stored == base or stored.startswith(base + "/")) \
+                and len(base) > len(best):
+            best, found = base, lid
+    if not found:
+        return ""
+    rel = stored[len(best) + 1:] if len(stored) > len(best) else ""
+    return LOC_PREFIX + found + ("/" + rel if rel else "")
+
+
 def file_ident(preferences, full_path: str) -> str:
     """`loc:<id>/<relative>` for a file inside a registered location - the INNERMOST when locations nest - or "" for a file no location owns; the ONE key-maker every per-file store shares, so a moved folder orphans nothing."""
     if not _ready(preferences):
         return ""
-    stored = hostos.storage_path_key(str(full_path))
-    best_len, best = -1, ""
-    for base, lid in _id_table(preferences).items():
-        if stored == base or stored.startswith(base + "/"):
-            if len(base) > best_len:
-                best_len, best = len(base), lid
-    if not best:
-        return ""
-    rel = stored[best_len + 1:] if len(stored) > best_len else ""
-    return LOC_PREFIX + best + ("/" + rel if rel else "")
+    return _ident_under(_id_table(preferences),
+                        hostos.storage_path_key(str(full_path)))
 
 
 def record(preferences, path: str) -> dict:
@@ -818,6 +823,50 @@ def convert_to_ids(preferences) -> None:
     if moved or safe or kept:
         debug.event("file", "location keys re-homed onto ids",
                     moved=moved, collapsed=len(safe), kept_aside=kept)
+
+
+def rehome_covered(preferences, path: str) -> bool:
+    """Move each key a REMAINING location covers off the one at `path`; False if a store refused."""
+    if not library_present(preferences):
+        return True
+    gone = hostos.storage_path_key(str(path)).rstrip("/") or "/"
+    leaving = set(keyed_store.location_ids_at(preferences, path))
+    owners = {base: lid for base, lid in _id_table(preferences).items()
+              if base != gone}
+    moved, already, landed = 0, 0, True
+    for spec in _file_key_specs():
+        if spec is SPEC:
+            continue    # a location's own record retires with it
+        target = keyed_store.open_store(spec, preferences)
+        table = target.everyones()
+        moves = {}
+        for stored in table:
+            owner, tagless = keyed_store.untagged_key(spec, stored)
+            bare = keyed_store._bare_path(spec, tagless)
+            if bare.startswith(LOC_PREFIX):
+                head, _, rel = bare[len(LOC_PREFIX):].partition("/")
+                full = gone + "/" + rel if head in leaving and rel else ""
+            elif keyed_store._under(spec, tagless, path):
+                full = bare
+            else:
+                continue
+            fresh = _ident_under(owners, full) if full else ""
+            if fresh:
+                tag = owner + keyed_store.USER_SEP if owner else ""
+                moves[stored] = tag + tagless[:len(tagless) - len(bare)] + fresh
+        if moves and not target.rekey_stored(moves):
+            debug.event("file", "a removed location's keys could not move",
+                        store=spec.filename, waiting=len(moves))
+            landed = False
+            break
+        moved += len(moves)
+        already += sum(1 for new in moves.values() if new in table)
+    _converted.discard(str(getattr(preferences, "dir", "")))    # the next read re-settles keys on what is left
+    if moved:
+        debug.event("file", "a removed location's keys moved to the one "
+                            "still covering them", moved=moved,
+                    destination_kept=already)
+    return landed
 
 
 _asset_deferred: set = globals().get("_asset_deferred", set())  # (dir, uid) pairs whose asset-favourites migration could not land this session - keyed on the USER too, so picking one in the ASK dialog or Preferences retries immediately; reload-stable like its two siblings above

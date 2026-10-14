@@ -2080,6 +2080,142 @@ class LocationManagementTest(unittest.TestCase):
         sweep.assert_called_once_with(prefs, tmp, [kept])
 
 
+class RemovingANestedLocationTest(unittest.TestCase):
+    """A file a remaining location still lists keeps its comment, star and icon."""
+
+    ICON = {"name": "activity", "bg": "#ff8000"}
+
+    def setUp(self):
+        self.outer = tempfile.mkdtemp(prefix="amaze_outer_")
+        self.addCleanup(shutil.rmtree, self.outer, ignore_errors=True)
+        self.inner = os.path.join(self.outer, "tex")
+        self.file = os.path.join(self.inner, "plate.txt")
+        os.makedirs(self.inner)
+        with open(self.file, "w") as handle:
+            handle.write("x")
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+
+    def _nested(self, *folders):
+        prefs = _Prefs(folders)
+        self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
+        if self.outer in folders:
+            prefs.set_file_folder_recursive(self.outer, True)
+        return prefs
+
+    def _row(self, prefs, folder):
+        model = file_library.FileFiles(prefs)
+        model.set_folder(folder)
+        names = [model.data(model.index(row, 0)) for row in
+                 range(model.rowCount())]
+        return model, names.index("plate.txt")
+
+    def _annotate(self, prefs):
+        from amaze.core import notes
+        model, row = self._row(prefs, self.inner)
+        key = model.file_key(row)
+        model.toggle_favorite(row)
+        model.set_tile_icon(row, self.ICON)
+        notes.set_note(prefs, notes.note_key("file", key),
+                       [{"t": "text", "text": "kept"}])
+        return key
+
+    def _shown(self, prefs, folder):
+        model, row = self._row(prefs, folder)
+        index = model.index(row, 0)
+        return (model.data(index, model.FavoriteRole),
+                model.data(index, model.NotesRole),
+                model.tile_icon(row).get("name"))
+
+    def _remove(self, prefs, folder):
+        listed = [hostos.canonical_path_key(p) for p in prefs.file_folders]
+        file_library.FileFolders(prefs).remove_folder(
+            listed.index(hostos.canonical_path_key(folder)) + 1)
+        self.assertNotIn(
+            hostos.canonical_path_key(folder),
+            [hostos.canonical_path_key(p) for p in prefs.file_folders],
+            "premise: the location is still registered")
+
+    def test_the_outer_location_keeps_the_comment_star_and_icon(self):
+        prefs = self._nested(self.outer, self.inner)
+        key = self._annotate(prefs)
+        inner_id = locations_mod.location_id(prefs, self.inner)
+        self.assertTrue(key.startswith("loc:" + inner_id + "/"),
+                        "premise: the nested location does not own the file")
+        prefs.library_user = LocationsArePerUserTest.OTHER
+        locations_mod.set_favourite(prefs, key, True)
+        prefs.library_user = test_support.FIXTURE_USER
+
+        self._remove(prefs, self.inner)
+
+        self.assertEqual(
+            (True, True, "activity"), self._shown(prefs, self.outer),
+            "removing the nested location retired the star, comment or "
+            "icon of a file the outer location still lists")
+        prefs.library_user = LocationsArePerUserTest.OTHER
+        self.assertTrue(
+            locations_mod.is_favourite(
+                prefs, locations_mod.file_ident(prefs, self.file)),
+            "another user's star on that file was retired")
+
+    def test_a_location_nothing_else_covers_still_loses_them(self):
+        from amaze.core import notes
+        prefs = self._nested(self.inner)
+        key = self._annotate(prefs)
+
+        self._remove(prefs, self.inner)
+
+        self.assertEqual(
+            (False, False, {}),
+            (locations_mod.is_favourite(prefs, key),
+             notes.has_note(prefs, notes.note_key("file", key)),
+             tile_icons.override_for(prefs, key)),
+            "a removed location no other location covers kept a star, "
+            "comment or icon, so re-adding it is not a clean slate")
+
+    def test_a_refused_move_retires_nothing(self):
+        from amaze.core import keyed_store
+        prefs = self._nested(self.outer, self.inner)
+        self._annotate(prefs)
+        real = keyed_store.Store.rekey_stored
+
+        def refuse_comments(store, moves):
+            if store.spec.filename == "notes.json":
+                return keyed_store.Written(False, keyed_store.REASON_DENIED)
+            return real(store, moves)
+
+        with mock.patch.object(keyed_store.Store, "rekey_stored",
+                               refuse_comments):
+            self._remove(prefs, self.inner)
+
+        self.assertEqual(
+            (True, True, "activity"), self._shown(prefs, self.outer),
+            "a comment that could not move was retired anyway")
+
+    def test_a_key_spelled_as_a_path_moves_too(self):
+        from amaze.core import keyed_store, notes
+        prefs = self._nested(self.outer, self.inner)
+        spelled = hostos.storage_path_key(self.file)
+        stores = [keyed_store.open_store(spec, prefs) for spec in
+                  (locations_mod.FAVOURITES_SPEC, notes.SPEC, tile_icons.SPEC)]
+        stores[0]._table[test_support.FIXTURE_USER + "|" + spelled] = {
+            "favourite": True}
+        stores[1]._table["file:" + spelled] = {
+            "items": [{"t": "text", "text": "kept"}]}
+        stores[2]._table[spelled] = tile_icons.normalise(self.ICON)
+
+        self.assertTrue(locations_mod.rehome_covered(prefs, self.inner))
+
+        moved = ("loc:" + locations_mod.location_id(prefs, self.outer)
+                 + "/tex/plate.txt")
+        self.assertEqual(
+            [True, True, True],
+            [store.has(prefix + moved) for store, prefix in
+             zip(stores, ("", "file:", ""))],
+            "a path-spelled key the outer location covers stayed behind "
+            "for the retire")
+
+
 class CleanupPrunesThroughTheModelTest(unittest.TestCase):
     """Clean Library drops dead location pointers through the MODEL - the rows come straight out of prefs, so a bare prefs write changes the count with no structural signal (research.md ▸ A BARE layoutChanged.emit() SEGFAULTS H21 TOO); three locations with the live one BETWEEN the dead two, the setup a low-row-first removal fails on."""
 

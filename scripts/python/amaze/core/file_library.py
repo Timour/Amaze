@@ -173,6 +173,8 @@ class FileFolders(folders.FolderListModel):
             return
         path = self._folders()[row - 1]
         super().remove_folder(row)
+        if not locations.rehome_covered(self.preferences, path):
+            return    # a refused move retires nothing, so no file a remaining location lists loses a key
         keyed_store.retire_prefix(self.preferences, path)  # PER-LOCATION STATE DIES WITH THE POINTER, all of it in one call - path-keyed, id-keyed and the identity row alike: naming surfaces by hand left the colour and Show All Files behind, so re-registering brought back an amber row and a hidden-files setting the user never re-chose
         locations.touch()    # the engine edited the identity table outside the module's own doors
         sweep_folder_cache(  # ...and so do its cached thumbnails, comments and tile icons - removing a location clears everything, so re-adding is a clean slate (the UI text register - File (folders) - Remove); hip captures are the one exception, hand-framed and not regenerable, and which stores go is `survives_forget` on each spec, said once, never inferred from this method's lines
