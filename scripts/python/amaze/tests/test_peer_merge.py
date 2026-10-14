@@ -9,7 +9,7 @@ from unittest import mock
 
 from PySide6 import QtCore, QtWidgets
 
-from amaze.core import database
+from amaze.core import category, database
 from amaze.tests import test_support
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
@@ -271,6 +271,22 @@ class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
                          "our own recolour lost to a save that never "
                          "touched the colour")
 
+    def test_both_recolouring_one_name_keeps_ours_and_says_so(self):
+        self._write(self._coloured({"Wood": "#111111"}))
+        db = self._loaded()
+        db.set({"category_colors": {"Wood": "#444444"}})
+        self._their_colours({"Wood": "#222222"})
+
+        alerts = []
+        with mock.patch.object(database.debug, "alert",
+                               lambda message, **kw: alerts.append(message)):
+            self.assertTrue(db.save())
+
+        self.assertEqual(
+            ("#444444", 1), (self._colours_on_disk().get("Wood"), len(alerts)),
+            "both machines recoloured Wood: ours must stand AND the user "
+            "must be told the other colour was discarded")
+
     def test_our_uncolour_survives_their_unrelated_save(self):
         self._write(self._coloured({"Wood": "#111111"}))
         db = self._loaded()
@@ -483,6 +499,46 @@ class TheSidebarHearsWhatASaveMerged(unittest.TestCase):
     def test_a_category_removed_elsewhere_merged_by_an_asset_save(self):
         self._merged_by(self.panel.material_model.save,
                         lambda cats: cats.remove("usds"))
+
+
+class AColourTakenInIsPainted(unittest.TestCase):
+    """A colour set on another machine reaches the sidebar and the grid the moment a save takes it in."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.path = os.path.join(self.panel.prefs.dir, "library.json")
+        self.assertTrue(self.panel.material_model.save(),
+                        "premise: the first save failed")
+
+    def _told(self, model, role):
+        """Whether the views heard of `role` - a dataChanged naming it, or a reset."""
+        heard = []
+        model.dataChanged.connect(
+            lambda first, last, roles=None: heard.append(
+                not roles or role in roles))
+        model.modelReset.connect(lambda: heard.append(True))
+        return heard
+
+    def test_a_colour_set_elsewhere_is_painted_at_once(self):
+        sidebar, grid = self.panel.category_model, self.panel.material_model
+        told_sidebar = self._told(sidebar, category.SIDEBAR_COLOR_ROLE)
+        told_grid = self._told(grid, grid.CategoryColorRole)
+        with open(self.path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["category_colors"] = {"Karma_Mats": "#123456"}
+        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+
+        self.assertTrue(sidebar.save(), "premise: the sidebar save failed")
+
+        row = next(index for index, asset in enumerate(grid.assets)
+                   if list(asset.categories)[:1] == ["Karma_Mats"])
+        self.assertEqual(
+            ("#123456", "#123456", True, True),
+            (sidebar.color_of("Karma_Mats"), grid.category_color(row),
+             any(told_sidebar), any(told_grid)),
+            "the colour was taken in, but the sidebar and the grid were not "
+            "told, so it shows only on the next repaint")
 
 
 class TheBaselineIsWhatIsOnDisk(_Case):

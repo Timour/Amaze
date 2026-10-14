@@ -11,10 +11,7 @@ SIDEBAR_COUNT_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 40  # the ONLY decla
 SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's colour, for the sidebar's left-edge bar
 
 
-def display_name(stored: Any) -> str:
-    """The sidebar label for a STORED category - the one home for the leading-underscore strip, so what a row is sorted by cannot drift from what it reads."""
-    text = str(stored)
-    return text[1:] if text.startswith("_") else text
+display_name = database.category_label    # the sidebar label for a STORED category
 
 
 class Categories(QtCore.QAbstractListModel):
@@ -29,6 +26,7 @@ class Categories(QtCore.QAbstractListModel):
         self._data = database.load_survivable(db, self.preferences.dir)  # survivable: a sidecar that will not read must not take the panel down from here
         self._categories = self._data["categories"]
         self._shown = list(self._categories)    # what the views have been told about; `apply_refresh` compares against it, and starting empty made its FIRST call silent
+        self._colours_seen = db._colours_adopted    # colours a merge took in, as the views know them
         self.CatSortRole = QtCore.Qt.ItemDataRole.UserRole  # 256
         self._renderer_filter = ""  # lowercased; "" = no filter. Pushed in by the panel so counts agree with the grid
         self._count_cache = None  # category -> visible count, "_All" = total; dropped on every mutation path
@@ -117,6 +115,7 @@ class Categories(QtCore.QAbstractListModel):
             self._data = data  # the whole dict: counts and empty-category hiding read _data["assets"]
             self._categories = data["categories"]
             self._shown = list(self._categories)    # a switch has told the views everything already
+            self._colours_seen = db._colours_adopted
             self.drop_count_cache()
         finally:
             self.endResetModel()
@@ -133,8 +132,14 @@ class Categories(QtCore.QAbstractListModel):
 
     def apply_refresh(self, db) -> bool:
         """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
+        recoloured = db._colours_adopted != self._colours_seen
+        self._colours_seen = db._colours_adopted
         if list(self._categories) == self._shown:
-            return False
+            if recoloured and self._categories:
+                self.dataChanged.emit(
+                    self.index(0, 0), self.index(len(self._categories) - 1, 0),
+                    [SIDEBAR_COLOR_ROLE])
+            return recoloured
         self.beginResetModel()
         try:
             self._told_views()

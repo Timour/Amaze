@@ -506,10 +506,8 @@ class AssetSection(Section):
         if st is None:
             return
         st.categories.set_color(name, colour)
-        if st.model is not None and st.model.rowCount():    # the grid reads the colour through a role on the ASSET model, which shares the category model's data dict, so a repaint is all that is needed - role-scoped, because a roles-less emit over every row sends the list view into an O(rows) column re-measure that a colour can never change, which the panel's own tripwire logs as a "column re-measure storm"
-            st.model.dataChanged.emit(
-                st.model.index(0, 0), st.model.index(st.model.rowCount() - 1, 0),
-                [st.model.CategoryColorRole])
+        if st.model is not None:
+            st.model.repaint_category_colours()    # the grid reads the colour off the same document
 
     offers_preview_update = True
 

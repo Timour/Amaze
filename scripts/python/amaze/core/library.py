@@ -116,6 +116,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
         db = database.DatabaseConnector(self.DB_FILENAME)
         self._data = database.load_survivable(db, self.preferences.dir)
+        self._colours_seen = db._colours_adopted    # colours a merge took in, as the views know them
 
         self._assets = [self._asset_from_row(d)  # non-dict rows are SKIPPED, never allowed to abort the model: one junk row must not cost the whole library
                         for d in self._data["assets"]
@@ -188,6 +189,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             db = database.DatabaseConnector(self.DB_FILENAME)
             self._data = database.load_survivable(
                 db, self.preferences.dir, reload=True)
+            self._colours_seen = db._colours_adopted
             self._thumbsize = self.preferences.thumbsize
 
             self._assets = [
@@ -570,7 +572,18 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._adopt_rows(rows)
         self._adopt_fields(fields)
         self._drop_rows(gone)
-        return bool(rows or fields or gone)
+        recoloured = db._colours_adopted != self._colours_seen
+        self._colours_seen = db._colours_adopted
+        if recoloured:
+            self.repaint_category_colours()
+        return bool(rows or fields or gone or recoloured)
+
+    def repaint_category_colours(self) -> None:
+        """Repaint every tile's category band, role-scoped: a colour never moves a column width."""
+        if self.rowCount():
+            self.dataChanged.emit(
+                self.index(0, 0), self.index(self.rowCount() - 1, 0),
+                [self.CategoryColorRole])
 
     def _adopt_fields(self, fields: list) -> None:
         """Apply `(id, field, value)` a peer changed onto the records holding them, through the ONE row reader, and tell the views. The record OBJECT is kept - dialogs and delegates hold references to it, so its state is refreshed rather than the record replaced."""

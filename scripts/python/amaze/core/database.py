@@ -152,6 +152,12 @@ ASSET_FILE_OWNERS = ("library.json", "cops.json")
 ID_CLAIMING_DATABASES = ("library.json", "cops.json", "code.json")
 
 
+def category_label(stored) -> str:
+    """How a STORED category name reads to the user - the one home of the leading-underscore strip."""
+    text = str(stored)
+    return text[1:] if text.startswith("_") else text
+
+
 def row_id(row: dict) -> str:
     """The id a stored row claims, `mat_id` as the fallback spelling - the ONE home for reading a row's identity, shared with repair's survey."""
     return str(row.get("id", row.get("mat_id", "")))
@@ -352,6 +358,7 @@ class DatabaseConnector:
             inst._adopted = []
             inst._adopted_fields = []
             inst._dropped = []
+            inst._colours_adopted = 0    # a count, so every model on the file sees each one
 
             # `_forgotten` records explicit deletes because `_absorb_rows` can only keep rows; the version, format and write latches below are read by `save()` and reset by `reload_with_path`, so they are set plainly here, never left as getattr defaults.
             inst._forgotten = set()
@@ -862,17 +869,29 @@ class DatabaseConnector:
                 if value not in existing and value not in was:    # in the base and gone here: OUR removal
                     existing.append(value)
         theirs_colors = disk.get("category_colors")
-        if isinstance(theirs_colors, dict):    # per name, three ways: a name still as loaded takes theirs
+        if isinstance(theirs_colors, dict):    # per name, three ways ▸p/merge-needs-a-base
             ours_colors = self._data.setdefault("category_colors", {})
             was = self._loaded_containers.get("category_colors", {})
             for name in list(ours_colors) + [n for n in theirs_colors
                                              if n not in ours_colors]:
-                if ours_colors.get(name) != was.get(name):
-                    continue    # we recoloured or cleared it since the load: ours stands
+                mine, base = ours_colors.get(name), was.get(name)
+                theirs = theirs_colors.get(name)
+                if theirs in (mine, base):
+                    continue    # nothing new on their side
+                if mine != base:
+                    debug.event("database", "category colour collision - "
+                                "this session's kept", file=self._filename,
+                                category=name)
+                    debug.alert(
+                        messages.EDIT_CONFLICT_KEPT_YOURS
+                        % category_label(name),
+                        key="colour-conflict-%s-%s" % (self._filename, name))
+                    continue
                 if name in theirs_colors:
-                    ours_colors[name] = theirs_colors[name]
+                    ours_colors[name] = theirs
                 else:
                     ours_colors.pop(name, None)    # their removal
+                self._colours_adopted += 1
         for key, value in disk.items():
             if key not in self._data and key not in RETIRED_KEYS:
                 self._data[key] = value
