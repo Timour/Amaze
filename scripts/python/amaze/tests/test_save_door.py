@@ -16,7 +16,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.dialogs import save_dialog  # noqa: E402
+from amaze.dialogs import code_dialog, save_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -220,6 +220,78 @@ class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
         self.assertEqual([messages.RESTART_TO_FINISH_UPDATE], said)
         self.assertFalse(node.isSelected(),
                          "a refused save took the user's selection")
+
+
+class AnUnderscoredCategoryKeepsItsStoredName(unittest.TestCase):
+    """`_WIP` reads WIP in every list, and a save files under `_WIP` without minting another."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.categories = self.panel.code_category_model
+        self.categories.check_add_category("_WIP")
+        self.panel.section_tabs.setChecked("code")
+        QtWidgets.QApplication.processEvents()
+        self.before = self.categories.rowCount()
+
+    def _save(self, pick=""):
+        """A real D09 for a wrangle, choosing the row labelled `pick` when given."""
+        seen = {}
+
+        def fake_exec(dialog):
+            combo = dialog.combo_cats
+            seen["labels"] = [combo.itemText(i) for i in range(combo.count())]
+            if pick:
+                combo.setCurrentIndex(combo.findText(pick))
+            seen["shown"] = combo.currentText()
+            dialog._on_accept()
+            return 1
+
+        wrangle = _wrangle(self)
+        with mock.patch.object(save_dialog.SaveDialog, "exec", fake_exec):
+            self.panel._save_new([wrangle], "code", wrangle)
+        return seen
+
+    def _assert_filed_under_the_stored_name(self, asset):
+        self.assertEqual(["_WIP"], list(asset.categories),
+                         "the asset was filed under a name the sidebar "
+                         "does not hold")
+        self.assertEqual(self.before, self.categories.rowCount(),
+                         "a second category that also reads WIP was made")
+
+    def test_picking_WIP_files_under_WIP(self):
+        seen = self._save(pick="WIP")
+        self.assertIn("WIP", seen["labels"])
+        self.assertNotIn("_WIP", seen["labels"],
+                         "the list shows the stored spelling")
+        self._assert_filed_under_the_stored_name(
+            self.panel.code_model.assets[-1])
+
+    def test_standing_on_WIP_pre_selects_it(self):
+        self.assertTrue(self.panel._stand_on_category("WIP"),
+                        "premise: no row reads WIP")
+        seen = self._save()
+        self.assertEqual("WIP", seen["shown"],
+                         "standing on WIP opened the save on another row")
+        self._assert_filed_under_the_stored_name(
+            self.panel.code_model.assets[-1])
+
+    def test_editing_a_WIP_snippet_leaves_it_there(self):
+        code = self.panel.code_model
+        row = next(i for i, asset in enumerate(code.assets)
+                   if str(asset.code or "").strip())
+        self.assertTrue(code.set_tile_category(row, "_WIP"))
+        seen = {}
+
+        def accepting(dialog):
+            seen["shown"] = dialog._combo_category.currentText()
+            dialog._on_accept()
+            return 1
+
+        with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
+            self.panel.sections["code"]._edit_code_row(row)
+        self.assertEqual("WIP", seen["shown"],
+                         "the editor opened the snippet on another row")
+        self._assert_filed_under_the_stored_name(code.assets[row])
 
 
 if __name__ == "__main__":

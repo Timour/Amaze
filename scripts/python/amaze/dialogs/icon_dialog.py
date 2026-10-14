@@ -100,9 +100,8 @@ class IconDialog(base_dialog.AssetDialog):
         else:
             self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
             self.category_combo.setFixedHeight(field_h)
-            for name in self._categories:
-                self.category_combo.addItem(name)
-            self.category_combo.setCurrentText(self._tile_category)
+            base_dialog.fill_categories(self.category_combo,
+                                        self._categories, self._tile_category)
             self.category_combo.setToolTip(ui_helpers.tooltip_text(
                 tooltips.CUSTOMIZE_CATEGORY))
             form.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)
@@ -400,9 +399,9 @@ class IconDialog(base_dialog.AssetDialog):
         """On any accepting close: the category to move to, or None when the field is absent or unchanged. A BLANK is not an answer - unlike tags there is no such thing as no category - so it is ignored."""
         if self.category_combo is None:
             return
-        text = self.category_combo.currentText().strip()
-        if text and text != (self._tile_category or "").strip():
-            self.new_category = text
+        chosen = base_dialog.chosen_category(self.category_combo)    # STORED, never the label
+        if chosen and chosen != (self._tile_category or "").strip():
+            self.new_category = chosen
 
     def _harvest(self) -> None:
         """Everything a commit writes: the chosen face, and the name, tags and category."""

@@ -415,6 +415,29 @@ class DialogTest(unittest.TestCase):
         dialog = self._dialog()
         self.assertIsNone(dialog.category_combo)
 
+    def test_a_stored_underscore_reads_as_its_label(self):
+        """`_WIP` shows WIP and opens selected; a move to it reports the stored name."""
+        staying = icon_dialog.IconDialog(
+            None, categories=["Metal", "_WIP"], tile_category="_WIP")
+        self.addCleanup(staying.deleteLater)
+        combo = staying.category_combo
+        self.assertEqual(["Metal", "WIP"],
+                         [combo.itemText(i) for i in range(combo.count())])
+        self.assertEqual("WIP", combo.currentText(),
+                         "the tile's own category is not the one shown")
+        staying.accept_button.click()
+        self.assertIsNone(staying.new_category,
+                          "an untouched field moved the tile")
+
+        moving = icon_dialog.IconDialog(
+            None, categories=["Metal", "_WIP"], tile_category="Metal")
+        self.addCleanup(moving.deleteLater)
+        moving.category_combo.setCurrentIndex(
+            moving.category_combo.findText("WIP"))
+        moving.accept_button.click()
+        self.assertEqual("_WIP", moving.new_category,
+                         "the move names a category nothing stores")
+
     def test_accept_returns_the_choice(self):
         dialog = self._dialog({"name": "box", "bg": "#ef8878"})
         dialog._choose("layers")

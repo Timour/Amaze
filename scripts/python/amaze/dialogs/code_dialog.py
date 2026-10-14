@@ -169,10 +169,8 @@ class CodeDialog(base_dialog.AssetDialog):
         left.addRow("Language", self._combo_lang)
 
         self._combo_category = ui_helpers.DesignedComboBox()   # a PLAIN dropdown like Language beside it (the design's rule since 2026-08-30) - the sidebar's Add Category mints new ones
-        for item in categories:
-            self._combo_category.addItem(item)
-        self._combo_category.setCurrentText(
-            category or (categories[0] if categories else ""))
+        base_dialog.fill_categories(self._combo_category, categories,
+                                    category)    # unmatched: the first row
         right.addRow("Category", self._combo_category)
 
         self._line_tags = QtWidgets.QLineEdit(tags)
@@ -209,7 +207,7 @@ class CodeDialog(base_dialog.AssetDialog):
     def _on_accept(self) -> None:
         self.name = self._line_name.text().strip()
         self.language = self._combo_lang.currentText().strip()
-        self.category = self._combo_category.currentText().strip()
+        self.category = base_dialog.chosen_category(self._combo_category)
         self.tags = self._line_tags.text().strip()
         self.code = self._editor.toPlainText()
         if not self.code.strip():

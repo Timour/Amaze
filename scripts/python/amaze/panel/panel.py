@@ -1285,16 +1285,16 @@ class AmazePanel(QtWidgets.QWidget):
 
     @staticmethod
     def _category_names_from(model) -> list[str]:
-        """ALL category names from a Categories model, empty ones included, excluding the 'All' pseudo-category - the one implementation behind all three sections' getters."""
+        """Every STORED category name, empty ones in and All out, sorted by the label a row shows."""
         names = []
         if not model:
             return names
         for elem in range(model.rowCount()):    # pass the SOURCE model, never the sidebar proxy: the proxy hides empty categories, and every ASSIGNMENT surface (the save dialog, the Edit Info dialog's Category dropdown) must still offer the complete list
             cidx = model.index(elem, 0)
-            name = model.data(cidx, QtCore.Qt.ItemDataRole.DisplayRole)
-            if name and name != "All":
-                names.append(name)
-        return sorted(names, key=str.lower)
+            name = model.data(cidx, model.CatSortRole)    # STORED: "_WIP" displays as WIP
+            if name and name not in ("All", "_All"):
+                names.append(str(name))
+        return sorted(names, key=lambda name: category.display_name(name).lower())
 
     def get_category_names(self) -> list[str]:
         return self._category_names_from(self.category_model)

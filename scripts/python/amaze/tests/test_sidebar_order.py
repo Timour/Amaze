@@ -351,16 +351,38 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
             self.flat_source)
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
+        """Alphabetical by the label a row shows, sorted in the ONE category-names home."""
+        from amaze.panel.panel import AmazePanel
+
+        class _Stored:    # the three calls the home makes of a Categories model
+            CatSortRole = 256
+
+            def __init__(self, names):
+                self.names = names
+
+            def rowCount(self):
+                return len(self.names)
+
+            def index(self, row, _column):
+                return row
+
+            def data(self, row, _role):
+                return self.names[row]
+
+        self.assertEqual(
+            ["Karma_Mats", "usds", "_WIP"],
+            AmazePanel._category_names_from(
+                _Stored(["_All", "usds", "_WIP", "Karma_Mats"])),
+            "the dropdown is not alphabetical by label - `_WIP` reads "
+            "WIP and sorts there - or it offers All as a category")
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         with open(os.path.join(root, "panel", "sections.py"),
                   encoding="utf-8") as handle:
-            sections_flat = "".join(handle.read().split())    # the Material section offers D09 its list
+            sections_flat = "".join(handle.read().split())
         self.assertIn(
-            "sorted(panel.get_category_names(),key=str.lower)",
-            sections_flat,
-            "the dropdown's alphabetical sort was removed - that one "
-            "is deliberate (typing against an alphabetical list), and "
-            "the list must come from the ONE category-names home")
+            "returnpanel.get_category_names(),", sections_flat,
+            "the Material section's list no longer comes straight from "
+            "the ONE category-names home")
 
 
 class ReorderContractTest(unittest.TestCase):

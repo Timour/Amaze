@@ -724,8 +724,7 @@ class MaterialSection(AssetSection):
 
     def save_categories(self) -> tuple:
         panel = self.panel
-        return (sorted(panel.get_category_names(), key=str.lower),
-                panel._selected_category_name())
+        return panel.get_category_names(), panel._selected_category_name()
 
     @classmethod
     def save_rank(cls, nodes) -> int:

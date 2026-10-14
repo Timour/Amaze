@@ -56,7 +56,8 @@ class SaveDialog(base_dialog.AssetDialog):
         self.line_name.setEnabled(name_enabled)
         self.line_name.setToolTip(ui_helpers.tooltip_text(tooltips.SAVE_NAME))
 
-        self.combo_cats = self.add_combo("Category", cat_list, default_cat)   # a PLAIN dropdown (the design's rule since 2026-08-30): new categories are minted at the sidebar's Add Category door, never typed here
+        self.combo_cats = self.add_combo("Category", ())   # PLAIN: new ones come from the sidebar
+        base_dialog.fill_categories(self.combo_cats, cat_list, default_cat)
         self.combo_cats.setInsertPolicy(
             QtWidgets.QComboBox.InsertPolicy.InsertAtTop)
 
@@ -81,15 +82,12 @@ class SaveDialog(base_dialog.AssetDialog):
         if self._categories_for is None:
             return
         categories, default = self._categories_for(self.section)
-        self.combo_cats.clear()
-        self.combo_cats.addItems(list(categories))
-        if default:
-            self.combo_cats.setCurrentText(default)
+        base_dialog.fill_categories(self.combo_cats, categories, default)
 
     def _on_accept(self) -> None:
         if self.combo_language.isEnabled():
             self.language = self.combo_language.currentText()
-        self.categories = self.combo_cats.currentText()
+        self.categories = base_dialog.chosen_category(self.combo_cats)
         self.tags = self.line_tags.text()
         if self.line_name.isEnabled():    # a greyed field's text is nobody's answer
             self.name = self.line_name.text().strip()
