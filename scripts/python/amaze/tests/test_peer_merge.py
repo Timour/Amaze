@@ -399,6 +399,22 @@ class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
             "still held the row")
         self.assertNotIn(victim, [str(a.mat_id) for a in self.model.assets])
 
+    def test_a_deletion_elsewhere_leaves_the_grid_with_no_asset_save(self):
+        self.assertTrue(self.model.save(), "premise: the first save failed")
+        document = self._disk()
+        victim = str(document["assets"][2]["id"])
+        document["assets"] = [row for row in document["assets"]
+                              if str(row.get("id")) != victim]
+        self._write(document)
+
+        self.assertTrue(self.panel.category_model.save(),
+                        "premise: the sidebar save was refused")
+
+        self.assertNotIn(
+            victim, [str(a.mat_id) for a in self.model.assets],
+            "the sidebar's save took in the deletion, but the grid keeps "
+            "the row until the next asset save or refresh")
+
     def test_a_peer_rename_is_not_written_back(self):
         self.assertTrue(self.model.save(), "premise: the first save failed")
         target = next(a for a in self.model.assets if a.name)

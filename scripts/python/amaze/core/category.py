@@ -127,7 +127,9 @@ class Categories(QtCore.QAbstractListModel):
         if not db.serves(self.preferences.dir):
             return False
         db.refresh()
-        return self.apply_refresh(db)
+        from amaze.core import model_registry
+        return any(model is self for model in
+                   model_registry.apply_merged(db, also=self))
 
     def apply_refresh(self, db) -> bool:
         """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
@@ -311,7 +313,8 @@ class Categories(QtCore.QAbstractListModel):
         db.set(data)
         stored = db.save()  # the connector's answer, never an unconditional True
         self.drop_count_cache()
-        self.apply_refresh(db)    # a merge inside the save moved this list unseen
+        from amaze.core import model_registry
+        model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
         return bool(stored)
 
 
