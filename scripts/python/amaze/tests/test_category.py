@@ -289,5 +289,51 @@ class NormalizeBracketsItsResetTest(unittest.TestCase):
             "next save erases whatever a peer machine added")
 
 
+class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
+    """A refresh resets the sidebar for a change made elsewhere, never for one of its own edits."""
+
+    def setUp(self):
+        from amaze.core import database
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.prefs = test_support.fixture_prefs(self)
+        self.model = category.Categories(preferences=self.prefs)
+        self.db = database.DatabaseConnector(category.Categories.DB_FILENAME)
+        self.resets = []
+        self.model.modelReset.connect(lambda: self.resets.append(True))
+
+    def _resets_on_refresh_after(self, edit):
+        edit()
+        del self.resets[:]
+        self.model.apply_refresh(self.db)
+        return len(self.resets)
+
+    def test_a_category_added_here_keeps_the_selection(self):
+        from PySide6 import QtCore
+        selection = QtCore.QItemSelectionModel(self.model)
+        selection.select(self.model.index(1, 0),
+                         QtCore.QItemSelectionModel.SelectionFlag.Select)
+        resets = self._resets_on_refresh_after(
+            lambda: self.model.check_add_category("Added Here"))
+        self.assertEqual(
+            (0, True), (resets, selection.isSelected(self.model.index(1, 0))),
+            "the refresh read the sidebar's own edit as a merge, reset it "
+            "and dropped the selection")
+
+    def test_no_local_edit_is_read_as_a_merge(self):
+        model = self.model
+        for door, edit in (
+                ("add", lambda: model.check_add_category("Zeta, Alpha")),
+                ("move", lambda: model.move_category(4, 1)),
+                ("rename", lambda: model.rename_category("usds", "USD")),
+                ("remove", lambda: model.remove_category("Alpha")),
+                ("sort", lambda: (model.check_add_category("Aardvark"),
+                                  model.sort_categories()))):
+            with self.subTest(door=door):
+                self.assertEqual(
+                    0, self._resets_on_refresh_after(edit),
+                    "the refresh reset the sidebar after a local %s" % door)
+
+
 if __name__ == "__main__":
     unittest.main()

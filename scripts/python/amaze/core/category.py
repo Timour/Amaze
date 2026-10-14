@@ -135,11 +135,15 @@ class Categories(QtCore.QAbstractListModel):
             return False
         self.beginResetModel()
         try:
-            self._shown = list(self._categories)
+            self._told_views()
             self.drop_count_cache()
         finally:
             self.endResetModel()
         return True
+
+    def _told_views(self) -> None:
+        """The views now know these rows: every local door ends here, so only a merge resets."""
+        self._shown = list(self._categories)
 
     def remove_category(self, cat: str) -> None:
         """Remove a category from the library and from every asset; a no-op for a name that is not present."""
@@ -151,6 +155,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories.pop(row)
         finally:
             self.endRemoveRows()
+        self._told_views()
         self._recolor(cat, "")
         self.save()
 
@@ -159,6 +164,9 @@ class Categories(QtCore.QAbstractListModel):
         for count, current in enumerate(self._categories):
             if current == old:
                 self._categories[count] = new
+                index = self.index(count, 0)
+                self.dataChanged.emit(index, index)
+        self._told_views()
         self._recolor(old, new)
         self.save()
 
@@ -180,6 +188,7 @@ class Categories(QtCore.QAbstractListModel):
                 self._categories[:] = cleaned  # IN PLACE: this list aliases the connector's document; a rebind detaches it
             finally:
                 self.endResetModel()
+            self._told_views()
             self.save()
         return changed
 
@@ -199,6 +208,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories.insert(to_row, self._categories.pop(from_row))  # IN PLACE, never a rebuild
         finally:
             self.endMoveRows()
+        self._told_views()
         return True
 
     def sort_categories(self) -> None:
@@ -225,6 +235,7 @@ class Categories(QtCore.QAbstractListModel):
             self._categories[:] = list(snapshot)
         finally:
             self.endResetModel()
+        self._told_views()
 
     def _recolor(self, old_name: str, new_name: str) -> None:
         """Carry a colour across a rename, or drop it on a removal (empty new_name) - an orphan key would silently reattach if the name came back."""
@@ -249,6 +260,7 @@ class Categories(QtCore.QAbstractListModel):
                     self.endInsertRows()
                 changed = True
         if changed:
+            self._told_views()
             self.save()
 
     def colors(self) -> dict:
