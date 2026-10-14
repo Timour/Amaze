@@ -14,6 +14,7 @@ from amaze.render.material_converter import (    # the forward converter's table
     ConversionReport,
     OPENPBR_MATERIAL_PARM_MAP,
     STANDARD_MATERIAL_PARM_MAP,
+    TANGENT_SPACE_NORMAL,
     _COLOUR_INPUTS,
     _copy_constant_parm,
     _named_inputs,
@@ -294,7 +295,7 @@ def convert_normalmap(node: hou.Node, builder: hou.Node, report: ConversionRepor
     """mtlxnormalmap -> RS Bump Map in tangent-space-normal mode, the map on `input`; `scale` crosses over, which the forward converter copies only in this mode too. ▸r/redshift-nodes"""
     bump = builder.createNode("redshift::BumpMap")
     bump.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
-    bump.parm("inputType").set("1")
+    bump.parm("inputType").set(TANGENT_SPACE_NORMAL)
     _copy_constant_parm(node, "scale", bump, "scale")
     feeding = _named_inputs(node).get("in")
     if feeding is None:

@@ -339,6 +339,45 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
 @unittest.skipUnless(_redshift_available(),
                      "the Redshift plugin is not loaded")
+class ATangentSpaceBumpKeepsItsStrength(unittest.TestCase):
+    """Convert to Karma on a `redshift::BumpMap`, whose `inputType` menu answers STRING tokens."""
+
+    def setUp(self):
+        from amaze.render import material_converter
+        self.converter = material_converter
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        self.source = parent.createNode("redshift_vopnet", "bump_source")
+        self.addCleanup(self.source.destroy)
+        with hou.undos.disabler():
+            scratch = hou.node("/obj").createNode("matnet")
+        self.addCleanup(scratch.destroy)
+        self.dest = nodes.make_karma_builder(scratch, "bump_dest")
+
+    def _converted(self, input_type, scale):
+        bump = self.source.createNode("redshift::BumpMap")
+        bump.parm("inputType").set(input_type)
+        bump.parm("scale").set(scale)
+        sampler = self.source.createNode("redshift::TextureSampler")
+        sampler.parm("tex0").set(NORMAL)
+        bump.setNamedInput("input", sampler, 0)
+        report = self.converter.ConversionReport("bump")
+        return self.converter.convert_bump_map(bump, self.dest, report)
+
+    def test_a_tangent_space_normal_map_carries_its_strength(self):
+        normalmap = self._converted("1", 0.5)    # the plugin's own token for Tangent-Space Normal
+        self.assertAlmostEqual(
+            0.5, normalmap.parm("scale").eval(), places=5,
+            msg="the normal map's strength did not reach `mtlxnormalmap`")
+
+    def test_a_height_field_scale_stays_behind(self):
+        normalmap = self._converted("0", 0.001)
+        self.assertAlmostEqual(
+            1.0, normalmap.parm("scale").eval(), places=5,
+            msg="a height-field scale flattened the normal map")
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
 class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
     """Convert to Karma on a `redshift::MaterialBlender` whose base input is empty."""
 

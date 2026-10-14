@@ -245,6 +245,8 @@ def _copy_constant_parm(
 
 _UV_SCALE_TAG = "amaze_uv_scale"
 
+TANGENT_SPACE_NORMAL = "1"    # redshift::BumpMap `inputType` is a STRING menu, `0` height, `1` this
+
 
 def _named_inputs(node: hou.Node) -> dict:
     """{input_name: connected_node} for a VOP node, via the None-padded inputs()/inputNames() positional zip - padding confirmed against H21's own HOM docs; inputConnections() gave back nonsense for these node types and is avoided on purpose."""
@@ -422,7 +424,8 @@ def convert_bump_map(
     if rs_node.type().name() == "redshift::BumpMap":
         tex_src = _named_inputs(rs_node).get("input")
         input_type = rs_node.parm("inputType")
-        if input_type is not None and input_type.eval() == 1:    # scale copies ONLY when inputType says tangent-space normal - a height-style scale like 0.001 on a normal-map strength flattens it to nothing
+        if (input_type is not None
+                and input_type.evalAsString() == TANGENT_SPACE_NORMAL):    # a height scale like 0.001 flattens a normal map
             _copy_constant_parm(rs_node, "scale", nm, "scale")
     else:
         tex_src = rs_node    # something else wired straight into the output's Bump Map input
