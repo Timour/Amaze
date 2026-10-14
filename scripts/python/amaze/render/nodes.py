@@ -1580,36 +1580,32 @@ class NodeHandler:
             if ui is not None:
                 ui.displayMessage(messages.OCIO_NOT_SET)
             return False
-        val = False
+        saver = self._saver_for(node)
+        if saver is None:
+            if ui is not None:
+                ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
+            return False
+        try:
+            with hou.InterruptableOperation(
+                "Rendering", "Performing Tasks", open_interrupt_dialog=True
+            ):
+                return saver(node, asset_id, update)
+        finally:
+            self._discard_pending_cop_promote()    # a save that never reached the pair keeps no companion
 
+    def _saver_for(self, node: hou.Node):
+        """The save path this node's renderer takes, or None for a node that is no material."""
         if "Redshift" in self._renderer:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                val = self.save_node_redshift(node, asset_id, update)
-        elif "Octane" in self._renderer:
-            with hou.InterruptableOperation(
-                "Rendering", "Performing Tasks", open_interrupt_dialog=True
-            ):
-                val = self.save_node_octane(node, asset_id, update)
-        elif material.is_karma_renderer(self._renderer):
-            if (
-                node.type().name() == "collect"
-                or "mtlxopen_pbr_surface" in node.type().name()
-                or "mtlxstandard_surface" in node.type().name()
-            ):
-                with hou.InterruptableOperation(
-                    "Rendering", "Performing Tasks", open_interrupt_dialog=True
-                ):
-                    val = self.save_node_collect(node, asset_id, update)
-            else:
-                with hou.InterruptableOperation(
-                    "Rendering", "Performing Tasks", open_interrupt_dialog=True
-                ):
-                    val = self.save_node_mtlx(node, asset_id, update)
-        elif ui is not None:
-            ui.displayMessage(messages.NODE_IS_NOT_A_MATERIAL_BUILDER)
-        return val
+            return self.save_node_redshift
+        if "Octane" in self._renderer:
+            return self.save_node_octane
+        if not material.is_karma_renderer(self._renderer):
+            return None
+        kind = node.type().name()
+        if (kind == "collect" or "mtlxopen_pbr_surface" in kind
+                or "mtlxstandard_surface" in kind):
+            return self.save_node_collect
+        return self.save_node_mtlx
 
     def save_node_collect(self, node: hou.Node, asset_id: str, update: bool) -> bool:
         """Save a collect node's network to disk; the library is not touched."""

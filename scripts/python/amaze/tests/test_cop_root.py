@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -16,6 +17,7 @@ sys.path.insert(
 
 import hou  # noqa: E402
 
+from amaze.core import material  # noqa: E402
 from amaze.render import nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - redirects the log
 
@@ -274,6 +276,48 @@ class AnImportCarriesNoOneElsesStamp(unittest.TestCase):
 
         self.assertEqual(1, cleared)
         self.assertIsNone(stamped.userData("assetlib_id"))
+
+
+class AFailedSaveLeavesNoCompanionScratch(unittest.TestCase):
+    """The companion is written to a scratch file first; a save that fails before the pair keeps none."""
+
+    ASSET = "scratchprobe"
+
+    def setUp(self):
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        with hou.undos.disabler():
+            cops = hou.node("/obj").createNode("copnet", "scratch_probe_cops")
+            cops.createNode("constant", "plate")
+        self.addCleanup(cops.destroy)
+        self.builder = hou.node("/mat").createNode(
+            "subnet", "scratch_probe_mat")
+        self.addCleanup(self.builder.destroy)
+        image = self.builder.createNode("mtlximage")
+        image.parm("file").set("op:/obj/scratch_probe_cops/plate")
+        self.builder.createNode("mtlxstandard_surface")
+
+    def _scratches(self):
+        folder = os.path.dirname(material.payload_path(
+            self.prefs, self.ASSET, self.prefs.ext))
+        return [name for name in os.listdir(folder)
+                if name.startswith(self.ASSET + "_cop")]
+
+    def test_a_raising_adoption_leaves_no_companion_scratch(self):
+        handler = nodes.NodeHandler(self.prefs)
+        handler._renderer = "Karma"
+        with mock.patch.object(nodes.texstore, "adopt",
+                               side_effect=OSError("disk gone")):
+            with self.assertRaises(OSError):
+                handler.save_node(self.builder, self.ASSET, False)
+        self.assertEqual(
+            [], self._scratches(),
+            "the companion's scratch file outlived a save that never "
+            "reached the pair, and nothing else will ever remove it")
+        self.assertIsNone(handler._pending_cop_promote,
+                          "the handler still holds the dead companion")
 
 
 if __name__ == "__main__":
