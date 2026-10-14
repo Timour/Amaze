@@ -2162,6 +2162,29 @@ class AFailedLibrarySwitchRollsBackTest(_Case):
         self.assertEqual(6, len(self._on_disk()["assets"]))
 
 
+class AnOpenThatFailsElsewhereDoesNotLatchThisLibrary(_Case):
+    """A model built for library B while the connection serves A: B's unreadable file must not latch A."""
+
+    def test_the_connection_serves_the_library_that_would_not_read(self):
+        self._write(self._document())
+        db, _ = self._load()
+        other = tempfile.mkdtemp(prefix="amaze_dbhard_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        with open(os.path.join(other, self.FILENAME), "w",
+                  encoding="utf-8") as handle:
+            handle.write('{"assets": [')
+
+        served = database.load_survivable(db, other + os.sep)
+
+        self.assertTrue(
+            db.serves(other + os.sep),
+            "the connection stayed on the first library, latched for a "
+            "file it never read, so that library refuses every save")
+        self.assertIs(served, db._data,
+                      "the model and the connection hold different documents")
+        self.assertFalse(db.save(), "a save over the unread file went ahead")
+
+
 class TheMergeMustNotDetachAModelsListTest(_Case):
     """The models alias the connector's lists, so rebinding detaches them."""
 
