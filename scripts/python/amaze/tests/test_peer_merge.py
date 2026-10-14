@@ -147,6 +147,23 @@ class TheAuditsNamedScenarios(_Case):
             "Metal", self._on_disk()["categories"],
             "a category the other machine removed was put back by our save")
 
+    def test_2d_a_category_this_machine_removed_stays_removed(self):
+        """A rename is a removal too: the old name must not come back with an unrelated merge."""
+        document = self._document()
+        document["categories"] = ["_All", "Wood", "Metal"]
+        self._write(document)
+        db = self._loaded()
+        self._peer_writes(name="nudged elsewhere")    # so the save merges
+
+        db.set({"assets": [dict(db._data["assets"][0])],
+                "categories": ["_All", "Wood", "Steel"], "tags": []})
+        self.assertTrue(db.save())
+
+        self.assertEqual(
+            ["_All", "Wood", "Steel"], self._on_disk()["categories"],
+            "a category renamed here was put back by a merge that never "
+            "touched it")
+
     def test_2d_a_category_each_machine_added_survives(self):
         self._write(self._document())
         db = self._loaded()

@@ -859,7 +859,7 @@ class DatabaseConnector:
                 if value in was and value not in theirs:
                     existing.remove(value)
             for value in theirs:
-                if value not in existing:
+                if value not in existing and value not in was:    # in the base and gone here: OUR removal
                     existing.append(value)
         theirs_colors = disk.get("category_colors")
         if isinstance(theirs_colors, dict):    # per name, three ways: a name still as loaded takes theirs
