@@ -241,6 +241,41 @@ class TestRoundTrip(unittest.TestCase):
             1, len(matnets),
             "three imports left %d matnets in one geo" % len(matnets))
 
+    def _failing_lop_import(self, stage):
+        """Import a Karma asset whose `.mat` is damaged into `stage`; answers the import's ok."""
+        asset = next(a for a in self.model.assets
+                     if material.is_karma_renderer(a.renderer))
+        payload = material.payload_path(self.prefs, asset.mat_id,
+                                        self.prefs.ext)
+        with open(payload, "w", encoding="utf-8") as handle:
+            handle.write("not an items file")
+        ok, _reason, _created = nodes.NodeHandler(
+            self.prefs).import_asset_to_scene(
+                asset, target="lop", context_node=stage)
+        return ok
+
+    def _libraries(self, stage):
+        return [c.name() for c in stage.children()
+                if c.type().name() == "materiallibrary"]
+
+    def test_a_failed_import_takes_back_the_library_it_made(self):
+        stage = hou.node("/obj").createNode("lopnet", "failed_import_probe")
+        self.addCleanup(stage.destroy)
+        self.assertFalse(self._failing_lop_import(stage),
+                         "premise: a damaged .mat must fail the import")
+        self.assertEqual(
+            [], self._libraries(stage),
+            "the failed import left the empty materiallibrary it created")
+
+    def test_a_failed_import_keeps_a_library_that_was_there(self):
+        stage = hou.node("/obj").createNode("lopnet", "kept_library_probe")
+        self.addCleanup(stage.destroy)
+        stage.createNode("materiallibrary", "theirs")
+        self.assertFalse(self._failing_lop_import(stage),
+                         "premise: a damaged .mat must fail the import")
+        self.assertEqual(["theirs"], self._libraries(stage),
+                         "a failed import removed a library it only reused")
+
     def test_the_import_is_one_undo_entry(self):
         """Derived from the SOURCE, because driving it needs a live panel: the loop must sit inside a hou.undos.group, like every other import entry point. ▸p/source-derived-tests"""
         import re

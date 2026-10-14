@@ -822,9 +822,24 @@ class NodeHandler:
             self._hou_parent.destroy()
             if not completed:
                 self._undo_cop_companion()
+                self._drop_created_container()
 
         self._verify_import_registration(mat)
         return (True, "")
+
+    def _drop_created_container(self) -> None:
+        """Take back the library or matnet THIS import made, only while it is still empty."""
+        container = self._import_path
+        if container is None or self._use_existing_node:
+            return
+        try:
+            if container.children():
+                return
+            container.destroy()
+            self._import_path = None
+        except hou.Error as exc:
+            debug.event("import", "could not undo the import container",
+                        error=str(exc))
 
     def _verify_import_registration(self, mat) -> None:
         """Will it SHOW as a material? Parms only. ▸r/matlib-entries"""
@@ -909,6 +924,7 @@ class NodeHandler:
                 + "context. Use Copy To /mat instead.",
             )
 
+        self._use_existing_node = False    # each branch says whether it reused, for THIS import
         if world == "lop":
             self._set_lop_import_path()
         elif world == "sop":
