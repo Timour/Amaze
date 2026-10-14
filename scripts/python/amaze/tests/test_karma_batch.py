@@ -2,6 +2,7 @@
 
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -79,13 +80,39 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):  # the scaffold is a fu
                 net.destroy.assert_not_called()
         net.destroy.assert_called_once()
 
-    def test_no_scene_viewer_falls_back_instead_of_failing(self):
-        """build_karma_scaffold answers None with no Scene Viewer to take OCIO display/view from; the batch must still render, each material building its own."""
-        with mock.patch.object(preview, "build_karma_scaffold",
-                               lambda preferences: None):
-            with thumbs.ThumbNailRenderer.karma_batch(
-                    test_support.fixture_prefs(self)) as scaffold:
-                self.assertIsNone(scaffold)
+
+class WithNoSceneViewerNothingIsImported(unittest.TestCase):
+    """Every renderer takes OCIO from a Scene Viewer, so with none open nothing in a batch renders."""
+
+    def test_two_rows_import_nothing_and_say_so_once(self):
+        from amaze import messages
+        from amaze.core import library
+        from amaze.render import nodes
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library.MaterialLibrary(
+            preferences=test_support.fixture_prefs(self))
+        shown, imported = [], []
+        desktop = types.SimpleNamespace(paneTabOfType=lambda kind: None)
+        ui = types.SimpleNamespace(
+            curDesktop=lambda: desktop, paneTabs=lambda: (),
+            displayMessage=lambda text, *a, **k: shown.append(text))
+        real = nodes.NodeHandler.import_asset_to_scene
+
+        def spy(handler, mat, *args, **kwargs):
+            imported.append(mat.name)
+            return real(handler, mat, *args, **kwargs)
+
+        with mock.patch.object(hou, "ui", ui, create=True), \
+                mock.patch.object(nodes.NodeHandler,
+                                  "import_asset_to_scene", spy):
+            model.render_thumbnails([0, 1])
+        self.assertEqual(
+            [], imported,
+            "Update Preview imported every row before finding that "
+            "nothing can render without a Scene Viewer")
+        self.assertEqual([messages.NO_SCENE_VIEWER_FOR_THUMBNAIL], shown,
+                         "the batch did not say why, exactly once")
 
 
 if __name__ == "__main__":

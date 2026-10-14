@@ -1,6 +1,7 @@
 """The room a material thumbnail renders in: lights, camera, output."""
 
 import hou
+from amaze import messages
 from amaze.core import debug
 from amaze.preview import shaderball_scene
 
@@ -85,10 +86,7 @@ class ThumbNailScene:
 
         ocio = ocio_from_viewer()
         if not ocio:
-            raise RuntimeError(
-                "Amaze: no Scene Viewer pane is open - cannot build a "
-                "thumbnail scene. Open a Scene Viewer and try again."
-            )
+            raise RuntimeError(messages.NO_SCENE_VIEWER_FOR_THUMBNAIL)
 
         self._user_selection = hou.selectedNodes()
 

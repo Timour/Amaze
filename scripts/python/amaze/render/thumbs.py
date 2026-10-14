@@ -8,9 +8,12 @@ from amaze.core import material
 import amaze
 from amaze.core import tile_icons
 from amaze.render import nodes
+from amaze import messages
 from amaze import preview
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos
+
+NO_SCENE_VIEWER = object()    # what karma_batch yields when no render in the batch can run
 
 # (module reloads consolidated into panel.py's single chain)
 
@@ -26,17 +29,25 @@ class ThumbNailRenderer:
     @staticmethod
     @contextlib.contextmanager
     def karma_batch(preferences):
-        """Yield one Karma scaffold for a whole batch to share, or None when no Scene Viewer is open to take the OCIO display/view from - on a None every render in the batch simply builds and destroys its own. Pass what it yields to `create_thumbnail`."""
+        """One Karma scaffold for the batch, or NO_SCENE_VIEWER, said once; pass it to create_thumbnail."""
         scaffold = preview.build_karma_scaffold(preferences)  # the scaffold is a full USD stage composition - the expensive part of a Karma thumbnail, and identical for every material, so a batch pays the stage load once instead of N times
+        if scaffold is None:    # no Scene Viewer, and every renderer takes its OCIO from one
+            debug.event("thumb", "no scene viewer - the batch renders nothing")
+            ui = getattr(hou, "ui", None)
+            if ui is not None:
+                ui.displayMessage(messages.NO_SCENE_VIEWER_FOR_THUMBNAIL)
+            yield NO_SCENE_VIEWER
+            return
         try:
             yield scaffold
         finally:
-            if scaffold is not None:
-                with hou.undos.disabler():  # the create is already disabled inside build_karma_scaffold, and a bare destroy is the half that resurrects the whole scaffold on one Ctrl+Z
-                    scaffold["net"].destroy()
+            with hou.undos.disabler():  # a bare destroy brings the whole scaffold back on one Ctrl+Z
+                scaffold["net"].destroy()
 
     def create_thumbnail(self, scaffold=None) -> None:
         """Render this material's thumbnail; pass the scaffold from `karma_batch` when this render is one of a batch, or leave it None for a single render that builds and destroys its own."""
+        if scaffold is NO_SCENE_VIEWER:    # the batch has said why, and nothing is imported
+            return
         node_handler = nodes.NodeHandler(self._preferences)
         with hou.undos.disabler():    # the import into /mat and its cleanup are a pair ▸r/undo-groups
             if self._mat:
