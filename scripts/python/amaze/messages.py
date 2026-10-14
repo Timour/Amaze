@@ -213,7 +213,7 @@ SNIPPET_RUN_FAILED = '"%s" stopped: %s'
 
 CONFIRM_CLEAR_THUMBNAIL_CACHE = 'This deletes all cached image and geometry thumbnails from disk. They will regenerate as you browse.'
 
-NO_SCENE_VIEWER_FOR_THUMBNAIL = 'Amaze: no Scene Viewer pane is open - cannot build a thumbnail scene. Open a Scene Viewer and try again.'
+NO_SCENE_VIEWER_FOR_THUMBNAIL = "Amaze renders thumbnails with a Scene Viewer's color settings, and no Scene Viewer is open. Open one, then use Update Preview."
 
 LOG_NOT_SAVED_UNEXPECTED = 'The log could not be saved. Unexpected error: %s'
 
