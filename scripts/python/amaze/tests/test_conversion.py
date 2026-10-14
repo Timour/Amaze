@@ -5,6 +5,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 from unittest import mock
 
@@ -642,6 +643,51 @@ class TheCancelCallbackReachesEveryConverter(ConversionCase):
         end = source.index('_SIPS_FIT =', 0)
         self.assertIn("ctx.cancelled()", source[start:end],
                       "the in-process resampler cannot be interrupted")
+
+
+class TwoPillowConversionsLeaveTheBombGuardAlone(ConversionCase):
+    """Pillow's `MAX_IMAGE_PIXELS` is process-global and up to eight converter threads lift it."""
+
+    def _convert_in(self, name, source):
+        out = self.path(name + ".png")
+        ctx = conversion._Ctx(source, 64, None, self.hfs)
+        thread = threading.Thread(
+            target=conversion._produce_pillow, args=(source, out, ctx),
+            name=name)
+        thread.start()
+        return thread
+
+    def test_overlapping_conversions_restore_the_starting_value(self):
+        if not conversion._have_pillow():
+            self.skipTest("no Pillow in this Houdini's Python")
+        from PIL import Image
+        starting = Image.MAX_IMAGE_PIXELS
+        self.addCleanup(setattr, Image, "MAX_IMAGE_PIXELS", starting)
+        source = write_png(self.path("ramp.png"), 96, 96)
+        real_open = Image.open
+        inside = {"first": threading.Event(), "second": threading.Event()}
+        go = {"first": threading.Event(), "second": threading.Event()}
+
+        def held_open(*args, **kwargs):
+            name = threading.current_thread().name
+            inside[name].set()
+            go[name].wait(5)
+            return real_open(*args, **kwargs)
+
+        with mock.patch.object(Image, "open", held_open):
+            first = self._convert_in("first", source)
+            self.assertTrue(inside["first"].wait(5), "premise: no open ran")
+            second = self._convert_in("second", source)
+            inside["second"].wait(0.5)    # inside the lift unless a lock holds it out
+            go["first"].set()
+            first.join(10)
+            go["second"].set()
+            second.join(10)
+        self.assertEqual(
+            starting, Image.MAX_IMAGE_PIXELS,
+            "two overlapping conversions left Pillow's decompression-bomb "
+            "guard at %r for the rest of the session"
+            % (Image.MAX_IMAGE_PIXELS,))
 
 
 class OneLogLine(ConversionCase):

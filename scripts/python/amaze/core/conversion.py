@@ -6,6 +6,7 @@ import locale
 import os
 import shutil
 import tempfile
+import threading
 
 from PySide6 import QtCore, QtGui
 
@@ -242,6 +243,22 @@ def _produce_iconvert(source: str, out_path: str, ctx) -> tuple:
     return (True, "") if ok else (False, err)
 
 
+_PILLOW_GUARD = threading.Lock()    # the bomb ceiling is process-global and converters run in threads
+
+
+def _open_unguarded(source: str):
+    """`Image.open` past Pillow's bomb ceiling, lifted for this open only. ▸r/conversion-internals"""
+    from PIL import Image
+
+    with _PILLOW_GUARD:
+        previous = Image.MAX_IMAGE_PIXELS
+        Image.MAX_IMAGE_PIXELS = None    # the file came from the user's own library
+        try:
+            return Image.open(source)    # the only call that checks the ceiling, so decodes run unlocked
+        finally:
+            Image.MAX_IMAGE_PIXELS = previous
+
+
 def _produce_pillow(source: str, out_path: str, ctx) -> tuple:
     """Resample with the Pillow inside Houdini's own Python - the route for every machine with no sips. `reduce()` FIRST, then the final resize. ▸r/conversion-internals"""
     if not _have_pillow():
@@ -249,15 +266,10 @@ def _produce_pillow(source: str, out_path: str, ctx) -> tuple:
     try:
         from PIL import Image
 
-        previous = Image.MAX_IMAGE_PIXELS    # Pillow refuses ~179M pixels as a decompression bomb, but this file came from the user's own library ▸r/conversion-internals
-        Image.MAX_IMAGE_PIXELS = None
-        try:
-            with Image.open(source) as opened:
-                factor = max(1, min(opened.width // max(ctx.size, 1),
-                                    opened.height // max(ctx.size, 1)))
-                image = opened.reduce(factor) if factor > 1 else opened.copy()
-        finally:
-            Image.MAX_IMAGE_PIXELS = previous
+        with _open_unguarded(source) as opened:
+            factor = max(1, min(opened.width // max(ctx.size, 1),
+                                opened.height // max(ctx.size, 1)))
+            image = opened.reduce(factor) if factor > 1 else opened.copy()
 
         if ctx.cancelled():
             return False, "cancelled"
