@@ -623,18 +623,25 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return row
 
     def _take_back_refused_append(self, record) -> None:
-        """Remove an appended record whose save was refused, found by identity: the drain moves rows."""
+        """Take a refused new record back out of the model and the save's document, by identity."""
         row = next((i for i, held in enumerate(self._assets)
                     if held is record), -1)
-        if row < 0:
-            return
-        self.beginRemoveRows(QtCore.QModelIndex(), row, row)
-        try:
-            del self._assets[row]
-        finally:
-            self.endRemoveRows()
-        self.rebuild_thumbs()
+        if row >= 0:
+            self.beginRemoveRows(QtCore.QModelIndex(), row, row)
+            try:
+                del self._assets[row]
+            finally:
+                self.endRemoveRows()
+            self.rebuild_thumbs()
         self._content_state.pop(str(record.mat_id), None)
+        try:
+            connector = database.DatabaseConnector(self.DB_FILENAME)
+            if connector.serves(self.preferences.dir):    # a serves() refusal never ran set()
+                connector.forget(record.mat_id)
+                connector.set({"assets": []})    # set() is where a forget lands; else any save writes it
+        except (AttributeError, TypeError) as exc:
+            debug.event("library", "could not take back a refused append",
+                        error=str(exc))
 
     def _adopt_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals a view needs. A row this build cannot parse is skipped rather than allowed to abort the model - it stays on disk untouched."""

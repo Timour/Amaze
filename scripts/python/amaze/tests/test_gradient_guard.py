@@ -942,6 +942,19 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             "a palette that never reached disk stayed in the grid, so "
             "it is gone at the next launch with nothing said")
 
+    def test_a_refused_add_is_not_committed_by_the_next_save(self):
+        """The take-back leaves the save's document too, or any later write commits it."""
+        from unittest.mock import patch
+
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.lib.add_user_gradient(
+                "ghost", "", {"values": [], "keys": []})
+        self.lib.add_user_gradient("later", "", {"values": [], "keys": []})    # anything at all that writes the file afterwards
+        self.assertNotIn(
+            "ghost", self._on_disk_names(),
+            "the refused palette reached disk with an unrelated save")
+
     def test_an_ordinary_delete_still_works(self):
         """The accept path: the refusal must not be the normal one."""
         row = self._row_named("doomed")

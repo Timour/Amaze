@@ -270,12 +270,7 @@ class GradientLibrary(library.AssetLibrary):
             self.endInsertRows()
         self.rebuild_thumbs()
         if not self.save():  # nothing reached disk, so nothing stays on screen
-            self.beginRemoveRows(QtCore.QModelIndex(), 0, 0)
-            try:
-                del self._assets[0]
-            finally:
-                self.endRemoveRows()
-            self.rebuild_thumbs()
+            self._take_back_refused_append(mat)
             debug.alert(
                 messages.PALETTE_NOT_SAVED % (name or "this palette"),
                 key="colors-not-saved")

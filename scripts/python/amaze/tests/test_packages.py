@@ -484,6 +484,19 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths),
                          "the take-back left the thumbnail maps out of step")
 
+    def test_a_refused_import_is_not_written_by_the_next_save(self):
+        out = self._package_of_a_material()
+        before = self._ids()
+        self.assertEqual(1, self._import_refused(out)["refused"])
+
+        self.assertTrue(self.model.save(), "premise: the next save failed")
+
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        with open(path, encoding="utf-8-sig") as handle:
+            on_disk = [str(row.get("id")) for row in json.load(handle)["assets"]]
+        self.assertEqual(sorted(before), sorted(on_disk),
+                         "the refused import reached disk with the next save")
+
     def test_the_right_row_leaves_after_the_save_dropped_another(self):
         """The save first takes in another machine's deletion, so the new row has moved."""
         path = os.path.join(self.panel.prefs.dir, "library.json")
