@@ -547,7 +547,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         data["assets"] = [asset.get_as_dict() for asset in self._assets]
         db.set(data)
         stored = db.save()
-        self.apply_refresh(db)    # and what this save merged, or the next one writes it back out
+        from amaze.core import model_registry
+        model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
         if stored and getattr(db, "_save_outcome", "") != "identical-skip":
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
@@ -557,8 +558,10 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         db = database.DatabaseConnector(self.DB_FILENAME)
         if not db.serves(self.preferences.dir):
             return False
-        db.refresh()    # the ANSWER is not read: the sidebar shares this connector, and whichever model refreshes FIRST consumes the merge - what is left to take is the only honest signal
-        return self.apply_refresh(db)
+        db.refresh()    # the answer is not read: what this model takes is the honest signal
+        from amaze.core import model_registry
+        return any(model is self for model in
+                   model_registry.apply_merged(db, also=self))
 
     def apply_refresh(self, db) -> bool:
         """Drain what any merge on this connector left for the model. True when the model moved."""

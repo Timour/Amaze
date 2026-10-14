@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from PySide6 import QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from amaze.core import database
 from amaze.tests import test_support
@@ -416,6 +416,57 @@ class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
             "renamed by the other machine", on_disk.get("name"),
             "the sidebar save adopted the peer's rename, and the asset "
             "save wrote the model's stale name straight back over it")
+
+
+class TheSidebarHearsWhatASaveMerged(unittest.TestCase):
+    """A save merging another machine's categories tells the sidebar's views at once."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.sidebar = self.panel.category_model
+        self.path = os.path.join(self.panel.prefs.dir, "library.json")
+        self.assertTrue(self.panel.material_model.save(),
+                        "premise: the first save failed")
+
+    def _disk(self):
+        with open(self.path, encoding="utf-8-sig") as handle:
+            return json.load(handle)
+
+    def _write(self, document):
+        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+
+    def _view(self):
+        """A proxy maps only what the model has signalled, as every view does."""
+        proxy = QtCore.QSortFilterProxyModel()
+        proxy.setSourceModel(self.sidebar)
+        proxy.rowCount()
+        self.addCleanup(proxy.setSourceModel, None)
+        return proxy
+
+    def _merged_by(self, save, change):
+        view = self._view()
+        document = self._disk()
+        change(document["categories"])
+        self._write(document)
+        save()
+        self.assertEqual(
+            (document["categories"], len(document["categories"])),
+            (list(self.sidebar._categories), view.rowCount()),
+            "the save merged the categories, but the sidebar's views were "
+            "never told, so they still count the old rows")
+
+    def test_a_category_added_elsewhere_merged_by_a_sidebar_save(self):
+        self._merged_by(self.sidebar.save,
+                        lambda cats: cats.append("From Elsewhere"))
+
+    def test_a_category_added_elsewhere_merged_by_an_asset_save(self):
+        self._merged_by(self.panel.material_model.save,
+                        lambda cats: cats.append("From Elsewhere"))
+
+    def test_a_category_removed_elsewhere_merged_by_an_asset_save(self):
+        self._merged_by(self.panel.material_model.save,
+                        lambda cats: cats.remove("usds"))
 
 
 class TheBaselineIsWhatIsOnDisk(_Case):

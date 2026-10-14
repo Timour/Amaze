@@ -311,6 +311,7 @@ class Categories(QtCore.QAbstractListModel):
         db.set(data)
         stored = db.save()  # the connector's answer, never an unconditional True
         self.drop_count_cache()
+        self.apply_refresh(db)    # a merge inside the save moved this list unseen
         return bool(stored)
 
 

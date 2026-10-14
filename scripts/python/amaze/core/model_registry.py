@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from PySide6 import QtCore
+
 from amaze.core import (category, code_library, cop_library, file_library,
                         gradient_library, keyed_store, library)
 from amaze.helpers import hostos
@@ -49,6 +51,33 @@ def rebind(preferences, model) -> None:
             return
 
 
+def apply_merged(db, also=None) -> list:
+    """Every model on `db`'s file and library takes what a merge left; answers the models that moved."""
+    from amaze.core import debug
+
+    sharing = [] if also is None else [also]
+    for models in list(_models.values()):
+        for model in models.values():
+            if (getattr(model, "DB_FILENAME", None) == db._filename
+                    and not any(model is held for held in sharing)):
+                sharing.append(model)
+    sharing.sort(key=lambda model: not isinstance(
+        model, QtCore.QAbstractListModel))    # sidebars first: a grid's signal handler can read one
+    moved = []
+    for model in sharing:
+        apply_refresh = getattr(model, "apply_refresh", None)
+        if apply_refresh is None or not db.serves(model.preferences.dir):
+            continue    # one connector per FILENAME: a model of another library must not drain it
+        try:
+            if apply_refresh(db):
+                moved.append(model)
+        except Exception as exc:                             # noqa: BLE001
+            debug.event("database", "model refresh failed",
+                        model=type(model).__name__, store=db._filename,
+                        error=str(exc))
+    return moved
+
+
 def refresh_all() -> list:
     """Take what another machine wrote into every shared model and every open store, and answer what moved. For a DOOR a person opens - a panel becoming visible, a dialog - since each one costs a read. ▸r/peer-read"""
     from amaze.core import database, debug
@@ -59,26 +88,20 @@ def refresh_all() -> list:
                               None)
         if preferences is None:
             continue
-        for filename in {getattr(m, "DB_FILENAME", None)    # merge each file ONCE, then let every model take its share: the grid and the sidebar share a connector, so a per-model refresh spends it on whichever runs first
+        for filename in {getattr(m, "DB_FILENAME", None)    # merge each file ONCE, then every model takes its share
                          for m in models.values()} - {None}:
             try:
                 db = database.DatabaseConnector(filename)
-                if db.serves(preferences.dir):
-                    db.refresh()
+                if not db.serves(preferences.dir):
+                    continue
+                db.refresh()
+                shared = apply_merged(db)
             except Exception as exc:                         # noqa: BLE001
                 debug.event("database", "refresh failed", store=filename,
                             library=key, error=str(exc))
-        for attr, model in models.items():
-            apply_refresh = getattr(model, "apply_refresh", None)
-            if apply_refresh is None:
-                continue    # `file_folders_model` and `file_files_model` are deliberately out: they scan real directories, not a library file
-            try:
-                db = database.DatabaseConnector(model.DB_FILENAME)
-                if db.serves(preferences.dir) and apply_refresh(db):    # the connector is one object per FILENAME, so an entry for another library would drain THIS one's adopted rows
-                    moved.append(attr)
-            except Exception as exc:                         # noqa: BLE001
-                debug.event("database", "model refresh failed",
-                            model=attr, library=key, error=str(exc))
+                continue
+            moved.extend(attr for attr, model in models.items()
+                         if any(model is held for held in shared))
         moved.extend(keyed_store.refresh_all(preferences))
     return moved
 
