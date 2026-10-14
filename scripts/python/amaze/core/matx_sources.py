@@ -8,6 +8,7 @@ import os
 import re
 import ssl
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -957,6 +958,16 @@ class RangedFile:
         self._pos = 0
         self.notify = notify    # notify(blocks_held, blocks_total) after every fetched block - what keeps a UI pumping through a long transfer instead of freezing
 
+    @property
+    def notify(self):
+        """The per-block progress callback; it runs only on the thread that installed it."""
+        return self._notify
+
+    @notify.setter
+    def notify(self, callback) -> None:
+        self._notify = callback
+        self._notify_thread = threading.get_ident()    # preview workers read this same cached file
+
     def _total_blocks(self) -> int:
         return max(1, (self.size - 1) // RANGED_BLOCK + 1)
 
@@ -977,8 +988,10 @@ class RangedFile:
             start = index * RANGED_BLOCK
             end = min(self.size, start + RANGED_BLOCK) - 1
             self._blocks[index] = self._get(start, end)
-            if self.notify is not None:
-                self.notify(len(self._blocks), self._total_blocks())
+            notify = self._notify
+            if notify is not None and (
+                    threading.get_ident() == self._notify_thread):
+                notify(len(self._blocks), self._total_blocks())
         return self._blocks[index]
 
     def read(self, n=-1) -> bytes:
@@ -1076,7 +1089,7 @@ class AmazeSource(MatxSource):
         return self._bundles[url]
 
     def progress_hook(self, url: str, callback) -> None:
-        """Attach (or detach with None) a per-block progress callback to the hosted package's reader - what the import doors use to keep the download bar moving and the UI pumping."""
+        """Attach a package's per-block progress callback, None detaching it; it runs on this thread only."""
         remote = self._remotes.get(url)
         if remote is not None:
             remote.notify = callback

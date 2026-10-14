@@ -939,6 +939,38 @@ class RangedFileTest(unittest.TestCase):
         self.assertTrue(all(t == seen[0][1] for _d, t in seen),
                         "the block total drifted mid-read")
 
+    def test_a_progress_hook_runs_only_on_the_thread_that_installed_it(self):
+        """The import's hook moves a progress bar; preview workers read the same cached package."""
+        import threading
+
+        from amaze.core import matx_sources
+        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
+               "main/packages/defaults/probe.amazepkg")
+        remote = matx_sources.RangedFile(
+            len(self.PAYLOAD),
+            lambda start, end: self.PAYLOAD[start:end + 1])
+        source = matx_sources.AmazeSource()
+        source._remotes[url] = remote
+        called_on = []
+        source.progress_hook(
+            url, lambda done, total: called_on.append(threading.get_ident()))
+
+        def read_block(index):
+            remote.seek(index * matx_sources.RANGED_BLOCK)
+            remote.read(16)
+
+        worker = threading.Thread(target=read_block, args=(0,))
+        worker.start()
+        worker.join()
+        self.assertEqual(
+            [], called_on,
+            "a preview worker's read ran the import's progress hook - "
+            "widget work and an event pump off the GUI thread")
+        read_block(1)
+        self.assertEqual(
+            [threading.get_ident()], called_on,
+            "the import's own read no longer reports its progress")
+
     def test_open_package_seeds_from_a_suffix_range_and_caches(self):
         from unittest import mock
 
