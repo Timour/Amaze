@@ -368,7 +368,7 @@ class AssetSection(Section):
             st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         self._refilter_from_sidebar()    # the grid still holds the old name; re-point it as a click does
-        self.panel._refresh_sidebar_categories()    # the renamed row sent no signal of its own
+        self.panel._refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
     def export_package_to(self, indexes, path: str) -> int:
         """ACT half: the selected rows (proxy indexes) leave as one `.amazepkg` - record, existing family files and note per asset - answering the entry count."""
