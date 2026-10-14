@@ -689,7 +689,7 @@ class ParallelConversionsIsALiveCap(unittest.TestCase):
             def connect(self, *a, **kw):
                 pass
 
-        for name in ("loaded", "attempted", "finished"):
+        for name in ("loaded", "failed", "attempted", "finished"):
             setattr(_Loader, name, Signal())
 
         real = thumbnails._ConvertLoader

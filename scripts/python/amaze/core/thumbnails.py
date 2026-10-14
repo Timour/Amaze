@@ -25,7 +25,6 @@ class _FileLoader(QtCore.QThread):
 
     loaded = QtCore.Signal(object, QtGui.QImage)
     failed = QtCore.Signal(object)
-    NAMES_ITS_FAILURES = True    # so an undelivered key is retried, never judged ▸p/prune-outran-deliveries
 
     def __init__(self, items) -> None:
         super().__init__()
@@ -55,6 +54,7 @@ class _ConvertLoader(QtCore.QThread):
 
     loaded = QtCore.Signal(object, QtGui.QImage)
     attempted = QtCore.Signal(object)    # fired after EVERY item, success or failure - the progress bar must advance on a failed file too, or it stalls short of 100%
+    failed = QtCore.Signal(object)
 
     def __init__(self, items, hfs) -> None:
         super().__init__()
@@ -91,6 +91,8 @@ class _ConvertLoader(QtCore.QThread):
                 return
             if image is not None:
                 self.loaded.emit(key, image)
+            else:
+                self.failed.emit(key)
             self.attempted.emit(key)
 
 
@@ -241,6 +243,7 @@ class ThumbnailEngine(QtCore.QObject):
         for chunk in chunks:
             loader = _ConvertLoader(chunk, self._convert_hfs)
             loader.loaded.connect(self._on_loaded)
+            loader.failed.connect(self._on_failed)
             loader.attempted.connect(self._on_convert_attempted)
             loader.finished.connect(    # the loader passed EXPLICITLY: _prune_threads may only judge the thread that actually finished, and binding beats sender() across a queued connection
                 functools.partial(self._prune_threads, loader))
@@ -277,7 +280,7 @@ class ThumbnailEngine(QtCore.QObject):
         loader.start()
 
     def _on_failed(self, key) -> None:
-        """A file the loader could not read: missing, until `discard()`."""
+        """A key its loader could not read or convert: missing, until `discard()`."""
         if self._states.get(key) != "pending":
             return
         self._states[key] = "missing"
@@ -325,7 +328,7 @@ class ThumbnailEngine(QtCore.QObject):
         self._convert_scheduled = False
 
     def _prune_threads(self, finisher=None) -> None:
-        """A loader finished: mark its still-pending keys missing, JUDGING ONLY THE LOADER THAT EMITTED THE SIGNAL - the ordering guarantee is per-thread, and a sibling reports isFinished() while its own deliveries are still queued, so condemning its keys makes _on_loaded drop them, sticky."""
+        """A finished loader's own unanswered keys are asked for again; a sibling's are left alone."""
         if finisher is None:
             finisher = self.sender()    # fallback for a direct call; the connect sites pass the loader explicitly
 
@@ -347,20 +350,15 @@ class ThumbnailEngine(QtCore.QObject):
         if getattr(finisher, "_canceled", False):
             return    # cancelled work is unrequested, not missing - the revisit re-queues it
 
-        names_failures = getattr(finisher, "NAMES_ITS_FAILURES", False)
-
-        def _condemn(keys=tuple(thread_keys)):
+        def _forget(keys=tuple(thread_keys)):
             for key in keys:
                 if self._states.get(key) == "pending":
-                    if names_failures:
-                        self._states.pop(key, None)    # undelivered, not failed: the next paint asks again
-                    else:
-                        self._states[key] = "missing"
+                    self._states.pop(key, None)    # unanswered, not failed: the next paint asks again
                     try:
                         self.ready.emit(key)
                     except RuntimeError:
                         return   # the engine's C++ side died between turns - a reload handover; nothing left to repaint
-        QtCore.QTimer.singleShot(0, _condemn)    # ONE TURN LATER, never in the finished-turn itself: on a stalled main thread the finisher's own queued deliveries can arrive BEHIND its finished signal, and a same-turn verdict condemned 16 of 16 real images at the 2026-08-29 cold open - sticky, since missing never retries ▸p/prune-outran-deliveries
+        QtCore.QTimer.singleShot(0, _forget)    # one turn later: its own queued deliveries land first ▸p/prune-outran-deliveries
 
 
 _previous_engine = globals().get("engine")    # the reopen HANDOVER: reload re-runs this body, and without stopping the old engine first the collector freed a QThread mid-run ▸r/module-reload ▸r/model-contracts

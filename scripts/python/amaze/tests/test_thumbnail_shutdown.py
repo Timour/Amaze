@@ -118,9 +118,9 @@ class TestPruneWaitsForItsOwnDeliveries(unittest.TestCase):
         self.assertEqual(
             "done", self.engine._states["k1"],
             "a delivered image was condemned by a verdict that outran it")
-        self.assertEqual(
-            "missing", self.engine._states["k2"],
-            "a key that truly never delivered must still be judged")
+        self.assertIsNone(
+            self.engine._states.get("k2"),
+            "a key nobody answered for must be asked for again, never written off")
 
 
 class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
@@ -162,6 +162,36 @@ class TestAFileIsMissingOnlyWhenItsLoadFails(unittest.TestCase):
         self.assertEqual("done", self.engine._states["f3"])
 
 
+class TestAConvertIsMissingOnlyWhenItFails(unittest.TestCase):
+    """The convert loader names its failures as the file loader does: one rule for both."""
+
+    def _ran(self, image):
+        engine = thumbnails.ThumbnailEngine()
+        loader = thumbnails._ConvertLoader([("c1", "/nowhere/plate.exr", 64)], None)
+        loader.loaded.connect(engine._on_loaded)
+        loader.failed.connect(engine._on_failed)
+        engine._states = {"c1": "pending"}
+        answer = mock.Mock(image=image)
+        with mock.patch.object(thumbnails.conversion, "convert_image", return_value=answer):
+            loader.run()    # in this thread, so the signals deliver at once
+        return engine._states.get("c1")
+
+    def test_a_conversion_with_no_image_is_missing(self):
+        self.assertEqual("missing", self._ran(None))
+
+    def test_a_converted_image_is_delivered(self):
+        image = QtGui.QImage(4, 4, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("red"))
+        self.assertEqual("done", self._ran(image))
+
+    def test_the_engine_hears_both_loaders_fail(self):
+        import inspect
+        for method in ("_dispatch_converts", "_dispatch_files"):
+            with self.subTest(dispatch=method):
+                self.assertIn("loader.failed.connect(self._on_failed)",
+                              inspect.getsource(getattr(thumbnails.ThumbnailEngine, method)))
+
+
 class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
     """A loader may condemn only its OWN pending keys - the deliveries-before-finished guarantee is PER-THREAD, so judging a sibling drops real images whose signals are still queued, and it sticks because a missing key never falls back to the disk cache."""
 
@@ -188,8 +218,8 @@ class TestPruneJudgesOnlyItsOwnLoader(unittest.TestCase):
     def test_a_siblings_keys_are_left_alone(self):
         self.engine._prune_threads(self.first)
         _app.processEvents()   # the verdict is one turn deferred now, so the judging is asserted through the turn
-        self.assertEqual("missing", self.engine._states["a1"],
-                         "the finisher's own undelivered key must be judged")
+        self.assertIsNone(self.engine._states.get("a1"),
+                          "the finisher's own unanswered key must be asked for again")
         self.assertEqual(
             "pending", self.engine._states["b1"],
             "a sibling loader's key was condemned by someone else's "
