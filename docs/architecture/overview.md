@@ -598,7 +598,9 @@ Structured session logging, JSON Lines. **Two tiers:**
 - **File:** `core/debug.py` · **Log:** `amaze_debug.jsonl` in the
   OS-Integration Engine's per-OS log dir
 - **API:** `install()` · `configure(on)` · `exception(where)` ·
-  `event(cat, msg)` · `note(...)` · `timed(cat, msg)` · snapshots:
+  `event(cat, msg)` · `ledger(cat, msg)` (an `event` the flood guard
+  never limits, one record per call: every database save) · `note(...)` ·
+  `timed(cat, msg)` · snapshots:
   `image_stats()` · `texture_snapshot()` · `node_snapshot()` ·
   `material_snapshot()`
 - **`$AMAZE_LOG_DIR` moves the whole log dir, read ONCE at import** so a

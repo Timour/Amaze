@@ -186,6 +186,30 @@ class TestOneRecordCarriesTheWholeList(TestFloodGuard):
                 "dark after %d" % (name, debug.FLOOD_VERBATIM))
 
 
+class EverySaveLeavesItsRecord(TestFloodGuard):
+    """A database save promises one record per call, however many arrive in a row."""
+
+    def _saves(self):
+        return [r for r in self._records()
+                if r.get("cat") == "database" and r.get("msg") == "save"]
+
+    def test_six_saves_in_a_row_each_leave_a_record(self):
+        from amaze.core import database
+        library = tempfile.mkdtemp(prefix="amaze_flood_saves_")
+        self.addCleanup(shutil.rmtree, library, True)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        db = database.DatabaseConnector("code.json")
+        db.load(library + os.sep)
+        before = len(self._saves())
+        for _ in range(6):
+            db.save()
+        self.assertEqual(
+            before + 6, len(self._saves()),
+            "save records went missing - they share one flood key, so "
+            "the log stops after %d" % debug.FLOOD_VERBATIM)
+
+
 class TestLogIsolation(unittest.TestCase):
     """The suite raises on purpose and the crash tier is always on, so the redirect must be real."""
 

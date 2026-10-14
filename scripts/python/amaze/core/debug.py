@@ -473,6 +473,13 @@ def event(category: str, message: str, /, **data) -> None:
     _write({"cat": category, "msg": message, "data": data})
 
 
+def ledger(category: str, message: str, /, **data) -> None:
+    """An `event` never rate-limited: for a record the log promises once per occurrence."""
+    if not _enabled or _rotation_blocked:
+        return
+    _write({"cat": category, "msg": message, "data": data})
+
+
 def note(message: str, /, **data) -> None:
     """Print `Amaze: ...` AND record it - but never print on Windows, where any print pops the Console open. ▸r/platform-files"""
     if _enabled and not _rotation_blocked:

@@ -610,8 +610,8 @@ class DatabaseConnector:
             digest = hashlib.sha256(
                 hostos.canonical_path_key(self._path or "")
                 .encode("utf-8")).hexdigest()[:10]
-            debug.event("database", "save", file=self._filename,
-                        outcome=self._save_outcome, dir_key=digest)
+            debug.ledger("database", "save", file=self._filename,
+                         outcome=self._save_outcome, dir_key=digest)
 
     def _refuse_unreadable_peer(self, full: str) -> bool:
         """Refuse the save when the peer copy at `full` would not parse: preserve it, latch `_write_blocked` for the session, report once in full, and set `_block_reported` so `_save_inner` does not repeat it."""
