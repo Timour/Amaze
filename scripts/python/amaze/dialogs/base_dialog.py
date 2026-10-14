@@ -11,7 +11,8 @@ from amaze.helpers import theme, ui_helpers
 SAVE_WIDTH = amazetheme.SAVE_WIDTH    # every small save dialog is this wide, whatever its labels ▸p/save-dialog-rows
 
 
-def fill_categories(combo, stored_names, current: str = "") -> None:
+def fill_categories(combo, stored_names, current: str = "",
+                    blank: bool = False) -> None:
     """Rows LABELLED as the sidebar shows them, each carrying its STORED name; `current` selected."""
     combo.clear()
     for name in stored_names:
@@ -19,6 +20,9 @@ def fill_categories(combo, stored_names, current: str = "") -> None:
     row = combo.findData(current) if current else -1
     if row >= 0:
         combo.setCurrentIndex(row)
+    elif blank:
+        combo.insertItem(0, "", "")    # leads and means UNCHANGED: `chosen_category` answers ""
+        combo.setCurrentIndex(0)
 
 
 def chosen_category(combo) -> str:

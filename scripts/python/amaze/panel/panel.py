@@ -2628,7 +2628,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.cat_list.setCurrentIndex(target)
         return self._raw_category_name(target)
 
-    def edit_tile_icon(self, model, proxy, proxy_indexes) -> None:
+    def edit_tile_icon(self, model, proxy, proxy_indexes,
+                       categories=()) -> None:
         """"Edit Icon" on any tile, in any section that has tiles - one handler for all of them, needing only tile_icon()/set_tile_icon() from the model, and applying to the WHOLE selection (one icon for twelve LOP setups is the case it exists for)."""
         if model is None or not proxy_indexes:
             return
@@ -2661,11 +2662,12 @@ class AmazePanel(QtWidgets.QWidget):
         tile_tags = None    # a section whose model cannot hold tags shows no field at all; a multi-selection opens EMPTY but stays editable, and what is typed lands on every row
         if hasattr(model, "set_tile_tags"):
             tile_tags = model.tile_tags(rows[0]) if single else ""
-        categories = None    # the same rule as the name and the tags: a section whose model cannot hold a category shows no field at all
+        offered = None    # no field at all where the model cannot hold a category
         tile_category = ""
         if hasattr(model, "set_tile_category"):
-            categories = self.get_category_names()
-            tile_category = model.tile_category(rows[0]) if single else ""
+            offered = list(categories)    # the OWNING section's list, handed in by its menu
+            shared = {model.tile_category(row) for row in rows}
+            tile_category = shared.pop() if len(shared) == 1 else ""    # mixed: the dialog opens blank
         faces = {"preview": model.preview_image(rows[0]),    # what the preview square shows per face
                  "generic": tile_icons.generic_image(model.tile_face_art(rows[0]))}
         dialog = icon_dialog.IconDialog(
@@ -2675,7 +2677,7 @@ class AmazePanel(QtWidgets.QWidget):
             tile_name=tile_name,
             tile_name_enabled=single,
             tile_tags=tile_tags,
-            categories=categories,
+            categories=offered,
             tile_category=tile_category,
             face=tile_icons.face_for(model, rows[0]),
             faces=faces,

@@ -19,8 +19,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import matx_import  # noqa: E402
-from amaze.dialogs import code_dialog  # noqa: E402
+from amaze.core import matx_import, tile_icons  # noqa: E402
+from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -780,6 +780,65 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                       [asset.name for asset in code.assets],
                       "premise: the save adopted nothing")
         self._assert_no_row_moved_inside(caught, "Edit Snippet")
+
+
+class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
+    """Customize lists the categories of the section whose tiles it edits; a mixed pick opens blank."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.prefs.render_on_import = 0
+        self.model = self.panel.cop_model
+        for name in ("Rigs", "Terrain"):
+            self.panel.cop_category_model.check_add_category(name)
+        self.rows = [self._node_asset("rig_setup", "Rigs"),
+                     self._node_asset("terrain_setup", "Terrain")]
+        self.panel.section_tabs.setChecked("cop")
+        QtWidgets.QApplication.processEvents()
+
+    def _node_asset(self, name, category):
+        """A real LOP network saved into the Node section under `category`."""
+        lop = hou.node("/obj").createNode("lopnet", name)
+        self.addCleanup(lop.destroy)
+        lop.createNode("sphere")
+        self.assertTrue(self.model.add_asset(lop, category, "", False,
+                                             name=name))
+        return len(self.model.assets) - 1
+
+    def _customize(self, rows):
+        proxy = self.panel.cop_sorted_model
+        indexes = [proxy.mapFromSource(self.model.index(row, 0))
+                   for row in rows]
+        self.panel.sections["cop"].menu_customize(indexes, indexes[0])
+        dialog = self.panel._icon_dialog
+        self.assertIsNotNone(dialog, "Customize did not open")
+        self.addCleanup(dialog.deleteLater)
+        return dialog
+
+    def test_a_node_tile_is_offered_the_node_categories(self):
+        combo = self._customize(self.rows[:1]).category_combo
+        offered = [combo.itemData(i) for i in range(combo.count())
+                   if combo.itemData(i)]
+        self.assertEqual(self.panel.get_cop_category_names(), offered,
+                         "a Node tile was offered another section's "
+                         "categories")
+        self.assertEqual("Rigs", base_dialog.chosen_category(combo))
+
+    def test_an_icon_only_accept_moves_no_tile(self):
+        dialog = self._customize(self.rows)
+        opened_on = base_dialog.chosen_category(dialog.category_combo)
+        dialog.face_combo.setCurrentIndex(tile_icons.FACES.index("custom"))
+        dialog._choose("layers")
+        dialog.accept_button.click()
+        QtWidgets.QApplication.processEvents()
+        self.assertTrue(self.model.tile_icon(self.rows[0]),
+                        "premise: the icon change did not land")
+        self.assertEqual(
+            [["Rigs"], ["Terrain"]],
+            [list(self.model.assets[row].categories) for row in self.rows],
+            "an icon-only Accept moved the tiles to another category")
+        self.assertEqual("", opened_on,
+                         "two tiles in two categories opened on a category")
 
 
 if __name__ == "__main__":

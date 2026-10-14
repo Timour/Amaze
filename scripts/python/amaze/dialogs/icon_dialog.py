@@ -101,7 +101,8 @@ class IconDialog(base_dialog.AssetDialog):
             self.category_combo = ui_helpers.DesignedComboBox()   # its dropdown holds the box's width ▸r/combo-popup-width
             self.category_combo.setFixedHeight(field_h)
             base_dialog.fill_categories(self.category_combo,
-                                        self._categories, self._tile_category)
+                                        self._categories, self._tile_category,
+                                        blank=True)    # mixed or none: a blank that moves nothing
             self.category_combo.setToolTip(ui_helpers.tooltip_text(
                 tooltips.CUSTOMIZE_CATEGORY))
             form.addRow(amazetheme.LABEL_CATEGORY, self.category_combo)

@@ -268,7 +268,8 @@ class Section:
         model, proxy = self.tile_models()
         if model is None or proxy is None:
             return
-        self.panel.edit_tile_icon(model, proxy, indexes)
+        self.panel.edit_tile_icon(model, proxy, indexes,
+                                  categories=self.save_categories()[0])    # THIS section's list
 
     def menu_favourite(self, indexes, current, payload=None) -> None:
         self.panel.grid_toggle_favourite(indexes)
