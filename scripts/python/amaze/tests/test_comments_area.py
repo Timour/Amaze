@@ -120,12 +120,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "the comment key does not name the asset that is selected, "
             "so the pane writes onto a different tile's page")
         self.assertEqual(index.data(), subject.name)
-        held = index.data(model.CategoryRole)    # the header shows ONE category - the first, the one the sidebar files the asset under
-        first = (held[0] if isinstance(held, (list, tuple)) and held
-                 else str(held or ""))
-        self.assertEqual(str(first), subject.category,
-                         "the header names a category the asset is not "
-                         "filed under first")
+        self.assertEqual(index.data(model.RendererLabelRole) or "", subject.type)
 
     def test_a_file_subject_is_keyed_by_the_SELECTED_rows_PATH(self):
         """`file_key(row)` is a row-number read against the SOURCE model, so the index has to be mapped first - the header's name comes from the index instead, and the two disagree the moment the mapping is dropped."""
@@ -163,16 +158,6 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             [subject.name], named,
             "the uid in the comment key belongs to a different palette "
             "than the one the header names")
-
-    def test_every_subject_carries_the_six_things_the_pane_paints(self):
-        for key in ("material", "file", "gradient"):
-            with self.subTest(section=key):
-                subject, _index = self._subject_for_last_row(key)
-                self.assertIsNotNone(subject)
-                self.assertEqual(
-                    6, len(subject),
-                    "%s answered with %d fields; the Comments header "
-                    "paints six" % (key, len(subject)))
 
     def test_the_online_world_has_no_subject_at_all(self):
         """An online record is not a library asset: nothing to write a comment against, and the pane must clear rather than keep pointing at whatever was selected before."""
@@ -247,117 +232,6 @@ class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):
             "hand, which the pane itself already answers")
 
 
-class _Stack:
-    """A stand-in for the curated-library stack, holding ONE row - a stub only for what a fixture asset cannot show: an asset filed under SEVERAL categories, where which one the header shows is comment_subject's own choice."""
-
-    IdRole = 1
-    CategoryRole = 2
-    CategoryColorRole = 3
-    RendererLabelRole = 4
-    NOTES_SECTION = "material"
-
-    def __init__(self, categories):
-        self._fields = {
-            QtCore.Qt.ItemDataRole.DisplayRole: "Rusty Metal",
-            self.IdRole: "asset-1",
-            self.CategoryRole: categories,
-            self.CategoryColorRole: "#ff8000",
-            self.RendererLabelRole: "Karma",
-        }
-
-    def data(self, role):    # as the model
-        return self._fields.get(role)
-
-    def mapToSource(self, _index):    # as the proxy
-        return self
-
-    def isValid(self):    # as the source index
-        return True
-
-
-class AnAssetFiledUnderSeveralCategories(unittest.TestCase):
-
-    def _subject_for(self, categories):
-        stack = _Stack(categories)
-        section = sections.MaterialSection.__new__(sections.MaterialSection)
-        section.stack = lambda: sections.AssetStack(
-            model=stack, proxy=stack, selection=None, categories=None)
-        return section.comment_subject(None)
-
-    def test_the_header_shows_the_FIRST_one(self):
-        """The first is the one the sidebar files it under, so it is the one the header has to agree with."""
-        subject = self._subject_for(["Metal", "Wood", "Fabric"])
-        self.assertEqual("Metal", subject.category)
-
-    def test_an_asset_under_none_shows_no_category(self):
-        self.assertEqual("", self._subject_for([]).category)
-
-    def test_a_single_name_is_taken_as_it_stands(self):
-        """Older rows hold a plain string rather than a list."""
-        self.assertEqual("Metal", self._subject_for("Metal").category)
-
-
-class TheLocationBehindAFileRow(unittest.TestCase):
-    """`location_for` puts a location's NAME and COLOUR in the Comments header - built on the real FileFolders model because both answers are that model's own, and a stub would test the stub."""
-
-    def setUp(self):
-        test_support.reset_database_singletons()
-        self.addCleanup(test_support.reset_database_singletons)
-        self.outer = test_support.fresh_files_folder(self)    # a location registered INSIDE another one - both fresh temporary directories, never a real archive
-        self.inner = os.path.join(self.outer, "inner")
-        os.makedirs(self.inner, exist_ok=True)
-        self.section = self._section_registering(self.outer, self.inner)
-
-    def _section_registering(self, *paths):
-        """A File section whose locations were registered in the order given - the ORDER is a parameter on purpose: first-that-covers and last-that-covers each look right under one order, and neither is longest-prefix."""
-        prefs = test_support.fixture_prefs(self)
-        for path in paths:
-            prefs.add_file_folder(path)
-        prefs.set_file_folder_color(self.inner, "#4af2a1")
-
-        from amaze.core import file_library
-
-        folders = file_library.FileFolders(preferences=prefs)
-        return sections.FileSection(_PanelStub(prefs, folders))
-
-    def test_the_innermost_registered_location_wins(self):
-        """A file under both answers to the NEARER one - otherwise the header names a location the user did not put it in, and paints its colour beside it."""
-        from amaze.helpers import hostos
-        for order in ((self.outer, self.inner), (self.inner, self.outer)):
-            with self.subTest(registered=("outer first"
-                                          if order[0] == self.outer
-                                          else "inner first")):
-                section = self._section_registering(*order)
-                location, label, colour = section.location_for(
-                    os.path.join(self.inner, "shot.exr"))
-                self.assertEqual(
-                    hostos.canonical_path_key(self.inner), location,    # canonical: the locations API's spelling since the portable-spelling change
-                    "a file inside the nested location answered with %r"
-                    % location)
-                self.assertEqual("#4af2a1", colour)
-                self.assertTrue(label, "the location has no label to show")
-
-    def test_a_file_under_no_registered_location_has_none(self):
-        location, label, colour = self.section.location_for(
-            "/somewhere/else/shot.exr")
-        self.assertEqual(("", "", ""), (location, label, colour))
-
-    def test_a_SIBLING_whose_name_merely_extends_it_is_not_inside_it(self):
-        """`/plates` does not contain `/plates_backup/shot.exr` - a prefix compared without its separator says it does, the same boundary bug the notes store had for `retire_prefix`."""
-        location, label, colour = self.section.location_for(
-            self.outer.rstrip("/\\") + "_backup/shot.exr")    # rstrip BOTH separators: fresh_files_folder ends in os.sep, and on Windows rstrip("/") leaves the backslash - the probe then lands INSIDE the location, in a subfolder literally named `_backup`
-        self.assertEqual(
-            ("", "", ""), (location, label, colour),
-            "a file in a SIBLING location answered with %r" % location)
-
-    def test_the_label_follows_a_RENAMED_location(self):
-        """The name a location was given is the model's answer, not the basename - so the header has to ask the model."""
-        self.section.panel.prefs.set_file_folder_name(self.outer, "Plates")
-        _location, label, _colour = self.section.location_for(
-            os.path.join(self.outer, "shot.exr"))
-        self.assertEqual("Plates", label)
-
-
 class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
     """A comment is keyed by IDENTITY, which a rename does not change - so the pane is pointed at the same key it already holds, the one case `set_subject` returns early on, and the header kept the OLD name for as long as the pane stayed open."""
 
@@ -367,24 +241,16 @@ class TheHeaderFollowsTheAssetItNames(unittest.TestCase):
         self.prefs = test_support.fixture_prefs(self)
         self.pane = notes_panel.NotesPanel(self.prefs)
         self.addCleanup(self.pane.deleteLater)
-        self.pane.set_subject(sections.CommentSubject("material:asset-1", "material", "Old Name",
-                              "Karma", "Metal", "#ff8000"))
+        self.pane.set_subject(sections.CommentSubject("material:asset-1", "Old Name", "Karma"))
 
     def test_a_renamed_asset_shows_its_NEW_name(self):
-        self.pane.set_subject(sections.CommentSubject("material:asset-1", "material", "New Name",
-                              "Karma", "Metal", "#ff8000"))
+        self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
         self.assertEqual("New Name", self.pane.name_label.text())
-
-    def test_a_recategorised_asset_shows_its_NEW_category(self):
-        self.pane.set_subject(sections.CommentSubject("material:asset-1", "material", "Old Name",
-                              "Karma", "Wood", "#4af2a1"))
-        self.assertIn("Wood", self.pane.section_label.text())
 
     def test_an_edit_IN_PROGRESS_survives_the_header_update(self):
         """set_subject is called on every click, and reloading the stored page there would throw away whatever is being typed - the header may follow a rename; the PAGE must not be reloaded with it."""
         self.pane.text_edit.setPlainText("half a sentence")
-        self.pane.set_subject(sections.CommentSubject("material:asset-1", "material", "New Name",
-                              "Karma", "Metal", "#ff8000"))
+        self.pane.set_subject(sections.CommentSubject("material:asset-1", "New Name", "Karma"))
         self.assertEqual("half a sentence",
                          self.pane.text_edit.toPlainText())
 
@@ -403,7 +269,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         if shown:
             self.pane.show()    # a hide event only arrives at a widget that was showing; without this hide() is a no-op and the test passes for no reason
             QtWidgets.QApplication.processEvents()
-        self.pane.set_subject(sections.CommentSubject(key, "material", "Rusty", "Karma"))
+        self.pane.set_subject(sections.CommentSubject(key, "Rusty", "Karma"))
         self.pane.text_edit.setPlainText("typed but not yet saved")
         self.assertTrue(
             self.pane._save_timer.isActive(),
@@ -440,8 +306,7 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
 
     def test_a_pane_with_nothing_pending_writes_nothing(self):
         """flush() runs on every teardown path AND every subject switch, so it has to be free when there is nothing to write - otherwise every click rewrites a page."""
-        self.pane.set_subject(sections.CommentSubject("material:asset-2", "material", "Rusty",
-                              "Karma"))
+        self.pane.set_subject(sections.CommentSubject("material:asset-2", "Rusty", "Karma"))
         before = self._stored("material:asset-2")
         self.pane.close()
         self.assertEqual(before, self._stored("material:asset-2"))
@@ -456,7 +321,7 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
     def test_deleting_the_panel_flushes_the_pane_first(self):
         pane = self.panel.notes_panel
         prefs = self.panel.prefs    # held now: after the delete, reading anything off the panel is a use-after-free
-        pane.set_subject(sections.CommentSubject("material:asset-9", "material", "Rusty", "Karma"))
+        pane.set_subject(sections.CommentSubject("material:asset-9", "Rusty", "Karma"))
         pane.text_edit.setPlainText("typed as the tab closed")
         self.assertTrue(pane._save_timer.isActive(),
                         "nothing pending, so this test cannot say "
@@ -471,14 +336,6 @@ class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):
         self.assertTrue(
             notes.note_for(prefs, "material:asset-9").get("items", []),
             "the page is empty on disk - the edit died with the tab")
-
-
-class _PanelStub:
-    """Only what location_for reaches for: prefs, and the folder model under the name FileSection knows it by."""
-
-    def __init__(self, prefs, folders):
-        self.prefs = prefs
-        self.file_folders_model = folders
 
 
 if __name__ == "__main__":

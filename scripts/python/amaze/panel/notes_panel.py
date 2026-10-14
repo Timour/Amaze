@@ -31,11 +31,11 @@ def _fill(widget, hex_color: str) -> None:
     widget.setAutoFillBackground(True)
 
 
-def _dim(label) -> None:
-    """Dim label text via the palette, same reasoning as _fill."""
+def _ink(label, role: str) -> None:
+    """Label text in one of the theme's text colours, via the palette, same reasoning as _fill."""
     palette = label.palette()
     palette.setColor(QtGui.QPalette.ColorRole.WindowText,
-                     QtGui.QColor(theme.color_hex("text_dim")))
+                     QtGui.QColor(theme.color_hex(role)))
     label.setPalette(palette)
 
 _glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and survives the reload chain; without it a ten-to-do page did ten SVG parses per paintEvent
@@ -323,7 +323,6 @@ class _NoteEdit(QtWidgets.QTextEdit):
         x_scroll = self.horizontalScrollBar().value()
         y_scroll = self.verticalScrollBar().value()
         side = theme.ui_px(self.GLYPH_SIDE)
-        ink = COMMENT_INK   # the to-do glyphs wear the Comments colour too, not the accent
         visible = self.viewport().rect()
         block = self.document().begin()
         while block.isValid():
@@ -336,9 +335,10 @@ class _NoteEdit(QtWidgets.QTextEdit):
                     tlayout = block.layout()   # blockBoundingRect ALREADY includes the padding; lineAt() on an un-laid-out block crashes hython natively
                     if tlayout is not None and tlayout.lineCount() > 0:
                         line = tlayout.lineAt(0)
-                        glyph = ("check-circle" if self.block_done(block)
-                                 else "circle")
-                        pixmap = _feather_icon(glyph, side, ink, self)
+                        done = self.block_done(block)
+                        pixmap = _feather_icon(
+                            "check-circle" if done else "circle", side,
+                            COMMENT_INK if done else amazetheme.COMMENT_OPEN_INK, self)
                         y = (tlayout.position().y() + line.y()
                              + (line.height() - side) / 2.0 - y_scroll)
                         painter.drawPixmap(
@@ -457,32 +457,31 @@ class NotesPanel(ui_helpers.HeldPane):
 
         header = QtWidgets.QWidget()
         _fill(header, HEADER_BG)
-        head = QtWidgets.QHBoxLayout(header)
-        pad, gap = theme.ui_px(_DRAWN["pad"]), theme.ui_px(_DRAWN["gap"])
-        head.setContentsMargins(pad, pad, pad, pad)
-        head.setSpacing(gap)
+        header.setFixedHeight(theme.ui_px(_DRAWN["header"]))
+        head = QtWidgets.QHBoxLayout(header)    # one row; every item is centred in the drawn height
+        head.setContentsMargins(theme.ui_px(_DRAWN["pad"]), 0,
+                                theme.ui_px(_DRAWN["add_pad"]), 0)
+        head.setSpacing(theme.ui_px(_DRAWN["gap"]))
         self._icon_label = QtWidgets.QLabel()
         head.addWidget(self._icon_label, 0,
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        titles = QtWidgets.QVBoxLayout()
-        titles.setSpacing(0)
-        self.section_label = QtWidgets.QLabel()
-        _dim(self.section_label)
         self.name_label = QtWidgets.QLabel()
-        self.name_label.setFont(   # THE ONE FONT TABLE owns the 1.4, not this line
+        self.name_label.setFont(   # THE ONE FONT TABLE owns the weight, not this line
             theme.font("comments_title", self.name_label.font()))
         self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # the name is an on-disk filename - AutoText would render a tag-shaped one as HTML
+        _ink(self.name_label, "text_bright")
         self.type_label = QtWidgets.QLabel()
+        self.type_label.setFont(theme.ui_font(self.type_label.font()))    # the name's base, floor included
         self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
-        _dim(self.type_label)
-        for label in (self.section_label, self.name_label,
-                      self.type_label):
-            titles.addWidget(label)
-        head.addLayout(titles, 1)
+        _ink(self.type_label, "text")
+        head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
+        head.addWidget(self.type_label, 1,    # takes the slack, so the + sits at the right
+                       QtCore.Qt.AlignmentFlag.AlignVCenter)
 
         self.add_button = QtWidgets.QToolButton()
         self.add_button.setAutoRaise(True)
+        self.add_button.setFixedSize(*(theme.ui_px(side) for side in _DRAWN["add"]))
         self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
         self.add_button.setCursor(
             QtCore.Qt.CursorShape.PointingHandCursor)
@@ -510,22 +509,16 @@ class NotesPanel(ui_helpers.HeldPane):
         """KEPT AS A NO-OP: Comments has its own colour so no accent reaches here, but the panel calls this on every accent change and a missing method is an AttributeError in a signal handler."""
 
     def _paint_accents(self) -> None:
-        import os
-
         import amaze
         dpr = theme.screen_ratio(self)
-        side = theme.ui_px(_DRAWN["icon"])
-        # AS DRAWN, no tint map: the art carries its own colour and the toolbar chip is the one site that genuinely recolours this glyph
-        pixmap = ui_helpers.device_pixmap(
-            os.path.join(os.path.dirname(amaze.__file__),
-                         "ui", "icon_comments.svg"),
-            side, dpr)
-        self._icon_label.setPixmap(pixmap)
-        plus_side = theme.ui_px(_DRAWN["plus"])
-        plus_ink = PAGE_BG if getattr(self, "_ghost", False) \
-            else COMMENT_INK
-        self.add_button.setIcon(QtGui.QIcon(
-            _feather_icon("plus-circle", plus_side, plus_ink, self)))
+        side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
+        # both arts AS DRAWN; the dead + of the empty pane wears the page colour
+        self._icon_label.setPixmap(ui_helpers.device_pixmap(
+            amaze.package_file("ui", "icon_comments.svg"), side, dpr))
+        dead = getattr(self, "_ghost", False)
+        self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
+            amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
+            {amazetheme.COMMENT_ADD_INK: PAGE_BG} if dead else None)))
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
     def adopt_look(self, source: QtWidgets.QWidget) -> None:
@@ -536,8 +529,7 @@ class NotesPanel(ui_helpers.HeldPane):
                          source.palette().color(
                              QtGui.QPalette.ColorRole.Text))
         self.text_edit.setPalette(palette)
-        base = QtGui.QFont(source.font())
-        self.section_label.setFont(base)
+        base = theme.ui_font(source.font())
         self.type_label.setFont(base)
         self.name_label.setFont(theme.font("comments_title", base))
 
@@ -545,21 +537,14 @@ class NotesPanel(ui_helpers.HeldPane):
     def set_subject(self, subject) -> None:
         """Point the page at one asset, flushing any pending edit for the previous one first; `subject` is a `sections.CommentSubject`, read BY NAME."""
         key = subject.key
-        section = subject.section
-        name = subject.name
-        type_label = subject.type
-        category = subject.category
-        category_color = subject.colour
-        if key == self._key:
-            self.set_header(section, category, name, type_label,   # HEADER ONLY: a rename arrives as a same-key call so the header must follow, but reloading the page would discard what is being typed
-                            category_color)
+        if key == self._key:    # a rename: the header follows, and a reload would lose what is being typed
+            self.set_header(subject.name, subject.type)
             return
         self.flush()
         self._key = key
         self._loading = True
         try:
-            self.set_header(section, category, name, type_label,
-                            category_color)
+            self.set_header(subject.name, subject.type)
             note = notes.note_for(self.preferences, key)
             self.text_edit.library_dir = str(    # re-read per page: a library switch moves where an image's relative src points ▸p/comment-images
                 getattr(self.preferences, "dir", "") or "")
@@ -571,22 +556,8 @@ class NotesPanel(ui_helpers.HeldPane):
         self.add_button.setEnabled(True)
         self._paint_accents()
 
-    def set_header(self, section: str, category: str, name: str,
-                   type_label: str, category_color: str = "") -> None:
-        """The first line reads section/category; a category carrying a colour renders IN that colour and bold."""
-        import html
-        section_text = html.escape(section)
-        if category:
-            shown = html.escape(category)
-            if category_color:
-                section_text = (
-                    '%s/<b><span style="color:%s">%s</span></b>'
-                    % (section_text, html.escape(category_color), shown))
-            else:
-                section_text = "%s/%s" % (section_text, shown)
-        self.section_label.setTextFormat(
-            QtCore.Qt.TextFormat.RichText)
-        self.section_label.setText(section_text)
+    def set_header(self, name: str, type_label: str) -> None:
+        """One line: the asset's name in bold, then its type."""
         self.name_label.setText(name)
         self.type_label.setText(type_label)
 
@@ -600,8 +571,7 @@ class NotesPanel(ui_helpers.HeldPane):
         self._ghost = True
         self._loading = True
         try:
-            self.set_header("section/category", "", "Object name",
-                            "type")
+            self.set_header("Object name", "type")
             self.text_edit.clear()
         finally:
             self._loading = False

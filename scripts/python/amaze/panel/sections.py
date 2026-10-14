@@ -23,13 +23,7 @@ from amaze.render import nodes as nodes_mod
 AssetStack = collections.namedtuple(
     "AssetStack", "model proxy selection categories")
 
-CommentSubject = collections.namedtuple(
-    "CommentSubject", "key section name type category colour",
-    defaults=("", ""),
-)
-
-FileLocation = collections.namedtuple(
-    "FileLocation", "path label colour")
+CommentSubject = collections.namedtuple("CommentSubject", "key name type")
 
 DropRule = collections.namedtuple(
     "DropRule",
@@ -534,18 +528,10 @@ class AssetSection(Section):
         asset_id = source.data(st.model.IdRole)
         if not asset_id:
             return None
-        categories = source.data(st.model.CategoryRole)  # a LIST; the header has room for one, and the first is the one the sidebar sorts it under
-        if isinstance(categories, (list, tuple)):
-            category = str(categories[0]) if categories else ""
-        else:
-            category = str(categories or "")
         return CommentSubject(
-            key=notes.note_key(st.model.NOTES_SECTION, asset_id),  # the MODEL's store name, not this class's key: three sections share these models
-            section=self.label.lower(),
+            key=notes.note_key(st.model.NOTES_SECTION, asset_id),    # the MODEL's store: shared by three sections
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
             type=source.data(st.model.RendererLabelRole) or "",
-            category=category,
-            colour=str(source.data(st.model.CategoryColorRole) or ""),
         )
 
     def filter_text(self, text: str) -> None:
@@ -1136,23 +1122,6 @@ class FolderSection(Section):
         folders = self._p(self.folders_attr)
         self._browse(index.data(folders.PathRole))
 
-    def location_for(self, path: str):
-        """(location, label, colour) for the registered location covering this path - label per the location's own display rule (custom name, else the path), colour from Set Color. Longest prefix wins, because a location registered INSIDE another one is the more specific answer for a file under it."""
-        folders = self._p(self.folders_attr)
-        registered = getattr(self.panel.prefs, self.folders_pref, None) or ()
-        canonical = hostos.canonical_path_key(path)
-        best = ""
-        best_len = 0
-        for folder in registered:
-            prefix = hostos.canonical_path_key(folder).rstrip("/") + "/"
-            if canonical.startswith(prefix) and len(prefix) > best_len:    # both lengths are of the CANONICAL prefix: measure one against the raw folder and the longest-prefix rule compares two different strings, so a nested location can lose to its own parent purely on how canonicalising changed it
-                best, best_len = folder, len(prefix)
-        if not best or folders is None:
-            return FileLocation(path="", label="", colour="")
-        return FileLocation(path=best,    # display_name and folder_color are the folder model's, the one already answering both for the sidebar
-                            label=folders.display_name(best),
-                            colour=folders.folder_color(best))
-
     def tile_models(self):
         return self._p(self.files_attr), self._p(self.files_proxy_attr)
 
@@ -1280,14 +1249,10 @@ class FolderSection(Section):
         path = model.file_key(source.row())
         if not path:
             return None
-        location = self.location_for(path)
         return CommentSubject(
             key=notes.note_key(self.key, path),
-            section=self.label.lower(),
             name=source.data(QtCore.Qt.ItemDataRole.DisplayRole) or "",
             type=source.data(model.FormatRole) or "",
-            category=location.label,  # a file has no category; the header shows its LOCATION, in that location's colour
-            colour=location.colour,
         )
 
 

@@ -91,9 +91,11 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = PREFS_SECTION_GAP
 
-COMMENT_INK = "#5cc9f5"        # ▸ the Comments pane: its OWN colour, not the accent, so button, header icon and to-do glyphs read as one thing
-COMMENT_HEADER_BG = "#22232b"
-COMMENT_PAGE_BG = "#2b2c34"
+COMMENT_INK = "#4af2a1"        # ▸ the Comments pane (N01): the header icon's art colour, and a done to-do
+COMMENT_OPEN_INK = "#ff7760"   # an open to-do
+COMMENT_ADD_INK = "#5d7abd"    # the + art's colour, swapped for the page's while nothing is selected
+COMMENT_HEADER_BG = "#262626"
+COMMENT_PAGE_BG = "#2d2d2d"
 
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip states them
 LIST_HEADER_DIVIDER = "#454545"
@@ -722,28 +724,24 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
     "N01": {   # the comments pane over an invented comment - its spacing and glyph sizes are read
         "frame": (450, 210),
         "nodes": (
-            ("header", 0, 0, 450, 68, None),
-            ("body", 0, 68, 450, 142, None),
-            ("label ▸ section", 59, 10, 343, 16, None),
-            ("text ▸ section", 59, 10.5, 75, 15, "Material/Metal"),
-            ("label ▸ name", 59, 26, 343, 16, None),
-            ("text ▸ name", 59, 26.5, 76, 15, "brushed_steel"),
-            ("label ▸ type", 59, 42, 343, 16, None),
-            ("text ▸ type", 59, 42.5, 57, 15, "USD Karma"),
-            ("button ▸ add", 412, 20, 28, 27, None),
-            ("menu marker ▸ Houdini's own, traced", 433, 40, 4.5, 4.5, None),
-            ("line ▸ 1", 12, 80, 185.36, 16, None),
-            ("text ▸ 1", 12, 80.5, 186, 15, "The rust reads too orange in daylight."),
-            ("line ▸ 2", 36, 106, 109.41, 16, None),
-            ("text ▸ 2", 36, 106.5, 109, 15, "Darken the edge wear"),
-            ("line ▸ 3", 36, 132, 122.56, 16, None),
-            ("text ▸ 3", 36, 132.5, 123, 15, "Render a new thumbnail"),
-            ("line ▸ 4", 12, 158, 151.94, 16, None),
-            ("text ▸ 4", 12, 158.5, 153, 15, "The scale is right at one metre."),
-            ("icon ▸ header ▸ icon_comments.svg", 10, 14, 39, 39, None),
-            ("icon ▸ add ▸ plus-circle.svg", 417, 25, 18, 18, None),
-            ("glyph ▸ 2 ▸ circle.svg", 16, 107, 14, 14, None),
-            ("glyph ▸ 3 ▸ check-circle.svg", 16, 133, 14, 14, None),
+            ("header", 0, 0, 450, 30, None),
+            ("body", 0, 30, 450, 180, None),
+            ("text ▸ name", 36, 7, 76, 15, "brushed_steel"),
+            ("text ▸ type", 118, 7, 57, 15, "USD Karma"),
+            ("button ▸ add", 419, 1, 28, 27, None),
+            ("menu marker ▸ Houdini's own, traced", 440, 21, 4.5, 4.5, None),
+            ("line ▸ 1", 12, 42, 185.36, 16, None),
+            ("text ▸ 1", 12, 42.5, 186, 15, "The rust reads too orange in daylight."),
+            ("line ▸ 2", 36, 68, 109.41, 16, None),
+            ("text ▸ 2", 36, 68.5, 109, 15, "Darken the edge wear"),
+            ("line ▸ 3", 36, 94, 122.56, 16, None),
+            ("text ▸ 3", 36, 94.5, 123, 15, "Render a new thumbnail"),
+            ("line ▸ 4", 12, 120, 151.94, 16, None),
+            ("text ▸ 4", 12, 120.5, 153, 15, "The scale is right at one metre."),
+            ("icon ▸ header ▸ icon_comments.svg", 10, 5, 20, 20, None),
+            ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
+            ("glyph ▸ 2 ▸ circle.svg", 16, 69, 14, 14, None),
+            ("glyph ▸ 3 ▸ check-circle.svg", 16, 95, 14, 14, None),
         ),
     },
 }
@@ -969,21 +967,25 @@ def drawn_sidebar(frame_key: str = "G01") -> dict:
 
 
 def drawn_comments(frame_key: str = "N01") -> dict:
-    """The comments pane's width, spacing, margins and glyphs, off its frame. ▸r/comments-from-frame"""
+    """The comments pane's width, header, margins and glyphs, off its frame. ▸r/comments-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
     node = {n[0]: n for n in layout["nodes"]}
 
     def kind(prefix):
         return next(n for n in layout["nodes"] if n[0].startswith(prefix))
 
-    icon, section = kind("icon ▸ header"), node["label ▸ section"]
+    header, icon, name = node["header"], kind("icon ▸ header"), node["text ▸ name"]
+    add, width = node["button ▸ add"], layout["frame"][0]
     plain, todo = node["line ▸ 1"], node["line ▸ 2"]
     glyph = kind("glyph ▸ 2")
     return {
-        "width": layout["frame"][0],
-        "pad": icon[1] - node["header"][1],
-        "gap": section[1] - (icon[1] + icon[3]),
+        "width": width,
+        "header": header[4],
+        "pad": icon[1] - header[1],
+        "gap": name[1] - (icon[1] + icon[3]),
         "icon": icon[3],
+        "add": (add[3], add[4]),
+        "add_pad": width - (add[1] + add[3]),
         "plus": kind("icon ▸ add")[3],
         "doc_margin": plain[1] - node["body"][1],
         "todo_indent": todo[1] - plain[1],

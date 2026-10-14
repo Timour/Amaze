@@ -183,7 +183,7 @@ class PanelWidgetTest(unittest.TestCase):
 
     def _subject(self, ident="5"):
         key = notes.note_key("material", ident)
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         return key
 
     def _press_return(self):
@@ -202,7 +202,7 @@ class PanelWidgetTest(unittest.TestCase):
         ]
         notes.set_note(self.prefs, key, flow)
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         self.assertEqual(flow, self.widget.text_edit.serialize(),
                          "the document does not carry the flow's order")
 
@@ -228,7 +228,7 @@ class PanelWidgetTest(unittest.TestCase):
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "item", "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -266,7 +266,7 @@ class PanelWidgetTest(unittest.TestCase):
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "doomed", "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
@@ -286,7 +286,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "keepme", "done": True},
                         {"t": "text", "text": "x"}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -309,7 +309,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "top", "done": False},
                         {"t": "text", "text": "tail"}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.Start)
@@ -349,7 +349,7 @@ class PanelWidgetTest(unittest.TestCase):
             {"t": "todo", "label": "first", "done": False},
             {"t": "todo", "label": "second", "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         cursor = edit.textCursor()
         cursor.movePosition(QtGui.QTextCursor.MoveOperation.End)
@@ -431,7 +431,7 @@ class PanelWidgetTest(unittest.TestCase):
                         {"t": "todo", "label": "on the line",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 160)
         edit.document().setTextWidth(280)
@@ -466,7 +466,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "hover me",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 120)
         edit.document().setTextWidth(280)
@@ -500,7 +500,7 @@ class PanelWidgetTest(unittest.TestCase):
         notes.set_note(self.prefs, key,
                        [{"t": "todo", "label": "visible", "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         edit.resize(300, 100)
         edit.document().setTextWidth(280)  # force layout: the painter guards un-laid-out blocks (lineAt on one crashes hython natively - research.md ▸ Qt styling & splitters)
@@ -525,7 +525,7 @@ class PanelWidgetTest(unittest.TestCase):
             {"t": "text", "text": "words"},
             {"t": "todo", "label": "item", "done": True}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         block = edit.document().begin()
         while block.isValid():
@@ -540,7 +540,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "flip me",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         block = edit.document().begin()
         self.assertTrue(edit.toggle_block(block))
@@ -555,7 +555,7 @@ class PanelWidgetTest(unittest.TestCase):
                        [{"t": "todo", "label": "fix the tiling",
                          "done": False}])
         self.widget.clear_subject()
-        self.widget.set_subject(sections.CommentSubject(key, "material", "X", ""))
+        self.widget.set_subject(sections.CommentSubject(key, "X", ""))
         edit = self.widget.text_edit
         block = edit.document().begin()
         self.assertTrue(edit.toggle_block(block),
@@ -584,7 +584,7 @@ class PanelWidgetTest(unittest.TestCase):
         cursor = self.widget.text_edit.textCursor()
         cursor.insertText("typed then switched")
         self.widget.set_subject(sections.CommentSubject(
-                notes.note_key("material", "12"), "material", "B", ""))
+                notes.note_key("material", "12"), "B", ""))
         self.assertEqual(
             "typed then switched",
             notes.note_for(self.prefs, first)["items"][0]["text"],
@@ -595,8 +595,6 @@ class PanelWidgetTest(unittest.TestCase):
         self._subject("13")
         self.assertTrue(self.widget.add_button.isEnabled())
         self.widget.clear_subject()
-        self.assertEqual("section/category",
-                         self.widget.section_label.text())
         self.assertEqual("Object name", self.widget.name_label.text())
         self.assertEqual("type", self.widget.type_label.text())
         self.assertFalse(self.widget.add_button.isEnabled(),
@@ -606,20 +604,24 @@ class PanelWidgetTest(unittest.TestCase):
         self.assertTrue(self.widget.add_button.isEnabled(),
                         "selecting again did not wake the page")
 
-    def test_the_header_reads_section_slash_category(self):
-        """A category joins the section line; a COLOURED one renders bold."""
+    def test_the_header_is_the_name_then_the_type(self):
         self.widget.set_subject(sections.CommentSubject(
-            notes.note_key("material", "c1"), "material", "X", "Karma",
-            category="Metal", colour=""))
-        self.assertEqual("material/Metal",
-                         self.widget.section_label.text())
-        self.widget.set_subject(
-            sections.CommentSubject(notes.note_key("material", "c2"), "material", "X", "Karma",
-                category="Metal", colour="#ff8800"))
-        text = self.widget.section_label.text()
-        self.assertIn("#ff8800", text)
-        self.assertIn("<b>", text)
-        self.assertIn("Metal", text)
+            notes.note_key("material", "c1"), "brushed_steel", "USD Karma"))
+        self.assertEqual(("brushed_steel", "USD Karma"),
+                         (self.widget.name_label.text(), self.widget.type_label.text()))
+        sibling = QtWidgets.QLabel()    # a point-sized font under the floor, as adopt_look meets one
+        small = sibling.font()
+        small.setPointSizeF(9.0)
+        sibling.setFont(small)
+        for moment in ("as built", "after adopt_look"):
+            if moment == "after adopt_look":
+                self.widget.adopt_look(sibling)
+            name, kind = self.widget.name_label.font(), self.widget.type_label.font()
+            self.assertTrue(name.bold(), "the name is not bold %s" % moment)
+            self.assertFalse(kind.bold(), "the type is bold %s" % moment)
+            self.assertEqual((kind.pointSizeF(), kind.pixelSize()),
+                             (name.pointSizeF(), name.pixelSize()),
+                             "the name is not drawn at the type's size %s" % moment)
 
     def test_the_inset_scrolls_with_the_text(self):
         """The 12px under the header is document margin, not chrome."""
@@ -1098,8 +1100,8 @@ class PanelWiringTest(unittest.TestCase):
         subject = panel._notes_subject()
         self.assertIsNotNone(subject,
                              "Color is being treated as special again")
-        self.assertTrue(subject[0].startswith("gradient:"))
-        self.assertEqual("color", subject[1])
+        self.assertTrue(subject.key.startswith("gradient:"))
+        self.assertEqual(index.data(), subject.name)
 
     def test_the_pane_follows_a_material_selection(self):
         panel = self.panel
@@ -1118,8 +1120,6 @@ class PanelWiringTest(unittest.TestCase):
         expected = index.data(QtCore.Qt.ItemDataRole.DisplayRole)
         self.assertEqual(expected, shown,
                          "the pane does not follow the selection")
-        self.assertEqual("material",
-                         panel.notes_panel.section_label.text())
 
 
 def _painted_badges(delegate, index, side=96):
@@ -1447,8 +1447,7 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         self.widget = notes_panel.NotesPanel(self.prefs)
         self.addCleanup(self.widget.deleteLater)
         self.widget.set_subject(
-            sections.CommentSubject(notes_mod.note_key("material", "7"),
-                                    "material", "X", ""))
+            sections.CommentSubject(notes_mod.note_key("material", "7"), "X", ""))
         self.outside = test_support.scratch_dir("amaze_test_btn_")
         self.addCleanup(shutil.rmtree, self.outside, True)
 
@@ -1770,7 +1769,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         self.addCleanup(self.pane.deleteLater)
         pane = self.pane
         pane._loading = True
-        pane.set_header("Material", "Metal", "brushed_steel", "USD Karma", "#c87533")
+        pane.set_header("brushed_steel", "USD Karma")
         pane.text_edit.load_items([
             {"t": "text", "text": "The rust reads too orange in daylight."},
             {"t": "todo", "label": "Darken the edge wear", "done": False},
@@ -1794,17 +1793,24 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
     def _x(self, widget):
         return widget.mapTo(self.pane, QtCore.QPoint(0, 0)).x()
 
+    def _y(self, widget):
+        return widget.mapTo(self.pane, QtCore.QPoint(0, 0)).y()
+
+    def _kind(self, prefix):
+        return next(v for k, v in self.node.items() if k.startswith(prefix))
+
     def test_the_frame_is_one_pane_the_code_can_follow(self):
-        """One pad round the header, one gap, one to-do pad above and below."""
-        n, width = self.node, self.frame["frame"][0]
-        icon = next(v for k, v in n.items() if k.startswith("icon ▸ header"))
-        add, section, kind = n["button ▸ add"], n["label ▸ section"], n["label ▸ type"]
-        pad = icon[1]
-        self.assertEqual(pad, section[2] - n["header"][2], "the top pad is not the left")
-        self.assertEqual(pad, width - (add[1] + add[3]), "the right pad is not the left")
-        self.assertEqual(pad, n["header"][4] - (kind[2] + kind[4]), "the bottom pad is not the left")
-        self.assertEqual(section[1] - (icon[1] + icon[3]), add[1] - (section[1] + section[3]),
+        """Both icons centred in the header, one gap, one to-do pad above and below."""
+        n = self.node
+        header, name, kind = n["header"], n["text ▸ name"], n["text ▸ type"]
+        for icon in (self._kind("icon ▸ header"), self._kind("icon ▸ add")):
+            self.assertEqual(icon[2] - header[2], header[4] - (icon[2] + icon[4]),
+                             "%s is not centred in the header" % icon[0])
+        icon, plus, add = self._kind("icon ▸ header"), self._kind("icon ▸ add"), n["button ▸ add"]
+        self.assertEqual(name[1] - (icon[1] + icon[3]), kind[1] - (name[1] + name[3]),
                          "the header's two gaps differ")
+        self.assertEqual((5, 5), (plus[1] - add[1], plus[2] - add[2]),
+                         "the + is not where Houdini draws it in its button")
         plain, todo, done, after = (n["line ▸ %d" % i] for i in (1, 2, 3, 4))
         self.assertEqual(todo[2] - (plain[2] + plain[4]), after[2] - (done[2] + done[4]),
                          "a to-do is padded differently above and below")
@@ -1814,15 +1820,23 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(self.px(self.drawn["width"]), self.pane.sizeHint().width())
 
     def test_the_header_is_where_it_is_drawn(self):
-        pane, d = self.pane, self.drawn
-        pad, gap = self.px(d["pad"]), self.px(d["gap"])
+        pane, d, px = self.pane, self.drawn, self.px
+        pad, gap, add_pad = px(d["pad"]), px(d["gap"]), px(d["add_pad"])
         margins = pane.header_widget.layout().contentsMargins()
-        self.assertEqual((pad,) * 4, (margins.left(), margins.top(), margins.right(), margins.bottom()))
+        self.assertEqual((pad, 0, add_pad, 0),
+                         (margins.left(), margins.top(), margins.right(), margins.bottom()))
         self.assertEqual(gap, pane.header_widget.layout().spacing())
-        self.assertEqual((pad, self.px(d["icon"])), (self._x(pane._icon_label), pane._icon_label.width()))
-        self.assertEqual(pad + self.px(d["icon"]) + gap, self._x(pane.section_label))
-        self.assertEqual(pane.width() - pad, self._x(pane.add_button) + pane.add_button.width())
-        self.assertEqual(self.px(d["plus"]), pane.add_button.iconSize().width())
+        self.assertEqual(px(d["header"]), pane.header_widget.height())
+        icon, add = pane._icon_label, pane.add_button
+        self.assertEqual((pad, px(d["icon"])), (self._x(icon), icon.width()))
+        self.assertEqual(px(self._kind("icon ▸ header")[2]), self._y(icon))
+        self.assertEqual(pad + px(d["icon"]) + gap, self._x(pane.name_label))
+        self.assertEqual(self._x(pane.name_label) + pane.name_label.width() + gap,
+                         self._x(pane.type_label))
+        self.assertEqual(tuple(px(side) for side in d["add"]), (add.width(), add.height()))
+        self.assertEqual(pane.width() - add_pad, self._x(add) + add.width())
+        self.assertEqual(px(self.node["button ▸ add"][2]), self._y(add))
+        self.assertEqual(px(d["plus"]), add.iconSize().width())
 
     def test_the_note_is_where_it_is_drawn(self):
         doc, d = self.pane.text_edit.document(), self.drawn
@@ -1862,6 +1876,38 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         for x, side in recorded:
             self.assertEqual(self.px(d["doc_margin"]) + self.px(d["glyph_inset"]), x)
             self.assertEqual(self.px(d["glyph"]), side)
+
+    def test_an_open_and_a_done_to_do_wear_their_drawn_colours(self):
+        from amaze import amazetheme
+        from amaze.panel import notes_panel
+        edit = self.pane.text_edit
+        surface = QtGui.QPixmap(max(edit.viewport().width(), 1), max(edit.viewport().height(), 1))
+        painter = QtGui.QPainter(surface)
+        try:
+            with mock.patch.object(notes_panel, "_feather_icon",
+                                   wraps=notes_panel._feather_icon) as glyph:
+                edit._paint_todo_glyphs(painter)
+        finally:
+            painter.end()
+        self.assertEqual([("circle", amazetheme.COMMENT_OPEN_INK),
+                          ("check-circle", amazetheme.COMMENT_INK)],
+                         [(c.args[0], c.args[2]) for c in glyph.call_args_list])
+
+    def test_the_plus_is_its_drawn_art_and_dies_in_the_page_colour(self):
+        """Nothing selected: the + wears the page colour, by a swap keyed on the art's own colour."""
+        import amaze
+        from amaze import amazetheme
+        from amaze.helpers import ui_helpers
+        from amaze.panel import notes_panel
+        with open(amaze.package_file("ui", "icon_comments_add.svg"), encoding="utf-8") as handle:
+            art = handle.read().lower()
+        self.assertIn(amazetheme.COMMENT_ADD_INK.lower(), art)
+        with mock.patch.object(ui_helpers, "device_pixmap",
+                               wraps=ui_helpers.device_pixmap) as drawn:
+            self.pane._show_ghost()
+        swaps = [c.args[3] for c in drawn.call_args_list
+                 if c.args[0].endswith("icon_comments_add.svg")]
+        self.assertEqual([{amazetheme.COMMENT_ADD_INK: notes_panel.PAGE_BG}], swaps)
 
 
 if __name__ == "__main__":

@@ -51,7 +51,7 @@ def ui_px(value):
 MIN_UI_POINTS = 12   # the smallest readable size BEFORE the UI scale; Houdini pins no absolute point size anywhere ▸r/font-sizing
 
 FONT_ROLES = {       # a role is a SCALE and a weight, never a literal size; tile fonts are deliberately absent, they derive from the view's option font ▸r/font-sizing
-    "comments_title": {"scale": 1.4, "bold": True},    # the Comments subject name, over its section and type lines
+    "comments_title": {"scale": 1.0, "bold": True},    # the Comments subject name, beside its type
     "empty_headline": {"scale": 1.25, "bold": True},   # the empty grid's headline, over its one explaining sentence
     "empty_quote": {"scale": 1.0, "italic": True},     # the first-run blank's quotation and its attribution, drawn at the sentence's size
 }

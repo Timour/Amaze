@@ -841,9 +841,9 @@ class ThereIsOneFontTable(unittest.TestCase):
         from amaze.helpers import theme as theme_mod
         base = QtGui.QFont()
         base.setPointSizeF(20.0)          # above the floor, so it stands
-        title = theme_mod.font("comments_title", base)
-        self.assertAlmostEqual(28.0, title.pointSizeF(), places=3,
-                               msg="the comments title stopped deriving "
+        title = theme_mod.font("empty_headline", base)
+        self.assertAlmostEqual(25.0, title.pointSizeF(), places=3,
+                               msg="the empty headline stopped deriving "
                                    "from the font it relates to")
         self.assertTrue(title.bold())
         self.assertAlmostEqual(
