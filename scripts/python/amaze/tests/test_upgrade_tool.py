@@ -119,15 +119,21 @@ class TheRehearsalTouchesNothing(UpgradeToolCase):
 
 class TheWriteIsProvenAndBackedUp(UpgradeToolCase):
 
-    def test_a_healthy_library_climbs_behind_a_backup(self):
-        self.tool._phase = self.real_phase  # end to end through the real fresh-process phases, once
-        self._library(version=7)
-        was = self._doc()
+    def test_a_library_climbs_in_fresh_processes_behind_one_backup(self):
+        """The ONE end-to-end run through real fresh-process phases; every check that needs them is here."""
+        self.tool._phase = self.real_phase
+        self._library(version=7, categories=("All", "Warm"), assets=[    # legacy All: load() saves mid-migration
+            {"name": "orphan", "categories": ["Warm"]},
+            {"id": "ok1", "name": "named", "categories": []}])
         self.assertEqual(0, self.tool.write(self.dir))
         database = self.tool._connector()
         now = self._doc()
         self.assertEqual(database.SCHEMA_VERSION, now["version"])
-        self.assertEqual(len(was["assets"]), len(now["assets"]))
+        self.assertEqual(2, len(now["assets"]),
+                         "the real run duplicated the id-less row - the phases "
+                         "are sharing connector state again")
+        self.assertNotIn("All", now["categories"][1:],
+                         "the legacy category rode back in on a merge")
         backups = self._backups()
         self.assertEqual(1, len(backups), "one backup for one write")
         with open(os.path.join(self.dir, backups[0], "library.json"),
@@ -153,19 +159,12 @@ class TheWriteIsProvenAndBackedUp(UpgradeToolCase):
         self.assertTrue(rows[0].get("id"),
                         "the id-less row was not repaired")
 
-    def test_the_phases_share_no_connector_state(self):
-        """Legacy `All` at the head of categories makes load() save mid-migration; with one process for both phases the real run then merged the rehearsal-stamped disk file as a peer and DUPLICATED the id-less row with a second mint."""
-        self.tool._phase = self.real_phase
-        self._library(version=7, categories=("All", "Warm"), assets=[
-            {"name": "orphan", "categories": ["Warm"]},
-            {"id": "ok1", "name": "named", "categories": []}])
-        self.assertEqual(0, self.tool.write(self.dir))
-        rows = self._doc()["assets"]
-        self.assertEqual(2, len(rows),
-                         "the real run duplicated a row - the phases "
-                         "are sharing connector state again")
-        self.assertNotIn("All", self._doc()["categories"][1:],
-                         "the legacy category rode back in on a merge")
+    def test_a_phase_starts_python_not_a_whole_houdini(self):
+        """A fresh hython costs 15s or more a phase; the plain Python beside it, under one."""
+        interpreter = self.tool._phase_interpreter()
+        self.assertTrue(os.path.isfile(interpreter))
+        if os.path.isfile(os.path.join(sys.base_prefix, "bin", "python3")):
+            self.assertNotIn("hython", os.path.basename(interpreter))
 
     def test_an_already_current_file_is_not_rewritten(self):
         database = self.tool._connector()

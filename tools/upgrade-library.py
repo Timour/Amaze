@@ -213,10 +213,19 @@ def _migrate_inplace(directory: str, skip_current: bool = True) -> dict:
     return refusals
 
 
+def _phase_interpreter() -> str:
+    """The plain Python under this one: run from hython, a phase starts in under a second, not 15."""
+    for name in (os.path.join("bin", "python3"), "python.exe"):
+        path = os.path.join(sys.base_prefix, name)
+        if os.path.isfile(path):
+            return path
+    return sys.executable
+
+
 def _phase(directory: str) -> dict:
     """One migration pass in a FRESH python process, so nothing - connector singletons, disk baselines, loaded-id sets - carries between the rehearsal and the real run."""
     result = subprocess.run(
-        [sys.executable, os.path.abspath(__file__), directory, "--inner"],
+        [_phase_interpreter(), os.path.abspath(__file__), directory, "--inner"],
         capture_output=True, text=True)
     if result.returncode not in (0, 2):
         return {"*": "the migration process died: %s"
