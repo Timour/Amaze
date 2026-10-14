@@ -197,6 +197,74 @@ class APeerFieldRemovalIsHonoured(_Case):
                          "our edit lost to their removal")
 
 
+class ACategoryColourIsJudgedAgainstWhatWeLoaded(_Case):
+    """Colours merge per category name against the table as we last read it - ours won every name."""
+
+    def _coloured(self, colours):
+        document = self._document()
+        document["categories"] = ["_All", "Wood", "Metal"]
+        document["category_colors"] = dict(colours)
+        return document
+
+    def _their_colours(self, colours):
+        theirs = self._on_disk()
+        theirs["category_colors"] = dict(colours)
+        self._write(theirs)
+
+    def _colours_on_disk(self):
+        return self._on_disk().get("category_colors", {})
+
+    def _our_unrelated_save(self, db):
+        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")]})
+        self.assertTrue(db.save())
+
+    def test_their_recolour_is_adopted(self):
+        self._write(self._coloured({"Wood": "#111111"}))
+        db = self._loaded()
+        self._their_colours({"Wood": "#222222"})
+
+        self._our_unrelated_save(db)
+
+        self.assertEqual("#222222", self._colours_on_disk().get("Wood"),
+                         "our save wrote the old colour back over theirs")
+        self.assertEqual("#222222", db._data["category_colors"].get("Wood"),
+                         "their colour reached disk but not this session")
+
+    def test_their_uncolour_is_adopted(self):
+        self._write(self._coloured({"Wood": "#111111", "Metal": "#333333"}))
+        db = self._loaded()
+        self._their_colours({"Metal": "#333333"})
+
+        self._our_unrelated_save(db)
+
+        self.assertNotIn("Wood", self._colours_on_disk(),
+                         "they cleared the colour and our save put it back")
+        self.assertEqual("#333333", self._colours_on_disk().get("Metal"))
+
+    def test_our_recolour_survives_their_unrelated_save(self):
+        self._write(self._coloured({"Wood": "#111111"}))
+        db = self._loaded()
+        db.set({"category_colors": {"Wood": "#444444"}})
+        self._peer_writes(name="renamed by them")
+
+        self.assertTrue(db.save())
+
+        self.assertEqual("#444444", self._colours_on_disk().get("Wood"),
+                         "our own recolour lost to a save that never "
+                         "touched the colour")
+
+    def test_our_uncolour_survives_their_unrelated_save(self):
+        self._write(self._coloured({"Wood": "#111111"}))
+        db = self._loaded()
+        db.set({"category_colors": {}})
+        self._peer_writes(name="renamed by them")
+
+        self.assertTrue(db.save())
+
+        self.assertNotIn("Wood", self._colours_on_disk(),
+                         "a colour we cleared came back from their copy")
+
+
 class ARealConflictIsTOLD(_Case):
     """Local wins a true conflict - but never in silence."""
 

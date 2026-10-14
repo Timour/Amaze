@@ -373,6 +373,9 @@ class DatabaseConnector:
             key: list(document.get(key, []) or [])
             for key in ("categories",)
         }    # the base for the LIST container, so a peer's removal is not undone by a union
+        colours = document.get("category_colors")
+        self._loaded_containers["category_colors"] = (
+            dict(colours) if isinstance(colours, dict) else {})    # and for the colour table, per name
 
     def _migrate(self, data: dict) -> None:
         """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
@@ -840,10 +843,17 @@ class DatabaseConnector:
                 if value not in existing:
                     existing.append(value)
         theirs_colors = disk.get("category_colors")
-        if isinstance(theirs_colors, dict):
+        if isinstance(theirs_colors, dict):    # per name, three ways: a name still as loaded takes theirs
             ours_colors = self._data.setdefault("category_colors", {})
-            for name, colour in theirs_colors.items():
-                ours_colors.setdefault(name, colour)
+            was = self._loaded_containers.get("category_colors", {})
+            for name in list(ours_colors) + [n for n in theirs_colors
+                                             if n not in ours_colors]:
+                if ours_colors.get(name) != was.get(name):
+                    continue    # we recoloured or cleared it since the load: ours stands
+                if name in theirs_colors:
+                    ours_colors[name] = theirs_colors[name]
+                else:
+                    ours_colors.pop(name, None)    # their removal
         for key, value in disk.items():
             if key not in self._data and key not in RETIRED_KEYS:
                 self._data[key] = value
