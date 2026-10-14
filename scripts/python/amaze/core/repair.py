@@ -172,13 +172,13 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
     """One index rebuilt from the stamps `index_filename` claims; `damaged` names the stamps that would not read, `unreadable` the sibling lists that would not parse - a caller with a non-empty `unreadable` may not write the result. ▸p/clean-library-sweep"""
     folder = os.path.join(directory, asset_dir)
     assets, damaged = [], []
-    categories, tags = [], []
+    categories = []
     try:
         names = sorted(os.listdir(folder))
     except OSError as exc:
         debug.event("repair", "cannot read the asset folder for a rebuild",
                     folder=folder, error=str(exc))
-        return {"assets": [], "categories": [], "tags": [], "damaged": [],
+        return {"assets": [], "categories": [], "damaged": [],
                 "unreadable": []}
 
     owned_elsewhere = set()
@@ -206,16 +206,12 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
         for cat in record.get("categories") or []:
             if cat and cat not in categories:
                 categories.append(cat)
-        for tag in record.get("tags") or []:
-            if tag and tag not in tags:
-                tags.append(tag)
 
     debug.event("repair", "rebuilt an index from recovery stamps",
                 folder=folder, assets=len(assets), damaged=len(damaged))
     return {
         "assets": assets,
         "categories": sorted(categories),
-        "tags": sorted(tags),
         "damaged": damaged,
         "unreadable": sorted(unreadable),
     }
@@ -260,7 +256,6 @@ def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
             "format": branding.LIBRARY_FORMAT,
             "assets": document["assets"],
             "categories": document["categories"],
-            "tags": document["tags"],
         }, indent=4)
     except OSError as exc:
         debug.event("repair", "stamp rebuild could not be written",

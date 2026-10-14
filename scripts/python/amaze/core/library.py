@@ -122,7 +122,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         if isinstance(d, dict)]
         self._remember_content_state()
 
-        self._tags = self._data.setdefault("tags", [])  # setdefault, not an index: gradients.json has never carried `tags`, and a live alias into the document is the contract every list here keeps
 
         self._thumb_rows = {}  # engine deliveries arrive BY KEY; this maps them back to the row to repaint, and is rebuilt with the asset list
         thumbnails.signals.ready.connect(self._on_thumb_key_ready)  # through the RELAY, not the engine: the engine singleton is replaced on every module reload and would leave this model wired to a dead one
@@ -196,7 +195,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 if isinstance(d, dict)
             ]
             self._remember_content_state()  # a reload is a fresh read of the library, content included
-            self._tags = self._data.setdefault("tags", [])
             self._drop_content_label_caches()
             self.rebuild_thumbs()
         finally:  # not a trailing call: a raising load must not leave the model stuck mid-reset, which freezes every view on it
@@ -545,7 +543,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 key="connector-moved")
             return False
         data = {}
-        data["tags"] = self._tags
         data["assets"] = [asset.get_as_dict() for asset in self._assets]
         db.set(data)
         stored = db.save()
@@ -646,11 +643,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return self._assets
 
     @property
-    def tags(self) -> list:
-        """Every tag in this library - a live alias into the stored document."""
-        return self._tags
-
-    @property
     def thumbsize(self) -> int:
         """The tile size the size slider last set, in pixels."""
         return self._thumbsize
@@ -682,7 +674,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
         if material.MULTIPLE_VALUES not in tags:
             tags = self.sanitize_tags(tags)
-            self.check_add_tags(tags)
         else:
             tags = ", ".join(asset.tags)
 
@@ -832,17 +823,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         folder=path,
                         error=str(exc),
                     )
-
-    def check_add_tags(self, tag: str) -> None:
-        """Add this tag to the library's list if it is not there. Saves ONLY when one was actually added - this runs once per row in the recategorise loop, where an unconditional save is a full index write per selected tile."""
-        changed = False
-        for t in tag.split(","):
-            t = t.strip()
-            if t != "" and t not in self.tags:
-                self.tags.append(t)
-                changed = True
-        if changed:
-            self.save()
 
     def remove_category(self, cat: str) -> None:
         """Take this category off every asset in the library. Does not save."""

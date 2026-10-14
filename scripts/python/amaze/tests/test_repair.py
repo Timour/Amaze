@@ -1402,7 +1402,7 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertIn("brushed", back.get("tags") or [])
         self.assertIn("Metal", back.get("categories") or [])
         self.assertIn("Metal", rebuilt["categories"])
-        self.assertIn("brushed", rebuilt["tags"])
+        self.assertNotIn("tags", rebuilt, "the rebuild still writes the retired tags list")
 
     def test_one_corrupt_stamp_costs_only_its_own_asset(self):
         """The rebuild completes and names the casualty, rather than refusing."""

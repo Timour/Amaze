@@ -245,6 +245,7 @@ class BomPrefixedDatabaseLoadsTest(_Case):
         document = self._document(3)
         document["format"] = branding.LIBRARY_FORMAT
         document["version"] = database.SCHEMA_VERSION
+        document.pop("tags", None)    # a current file carries no library tags list
         self._write(document)
         with open(self.path, "rb") as handle:
             before = handle.read()
@@ -433,8 +434,7 @@ class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
         """A wrong stamp is permanent: a document marked current never migrates."""
         self._write(self._pre_release_document())
         db, data = self._load()
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         on_disk = self._on_disk()
         self.assertEqual(
@@ -664,8 +664,6 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
                                  "assets": {"a": 1}}),
         ("categories is a string", {"categories": "Wood", "tags": [],
                                     "assets": []}),
-        ("tags is a number", {"categories": ["_All"], "tags": 3,
-                              "assets": []}),
     )
 
     def _loaded_connector(self):
@@ -728,7 +726,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         peer = self._document(2)
         peer["assets"].append({"id": "THEIRS1", "name": "theirs"})
         peer["categories"].append("Metal")
-        peer["tags"].append("shiny")
+        peer["tags"] = ["shiny"]    # an older build still writes the retired list
         self._replace_behind_it(peer)
         db.save()
         self.assertFalse(db._write_blocked,
@@ -737,7 +735,7 @@ class MergeRefusesJsonOfTheWrongShapeTest(_Case):
         self.assertIn("THEIRS1", [a["id"] for a in on_disk["assets"]],
                       "their row was not adopted")
         self.assertIn("Metal", on_disk["categories"])
-        self.assertIn("shiny", on_disk["tags"])
+        self.assertNotIn("tags", on_disk, "the retired tags list was adopted")
 
     def test_the_load_refuses_the_same_shapes_in_a_class_callers_catch(self):
         """The front door raises the class its callers catch, like a truncated file."""
@@ -898,8 +896,7 @@ class TheSchemaStampMustNotLieTest(_Case):
             db._migration_incomplete,
             "premise: the incomplete chain must be recorded, or save() has "
             "nothing to consult")
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         self.assertEqual(
             2, self._on_disk()["version"],
@@ -929,8 +926,7 @@ class TheSchemaStampMustNotLieTest(_Case):
                          "premise: a complete chain migrates on load")
         self.assertFalse(db._migration_incomplete,
                          "premise: a complete chain is not incomplete")
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         self.assertEqual(
             3, self._on_disk()["version"],
@@ -944,8 +940,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         document["version"] = 99
         self._write(document)
         db, data = self._load()
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         self.assertEqual(99, self._on_disk()["version"],
                          "a newer build's file was stamped down to ours")
@@ -980,8 +975,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         peer["version"] = 3
         peer["assets"][0]["moods"] = []      # what step 2 would have added, on ONE row only: the merge is field-wise over EVERY field now, so a row the peer migrated hands us its new field and the row that must stay at the old shape is one the peer left alone
         self._write(peer)
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         self.assertFalse(db._write_blocked, "premise: the merge succeeded, "
                          "or the stamp was never reached")
@@ -1005,8 +999,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         peer = self._document(2)
         peer["version"] = 99
         self._write(peer)
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         self.assertEqual(
             99, self._on_disk()["version"],
@@ -1028,8 +1021,7 @@ class TheSchemaStampMustNotLieTest(_Case):
         self.assertFalse(db._migration_incomplete,
                          "the gap followed the connector into a library it "
                          "was never about")
-        db.set({"assets": data["assets"], "categories": data["categories"],
-                "tags": data["tags"]})
+        db.set({"assets": data["assets"], "categories": data["categories"]})
         db.save()
         with open(os.path.join(other, self.FILENAME),
                   encoding="utf-8-sig") as handle:
@@ -2122,18 +2114,16 @@ class TheMergeMustNotDetachAModelsListTest(_Case):
         self._write(self._document())
         db, _ = self._load()
         alias_cats = db._data.setdefault("categories", [])
-        alias_tags = db._data.setdefault("tags", [])
         alias_assets = db._data.setdefault("assets", [])
         alias_colours = db._data.setdefault("category_colors", {})
 
-        db.set({"categories": ["_All", "Wood", "New"], "tags": ["rough"],
+        db.set({"categories": ["_All", "Wood", "New"],
                 "assets": [{"id": "X"}],
                 "category_colors": {"Wood": "#ff0000"}})
 
         self.assertIs(alias_cats, db._data["categories"],
                       "set() swapped the categories list, so every model "
                       "holding it is now writing to an orphan")
-        self.assertIs(alias_tags, db._data["tags"])
         self.assertIs(alias_assets, db._data["assets"])
         self.assertIs(alias_colours, db._data["category_colors"])
         self.assertIn("New", alias_cats,

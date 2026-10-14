@@ -12,8 +12,11 @@ sys.path.insert(  # THREE dirnames up = scripts/python, the directory holding th
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from PySide6 import QtCore
-import hou
+from PySide6 import QtCore, QtWidgets
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
+
+import hou  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
 
@@ -109,7 +112,6 @@ class TestMaterialLibrary(unittest.TestCase):
         """Test MaterialLibrary initializes correctly"""
         self.assertIsNotNone(self.library.preferences)
         self.assertEqual(len(self.library._assets), 1)
-        self.assertEqual(self.library._tags, ["test", "sample"])
         self.assertEqual(self.library._thumbsize, 256)
 
     def test_a_positional_prefs_is_the_preferences(self):
@@ -205,29 +207,11 @@ class TestMaterialLibrary(unittest.TestCase):
         result = self.library.sanitize_tags("")
         self.assertEqual(result, "")
 
-    def test_check_add_tags_new_tag(self):
-        """Test check_add_tags adds new tags"""
-        self.library._tags = ["existing"]
-        self.library.check_add_tags("existing,newtag")
-        self.assertIn("newtag", self.library._tags)
-
-    def test_check_add_tags_existing_tag(self):
-        """Test check_add_tags doesn't duplicate existing tags"""
-        self.library._tags = ["existing"]
-        initial_count = len(self.library._tags)
-        self.library.check_add_tags("existing")
-        self.assertEqual(len(self.library._tags), initial_count)
-
     def test_assets_property(self):
         """Test assets property returns asset list"""
         assets = self.library.assets
         self.assertEqual(len(assets), 1)
         self.assertEqual(assets[0].name, "TestMaterial")
-
-    def test_tags_property(self):
-        """Test tags property returns tag list"""
-        tags = self.library.tags
-        self.assertEqual(tags, ["test", "sample"])
 
     def test_thumbsize_property_getter(self):
         """Test thumbsize property getter"""
@@ -538,6 +522,58 @@ class TestMaterialLibrary(unittest.TestCase):
                         "the refusal said nothing")
         self.assertIn("could not be read",
                       self.library.last_cleanup_summary[0])
+
+
+class TheLibraryKeepsNoTagList(unittest.TestCase):
+    """Tags live on each asset; the library-wide list was read by nothing, so no file keeps one."""
+
+    @staticmethod
+    def _read(path):
+        with open(path, encoding="utf-8-sig") as handle:
+            return json.load(handle)
+
+    @staticmethod
+    def _write(path, document):
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+
+    def test_a_loaded_list_is_gone_after_the_next_save(self):
+        from amaze.core import database
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        folder = test_support.fresh_library(self)
+        path = os.path.join(folder, "library.json")
+        document = self._read(path)
+        document["tags"] = ["old", "list"]
+        self._write(path, document)
+        db = database.DatabaseConnector("library.json")
+        db.load(folder)
+        self.assertNotIn("tags", db._data)
+        self.assertTrue(db.save())
+        self.assertNotIn("tags", self._read(path))
+
+    def test_a_peer_list_is_not_adopted(self):
+        panel = test_support.fixture_panel(self)
+        model = panel.material_model
+        path = os.path.join(panel.prefs.dir, "library.json")
+        self.assertTrue(model.save(), "premise: the first save")
+        document = self._read(path)
+        document["tags"] = ["from", "an", "older", "build"]
+        self._write(path, document)
+        self.assertTrue(model.save())
+        self.assertNotIn("tags", self._read(path))
+
+    def test_new_tags_stay_on_the_asset_and_nowhere_else(self):
+        panel = test_support.fixture_panel(self)
+        model = panel.material_model
+        path = os.path.join(panel.prefs.dir, "library.json")
+        index = model.index(1, 0)
+        asset_id = str(model.assets[1].mat_id)
+        model.set_assetdata(index, model.assets[1].name, "", "freshtag", None)
+        document = self._read(path)
+        self.assertNotIn("tags", document)
+        row = next(r for r in document["assets"] if str(r.get("id")) == asset_id)
+        self.assertIn("freshtag", row.get("tags") or [])
 
 
 class TheSentinelHasOneHome(unittest.TestCase):

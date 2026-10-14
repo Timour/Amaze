@@ -2861,8 +2861,6 @@ class AmazePanel(QtWidgets.QWidget):
 
         if dialog.categories:
             self.cop_category_model.check_add_category(dialog.categories)
-        if dialog.tags:
-            self.cop_model.check_add_tags(dialog.tags)
 
         result = None
         save_error = None    # NO LAYOUT WRAPPER around the add_asset below: it announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md, measured 2026-08-04)
@@ -3365,8 +3363,6 @@ class AmazePanel(QtWidgets.QWidget):
         if dialog.categories:
             self.gradient_categories_model.check_add_category(    # the shared verb, which brackets its own insert - not switch_model_data(), which belongs to a library switch and only ever runs through switch_all_models()
                 dialog.categories)
-        if dialog.tags:
-            self.gradient_model.check_add_tags(dialog.tags)
 
     def _on_splitter_moved(self, _pos: int, _index: int) -> None:
         """Any splitter drag records BOTH side panes' widths; the debounced save timer writes them. The construction's law - side panes hold their width - only works if each side pane KNOWS its width."""
@@ -3966,8 +3962,6 @@ class AmazePanel(QtWidgets.QWidget):
     def _commit_material_save(self, sel: list[hou.Node], dialog) -> None:
         if dialog.categories:
             self.category_model.check_add_category(dialog.categories)
-        if dialog.tags:
-            self.material_model.check_add_tags(dialog.tags)
 
         renderers = []
         failures = []

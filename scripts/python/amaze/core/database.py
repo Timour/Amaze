@@ -15,6 +15,13 @@ from amaze import messages
 
 SCHEMA_VERSION = 8
 
+RETIRED_KEYS = ("tags",)    # dropped at load and never adopted from a peer, so the next save removes them
+
+
+def _drop_retired(document: dict) -> None:
+    for key in RETIRED_KEYS:
+        document.pop(key, None)
+
 
 _MIGRATIONS = {}
 
@@ -236,7 +243,7 @@ def wrong_shape(document) -> str:
     if not isinstance(document, dict):
         return "top level is %s, not an object" % type(document).__name__
 
-    for key in ("assets", "categories", "tags", "gradients"):
+    for key in ("assets", "categories", "gradients"):
         value = document.get(key, [])
         if not isinstance(value, list):
             return "%s is %s, not a list" % (key, type(value).__name__)
@@ -309,7 +316,7 @@ def load_survivable(db, path: str, reload: bool = False):
             messages.SECTION_UNREADABLE_SAVING_DISABLED
             % section_noun(db._filename),
             key="unreadable-" + db._filename)
-        return {"categories": ["_All"], "tags": [], "assets": []}
+        return {"categories": ["_All"], "assets": []}
 
 
 class DatabaseConnector:
@@ -364,8 +371,8 @@ class DatabaseConnector:
         self._loaded_ids = set(self._loaded_rows)
         self._loaded_containers = {
             key: list(document.get(key, []) or [])
-            for key in ("categories", "tags")
-        }    # the same base for the two LIST containers, so a peer's removal is not undone by a union
+            for key in ("categories",)
+        }    # the base for the LIST container, so a peer's removal is not undone by a union
 
     def _migrate(self, data: dict) -> None:
         """Apply `_MIGRATIONS` in order and stamp the reached version - on `data` as an ARGUMENT, so a raising step cannot leave the connector holding a half-migrated document; a newer-schema document is left untouched, a chain gap latches `_migration_incomplete` (save() holds the stamp back on it), and the format latch - write permission, never healing mid-session - is read here too, per library, never remembered across a repoint."""
@@ -425,7 +432,7 @@ class DatabaseConnector:
                 if traces:
                     self._refuse_absent(full, traces)
                     return self._data
-                self._data = {"categories": ["_All"], "tags": [], "assets": []}
+                self._data = {"categories": ["_All"], "assets": []}
                 self.save()
             else:
                 with open(full, encoding="utf-8-sig") as lib_json:
@@ -438,6 +445,7 @@ class DatabaseConnector:
                         "%s is not a database (%s)"
                         % (self._filename, malformed))
                 self._migrate(parsed)
+                _drop_retired(parsed)
                 self._data = parsed
                 self._normalize_all_category()
                 self._note_suspicious_shrink(full)
@@ -488,7 +496,7 @@ class DatabaseConnector:
 
     def _refuse_absent(self, full: str, traces) -> None:
         """Absent-but-known: hold an empty library in memory so the panel still builds, and latch `_write_blocked` - the ONE flag save() consults, because it is the SECOND save that overwrites what the first preserved; the note names the full path, the way out, and EVERY trace (following one at a time spent a recovery copy per launch)."""
-        self._data = {"categories": ["_All"], "tags": [], "assets": []}
+        self._data = {"categories": ["_All"], "assets": []}
         self._write_blocked = True
         debug.note(
             "%s is not on disk, but %s beside it says it was - so it is "
@@ -524,7 +532,7 @@ class DatabaseConnector:
 
     def set(self, assets: dict) -> None:
         """Set data without saving and never rebind the containers - models alias them - so contents change in place and incoming values are copied first because a caller may hand back the very objects being cleared."""
-        for key in ("categories", "tags"):
+        for key in ("categories",):
             if key in assets:
                 incoming = list(assets[key] or [])
                 current = self._data.setdefault(key, [])
@@ -821,7 +829,7 @@ class DatabaseConnector:
                 current.remove(row)
                 dropped_rows.append(row)
         self._dropped.extend(dropped_rows)
-        for key in ("categories", "tags"):    # the same three-way rule as a row, on a LIST: absent from disk but in our baseline and untouched by us is THEIR removal, and a union alone puts it back ▸p/merge-needs-a-base
+        for key in ("categories",):    # a row's three-way rule, on a LIST ▸p/merge-needs-a-base
             existing = self._data.setdefault(key, [])
             theirs = disk.get(key, [])
             was = self._loaded_containers.get(key, [])
@@ -837,7 +845,7 @@ class DatabaseConnector:
             for name, colour in theirs_colors.items():
                 ours_colors.setdefault(name, colour)
         for key, value in disk.items():
-            if key not in self._data:
+            if key not in self._data and key not in RETIRED_KEYS:
                 self._data[key] = value
         debug.event(
             "database", "merged concurrent changes",
