@@ -899,6 +899,10 @@ class DatabaseConnector:
         self._loaded_format = 0
         self._format_ahead = False
         self._format_reported = False
+        self._adopted = []    # what a merge left for the models is that file's too - rebound, never cleared
+        self._adopted_fields = []
+        self._dropped = []
+        self._forgotten = set()
 
     def _hold_unreadable(self, path: str, document: dict) -> None:
         """Serve `path` with `document` and refuse every write there: its file would not read."""
@@ -920,6 +924,8 @@ class DatabaseConnector:
                     getattr(self, "_loaded_format", 0),
                     getattr(self, "_format_ahead", False),
                     getattr(self, "_format_reported", False))
+        queued = (self._adopted, self._adopted_fields, self._dropped,
+                  self._forgotten)
         self._data = None
         self._forget_file_state()
         try:
@@ -931,6 +937,8 @@ class DatabaseConnector:
              self._write_blocked, self._block_reported,
              self._loaded_format, self._format_ahead,
              self._format_reported) = previous
+            (self._adopted, self._adopted_fields, self._dropped,
+             self._forgotten) = queued
             debug.event("database", "library switch failed - previous "
                         "library restored", file=self._filename,
                         attempted=path)

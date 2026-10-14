@@ -2743,6 +2743,49 @@ class ALibrarySwitchDropsTheOldBaseline(_Case):
             "merged the new library against the old baseline: %s" % cats)
         self.assertIn("_All", cats)
 
+    def _a_merge_leaves_work_for_the_model(self):
+        """Our save takes in another machine's new row and its deletion, queued for the model."""
+        self._write(self._document(count=2))
+        db, _ = self._load()
+        theirs = self._on_disk()
+        theirs["assets"] = [theirs["assets"][0],
+                            {"id": "THEIRS", "name": "added elsewhere"}]
+        self._write(theirs)
+        self.assertTrue(db.save(), "premise: the merge ran")
+        return db
+
+    def _other_library(self, text):
+        other = tempfile.mkdtemp(prefix="amaze_dbhard_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        with open(os.path.join(other, self.FILENAME), "w",
+                  encoding="utf-8") as handle:
+            handle.write(text)
+        return other + os.sep
+
+    def test_what_a_merge_left_for_one_library_is_not_handed_to_the_next(self):
+        db = self._a_merge_leaves_work_for_the_model()
+
+        db.reload_with_path(self._other_library(
+            json.dumps(self._document(count=1))))
+
+        self.assertEqual(
+            [], db.take_adopted(),
+            "a row merged into the previous library was handed to the new "
+            "library's model, and its next save writes it there")
+        self.assertEqual([], db.take_dropped(),
+                         "a deletion in the previous library was handed to "
+                         "the new one")
+
+    def test_a_failed_switch_keeps_them_for_the_library_it_stays_on(self):
+        db = self._a_merge_leaves_work_for_the_model()
+
+        with self.assertRaises(ValueError):
+            db.reload_with_path(self._other_library('{"assets": ['))
+
+        self.assertEqual(["THEIRS"], [str(r["id"]) for r in db.take_adopted()],
+                         "the rollback lost what the merge left for this "
+                         "library's model")
+
 
 class TheMembershipBaselineFollowsEverySave(_Case):
     """The baseline tells our deletion from their addition, so every save moves it."""
