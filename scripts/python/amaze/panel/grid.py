@@ -122,13 +122,19 @@ def open_catlist_menu(panel, context) -> None:
           context.sidebar_selection(), panel.cat_list)
 
 
+def selected_current(view, indexes):
+    """The row a selection is ABOUT: the current one while selected, else the first, else None."""
+    current = ui_helpers.live_current_index(view)
+    if current is None or not current.isValid() or current not in indexes:
+        current = indexes[0] if indexes else None    # Qt keeps a current row OUTSIDE the selection
+    return current
+
+
 def _open(panel, context, entries, indexes, view) -> None:
     """Build a menu, show it, and run whatever was picked - the selection and the current row are read ONCE here, for every menu."""
     if not entries or view is None:
         return
-    current = ui_helpers.live_current_index(view)
-    if current is None or not current.isValid() or current not in indexes:
-        current = indexes[0] if indexes else None    # the row the menu is about is ALWAYS a selected row: current and selection are independent in Qt, so a valid current OUTSIDE the selection is reachable
+    current = selected_current(view, indexes)    # the row the menu is about is ALWAYS a selected row
 
     menu, verbs = build_menu(panel, context, entries, indexes, current)
     chosen = menu.exec_(QtGui.QCursor.pos())

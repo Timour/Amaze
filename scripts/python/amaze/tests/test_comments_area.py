@@ -6,7 +6,7 @@ import sys
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -178,6 +178,83 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         if self.panel._is_online():
             self.panel.leave_online_world()
         QtWidgets.QApplication.processEvents()
+
+
+class NothingSelectedDimsThePane(unittest.TestCase):
+    """Qt keeps the CURRENT tile when the selection empties, so the pane asks the selection instead."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.resize(1400, 800)
+        self.panel.show()
+        self.addCleanup(self.panel.hide)
+        self.panel.section_tabs.setChecked("material")
+        self.panel.btn_notes.setChecked(True)
+        QtWidgets.QApplication.processEvents()
+        self.view = self.panel.thumblist
+        self.assertGreater(self.view.model().rowCount(), 2,
+                           "the fixture needs three tiles; row 0 is unnamed")
+
+    def _click(self, pos, modifiers=QtCore.Qt.KeyboardModifier.NoModifier):
+        """Press and release through the grid's own handlers, the door a real click goes through."""
+        left = QtCore.Qt.MouseButton.LeftButton
+        self.view.mousePressEvent(QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseButtonPress, QtCore.QPointF(pos),
+            left, left, modifiers))
+        self.view.mouseReleaseEvent(QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseButtonRelease, QtCore.QPointF(pos),
+            left, QtCore.Qt.MouseButton.NoButton, modifiers))
+        QtWidgets.QApplication.processEvents()
+
+    def _tile(self, row):
+        return self.view.visualRect(self.view.model().index(row, 0)).center()
+
+    def _empty(self):
+        rect = self.view.viewport().rect()
+        for y in range(rect.bottom() - 2, 0, -20):
+            for x in range(rect.right() - 2, 0, -20):
+                if not self.view.indexAt(QtCore.QPoint(x, y)).isValid():
+                    return QtCore.QPoint(x, y)
+        self.fail("the grid has no empty space to click")
+
+    def _key_of(self, row):
+        return self.panel._section().comment_subject(
+            self.view.model().index(row, 0)).key
+
+    def _assert_dim(self):
+        self.assertEqual([], self.panel._section().grid_selection(),
+                         "the gesture left a selection")
+        self.assertTrue(
+            self.view.currentIndex().isValid(),
+            "Qt dropped the current index as well, so this does not "
+            "reproduce what a deselect leaves behind")
+        self.assertIsNone(
+            self.panel.notes_panel._key,
+            "nothing is selected and the pane still shows the last tile")
+
+    def test_a_click_on_empty_grid_dims_the_pane(self):
+        self._click(self._tile(1))
+        self.assertEqual(self._key_of(1), self.panel.notes_panel._key)
+        self._click(self._empty())
+        self._assert_dim()
+
+    def test_a_ctrl_click_on_the_one_selected_tile_dims_the_pane(self):
+        self._click(self._tile(1))
+        self.assertEqual(self._key_of(1), self.panel.notes_panel._key)
+        self._click(self._tile(1), QtCore.Qt.KeyboardModifier.ControlModifier)
+        self._assert_dim()
+
+    def test_with_the_current_tile_deselected_the_pane_shows_a_selected_one(self):
+        ctrl = QtCore.Qt.KeyboardModifier.ControlModifier
+        self._click(self._tile(1))
+        self._click(self._tile(2), ctrl)
+        self.assertEqual(self._key_of(2), self.panel.notes_panel._key)
+        self._click(self._tile(2), ctrl)
+        self.assertEqual(2, self.view.currentIndex().row(),
+                         "the deselected tile is not current, so this "
+                         "proves nothing")
+        self.assertEqual(self._key_of(1), self.panel.notes_panel._key,
+                         "the pane shows a tile that is not selected")
 
 
 class TheCommentsPaneHOLDSItsOwnWidth(unittest.TestCase):

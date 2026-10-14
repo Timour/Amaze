@@ -3423,12 +3423,13 @@ class AmazePanel(QtWidgets.QWidget):
         grid.visible_view(self).viewport().update()    # THE VISIBLE view, whichever mode is up: `NotesRole` is answered live from the store with no `dataChanged`, so this repaint is the whole signal
 
     def _notes_subject(self):
-        """What the Comments pane points at, or None. Two things happen here and nothing else: find the live current index, and ask the section context what that index means - so a section that arrives with tiles of its own gets a Comments pane by writing `Section.comment_subject`, not by being remembered here."""
-        index = ui_helpers.live_current_index(self.thumblist)    # the LIVE current index, never a stored proxy index - the one selection source every handler uses
-        if index is None or not index.isValid():
-            return None
+        """What the Comments pane points at, or None - the section says what its selected tile is."""
         context = self._section()
         if context is None or not context.takes_comments:    # ASK THE CONTEXT, do not test which world this is: the online world answers no because an online record is not a library asset, a fact that belongs on it rather than in a branch here
+            return None
+        index = grid.selected_current(    # a SELECTED row: Qt keeps the current one after a deselect
+            self.thumblist, context.grid_selection())
+        if index is None:
             return None
         return context.comment_subject(index)
 
