@@ -1,9 +1,12 @@
 """The Grid area's OPERATIONS: one selection, one owner per verb. - BATCH 6 of the four-areas restructure, the second half of it. The area owns what is shown and in what order (test_grid_order.py) and it owns THE SELECTION AND WHAT IS DONE TO IT - which is where the copies were: - * Favourite was written FIVE times, once inside each section's right-click handler, each mapping the selection through its own proxy and calling a differently-named model method (`toggle_fav(index)` for the asset sections, `toggle_favorite(row)` for File and Color); * three of the five wrapped the call in `layoutAboutToBeChanged` / `layoutChanged` on the SOURCE model to force the grid to re-map, and two did not - so on File and Color, un-favouriting a tile with Favourites-only on left it in the grid with its star off. The invariant belongs to the proxy (core/grid_proxy.py) and now lives there, which is what lets every caller stop carrying it; * Update Preview was written three times and MISSING from a fourth. - A verb the Grid offers is now one method on the Section: the panel hands over the selection and never knows which model method a section calls or what a row is keyed by."""
 
 import ast
+import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtWidgets  # noqa: E402
@@ -16,10 +19,12 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.core import matx_import  # noqa: E402
+from amaze.dialogs import code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
-PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PACKAGE =os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TILE_CONTEXTS = ("AssetSection", "FileSection", "GradientSection")  # the contexts that show tiles a person can act on
 
@@ -626,6 +631,155 @@ class TheStarBadgeClickActsOnTheSELECTION(unittest.TestCase):
                 "comment", delegate._badge_clicks,
                 "a delegate reads the notes role but wires no comment "
                 "click, so the badge paints and hovers dead")
+
+
+def _karma_material(test, name):
+    """A real Karma material in /mat - what a conversion or an import hands add_asset."""
+    node = hou.node("/mat").createNode("subnet", name)
+    node.createNode("mtlxstandard_surface", "surf")
+    test.addCleanup(node.destroy)
+    return node
+
+
+class NoRowMovesInsideALayoutChange(unittest.TestCase):
+    """A row insert inside a layout-change pair segfaults H21 (research.md, measured 2026-08-04)."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.prefs.render_on_import = 0
+        self.model = self.panel.material_model
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+
+    def _select(self, row):
+        proxy = self.panel.material_sorted_model
+        self.panel.material_selection_model.select(
+            proxy.mapFromSource(self.model.index(row, 0)),
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+
+    def _peer_adds_a_row(self, model, row):
+        """Another machine writes a row; OUR next save adopts it, which is an INSERT."""
+        self.assertTrue(model.save(), "premise: the baseline save failed")
+        path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["assets"].append(dict(row, categories=[], tags=[]))
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+
+    def _saving_a_twin(self, name):
+        """A converter whose last step is the real one, add_asset."""
+        def convert(_index):
+            saved = self.model.add_asset(
+                _karma_material(self, name), "", "", False)
+            return bool(saved), types.SimpleNamespace(
+                summary_lines=lambda: [])
+        return convert
+
+    def _assert_no_row_moved_inside(self, caught, verb):
+        self.assertEqual(
+            [], caught,
+            "%s moved rows inside a layout-change pair - the shape that "
+            "segfaults H21: %s" % (verb, caught))
+
+    def test_convert_to_redshift(self):
+        self.model.assets[1].renderer = "Karma"
+        self._select(1)
+        before = self.model.rowCount()
+        with mock.patch.object(self.model, "convert_karma_to_redshift",
+                               self._saving_a_twin("rs_twin")), \
+                test_support.row_moves_inside_a_layout_change(
+                    self.model) as caught:
+            self.panel.convert_selected_to_redshift()
+        self.assertEqual(before + 1, self.model.rowCount(),
+                         "premise: the conversion added no twin")
+        self._assert_no_row_moved_inside(caught, "Convert to Redshift")
+
+    def test_convert_to_karma(self):
+        self.model.assets[1].renderer = "Redshift"
+        self._select(1)
+        before = self.model.rowCount()
+        with mock.patch.object(self.model, "convert_redshift_to_karma",
+                               self._saving_a_twin("karma_twin")), \
+                test_support.row_moves_inside_a_layout_change(
+                    self.model) as caught:
+            self.panel.convert_selected_to_karma()
+        self.assertEqual(before + 1, self.model.rowCount(),
+                         "premise: the conversion added no twin")
+        self._assert_no_row_moved_inside(caught, "Convert to Karma")
+
+    def test_an_online_import(self):
+        record = types.SimpleNamespace(kind="", category="", title="t")
+
+        def importing(_record, _source, _resolution, library, *_a, **_k):
+            saved = library.add_asset(
+                _karma_material(self, "online_twin"), "", "", False)
+            return bool(saved), ""
+
+        before = self.model.rowCount()
+        with mock.patch.object(self.panel, "_online_source_for",
+                               lambda _record: (object(), "1k", "")), \
+                mock.patch.object(matx_import, "import_record",
+                                  importing), \
+                test_support.row_moves_inside_a_layout_change(
+                    self.model) as caught:
+            ok, reason = self.panel.import_online_material(record)
+        self.assertTrue(ok, reason)
+        self.assertEqual(before + 1, self.model.rowCount())
+        self._assert_no_row_moved_inside(caught, "an online import")
+
+    def test_a_drop_on_a_sidebar_category(self):
+        self._peer_adds_a_row(self.model, {"id": "PEER-DROP",
+                                           "name": "Dropped elsewhere"})
+        self._select(1)
+        with test_support.row_moves_inside_a_layout_change(
+                self.model) as caught:
+            self.panel.assign_category_active("usds")
+        self.assertIn("Dropped elsewhere",
+                      [asset.name for asset in self.model.assets],
+                      "premise: the save adopted nothing")
+        self.assertEqual(["usds"], list(self.model.assets[1].categories))
+        self._assert_no_row_moved_inside(caught, "a sidebar drop")
+
+    def test_saving_over_an_existing_material(self):
+        self._peer_adds_a_row(self.model, {"id": "PEER-OVER",
+                                           "name": "Saved elsewhere"})
+
+        def updating(_row, _node):
+            self.model.save()    # the update's own last step
+            return "Karma"
+
+        with mock.patch.object(self.model, "update_asset_content",
+                               updating), \
+                test_support.row_moves_inside_a_layout_change(
+                    self.model) as caught:
+            self.panel._update_existing_asset(1, None)
+        self.assertIn("Saved elsewhere",
+                      [asset.name for asset in self.model.assets],
+                      "premise: the save adopted nothing")
+        self._assert_no_row_moved_inside(caught, "Save Version")
+
+    def test_editing_a_snippet(self):
+        code = self.panel.code_model
+        row = next(i for i, asset in enumerate(code.assets)
+                   if str(asset.code or "").strip())
+        self._peer_adds_a_row(code, {"id": "PEER-CODE",
+                                     "name": "Typed elsewhere",
+                                     "code": "@P.y += 1;",
+                                     "renderer": "VEX"})
+
+        def accepting(dialog):
+            dialog._on_accept()
+            return 1
+
+        with mock.patch.object(code_dialog.CodeDialog, "exec", accepting), \
+                test_support.row_moves_inside_a_layout_change(
+                    code, self.panel.code_category_model) as caught:
+            self.panel.sections["code"]._edit_code_row(row)
+        self.assertIn("Typed elsewhere",
+                      [asset.name for asset in code.assets],
+                      "premise: the save adopted nothing")
+        self._assert_no_row_moved_inside(caught, "Edit Snippet")
 
 
 if __name__ == "__main__":

@@ -355,15 +355,19 @@ class AssetSection(Section):
         new_name = self.panel.ask_category_name("Rename Category")
         if st is None or not new_name:
             return
-        with ui_helpers.relayout(st.model, st.categories):
-            for index in indexes:
-                name = self.sidebar_key(index)    # the STORED name: the sidebar strips a leading underscore for display, so renaming "_WIP" by its label matches no asset and no entry and silently does nothing
-                if not name or name in ("All", "_All"):
-                    continue
+        names = []    # STORED names: "_WIP" reads WIP, and its label matches no asset
+        for index in indexes:
+            name = self.sidebar_key(index)
+            if name and name not in ("All", "_All"):
+                names.append(name)
+        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
+            for name in names:
                 st.model.rename_category(name, new_name)
-                st.categories.rename_category(name, new_name)
-            st.model.save()
-        self._refilter_from_sidebar()    # the rename rewrites every asset and the sidebar row, leaving the proxy narrowed to a name nothing carries any more: without this the row reads correctly, stays highlighted, and the grid is permanently empty with nothing said until another row is clicked. Through the ONE route a sidebar click uses, never a second place that knows how a category becomes a filter
+        for name in names:
+            st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
+        st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
+        self._refilter_from_sidebar()    # the grid still holds the old name; re-point it as a click does
+        self.panel._refresh_sidebar_categories()    # the renamed row sent no signal of its own
 
     def export_package_to(self, indexes, path: str) -> int:
         """ACT half: the selected rows (proxy indexes) leave as one `.amazepkg` - record, existing family files and note per asset - answering the entry count."""
@@ -430,10 +434,10 @@ class AssetSection(Section):
             return
         if st.selection is not None:
             st.selection.clearSelection()
-        with ui_helpers.relayout(st.model):
+        with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
             for name in names:
                 st.model.remove_category(name)
-            st.model.save()
+        st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         for name in names:
             st.categories.remove_category(name)    # OUTSIDE the relayout wrapper: this announces itself with begin/endRemoveRows and pairing the two segfaults H21 (research.md, measured 2026-08-04). The asset rows changed inside the wrapper; the sidebar rows change here, bracketed by their own signals
         self.panel._ensure_sidebar_selection(self.key)    # the row is gone and the filter is not: without this the grid stays narrowed to a category that no longer exists - zero tiles, nothing highlighted, no message - because the sidebar must never sit with an empty selection
@@ -977,12 +981,10 @@ class CodeSection(AssetSection):
             return
         if dialog.category:
             panel.code_category_model.check_add_category(dialog.category)
-        with ui_helpers.relayout(panel.code_model,
-                                 panel.code_category_model):
-            panel.code_model.update_asset(
-                row, dialog.code, dialog.name, dialog.language,
-                dialog.category, dialog.tags,
-            )
+        panel.code_model.update_asset(    # NO layout pair: it saves, and announces the row itself
+            row, dialog.code, dialog.name, dialog.language,
+            dialog.category, dialog.tags,
+        )
         panel._refresh_sidebar_categories()
     library_model_attrs = ("code_model", "code_category_model")
     model_attr = "code_model"

@@ -1307,9 +1307,9 @@ class AmazePanel(QtWidgets.QWidget):
                 asset = model.assets[idx.row()]
                 model.set_assetdata(
                     idx, asset.name, category, ", ".join(asset.tags),
-                    None, save=False    # fav=None: a recategorise edits the record, never the star, which is per-user and lives in settings. save=False: one index write for the whole selection, not one per row
+                    None, save=False    # fav=None: never the per-user star; save=False: one write below
                 )
-            model.save()
+        model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         self._refresh_sidebar_categories()
 
     def _assign_gradient_category(self, category: str) -> None:
@@ -1634,21 +1634,20 @@ class AmazePanel(QtWidgets.QWidget):
         all_lines = []
         converted_count = 0
         karma_count = 0
-        with ui_helpers.relayout(self.material_model):
-            for index in indexes:
-                idx = self.material_sorted_model.mapToSource(index)
-                mat = self.material_model.assets[idx.row()]
-                if "Karma" not in str(mat.renderer):
-                    continue
-                karma_count += 1
-                try:
-                    ok, report = self.material_model.convert_karma_to_redshift(idx)
-                except Exception as exc:    # one bad material must not take the rest of the selection down, nor the summary the others earned
-                    all_lines.append(f'"{mat.name}": crashed - {exc}')
-                    continue
-                if ok:
-                    converted_count += 1
-                all_lines.extend(report.summary_lines())
+        for index in indexes:    # NO layout pair: a twin is an insert, and that pairing segfaults H21
+            idx = self.material_sorted_model.mapToSource(index)
+            mat = self.material_model.assets[idx.row()]
+            if "Karma" not in str(mat.renderer):
+                continue
+            karma_count += 1
+            try:
+                ok, report = self.material_model.convert_karma_to_redshift(idx)
+            except Exception as exc:    # one bad material must not sink the rest, nor their summary
+                all_lines.append(f'"{mat.name}": crashed - {exc}')
+                continue
+            if ok:
+                converted_count += 1
+            all_lines.extend(report.summary_lines())
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(
@@ -1666,22 +1665,21 @@ class AmazePanel(QtWidgets.QWidget):
         all_lines = []    # ONE summary dialog for successes and skips alike: a "successful" conversion can still have approximated or skipped inputs worth reviewing, and no result is claimed to be a faithful reproduction
         converted_count = 0
         redshift_count = 0
-        with ui_helpers.relayout(self.material_model):
-            for index in indexes:
-                idx = self.material_sorted_model.mapToSource(index)
-                mat = self.material_model.assets[idx.row()]
-                if "Redshift" not in mat.renderer:
-                    continue
-                redshift_count += 1
-                try:
-                    ok, report = (
-                        self.material_model.convert_redshift_to_karma(idx))    # what is and isn't handled: core/library.py's convert_redshift_to_karma() and render/material_converter.py
-                except Exception as exc:    # one bad material must not take the rest of the selection down, nor the summary the others earned - it becomes a line in that summary instead
-                    all_lines.append(f'"{mat.name}": crashed - {exc}')
-                    continue
-                if ok:
-                    converted_count += 1
-                all_lines.extend(report.summary_lines())
+        for index in indexes:    # NO layout pair: a twin is an insert, and that pairing segfaults H21
+            idx = self.material_sorted_model.mapToSource(index)
+            mat = self.material_model.assets[idx.row()]
+            if "Redshift" not in mat.renderer:
+                continue
+            redshift_count += 1
+            try:
+                ok, report = (
+                    self.material_model.convert_redshift_to_karma(idx))    # what is handled: render/material_converter.py
+            except Exception as exc:    # one bad material must not sink the rest; it becomes a summary line
+                all_lines.append(f'"{mat.name}": crashed - {exc}')
+                continue
+            if ok:
+                converted_count += 1
+            all_lines.extend(report.summary_lines())
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(
@@ -2386,11 +2384,10 @@ class AmazePanel(QtWidgets.QWidget):
         if getattr(record, "kind", "") == "amazepkg":
             return self._import_amaze_package_record(
                 record, source, restore=False, on_progress=on_progress)
-        with ui_helpers.relayout(self.material_model):
-            ok, reason = matx_import.import_record(
-                record, source, resolution, self.material_model, self.prefs,
-                progress=on_progress, renderer=renderer,
-            )
+        ok, reason = matx_import.import_record(    # NO layout pair: it ends in add_asset, an insert
+            record, source, resolution, self.material_model, self.prefs,
+            progress=on_progress, renderer=renderer,
+        )
         if not ok:
             return (False, reason or "Import failed.")
         self.category_model.check_add_category(record.category)    # no relayout wrapper here: check_add_category announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md)
@@ -3939,9 +3936,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _update_existing_asset(self, row: int, node: hou.Node) -> None:
         """Overwrite an existing library entry's content from the scene node: same entry/metadata, new node files + thumbnail + type."""
-        with ui_helpers.relayout(self.material_model):
-            renderer = self.material_model.update_asset_content(row, node)
-        self._refresh_sidebar_categories()    # an overwrite can re-detect a different renderer, so counts and renderer-aware hiding may shift
+        model = self.material_model
+        held = model.assets[row].mat_id if 0 <= row < len(model.assets) else None    # by ID: saves move rows
+        renderer = model.update_asset_content(row, node)    # NO layout pair: it saves, which adopts rows
+        if renderer and held is not None:
+            model.row_changed(model.find_asset_row_by_id(held))    # renderer and date changed IN PLACE
+        self._refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
         if not renderer:
             ui = getattr(hou, "ui", None)
             if ui is not None:

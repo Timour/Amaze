@@ -188,6 +188,45 @@ def captured_log():
         shutil.rmtree(directory, True)
 
 
+@contextlib.contextmanager
+def row_moves_inside_a_layout_change(*models):
+    """Every row insert, removal or reset sent while that model's layout change was open."""
+    caught = []
+    wired = []
+
+    def follower(model, name, depth):
+        def heard(*_args):
+            if depth[0]:
+                caught.append("%s.%s" % (type(model).__name__, name))
+        return heard
+
+    for model in models:
+        depth = [0]    # the open pairs; the H21 segfault shape is a row move at depth > 0
+
+        def opened(*_args, depth=depth):
+            depth[0] += 1
+
+        def closed(*_args, depth=depth):
+            depth[0] = max(0, depth[0] - 1)
+
+        slots = [(model.layoutAboutToBeChanged, opened),
+                 (model.layoutChanged, closed)]
+        for name in ("rowsInserted", "rowsRemoved", "modelReset"):
+            slots.append((getattr(model, name),
+                          follower(model, name, depth)))
+        for signal, slot in slots:
+            signal.connect(slot)
+            wired.append((signal, slot))
+    try:
+        yield caught
+    finally:
+        for signal, slot in wired:
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass             # the model went first
+
+
 def live_library_to_rehearse_on(testcase):
     """The machine's configured REAL library (`real_dir`, never the Test Mode overlay) or a skip - recovery rehearsals recover the owner's own snapshots or they prove nothing. ▸p/harness-isolation"""
     live = prefs.Prefs()

@@ -1,5 +1,6 @@
 """The Sidebar's MENU pins - `Section.SIDEBAR_MENU` through the same `panel/grid.py` builder as `GRID_MENU`; the shapes were RECORDED from the three panel.py handlers they replaced before those were deleted, so a rendering difference is a regression against shipped behaviour, not a style call."""
 
+import json
 import os
 import sys
 import unittest
@@ -16,6 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.core import category  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -308,6 +310,111 @@ class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
             "a categories-model row signal is paired with a layout "
             "change - the H21 segfault shape the relayout docstring "
             "bans: %s" % offenders)
+
+    ROW_WRITERS = (    # each inserts or removes rows, or saves - and a save adopts a peer's rows
+        "save", "add_asset", "import_record", "update_asset",
+        "update_asset_content", "convert_karma_to_redshift",
+        "convert_redshift_to_karma", "check_add_category", "remove_asset",
+        "removeRow", "removeRows", "insertRow", "insertRows")
+    CATEGORY_WRITERS = ("remove_category", "rename_category")    # move rows or save on a CATEGORIES model
+
+    def test_no_relayout_wraps_a_row_move_or_a_save(self):
+        """Both files that open the pair, every verb that can move rows under it."""
+        import ast
+
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for name in ("panel.py", "sections.py"):
+            with open(os.path.join(package, "panel", name),
+                      encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.With) and any(
+                        "relayout" in ast.dump(item.context_expr)
+                        for item in node.items)):
+                    continue
+                for call in (c for stmt in node.body for c in ast.walk(stmt)):
+                    if not (isinstance(call, ast.Call)
+                            and isinstance(call.func, ast.Attribute)):
+                        continue
+                    verb = call.func.attr
+                    receiver = ast.unparse(call.func.value)
+                    if verb in self.ROW_WRITERS or (
+                            verb in self.CATEGORY_WRITERS
+                            and "cat" in receiver.lower()):
+                        offenders.append("%s:%d %s.%s" % (
+                            name, call.lineno, receiver, verb))
+        self.assertEqual(
+            [], offenders,
+            "a call that can insert, remove or save runs inside a "
+            "layout-change pair - the H21 segfault shape: %s" % offenders)
+
+
+class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
+    """Rename and Remove edit asset rows in place; the save that follows adopts a peer's rows."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        self.model = self.panel.material_model
+        self.section = self.panel.sections["material"]
+        self.assertTrue(self.model.save(), "premise: the baseline save failed")
+        path = os.path.join(self.panel.prefs.dir, self.model.DB_FILENAME)
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["assets"].append({"id": "PEER-CAT", "categories": [],
+                                   "name": "Filed elsewhere", "tags": []})
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+
+    def _row(self, stored):
+        proxy = self.panel.cat_list.model()
+        role = proxy.sourceModel().CatSortRole
+        for row in range(proxy.rowCount()):
+            if proxy.index(row, 0).data(role) == stored:
+                return proxy.index(row, 0)
+        self.fail("premise: no sidebar row is stored %r" % stored)
+
+    def _assert_no_row_moved_inside(self, caught, verb):
+        self.assertIn("Filed elsewhere",
+                      [asset.name for asset in self.model.assets],
+                      "premise: the save adopted nothing")
+        self.assertEqual(
+            [], caught,
+            "%s moved rows inside a layout-change pair - the shape that "
+            "segfaults H21: %s" % (verb, caught))
+
+    def test_rename(self):
+        self.assertTrue(self.panel._stand_on_category("usds"))
+        index = self._row("usds")
+        with mock.patch.object(self.panel, "ask_category_name",
+                               lambda _title: "Surfaces"), \
+                test_support.row_moves_inside_a_layout_change(
+                    self.model, self.panel.category_model) as caught:
+            self.section.menu_rename_category([index], index)
+        self._assert_no_row_moved_inside(caught, "Rename")
+        self.assertEqual("Surfaces", self.panel._selected_category_name(),
+                         "the renamed row is no longer where you stand")
+        self.assertEqual(
+            "Surfaces", self.panel.material_sorted_model.filter_value(
+                self.model.CategoryRole),
+            "the grid is still narrowed to the old name")
+        self.assertEqual(
+            4, self._row("Surfaces").data(category.SIDEBAR_COUNT_ROLE),
+            "the renamed row counts from a stale cache")
+
+    def test_remove(self):
+        index = self._row("usds")
+        with test_support.row_moves_inside_a_layout_change(
+                self.model, self.panel.category_model) as caught:
+            self.section.menu_remove_category([index], index)
+        self._assert_no_row_moved_inside(caught, "Remove")
+        self.assertNotIn("usds", [
+            self.panel.category_model.data(
+                self.panel.category_model.index(row, 0),
+                self.panel.category_model.CatSortRole)
+            for row in range(self.panel.category_model.rowCount())])
 
 
 if __name__ == "__main__":
