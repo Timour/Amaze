@@ -1311,16 +1311,19 @@ class AmazePanel(QtWidgets.QWidget):
         if stack is None:
             return
         model, proxy, selmodel, catmodel = stack
-        indexes = grid_columns.selected_rows(selmodel)
-        if not indexes:
+        ids = [model.tile_key(proxy.mapToSource(index).row())
+               for index in grid_columns.selected_rows(selmodel)]
+        if not ids:
             return
-        catmodel.check_add_category(category)    # OUTSIDE the relayout wrapper: this announces itself with begin/endInsertRows, and pairing the two segfaults H21 (research.md). The row edits below are data changes, which is what the wrapper is for
+        catmodel.check_add_category(category)    # outside the pair (it inserts), and its save can move rows
         with ui_helpers.relayout(model):
-            for index in indexes:
-                idx = model.index(proxy.mapToSource(index).row(), 0)
-                asset = model.assets[idx.row()]
+            for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
+                if row < 0:
+                    continue    # deleted on another machine meanwhile
+                asset = model.assets[row]
                 model.set_assetdata(
-                    idx, asset.name, category, ", ".join(asset.tags),
+                    model.index(row, 0), asset.name, category,
+                    ", ".join(asset.tags),
                     None, save=False    # fav=None: never the per-user star; save=False: one write below
                 )
         model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21

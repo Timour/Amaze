@@ -782,6 +782,67 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._assert_no_row_moved_inside(caught, "Edit Snippet")
 
 
+class ARowHeldAcrossACategorySaveIsFoundAgain(unittest.TestCase):
+    """A category list's save takes in another machine's deletions, so a row held across it moves."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _deleted_elsewhere(self, model, mat_id):
+        """Another machine deletes `mat_id`; the next save of the file takes the deletion in."""
+        self.assertTrue(model.save(), "premise: the baseline save failed")
+        path = os.path.join(self.panel.prefs.dir, model.DB_FILENAME)
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        document["assets"] = [row for row in document["assets"]
+                              if str(row.get("id")) != str(mat_id)]
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=4)
+
+    def test_a_drop_onto_a_new_category_moves_the_asset_dropped(self):
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        model = self.panel.material_model
+        proxy = self.panel.material_sorted_model
+        shown = [model.assets[proxy.mapToSource(proxy.index(row, 0)).row()]
+                 for row in range(proxy.rowCount())]
+        self.assertGreaterEqual(len(shown), 4, "premise: too few tiles")
+        target = shown[2]
+        self.panel.material_selection_model.select(
+            proxy.index(2, 0),
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self._deleted_elsewhere(model, shown[0].mat_id)
+
+        self.panel.assign_category_active("Brand New")
+
+        self.assertEqual(
+            ["Brand New"], list(target.categories),
+            "the dropped asset kept its category: the list's save took in "
+            "a deletion above it, and the row held from before named another")
+
+    def test_an_edited_snippet_is_the_one_saved(self):
+        code = self.panel.code_model
+        rows = [row for row, asset in enumerate(code.assets)
+                if row and str(asset.code or "").strip()]
+        self.assertTrue(rows, "premise: no snippet below the first row")
+        target = code.assets[rows[0]]
+        self._deleted_elsewhere(code, code.assets[0].mat_id)
+
+        def accepting(dialog):
+            dialog._on_accept()
+            dialog.category = "Brand New"
+            dialog.code = "// edited here"
+            return 1
+
+        with mock.patch.object(code_dialog.CodeDialog, "exec", accepting):
+            self.panel.sections["code"]._edit_code_row(rows[0])
+
+        self.assertEqual(
+            "// edited here", target.code,
+            "the edit landed on another snippet: the category list's save "
+            "took in a deletion above it, and the row held from before moved")
+
+
 class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
     """Customize lists the categories of the section whose tiles it edits; a mixed pick opens blank."""
 

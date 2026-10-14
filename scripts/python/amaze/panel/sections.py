@@ -979,6 +979,11 @@ class CodeSection(AssetSection):
             return
         if dialog.category:
             panel.code_category_model.check_add_category(dialog.category)
+        row = panel.code_model.find_asset_row_by_id(asset.mat_id)    # that save can move rows
+        if row < 0:
+            debug.event("code", "edited snippet gone from the library",
+                        mat_id=str(asset.mat_id))
+            return
         panel.code_model.update_asset(    # NO layout pair: it saves, and announces the row itself
             row, dialog.code, dialog.name, dialog.language,
             dialog.category, dialog.tags,
