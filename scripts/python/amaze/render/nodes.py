@@ -863,7 +863,14 @@ class NodeHandler:
                         error=str(exc))
 
     def cleanup(self):
-        """Remove what THIS import created; a context node is never ours."""
+        """Remove what THIS import created, its COP companion too; a context node is never ours."""
+        try:
+            self._remove_import_target()
+        finally:
+            self._undo_cop_companion()    # one already in the scene is shared by name and stays
+
+    def _remove_import_target(self) -> None:
+        """Destroy the builder, or the container this import made - never a context node."""
         if not self._import_path:
             return
         target = (self._builder_node if self._use_existing_node

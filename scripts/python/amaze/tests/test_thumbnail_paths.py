@@ -572,6 +572,64 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "selects the copies it makes, the copies are destroyed at "
             "the end, and nothing puts back what was selected before")
 
+    COMPANION = "amaze_preview_probe_cop"
+
+    def _sweep_cop_root(self):
+        root = hou.node("/obj/Amaze")
+        if root is not None:
+            self._drop(root)
+
+    def _asset_with_a_companion(self):
+        """A Karma fixture asset whose saved COP companion restores as `/obj/Amaze/<net>`."""
+        from amaze.core import material
+        self._sweep_cop_root()
+        self.addCleanup(self._sweep_cop_root)
+        test_support.reset_database_singletons()
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        asset = next(a for a in model.assets
+                     if material.is_karma_renderer(a.renderer))
+        with hou.undos.disabler():
+            source = hou.node("/obj").createNode("copnet")
+            source.createNode("constant")
+        source.saveItemsToFile(source.allItems(), material.payload_path(
+            self.prefs, asset.mat_id, "_cop" + self.prefs.ext))
+        self._drop(source)
+        asset.cop_net = {"name": self.COMPANION, "type": "copnet"}
+        return asset
+
+    def test_update_preview_takes_back_a_companion_it_restored(self):
+        asset = self._asset_with_a_companion()
+        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
+            self._scaffold())
+        self.assertIsNone(
+            hou.node("/obj/Amaze/" + self.COMPANION),
+            "Update Preview restored the material's COP companion for the "
+            "render and left it in the artist's scene")
+        self.assertIsNone(
+            hou.node("/obj/Amaze"),
+            "the preview made /obj/Amaze for its companion and left it "
+            "behind empty")
+
+    def test_a_companion_already_in_the_scene_is_left_as_it_was(self):
+        asset = self._asset_with_a_companion()
+        with hou.undos.disabler():
+            root = hou.node("/obj").createNode("subnet")
+            root.setName("Amaze")
+            shared = root.createNode("copnet", self.COMPANION)
+            shared.createNode("null", "keep_me")
+        before = (shared.sessionId(), [c.name() for c in shared.children()])
+        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
+            self._scaffold())
+        survivor = hou.node("/obj/Amaze/" + self.COMPANION)
+        self.assertIsNotNone(
+            survivor,
+            "a companion shared by name was in the scene before the "
+            "preview and the preview removed it")
+        self.assertEqual(
+            before, (survivor.sessionId(),
+                     [c.name() for c in survivor.children()]),
+            "the shared companion is not the network that was there")
+
 
 class _CamStub:
     """Enough node for build_cam to run with no licence and no viewer: every parm exists and accepts every set."""
