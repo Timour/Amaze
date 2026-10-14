@@ -766,6 +766,8 @@ class Store:
             return False
         if answer.verdict == hostos.PEER_ABSENT and self._disk_state is None:
             return False    # absent, and it was absent when we looked: nothing has happened
+        if answer.verdict == hostos.PEER_UNREADABLE:
+            return False    # half-written or a placeholder: keep it all ▸p/store-refuses-unreadable-peer
         self.reread()
         return True
 

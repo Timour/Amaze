@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from PySide6 import QtWidgets
 
@@ -190,6 +191,33 @@ class ARefreshCostsNothingWhenNobodyWrote(_Case):
         self._write("users.json", {"users": {"u-me": {"name": "Renamed"}}})
         store.refresh()
         self.assertEqual({"name": "Renamed"}, store._base.get("u-me"))
+
+
+class AnUnreadableFileMetByARefreshWipesNothing(_Case):
+    """A sync client's empty placeholder or a half-written file, met when a door refreshes."""
+
+    def _refresh_over(self, damage):
+        self._write("users.json", {"users": {"u-me": {"name": "Me"}}})
+        store = keyed_store.open_store(users.SPEC, self.prefs)
+        base, seen = dict(store._base), store._disk_state
+        with open(self.path("users.json"), "wb") as handle:
+            handle.write(damage)
+        with mock.patch.object(keyed_store.debug, "alert") as spoke:
+            moved = store.refresh()
+        self.assertEqual({"u-me": "Me"}, users.all_users(self.prefs),
+                         "the refresh emptied the table it already held")
+        self.assertTrue(store.writable,
+                        "the refresh latched the store read-only")
+        spoke.assert_not_called()
+        self.assertFalse(moved, "an unreadable file was re-read as a change")
+        self.assertEqual((base, seen), (store._base, store._disk_state),
+                         "the merge base or the fingerprint moved")
+
+    def test_an_empty_placeholder(self):
+        self._refresh_over(b"")
+
+    def test_a_half_written_document(self):
+        self._refresh_over(b'{"users": {"u-me": ')
 
 
 if __name__ == "__main__":
