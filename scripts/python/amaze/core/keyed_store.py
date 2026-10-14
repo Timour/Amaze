@@ -485,6 +485,7 @@ class Store:
     def _load(self) -> None:
         """Read the file once and settle the verdict: READ, FRESH or BLIND. ▸p/store-commit-order"""
         spec = self.spec
+        raw = None
         try:
             if os.path.exists(self.path):
                 with open(self.path, "rb") as handle:
@@ -544,7 +545,8 @@ class Store:
             self._forget_tables()
             hostos.preserve_unreadable(self.path, why=spec.label.lower())
             self._refuse_and_alert(str(exc))
-        self._remember_disk_state()
+        self._disk_state = (hostos.file_fingerprint(raw)    # the bytes parsed, never a second read
+                            if raw is not None else None)
         self._remember_base(self._table)
 
     def _not_this_stores(self, loaded) -> str:

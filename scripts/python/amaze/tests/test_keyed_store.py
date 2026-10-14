@@ -1941,6 +1941,34 @@ class OnlyAUidShapedOwnerCountsAsATagTest(unittest.TestCase):
                 locations.SPEC, uid + "|/plates/wei|rd"))
 
 
+class TheFingerprintIsOfTheBytesParsed(StoreCase):
+    """A write landing between the load's parse and its fingerprint must be merged, not lost."""
+
+    def test_a_note_written_during_the_load_survives_our_next_save(self):
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": {"material:1": self.page("first")}}, handle)
+        theirs = {"notes": {"material:1": self.page("first"),
+                            "material:2": self.page("theirs")}}
+        real_loads = json.loads
+        armed = [True]
+
+        def sneaky(*args, **kwargs):
+            parsed = real_loads(*args, **kwargs)
+            if armed[0] and isinstance(parsed, dict) and "notes" in parsed:
+                armed[0] = False
+                with open(self.path(), "w", encoding="utf-8") as handle:
+                    json.dump(theirs, handle)
+            return parsed
+
+        with mock.patch.object(json, "loads", sneaky):
+            store = self.store()
+        self.assertTrue(store.set("material:3", self.page("ours")).ok)
+        self.assertEqual(
+            ["material:1", "material:2", "material:3"],
+            sorted(self.on_disk()["notes"]),
+            "the note written while the file was being read was overwritten")
+
+
 class AnUnreadablePeerIsNotOverwritten(StoreCase):
     """The second read has the first read's refusal, or a peer's work is lost."""
 

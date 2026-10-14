@@ -370,9 +370,12 @@ class DatabaseConnector:
         """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only). ▸r/peer-read"""
         return hostos.fingerprint_of(self._path + self._filename)
 
-    def _remember_disk_state(self) -> None:
-        """The stale-write and merge baseline, read from the FILE and never from the buffer we meant to write - a save whose rename is overwritten in the same instant must see its own row missing here, or its next save reads that row as a peer's DELETION and drops it. `_disk_stat`, `_loaded_rows` and `_loaded_ids` are re-derived together, from one read. ▸r/peer-read"""
-        answer = hostos.peer_read(self._path + self._filename)
+    def _remember_disk_state(self, read=None) -> None:
+        """The baseline from one file read: `read` if a load or refresh parsed it. ▸p/merge-needs-a-base"""
+        answer = (read if read is not None
+                  else hostos.peer_read(self._path + self._filename))
+        if read is None and answer.document is not None:
+            self._migrate_peer(answer.document)    # in our shape, as a merge sees theirs
         document = (answer.document if answer.document is not None
                     else (self._data or {}))    # unreadable or absent: our memory is the only baseline available, and the stale-write guard has its own refusal for that
         self._disk_stat = answer.fingerprint
@@ -449,10 +452,12 @@ class DatabaseConnector:
                     self._refuse_absent(full, traces)
                     return self._data
                 self._data = {"categories": ["_All"], "assets": []}
-                self.save()
+                if not self.save():    # a landed save took its baseline from the file
+                    self._remember_disk_state()
             else:
-                with open(full, encoding="utf-8-sig") as lib_json:
-                    parsed = json.load(lib_json)
+                with open(full, "rb") as lib_json:
+                    raw = lib_json.read()
+                parsed = json.loads(raw.decode("utf-8-sig"))
                 malformed = wrong_shape(parsed)
                 if malformed:
                     debug.event("database", "load refused - not a database",
@@ -463,9 +468,10 @@ class DatabaseConnector:
                 self._migrate(parsed)
                 _drop_retired(parsed)
                 self._data = parsed
+                self._remember_disk_state(hostos.PeerFile(    # the bytes parsed, never a second read
+                    hostos.PEER_CHANGED, parsed, hostos.file_fingerprint(raw)))
                 self._normalize_all_category()
                 self._note_suspicious_shrink(full)
-            self._remember_disk_state()
         return self._data
 
     _integrity_notes: dict = _INTEGRITY_NOTES
@@ -733,7 +739,7 @@ class DatabaseConnector:
             return False
         if not self._merge_from_disk(full, already_read=answer):    # the SAME read decides and merges: two reads can straddle a peer's write
             return False    # unreadable or refused: `_merge_from_disk` has said why, and our copy stands
-        self._remember_disk_state()
+        self._remember_disk_state(answer)    # and is the baseline, for the same reason
         return True
 
     def take_adopted(self) -> list:

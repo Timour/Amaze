@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 
 from PySide6 import QtWidgets
 
@@ -446,6 +447,77 @@ class TheBaselineIsWhatIsOnDisk(_Case):
                          "the connector remembered the bytes it serialised, "
                          "not the file - so its next save reads its own row "
                          "as a peer's deletion")
+
+
+class TheBaselineIsTheBytesParsed(_Case):
+    """A write landing between the parse and the fingerprint must be merged, never overwritten."""
+
+    def _lands_after_the_parse(self, document):
+        """Writes `document` the moment the next read of the database is parsed."""
+        real_loads = json.loads
+        armed = [True]
+
+        def sneaky(*args, **kwargs):
+            parsed = real_loads(*args, **kwargs)
+            if armed[0] and isinstance(parsed, dict) and "assets" in parsed:
+                armed[0] = False
+                self._write(document)
+            return parsed
+
+        return mock.patch.object(json, "loads", sneaky)
+
+    def _rename_here(self, db):
+        db.set({"assets": [dict(db._data["assets"][0], name="renamed here")],
+                "categories": ["_All"], "tags": []})
+        self.assertTrue(db.save())
+
+    def test_a_write_during_the_load_is_merged(self):
+        self._write(self._document())
+        with self._lands_after_the_parse(self._document(code="int i = 42;")):
+            db = self._loaded()
+        self._rename_here(db)
+        self.assertEqual(
+            {"code": "int i = 42;", "name": "renamed here"},
+            {"code": self._row().get("code"), "name": self._row().get("name")},
+            "the write that landed during the load was overwritten")
+
+    def test_a_write_during_a_refresh_is_merged(self):
+        self._write(self._document())
+        db = self._loaded()
+        self._peer_writes(date="2026-09-01 00:00:00")
+        later = self._on_disk()
+        later["assets"][0]["code"] = "int i = 7;"
+        with self._lands_after_the_parse(later):
+            self.assertTrue(db.refresh(), "premise: the refresh saw nothing")
+        self._rename_here(db)
+        self.assertEqual(
+            {"code": "int i = 7;", "date": "2026-09-01 00:00:00"},
+            {"code": self._row().get("code"), "date": self._row().get("date")},
+            "the write that landed during the refresh was overwritten")
+
+    def test_a_migrated_row_is_judged_against_its_migrated_self(self):
+        """A row minted its id at load; the base must hold it under that id."""
+        row = {"name": "snippet", "code": "int i = 0;", "renderer": "Karma",
+               "date": "2026-01-01 00:00:00"}
+        self._write({"version": 7, "categories": ["_All"], "assets": [row]})
+        minted = database._minted_id(dict(row), 0)
+        db = self._loaded()
+        self.assertEqual(minted, db._data["assets"][0].get("id"),
+                         "premise: the load did not mint the expected id")
+        self._write({"version": database.SCHEMA_VERSION,
+                     "categories": ["_All"],
+                     "assets": [dict(row, id=minted, name="renamed there")]})
+        alerts = []
+        with mock.patch.object(database.debug, "alert",
+                               lambda message, **kw: alerts.append(message)):
+            db.set({"assets": [dict(db._data["assets"][0],
+                                    code="int i = 1;")]})
+            self.assertTrue(db.save())
+        self.assertEqual(
+            {"name": "renamed there", "conflicts told": 0},
+            {"name": self._row().get("name"), "conflicts told": len(alerts)},
+            "a rename made elsewhere read as a conflict: the merge base "
+            "was the file before its ids were minted")
 
 
 if __name__ == "__main__":
