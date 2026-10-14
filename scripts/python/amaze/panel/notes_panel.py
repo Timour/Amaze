@@ -338,7 +338,8 @@ class _NoteEdit(QtWidgets.QTextEdit):
                         done = self.block_done(block)
                         pixmap = _feather_icon(
                             "check-circle" if done else "circle", side,
-                            COMMENT_INK if done else amazetheme.COMMENT_OPEN_INK, self)
+                            amazetheme.COMMENT_DONE_INK if done
+                            else amazetheme.COMMENT_OPEN_INK, self)
                         y = (tlayout.position().y() + line.y()
                              + (line.height() - side) / 2.0 - y_scroll)
                         painter.drawPixmap(

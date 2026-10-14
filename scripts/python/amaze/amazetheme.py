@@ -91,7 +91,8 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = PREFS_SECTION_GAP
 
-COMMENT_INK = "#4af2a1"        # ▸ the Comments pane (N01): the header icon's art colour, and a done to-do
+COMMENT_INK = "#1e8051"        # ▸ the Comments pane (N01): the header icon's art colour
+COMMENT_DONE_INK = "#4af2a1"   # a done to-do
 COMMENT_OPEN_INK = "#ff7760"   # an open to-do
 COMMENT_ADD_INK = "#5d7abd"    # the + art's colour, swapped for the page's while nothing is selected
 COMMENT_HEADER_BG = "#262626"

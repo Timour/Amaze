@@ -1887,7 +1887,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         finally:
             painter.end()
         self.assertEqual([("circle", amazetheme.COMMENT_OPEN_INK),
-                          ("check-circle", amazetheme.COMMENT_INK)],
+                          ("check-circle", amazetheme.COMMENT_DONE_INK)],
                          [(c.args[0], c.args[2]) for c in glyph.call_args_list])
 
     def test_the_plus_is_its_drawn_art_and_dies_in_the_page_colour(self):
