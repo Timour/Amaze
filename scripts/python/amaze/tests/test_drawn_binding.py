@@ -522,7 +522,7 @@ class EveryDrawnNodeIsBoundOrNamed(unittest.TestCase):
             "the frames built almost no pins, so the completeness walk's "
             "silence means nothing")
         self.assertEqual(
-            {"D06", "T01", "T05", "L01", "B01", "S01", "G01", "N01"},
+            {"D06", "T01", "T05", "L01", "B01", "S01", "G01", "N01", "N01B"},
             set(amazetheme.DIALOG_LAYOUT)
             - {frame_key for frame_key, _kind, _x, _y in self.pins},
             "D06 draws only switches and the tab strip, and the panel's areas "

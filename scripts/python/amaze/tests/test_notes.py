@@ -595,8 +595,9 @@ class PanelWidgetTest(unittest.TestCase):
         self._subject("13")
         self.assertTrue(self.widget.add_button.isEnabled())
         self.widget.clear_subject()
-        self.assertEqual("Object name", self.widget.name_label.text())
-        self.assertEqual("type", self.widget.type_label.text())
+        from amaze import amazetheme
+        self.assertEqual(amazetheme.COMMENT_DIM_NAME, self.widget.name_label.text())
+        self.assertEqual(amazetheme.COMMENT_DIM_TYPE, self.widget.type_label.text())
         self.assertFalse(self.widget.add_button.isEnabled(),
                          "the + still works with nothing selected")
         self.assertFalse(self.widget.text_edit.isEnabled())
@@ -1890,12 +1891,11 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
                           ("check-circle", amazetheme.COMMENT_DONE_INK)],
                          [(c.args[0], c.args[2]) for c in glyph.call_args_list])
 
-    def test_the_plus_is_its_drawn_art_and_dies_in_the_page_colour(self):
-        """Nothing selected: the + wears the page colour, by a swap keyed on the art's own colour."""
+    def test_the_plus_is_its_drawn_art_and_dims_to_the_N01B_ink(self):
+        """Nothing selected: the + wears N01B's ink, by a swap keyed on the art's own colour."""
         import amaze
         from amaze import amazetheme
         from amaze.helpers import ui_helpers
-        from amaze.panel import notes_panel
         with open(amaze.package_file("ui", "icon_comments_add.svg"), encoding="utf-8") as handle:
             art = handle.read().lower()
         self.assertIn(amazetheme.COMMENT_ADD_INK.lower(), art)
@@ -1904,7 +1904,116 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
             self.pane._show_ghost()
         swaps = [c.args[3] for c in drawn.call_args_list
                  if c.args[0].endswith("icon_comments_add.svg")]
-        self.assertEqual([{amazetheme.COMMENT_ADD_INK: notes_panel.PAGE_BG}], swaps)
+        self.assertEqual(
+            [{amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK}], swaps)
+
+
+class TheEmptyPaneStandsOnN01B(unittest.TestCase):
+    """Nothing selected: N01B's strings and dimmed inks, with nothing moved from N01."""
+
+    def setUp(self):
+        from amaze.panel import notes_panel
+        self.pane = notes_panel.NotesPanel(_Prefs(self))
+        self.addCleanup(self.pane.deleteLater)
+        self.pane.resize(450, 210)
+
+    def _live(self):
+        self.pane.set_subject(sections.CommentSubject(
+            notes.note_key("material", "n01b"), "brushed_steel", "USD Karma"))
+
+    def test_N01B_moves_nothing_N01_draws(self):
+        from amaze import amazetheme
+        boxes = {frame: {node[0]: node[1:5] for node in amazetheme.DIALOG_LAYOUT[frame]["nodes"]}
+                 for frame in ("N01", "N01B")}
+        shared = set(boxes["N01"]) & set(boxes["N01B"]) - {"text ▸ name", "text ▸ type"}
+        self.assertGreaterEqual(len(shared), 6, "the two frames share almost nothing")
+        for kind in sorted(shared):
+            self.assertEqual(boxes["N01"][kind], boxes["N01B"][kind], kind)
+        for frame in ("N01", "N01B"):
+            name, kind = boxes[frame]["text ▸ name"], boxes[frame]["text ▸ type"]
+            self.assertEqual((36, 6), (name[0], kind[0] - (name[0] + name[2])), frame)
+
+    def test_the_labels_read_what_N01B_draws(self):
+        from amaze import amazetheme
+        self.assertEqual(amazetheme.drawn_node("N01B", "text", "name")[5],
+                         self.pane.name_label.text())
+        self.assertEqual(amazetheme.drawn_node("N01B", "text", "type")[5],
+                         self.pane.type_label.text())
+
+    def test_both_labels_are_at_half_ink_and_full_again_when_live(self):
+        from amaze.helpers import theme
+        role = QtGui.QPalette.ColorRole.WindowText
+        for live in (False, True):
+            if live:
+                self._live()
+            for label, ink in ((self.pane.name_label, "text_bright"),
+                               (self.pane.type_label, "text")):
+                with self.subTest(label=label.text()):
+                    color = label.palette().color(role)
+                    self.assertEqual(theme.color_hex(ink), color.name())
+                    self.assertAlmostEqual(1.0 if live else 0.5, color.alphaF(), delta=0.01)
+
+    def _brightest_on_header(self, label):
+        """The label's brightest painted pixel over the header colour - what the screen shows."""
+        from amaze import amazetheme
+        label.resize(label.sizeHint())
+        image = QtGui.QImage(label.size(), QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
+        label.render(image, QtCore.QPoint(), QtGui.QRegion(),
+                     QtWidgets.QWidget.RenderFlag.DrawChildren)
+        return max((image.pixelColor(x, y) for x in range(image.width())
+                    for y in range(image.height())), key=lambda c: c.lightness())
+
+    def test_the_labels_PAINT_at_half_ink(self):
+        from amaze import amazetheme
+        from amaze.helpers import theme
+        bg = QtGui.QColor(amazetheme.COMMENT_HEADER_BG)
+        for label, ink in ((self.pane.name_label, "text_bright"),
+                           (self.pane.type_label, "text")):
+            with self.subTest(label=label.text()):
+                want = QtGui.QColor(theme.color_hex(ink))
+                shown = self._brightest_on_header(label)
+                for part in ("red", "green", "blue"):
+                    half = (getattr(want, part)() + getattr(bg, part)()) / 2.0
+                    self.assertAlmostEqual(half, getattr(shown, part)(), delta=2, msg=part)
+
+    def _bubble_on_header(self):
+        """The bubble's most solid pixel, and that pixel composited on the header as the screen shows it."""
+        from amaze import amazetheme
+        image = self.pane._icon_label.pixmap().toImage()
+        x, y = max(((x, y) for x in range(image.width()) for y in range(image.height())),
+                   key=lambda p: image.pixelColor(*p).alpha())
+        ground = QtGui.QImage(image.size(), QtGui.QImage.Format.Format_RGB32)
+        ground.setDevicePixelRatio(image.devicePixelRatio())
+        ground.fill(QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
+        painter = QtGui.QPainter(ground)
+        painter.drawImage(0, 0, image)
+        painter.end()
+        return image.pixelColor(x, y).alpha(), ground.pixelColor(x, y)
+
+    def test_the_speech_bubble_is_at_a_quarter_and_whole_when_live(self):
+        from amaze import amazetheme
+        ink, bg = (QtGui.QColor(amazetheme.COMMENT_INK), QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
+        opacity = amazetheme.COMMENT_DIM_ICON_OPACITY
+        alpha, shown = self._bubble_on_header()
+        self.assertAlmostEqual(opacity * 255, alpha, delta=1)
+        for part in ("red", "green", "blue"):
+            want = opacity * getattr(ink, part)() + (1 - opacity) * getattr(bg, part)()
+            self.assertAlmostEqual(want, getattr(shown, part)(), delta=1.5, msg=part)
+        self._live()
+        alpha, shown = self._bubble_on_header()
+        self.assertEqual((255, amazetheme.COMMENT_INK), (alpha, shown.name()))
+
+    def test_the_dead_plus_paints_exactly_as_a_live_one_would(self):
+        """Disabled, the style fades the triangle and the art; N01B keeps the triangle and dims the art."""
+        button = self.pane.add_button
+        self.assertFalse(button.isEnabled())
+        button.resize(button.size())
+        dead = button.grab().toImage()
+        button.setEnabled(True)    # the same dimmed icon, only the state differs
+        self.addCleanup(button.setEnabled, False)
+        self.assertEqual(button.grab().toImage(), dead,
+                         "the dead + is drawn by the style's disabled look, not N01B's")
 
 
 if __name__ == "__main__":

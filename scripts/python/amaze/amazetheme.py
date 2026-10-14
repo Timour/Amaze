@@ -94,9 +94,14 @@ PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_
 COMMENT_INK = "#1e8051"        # ▸ the Comments pane (N01): the header icon's art colour
 COMMENT_DONE_INK = "#4af2a1"   # a done to-do
 COMMENT_OPEN_INK = "#ff7760"   # an open to-do
-COMMENT_ADD_INK = "#5d7abd"    # the + art's colour, swapped for the page's while nothing is selected
+COMMENT_ADD_INK = "#5d7abd"    # the + art's colour
 COMMENT_HEADER_BG = "#262626"
 COMMENT_PAGE_BG = "#2d2d2d"
+COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
+COMMENT_DIM_TYPE = "Type"
+COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual ink
+COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble
+COMMENT_DIM_ADD_INK = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip states them
 LIST_HEADER_DIVIDER = "#454545"
@@ -743,6 +748,19 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
             ("glyph ▸ 2 ▸ circle.svg", 16, 69, 14, 14, None),
             ("glyph ▸ 3 ▸ check-circle.svg", 16, 95, 14, 14, None),
+        ),
+    },
+    "N01B": {   # the same pane with nothing selected - its labels and arts dim, nothing moves
+        "frame": (450, 210),
+        "nodes": (
+            ("header", 0, 0, 450, 30, None),
+            ("body", 0, 30, 450, 180, None),
+            ("text ▸ name", 36, 7, 91, 15, "Nothing Selected"),
+            ("text ▸ type", 133, 7, 25, 15, "Type"),
+            ("button ▸ add", 419, 1, 28, 27, None),
+            ("menu marker ▸ Houdini's own, traced", 440, 21, 4.5, 4.5, None),
+            ("icon ▸ header ▸ icon_comments.svg", 10, 5, 20, 20, None),
+            ("icon ▸ add ▸ icon_comments_add.svg", 424, 6, 18, 18, None),
         ),
     },
 }

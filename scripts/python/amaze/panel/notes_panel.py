@@ -31,12 +31,44 @@ def _fill(widget, hex_color: str) -> None:
     widget.setAutoFillBackground(True)
 
 
-def _ink(label, role: str) -> None:
+def _ink(label, role: str, opacity: float = 1.0) -> None:
     """Label text in one of the theme's text colours, via the palette, same reasoning as _fill."""
+    color = QtGui.QColor(theme.color_hex(role))
+    color.setAlphaF(opacity)
     palette = label.palette()
-    palette.setColor(QtGui.QPalette.ColorRole.WindowText,
-                     QtGui.QColor(theme.color_hex(role)))
+    palette.setColor(QtGui.QPalette.ColorRole.WindowText, color)
     label.setPalette(palette)
+
+
+def _faded(pixmap: QtGui.QPixmap, opacity: float, dpr: float) -> QtGui.QPixmap:
+    """`pixmap`, made at ratio `dpr`, at `opacity` on a transparent copy; 1 hands it back."""
+    if opacity >= 1.0:
+        return pixmap
+    faded = QtGui.QPixmap(pixmap.size())
+    faded.fill(QtCore.Qt.GlobalColor.transparent)
+    faded.setDevicePixelRatio(dpr)
+    painter = QtGui.QPainter(faded)
+    painter.setOpacity(opacity)
+    painter.drawPixmap(0, 0, pixmap)
+    painter.end()
+    return faded
+
+
+class _AddButton(QtWidgets.QToolButton):
+    """The +: disabled with nothing selected, yet drawn as N01B draws it rather than Houdini's fade."""
+
+    def paintEvent(self, event) -> None:
+        if self.isEnabled():
+            super().paintEvent(event)
+            return
+        option = QtWidgets.QStyleOptionToolButton()
+        self.initStyleOption(option)
+        option.state |= QtWidgets.QStyle.StateFlag.State_Enabled    # Houdini fades a disabled triangle away
+        option.state &= ~QtWidgets.QStyle.StateFlag.State_MouseOver
+        option.palette.setCurrentColorGroup(QtGui.QPalette.ColorGroup.Active)
+        painter = QtWidgets.QStylePainter(self)
+        painter.drawComplexControl(QtWidgets.QStyle.ComplexControl.CC_ToolButton, option)
+        painter.end()
 
 _glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input and survives the reload chain; without it a ten-to-do page did ten SVG parses per paintEvent
 
@@ -471,16 +503,14 @@ class NotesPanel(ui_helpers.HeldPane):
         self.name_label.setFont(   # THE ONE FONT TABLE owns the weight, not this line
             theme.font("comments_title", self.name_label.font()))
         self.name_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)    # the name is an on-disk filename - AutoText would render a tag-shaped one as HTML
-        _ink(self.name_label, "text_bright")
         self.type_label = QtWidgets.QLabel()
         self.type_label.setFont(theme.ui_font(self.type_label.font()))    # the name's base, floor included
         self.type_label.setTextFormat(QtCore.Qt.TextFormat.PlainText)
-        _ink(self.type_label, "text")
         head.addWidget(self.name_label, 0, QtCore.Qt.AlignmentFlag.AlignVCenter)
         head.addWidget(self.type_label, 1,    # takes the slack, so the + sits at the right
                        QtCore.Qt.AlignmentFlag.AlignVCenter)
 
-        self.add_button = QtWidgets.QToolButton()
+        self.add_button = _AddButton()
         self.add_button.setAutoRaise(True)
         self.add_button.setFixedSize(*(theme.ui_px(side) for side in _DRAWN["add"]))
         self.add_button.setToolTip(tooltips.NOTES_ADD_TODO)
@@ -513,13 +543,16 @@ class NotesPanel(ui_helpers.HeldPane):
         import amaze
         dpr = theme.screen_ratio(self)
         side, plus_side = theme.ui_px(_DRAWN["icon"]), theme.ui_px(_DRAWN["plus"])
-        # both arts AS DRAWN; the dead + of the empty pane wears the page colour
-        self._icon_label.setPixmap(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_comments.svg"), side, dpr))
-        dead = getattr(self, "_ghost", False)
+        dead = getattr(self, "_ghost", False)    # nothing selected: labels and arts as N01B dims them
+        text = amazetheme.COMMENT_DIM_TEXT_OPACITY if dead else 1.0
+        _ink(self.name_label, "text_bright", text)
+        _ink(self.type_label, "text", text)
+        self._icon_label.setPixmap(_faded(ui_helpers.device_pixmap(
+            amaze.package_file("ui", "icon_comments.svg"), side, dpr),
+            amazetheme.COMMENT_DIM_ICON_OPACITY if dead else 1.0, dpr))
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,
-            {amazetheme.COMMENT_ADD_INK: PAGE_BG} if dead else None)))
+            {amazetheme.COMMENT_ADD_INK: amazetheme.COMMENT_DIM_ADD_INK} if dead else None)))
         self.add_button.setIconSize(QtCore.QSize(plus_side, plus_side))
 
     def adopt_look(self, source: QtWidgets.QWidget) -> None:
@@ -568,11 +601,11 @@ class NotesPanel(ui_helpers.HeldPane):
         self._show_ghost()
 
     def _show_ghost(self) -> None:
-        """The no-selection look: the SAME window with placeholder labels and a dead page-coloured +, never a different layout."""
+        """The no-selection look (N01B): the SAME window dimmed, never a different layout."""
         self._ghost = True
         self._loading = True
         try:
-            self.set_header("Object name", "type")
+            self.set_header(amazetheme.COMMENT_DIM_NAME, amazetheme.COMMENT_DIM_TYPE)
             self.text_edit.clear()
         finally:
             self._loading = False
