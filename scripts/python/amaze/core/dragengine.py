@@ -68,13 +68,17 @@ def begin(section_key: str, ids=()) -> None:
     _hover["probes_left"] = 40
     _hover["explained"] = False
     _reset_move()
+    _move["snap_pos"] = None
+    _move["landing"] = None    # the previous release has had its answer
 
 
 def end() -> None:
-    """End of gesture - however it ended. Restores the highlight."""
+    """End of gesture, however it ended: the highlight back, the snap point kept as the landing."""
+    landing = _move.get("snap_pos")    # the release asks for it after this clears the outline
     _restore_highlight()
     ghost_clear()
     _reset_move()
+    _move["landing"] = landing
 
 
 _move = {
@@ -87,6 +91,8 @@ _move = {
     "pane": None,
     "pane_kind": None,
     "pane_rect": None,
+    "snap_pos": None,    # the drawn outline's snapped centre, while one is drawn
+    "landing": None,    # the snap point at end(), answered until the next begin()
 }
 
 
@@ -186,8 +192,10 @@ def _snap_delta(editor, rect):
 
 
 def ghost_snap_position():
-    """The last drawn ghost's SNAPPED centre, or None - the release places the carrier here, so what was promised is what lands."""
-    return _move.get("snap_pos")
+    """The drawn ghost's snapped centre, else the landing `end()` kept, else None."""
+    if _move.get("snap_pos") is not None:
+        return _move["snap_pos"]
+    return _move.get("landing")
 
 
 def _ghost_half_for(editor) -> tuple:

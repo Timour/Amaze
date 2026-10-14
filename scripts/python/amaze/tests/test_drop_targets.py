@@ -484,6 +484,70 @@ class TestThePreviewSurvivesItsOwnNames(unittest.TestCase):
                          "before reaching them")
 
 
+class _OverlayEditor(object):
+    """Takes the outline the engine draws, so a snapped ghost can be shown headless."""
+
+    def __init__(self):
+        self.shapes = None
+
+    def setOverlayShapes(self, shapes):
+        self.shapes = list(shapes)
+
+    def setDropTargetItem(self, item, name, index):
+        pass
+
+    def redraw(self):
+        pass
+
+
+class TheReleaseLandsWhereTheOutlineSnapped(unittest.TestCase):
+    """The release asks where to land AFTER `end()` has cleared the outline."""
+
+    DELTA = hou.Vector2(0.25, -0.5)
+
+    def setUp(self):
+        dragengine.begin("material")
+        self.addCleanup(dragengine.begin, "")    # a landing left behind would serve the next module
+
+    def _draw_snapped(self):
+        """An outline drawn at (1, 2) that the host's snap moved by DELTA."""
+        editor = _OverlayEditor()
+        with mock.patch.object(dragengine, "_snap_delta",
+                               return_value=self.DELTA):
+            dragengine.ghost_show(editor, hou.Vector2(1.0, 2.0))
+        self.assertTrue(editor.shapes, "premise: no outline was drawn")
+        drawn = dragengine.ghost_snap_position()
+        self.assertIsNotNone(drawn, "premise: the outline did not snap")
+        return (drawn.x(), drawn.y())
+
+    def test_the_snapped_point_outlives_the_end_of_the_gesture(self):
+        drawn = self._draw_snapped()
+        dragengine.end()
+        landing = dragengine.ghost_snap_position()
+        self.assertIsNotNone(
+            landing,
+            "end() forgot the snapped point before the release asked "
+            "for it, so the node lands at the raw cursor instead")
+        self.assertEqual((1.25, 1.5), drawn)
+        self.assertEqual(drawn, (landing.x(), landing.y()))
+
+    def test_the_next_gesture_starts_without_it(self):
+        self._draw_snapped()
+        dragengine.end()
+        dragengine.begin("material")
+        self.assertIsNone(
+            dragengine.ghost_snap_position(),
+            "a new gesture inherited the previous release's landing")
+
+    def test_an_outline_cleared_before_the_release_promises_nothing(self):
+        self._draw_snapped()
+        dragengine.ghost_clear()    # the cursor moved onto a node or out of the editor
+        dragengine.end()
+        self.assertIsNone(
+            dragengine.ghost_snap_position(),
+            "the release landed on an outline no longer drawn")
+
+
 class ATrackedMissIsAnAnswer(unittest.TestCase):
     """The tracker's genuine miss must reach the clear branch, not re-run the lookup the tracker exists to avoid - once per tick for a whole hover over dead space."""
 
