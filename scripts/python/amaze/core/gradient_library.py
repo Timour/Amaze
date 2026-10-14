@@ -301,19 +301,7 @@ class GradientLibrary(library.AssetLibrary):
         if not self.removeRow(row):  # says the delete out loud - the connector unions rows, so an unspoken delete comes straight back
             return
         if not self.save():
-            self.beginInsertRows(QtCore.QModelIndex(), row, row)
-            try:
-                self._assets.insert(row, asset)
-            finally:
-                self.endInsertRows()
-            self.rebuild_thumbs()
-            try:
-                connector = database.DatabaseConnector(self.DB_FILENAME)
-                connector.unforget(asset.mat_id)  # in the document too: set() has already consumed the mark by now
-                connector.set({"assets": [asset.get_as_dict()]})
-            except (AttributeError, TypeError) as exc:
-                debug.event("gradient", "could not take back a row "
-                            "removal", error=str(exc))
+            self._take_back_refused_removal(row, asset)
             debug.alert(
                 messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
                 key="colors-delete-refused")

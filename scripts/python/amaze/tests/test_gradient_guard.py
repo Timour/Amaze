@@ -949,6 +949,33 @@ class ColorsHonourARefusedSave(unittest.TestCase):
         self.assertEqual(-1, self._row_named("doomed"))
         self.assertNotIn("doomed", self._on_disk_names())
 
+    def test_a_refused_delete_is_not_put_into_another_library(self):
+        """Another pane's switch moved the shared connector, so the take-back must not write to it."""
+        other = tempfile.mkdtemp(prefix="amaze_grad_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        other_path = os.path.join(other, "gradients.json")
+        with open(other_path, "w", encoding="utf-8") as fh:
+            json.dump({"version": SCHEMA, "categories": ["_All"],
+                       "assets": [{"name": "theirs", "id": "theirsuid",
+                                   "colors": []}]}, fh, indent=1)
+        connector = database.DatabaseConnector(self.lib.DB_FILENAME)
+        connector.reload_with_path(other + os.sep)
+
+        self.lib.remove_user_gradient(self._row_named("doomed"))
+
+        self.assertGreaterEqual(
+            self._row_named("doomed"), 0,
+            "premise: the refused delete put the palette back on screen")
+        self.assertNotIn(
+            "doomeduid", [r.get("id") for r in connector._data["assets"]],
+            "the refused delete put the palette into the OTHER library's "
+            "document - that library's next save writes it there")
+        self.assertTrue(connector.save(), "premise: the other library saves")
+        with open(other_path, encoding="utf-8") as fh:
+            names = [r.get("name") for r in json.load(fh)["assets"]]
+        self.assertNotIn("doomed", names,
+                         "a palette from one library landed in another")
+
 
 class ColorsHandOverWhatTheMergeAdopted(unittest.TestCase):
     """A row another session wrote reaches disk through the merge and must reach the MODEL too - take_adopted() drained after every save, or the next save rebuilds the list without it."""

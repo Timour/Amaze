@@ -780,18 +780,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if not self.removeRow(row):
             return
         if not self.save():
-            self.beginInsertRows(QtCore.QModelIndex(), row, row)  # PUT IT BACK: nothing has been unlinked yet, so restoring the row returns the library to exactly the state it was in
-            self._assets.insert(row, asset)
-            self.endInsertRows()
-            self.rebuild_thumbs()
-            try:  # removeRow marked the row for deletion on the next write, so without this the delete just declined happens anyway the next time anything saves
-                connector = database.DatabaseConnector(self.DB_FILENAME)
-                connector.unforget(asset.mat_id)
-                if connector.serves(self.preferences.dir):  # unforget clears a PENDING delete, but the failed save() above already ran set(), which consumed the mark and dropped the row from the live document - so the row has to go back in too. UNLESS the refusal was the serves() gate itself: set() never ran there, and running it here would absorb this row into the OTHER pane's library
-                    connector.set({"assets": [asset.get_as_dict()]})
-            except (AttributeError, TypeError) as exc:
-                debug.event("library", "could not take back a row removal",
-                            error=str(exc))
+            self._take_back_refused_removal(row, asset)    # nothing is unlinked yet, so this is the whole undo
             debug.event("library", "delete refused - the library list "
                         "could not be written", name=asset.name,
                         mat_id=str(asset.mat_id))
@@ -822,6 +811,24 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                         folder=path,
                         error=str(exc),
                     )
+
+    def _take_back_refused_removal(self, row: int, asset) -> None:
+        """Put back a row whose delete the save refused - in the model and in the connector's document."""
+        row = min(max(row, 0), len(self._assets))    # the save's drain may have dropped rows above it
+        self.beginInsertRows(QtCore.QModelIndex(), row, row)
+        try:
+            self._assets.insert(row, asset)
+        finally:
+            self.endInsertRows()
+        self.rebuild_thumbs()
+        try:
+            connector = database.DatabaseConnector(self.DB_FILENAME)
+            connector.unforget(asset.mat_id)    # else the next save carries out the declined delete
+            if connector.serves(self.preferences.dir):    # a serves() refusal never ran set()
+                connector.set({"assets": [asset.get_as_dict()]})    # set() dropped it from the document
+        except (AttributeError, TypeError) as exc:
+            debug.event("library", "could not take back a row removal",
+                        error=str(exc))
 
     def remove_category(self, cat: str) -> None:
         """Take this category off every asset in the library. Does not save."""
