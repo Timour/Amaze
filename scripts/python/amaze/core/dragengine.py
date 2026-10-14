@@ -339,6 +339,39 @@ def connector_under_cursor(editor, position, exclude=()):
     return (None, "", -1)
 
 
+_held = {"armed": False, "group": None}    # the release's one undo group, while its splice is pending
+
+
+@contextmanager
+def holding_drop_group():
+    """One undo entry per release: the first `drop_group` its verb opens stays open until this exits."""
+    _held.update(armed=True, group=None)
+    error = (None, None, None)
+    try:
+        yield
+    except BaseException as exc:
+        error = (type(exc), exc, exc.__traceback__)
+        raise
+    finally:
+        group = _held["group"]
+        _held.update(armed=False, group=None)
+        if group is not None:
+            group.__exit__(*error)
+
+
+@contextmanager
+def drop_group(label: str):
+    """A drop verb's undo group, held open under `holding_drop_group` for the splice. ▸r/undo-groups"""
+    if _held["armed"] and _held["group"] is None:
+        group = hou.undos.group(label)
+        group.__enter__()
+        _held["group"] = group
+        yield
+        return
+    with hou.undos.group(label):    # nested in a held group it merges into it
+        yield
+
+
 def connect_to_neighbour(target, nodes, editor=None) -> bool:
     """Wire what landed to the connector it was dropped on - an OUTPUT under the cursor feeds it, an INPUT takes its output, and an occupied input index is REPLACED, never added beside. ▸r/drop-targets"""
     node, name, index = target

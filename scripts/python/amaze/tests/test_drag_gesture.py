@@ -2,6 +2,7 @@
 
 import os
 import sys
+import types
 import unittest
 from unittest import mock
 
@@ -410,6 +411,83 @@ class TestGestureRelease(unittest.TestCase):
         h.release()
         self.assertFalse(h.view._dragging)
         self.assertEqual(h.panel.calls, [])
+
+
+def _host_insert(conn, chain, _every, remove_existing_connections=False):
+    """What `insertItemsIntoWire` does for one chain, in its own group; the real one needs `hou.ui`."""
+    with hou.undos.group("Insert items"):
+        chain[0].setInput(0, conn.inputItem(), conn.inputItemOutputIndex())
+        conn.outputItem().setInput(conn.inputIndex(), chain[-1])
+
+
+class ADropOnAWireIsOneUndoStep(unittest.TestCase):
+    """A geometry file released on a SOP wire: import, placement and splice undo as one."""
+
+    def setUp(self):
+        from amaze.core import file_library
+        self.panel = test_support.fixture_panel(self)
+        self.geo = hou.node("/obj").createNode("geo", "wire_drop_probe")
+        self.addCleanup(self.geo.destroy)
+        self.upstream = self.geo.createNode("box", "upstream")
+        self.downstream = self.geo.createNode("null", "downstream")
+        self.downstream.setInput(0, self.upstream)
+        self.view = dragdrop_widgets.DragDropListView()
+        self.addCleanup(self.view.deleteLater)
+        roles = {
+            file_library.FileFiles.PathRole: os.path.join(
+                test_support.FILES_FIXTURE_DIR, "cube.bgeo"),
+            file_library.FileFiles.KindRole: file_library.KIND_GEO,
+        }
+        self.view._dragging = True
+        self.view._drag_panel = self.panel
+        self.view._drag_section = "file"
+        self.view._drag_index = types.SimpleNamespace(
+            data=lambda role: roles.get(role), isValid=lambda: True)
+        self.addCleanup(hou.undos.clear)
+
+    def _release_on_the_wire(self):
+        from amaze.core import dragengine
+        wire = self.downstream.inputConnections()[0]
+        host = types.ModuleType("nodegraphutils")
+        host.insertItemsIntoWire = _host_insert
+        host.moveNodesToAvoidOverlap = lambda *args, **kwargs: None
+        spot = hou.Vector2(0.0, -1.0)
+        with mock.patch.dict(sys.modules, {"nodegraphutils": host}), \
+                mock.patch.object(self.panel, "_category_under_cursor",
+                                  return_value=None), \
+                mock.patch.object(self.panel, "_node_under_cursor",
+                                  return_value=None), \
+                mock.patch.object(self.panel, "_drop_context_under_cursor",
+                                  return_value=self.geo), \
+                mock.patch.object(self.panel, "_network_under_release",
+                                  return_value=self.geo), \
+                mock.patch.object(self.panel, "_release_position_in",
+                                  return_value=spot), \
+                mock.patch.object(dragengine, "pane_tab_under_cursor",
+                                  return_value=object()), \
+                mock.patch.object(dragengine, "wire_under_cursor",
+                                  return_value=(wire, "", 0)):
+            hou.undos.clear()
+            self.view._release(_event(
+                QtCore.QEvent.Type.MouseButtonRelease, QtCore.QPoint(5, 5)))
+
+    def test_the_drop_and_its_splice_are_one_undo_entry(self):
+        self._release_on_the_wire()
+        landed = self.downstream.inputs()[0]
+        self.assertNotEqual(self.upstream, landed,
+                            "premise: the drop did not splice into the wire")
+        self.assertEqual(
+            ("Amaze Import Geometry",), hou.undos.undoLabels(),
+            "one drop left several undo entries, so one Ctrl+Z leaves "
+            "the dropped node in the network")
+        hou.undos.performUndo()
+        self.assertEqual(
+            [self.upstream], list(self.downstream.inputs()),
+            "one Ctrl+Z did not put the wire back")
+        self.assertEqual(
+            sorted([self.upstream.name(), self.downstream.name()]),
+            sorted(c.name() for c in self.geo.children()),
+            "one Ctrl+Z left the dropped node in the network")
 
 
 class FileRowsReleaseOnNodes(unittest.TestCase):

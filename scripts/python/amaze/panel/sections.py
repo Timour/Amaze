@@ -634,7 +634,7 @@ class MaterialSection(AssetSection):
                 shown = panel._material_lop_viewport_drop(ids, viewer, data)
                 return "menu" if shown is not False else False    # the menu IS the feedback here, no outcome icon on top of it whether chosen or dismissed - but only when one was SHOWN, because _finish_preview reads "menu" as "suppress the miss icon" and the call returns False in three cases where none ever appeared: no stock LOP helper, a viewer whose pwd() failed, and no choices at all off a stale prim path or a display node whose cook failed
             if kind == "obj" and data is not None:
-                with hou.undos.group("Amaze Assign Material"), \
+                with dragengine.drop_group("Amaze Assign Material"), \
                         dragengine.keep_editor_focus():
                     return bool(panel.assign_material_to_obj(ids, data))    # propagated, never a hard True: the call returns False when the picked object has no shop_materialpath, and success feedback for an assignment that did not happen is a lie
             return False
@@ -779,7 +779,7 @@ class CopSection(AssetSection):
             source_index = panel.cop_sorted_model.mapToSource(index)
         except Exception:
             return False
-        with hou.undos.group("Amaze Import COP Network"):
+        with dragengine.drop_group("Amaze Import COP Network"):
             ok, reason, created = panel.cop_model.import_asset_to_scene(
                 source_index, context_node=context
             )
@@ -906,7 +906,7 @@ class CodeSection(AssetSection):
             return False
         name = helpers.sanitize_usd_path(
             str(getattr(asset, "name", "") or "")) or "snippet"
-        with hou.undos.group("Amaze Create Code Node"):
+        with dragengine.drop_group("Amaze Create Code Node"):
             node = panel._create_carrier(dest, type_name, name, position)
             if node is None:
                 return False
@@ -925,7 +925,7 @@ class CodeSection(AssetSection):
             source_index = panel.code_sorted_model.mapToSource(index)
         except Exception:
             return False
-        with hou.undos.group("Amaze Apply Code Snippet"):
+        with dragengine.drop_group("Amaze Apply Code Snippet"):
             ok, reason = panel.code_model.apply_to_node(
                 source_index.row(), node
             )
@@ -1336,7 +1336,7 @@ class FileSection(FolderSection):
         path = index.data(panel.file_files_model.PathRole)
         if not path:
             return False
-        with hou.undos.group("Amaze Import Geometry"):
+        with dragengine.drop_group("Amaze Import Geometry"):
             created = panel._import_geo_in_context(path, context)
         if created is not None:
             helpers.place_nodes([created],
@@ -1386,7 +1386,7 @@ class FileSection(FolderSection):
             debug.refuse("%s has no file parameter to take %s"
                          % (node.name(), os.path.basename(path)))
             return False
-        with hou.undos.group("Amaze Set File Path"):
+        with dragengine.drop_group("Amaze Set File Path"):
             parm.set(panel._scene_path(path))
         return True
 
@@ -1398,7 +1398,7 @@ class FileSection(FolderSection):
             return False
         base = helpers.sanitize_usd_path(
             os.path.splitext(os.path.basename(path))[0]) or "image"
-        with hou.undos.group("Amaze Create Image Node"):
+        with dragengine.drop_group("Amaze Create Image Node"):
             node = panel._create_carrier(dest, "mtlximage", base, position)
             if node is None:
                 return False
@@ -1691,7 +1691,7 @@ class GradientSection(AssetSection):
             debug.refuse("%s has no color ramp to take the gradient"
                          % node.name())
             return False
-        with hou.undos.group("Amaze Apply Gradient"):
+        with dragengine.drop_group("Amaze Apply Gradient"):
             parm.set(self._entry_ramp(entry, basis))
         return True
 
@@ -1719,7 +1719,7 @@ class GradientSection(AssetSection):
         """The carrier half shared by the drag door (an index) and the double-click and menu doors (an entry, optionally re-based by Apply as)."""
         name = helpers.sanitize_usd_path(
             str(entry.get("name") or "")) or "gradient"
-        with hou.undos.group("Amaze Create Gradient Node"):
+        with dragengine.drop_group("Amaze Create Gradient Node"):
             node = self.panel._create_carrier(dest, "hmtlxrampc", name,
                                               position)
             if node is None:

@@ -3279,7 +3279,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _import_materials_into_context(self, context, ids,
                                        position=None) -> None:
         """Network-release import for the material section, in ONE undo group so the whole multi-drop reverts as one step. Placement rides the import seam - the import RETURNS what it created and `helpers.place_nodes` is the one placement rule - so a position lands each copy at the release point, a multi-drop cascading from it."""
-        with hou.undos.group("Amaze Import Materials"):
+        with dragengine.drop_group("Amaze Import Materials"):
             self._import_materials_into_context_grouped(
                 context, ids, position)
 

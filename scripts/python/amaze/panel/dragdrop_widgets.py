@@ -348,10 +348,11 @@ class GridGestureMixin:
                             helpers.forget_placed()
                             live = getattr(panel, "sections",
                                            {}).get(section)
-                            outcome = self._apply_drop_rule(
-                                rule, panel, live, idx, event)
-                            if outcome:
-                                self._splice_if_on_a_wire(panel, event)
+                            with dragengine.holding_drop_group():    # the verb, its placement and the splice
+                                outcome = self._apply_drop_rule(
+                                    rule, panel, live, idx, event)
+                                if outcome:
+                                    self._splice_if_on_a_wire(panel, event)
             except hou.PermissionError as refusal:    # ONLY this class: a locked network is the app working and being told no, where any other exception is a defect that must still crash where it can be seen
                 debug.exception("drop refused", refusal,
                                 section=self._drag_section)
