@@ -274,6 +274,64 @@ class AnAdoptedFieldReachesTheModel(unittest.TestCase):
             "value, so the next ordinary save writes it back out")
 
 
+class ASidebarSaveDoesNotStrandWhatItMerged(unittest.TestCase):
+    """The sidebar shares the asset model's connector, so what ITS save merges must reach the model."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.material_model
+        self.path = os.path.join(self.panel.prefs.dir, "library.json")
+
+    def _disk(self):
+        with open(self.path, encoding="utf-8-sig") as handle:
+            return json.load(handle)
+
+    def _write(self, document):
+        with open(self.path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+
+    def _sidebar_save_then_asset_save(self):
+        self.assertTrue(self.panel.category_model.save(),
+                        "premise: the sidebar save was refused")
+        self.assertTrue(self.model.save(),
+                        "premise: the asset save was refused")
+
+    def test_a_peer_deletion_stays_deleted(self):
+        self.assertTrue(self.model.save(), "premise: the first save failed")
+        document = self._disk()
+        victim = str(document["assets"][2]["id"])
+        document["assets"] = [row for row in document["assets"]
+                              if str(row.get("id")) != victim]
+        self._write(document)
+
+        self._sidebar_save_then_asset_save()
+
+        self.assertNotIn(
+            victim, [str(row.get("id")) for row in self._disk()["assets"]],
+            "the peer's deletion was written back: the sidebar save merged "
+            "it, and the asset save rebuilt the list from a model that "
+            "still held the row")
+        self.assertNotIn(victim, [str(a.mat_id) for a in self.model.assets])
+
+    def test_a_peer_rename_is_not_written_back(self):
+        self.assertTrue(self.model.save(), "premise: the first save failed")
+        target = next(a for a in self.model.assets if a.name)
+        document = self._disk()
+        row = next(r for r in document["assets"]
+                   if str(r.get("id")) == str(target.mat_id))
+        row["name"] = "renamed by the other machine"
+        self._write(document)
+
+        self._sidebar_save_then_asset_save()
+
+        on_disk = next(r for r in self._disk()["assets"]
+                       if str(r.get("id")) == str(target.mat_id))
+        self.assertEqual(
+            "renamed by the other machine", on_disk.get("name"),
+            "the sidebar save adopted the peer's rename, and the asset "
+            "save wrote the model's stale name straight back over it")
+
+
 class TheBaselineIsWhatIsOnDisk(_Case):
     """3a: the loser of a same-tick save recorded the bytes it serialised."""
 

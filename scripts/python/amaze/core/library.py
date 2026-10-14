@@ -542,13 +542,12 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 messages.LIBRARY_NOT_SAVED_ANOTHER_PANEL,
                 key="connector-moved")
             return False
+        self.apply_refresh(db)    # the sidebar shares this connector: its save may have merged a peer's edit
         data = {}
         data["assets"] = [asset.get_as_dict() for asset in self._assets]
         db.set(data)
         stored = db.save()
-        self._adopt_rows(db.take_adopted())  # a save can ADOPT rows another session wrote while we had the library open; they reached disk but not this model, and assets[] above is rebuilt from the model, so the next save would write them out of existence
-        self._adopt_fields(db.take_adopted_fields())  # and the same for a FIELD on a row we both hold: adopted into the document, it still has to reach the record, or assets[] writes our stale value straight back
-        self._drop_rows(db.take_dropped())   # and the mirror: rows a peer DELETED from disk, whose files are already unlinked - kept in the model, the next save writes back a fileless ghost
+        self.apply_refresh(db)    # and what this save merged, or the next one writes it back out
         if stored and getattr(db, "_save_outcome", "") != "identical-skip":
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
@@ -562,7 +561,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return self.apply_refresh(db)
 
     def apply_refresh(self, db) -> bool:
-        """Drain what a refresh (or another model's refresh) merged into the document. True when this model actually moved."""
+        """Drain what any merge on this connector left for the model. True when the model moved."""
         rows, fields, gone = (db.take_adopted(), db.take_adopted_fields(),
                               db.take_dropped())
         self._adopt_rows(rows)
