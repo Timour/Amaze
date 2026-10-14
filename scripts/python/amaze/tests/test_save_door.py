@@ -222,6 +222,29 @@ class ASaveKeepsTheArtistsSelection(unittest.TestCase):
             "after Save to Amaze the saved node is no longer selected")
 
 
+class ASaveLeavesNothingOnTheUndoStack(unittest.TestCase):
+    """The staging copies are the save's own business; the next Ctrl+Z is the artist's."""
+
+    def test_a_material_save_adds_no_undo_entry(self):
+        from amaze.render import nodes
+        if not hou.getenv("OCIO"):
+            hou.putenv("OCIO", "/dev/null")
+        prefs = test_support.fixture_prefs(self)
+        prefs.render_on_import = 0
+        node = _material(self, "door_undo")
+        node.setSelected(True, True)
+        handler = nodes.NodeHandler(prefs)
+        handler._renderer = "Karma"
+        hou.undos.clear()
+        self.addCleanup(hou.undos.clear)
+        self.assertTrue(handler.save_node(node, "doorundo", False),
+                        "premise: the material did not save")
+        self.assertEqual(
+            (), hou.undos.undoLabels(),
+            "the save's staging copy left entries on the undo stack, so "
+            "the next Ctrl+Z after Save to Amaze undoes the save's noise")
+
+
 class AnUpdateBeforeARestartSaysSo(unittest.TestCase):
     """The menu reloads from disk and the panel does not, so a new menu can meet an old panel."""
 

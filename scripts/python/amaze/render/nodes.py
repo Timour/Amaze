@@ -1587,10 +1587,11 @@ class NodeHandler:
             return False
         try:
             with helpers.preserving_selection_and_current(), \
+                    hou.undos.disabler(), \
                     hou.InterruptableOperation(    # the staging copies select themselves
                         "Rendering", "Performing Tasks",
                         open_interrupt_dialog=True):
-                return saver(node, asset_id, update)
+                return saver(node, asset_id, update)    # all of it scratch work ▸r/undo-groups
         finally:
             self._discard_pending_cop_promote()    # a save that never reached the pair keeps no companion
 
