@@ -93,14 +93,6 @@ fi
 
 cd "$tests_dir"
 
-# NAME the host: the newest install wins, so updating Houdini silently
-# moves the gate and these bugs are version-specific. $AMAZE_HOUDINI pins
-# one; `run-tests.sh --all-versions` runs every one in turn.
-hython -c 'import hou, sys; print("suite host: Houdini %s, Python %s"
-          % (hou.applicationVersionString(), sys.version.split()[0]))' \
-    2>/dev/null | grep "suite host:" || \
-    echo "suite host: UNKNOWN - hython could not report its version"
-
 status=0
 # A secondary net only: shellcheck catches NO form of the silent `set -e`
 # abort. test_shell_gates.py and the DONE markers are the real defence.

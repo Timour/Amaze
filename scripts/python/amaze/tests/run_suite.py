@@ -24,7 +24,18 @@ def write_skip_report(result, path: str, houdini: str = "") -> None:
         json.dump(report, handle, indent=1)
 
 
+def host_line() -> str:
+    """Names the Houdini this run is on, from the suite's own hython: a separate start costs 8-20 s."""
+    try:
+        import hou
+        return "suite host: Houdini %s, Python %s" % (
+            hou.applicationVersionString(), sys.version.split()[0])
+    except Exception as exc:                                 # noqa: BLE001
+        return "suite host: UNKNOWN - hython could not report its version (%s)" % exc
+
+
 def main(argv) -> None:
+    print(host_line(), flush=True)
     program = unittest.main(module=None, argv=["unittest"] + list(argv),
                             exit=False)
     ok = program.result.wasSuccessful()

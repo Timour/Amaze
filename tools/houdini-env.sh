@@ -69,6 +69,23 @@ amaze_hython() {
     fi
 }
 
+# Houdini's own Python, not Houdini: hython's version, started in well under a second.
+amaze_plain_python() {
+    [ -n "${ZSH_VERSION:-}" ] && setopt localoptions nonomatch 2>/dev/null
+    local root="${1:-}" candidate
+    for candidate in \
+            "$root/../../../../Python.framework/Versions/Current/bin/python3" \
+            "$root/python/bin/python3" \
+            "$root"/python3*/python.exe; do
+        # EXECUTED before it is trusted: one present but unable to start falls through to hython
+        if [ -x "$candidate" ] && "$candidate" -c '' >/dev/null 2>&1; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # Package files that may define $AMAZE, most authoritative LAST, and ONE
 # list for every platform - per-OS branches are how the Linux pref-dir
 # glob ended up inside the Windows branch. A glob that misses simply

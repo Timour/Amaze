@@ -128,13 +128,13 @@ cp "$repo/OPmenu.xml" "$install/OPmenu.xml"
 # timestamp-validated .pyc left from before. Compile with the SAME
 # interpreter Houdini runs or the magic number mismatches.
 find "$install" -name __pycache__ -type d -exec rm -rf {} + 2>/dev/null || true
-_hython=""
-if [ -n "${HFS:-}" ]; then
-    _hython="$(amaze_hython "$HFS" || true)"
-fi
-if [ -z "$_hython" ]; then
+_root="${HFS:-}"
+if [ -z "$_root" ] || ! amaze_hython "$_root" >/dev/null; then
     _root="$(amaze_newest_houdini)"
-    if [ -n "$_root" ]; then _hython="$(amaze_hython "$_root" || true)"; fi
+fi
+_hython=""    # the compiler: Houdini's own Python first - a hython start costs 15 s here
+if [ -n "$_root" ]; then
+    _hython="$(amaze_plain_python "$_root" || amaze_hython "$_root" || true)"
 fi
 if [ -n "$_hython" ] && [ -x "$_hython" ]; then
     "$_hython" -c "
