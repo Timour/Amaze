@@ -1427,6 +1427,8 @@ def convert_redshift_material(
                 "mapping yet"
             )
             return None, None, report
+        if mtlx is None:    # a blend with no convertible base; the converter put the reason in the report
+            return None, None, report
 
         out_node = None    # bump and displacement live on the redshift_material OUTPUT node's own named inputs, never on the shader - walked from there
         for child in vopnet.children():

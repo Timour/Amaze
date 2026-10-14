@@ -339,6 +339,66 @@ class TheLibraryDoorMakesANewRedshiftEntry(unittest.TestCase):
 
 @unittest.skipUnless(_redshift_available(),
                      "the Redshift plugin is not loaded")
+class ABlendWithNoBaseIsReportedNotCrashed(unittest.TestCase):
+    """Convert to Karma on a `redshift::MaterialBlender` whose base input is empty."""
+
+    NO_BASE = ("a material blend has no base material connected - "
+               "nothing to convert")
+
+    @classmethod
+    def setUpClass(cls):
+        if hou.getenv("OCIO") is None:
+            hou.putenv("OCIO", "/dev/null")
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        source = parent.createNode("redshift_vopnet")
+        for child in list(source.children()):
+            if child.type().name() != "redshift_material":
+                child.destroy()
+        terminal = [c for c in source.children()
+                    if c.type().name() == "redshift_material"][0]
+        blend = source.createNode("redshift::MaterialBlender", "blend")
+        terminal.setNamedInput("Surface", blend, 0)
+        saved = self.model.add_asset(source, "Test", "", False,
+                                     name="rs_blend")
+        source.destroy()
+        self.assertEqual("Redshift", saved,
+                         "premise: the blend saves as a Redshift material")
+        self.row = len(self.model.assets) - 1
+
+    def test_the_converter_answers_none_with_the_reason(self):
+        from amaze.render import material_converter
+        with hou.undos.disabler():
+            scratch = hou.node("/obj").createNode("matnet")
+        self.addCleanup(scratch.destroy)
+        shader, displacement, report = (
+            material_converter.convert_redshift_material(
+                nodes.NodeHandler(self.prefs), self.model.assets[self.row],
+                scratch))
+        self.assertIsNone(shader)
+        self.assertIsNone(displacement)
+        self.assertIn(self.NO_BASE, report.skipped,
+                      "the reason the blend could not convert is lost")
+
+    def test_convert_to_karma_reports_instead_of_crashing(self):
+        before = len(self.model.assets)
+        ok, report = self.model.convert_redshift_to_karma(
+            self.model.index(self.row, 0))
+        self.assertFalse(ok)
+        self.assertIn(self.NO_BASE, report.skipped)
+        self.assertEqual(before, len(self.model.assets),
+                         "a material that did not convert was added")
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
 class ALegacyRedshiftMaterialGoesIntoSolaris(unittest.TestCase):
     """A material saved in the classic `redshift_vopnet` container used to be refused by Copy To /stage. Now the import door rebuilds it into the `rs_usd_material_builder` on the way in, the saved files untouched, so every Redshift material is LOP-capable."""
 
