@@ -155,17 +155,9 @@ class CodeLibrary(library.AssetLibrary):
             name.strip() or "Snippet", cats, tags, fav, language or "Code"
         )
         new_mat.code = code
-        row = len(self._assets)
-        self.beginInsertRows(QtCore.QModelIndex(), row, row)  # proper insert signals - without them rowsInserted never fires, and the dataChanged that follows names a row attached views do not know exists
-        try:
-            self._assets.append(new_mat)
-        finally:
-            self.endInsertRows()
-        self.rebuild_thumbs()
+        self._append_record(new_mat)
         if not self.save():  # a snippet lives INLINE in code.json, so a refused write orphans no files - but the snippet the user just watched appear is not saved, and they have to be told
             self.report_refused_index_write(new_mat)
-        row = self.rowCount() - 1  # repaint the new row's tile
-        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
         return language or "Code"
 
     def update_asset(
@@ -246,15 +238,9 @@ class CodeLibrary(library.AssetLibrary):
                 mat._extra = dict(getattr(mat, "_extra", None) or {},    # the stable identity a restore matches on, riding the record's extra-keys courtesy
                                   curated="starter/%s"
                                           % snip.get("name", "Snippet"))
-                row = len(self._assets)
-                self.beginInsertRows(QtCore.QModelIndex(), row, row)
-                try:
-                    self._assets.append(mat)
-                finally:
-                    self.endInsertRows()
+                self._append_record(mat)
                 added += 1
             if added:
-                self.rebuild_thumbs()
                 self.adopt_retired_text_into_notes()    # the curated snippets ship a description, which is a COMMENT now - moved here so it lands this session rather than on the next open ▸p/d03-retired
                 if not self.save():  # the marker below may only be written if the snippets actually REACHED disk: save() reports its refusals (a held file, a blocked write, a refused merge) by returning False rather than raising, and the exists() gate further down cannot see those, because in every one of them code.json is still sitting there from before
                     debug.event("session", "starter snippets not marked "

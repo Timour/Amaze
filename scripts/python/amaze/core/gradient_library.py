@@ -154,16 +154,10 @@ class GradientLibrary(library.AssetLibrary):
                         pages[notes.note_key(self.NOTES_SECTION,
                                              mat.mat_id)] = [
                             {"t": "text", "text": text}]
-                    row = len(self._assets)
-                    self.beginInsertRows(QtCore.QModelIndex(), row, row)
-                    try:
-                        self._assets.append(mat)
-                    finally:
-                        self.endInsertRows()
+                    self._append_record(mat)
                     seeded += 1
             if not seeded:
                 return  # def files unreachable this run: leave the marker off and retry next launch
-            self.rebuild_thumbs()
             if not self.save():  # the marker is PERMANENT, so it must not be minted for a save that never landed
                 debug.event("gradient", "curated seed not marked - the "
                             "save did not reach disk")

@@ -1,7 +1,6 @@
 """Models for the Nodes section - standalone node-network assets, saved from and restored into any context Houdini has. ▸p/nodes-section"""
 
 import hou
-from PySide6 import QtCore
 
 from amaze.core import debug, library, category, material
 from amaze.render import nodes, thumbs
@@ -167,11 +166,7 @@ class CopLibrary(library.AssetLibrary):
         if not handler.save_node_cop(node, new_mat.mat_id, items=items):
             return ""
         new_mat.cop_net = handler.cop_info    # for COP assets this carries the recorded thumbnail source node name under `thumb_node`, read from the LIVE network's display flag at save time because flags do not reliably survive the items-file round-trip
-        row = len(self._assets)
-        self.beginInsertRows(QtCore.QModelIndex(), row, row)
-        self._assets.append(new_mat)
-        self.endInsertRows()
-        self._add_thumb_paths(row)
+        self._append_record(new_mat)
         if not self.save():
             self.report_refused_index_write(new_mat)
         try:

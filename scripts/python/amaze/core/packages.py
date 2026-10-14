@@ -4,8 +4,6 @@ import json
 import os
 import zipfile
 
-from PySide6 import QtCore
-
 from amaze import branding
 from amaze.core import debug, notes, texstore
 from amaze.helpers import hostos
@@ -234,18 +232,9 @@ def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
         with hostos.scratch_beside(target) as scratch:
             with open(scratch, "wb") as handle:
                 handle.write(data)
-    at = len(model._assets)
-    model.beginInsertRows(QtCore.QModelIndex(), at, at)
-    try:
-        model._assets.append(asset)
-    finally:
-        model.endInsertRows()
+    model._append_record(asset)
     if not model.save():
-        model.beginRemoveRows(QtCore.QModelIndex(), at, at)    # nothing named the id yet, so taking the row back leaves only lonely payload files, which Clean Library already sweeps
-        try:
-            model._assets.pop(at)
-        finally:
-            model.endRemoveRows()
+        model._take_back_refused_append(asset)    # the payload files left behind are Clean Library's
         summary["refused"] += 1
         return
     page = entry.get("note") or {}

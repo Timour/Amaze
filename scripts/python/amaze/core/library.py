@@ -591,6 +591,35 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             asset.__dict__.update(fresh.__dict__)
             self.row_changed(row)    # the whole row: an adopted field can reach any column
 
+    def _append_record(self, record) -> int:
+        """Append a new record as the last row, with its signals, thumbnail maps and content baseline."""
+        row = len(self._assets)
+        self.beginInsertRows(QtCore.QModelIndex(), row, row)
+        try:
+            self._assets.append(record)
+        finally:
+            self.endInsertRows()
+        self._add_thumb_paths(row)
+        if not hasattr(self, "_content_state"):
+            self._content_state = {}
+        self._content_state[str(record.mat_id)] = self._content_stat(
+            record.mat_id)
+        return row
+
+    def _take_back_refused_append(self, record) -> None:
+        """Remove an appended record whose save was refused, found by identity: the drain moves rows."""
+        row = next((i for i, held in enumerate(self._assets)
+                    if held is record), -1)
+        if row < 0:
+            return
+        self.beginRemoveRows(QtCore.QModelIndex(), row, row)
+        try:
+            del self._assets[row]
+        finally:
+            self.endRemoveRows()
+        self.rebuild_thumbs()
+        self._content_state.pop(str(record.mat_id), None)
+
     def _adopt_rows(self, rows: list) -> None:
         """Insert rows another session added, with the row signals a view needs. A row this build cannot parse is skipped rather than allowed to abort the model - it stays on disk untouched."""
         if not isinstance(rows, list):  # a list, by contract
@@ -1397,15 +1426,7 @@ class MaterialLibrary(AssetLibrary):
             if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
                 new_mat._extra = dict(getattr(new_mat, "_extra", None) or {})
                 new_mat._extra["textures"] = list(inventory)
-            row = len(self._assets)  # per-row insert signals, not a batch-wide layout pair in the caller, so each tile appears AS ITS SAVE FINISHES during a multi-save
-            self.beginInsertRows(QtCore.QModelIndex(), row, row)
-            self._assets.append(new_mat)
-            self.endInsertRows()
-            self._add_thumb_paths(row)
-            if not hasattr(self, "_content_state"):
-                self._content_state = {}
-            self._content_state[str(new_mat.mat_id)] = self._content_stat(
-                new_mat.mat_id)
+            self._append_record(new_mat)    # per row, so in a multi-save each tile shows as its save lands
             if not self.save():  # THE INDEX WRITE CAN BE REFUSED, and the files are already on disk by now, so say so rather than reporting a save that leaves an asset absent the next time Houdini opens
                 self.report_refused_index_write(new_mat)
             try:  # stamp the scene node with its library id, so a later Save to Amaze on the same node can offer update-instead-of-duplicate

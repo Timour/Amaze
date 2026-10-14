@@ -422,6 +422,91 @@ class PackageImportTest(unittest.TestCase):
             self.assertEqual(_bytes(source), _bytes(target),
                              "the %s payload does not byte-match" % kind)
 
+    def test_an_imported_material_tile_paints(self):
+        """The new row joins the model the way a saved one does: thumbnail maps and content baseline."""
+        from amaze.core import packages
+        model = self.panel.material_model
+        asset = next(a for a in model.assets
+                     if any(os.path.exists(p)
+                            for p in model.asset_files(a.mat_id).values()))
+        out = _out_path(self)
+        packages.write_package(
+            out, [packages.collect_asset(model, asset.mat_id)])
+        self.panel.import_package_file(out)
+        row = model.rowCount() - 1
+        newborn = str(model.assets[row].mat_id)
+
+        self.assertEqual(
+            model.rowCount(), len(model._mat_paths),
+            "the imported row has no thumbnail path, so every paint of its "
+            "tile raises IndexError and it never shows a picture")
+        model.data(model.index(row, 0),
+                   QtCore.Qt.ItemDataRole.DecorationRole)    # must not raise
+        self.assertIsNotNone(
+            model._content_state.get(newborn),
+            "no content baseline was recorded, so a later Update Existing "
+            "cannot tell another machine's rewrite of these files")
+
+
+class ARefusedImportIsTakenBackWhole(unittest.TestCase):
+    """A refused save takes the imported row back out: the right row, with the thumbnail maps in step."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.material_model
+
+    def _package_of_a_material(self):
+        from amaze.core import packages
+        asset = next(a for a in self.model.assets
+                     if any(os.path.exists(p) for p in
+                            self.model.asset_files(a.mat_id).values()))
+        out = _out_path(self)
+        packages.write_package(
+            out, [packages.collect_asset(self.model, asset.mat_id)])
+        return out
+
+    def _import_refused(self, out):
+        from unittest import mock
+        from amaze.core import database
+        with mock.patch.object(database.DatabaseConnector, "save",
+                               return_value=False):
+            return self.panel.import_package_file(out)
+
+    def _ids(self):
+        return [str(a.mat_id) for a in self.model.assets]
+
+    def test_the_row_leaves_the_grid(self):
+        out = self._package_of_a_material()
+        before = self._ids()
+        self.assertEqual(1, self._import_refused(out)["refused"])
+        self.assertEqual(before, self._ids(),
+                         "a refused import stayed in the grid")
+        self.assertEqual(self.model.rowCount(), len(self.model._mat_paths),
+                         "the take-back left the thumbnail maps out of step")
+
+    def test_the_right_row_leaves_after_the_save_dropped_another(self):
+        """The save first takes in another machine's deletion, so the new row has moved."""
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        self.assertTrue(self.model.save(), "premise: the first save failed")
+        out = self._package_of_a_material()
+        with open(path, encoding="utf-8-sig") as handle:
+            document = json.load(handle)
+        victim = str(document["assets"][2]["id"])
+        document["assets"] = [row for row in document["assets"]
+                              if str(row.get("id")) != victim]
+        with open(path, "w", encoding="utf-8", newline="\n") as handle:
+            json.dump(document, handle, indent=4)
+        self.assertTrue(self.panel.category_model.save(),
+                        "premise: the sidebar save was refused")
+        expected = [mat_id for mat_id in self._ids() if mat_id != victim]
+
+        self.assertEqual(1, self._import_refused(out)["refused"])
+
+        self.assertEqual(
+            expected, self._ids(),
+            "the take-back aimed at the row the import was appended at, "
+            "but the save had already dropped a row above it")
+
 
 class _Cats:
     _categories = []    # the rename helper reads the sidebar list; empty means nothing to rename
