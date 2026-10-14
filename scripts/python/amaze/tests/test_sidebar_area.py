@@ -224,7 +224,8 @@ class TheSidebarStandsOnItsFrame(unittest.TestCase):
         self.frame = amazetheme.DIALOG_LAYOUT["G01"]
 
     def _kind(self, kind):
-        return [n for n in self.frame["nodes"] if n[0].split(" ▸ ")[0] == kind]
+        from amaze import amazetheme
+        return amazetheme.drawn_nodes("G01", kind)
 
     def test_the_frame_is_one_sidebar_the_code_can_follow(self):
         """Rows edge to edge at one height, one bar, one text x, the handle at the list's edge."""

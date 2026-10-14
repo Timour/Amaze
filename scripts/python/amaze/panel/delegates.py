@@ -82,11 +82,15 @@ class GridCellDelegate(QtWidgets.QStyledItemDelegate):
     def _style(widget):
         return widget.style() if widget is not None else QtWidgets.QApplication.style()
 
+    @classmethod
+    def text_margin(cls, widget) -> int:
+        """Where the style starts a cell's text: its focus-frame margin plus one."""
+        return cls._style(widget).pixelMetric(
+            QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, widget) + 1
+
     def text_shift(self, widget) -> int:
         """How far right of the style's own text margin the text is drawn, to sit at TEXT_INSET."""
-        margin = self._style(widget).pixelMetric(
-            QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, widget) + 1
-        return max(self.TEXT_INSET - margin, 0)
+        return max(self.TEXT_INSET - self.text_margin(widget), 0)
 
     def paint(self, painter, option, index):
         cell = QtWidgets.QStyleOptionViewItem(option)

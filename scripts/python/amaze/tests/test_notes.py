@@ -1764,7 +1764,7 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         self.px = theme.ui_px
         self.drawn = amazetheme.drawn_comments()
         self.frame = amazetheme.DIALOG_LAYOUT["N01"]
-        self.node = {n[0]: n for n in self.frame["nodes"]}
+        self.node = lambda kind, owner=None: amazetheme.drawn_node("N01", kind, owner)
         self.pane = notes_panel.NotesPanel(_Prefs(self))
         self.addCleanup(self.pane.deleteLater)
         pane = self.pane
@@ -1796,22 +1796,19 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
     def _y(self, widget):
         return widget.mapTo(self.pane, QtCore.QPoint(0, 0)).y()
 
-    def _kind(self, prefix):
-        return next(v for k, v in self.node.items() if k.startswith(prefix))
-
     def test_the_frame_is_one_pane_the_code_can_follow(self):
         """Both icons centred in the header, one gap, one to-do pad above and below."""
         n = self.node
-        header, name, kind = n["header"], n["text ▸ name"], n["text ▸ type"]
-        for icon in (self._kind("icon ▸ header"), self._kind("icon ▸ add")):
-            self.assertEqual(icon[2] - header[2], header[4] - (icon[2] + icon[4]),
-                             "%s is not centred in the header" % icon[0])
-        icon, plus, add = self._kind("icon ▸ header"), self._kind("icon ▸ add"), n["button ▸ add"]
+        header, name, kind = n("header"), n("text", "name"), n("text", "type")
+        icon, plus, add = n("icon", "header"), n("icon", "add"), n("button", "add")
+        for drawn in (icon, plus):
+            self.assertEqual(drawn[2] - header[2], header[4] - (drawn[2] + drawn[4]),
+                             "%s is not centred in the header" % drawn[0])
         self.assertEqual(name[1] - (icon[1] + icon[3]), kind[1] - (name[1] + name[3]),
                          "the header's two gaps differ")
         self.assertEqual((5, 5), (plus[1] - add[1], plus[2] - add[2]),
                          "the + is not where Houdini draws it in its button")
-        plain, todo, done, after = (n["line ▸ %d" % i] for i in (1, 2, 3, 4))
+        plain, todo, done, after = (n("line", str(i)) for i in (1, 2, 3, 4))
         self.assertEqual(todo[2] - (plain[2] + plain[4]), after[2] - (done[2] + done[4]),
                          "a to-do is padded differently above and below")
         self.assertEqual(plain[1], after[1], "the plain lines start apart")
@@ -1829,13 +1826,13 @@ class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
         self.assertEqual(px(d["header"]), pane.header_widget.height())
         icon, add = pane._icon_label, pane.add_button
         self.assertEqual((pad, px(d["icon"])), (self._x(icon), icon.width()))
-        self.assertEqual(px(self._kind("icon ▸ header")[2]), self._y(icon))
+        self.assertEqual(px(self.node("icon", "header")[2]), self._y(icon))
         self.assertEqual(pad + px(d["icon"]) + gap, self._x(pane.name_label))
         self.assertEqual(self._x(pane.name_label) + pane.name_label.width() + gap,
                          self._x(pane.type_label))
         self.assertEqual(tuple(px(side) for side in d["add"]), (add.width(), add.height()))
         self.assertEqual(pane.width() - add_pad, self._x(add) + add.width())
-        self.assertEqual(px(self.node["button ▸ add"][2]), self._y(add))
+        self.assertEqual(px(self.node("button", "add")[2]), self._y(add))
         self.assertEqual(px(d["plus"]), add.iconSize().width())
 
     def test_the_note_is_where_it_is_drawn(self):

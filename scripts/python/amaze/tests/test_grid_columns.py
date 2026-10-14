@@ -15,6 +15,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import amazetheme  # noqa: E402
 from amaze.core import grid_columns  # noqa: E402
 from amaze.panel import delegates, grid  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
@@ -1125,7 +1126,6 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
 
     def setUp(self):
-        from amaze import amazetheme
         panel = self.panel
         panel.section_tabs.setChecked("material")
         panel.prefs.view_mode = "list"
@@ -1134,15 +1134,13 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         self.addCleanup(panel.apply_view_mode)
         self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
         self.px = theme.ui_px
-        self.nodes = amazetheme.DIALOG_LAYOUT["L01"]["nodes"]
         self.column = self._by_key("column")
         self.heading = self._by_key("heading")
         self.table = panel.thumbtable
         self.header = self.table.horizontalHeader()
 
     def _by_key(self, kind):
-        return {n[0].split(" ▸ ")[1]: n for n in self.nodes
-                if n[0].startswith(kind + " ▸ ")}
+        return amazetheme.drawn_by_owner("L01", kind)
 
     def test_the_frame_is_one_table_the_code_can_follow(self):
         """Columns in the table's order, edge to edge; one heading inset; one tick inset."""
@@ -1156,17 +1154,17 @@ class TheListStandsOnItsFrame(unittest.TestCase):
                          "the headings are drawn at different heights")
         insets = {self.heading[k][1] - n[1] for k, n in self.column.items()}
         self.assertEqual(1, len(insets), "the headings sit at insets %s" % sorted(insets))
-        ticks = {n[1] - self.column[n[0].split(" ▸ ")[1]][1]
-                 for n in self.nodes if n[0].startswith("tick box ▸ ")}
+        ticks = {n[1] - self.column[amazetheme.drawn_name(n)[1]][1]
+                 for n in amazetheme.drawn_nodes("L01", "tick box")}
         self.assertEqual(1, len(ticks), "the ticks sit at insets %s" % sorted(ticks))
-        texts = {n[1] - self.column[n[0].split(" ▸ ")[1]][1]
-                 for n in self.nodes if n[0].startswith("cell ▸ ")}
+        texts = {n[1] - self.column[amazetheme.drawn_name(n)[1]][1]
+                 for n in amazetheme.drawn_nodes("L01", "cell")}
         self.assertEqual(1, len(texts), "the row texts sit at insets %s" % sorted(texts))
 
     def _render(self, delegate, index, selected=False):
         option = QtWidgets.QStyleOptionViewItem()
         self.table.initViewItemOption(option)
-        row = next(n for n in self.nodes if n[0].startswith("row ▸ "))
+        row = amazetheme.drawn_node("L01", "row")
         option.rect = QtCore.QRect(0, 0, self.px(self.column["name"][3]), self.px(row[4]))
         if selected:
             option.state |= QtWidgets.QStyle.StateFlag.State_Selected
@@ -1205,7 +1203,7 @@ class TheListStandsOnItsFrame(unittest.TestCase):
         margin = self.table.style().pixelMetric(
             QtWidgets.QStyle.PixelMetric.PM_FocusFrameHMargin, None, self.table) + 1
         shift = delegate.text_shift(self.table)
-        cell = next(n for n in self.nodes if n[0] == "cell ▸ name")
+        cell = amazetheme.drawn_node("L01", "cell", "name")
         self.assertEqual(self.px(cell[1] - self.column["name"][1]), margin + shift)
         self.assertEqual(shift, self._ink_left(self._render(delegate, index))
                          - self._ink_left(self._render(plain, index)),
@@ -1255,11 +1253,11 @@ class TheListStandsOnItsFrame(unittest.TestCase):
                     self.assertEqual(self.px(node[3]), self.table.columnWidth(column))
 
     def test_every_tick_box_is_where_it_is_drawn(self):
-        rows = [n for n in self.nodes if n[0].startswith("row ▸ ")]
-        ticks = [n for n in self.nodes if n[0].startswith("tick box ▸ ")]
+        rows = amazetheme.drawn_nodes("L01", "row")
+        ticks = amazetheme.drawn_nodes("L01", "tick box")
         self.assertTrue(ticks, "L01 draws no tick - not a test")
         for node in ticks:
-            key = node[0].split(" ▸ ")[1]
+            key = amazetheme.drawn_name(node)[1]
             column = self.column[key]
             row = next(r for r in rows if r[2] <= node[2] < r[2] + r[4])
             delegate = self.table.itemDelegateForColumn(grid_columns.KEYS.index(key))

@@ -213,11 +213,8 @@ class TheToolbarStandsOnItsFrame(unittest.TestCase):
         self.addCleanup(setattr, panel.prefs, "view_mode", "grid")
         self.px = theme.ui_px
         self.frame = amazetheme.DIALOG_LAYOUT["B01"]
-        self.node = {}
-        for n in self.frame["nodes"]:
-            parts = n[0].split(" ▸ ")
-            if len(parts) > 1:
-                self.node[(parts[0], parts[1].split(" (")[0])] = n
+        self.node = {tuple(amazetheme.drawn_name(n)[:2]): n for n in self.frame["nodes"]
+                     if len(amazetheme.drawn_name(n)) > 1}
         width, height = self.frame["frame"]
         panel.toolbar_layout.setGeometry(QtCore.QRect(0, 0, self.px(width), self.px(height)))
         QtWidgets.QApplication.processEvents()
@@ -231,7 +228,8 @@ class TheToolbarStandsOnItsFrame(unittest.TestCase):
         self.fail("the toolbar has no %s" % name)
 
     def _drawn(self, kind):
-        return {owner: n for (k, owner), n in self.node.items() if k == kind}
+        from amaze import amazetheme
+        return amazetheme.drawn_by_owner("B01", kind)
 
     def test_the_frame_is_one_row_the_code_can_follow(self):
         """One gap between buttons, one edge, one slider gap, one size per kind of control."""

@@ -804,6 +804,27 @@ def forget_drawn_boxes() -> None:
     _DRAWN_REPEATS.clear()
 
 
+def drawn_name(node) -> list:
+    """A node's name as its `▸` parts, each without its `(note)`: kind, owner, art."""
+    return [part.split(" (")[0] for part in node[0].split(_NODE_MARK)]
+
+
+def drawn_nodes(frame_key: str, kind: str, owner=None) -> list:
+    """A frame's `kind` nodes in drawn order, or only `owner`'s - THE lookup every reader shares."""
+    return [n for n in DIALOG_LAYOUT[frame_key]["nodes"]
+            if drawn_name(n)[0] == kind and (owner is None or drawn_name(n)[1:2] == [owner])]
+
+
+def drawn_node(frame_key: str, kind: str, owner=None) -> tuple:
+    """The first of `drawn_nodes`."""
+    return drawn_nodes(frame_key, kind, owner)[0]
+
+
+def drawn_by_owner(frame_key: str, kind: str) -> dict:
+    """{owner: node} for a frame's `kind` nodes; a later drawing of one owner wins."""
+    return {drawn_name(n)[1]: n for n in drawn_nodes(frame_key, kind)}
+
+
 _FORM_FIELDS = ("QLineEdit", "QComboBox")
 
 
@@ -838,8 +859,8 @@ TILE_DRAWN_SIZE = 128    # the size-slider value the T frames are drawn at
 def drawn_tile(frame_key: str = "T01") -> dict:
     """The grid tile's spacing, read off its frame drawn at TILE_DRAWN_SIZE. ▸r/tile-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
-    node = {n[0].split(_NODE_MARK)[0]: n for n in layout["nodes"]}
-    thumb, name, sub = node["thumbnail"], node["tile name"], node["tile subtitle"]
+    thumb, name, sub = (drawn_node(frame_key, kind)
+                        for kind in ("thumbnail", "tile name", "tile subtitle"))
     return {
         "pad": thumb[1],
         "width_extra": layout["frame"][0] - TILE_DRAWN_SIZE,
@@ -856,13 +877,14 @@ def drawn_badges() -> dict:
     for key, layout in DIALOG_LAYOUT.items():
         if not key.startswith("T"):
             continue
-        thumb = next(n for n in layout["nodes"] if n[0] == "thumbnail")
-        for kind, x, y, w, _h, _text in layout["nodes"]:
+        thumb = drawn_node(key, "thumbnail")
+        for node in layout["nodes"]:
+            kind, x, y, w = drawn_name(node)[0], node[1], node[2], node[3]
             if not kind.startswith("badge "):
                 continue
             place = (_badge_edge(x, w, thumb[1], thumb[3])
                      + _badge_edge(y, w, thumb[2], thumb[4]) + (w,))
-            badge = kind[len("badge "):].split(" (")[0]
+            badge = kind[len("badge "):]
             if out.setdefault(badge, place) != place:
                 raise ValueError("badge %s is drawn in two places" % badge)
     return out
@@ -880,21 +902,16 @@ def _badge_edge(at, size, start, span):
 
 def drawn_list(frame_key: str = "L01") -> dict:
     """The list's header, widths, text inset and tick box, off its frame. ▸r/list-from-frame"""
-    nodes = DIALOG_LAYOUT[frame_key]["nodes"]
-
-    def by_key(kind):
-        return {n[0].split(_NODE_MARK)[1]: n for n in nodes
-                if n[0].startswith(kind + _NODE_MARK)}
-
-    columns, headings, cells = by_key("column"), by_key("heading"), by_key("cell")
-    tick = next(n for n in nodes if n[0].startswith("tick box" + _NODE_MARK))
+    columns, headings, cells = (drawn_by_owner(frame_key, kind)
+                                for kind in ("column", "heading", "cell"))
+    tick = drawn_node(frame_key, "tick box")
     first = next(iter(columns))
     return {
         "header_h": columns[first][4],
         "cell_pad": headings[first][1] - columns[first][1],
         "text_inset": cells[first][1] - columns[first][1],
         "widths": {key: n[3] for key, n in columns.items()},
-        "tick_pad": tick[1] - columns[tick[0].split(_NODE_MARK)[1]][1],
+        "tick_pad": tick[1] - columns[drawn_name(tick)[1]][1],
         "tick_side": tick[3],
     }
 
@@ -904,9 +921,7 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     layout = DIALOG_LAYOUT[frame_key]
 
     def node(kind, owner):
-        return next(n for n in layout["nodes"]
-                    if n[0].split(_NODE_MARK)[:2] == [kind, owner]
-                    or n[0].startswith(kind + _NODE_MARK + owner + " ("))
+        return drawn_node(frame_key, kind, owner)
 
     def right(n):
         return n[1] + n[3]
@@ -914,6 +929,7 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
     first, second = node("button", "btn_categories"), node("button", "btn_menu_view")
     slider, label = node("slider", "click_slider"), node("label", "filter_label")
     field, search = node("field", "line_filter"), node("icon", "line_filter")
+    icons = {owner: n[3] for owner, n in drawn_by_owner(frame_key, "icon").items()}
     return {
         "height": layout["frame"][1],
         "edge": first[1],
@@ -921,9 +937,9 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
         "slider_gap": slider[1] - right(node("button", "cb_favsonly")),
         "label_gap": field[1] - right(label),
         "button": first[3],
-        "chip_icon": node("icon", "btn_categories")[3],
-        "fav_icon": node("icon", "cb_favsonly")[3],
-        "menu_icon": node("icon", "btn_menu_view")[3],
+        "icons": icons,    # each button's own drawn icon, by its object name
+        "chip_icon": icons["btn_categories"],    # a toggle the frame does not draw
+        "menu_icon": icons["btn_menu_view"],     # a menu button the frame does not draw
         "slider_w": slider[3],
         "slider_h": slider[4],
         "field_w": field[3],
@@ -936,14 +952,9 @@ def drawn_toolbar(frame_key: str = "B01") -> dict:
 def drawn_tabs(frame_key: str = "S01") -> dict:
     """The section strip's height, tray and chip spacing, read off its frame. ▸r/tabs-from-frame"""
     layout = DIALOG_LAYOUT[frame_key]
-
-    def of_kind(kind):
-        return [n for n in layout["nodes"] if n[0].split(_NODE_MARK)[0] == kind]
-
-    tray = of_kind("tray")[0]
-    chips = sorted(of_kind("chip"), key=lambda n: n[1])
-    first = chips[0][0].split(_NODE_MARK)[1]
-    box = next(n for n in of_kind("text box") if n[0].split(_NODE_MARK)[1] == first)
+    tray = drawn_node(frame_key, "tray")
+    chips = sorted(drawn_nodes(frame_key, "chip"), key=lambda n: n[1])
+    box = drawn_node(frame_key, "text box", drawn_name(chips[0])[1])
     return {
         "height": layout["frame"][1],
         "tray_left": tray[1],
@@ -957,27 +968,20 @@ def drawn_tabs(frame_key: str = "S01") -> dict:
 
 def drawn_sidebar(frame_key: str = "G01") -> dict:
     """The sidebar's width, colour bar and splitter handle, off its frame. ▸r/sidebar-from-frame"""
-    nodes = DIALOG_LAYOUT[frame_key]["nodes"]
-
-    def first(kind):
-        return next(n for n in nodes if n[0].split(_NODE_MARK)[0] == kind)
-
-    return {"width": first("list")[3], "bar": first("bar")[3],
-            "handle": first("splitter handle")[3]}
+    return {"width": drawn_node(frame_key, "list")[3], "bar": drawn_node(frame_key, "bar")[3],
+            "handle": drawn_node(frame_key, "splitter handle")[3]}
 
 
 def drawn_comments(frame_key: str = "N01") -> dict:
     """The comments pane's width, header, margins and glyphs, off its frame. ▸r/comments-from-frame"""
-    layout = DIALOG_LAYOUT[frame_key]
-    node = {n[0]: n for n in layout["nodes"]}
+    width = DIALOG_LAYOUT[frame_key]["frame"][0]
 
-    def kind(prefix):
-        return next(n for n in layout["nodes"] if n[0].startswith(prefix))
+    def node(kind, owner=None):
+        return drawn_node(frame_key, kind, owner)
 
-    header, icon, name = node["header"], kind("icon ▸ header"), node["text ▸ name"]
-    add, width = node["button ▸ add"], layout["frame"][0]
-    plain, todo = node["line ▸ 1"], node["line ▸ 2"]
-    glyph = kind("glyph ▸ 2")
+    header, icon, name = node("header"), node("icon", "header"), node("text", "name")
+    add, glyph = node("button", "add"), node("glyph", "2")
+    plain, todo = node("line", "1"), node("line", "2")
     return {
         "width": width,
         "header": header[4],
@@ -986,8 +990,8 @@ def drawn_comments(frame_key: str = "N01") -> dict:
         "icon": icon[3],
         "add": (add[3], add[4]),
         "add_pad": width - (add[1] + add[3]),
-        "plus": kind("icon ▸ add")[3],
-        "doc_margin": plain[1] - node["body"][1],
+        "plus": node("icon", "add")[3],
+        "doc_margin": plain[1] - node("body")[1],
         "todo_indent": todo[1] - plain[1],
         "todo_pad": todo[2] - (plain[2] + plain[4]),
         "glyph": glyph[3],

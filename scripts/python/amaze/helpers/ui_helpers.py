@@ -875,6 +875,12 @@ class ToggleSwitch(QtWidgets.QCheckBox):
             )
 
 
+def icon_rect(button, side: int) -> QtCore.QRect:
+    """Where a self-painted toolbar button draws its `side` icon: centred, one offset both ways."""
+    offset = (button.width() - side) // 2
+    return QtCore.QRect(offset, offset, side, side)
+
+
 class IconMenuButton(QtWidgets.QWidget):
     """The toolbar's icon button that pops a QMenu, fully hand-painted because Houdini's own button chrome shows NO visible open state in this panel; hover and open are tracked explicitly and cleared on the menu's `aboutToHide`, which is what avoids Qt's stuck-highlight-after-popup quirk."""
 
@@ -901,14 +907,18 @@ class IconMenuButton(QtWidgets.QWidget):
         button_size: int | None = None,
         on_click=None,           # with menu=None this is a plain ACTION button and a click calls this instead of popping a menu - the gear goes straight into Preferences, and its icon carries no menu triangle
         fallback_label: str = "",
+        name: str = "",          # its object name, which B01 draws it under
     ) -> None:
         super().__init__()
+        self.setObjectName(name)
         self._menu = menu
         self._on_click = on_click
         self._hovered = False
         self._open = False
         drawn = amazetheme.drawn_toolbar()
-        self._icon_size = theme.ui_px(drawn["menu_icon"] if icon_size is None else icon_size)
+        if icon_size is None:
+            icon_size = drawn["icons"].get(name, drawn["menu_icon"])
+        self._icon_size = theme.ui_px(icon_size)
         button_size = theme.ui_px(drawn["button"] if button_size is None else button_size)
         self.setFixedSize(button_size, button_size)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -1013,11 +1023,7 @@ class IconMenuButton(QtWidgets.QWidget):
                 pm = self._hover_pm
             else:
                 pm = self._idle_pm
-            offset = (self.width() - self._icon_size) // 2
-            target = QtCore.QRect(
-                offset, offset, self._icon_size, self._icon_size
-            )
-            painter.drawPixmap(target, pm)
+            painter.drawPixmap(icon_rect(self, self._icon_size), pm)
         painter.end()
 
 
@@ -1026,14 +1032,18 @@ class ChipToggleButton(QtWidgets.QToolButton):
 
     RENDER_SCALE = 4
 
-    def __init__(self, button_size: int | None = None, icon_size: int | None = None) -> None:
+    def __init__(self, button_size: int | None = None, icon_size: int | None = None,
+                 name: str = "") -> None:
         super().__init__()
+        self.setObjectName(name)    # B01 draws it under this name
         self.setCheckable(True)
         drawn = amazetheme.drawn_toolbar()    # DESIGN px, scaled here; None is B01's ▸r/toolbar-from-frame
         button_size = theme.ui_px(drawn["button"] if button_size is None else button_size)
         self.setFixedSize(button_size, button_size)
         self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self._icon_size = theme.ui_px(drawn["chip_icon"] if icon_size is None else icon_size)
+        if icon_size is None:
+            icon_size = drawn["icons"].get(name, drawn["chip_icon"])
+        self._icon_size = theme.ui_px(icon_size)
         self._hovered = False
         self._pms = {}
 
@@ -1095,11 +1105,7 @@ class ChipToggleButton(QtWidgets.QToolButton):
         apply_disabled_opacity(painter, self)   # a DISABLED chip is half there; without this the star switched off for the online browser painted exactly like a live one and read as simply not working
         pm = self._pms.get((self.isChecked(), self._hovered))
         if pm is not None:
-            offset = (self.width() - self._icon_size) // 2
-            painter.drawPixmap(
-                QtCore.QRect(offset, offset, self._icon_size, self._icon_size),
-                pm,
-            )
+            painter.drawPixmap(icon_rect(self, self._icon_size), pm)
         painter.end()
 
 

@@ -46,16 +46,17 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         self.px = theme.ui_px
         self.layout = amazetheme.DIALOG_LAYOUT
         self.frame = amazetheme.DIALOG_LAYOUT["T01"]
-        self.node = {n[0].split(" ▸ ")[0]: n for n in self.frame["nodes"]}
+        self.node = {kind: amazetheme.drawn_node("T01", kind)
+                     for kind in ("thumbnail", "tile name", "tile subtitle")}
         self.size = amazetheme.TILE_DRAWN_SIZE
         self.D = delegates.AssetItemDelegate
 
     def _drawn(self, badge):
         """Where a T frame draws this badge, found by its name."""
-        for key, frame in sorted(self.layout.items()):
-            for node in frame["nodes"] if key.startswith("T") else ():
-                if node[0].startswith("badge %s (" % badge.name):
-                    return tuple(self.px(n) for n in node[1:5])
+        from amaze import amazetheme
+        for key in sorted(k for k in self.layout if k.startswith("T")):
+            for node in amazetheme.drawn_nodes(key, "badge " + badge.name):
+                return tuple(self.px(n) for n in node[1:5])
         self.fail("no T frame draws the %s badge" % badge.name)
 
     def test_the_cell_is_the_frame(self):

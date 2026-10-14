@@ -275,12 +275,8 @@ class AmazePanel(QtWidgets.QWidget):
         icon_path = self._ui_icon_path(
             self.MENU_ICON_FILES.get(menu.title(), "")
         )
-        button = ui_helpers.IconMenuButton(menu, icon_path)
-        button.setObjectName(    # a STABLE identity, independent of whether any panel attribute happens to hold the button: these are held by the layout alone, so unnamed they would collapse onto ONE ui_snapshot key - interchangeable "IconMenuButton" entries, where swapping two of them on screen passes every layout test and deleting one is invisible
-            "btn_menu_" + "".join(
-                c for c in menu.title().lower() if c.isalnum())
-        )
-        return button
+        name = "btn_menu_" + "".join(c for c in menu.title().lower() if c.isalnum())
+        return ui_helpers.IconMenuButton(menu, icon_path, name=name)    # stable: B01 and the snapshots key on it
 
     def setup(self):
         for attr, model in model_registry.models_for(self.prefs).items():
@@ -812,8 +808,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.menu.addMenu(self.menu_filter)
         if self.toolbar_layout is not None:
             menu_view = self.ui.findChild(QtWidgets.QMenu, "menuView")    # icon controls at the toolbar's right end, left to right: Filter (box, menu), View (eye, menu), Preferences (gear, outermost - a PLAIN button straight into Preferences, the Library menu it used to pop having dissolved into the dialog's Library tab)
-            self.btn_notes = ui_helpers.ChipToggleButton()    # the Comments chip joins the ICON FAMILY and stays blue in ALL FOUR states, the state carried by the chip's BACKGROUND - `_sync_notes_button_pixmaps` has the reasoning. Built FIRST of the toolbar chips, with Online, Filter, Categories and Capture following, and the row is mirrored afterwards, so build order is NOT display order; overview.md §2 has where it lands
-            self.btn_notes.setObjectName("btn_notes")
+            self.btn_notes = ui_helpers.ChipToggleButton(name="btn_notes")    # built first; the row is mirrored after
             self.btn_notes.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_COMMENTS))
             self._sync_notes_button_pixmaps()
@@ -821,8 +816,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.btn_notes.toggled.connect(self._on_notes_toggled)    # connected AFTER the initial state, so restoring a saved "open" does not re-save preferences mid-construction
             self.toolbar_layout.addWidget(self.btn_notes)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_online = ui_helpers.ChipToggleButton()    # Online sits immediately LEFT of Comments once the row is mirrored, so it is added right after it here. The AMBER is the whole signal that you are in the other world - the favourites star's pattern exactly, so it is built the same way by the same engine, and does not lighten on hover because the colour is what carries the state
-            self.btn_online.setObjectName("btn_online")
+            self.btn_online = ui_helpers.ChipToggleButton(name="btn_online")    # amber is its state: no hover lift
             self.btn_online.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_ONLINE))
             self._sync_online_button_pixmaps()
@@ -854,19 +848,18 @@ class AmazePanel(QtWidgets.QWidget):
                         self.matx_online_model.set_kind_filter(s))
                 self.online_view_menu.actions()[0].setChecked(True)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            btn_prefs = ui_helpers.IconMenuButton(
+            btn_prefs = ui_helpers.IconMenuButton(    # held by the layout alone, never on self
                 None,
                 self._ui_icon_path("icon_library.svg"),
                 on_click=self.show_prefs,
                 fallback_label="Preferences",
+                name="btn_prefs",
             )
-            btn_prefs.setObjectName("btn_prefs")    # named for the same reason as the two menu buttons above - nothing else tells these three apart. Deliberately NOT also stored on self: the layout owns it, and adding an attribute is what made a toolbar test report a naming refactor as a layout defect
             btn_prefs.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_PREFERENCES))
             self.toolbar_layout.addWidget(btn_prefs)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_categories = ui_helpers.ChipToggleButton()    # Show Categories, promoted out of the View menu to a button of its own. Added AFTER the gear because the row is mirrored at the end of construction, so the last widget added is the leftmost drawn. It DRIVES action_catview rather than repeating it: the action owns the behaviour and the persistence, and two paths to one preference is how a toggle ends up disagreeing with the thing it toggles
-            self.btn_categories.setObjectName("btn_categories")
+            self.btn_categories = ui_helpers.ChipToggleButton(name="btn_categories")    # drives action_catview
             self.btn_categories.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CATEGORIES))
             self._sync_categories_button_pixmaps()
@@ -876,13 +869,13 @@ class AmazePanel(QtWidgets.QWidget):
                 self._on_categories_button)
             self.toolbar_layout.addWidget(self.btn_categories)
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))
-            self.btn_hip_capture = ui_helpers.IconMenuButton(    # Capture, outermost and HIP only: same button class and same 2px gap as the cluster left of it, so it reads as one row rather than an afterthought. Hidden for every other section, because it acts on the open SCENE, which is meaningless where the tiles are materials
+            self.btn_hip_capture = ui_helpers.IconMenuButton(    # HIP only: it acts on the open scene
                 None,
                 self._ui_icon_path("icon_screenshot.svg"),
                 on_click=self.capture_open_scene_thumbnail,
                 fallback_label="Capture",
+                name="btn_hip_capture",
             )
-            self.btn_hip_capture.setObjectName("btn_hip_capture")
             self.btn_hip_capture.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PANEL_CAPTURE))
             self.btn_hip_capture.setVisible(False)
@@ -940,9 +933,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _build_view_toggles(self) -> None:
         """The favorites chip and the grid/list toggle."""
-        self.cb_favsonly = ui_helpers.ChipToggleButton(
-            icon_size=self._TOOLBAR["fav_icon"])    # B01 draws the heart 15, not 16
-        self.cb_favsonly.setObjectName("cb_favsonly")
+        self.cb_favsonly = ui_helpers.ChipToggleButton(name="cb_favsonly")
         self.cb_favsonly.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_FAVORITES))
         try:
@@ -959,8 +950,7 @@ class AmazePanel(QtWidgets.QWidget):
             self.toolbar_layout.addSpacing(theme.ui_px(self._TOOLBAR["gap"]))    # B01's gap between buttons
 
         self.ui.cb_ViewMode.setVisible(False)  # type: ignore
-        self.cb_viewmode = ui_helpers.ChipToggleButton()    # the Grid/List view-mode toggle, the same hand-painted chip treatment as the star: unchecked = grid (icon mode), checked = list mode, and the icon shows the CURRENT mode
-        self.cb_viewmode.setObjectName("cb_viewmode")
+        self.cb_viewmode = ui_helpers.ChipToggleButton(name="cb_viewmode")    # its icon is the CURRENT mode
         self.cb_viewmode.setToolTip(ui_helpers.tooltip_text(
             tooltips.PANEL_VIEW_MODE))
         try:

@@ -24,15 +24,11 @@ class TheTabStripStandsOnItsFrame(unittest.TestCase):
     def setUp(self):
         self.px = theme.ui_px
         self.frame = amazetheme.DIALOG_LAYOUT["S01"]
-        nodes = self.frame["nodes"]
-        self.chips = sorted((n for n in nodes if n[0].startswith("chip ▸ ")),
-                            key=lambda n: n[1])
-        self.boxes = {n[0].split(" ▸ ")[1]: n for n in nodes
-                      if n[0].startswith("text box ▸ ")}
-        labels = {n[0].split(" ▸ ")[1]: n[5] for n in nodes
-                  if n[0].startswith("label ▸ ")}
-        self.tray = next(n for n in nodes if n[0] == "tray")
-        self.keys = [c[0].split(" ▸ ")[1] for c in self.chips]
+        self.chips = sorted(amazetheme.drawn_nodes("S01", "chip"), key=lambda n: n[1])
+        self.boxes = amazetheme.drawn_by_owner("S01", "text box")
+        labels = {key: n[5] for key, n in amazetheme.drawn_by_owner("S01", "label").items()}
+        self.tray = amazetheme.drawn_node("S01", "tray")
+        self.keys = [amazetheme.drawn_name(c)[1] for c in self.chips]
         self.bar = ui_helpers.SectionTabBar([(k, labels[k]) for k in self.keys])
         self.bar.resize(self.px(self.frame["frame"][0]), self.bar.HEIGHT)
         self.addCleanup(self.bar.deleteLater)
