@@ -140,6 +140,10 @@ class GateFixture(unittest.TestCase):
             os.chmod(target, os.stat(target).st_mode | stat.S_IXUSR)
 
         _write(os.path.join(self.repo, RUNNER_REL), _STUB, executable=True)
+        plain = os.path.join(sys.base_prefix, "bin", "python3")
+        _write(os.path.join(self.hfs, "bin", "hython"),    # sync's bytecode step: a real Houdini costs 1.3s a sync
+               '#!/bin/bash\nexec "%s" "$@"\n'
+               % (plain if os.path.isfile(plain) else "python3"), executable=True)
         _write(os.path.join(self.repo, "OPmenu.xml"), "<menuDocument/>\n")
         _write(os.path.join(self.repo, "python_panels", "amaze.pypanel"),
                "<pythonPanelDocument/>\n")
