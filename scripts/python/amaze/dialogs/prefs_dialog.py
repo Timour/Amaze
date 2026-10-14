@@ -90,6 +90,23 @@ def _open_url(url: str) -> None:
                     url=url)
 
 
+def _show_value(widget, value) -> None:
+    """Put a stored setting on a row: a combo by its token or text, a switch, or a number."""
+    if isinstance(widget, QtWidgets.QComboBox):
+        index = widget.findData(value)
+        if index < 0:
+            index = widget.findText(str(value))
+        if index >= 0:
+            widget.setCurrentIndex(index)
+    elif isinstance(widget, QtWidgets.QAbstractButton):
+        widget.setChecked(bool(value))
+    else:
+        try:
+            widget.setValue(int(value))
+        except (TypeError, ValueError):    # a hand-edited store can hold junk; the row keeps its value
+            pass
+
+
 def _picker_start(path: str) -> str:
     """A `start_directory` in the spelling `hou.ui.selectFile` requires: forward slashes on every OS, since on Windows the documented form is `D:/temp` while `os.path.join` there hands out backslashes."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
@@ -861,10 +878,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         """Browse for a new library directory, through the panel's own set_library flow: validation, seed copy, model switching."""
         if self._panel is None:
             return
+        self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._panel.set_library()
         self.line_workdir.setText(self._prefs.dir)
-        self._reload_library_users()    # the users live IN the library, so the open picker is otherwise a list of the PREVIOUS one's people until Preferences is reopened
-        self._sync_overwrite_switch()   # and so does policy.json
+        self._reload_library_users()    # the users live in the library, as policy.json does
+        self._sync_overwrite_switch()
+        self._sync_shared_rows()
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
@@ -900,6 +919,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             hou.ui.displayMessage(  # type: ignore
                 messages.TEST_FOLDER_NOT_PREPARED % what)
             return
+        self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._prefs.test_dir = folder
         self._prefs.save()
         self.line_test_dir.setText(folder)
@@ -907,6 +927,7 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def set_test_mode(self, on: bool) -> None:
         """Switch the library and cache onto the test folder, or back; turning it on with no folder asks for one first, since the overlay ignores a blank one."""
+        self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._prefs.test_mode = bool(on)
         if on and not self._prefs.test_dir:
             self._prefs.save()
@@ -933,6 +954,32 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._panel.switch_all_models()   # NOT open(): that reloads the library already bound, so the connectors keep serving the previous one and every save is refused
         self._reload_library_users()    # a different library means different people, and the picker is open in front of them
         self._sync_overwrite_switch()
+        self._sync_shared_rows()
+
+    _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside
+        ("line_rendersize", "rendersize"),
+        ("line_rendersamples", "rendersamples"),
+        ("spin_karma_samples", "karma_rendersamples"),
+        ("spin_ram_cache", "ram_cache_mb"),
+        ("spin_parallel", "texture_parallel_conversions"),
+        ("spin_matx_parallel", "matx_parallel_downloads"),
+        ("cbb_matx_res", "matx_resolution"),
+        ("_combo_geo_shading", "geometry_shading_mode"),
+        ("_combo_geo_bg", "geometry_bg"),
+        ("_combo_path_style", "path_style"),
+        ("cbx_render_on_import", "render_on_import"),
+    )
+
+    def _sync_shared_rows(self) -> None:
+        """Show the shared settings of the library now in use; signals blocked, so nothing writes back."""
+        rows = [(getattr(self, name), prop) for name, prop in self._SHARED_ROWS]
+        rows.extend((box, attr) for attr, box in self._renderer_boxes.items())
+        for widget, prop in rows:
+            value = getattr(self._prefs, prop)
+            for shown in (widget, self._sliders.get(widget)):
+                if shown is not None:
+                    with QtCore.QSignalBlocker(shown):
+                        _show_value(shown, value)
 
     def _sync_overwrite_switch(self) -> None:
         """Re-read the overwrite switch from the library NOW bound - policy.json travels with the library, not with these preferences."""

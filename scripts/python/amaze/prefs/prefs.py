@@ -187,6 +187,7 @@ class Prefs(_Persistence):
     @test_mode.setter
     def test_mode(self, val: bool) -> None:
         self._test_mode = bool(val)
+        self._adopt_shared()    # it moves what `dir` answers, as the `dir` setter does
 
     @property
     def test_dir(self) -> str:
@@ -196,6 +197,7 @@ class Prefs(_Persistence):
     @test_dir.setter
     def test_dir(self, val: str) -> None:
         self._test_dir = str(val or "")
+        self._adopt_shared()    # with Test Library on, it moves what `dir` answers
 
     @property
     def rendersize(self) -> int:

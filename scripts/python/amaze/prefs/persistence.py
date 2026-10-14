@@ -216,7 +216,7 @@ class _Persistence:
 
     def _adopt_shared(self) -> None:
         """Fold the library's shared settings over the attributes, through the same setters load() uses."""
-        directory = self.dir  # runs at the two moments a Prefs meets a library - load() and the `dir` setter - and both precede any user edit, so an adopted value cannot eat one
+        directory = self.dir  # every setter that moves `dir` adopts, so save unsaved edits before moving it
         if not directory or not os.path.isdir(directory):
             return
         from amaze.core import library_prefs
