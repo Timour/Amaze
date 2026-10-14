@@ -220,6 +220,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.code_category_model = None
         self.file_files_model = None    # the File models too: show_prefs hands file_files_model to the Preferences dialog (which takes None), and Preferences is the ONLY way to configure a library, so an unset attribute makes the gear an AttributeError on the machine that needs it most - the first run
         self.file_folders_model = None
+        self.matx_online_model = None    # setup() builds the online world; its door refuses without it
+        self._sync_online_chip()
 
     def _offer_index_repair(self, broken) -> bool:
         """The dialog an unreadable library.json earns - Repair (the newest saved copy, else the per-asset recovery stamps) or open without a library. True = repaired AND reopened; no success dialog, the recovered grid is the announcement"""
@@ -461,6 +463,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.setValue(grid.active_thumbsize(self))
         self.slide()
         self.apply_view_state()
+        self._sync_online_chip()    # the online world exists from here on
 
     def open(self) -> None:
         """Open the currently in preferences specified library"""
@@ -588,6 +591,17 @@ class AmazePanel(QtWidgets.QWidget):
             self.enter_online_world()
         else:
             self.leave_online_world()
+
+    def _sync_online_chip(self) -> None:
+        """Live only where the online world can open, and checked only while it is open."""
+        button = getattr(self, "btn_online", None)
+        if button is None:
+            return
+        button.setEnabled(getattr(self, "matx_online_model", None) is not None)
+        if button.isChecked() != self._is_online():
+            was = button.blockSignals(True)
+            button.setChecked(self._is_online())
+            button.blockSignals(was)
 
     def _sync_online_button_pixmaps(self) -> None:
         """Amber when you are in the online world, the family blue when you are not - the star's treatment, through the one engine"""
@@ -2249,16 +2263,20 @@ class AmazePanel(QtWidgets.QWidget):
         elif action.isChecked():    # the entries share one exclusive group, so Qt keeps exactly one checked
             self.open_online_source(action.text())
 
-    def enter_online_world(self) -> None:
+    def enter_online_world(self, source: str = "") -> None:
         """Switch to the online world: its own tab strip, one tab per source, nothing to do with the local sections. Where you came FROM is remembered, because leaving puts you back there - you dipped into the online browser, you did not change what you were working on."""
         if self._is_online():
+            return
+        if getattr(self, "matx_online_model", None) is None:    # THE door: no online model, no entry
+            self._sync_online_chip()
             return
         self._capture_section_state()    # capture on the way IN as well, or leaving (through `_apply_context` -> `_restore_section_state`) puts you back on the category stored at the last TAB SWITCH rather than what you were looking at
         self._section_before_online = self.current_section
         self.online_mode = True
-        first = self._online_segments()[0][0]
+        first = source or self._online_segments()[0][0]
         self._build_section_tabs()
         self.open_online_source(first)
+        self._sync_online_chip()
 
     def leave_online_world(self) -> None:
         """Back to the local sections, and to the one you left from."""
@@ -2276,7 +2294,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     def open_online_source(self, source_name: str) -> None:
         """Show one source in the online world - a tab click, now that the strip IS the sources."""
-        self.online_mode = True
+        if not self._is_online():
+            self.enter_online_world(source_name)    # entering is the door's job, whoever asks
+            return
         self.online_source = source_name
         act = self.online_source_actions.get(source_name)
         if act is not None and not act.isChecked():
@@ -2304,6 +2324,7 @@ class AmazePanel(QtWidgets.QWidget):
     def exit_online_materials(self) -> None:
         """Leave the online browser, back to the local library (Material Library)."""
         self.online_mode = False
+        self._sync_online_chip()
         if getattr(self, "action_material_library", None) is not None:
             self.action_material_library.setChecked(True)    # exclusive group, so checking this unchecks any source
         debug.event("online", "exited")    # WHERE YOU LAND is the caller's business: the toolbar button remembers the section you left from, and the Material Library menu entry means the material library. Forcing a tab from in here is the coupling the online world was taken out of

@@ -1080,6 +1080,51 @@ class AnUnconfiguredPanelStillOpensPreferences(unittest.TestCase):
         dialog.close()
 
 
+class TheOnlineWorldNeedsALibrary(unittest.TestCase):
+    """The online model is built by setup(), which a panel with no library never runs."""
+
+    def setUp(self):
+        self.addCleanup(test_support.reset_database_singletons)
+        self.panel = test_support.fixture_unconfigured_panel(self)
+        self.assertIsNone(getattr(self.panel, "material_model", "missing"),
+                          "premise: the panel took the no-library branch")
+
+    def _assert_still_local(self):
+        self.assertFalse(self.panel._is_online(),
+                         "the panel is left half in the online world")
+        self.assertFalse(self.panel.btn_online.isChecked(),
+                         "the Online chip reads on with nothing behind it")
+
+    def test_the_door_refuses_and_says_so_on_the_chip(self):
+        self.panel.enter_online_world()
+        self._assert_still_local()
+
+    def test_the_chip_raises_nothing_and_stays_off(self):
+        from unittest import mock
+
+        raised = []
+        with mock.patch.object(sys, "excepthook",
+                               lambda *info: raised.append(info[1])):
+            self.panel.btn_online.click()
+            self.panel.btn_online.setChecked(True)    # past a disabled chip
+        self.assertEqual([], raised, "the Online chip raised in its slot")
+        self._assert_still_local()
+        self.assertFalse(self.panel.btn_online.isEnabled(),
+                         "the Online chip is live on a panel with no "
+                         "library")
+
+    def test_every_route_in_goes_through_the_door(self):
+        self.panel.open_online_source("PhysicallyBased")
+        self._assert_still_local()
+
+
+class TheOnlineChipIsLiveOnceALibraryIsOpen(_PanelCase):
+
+    def test_setup_turns_the_chip_on(self):
+        self.assertTrue(self.panel.btn_online.isEnabled(),
+                        "a panel with a library opened with Online off")
+
+
 class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
     """Three floors: the grid pays for both side panes, so the panel's proves nothing."""
 
