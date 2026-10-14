@@ -860,6 +860,10 @@ class IconAssetsTest(unittest.TestCase):
             self.assertTrue(self._paths(art + ".svg"), "%s draws nothing" % art)
             with open(self._ui(art + ".svg"), encoding="utf-8") as fh:
                 text = fh.read()
+            drawn = {float(v) for _k, v in re.findall(
+                r'((?:fill|stroke)-opacity)[=:]"?([0-9.]+)', text)}
+            self.assertEqual({amazetheme.BADGE_REST_OPACITY}, drawn,    # exported from the rest frames
+                             "%s is not drawn at the rest strength the code paints" % art)
             rest = ui_helpers.at_opacity(text, amazetheme.BADGE_REST_OPACITY)
             hover = ui_helpers.at_opacity(text, amazetheme.BADGE_HOVER_OPACITY)
             self.assertNotEqual(self._paint_of(rest), self._paint_of(hover),
@@ -899,8 +903,8 @@ class IconAssetsTest(unittest.TestCase):
     def test_the_badge_backdrop_is_the_one_the_DESIGN_ships(self):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
         expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,    # as drawn; the button
-                          "badge_versions": 0.4, "badge_comment": 0.4,    # arts' own value is
-                          "badge_favourite_off": 0.4, "badge_edit": 0.75}    # replaced when painted
+                          "badge_versions": 0.75, "badge_comment": 0.75,    # arts' own value is
+                          "badge_favourite_off": 0.75, "badge_edit": 0.75}    # replaced when painted
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:
