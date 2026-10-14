@@ -202,7 +202,7 @@ BUTTONS_TURN_ON = ('Turn On', 'Cancel')
 BUTTONS_INSTALL_UPDATE = ('Install Update', 'Later')
 
 
-HELP_CLEAN_LIBRARY = 'Removes index rows whose files are gone, deletes orphaned files that no library references, and drops folder pointers and favorites that no longer exist.\n\nFiles are deleted from disk. This cannot be undone.'
+HELP_CLEAN_LIBRARY = "Files that nothing in your library uses move into Amaze's holding folder on this computer, outside your library, where they are kept for 30 days. Materials and saved networks whose files are missing stay, and the summary names them.\n\nFile locations whose folder is gone are removed, with their labels, colors, comments, favorites and icons. Favorites of missing files are removed too. This part cannot be undone. Locations and favorites on a drive that is not connected stay."
 
 HELP_MATERIAL_VERSIONS = 'This applies to everyone who opens this library, on every machine, because it is stored with the library rather than in your preferences.\n\nWith it on, saving over an existing material keeps the previous version instead of replacing it.'
 

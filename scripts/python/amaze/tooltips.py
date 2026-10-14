@@ -5,7 +5,7 @@ from __future__ import annotations
 
 PREFS_LIBRARY_PATH = 'Where your library is saved.'   # ▸ Preferences - Library tab (D04)
 
-PREFS_CLEAN_UP_LIBRARY = 'Finds files that no longer belong and moves them aside for 30 days. Nothing you can see in the panel is removed.'
+PREFS_CLEAN_UP_LIBRARY = "Move files that nothing in your library uses into Amaze's holding folder for 30 days, and remove File locations whose folder is gone. You will be asked to confirm."
 
 PREFS_RELOAD_LIBRARY = 'Reload the library from disk.'
 

@@ -138,3 +138,15 @@ class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):
             [], offenders,
             "a placeholder would print raw to the user:\n  "
             + "\n  ".join(offenders))
+
+
+class TheCleanLibraryConfirmSaysWhereFilesGo(unittest.TestCase):
+    """Clean moves a file nothing uses into the holding folder; it does not delete it."""
+
+    def test_the_confirm_names_how_long_the_holding_folder_keeps_them(self):
+        from amaze.core import quarantine
+        self.assertIn(
+            "%d days" % quarantine.QUARANTINE_DAYS,
+            messages.HELP_CLEAN_LIBRARY,
+            "the Clean Library confirmation does not say files are kept "
+            "in the holding folder, so it reads as a permanent delete")
