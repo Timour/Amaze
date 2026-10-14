@@ -254,7 +254,7 @@ def _open_unguarded(source: str):
         previous = Image.MAX_IMAGE_PIXELS
         Image.MAX_IMAGE_PIXELS = None    # the file came from the user's own library
         try:
-            return Image.open(source)    # the only call that checks the ceiling, so decodes run unlocked
+            return Image.open(source)    # open and crop check the ceiling; this path never crops
         finally:
             Image.MAX_IMAGE_PIXELS = previous
 
