@@ -392,12 +392,22 @@ def _tag_for_copy(preferences, favourites):
     return others + [mine + str(p) for p in favourites]
 
 
+def _is_file_key(key) -> bool:
+    """A File star's key - a `loc:` ident or a stored path, either platform's - not an asset id."""
+    key = str(key)
+    return (key.startswith(LOC_PREFIX) or hostos.foreign_path(key)
+            or os.path.isabs(hostos.expand_storage_path(key)))
+
+
 def favourite_paths(preferences) -> list:
+    """This user's FILE stars as paths; a library asset's star shares the store and is left out."""
     if not _ready(preferences):
         return [hostos.expand_storage_path(hostos.storage_path_key(p))
-                for p in _copy_favourites(preferences)]
+                for p in _copy_favourites(preferences) if _is_file_key(p)]
     out = []
     for key in sorted(_favourites_store(preferences).all()):
+        if not _is_file_key(key):
+            continue
         legacy = _legacy_spelling(preferences, key)    # a `loc:` ident answers as the path it means TODAY
         out.append(hostos.expand_storage_path(legacy or key))
     return out

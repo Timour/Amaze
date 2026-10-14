@@ -2125,6 +2125,51 @@ class CleanupPrunesThroughTheModelTest(unittest.TestCase):
                 "aimed at a row the first one had already shifted")
 
 
+class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
+    """The favourites store holds every section's stars; only a File one names a file to check."""
+
+    def test_a_material_star_survives_and_a_dead_file_star_goes(self):
+        panel = test_support.fixture_panel(self)
+        model = panel.material_model
+        mat_id = model.assets[1].mat_id    # row 0 is the fixture's odd id -1
+        model.toggle_fav(1)
+        self.assertTrue(locations_mod.is_favourite(panel.prefs, mat_id),
+                        "premise: the material star did not set")
+        dead = os.path.join(panel.prefs.file_folders[0], "gone.exr")
+        panel.prefs.add_file_favorite(dead)
+        self.assertTrue(locations_mod.is_favourite(panel.prefs, dead),
+                        "premise: the File star did not set")
+
+        lines = panel._cleanup_browser_prefs()
+
+        self.assertTrue(
+            locations_mod.is_favourite(panel.prefs, mat_id),
+            "Clean Library removed a material's star - its bare asset id "
+            "was checked as a file path, and no file is named like an id")
+        self.assertNotIn(str(mat_id), "\n".join(lines),
+                         "the report lists a material id as a gone file")
+        self.assertFalse(locations_mod.is_favourite(panel.prefs, dead),
+                         "a favourite whose file is gone survived Clean")
+
+    def test_the_offline_copy_lists_no_asset_star_as_a_file(self):
+        shape = LocationsFollowTheLibraryTest.REAL_SHAPE
+        prefs, library = _location_prefs(self, shape)
+        mat_id = "139888336268658010"
+        self.assertTrue(locations_mod.set_favourite(prefs, mat_id, True))
+        self.assertIn(
+            test_support.FIXTURE_USER + "|" + mat_id,
+            prefs.last_known_favourites,
+            "premise: the mirror did not copy the material star")
+        locations_mod.forget()
+        prefs.dir = os.path.join(library, "not-mounted")
+        self.assertTrue(locations_mod.showing_last_known(prefs),
+                        "premise: the library still answers")
+
+        self.assertEqual(
+            sorted(shape["file_favorites"]), sorted(prefs.file_favorites),
+            "the offline copy hands a material id to the File favourites")
+
+
 class ShowUnknownFilesSwitchTest(unittest.TestCase):
     """Show Unknown Files ON (the default) means a folder shows what is in it; OFF restores the recognised-kinds-only view, and the sidebar count agrees with the grid in BOTH states."""
 
