@@ -408,6 +408,62 @@ class TheRecordStopsCarryingAFavouriteAndAnIconTest(_Case):
                          "one junk row cost the rest of the migration")
 
 
+class AMintedIdentityIsTheSameOnEveryLoadTest(_Case):
+    """The 7 to 8 step gives an id-less row an id in memory only, so every load must mint the same one."""
+
+    FILENAME = "gradients.json"
+
+    def _v7_document(self):
+        """Stamped 7 on purpose: a current stamp never reaches the step."""
+        return {"version": 7, "categories": ["_All"], "tags": [],
+                "assets": [{"name": "bare", "colors": []},
+                           {"name": "twin", "colors": []},
+                           {"name": "twin", "colors": []},
+                           {"name": "kept", "id": "keptid", "colors": []}]}
+
+    def _ids_of_a_fresh_load(self):
+        test_support.reset_database_singletons()
+        _db, data = self._load()
+        return [row.get("id") for row in data["assets"]]
+
+    def test_two_loads_of_one_file_mint_the_same_ids(self):
+        self._write(self._v7_document())
+        first = self._ids_of_a_fresh_load()
+        self.assertTrue(all(first), "premise: a row was left without an id")
+        self.assertEqual(
+            first, self._ids_of_a_fresh_load(),
+            "the same file minted different ids on the next load, so the "
+            "comments and icons keyed to the first ones are orphaned")
+
+    def test_two_identical_rows_still_get_their_own_ids(self):
+        self._write(self._v7_document())
+        ids = self._ids_of_a_fresh_load()
+        self.assertEqual(len(ids), len(set(ids)),
+                         "two identical rows were given one id: %s" % ids)
+        self.assertEqual("keptid", ids[3], "an existing id was replaced")
+
+    def test_two_sessions_agree_and_their_merge_adds_no_rows(self):
+        self._write(self._v7_document())
+        ours = self._connector()
+        ours.load(self.dir + os.sep)
+        database.DatabaseConnector._instances.pop(self.FILENAME)    # the other machine
+        theirs = self._connector()
+        self.assertIsNot(ours, theirs, "premise: one connection, not two")
+        theirs.load(self.dir + os.sep)
+        ours_ids = [row.get("id") for row in ours._data["assets"]]
+        their_ids = [row.get("id") for row in theirs._data["assets"]]
+
+        self.assertTrue(theirs.save(), "premise: the other machine saved")
+        self.assertTrue(ours.save(), "premise: our save landed")
+
+        self.assertEqual(
+            4, len(self._on_disk()["assets"]),
+            "our save read the other machine's ids as new rows and wrote "
+            "every id-less palette twice")
+        self.assertEqual(ours_ids, their_ids,
+                         "two sessions minted different ids for the same rows")
+
+
 class NoUpgradeStepsFromBeforeTheFirstReleaseTest(_Case):
     """An older document is refused, asserted through a connector, never the registry."""
 

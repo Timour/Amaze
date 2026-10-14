@@ -69,16 +69,25 @@ def _migration_v6(data: dict) -> None:
 _MIGRATIONS[6] = _migration_v6
 
 
+_MINT_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "amaze:minted-asset-id")    # never change: ids derive from it
+
+
+def _minted_id(row: dict, index: int) -> str:
+    """An id derived from the row and its place, so every load on every machine mints the same one."""
+    canonical = json.dumps(row, sort_keys=True)
+    return uuid.uuid5(_MINT_NAMESPACE, "%d:%s" % (index, canonical)).hex
+
+
 def _migration_v7(data: dict) -> None:
     """v7 to v8: mints an `id` for every asset row that has neither `id` nor the legacy `uid`, IN PLACE - a row without one mints a fresh identity on every load, so the notes and tile icon stored against it orphan, and an ordinary save cannot repair it because the connector unions BY id and keeps the id-less original."""
     rows = data.get("assets")
     if not isinstance(rows, list):
         return
-    for row in rows:
+    for index, row in enumerate(rows):
         if not isinstance(row, dict):
             continue
         if not str(row.get("id") or row.get("uid") or ""):
-            row["id"] = uuid.uuid4().hex
+            row["id"] = _minted_id(row, index)
 
 
 _MIGRATIONS[7] = _migration_v7
