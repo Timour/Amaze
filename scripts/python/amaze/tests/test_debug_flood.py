@@ -108,6 +108,41 @@ class TestFloodGuard(unittest.TestCase):
         self.assertLess(len(written), 12, "slot flood was not contained")
         self.assertTrue(written, "slot crashes stopped being recorded")
 
+    def test_the_three_crash_doors_write_one_record_shape(self):
+        """A slot, an uncaught raise and a handled one: the tenth record, field for field."""
+        for name in ("_excepthook_installed", "_previous_excepthook"):
+            self.addCleanup(setattr, debug, name, getattr(debug, name))
+        self.addCleanup(setattr, sys, "excepthook", sys.excepthook)
+        sys.excepthook = lambda *info: None
+        debug._excepthook_installed = False
+        debug._install_excepthook()
+
+        @debug.guarded("Door.slot")
+        def _slot():
+            raise RuntimeError("deleted")
+
+        for _ in range(10):
+            with self.assertRaises(RuntimeError):
+                _slot()
+            try:
+                raise RuntimeError("deleted")
+            except RuntimeError as exc:
+                sys.excepthook(type(exc), exc, exc.__traceback__)
+                debug.exception("Door.handled", exc, row=3)
+        tenth = {}
+        for record in self._records():
+            if record.get("cat") == "exception":
+                tenth[record["msg"]] = record
+        self.assertEqual(
+            {"slot crash in Door.slot: RuntimeError":
+                 {"value": "deleted", "repeat_count": 10, "suppressed": 4},
+             "unhandled: RuntimeError":
+                 {"value": "deleted", "repeat_count": 10, "suppressed": 4},
+             "Door.handled": {"row": 3, "repeat_count": 10, "suppressed": 4}},
+            {msg: record["data"] for msg, record in tenth.items()})
+        self.assertTrue(all("RuntimeError: deleted" in record["traceback"]
+                            for record in tenth.values()))
+
 
 class TestPerPassBudget(TestFloodGuard):
     """Per-item records share one flood key, so a pass needs its own allowance."""

@@ -38,14 +38,16 @@ _crash_recorded: dict = globals().get("_crash_recorded", {})
 _crash_last_seen: dict = globals().get("_crash_last_seen", {})
 
 
+def _flood_key(kind: str, exc_type_name: str, tb_text: str) -> str:
+    """One failure's identity: its kind, its type and the frame that raised it."""
+    lines = tb_text.splitlines()
+    frame = lines[-2].strip() if len(lines) >= 2 else ""
+    return "%s|%s|%s" % (kind, exc_type_name, frame)
+
+
 def _flood_check(kind: str, exc_type_name: str, tb_text: str):
     """Rate-limit an identical, repeating failure; (record_it, count). ▸o/debug-engine"""
-    frame = ""
-    lines = tb_text.splitlines()
-    if len(lines) >= 2:
-        frame = lines[-2].strip()
-    key = "%s|%s|%s" % (kind, exc_type_name, frame)
-
+    key = _flood_key(kind, exc_type_name, tb_text)
     now = time.monotonic()
     last = _crash_last_seen.get(key)
     if last is not None and now - last > FLOOD_DECAY_SECONDS:
@@ -68,12 +70,23 @@ def _flood_check(kind: str, exc_type_name: str, tb_text: str):
 
 def _suppressed_for(kind: str, exc_type_name: str, tb_text: str, count: int) -> int:
     """How many of this key's occurrences never reached the log - counted, never inferred."""
-    frame = ""
-    lines = tb_text.splitlines()
-    if len(lines) >= 2:
-        frame = lines[-2].strip()
-    key = "%s|%s|%s" % (kind, exc_type_name, frame)
+    key = _flood_key(kind, exc_type_name, tb_text)
     return max(count - _crash_recorded.get(key, 0), 0)
+
+
+def _record_crash(kind: str, exc_type_name: str, tb_text: str, msg: str,
+                  data: dict) -> None:
+    """Write one exception record unless the flood guard holds it back; a repeat carries its counts."""
+    keep, count = _flood_check(kind, exc_type_name, tb_text)
+    if not keep:
+        return
+    data = dict(data)
+    if count > FLOOD_VERBATIM:
+        data["repeat_count"] = count
+        data["suppressed"] = _suppressed_for(kind, exc_type_name, tb_text,
+                                             count)
+    _write({"cat": "exception", "msg": msg, "data": data,
+            "traceback": tb_text})
 
 
 def _flush_repeat(key: str) -> None:
@@ -147,23 +160,10 @@ def guarded(where: str):
                 tb_text = "".join(
                     traceback.format_exception(exc_type, exc_value, exc_tb)
                 )
-                keep, count = _flood_check(
-                    "slot:%s" % where, exc_type.__name__, tb_text
-                )
-                if keep:
-                    record = {
-                        "cat": "exception",
-                        "msg": "slot crash in %s: %s"
-                               % (where, exc_type.__name__),
-                        "data": {"value": str(exc_value)},
-                        "traceback": tb_text,
-                    }
-                    if count > FLOOD_VERBATIM:
-                        record["data"]["repeat_count"] = count
-                        record["data"]["suppressed"] = _suppressed_for(
-                            "slot:%s" % where, exc_type.__name__,
-                            tb_text, count)
-                    _write(record)
+                _record_crash("slot:%s" % where, exc_type.__name__, tb_text,
+                              "slot crash in %s: %s"
+                              % (where, exc_type.__name__),
+                              {"value": str(exc_value)})
                 raise
         return _inner
     return _wrap
@@ -563,25 +563,9 @@ def exception(where: str, exc: BaseException | None = None, /, **data) -> None:
     text = traceback.format_exc() if exc is None else "".join(
         traceback.format_exception(type(exc), exc, exc.__traceback__)
     )
-    keep, count = _flood_check(
-        "handled:%s" % where,
-        type(exc).__name__ if exc is not None else "Exception",
-        text,
-    )
-    if not keep:
-        return
-    if count > FLOOD_VERBATIM:
-        data = dict(data, repeat_count=count,
-                    suppressed=_suppressed_for(
-                        "handled:%s" % where,
-                        type(exc).__name__ if exc is not None else "Exception",
-                        text, count))
-    _write({
-        "cat": "exception",
-        "msg": where,
-        "data": data,
-        "traceback": text,
-    })
+    _record_crash("handled:%s" % where,
+                  type(exc).__name__ if exc is not None else "Exception",
+                  text, where, data)
 
 
 @contextmanager
@@ -787,22 +771,9 @@ def _install_excepthook() -> None:
             tb_text = "".join(
                 traceback.format_exception(exc_type, exc_value, exc_tb)
             )
-            keep, count = _flood_check(
-                "unhandled", exc_type.__name__, tb_text
-            )
-            if not keep:
-                return
-            record = {
-                "cat": "exception",
-                "msg": "unhandled: %s" % exc_type.__name__,
-                "data": {"value": str(exc_value)},
-                "traceback": tb_text,
-            }
-            if count > FLOOD_VERBATIM:
-                record["data"]["repeat_count"] = count
-                record["data"]["suppressed"] = _suppressed_for(
-                    "unhandled", exc_type.__name__, tb_text, count)
-            _write(record)
+            _record_crash("unhandled", exc_type.__name__, tb_text,
+                          "unhandled: %s" % exc_type.__name__,
+                          {"value": str(exc_value)})
         finally:
             if _previous_excepthook is not None:
                 _previous_excepthook(exc_type, exc_value, exc_tb)
