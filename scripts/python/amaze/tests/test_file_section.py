@@ -1411,15 +1411,9 @@ class _Prefs:
         locations_mod.unregister(self, path)
 
     def relocate_file_folder(self, old, new):
-        record = locations_mod.record(self, old)
-        if not record:
+        if not locations_mod.record(self, old):
             return False
-        at = self._order.index(old) if old in self._order else len(self._order)
-        locations_mod.relocate_record(self, old, new)    # the PRODUCT door (prefs.relocate_file_folder) - the forget-and-recreate pair this replaced minted a fresh identity and orphaned every star under the old one
-        if new in self._order:
-            self._order.remove(new)
-        self._order.insert(min(at, len(self._order)), new)
-        return True
+        return bool(locations_mod.relocate_record(self, old, new))    # the product door's body
 
     def add_file_favorite(self, path):
         locations_mod.set_favourite(self, path, True)
@@ -2254,6 +2248,72 @@ class RemovingANestedLocationTest(unittest.TestCase):
              zip(stores, ("", "file:", ""))],
             "a path-spelled key the outer location covers stayed behind "
             "for the retire")
+
+
+class TheFolderOrderHasOneSpellingTest(unittest.TestCase):
+    """Locations under home store as `~/...`; the order copy must match them however it was written."""
+
+    def setUp(self):
+        self.home = hostos.canonical_path_key(
+            tempfile.mkdtemp(prefix="amaze_home_"))
+        self.addCleanup(shutil.rmtree, self.home, ignore_errors=True)
+        patcher = mock.patch.object(hostos, "_home_root",
+                                    return_value=self.home)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _under_home(self, name):
+        path = os.path.join(self.home, name)
+        os.makedirs(path)
+        return path
+
+    def _listed(self, prefs):
+        return [hostos.canonical_path_key(p) for p in prefs.file_folders]
+
+    def test_an_offline_remove_takes_the_row_off(self):
+        prefs, library = _location_prefs(self, {})
+        folder = self._under_home("tex")
+        prefs.add_file_folder(folder)
+        self.assertIn(hostos.canonical_path_key(folder), self._listed(prefs),
+                      "premise: the location did not register")
+        locations_mod.forget()
+        prefs.dir = os.path.join(library, "not-mounted")
+        self.assertTrue(locations_mod.showing_last_known(prefs),
+                        "premise: the library still answers")
+        prefs.remove_file_folder(folder)
+        self.assertNotIn(
+            hostos.canonical_path_key(folder), self._listed(prefs),
+            "removing a location while the library is unreachable left "
+            "its row - the order copy holds another spelling of it")
+
+    def test_a_remove_with_no_library_after_a_restart_takes_the_row_off(self):
+        prefs = _prefs_with_settings(self, {
+            "directory": "",
+            "file_folders": ["~/tex/"],
+            "file_location_records": {"~/tex/": {"registered": True}},
+        })
+        folder = self._under_home("tex")
+        self.assertEqual([hostos.canonical_path_key(folder)],
+                         self._listed(prefs),
+                         "premise: the stored location did not load")
+        prefs.remove_file_folder(prefs.file_folders[0])
+        self.assertEqual([], self._listed(prefs),
+                         "a location read back from settings could not be "
+                         "removed with no library configured")
+
+    def test_locate_after_a_reorder_keeps_the_row(self):
+        prefs, _library = _location_prefs(self, {})
+        for name in ("a", "b", "c"):
+            prefs.add_file_folder(self._under_home(name))
+        model = file_library.FileFolders(prefs)
+        self.assertTrue(model.move_folder(3, 1), "premise: no reorder")
+        moved = self._under_home("c_moved")
+        self.assertGreaterEqual(model.relocate_folder(1, moved), 0,
+                                "premise: Locate refused")
+        self.assertEqual(
+            hostos.canonical_path_key(moved), self._listed(prefs)[0],
+            "Locate after a reorder dropped the location to the bottom "
+            "of the sidebar")
 
 
 class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):

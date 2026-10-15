@@ -375,17 +375,9 @@ class Prefs(_Persistence):
         from amaze.core import locations
         if not old or not new or old == new:
             return False
-        record = locations.record(self, old)
-        if not record:
+        if not locations.record(self, old):
             return False
-        at = (self._file_folders.index(old)
-              if old in self._file_folders else len(self._file_folders))
-        locations.relocate_record(self, old, new)
-        if new in self._file_folders:
-            self._file_folders.remove(new)
-        self._file_folders.insert(min(at, len(self._file_folders)), new)
-        self.save()
-        return True
+        return bool(locations.relocate_record(self, old, new))
 
     def move_file_folder(self, path: str, row: int) -> bool:
         """Move one registered location to sidebar row `row` (0-based among the folders, the All row excluded) IN MEMORY - the gesture saves once on release, through the same locations-module door its siblings use."""

@@ -310,16 +310,28 @@ def paths(preferences) -> list:
     return out
 
 
-def registered_paths(preferences) -> list:
-    """THE SIDEBAR LIST: registered locations in the local order, with anything the other machine added appended - derived from the `registered` field rather than kept as a second list, the order coming from the settings copy per the module docstring."""
-    known, seen = [], set()  # order entries and store keys meet in STORAGE spelling (the copy may hold a legacy absolute beside the portable form, and raw comparison listed one location twice); the answer expands back to absolutes because the sidebar and scanner need paths os.walk can open
+def _copy_order(preferences) -> list:
+    """The settings copy's sidebar order in STORAGE spelling, each location once, however written."""
+    order, seen = [], set()
     for path in (getattr(preferences, "last_known_folders", ()) or ()):
         stored = hostos.storage_path_key(path)
-        if stored not in seen:
+        if stored and stored not in seen:
             seen.add(stored)
-            known.append(stored)
+            order.append(stored)
+    return order
+
+
+def registered_paths(preferences) -> list:
+    """THE SIDEBAR LIST: registered locations in the copy's order, then the store's others."""
+    return [hostos.expand_storage_path(p)    # absolutes: the sidebar and scanner open them
+            for p in _registered_stored(preferences)]
+
+
+def _registered_stored(preferences) -> list:
+    """The sidebar list in STORAGE spelling, the spelling the copy's order is written in."""
+    known = _copy_order(preferences)
     if not _ready(preferences):
-        return [hostos.expand_storage_path(p) for p in known]
+        return known
     live = set()
     for key, rec in _store(preferences).all().items():
         if not rec.get("registered"):
@@ -329,7 +341,7 @@ def registered_paths(preferences) -> list:
             live.add(path)
     ordered = [path for path in known if path in live]
     ordered.extend(sorted(live.difference(ordered)))
-    return [hostos.expand_storage_path(p) for p in ordered]
+    return ordered
 
 
 def move_registered(preferences, path: str, row: int) -> bool:
@@ -494,11 +506,29 @@ def set_field(preferences, path: str, field: str, value) -> keyed_store.Written:
 
 
 def relocate_record(preferences, old: str, new: str) -> keyed_store.Written:
-    """Move ONE location: edit the path field on its identity row - shared, so every user and machine follows at once and nothing keyed by the id moves at all. A location from before ids falls back to the legacy one-write rekey."""
-    global _generation
-    _generation += 1
+    """Move ONE location and keep its sidebar row; its identity row carries every user and machine."""
     old = hostos.storage_path_key(old)
     new = hostos.storage_path_key(new)
+    order = _copy_order(preferences)
+    written = _repoint(preferences, old, new)
+    if written and written.reason != keyed_store.REASON_UNCHANGED:
+        _keep_row(preferences, order, old, new)
+    return written
+
+
+def _keep_row(preferences, order: list, old: str, new: str) -> None:
+    """Put `new` where `old` stood in `order`, the copy's sidebar order from before the move."""
+    keep = getattr(preferences, "keep_last_known", None)
+    if not callable(keep) or not any(_same_path(p, old) for p in order):
+        return
+    keep(None, [new if _same_path(p, old) else p
+                for p in order if not _same_path(p, new)], None)
+
+
+def _repoint(preferences, old: str, new: str) -> keyed_store.Written:
+    """The move: the path on the location's identity row, or the legacy rekey for one from before ids."""
+    global _generation
+    _generation += 1
     if not old or not new or old == new:
         return keyed_store.Written(True, keyed_store.REASON_UNCHANGED)
     if not _ready(preferences):
@@ -541,11 +571,23 @@ def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
     return written
 
 
+def _copy_records(preferences) -> dict:
+    """The settings copy's records keyed in STORAGE spelling, however they were written."""
+    return {hostos.storage_path_key(path): dict(value) for path, value in
+            (getattr(preferences, "last_known_records", None) or {}).items()
+            if path}
+
+
 def _copy_record(preferences, path: str) -> dict:
-    """One record out of the copy, only reached when the library is not there to answer - the copy may predate the portable spelling, so the raw path is the second look."""
+    """One record out of the copy, matched in STORAGE spelling; read with no library to answer."""
     records = getattr(preferences, "last_known_records", None) or {}
-    return dict(records.get(hostos.storage_path_key(path))
-                or records.get(path) or {})
+    wanted = hostos.storage_path_key(path)
+    found = records.get(wanted) or records.get(path)
+    if not found:
+        found = next((value for key, value in records.items()
+                      if _same_path(hostos.storage_path_key(key), wanted)),
+                     None)
+    return dict(found or {})
 
 
 def _copy_paths(preferences) -> list:
@@ -553,24 +595,26 @@ def _copy_paths(preferences) -> list:
 
 
 def _write_copy(preferences, path: str, value) -> keyed_store.Written:
-    """A location write with no library to put it in."""
+    """A location write with no library to put it in; the copy is rewritten in STORAGE spelling."""
     keep = getattr(preferences, "keep_last_known", None)
     if not callable(keep):
         return keyed_store.Written(False, keyed_store.REASON_DENIED, "",
                                    (path,))
-    records = dict(getattr(preferences, "last_known_records", None) or {})
-    order = list(getattr(preferences, "last_known_folders", ()) or ())
+    records = {key: record for key, record in _copy_records(preferences).items()
+               if not _same_path(key, path)}
+    order = _copy_order(preferences)
+    at = next((i for i, held in enumerate(order) if _same_path(held, path)),
+              None)
     value = normalise(value or {})
     if value:
         records[path] = value
-        if value.get("registered") and path not in order:
+    if value.get("registered"):
+        if at is None:
             order.append(path)
-        elif not value.get("registered") and path in order:
-            order.remove(path)
-    else:
-        records.pop(path, None)
-        if path in order:
-            order.remove(path)
+        else:
+            order[at] = path
+    elif at is not None:
+        del order[at]
     keep(records, order, None)
     return keyed_store.Written(True, keyed_store.REASON_NONE, "", (path,))
 
@@ -626,7 +670,7 @@ def _sync_mirror(preferences) -> None:
             if path:
                 records[path] = rec
     keep(records,
-         registered_paths(preferences) if store.writable else None,
+         _registered_stored(preferences) if store.writable else None,
          mine)
 
 
