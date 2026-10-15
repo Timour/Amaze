@@ -146,6 +146,50 @@ class ProgressAccountingTest(unittest.TestCase):
             "re-convert from scratch on every visit")
 
 
+class AFolderLoadTouchesEachFileOnce(unittest.TestCase):
+    """One load stats each image once and sorts each name into its kind once."""
+
+    def test_cached_images_are_stated_and_classified_once(self):
+        from unittest import mock
+
+        from amaze.core import file_library
+        folder = tempfile.mkdtemp(prefix="amaze_load_once_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
+        image.fill(QtGui.QColor("#336699"))
+        names = ["img%d.png" % n for n in range(4)] + ["notes.txt"]
+        for name in names[:4]:
+            image.save(os.path.join(folder, name), "PNG")
+        with open(os.path.join(folder, names[4]), "w") as handle:
+            handle.write("x")
+        prefs = test_support.fixture_prefs(self)
+        prefs.add_file_folder(folder)
+        model = file_library.FileFiles(prefs)
+        self.addCleanup(thumbnails.engine.cancel_pending_converts)
+        cache = model._get_image_cache()
+        for name in names[:4]:
+            cache.put(os.path.join(folder, name), image)
+        cache.save()
+        model._load([folder])
+        stated, kinds = [], []
+        real_stat, real_kind = os.stat, file_library.kind_for
+        with mock.patch("os.stat", lambda p, *a, **k: (
+                stated.append(os.path.basename(str(p))),
+                real_stat(p, *a, **k))[1]), \
+                mock.patch.object(file_library, "kind_for", lambda n: (
+                    kinds.append(n), real_kind(n))[1]):
+            model._load([folder])
+        self.assertEqual(
+            "file", {spec[1] for spec in model._row_specs
+                     if spec[0] and spec[0][0] == "tex"}.pop(),
+            "premise: the images are not served from the cache")
+        self.assertEqual({name: 1 for name in names[:4]},
+                         {name: stated.count(name) for name in names[:4]},
+                         "a cached image was stated more than once")
+        self.assertEqual(sorted(names), sorted(kinds),
+                         "a name was classified more than once")
+
+
 class ReconcileIsOnePassTest(unittest.TestCase):
     """Opening a folder must not walk the manifest once per subfolder: reconcile() walks the whole manifest, so calling it once per containing directory makes a folder open O(subdirs x manifest) against a manifest that is global per resolution and grows with every file ever thumbnailed - measured at 3.37s of main-thread dict iteration for 300 subdirs over 40,000 entries, against 0.01s for a single pass. Counted rather than timed, because a timing assertion here would be flaky and the invariant is "one pass", not "fast"."""
 

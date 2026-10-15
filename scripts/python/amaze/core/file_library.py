@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import stat
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
@@ -27,6 +28,20 @@ def kind_for(name: str) -> str:
     if geo_library.matched_extension(name):
         return KIND_GEO
     return KIND_OTHER
+
+
+def _stat_once(known: dict):
+    """An `os.stat` that asks the disk once per path, `known` holding the answers; a gone file raises."""
+    def stat_of(path):
+        if path not in known:
+            try:
+                known[path] = os.stat(path)
+            except OSError:
+                known[path] = None
+        if known[path] is None:
+            raise FileNotFoundError(path)
+        return known[path]
+    return stat_of
 
 
 PATH_STYLES = ("absolute", "hip", "job", "home")  # the variables a path may be written against; home is the DEFAULT, absolute writes the literal path, and a stored auto (a retired style) maps to home in the prefs setter
@@ -289,7 +304,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
             self.set_folder(self._folder)
 
     def _scan(self, folder: str) -> list:
-        """[(containing_dir, name)] pairs - every visible file, flat by default, recursive when Include Subfolders is on; files keep their CONTAINING dir so paths, cache keys and the Category column stay correct per subfolder."""
+        """(containing dir, name, stat or None) per visible file; a flat scan keeps the stat it made."""
         results = []
         if not folder or not os.path.isdir(folder):
             if folder:  # an UNREACHABLE folder is not an empty one: an unmounted share looks exactly like isdir() saying no, and the nothing-here-yet state then teaches the wrong thing about an archive that is merely offline - recorded so the state has a fact behind it
@@ -306,7 +321,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 dirnames.sort(key=str.lower)
                 for name in sorted(filenames, key=str.lower):
                     if not name.startswith("."):
-                        results.append((dirpath, name))
+                        results.append((dirpath, name, None))
         else:
             try:
                 names = sorted(os.listdir(folder), key=str.lower)
@@ -316,9 +331,14 @@ class FileFiles(grid_columns.GridColumnsMixin,
                             "read", folder=folder, error=str(exc))
                 return []
             for name in names:
-                full = os.path.join(folder, name)
-                if not name.startswith(".") and os.path.isfile(full):
-                    results.append((folder, name))
+                if name.startswith("."):
+                    continue
+                try:
+                    st = os.stat(os.path.join(folder, name))
+                except (OSError, ValueError):
+                    continue
+                if stat.S_ISREG(st.st_mode):    # `os.path.isfile`, keeping the stat it made
+                    results.append((folder, name, st))
         return results
 
     def _load(self, folder_list: list) -> None:
@@ -340,40 +360,43 @@ class FileFiles(grid_columns.GridColumnsMixin,
         geo_misses = []
 
         entries = []
+        known: dict = {}    # canonical path -> the one stat this load makes of it
         for folder in folder_list:
             keep_other = shows_all_files(self.preferences, folder)  # unknowns are dropped at gather time, per the LOCATION they came from - the All view can show one location's unknowns and hide another's
-            for dirpath, name in self._scan(folder):
-                if not keep_other and kind_for(name) == KIND_OTHER:
+            for dirpath, name, st in self._scan(folder):
+                kind = kind_for(name)
+                if not keep_other and kind == KIND_OTHER:
                     continue
-                entries.append((dirpath, name))
+                full = hostos.canonical_path_key(os.path.join(dirpath, name))
+                if st is not None:
+                    known[full] = st
+                entries.append((dirpath, name, kind, full))
+        stat_of = _stat_once(known)
 
         image_dirs: dict = {}  # ONE reconcile pass per manifest for every directory at once
         geo_dirs: dict = {}
-        for dirpath, name in entries:
-            kind = kind_for(name)
+        for dirpath, name, kind, _full in entries:
             if kind == KIND_IMAGE:
                 image_dirs.setdefault(dirpath, []).append(name)
             elif kind == KIND_GEO:
                 geo_dirs.setdefault(dirpath, []).append(name)
         if image_dirs:
-            image_cache.reconcile_many(image_dirs)
+            image_cache.reconcile_many(image_dirs, stat=stat_of)
         if geo_dirs:
-            geo_cache.reconcile_many(geo_dirs)
+            geo_cache.reconcile_many(geo_dirs, stat=stat_of)
 
         convert_queued = False
-        for dirpath, name in entries:
-            kind = kind_for(name)
+        for dirpath, name, kind, full in entries:
             row = len(self._files)
             self._files.append((dirpath, name))
             self._kinds.append(kind)
-            full = hostos.canonical_path_key(os.path.join(dirpath, name))
             if kind == KIND_IMAGE:
                 key = ("tex", full, image_cache.size)  # NO staleness in the key: every requester discards first (here and rerender_thumbnails), and a third caller must do the same or put the mtime into the key
                 self._key_rows.setdefault(key, []).append(row)
-                cached_png = image_cache.valid_path(full)
+                cached_png = image_cache.valid_path(full, stat=stat_of)
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
-                elif image_cache.known_failure(full):
+                elif image_cache.known_failure(full, stat=stat_of):
                     self._row_specs.append((key, "missing", full))  # already defeated every converter as it stands - re-queueing pays each adapter's timeout again on every visit; Rerender Thumbnail is the deliberate retry
                 else:
                     self._row_specs.append((key, "convert", full))
@@ -388,10 +411,10 @@ class FileFiles(grid_columns.GridColumnsMixin,
             elif kind == KIND_GEO:
                 key = ("geo", full, geo_cache.cache_dir)  # same discard-first contract as the tex key above
                 self._key_rows.setdefault(key, []).append(row)
-                cached_png = geo_cache.valid_path(full)
+                cached_png = geo_cache.valid_path(full, stat=stat_of)
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
-                elif geo_cache.known_failure(full):
+                elif geo_cache.known_failure(full, stat=stat_of):
                     self._row_specs.append((key, "missing", full))    # rendered nothing as it stands
                 else:
                     self._row_specs.append((key, "render", full))

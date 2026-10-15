@@ -138,14 +138,14 @@ class ThumbnailCache:
     def _cache_path(self, full_path: str) -> str:
         return os.path.join(self.cache_dir, self._cache_filename(full_path))
 
-    def valid_path(self, full_path: str) -> str | None:
+    def valid_path(self, full_path: str, stat=None) -> str | None:
         """The cached PNG's path if the manifest entry still matches the source file (same mtime/size) - a stat, no decode; the engine's background loader does the reading."""
         full_path = self._key(full_path)
         entry = self._manifest.get(full_path)
         if not entry:
             return None
         try:
-            st = os.stat(full_path)
+            st = (stat or os.stat)(full_path)    # a caller's own stat answers for one it already made
         except OSError:
             return None
         if entry.get("mtime") != st.st_mtime or entry.get("size") != st.st_size:
@@ -209,13 +209,13 @@ class ThumbnailCache:
                                      "failed": True}
         self._dirty = True
 
-    def known_failure(self, full_path: str) -> bool:
+    def known_failure(self, full_path: str, stat=None) -> bool:
         """True when this exact file has already defeated every converter - the skip that keeps a folder open fast."""
         entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
             return False
         try:
-            st = os.stat(full_path)
+            st = (stat or os.stat)(full_path)
         except OSError:
             return False
         return (entry.get("mtime") == st.st_mtime
@@ -225,7 +225,7 @@ class ThumbnailCache:
         """Drop cache entries for this folder whose source file is gone or changed, so the cache stays 1:1 with the folder's contents."""
         self.reconcile_many({folder: current_names})
 
-    def reconcile_many(self, by_folder: dict) -> None:
+    def reconcile_many(self, by_folder: dict, stat=None) -> None:
         """Reconcile SEVERAL directories in one pass over the manifest, one flush - the per-directory walk was O(subdirs x manifest) with a full JSON rewrite per stale find (measured: 300 subdirs against 40,000 entries, 3.13s of dict iteration inside the folder open)."""
         wanted = {}  # BOTH sides through canonical_path_key: scan dirpaths arrive os.sep-flavoured (and Locate Folder forces a trailing slash the walk preserves), so an uncanonicalised dirname never matches a wanted key and nothing reconciles again for that folder
         for folder, names in by_folder.items():
@@ -243,7 +243,7 @@ class ThumbnailCache:
                 stale.append(full_path)
                 continue
             try:
-                st = os.stat(full_path)
+                st = (stat or os.stat)(full_path)
             except OSError:
                 stale.append(full_path)
                 continue
