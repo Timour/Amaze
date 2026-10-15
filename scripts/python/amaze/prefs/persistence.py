@@ -13,6 +13,8 @@ def _settings_value(value):
 
 SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
 
+_deleted_users: set = globals().get("_deleted_users", set())    # every pane leaves these blocks out
+
 
 def _encode_path(path):
     """Spell a path the way settings.json stores it - one encoder, shared with every other store."""
@@ -329,6 +331,7 @@ class _Persistence:
     def forget_user(self, uid) -> None:
         """Drop one deleted user's block and save, clearing the pointer first when it names them."""
         uid = str(uid)
+        _deleted_users.add(uid)    # a merge only adds, so another pane holding the block must drop it
         if self._library_user == uid:
             self.library_user = ""    # the switch files their state under their uid, popped next
         self._users_blocks.pop(uid, None)
@@ -356,7 +359,8 @@ class _Persistence:
             self.data.update(self._user_state_document())
         self.data["users"] = {
             uid: dict(block)
-            for uid, block in self._users_blocks.items()}
+            for uid, block in self._users_blocks.items()
+            if uid not in _deleted_users}
         return self.data
 
     def load(self) -> bool:

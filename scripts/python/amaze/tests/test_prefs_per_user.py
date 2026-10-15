@@ -377,6 +377,23 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         self.assertIn(keep, held)
         self.assertIn(test_support.FIXTURE_USER, held)
 
+    def test_a_second_pane_does_not_write_the_block_back(self):
+        """Another pane's settings, read before the delete, leave the block out of its next save."""
+        from amaze.core import users
+        p, keep, gone = self._two_users_with_blocks()
+        users.adopt(p, keep)
+        second = prefs_mod.Prefs()
+        second.path = p.path
+        second.load()
+        self.assertIn(gone, second._users_blocks,
+                      "premise: the second pane holds the block")
+        self.assertTrue(users.delete(p, gone))
+        second.save()
+        held = self._blocks(p)
+        self.assertNotIn(gone, held,
+                         "a second pane wrote the deleted user's block back")
+        self.assertIn(keep, held)
+
 
 class TheTableAgreesWithInit(PerUserCase):
 
