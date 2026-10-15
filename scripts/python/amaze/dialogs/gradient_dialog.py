@@ -6,6 +6,6 @@ from amaze.dialogs import base_dialog
 class CategoryDialog(base_dialog.NameDialog):
     """The shared name input, with this section's default title - the body lives in `base_dialog.NameDialog`."""
 
-    def __init__(self, title: str = "Add Gradient Category",
+    def __init__(self, title: str = "Add Gradient Category", default: str = "",
                  parent=None) -> None:
-        super().__init__(title, parent=parent)
+        super().__init__(title, default, parent=parent)

@@ -389,7 +389,7 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
         self.assertTrue(self.panel._stand_on_category("usds"))
         index = self._row("usds")
         with mock.patch.object(self.panel, "ask_category_name",
-                               lambda _title: "Surfaces"), \
+                               lambda _title, _default="": "Surfaces"), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model, self.panel.category_model) as caught:
             self.section.menu_rename_category([index], index)
@@ -403,6 +403,21 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
         self.assertEqual(
             4, self._row("Surfaces").data(category.SIDEBAR_COUNT_ROLE),
             "the renamed row counts from a stale cache")
+
+    def test_rename_opens_on_the_name_being_renamed(self):
+        from amaze.dialogs import base_dialog
+        self.assertTrue(self.panel._stand_on_category("usds"))
+        index = self._row("usds")
+        shown = []
+
+        def _exec(dialog):
+            shown.append(dialog._line_name.text())
+            return 0
+
+        with mock.patch.object(base_dialog.NameDialog, "exec", _exec):
+            self.section.menu_rename_category([index], index)
+        self.assertEqual(["usds"], shown,
+                         "Rename Category opened on an empty field")
 
     def test_remove(self):
         index = self._row("usds")
@@ -434,7 +449,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
 
     def _typing(self, name):
         return mock.patch.object(self.panel, "ask_category_name",
-                                 lambda _title: name)
+                                 lambda _title, _default="": name)
 
     def _sidebar_row(self, stored):
         proxy = self.panel.cat_list.model()

@@ -366,7 +366,9 @@ class AssetSection(Section):
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
-        new_name = self.panel.ask_category_name("Rename Category")
+        old = self.sidebar_key(indexes[0]) if indexes else ""    # the field opens on what is renamed
+        new_name = self.panel.ask_category_name(
+            "Rename Category", "" if category.is_all(old) else category.display_name(old))
         if st is None or not new_name:
             return
         new_name = st.categories.stored_name(new_name)    # a typed WIP is the `_WIP` already there

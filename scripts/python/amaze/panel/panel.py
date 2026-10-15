@@ -1523,9 +1523,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     DEFAULT_SIDEBAR_COLOUR = amazetheme.SIDEBAR_PICKER_START
 
-    def ask_category_name(self, title: str):
+    def ask_category_name(self, title: str, default: str = ""):
         """The category-name dialog, once, so no caller unpacks CategoryDialog's two-field answer itself: None means CANCELLED, "" means the user cleared the field, and the two are NOT the same thing."""
-        dialog = gradient_dialog.CategoryDialog(title, parent=self)
+        dialog = gradient_dialog.CategoryDialog(title, default, parent=self)
         dialog.exec()
         if dialog.canceled:
             return None
