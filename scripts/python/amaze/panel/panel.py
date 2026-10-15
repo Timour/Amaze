@@ -450,13 +450,9 @@ class AmazePanel(QtWidgets.QWidget):
             (k for k, _ in self.ALL_SECTIONS if k in self.prefs.enabled_sections),
             "material",
         )
-        if first_key == "material":
-            self.sections["material"].activate()
-        else:
-            self._on_tab_toggled(first_key, True)
+        self.current_section = first_key
+        self._apply_context(self.sections[first_key], first_key)    # the path a tab click takes
         self.section_tabs.setChecked(first_key, emit=False)
-        self._sync_toolbar_for_mode()    # the Materials branch above does NOT go through _on_tab_toggled, so the toolbar sync every tab click gets never ran for the section the panel OPENS on - the one a user sees first
-        self.build_filter_menu()    # and the Filter menu belongs to the section that just opened, so it is filled here for the same reason
         self.click_slider.setValue(grid.active_thumbsize(self))
         self.slide()
         self.apply_view_state()
@@ -2155,12 +2151,6 @@ class AmazePanel(QtWidgets.QWidget):
             else:
                 btn_filter.set_menu(self.menu_filter)
         self._sync_filter_placeholder()
-
-    def _sync_toolbar_for_mode(self) -> None:
-        """The old entry point, kept because two call sites reach the toolbar without a context in hand."""
-        context = self._section()
-        if context is not None:
-            self._sync_toolbar(context)
 
     def _sync_filter_placeholder(self) -> None:
         """Set the Filter Box's placeholder from the ACTIVE context's own search_hint - one box serves every tab and the online browser, so it is set from here, which runs on every section AND mode change. The online browser is not a branch: it declares a hint like any other context."""

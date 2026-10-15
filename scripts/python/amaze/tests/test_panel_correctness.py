@@ -1074,6 +1074,35 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self._assert_still_local()
 
 
+class AStartOnAnySectionTakesTheOnePath(unittest.TestCase):
+    """The section a panel opens on is shown the way a tab click shows it, once."""
+
+    def test_a_start_off_material_syncs_and_fills_the_menu_once(self):
+        from unittest import mock
+        from amaze.panel import panel as panel_mod
+
+        calls = []
+        real_menu = panel_mod.AmazePanel.build_filter_menu
+        real_sync = panel_mod.AmazePanel._sync_toolbar
+
+        def menu(panel):
+            calls.append("filter menu")
+            return real_menu(panel)
+
+        def sync(panel, context):
+            calls.append("toolbar")
+            return real_sync(panel, context)
+
+        shown = ("gradient", "cop", "code", "file")
+        with mock.patch.object(test_support, "ALL_SECTION_KEYS", shown), \
+                mock.patch.object(panel_mod.AmazePanel, "build_filter_menu", menu), \
+                mock.patch.object(panel_mod.AmazePanel, "_sync_toolbar", sync):
+            panel = test_support.fixture_panel(self)
+        self.assertEqual("gradient", panel.current_section, "premise: Colors opens")
+        self.assertEqual((1, 1), (calls.count("toolbar"), calls.count("filter menu")),
+                         calls)
+
+
 class TheOnlineChipIsLiveOnceALibraryIsOpen(_PanelCase):
 
     def test_setup_turns_the_chip_on(self):
