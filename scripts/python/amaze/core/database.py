@@ -276,42 +276,33 @@ def wrong_table_shape(document, key: str) -> str:
     return ""
 
 
-def _keyed_store_label(filename: str) -> str:
-    """The label a side table declares for itself in the `keyed_store` registry - one table, so the name Repair says cannot drift from the store it names."""
+def _declared(filename: str, field: str) -> str:
+    """A side table's own `label` or `noun` from the `keyed_store` registry, "" for none."""
     try:
         from amaze.core import keyed_store
     except Exception:                                     # noqa: BLE001
         return ""
     spec = keyed_store.store_for(filename)
-    return spec.label if spec else ""
-
-
-def _keyed_store_noun(filename: str) -> str:
-    try:
-        from amaze.core import keyed_store
-    except Exception:                                     # noqa: BLE001
-        return ""
-    spec = keyed_store.store_for(filename)
-    return spec.noun if spec else ""
+    return getattr(spec, field) if spec else ""
 
 
 def section_name(filename: str) -> str:
     """The section label with its filename, like `Nodes (cops.json)` - the filename stays because it is what the user will look for on disk."""
 
-    label = _SECTION_LABELS.get(filename) or _keyed_store_label(filename)
+    label = _SECTION_LABELS.get(filename) or _declared(filename, "label")
     return "%s (%s)" % (label, filename) if label else filename
 
 
 def section_label(filename: str) -> str:
     """The bare tab name, like `Nodes`, for a sentence that sends the reader to a control; both forms come from the one table, and a message must keep one name per thing."""
     return (_SECTION_LABELS.get(filename)
-            or _keyed_store_label(filename) or filename)
+            or _declared(filename, "label") or filename)
 
 
 def section_noun(filename: str, count: int = 2) -> str:
     """The word a section count counts, like `material` or `nodes`, singular or plural by `count`; from the same table as the labels so the noun cannot drift, because a bare number in a recovery dialog is unanswerable."""
     noun = (_SECTION_HOLDS.get(filename)
-            or _keyed_store_noun(filename) or "saved thing")
+            or _declared(filename, "noun") or "saved thing")
     return noun if count == 1 else noun + "s"
 
 

@@ -614,6 +614,15 @@ class SectionLabelsMatchThePanelTest(unittest.TestCase):
                          database.section_name("icons.json"))
         self.assertEqual("comments", database.section_noun("notes.json", 2))
 
+    def test_a_side_tables_label_and_noun_come_from_its_declaration(self):
+        """The bare label and the singular noun read the store's own declaration."""
+        self.assertEqual(
+            ("Tile icons", "user", "policy.json", "saved thing"),
+            (database.section_label("icons.json"),
+             database.section_noun("users.json", 1),
+             database.section_label("policy.json"),
+             database.section_noun("policy.json", 1)))
+
 
 class GradientAbsenceTest(unittest.TestCase):
     """gradients.json absent + its SEED MARKER alone must refuse, with no `.bak` anywhere."""
