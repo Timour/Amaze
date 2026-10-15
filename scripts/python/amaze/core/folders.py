@@ -90,8 +90,8 @@ class FolderListModel(QtCore.QAbstractListModel):
             self._announce(before, after)
         finally:
             self._held = None
-        if after != before:
-            self.refresh_counts()
+        for path in set(before).symmetric_difference(after):
+            self._counts.pop(path, None)    # the others' counts still hold
         return before, after
 
     def _announce(self, before: list, after: list) -> None:

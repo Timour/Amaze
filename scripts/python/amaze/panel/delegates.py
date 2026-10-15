@@ -749,7 +749,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         """Everything the STYLE needs to draw the row itself, set up as ordinary view-item fields so nothing is painted by hand; `option.text` is DISPLAY ONLY and never touches `DisplayRole`, which stays the clean name because category matching, restore-by-text and the filters all key off it."""
         super().initStyleOption(option, index)
         name = str(index.data(QtCore.Qt.ItemDataRole.DisplayRole) or "")
-        count = index.data(category.SIDEBAR_COUNT_ROLE)
+        count = index.data(category.SIDEBAR_COUNT_ROLE)    # fetched even when hidden: the File sidebar's All sums the counts its rows fetched
         if not self.show_counts and name != "All":
             count = None
         if count is not None:

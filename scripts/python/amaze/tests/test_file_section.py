@@ -1941,6 +1941,69 @@ class LocationManagementTest(unittest.TestCase):
                              "a location registered outside the model "
                              "never reached it")
 
+    def test_an_add_or_a_remove_recounts_only_that_location(self):
+        """The other locations keep their counts: one walk for the folder added, none for one removed."""
+        from amaze.core import category
+        model, _prefs = self._folders_model(
+            *[self._tmpdir() for _ in range(3)])
+        extra = self._tmpdir()
+        watched = [path.rstrip("/") for path in model._folders()] + [extra]
+
+        def paint():
+            for row in range(model.rowCount()):
+                model.data(model.index(row, 0), category.SIDEBAR_COUNT_ROLE)
+
+        paint()
+        walked = []
+        real = os.listdir
+
+        def listing(path="."):
+            if str(path).rstrip("/") in watched:
+                walked.append(path)
+            return real(path)
+
+        with mock.patch("os.listdir", listing):
+            model.add_folder(extra)
+            paint()
+            self.assertEqual(1, len(walked), "an add walked %s" % walked)
+            del walked[:]
+            row = next(r for r in range(1, model.rowCount())
+                       if model._folders()[r - 1].rstrip("/") == extra)
+            self.assertTrue(model.remove_folder(row), "premise: no remove")
+            paint()
+            self.assertEqual([], walked, "a remove walked %s" % walked)
+
+    def test_with_counts_off_all_still_shows_the_total(self):
+        """All sums the counts its rows fetched, so a row's hidden count must still be fetched."""
+        from amaze.panel import delegates
+        folders = [self._tmpdir() for _ in range(3)]
+        for n, folder in enumerate(folders):
+            for i in range(n + 2):
+                open(os.path.join(folder, "f%d.png" % i), "w").close()
+        model, _prefs = self._folders_model(*folders)
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        self.addCleanup(view.close)
+        delegate = delegates.SidebarItemDelegate(view)
+        delegate.show_counts = False
+        view.setItemDelegate(delegate)
+        view.setModel(model)
+        view.resize(260, 400)
+        view.show()
+        for _paint in range(3):
+            view.grab()
+        texts = []
+        for row in range(model.rowCount()):
+            option = QtWidgets.QStyleOptionViewItem()
+            option.widget = view
+            option.font = view.font()
+            delegate.initStyleOption(option, model.index(row, 0))
+            texts.append(option.text)
+        self.assertEqual("All (9)", texts[0],
+                         "All lost its total with counts off: %s" % texts)
+        self.assertEqual([model.display_name(path) for path in model._folders()],
+                         texts[1:], "a hidden count was shown")
+
     def test_the_default_name_is_the_folder_s_own_name(self):
         """The row says what the folder IS; the full path is the hover, not the label. Said the collapsed path until 2026-08-27."""
         model, _prefs = self._folders_model("/assets/textures/HDR/")

@@ -882,6 +882,50 @@ class SidebarIndentTest(unittest.TestCase):
             "width but must stay empty")
 
 
+class HiddenCountsAreStillFetched(unittest.TestCase):
+    """With counts off every row's count is still fetched, because the File All sums them."""
+
+    def _counted(self, show_counts):
+        from amaze.core import category
+        asked = []
+
+        class _Rows(QtCore.QAbstractListModel):
+            def rowCount(self, parent=QtCore.QModelIndex()):
+                return 2
+
+            def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+                if role == QtCore.Qt.ItemDataRole.DisplayRole:
+                    return ("All", "Wood")[index.row()]
+                if role == category.SIDEBAR_COUNT_ROLE:
+                    asked.append(index.row())
+                    return 3
+                return None
+
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        delegate = delegates.SidebarItemDelegate(view)
+        delegate.show_counts = show_counts
+        model = _Rows()
+        texts = []
+        for row in range(2):
+            option = QtWidgets.QStyleOptionViewItem()
+            option.widget = view
+            option.font = view.font()
+            delegate.initStyleOption(option, model.index(row, 0))
+            texts.append(option.text)
+        return asked, texts
+
+    def test_off_still_asks_every_row_and_shows_only_all(self):
+        asked, texts = self._counted(False)
+        self.assertEqual(["All (3)", "Wood"], texts)
+        self.assertEqual([0, 1], asked, "a hidden count went unfetched")
+
+    def test_on_asks_every_row(self):
+        asked, texts = self._counted(True)
+        self.assertEqual(["All (3)", "Wood (3)"], texts)
+        self.assertEqual([0, 1], asked)
+
+
 class OnePickerForTheWholeAppTest(unittest.TestCase):
     """pick_color decides Houdini-vs-Qt at call time; headless has no hou.ui, so these exercise the decision and the Qt path while the native path stays a live check by design."""
 
