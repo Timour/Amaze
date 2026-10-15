@@ -394,6 +394,31 @@ class TheOnlineWorldBindsTheSameFourAreas(AreaBindingCase):
                 "coming back from the online world left the %s on "
                 "something else" % area)
 
+    def test_picking_a_source_resets_the_catalogue_ONCE(self):
+        """A loaded catalogue answers a source pick with one reset, showing that source."""
+        from amaze.core import matx_sources
+
+        panel = self.activate("material")
+        self.addCleanup(self._restore)
+        online = panel.matx_online_model
+        names = [source.name for source in online.sources[:2]]
+        for attr in ("_all", "_loaded"):
+            self.addCleanup(setattr, online, attr, getattr(online, attr))
+        online._all = [matx_sources.MatxRecord(
+            source=name, uid="%s-%d" % (name, n), title="%s %d" % (name, n),
+            category="Metal") for name in names for n in range(3)]
+        online._loaded = True
+        panel.enter_online_world(names[0])
+        QtWidgets.QApplication.processEvents()
+        resets = []
+        online.modelReset.connect(lambda: resets.append(1))
+        panel.open_online_source(names[1])
+        self.assertEqual(1, len(resets),
+                         "one source pick reset the catalogue %d times"
+                         % len(resets))
+        self.assertEqual({names[1]}, {online.record(row).source
+                                      for row in range(online.rowCount())})
+
     def test_its_delegate_carries_no_role_the_online_model_lacks(self):
         """THE ONLINE DEAD-COLUMNS DEFECT, dissolved rather than fixed. - `_update_list_columns` decides a column EXISTS from the ACTIVE delegate's roles. Borrowing the Materials delegate therefore gave the online grid a Version column reading "none" on every row, plus Licence and Comments columns that nothing online can fill - the same defect shape as Node and Code borrowing it, one world over. The cure is not a branch that hides them: it is a delegate that never had the roles."""
         delegate = self.panel.matx_delegate

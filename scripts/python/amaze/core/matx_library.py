@@ -193,9 +193,8 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         self._apply_filter()
 
     def set_source(self, source_name):
-        """Show only one source's materials; None shows nothing until one is picked - the sidebar follows via the model reset."""
+        """Show only this source from the next `reload`, which the online activation always runs."""
         self._source_filter = source_name
-        self._apply_filter()
 
     def set_kind_filter(self, section) -> None:
         """Narrow the grid to one tile KIND by section key; None shows all - a non-Amaze tile IS a material."""
