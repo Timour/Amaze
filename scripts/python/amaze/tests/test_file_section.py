@@ -2095,8 +2095,6 @@ class LocationManagementTest(unittest.TestCase):
             prefs.set_file_folder_show_all(path, show)
             prefs.set_file_folder_recursive(path, True)
         prefs.save = lambda: None
-        prefs.remove_file_folder = (    # remove_folder mutates prefs.file_folders via the real Prefs method; the stub needs it
-            lambda path: prefs.file_folders.remove(path))
         from unittest import mock
         with mock.patch.object(
                 file_library, "sweep_folder_cache") as sweep:
@@ -2256,6 +2254,81 @@ class RemovingANestedLocationTest(unittest.TestCase):
              zip(stores, ("", "file:", ""))],
             "a path-spelled key the outer location covers stayed behind "
             "for the retire")
+
+
+class ALocationWriteIsAnnouncedOnlyWhenItLandsTest(unittest.TestCase):
+    """The sidebar hears about a row only after its prefs write landed."""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp(prefix="amaze_landed_")
+        self.addCleanup(shutil.rmtree, self.folder, ignore_errors=True)
+        with open(os.path.join(self.folder, "plate.txt"), "w") as handle:
+            handle.write("x")
+        locations_mod.forget()
+        self.addCleanup(locations_mod.forget)
+        self.prefs = _Prefs([self.folder])
+        self.addCleanup(shutil.rmtree, self.prefs.dir, ignore_errors=True)
+        self.model = file_library.FileFolders(self.prefs)
+        self.heard = []
+        for name in ("rowsAboutToBeInserted", "rowsInserted",
+                     "rowsAboutToBeRemoved", "rowsRemoved", "modelReset"):
+            getattr(self.model, name).connect(
+                lambda *args, name=name: self.heard.append(
+                    (name, self.model.rowCount())))
+
+    def _refused(self):
+        from amaze.core import keyed_store
+        real = keyed_store.Store._commit
+
+        def refuse_locations(store, staged, keys, retire=()):
+            if store.spec.filename == locations_mod.LOCATIONS_FILE:
+                return keyed_store.Written(False, keyed_store.REASON_DENIED)
+            return real(store, staged, keys, retire)
+
+        return mock.patch.object(keyed_store.Store, "_commit",
+                                 refuse_locations)
+
+    def test_a_refused_remove_keeps_the_row_and_every_key(self):
+        files = file_library.FileFiles(self.prefs)
+        files.set_folder(self.folder)
+        files.toggle_favorite(0)
+        key = files.file_key(0)
+        with self._refused():
+            landed = self.model.remove_folder(1)
+        self.assertTrue(locations_mod.is_favourite(self.prefs, key),
+                        "a refused removal retired the star of a file the "
+                        "location still lists")
+        self.assertEqual(
+            [hostos.canonical_path_key(self.folder)],
+            [hostos.canonical_path_key(p) for p in self.prefs.file_folders],
+            "a refused removal still took the location off the list")
+        self.assertEqual([], self.heard,
+                         "the sidebar was told a row left that is still "
+                         "there")
+        self.assertFalse(landed)
+
+    def test_a_refused_add_inserts_no_row(self):
+        other = tempfile.mkdtemp(prefix="amaze_landed_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        with self._refused():
+            landed = self.model.add_folder(other)
+        self.assertEqual([], self.heard,
+                         "the sidebar was told about a row the refused "
+                         "write never made")
+        self.assertFalse(landed)
+        self.assertEqual(2, self.model.rowCount())
+
+    def test_a_landed_write_is_announced_around_the_change(self):
+        other = tempfile.mkdtemp(prefix="amaze_landed_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        self.assertTrue(self.model.add_folder(other))
+        self.assertTrue(self.model.remove_folder(1))
+        self.assertEqual(
+            [("rowsAboutToBeInserted", 2), ("rowsInserted", 3),
+             ("rowsAboutToBeRemoved", 3), ("rowsRemoved", 2)],
+            self.heard,
+            "a row change was not bracketed: the model must answer the "
+            "old rows until the views are told")
 
 
 class CleanupPrunesThroughTheModelTest(unittest.TestCase):

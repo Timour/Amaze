@@ -60,7 +60,46 @@ class FolderListModel(QtCore.QAbstractListModel):
 
 
     def _folders(self) -> list:
+        held = getattr(self, "_held", None)    # the rows the views know, while a write is answered
+        if held is not None:
+            return held
         return getattr(self.preferences, self.folders_attr)
+
+    def _answered(self, write) -> tuple:
+        """Run one prefs write with the old rows still served, then announce what it changed."""
+        before = list(self._folders())
+        self._held = before
+        try:
+            write()
+            after = list(getattr(self.preferences, self.folders_attr))
+            self._announce(before, after)
+        finally:
+            self._held = None
+        if after != before:
+            self.refresh_counts()
+        return before, after
+
+    def _announce(self, before: list, after: list) -> None:
+        """One row in or out as its own signals, anything else as a reset, a refusal as nothing."""
+        if after == before:
+            return
+        at = next((i for i, (old, new) in enumerate(zip(before, after))
+                   if old != new), min(len(before), len(after)))
+        root = QtCore.QModelIndex()
+        if len(after) == len(before) + 1 \
+                and after[:at] + after[at + 1:] == before:
+            self.beginInsertRows(root, at + 1, at + 1)    # +1 for the All row
+            self._held = None
+            self.endInsertRows()
+        elif len(after) == len(before) - 1 \
+                and before[:at] + before[at + 1:] == after:
+            self.beginRemoveRows(root, at + 1, at + 1)
+            self._held = None
+            self.endRemoveRows()
+        else:
+            self.beginResetModel()
+            self._held = None
+            self.endResetModel()
 
     def _favorites(self) -> list:
         return getattr(self.preferences, self.favorites_attr)
@@ -160,25 +199,22 @@ class FolderListModel(QtCore.QAbstractListModel):
         return str(locations.record(self.preferences, path).get("color", ""))
 
 
-    def add_folder(self, path: str) -> None:
-        """Register a folder pointer. No-op if already registered."""
+    def add_folder(self, path: str) -> bool:
+        """Register a folder pointer; True when its row landed, nothing if already registered."""
         if not path or path in self._folders():
-            return
-        row = len(self._folders()) + 1
-        self.beginInsertRows(QtCore.QModelIndex(), row, row)
-        getattr(self.preferences, self.add_folder_method)(path)
-        self.endInsertRows()
-        self.refresh_counts()
+            return False
+        before, after = self._answered(
+            lambda: getattr(self.preferences, self.add_folder_method)(path))
+        return len(after) > len(before)
 
-    def remove_folder(self, row: int) -> None:
-        # row 0 is the synthetic All entry, not a real folder
+    def remove_folder(self, row: int) -> bool:
+        # row 0 is the synthetic All entry; True when the pointer is gone
         if row <= 0 or not row - 1 < len(self._folders()):
-            return
-        self.beginRemoveRows(QtCore.QModelIndex(), row, row)
+            return False
         path = self._folders()[row - 1]
-        getattr(self.preferences, self.remove_folder_method)(path)
-        self.endRemoveRows()
-        self.refresh_counts()
+        _before, after = self._answered(
+            lambda: getattr(self.preferences, self.remove_folder_method)(path))
+        return path not in after
 
     def move_folder(self, from_row: int, to_row: int) -> bool:
         """Move one registered folder to another VIEW row - the sidebar's press-hold reorder, in memory, persisted on release. ▸p/folder-sidebar"""
