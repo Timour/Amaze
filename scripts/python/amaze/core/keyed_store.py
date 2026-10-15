@@ -412,6 +412,12 @@ def open_store(spec: Spec, preferences, library: str = "") -> "Store":
     return handle
 
 
+def opened(spec: Spec, preferences):
+    """The store `open_store` would answer, or None when nothing has opened it yet - opens nothing."""
+    path = os.path.join(_root_for(spec, preferences), spec.filename)
+    return _open.get((spec.filename, _same_file(path)))
+
+
 def own_store(spec: Spec, preferences) -> "Store":
     """A store this caller alone holds, with its OWN stale-write baseline - for a document two panes disagree about. ▸p/document-not-table"""
     return Store(spec, os.path.join(_root_for(spec, preferences),
@@ -615,6 +621,10 @@ class Store:
 
     def count(self) -> int:
         return len(self._table)
+
+    def held_keys(self) -> set:
+        """Every key the file holds as stored, the ones this build cannot read included."""
+        return set(self._table) | set(self._foreign)
 
     @property
     def writable(self) -> bool:

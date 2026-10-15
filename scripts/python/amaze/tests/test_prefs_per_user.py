@@ -413,6 +413,148 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
         self.assertIn(keep, held)
 
 
+class EachBlockKnowsItsLibrary(PerUserCase):
+    """A block names its user's library, so a user that library stops listing can go."""
+
+    STRANGER = "c0ffee00c0ffee00c0ffee00c0ffee00"
+
+    def setUp(self):
+        super().setUp()
+        from amaze.core import keyed_store
+        keyed_store.release()
+        self.addCleanup(keyed_store.release)
+
+    def _library(self):
+        from amaze.core import users
+        p = test_support.fixture_prefs(self)
+        keep = users.create(p, "Cobalt")
+        users.adopt(p, keep)
+        return p, keep
+
+    def _key(self, p):
+        from amaze.helpers import hostos
+        return hostos.storage_path_key(p.dir)
+
+    def _settings_of(self, p):
+        return os.path.join(p.path, "settings.json")
+
+    def _blocks(self, p):
+        with open(self._settings_of(p), encoding="utf-8") as handle:
+            return json.load(handle).get("users", {})
+
+    def _rewrite(self, p, change):
+        with open(self._settings_of(p), encoding="utf-8") as handle:
+            doc = json.load(handle)
+        change(doc["users"])
+        with open(self._settings_of(p), "w", encoding="utf-8") as handle:
+            json.dump(doc, handle)
+
+    def _reopened(self, p):
+        again = prefs_mod.Prefs()
+        again.path = p.path
+        again.load()
+        return again
+
+    def test_a_block_records_the_library_it_belongs_to(self):
+        p, keep = self._library()
+        self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"))
+
+    def test_a_user_deleted_elsewhere_loses_their_block_here(self):
+        """Another machine's delete reaches only `users.json`; this machine's next save follows it."""
+        from amaze.core import users
+        p, keep = self._library()
+        gone = users.create(p, "Sienna")
+        users.adopt(p, gone)
+        users.adopt(p, keep)
+        self.assertTrue(users._store(p).retire([gone]),
+                        "premise: the record left users.json")
+        p.save()
+        held = self._blocks(p)
+        self.assertNotIn(gone, held,
+                         "a user this library no longer lists kept a block")
+        self.assertIn(keep, held)
+
+    def test_a_block_from_before_the_field_is_claimed_and_never_pruned(self):
+        p, keep = self._library()
+
+        def older(blocks):
+            for block in blocks.values():
+                block.pop("library", None)
+            blocks[self.STRANGER] = {"view_mode": "list"}
+
+        self._rewrite(p, older)
+        self._reopened(p).save()
+        held = self._blocks(p)
+        self.assertEqual(self._key(p), held[keep].get("library"),
+                         "a listed user's old block was not claimed")
+        self.assertEqual({"view_mode": "list"}, held.get(self.STRANGER),
+                         "an unclaimed block was pruned or claimed blind")
+
+    def test_an_unreadable_roster_prunes_nothing(self):
+        from amaze.core import keyed_store, users
+        p, keep = self._library()
+        gone = users.create(p, "Sienna")
+        users.adopt(p, gone)
+        users.adopt(p, keep)
+        with open(os.path.join(p.dir, "users.json"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('{"users": {"')
+        keyed_store.release()
+        with test_support.captured_log():
+            users.all_users(p)
+            p.save()
+        self.assertIn(gone, self._blocks(p),
+                      "a roster that would not read pruned a block")
+
+    def test_an_empty_roster_prunes_nothing(self):
+        from amaze.core import keyed_store, users
+        p, keep = self._library()
+        with open(os.path.join(p.dir, "users.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"users": {}}, handle)
+        keyed_store.release()
+        users.all_users(p)
+        p.save()
+        self.assertIn(keep, self._blocks(p),
+                      "a roster listing nobody pruned every block")
+
+    def test_another_librarys_block_is_left_alone(self):
+        p, keep = self._library()
+
+        def elsewhere(blocks):
+            blocks[self.STRANGER] = {"view_mode": "list",
+                                     "library": "~/another_library/"}
+
+        self._rewrite(p, elsewhere)
+        self._reopened(p).save()
+        self.assertEqual("~/another_library/",
+                         self._blocks(p).get(self.STRANGER, {}).get("library"))
+
+    def test_the_user_this_machine_points_at_keeps_their_block(self):
+        """Deleted elsewhere while picked here, the block goes once someone else is picked."""
+        from amaze.core import users
+        p, keep = self._library()
+        other = users.create(p, "Sienna")
+        self.assertTrue(users._store(p).retire([keep]), "premise")
+        p.save()
+        self.assertIn(keep, self._blocks(p),
+                      "the block of the user this machine is was pruned")
+        users.adopt(p, other)
+        self.assertNotIn(keep, self._blocks(p))
+
+    def test_a_merge_keeps_the_field_a_save_did_not_know(self):
+        from amaze.core import keyed_store
+        p, keep = self._library()
+        second = self._reopened(p)
+        second._users_blocks[keep].pop("library")
+        keyed_store.release()
+        p.view_mode = "list"
+        p.save()
+        second.save()
+        self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"),
+                         "a writer that did not carry the field erased it")
+
+
 class TheTableAgreesWithInit(PerUserCase):
 
     def test_every_table_default_matches_a_fresh_prefs(self):

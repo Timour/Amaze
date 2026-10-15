@@ -56,6 +56,14 @@ def all_users(preferences) -> dict:
             for uid, record in _store(preferences).all().items()}
 
 
+def roster(preferences) -> set:
+    """Every uid this library's `users.json` holds, if a store already open has read it; else empty."""
+    store = keyed_store.opened(SPEC, preferences)
+    if store is None or store.state != keyed_store.READ:
+        return set()
+    return store.held_keys()
+
+
 def name_for(preferences, uid) -> str:
     """The name this UID displays under, or "" if unknown here."""
     return _store(preferences).get(str(uid)).get("name", "")

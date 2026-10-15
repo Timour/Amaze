@@ -2,7 +2,7 @@
 
 import os
 
-from amaze.core import debug, keyed_store
+from amaze.core import debug, keyed_store, users
 from amaze.helpers import hostos
 
 
@@ -13,7 +13,7 @@ def _settings_value(value):
 
 SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
 
-_deleted_users: set = globals().get("_deleted_users", set())    # left out of every save until picked again
+LIBRARY_FIELD = "library"    # in a `users.<uid>` block: the stored spelling of that user's library
 
 
 def _encode_path(path):
@@ -323,7 +323,6 @@ class _Persistence:
             self._users_blocks[old] = block
         if not new:
             return
-        _deleted_users.discard(new)
         block = self._users_blocks.get(new)
         if block is None:
             return  # a user with no block on this machine inherits what is on screen, which is what keeps the arrangement across a first mint
@@ -332,11 +331,29 @@ class _Persistence:
     def forget_user(self, uid) -> None:
         """Drop one deleted user's block and save, clearing the pointer first when it names them."""
         uid = str(uid)
-        _deleted_users.add(uid)    # a merge only adds, so another pane holding the block must drop it
         if self._library_user == uid:
             self.library_user = ""    # the switch files their state under their uid, popped next
         self._users_blocks.pop(uid, None)
         self.save()
+
+    def _settle_user_blocks(self) -> None:
+        """Mark the open library's blocks and drop those whose user its read roster no longer lists."""
+        library = _encode_path(str(self.dir or ""))
+        roster = users.roster(self) if library else set()
+        if not roster:
+            return    # unread, unreadable or empty: never a roster to prune against
+        mine = keyed_store.path_identity(library)
+        for uid in list(self._users_blocks):
+            block = self._users_blocks[uid]
+            if uid in roster:
+                if block.get(LIBRARY_FIELD) != library:
+                    self._users_blocks[uid] = dict(
+                        block, **{LIBRARY_FIELD: library})
+            elif (uid != self._library_user and keyed_store.path_identity(
+                    block.get(LIBRARY_FIELD) or "") == mine):
+                del self._users_blocks[uid]
+                debug.event("prefs", "a user the library no longer lists "
+                            "- their view state dropped", uid=uid)
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
@@ -358,10 +375,9 @@ class _Persistence:
             self._users_blocks[self._library_user] = block
         else:
             self.data.update(self._user_state_document())
+        self._settle_user_blocks()
         self.data["users"] = {
-            uid: dict(block)
-            for uid, block in self._users_blocks.items()
-            if uid not in _deleted_users}
+            uid: dict(block) for uid, block in self._users_blocks.items()}
         return self.data
 
     def load(self) -> bool:
@@ -443,6 +459,7 @@ class _Persistence:
 
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
             self._directory = ""
+        self._settle_user_blocks()
         self._adopt_shared()  # a pure READ: no migration runs here, so no caller of load() writes the library - the product surfaces run those instead
         library = self.dir  # the overlay-aware property, never the raw field: with Test Mode on they name different folders, and on a fresh machine the raw one is empty
         if library and os.path.exists(library):
