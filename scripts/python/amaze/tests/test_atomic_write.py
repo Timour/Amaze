@@ -4,10 +4,12 @@ import gzip
 import json
 import os
 import shutil
+import stat
 import sys
 import tempfile
 import threading
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -117,6 +119,63 @@ class AtomicWriteTest(unittest.TestCase):
         self.addCleanup(setattr, hostos, "replace_file", real_replace)
         hostos.write_json_atomic(self.path, {"x": 1})
         self.assertEqual([os.path.abspath(self.dir)], seen)
+
+    def _windows_rules(self):
+        """Replace and remove refuse a read-only file, as Microsoft documents for Windows."""
+        real_replace, real_remove = os.replace, os.remove
+
+        def writable(path):
+            return bool(os.stat(path).st_mode & stat.S_IWUSR)
+
+        def refusing_replace(src, dst):
+            if os.path.exists(dst) and not writable(dst):
+                raise PermissionError(13, "Access is denied", dst)
+            return real_replace(src, dst)
+
+        def refusing_remove(path):
+            if not writable(path):
+                raise PermissionError(13, "Access is denied", path)
+            return real_remove(path)
+
+        for name, fake in (("replace", refusing_replace),
+                           ("remove", refusing_remove)):
+            patcher = mock.patch.object(os, name, fake)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        sleeper = mock.patch.object(hostos.time, "sleep", lambda _s: None)
+        sleeper.start()
+        self.addCleanup(sleeper.stop)
+
+    def test_a_read_only_destination_leaves_no_scratch_behind(self):
+        """Windows refuses the swap onto a read-only file, and then the delete of a read-only scratch."""
+        hostos.write_json_atomic(self.path, {"v": 1})
+        os.chmod(self.path, 0o444)
+        self._windows_rules()
+        with self.assertRaises(PermissionError):
+            hostos.write_json_atomic(self.path, {"v": 2})
+        self.assertEqual(
+            [], self._leftovers(),
+            "the refused save left a read-only scratch in the library, "
+            "which nothing can remove")
+
+    def test_a_read_only_destination_stays_read_only_after_a_save(self):
+        if hostos.is_windows():
+            self.skipTest("only POSIX lets a rename replace a read-only file")
+        hostos.write_json_atomic(self.path, {"v": 1})
+        os.chmod(self.path, 0o444)
+        hostos.write_json_atomic(self.path, {"v": 2})
+        self.assertEqual(0o444, os.stat(self.path).st_mode & 0o777,
+                         "the save made a read-only file writable")
+        with open(self.path, encoding="utf-8") as handle:
+            self.assertEqual({"v": 2}, json.load(handle))
+
+    def test_a_read_only_scratch_is_still_discarded(self):
+        scratch = hostos.unique_scratch(self.path)
+        os.chmod(scratch, 0o444)
+        self._windows_rules()
+        hostos.discard_scratch(scratch)
+        self.assertFalse(os.path.exists(scratch),
+                         "a read-only scratch outlived its discard")
 
 
 class EveryScratchWriterIsUniqueTest(unittest.TestCase):

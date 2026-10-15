@@ -10,6 +10,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -600,20 +601,34 @@ def promote_scratch(scratch: str, path: str) -> None:
         existing = -1
     if existing >= 0 and existing != _MKSTEMP_MODE:
         mode = existing  # match the file being replaced so an existing library's permissions survive a save - EXCEPT 0600 exactly, which is what mkstemp creates with and therefore this package's own narrowing bug on disk; copying it would preserve owner-only forever and lock a colleague out of a shared library silently. Widening a deliberate `chmod 600` back to the umask default is the accepted residual, because the directions are not symmetric
-    try:
-        os.chmod(scratch, mode)
-    except OSError:
-        pass  # best-effort: a filesystem with no permission bits (some network mounts) must not fail the save over cosmetics
+    _set_mode(scratch, mode | stat.S_IWUSR)    # a read-only scratch is one Windows will not delete
     replace_file(scratch, path)
+    if not mode & stat.S_IWUSR:
+        _set_mode(path, mode)
+
+
+def _set_mode(path: str, mode: int) -> None:
+    """`os.chmod`, best-effort: a filesystem with no permission bits must not fail a save."""
+    try:
+        os.chmod(path, mode)
+    except OSError:
+        pass
 
 
 def discard_scratch(scratch: str) -> None:
     """Remove a scratch file if it is still there. Never raises - but a scratch left behind is an unowned file a directory scan then has to learn to ignore, which is how live assets get reported as orphans."""
+    if not scratch or not os.path.exists(scratch):
+        return
     try:
-        if scratch and os.path.exists(scratch):
-            os.remove(scratch)
+        os.remove(scratch)
+        return
     except OSError:
-        pass
+        _set_mode(scratch, stat.S_IREAD | stat.S_IWRITE)    # Windows will not delete a read-only file
+    try:
+        os.remove(scratch)
+    except OSError as exc:
+        _record("write", "a scratch file could not be removed",
+                path=scratch, error=str(exc))
 
 
 @contextlib.contextmanager
