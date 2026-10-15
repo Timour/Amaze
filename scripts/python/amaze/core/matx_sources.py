@@ -1114,14 +1114,8 @@ class AmazeSource(MatxSource):
     def _manifest(self, url: str) -> dict:
         if url not in self._manifests:
             from amaze.core import packages
-            bundle = self._open_package(url)
-            manifest = json.loads(bundle.read(packages.MANIFEST))
-            got = manifest.get("format")
-            if not isinstance(got, int) or got > packages.FORMAT:    # the same gate as read_manifest, HERE because the remote store is where an old build is guaranteed to meet a newer package
-                raise packages.PackageError(
-                    "package format %s is newer than the %s this build "
-                    "reads" % (got, packages.FORMAT))
-            self._manifests[url] = manifest
+            self._manifests[url] = packages.manifest_from(    # refuses a newer format, as a local read does
+                self._open_package(url), url)
         return self._manifests[url]
 
     def refresh(self):

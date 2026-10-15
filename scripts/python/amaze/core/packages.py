@@ -101,7 +101,7 @@ def write_package(out_path: str, items) -> int:
     return len(entries)
 
 
-def _manifest_from(bundle, path: str) -> dict:
+def manifest_from(bundle, path: str) -> dict:
     """The manifest out of an OPEN bundle - refused by name for a missing/unreadable manifest or a format NEWER than this build reads."""
     try:
         raw = bundle.read(MANIFEST)
@@ -127,7 +127,7 @@ def read_manifest(path: str) -> dict:
     """The package's manifest, through one open of the file."""
     try:
         with zipfile.ZipFile(path) as bundle:
-            return _manifest_from(bundle, path)
+            return manifest_from(bundle, path)
     except (OSError, zipfile.BadZipFile) as exc:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
 
@@ -141,7 +141,7 @@ def import_package(models, prefs, path: str, restore: bool = False) -> dict:
     except (OSError, zipfile.BadZipFile) as exc:
         raise PackageError("cannot read %s: %s" % (path, exc)) from None
     with bundle:    # ONE open serves manifest, verify and import - four sequential central-directory reads were felt on network folders, and verifying one open while importing from another gave a sync client a swap window
-        manifest = _manifest_from(bundle, path)
+        manifest = manifest_from(bundle, path)
         problems = _verify(bundle, manifest)
         if problems:
             raise PackageError("%s is not whole: %s"
@@ -286,4 +286,4 @@ def _verify(bundle, manifest) -> list:
 def verify_package(path: str) -> list:
     """Problems, one sentence each, through one open of the file; [] means whole."""
     with zipfile.ZipFile(path) as bundle:
-        return _verify(bundle, _manifest_from(bundle, path))
+        return _verify(bundle, manifest_from(bundle, path))

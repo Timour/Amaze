@@ -916,6 +916,21 @@ class AmazeSourceTest(unittest.TestCase):
             "list no tiles - importing it would silently misread it - "
             "while the readable package beside it still shows")
 
+    def test_a_store_package_is_refused_by_the_local_reader(self):
+        """A store package with no manifest is refused by name, as a local one is."""
+        from amaze.core import packages
+        folder = tempfile.mkdtemp(prefix="amaze_store_pkg_")
+        self.addCleanup(__import__("shutil").rmtree, folder, True)
+        bare = os.path.join(folder, "bare.amazepkg")
+        with zipfile.ZipFile(bare, "w") as bundle:
+            bundle.writestr("readme.txt", "no manifest here")
+        url = self.URL + "defaults/bare.amazepkg"
+        source = _canned_amaze_source([("defaults", "bare.amazepkg", url)],
+                                      {url: bare})
+        with self.assertRaises(packages.PackageError) as caught:
+            source._manifest(url)
+        self.assertIn("not an Amaze package", str(caught.exception))
+
 
 class RangedFileTest(unittest.TestCase):
     """zipfile over ranged reads: a block-cached RangedFile reads a MULTI-block zip whole and cheap, and _open_package's suffix-range seeding survives contact with a Range-speaking server."""
