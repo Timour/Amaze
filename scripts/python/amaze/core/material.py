@@ -10,6 +10,8 @@ REDSHIFT_TERMINALS = ("redshift_material", "redshift_usd_material")
 
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"    # the stored `date`, seconds always present
 
+CM_TO_SCENE_UNITS = 0.01    # a measured scattering radius is in cm, a scene in metres ▸r/rgl-values
+
 
 def is_surface_shader_type(type_name: str) -> bool:
     """Whether a Redshift node TYPE NAME looks like a surface material - the ONE spelling of the heuristic the converter and the shaderball share, so a renamed default shader is fixed in one place."""

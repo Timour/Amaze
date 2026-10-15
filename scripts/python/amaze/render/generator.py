@@ -8,6 +8,7 @@ import random
 import hou
 
 import amaze
+from amaze.core import material
 
 _RES_DIR = amaze.package_file("res")
 
@@ -17,8 +18,6 @@ _ONLINE_TABLES = (    # the shipped online tables: (source name, file)
     ("PhysicallyBased", "physicallybased_materials.json"),
     ("RGL", "rgl_materials.json"),
 )
-
-CM_TO_SCENE_UNITS = 0.01    # scene units are metres, the measured scattering radii centimetres - same constant, same reason as core/matx_import
 
 _RGL_CLASSES = (    # RGL publishes no category, so the class comes from the name and description, tested in order of DECISIVENESS: Film before Metal ("tin" inside "satin_blue", a wrapping film), Fabric before Plastic ("acrylic felt" is cloth) ▸r/generator-facts
     ("Film", ("vinyl", "wrap", "wrapping", "film")),
@@ -276,7 +275,7 @@ def spec_from_fact(fact: dict, rng=None, facts=None):
             "subsurface": _clamp(rng.uniform(0.5, 1.0)),
             "subsurface_color": color,
             "subsurface_radius": [r * rng.uniform(0.7, 1.4) for r in radius],
-            "subsurface_scale": CM_TO_SCENE_UNITS,
+            "subsurface_scale": material.CM_TO_SCENE_UNITS,
             "specular_roughness": _clamp(
                 (_own_roughness(fact) or _measured_roughness(
                     facts, "subsurface", rng, 0.3)) * rng.uniform(0.6, 1.5)),
@@ -418,26 +417,11 @@ def spec_adapter(spec):
     """Material Engine adapter: produce(builder) -> surface shader with the spec's values applied; the one funnel does everything else (container contract, output wiring, invariant check)."""
 
     def produce(builder):
-        from amaze.core import debug
+        from amaze.render import nodes
 
         shader = builder.createNode("mtlxstandard_surface")
         for key, value in spec.items():
-            parm_tuple = shader.parmTuple(key)
-            if parm_tuple is None:
-                debug.event("generate", "spec key not on shader",
-                            key=key, shader=shader.type().name())
-                continue
-            try:
-                if isinstance(value, (tuple, list)):
-                    parm_tuple.set(tuple(value))
-                else:
-                    parm = shader.parm(key)
-                    if parm is not None:
-                        parm.set(float(value))
-            except (hou.Error, TypeError, ValueError) as exc:
-                # One bad value must not cost the whole material.
-                debug.event("generate", "spec value rejected",
-                            key=key, error=str(exc))
+            nodes.set_shader_value(shader, key, value, "generate")
         return shader
 
     return produce

@@ -19,7 +19,7 @@ sys.path.insert(    # THREE dirnames land on python/, where amaze imports from t
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import matx_sources  # noqa: E402
+from amaze.core import material, matx_sources  # noqa: E402
 from amaze.render import generator, nodes  # noqa: E402
 from amaze.tests import test_support  # noqa: E402,F401 - import redirects the debug log
 
@@ -162,7 +162,7 @@ class TestGeneratedSpecs(unittest.TestCase):
                 continue
             checked += 1
             self.assertEqual(spec["subsurface_scale"],
-                             generator.CM_TO_SCENE_UNITS, prov)
+                             material.CM_TO_SCENE_UNITS, prov)
             radius = spec["subsurface_radius"]
             self.assertEqual(len(radius), 3, prov)
             for channel in radius:
@@ -267,6 +267,44 @@ class TestGeneratedMaterials(unittest.TestCase):
                                            places=4, msg=key)
         finally:
             staging.destroy()
+
+
+class OneShaderSetterForEveryValueSource(unittest.TestCase):
+    """The generator and the measured-values import set a shader's parms one way."""
+
+    def setUp(self):
+        self.staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.staging.destroy)
+
+    def _rounded(self, shader, name):
+        return tuple(round(v, 4) for v in shader.parmTuple(name).eval())
+
+    def test_a_colour_with_alpha_lands_its_first_three_channels(self):
+        made = nodes.build_karma_material(
+            self.staging, "alpha",
+            generator.spec_adapter({"base_color": [0.1, 0.2, 0.3, 1.0]}))
+        self.assertEqual((0.1, 0.2, 0.3), self._rounded(made.shader, "base_color"))
+
+    def test_a_value_that_is_not_a_number_costs_only_itself(self):
+        from amaze.core import matx_import
+        builder = nodes.make_karma_builder(self.staging, "values")
+        shader = matx_import._values_to_standard_surface(
+            {"color": [0.1, 0.2, 0.3], "metalness": "unknown", "roughness": 0.4},
+            builder)
+        self.assertEqual((0.1, 0.2, 0.3), self._rounded(shader, "base_color"))
+        self.assertEqual((0.4,), self._rounded(shader, "specular_roughness"))
+
+    def test_the_unit_constant_has_one_home(self):
+        package = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        homes = []
+        for root, dirs, files in os.walk(package):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", "tests")]
+            for filename in files:
+                if filename.endswith(".py"):
+                    with open(os.path.join(root, filename), encoding="utf-8") as handle:
+                        if re.search(r"^CM_TO_SCENE_UNITS\s*=", handle.read(), re.M):
+                            homes.append(filename)
+        self.assertEqual(["material.py"], homes)
 
 
 class TestCatalogueFreshness(unittest.TestCase):

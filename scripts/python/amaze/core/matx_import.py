@@ -7,13 +7,11 @@ import shutil
 
 import hou
 
-from amaze.core import debug, matx_sources, matx_translate
+from amaze.core import debug, material, matx_sources, matx_translate
 from amaze.helpers import helpers, hostos
 from amaze.render import nodes as nodes_mod
 
 MATX_DIRNAME = "matX"   # folder inside the library holding downloaded MaterialX sources - PERMANENT, not staging: the imported network's mtlximage nodes point at these texture files
-
-CM_TO_SCENE_UNITS = 0.01   # PhysicallyBased subsurfaceRadius is a mean-free-path DISTANCE in CENTIMETRES (verified: their Milk [1.842,1.044,0.35] is the standard skimmed-milk value [18.42,10.44,3.50] mm / 10), and Houdini's mtlxstandard_surface subsurface_radius is likewise a distance rather than a 0-1 tint, multiplied by subsurface_scale - Houdini/USD scenes are METRES by default, so this converts the cm radius to metres, and feeding the raw cm value with scale 1 scattered ~100x too far and washed dark materials out to white/yellow (nudge only if a scene's unit scale differs, e.g. 1.0 for a centimetre scene)
 
 
 def matx_dir(library_dir: str) -> str:
@@ -42,20 +40,7 @@ def _values_to_standard_surface(values: dict, builder: hou.Node) -> hou.Node:
     shader = builder.createNode("mtlxstandard_surface")
 
     def _set(parm_name, value):
-        if value is None:
-            return
-        try:
-            if isinstance(value, (list, tuple)):
-                pt = shader.parmTuple(parm_name)
-                if pt is not None:
-                    pt.set(tuple(float(v) for v in value)[: len(pt)])
-            else:
-                p = shader.parm(parm_name)
-                if p is not None:
-                    p.set(float(value))
-        except hou.Error as exc:
-            debug.event("import", "shader parm not set",   # note vs event for this file: a per-parameter set failure is developer detail and fires inside a loop, so event - and the parm name is data rather than part of the sentence, because event()'s flood guard keys on the message, while the unresolved-texture line further down is what the user can actually see (inputs rendering black) and is a note
-                        parm=parm_name, error=str(exc))
+        nodes_mod.set_shader_value(shader, parm_name, value, "import")
 
     _set("base_color", values.get("color"))
     _set("metalness", values.get("metalness"))
@@ -72,7 +57,7 @@ def _values_to_standard_surface(values: dict, builder: hou.Node) -> hou.Node:
         _set("subsurface", 1)   # subsurface_radius is a DISTANCE (mean free path) in the same scene units as everything else rather than a 0-1 tint, PhysicallyBased gives it in centimetres and subsurface_scale converts to the scene's metres (see CM_TO_SCENE_UNITS): physically grounded, keeping each material's own scattering distance (petroleum scatters further than honey), though SSS is still scene-scale dependent so on an unusually large or small object the user can scale subsurface_scale on the shader
         _set("subsurface_color", values.get("color"))
         _set("subsurface_radius", radius)             # physical cm values
-        _set("subsurface_scale", CM_TO_SCENE_UNITS)   # cm -> scene metres
+        _set("subsurface_scale", material.CM_TO_SCENE_UNITS)   # cm -> scene metres
 
     if debug.is_on():
         debug.event(

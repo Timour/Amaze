@@ -437,6 +437,28 @@ class KarmaMaterial(NamedTuple):
     wired: bool
 
 
+def set_shader_value(shader, name: str, value, area: str) -> bool:
+    """One plain value onto a shader parm, a list onto its tuple; None keeps the default. ▸r/hou-errors"""
+    if value is None:
+        return False
+    tuple_parm = shader.parmTuple(name)
+    if tuple_parm is None:
+        debug.event(area, "parm not on the shader", parm=name,
+                    shader=shader.type().name())
+        return False
+    try:
+        if isinstance(value, (list, tuple)):
+            tuple_parm.set(tuple(float(v) for v in value)[:len(tuple_parm)])
+        elif shader.parm(name) is not None:
+            shader.parm(name).set(float(value))
+        else:
+            return False
+    except (hou.Error, TypeError, ValueError) as exc:
+        debug.event(area, "shader parm not set", parm=name, error=str(exc))
+        return False
+    return True
+
+
 def build_karma_material(parent, name, produce):
     """THE Karma engine: every input is a `produce(builder)` adapter."""
     builder = make_karma_builder(parent, name)
