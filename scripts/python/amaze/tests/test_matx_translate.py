@@ -260,5 +260,82 @@ class OnlyHttpsIsFetched(unittest.TestCase):
             "an ordinary https redirect was refused")
 
 
+class BothOnlineDestinationsRunOneSequence(unittest.TestCase):
+    """Into the library or into the scene: the same fetch, staging, build and warning."""
+
+    def setUp(self):
+        if hou.getenv("OCIO") is None:
+            hou.putenv("OCIO", "/dev/null")
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.seen = []
+
+    def _record(self):
+        from amaze.core import matx_sources
+        return matx_sources.MatxRecord(
+            source="PhysicallyBased", uid="probe-order", title="Probe Order",
+            category="Metal", kind="values", licence="CC0 1.0",
+            payload={"values": {"color": [0.8, 0.2, 0.1],
+                                "roughness": 0.3}})
+
+    def _obj(self):
+        return sorted(child.name() for child in hou.node("/obj").children())
+
+    def _source(self):
+        case = self
+
+        class Source:
+            name = "PhysicallyBased"
+
+            def fetch(self, record, resolution, dest_dir, progress=None):
+                case.seen.append(case._obj())
+                return {"values": record.payload["values"]}
+        return Source()
+
+    def _into_library(self):
+        from amaze.core import library as library_mod, matx_import
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        ok, reason = matx_import.import_record(
+            self._record(), self._source(), "", model, self.prefs)
+        self.assertTrue(ok, reason)
+
+    def _into_scene(self):
+        from amaze.core import matx_import
+        destination = hou.node("/mat") or hou.node("/").createNode("mat")
+        builder, reason = matx_import.build_in_scene(
+            self._record(), self._source(), "", destination, self.prefs)
+        self.assertIsNotNone(builder, reason)
+        self.addCleanup(builder.destroy)
+
+    def test_nothing_is_staged_in_obj_while_the_download_runs(self):
+        before = self._obj()
+        self._into_library()
+        self._into_scene()
+        self.assertEqual([before, before], self.seen,
+                         "a staging network sat in /obj during a download")
+        self.assertEqual(before, self._obj(), "the staging was left behind")
+
+    def test_an_unwired_output_is_reported_in_one_sentence(self):
+        from amaze.core import matx_import
+        real = matx_import.nodes_mod.build_karma_material
+
+        def unwired(parent, name, produce):
+            built = real(parent, name, produce)
+            return built._replace(wired=False)
+
+        matx_import.nodes_mod.build_karma_material = unwired
+        self.addCleanup(setattr, matx_import.nodes_mod,
+                        "build_karma_material", real)
+        with test_support.captured_log() as log:
+            self._into_library()
+            self._into_scene()
+        said = log.matching("surface output is not wired")
+        self.assertEqual(2, len(said), said)
+        self.assertEqual(said[0], said[1],
+                         "the two destinations word one warning two ways")
+
+
 if __name__ == "__main__":
     unittest.main()

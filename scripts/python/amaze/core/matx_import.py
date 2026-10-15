@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import shutil
 
@@ -223,35 +224,57 @@ def to_renderer(builder, scratch, name: str, renderer: str):
     return rs_builder, shader, wired, report
 
 
+@contextlib.contextmanager
+def _staged_build(record, source, resolution, preferences, progress,
+                  renderer):
+    """Fetch, then build in an /obj staging matnet, twin and warn: yields (builder, note, error)."""
+    name = record_name(record)
+    produce, note, error = _producer_for(
+        record, source, resolution, preferences, progress)
+    if error:
+        yield None, note, error
+        return
+    with hou.undos.disabler():    # staging stays off the undo stack ▸r/undo-groups
+        scratch = hou.node("/obj").createNode("matnet")
+    try:
+        builder, shader, wired = nodes_mod.build_karma_material(
+            scratch, name, produce)
+        if shader is None:
+            yield None, note, "Could not build a shading network for " + name
+            return
+        if renderer == "Redshift":    # the Karma network is the way in; its Redshift twin lands
+            builder, shader, wired, _report = to_renderer(
+                builder, scratch, name, renderer)
+            if shader is None:
+                yield None, note, "Could not convert %s to Redshift" % name
+                return
+        if not wired:    # a warning on a success: the artist can wire it by hand
+            debug.note(
+                "\"%s\" was imported, but its surface output is not "
+                "wired, so it renders black until it is connected."
+                % name)
+        yield builder, note, ""
+    finally:
+        try:
+            with hou.undos.disabler():
+                scratch.destroy()
+        except (hou.OperationFailed, hou.ObjectWasDeleted):
+            pass
+
+
 def build_in_scene(record, source, resolution, destination, preferences,
                    progress=None, renderer: str = "Karma"):
-    """Build one online record straight into the SCENE, under `destination` (a materiallibrary LOP or /mat). Returns (builder, reason). - The library is never touched: this is the just-want-the-material-here path, so what lands is a scene node like any the user builds by hand - keeping it is a deliberate Save to Amaze afterwards. The caller owns the undo group (the destination may itself have just been created). - Textures still download to the library's matX folder, which is the app's permanent texture store - Clean Up Library only ever scans the .mat/.interface/thumbnail directories, so a scene-only import's textures are not collected behind its back."""
+    """One online record built under `destination` in the scene, the library untouched: (builder, why)."""
     if destination is None:
         return (None, "No destination network for the material.")
     name = record_name(record)
     debug.event("import", "start to scene", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 destination=destination.path(), resolution=resolution)
-    produce, note, error = _producer_for(
-        record, source, resolution, preferences, progress
-    )
-    if error:
-        return (None, error)
-    with hou.undos.disabler():   # OFF THE UNDO STACK, and built in /obj staging to be moved in ONE step: creating nodes INSIDE a live material library retranslates the whole library per node (wiki) and a failed build leaves no debris in the user's network, while this staging is invisible yet createNode and destroy BOTH land on the live stack and one performUndo resurrects the node WITH its children (research.md ▸ Undo #278) - a single Ctrl+Z after Add to Library used to bring back /obj/matnet1 holding a duplicate of the material just imported; same answer nodes.staged_asset and thumbs.create_thumb_sop give for their staging containers, while the adjacent Import to Scene GROUPS instead because that one is a scene edit the user should be able to undo
-        scratch = hou.node("/obj").createNode("matnet")
-    try:
-        builder, shader, wired = nodes_mod.build_karma_material(
-            scratch, name, produce)
-        if shader is None:
-            return (None, "Could not build a shading network for " + name)
-        if renderer == "Redshift":
-            builder, shader, wired, _report = to_renderer(builder, scratch, name, renderer)
-            if shader is None:
-                return (None, "Could not convert %s to Redshift" % name)
-        if not wired:
-            debug.note(   # the engine's own verdict, said to the user rather than only to the log: the material is real and importable, refusing it would throw away work over something the artist can wire by hand, so this is a warning attached to a success rather than a failure
-                "\"%s\" imported, but its surface output is not wired, "
-                "so it renders black until it is connected." % name)
+    with _staged_build(record, source, resolution, preferences, progress,
+                       renderer) as (builder, note, error):
+        if error:
+            return (None, error)
         moved = hou.moveNodesTo((builder,), destination)
         if not moved:
             return (None, "Could not move %s into %s"
@@ -272,45 +295,19 @@ def build_in_scene(record, source, resolution, destination, preferences,
         debug.event("import", "built in scene", name=name,
                     path=builder.path())
         return (builder, "")
-    finally:
-        try:
-            with hou.undos.disabler():
-                scratch.destroy()
-        except (hou.OperationFailed, hou.ObjectWasDeleted):
-            pass
 
 
 def import_record(record, source, resolution, library, preferences,
                   progress=None, renderer: str = "Karma"):
-    """Import one online record into `library` (a MaterialLibrary). - Returns (ok, reason). Never leaves scene debris on failure. progress (frac) is called with a 0..1 fraction during the download (package sources only - value sources have nothing to download)."""
+    """One online record added to `library` with nothing left in the scene: (ok, why)."""
     name = record_name(record)
     debug.event("import", "start", title=record.title, name=name,
                 source=record.source, kind=record.kind,
                 category=record.category, resolution=resolution)
-    with hou.undos.disabler():   # OFF THE UNDO STACK: this is pure staging and nothing user-visible survives it, but createNode and destroy BOTH land on the live stack and one performUndo resurrects the node WITH its children (research.md ▸ Undo #278) - a single Ctrl+Z after Add to Library used to bring back /obj/matnet1 holding a duplicate of the material just imported; same answer nodes.staged_asset and thumbs.create_thumb_sop give for their staging containers, while the adjacent Import to Scene GROUPS instead because that one is a scene edit the user should be able to undo
-        scratch = hou.node("/obj").createNode("matnet")
-    try:
-        produce, measurement_note, error = _producer_for(   # resolve the input FIRST (the part that can fail with I/O), then let the shared Karma material engine own the container, wiring and verification - the online importer is one ADAPTER whose `produce` callback builds the shader network and nothing more
-            record, source, resolution, preferences, progress
-        )
+    with _staged_build(record, source, resolution, preferences, progress,
+                       renderer) as (builder, measurement_note, error):
         if error:
             return (False, error)
-
-        builder, shader, wired = nodes_mod.build_karma_material(
-            scratch, name, produce)
-
-        if shader is None:
-            return (False, "Could not build a shading network for " + name)
-        if renderer == "Redshift":    # the Karma network is the way in for every online source; the Redshift twin is what lands
-            builder, shader, wired, _report = to_renderer(builder, scratch, name, renderer)
-            if shader is None:
-                return (False, "Could not convert %s to Redshift" % name)
-        if not wired:
-            debug.note(
-                "\"%s\" was imported, but its surface output is not "
-                "wired, so it renders black until it is connected."
-                % name)
-
         library.add_asset(   # BY ID, never by position: add_asset stamps the node with its library id and its save can ADOPT another session's row, appended after ours via the merge, so a grown row count can be true for the wrong reason and the LAST row can be somebody else's material - the id is the identity and the length was only ever a proxy for it
             builder,
             record.category,
@@ -340,9 +337,3 @@ def import_record(record, source, resolution, library, preferences,
         debug.event("import", "registered", name=name,
                     rows=library.rowCount())
         return (True, "")
-    finally:
-        try:
-            with hou.undos.disabler():
-                scratch.destroy()
-        except (hou.OperationFailed, hou.ObjectWasDeleted):
-            pass
