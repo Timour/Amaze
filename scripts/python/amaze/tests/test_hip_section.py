@@ -1056,7 +1056,7 @@ class SectionRegistrationTest(unittest.TestCase):
         file_cls = [c for c in sections.SECTION_CLASSES
                     if c.key == "file"][0]
         real = prefs_module.Prefs()
-        for attr in (file_cls.folders_pref, file_cls.last_folder_pref):
+        for attr in (file_cls.last_folder_pref,):
             self.assertTrue(
                 hasattr(real, attr),
                 "Preferences has no %r - the section would raise the "

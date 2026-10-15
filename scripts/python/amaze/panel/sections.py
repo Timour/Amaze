@@ -1057,9 +1057,8 @@ class FolderSection(Section):
     files_attr = ""
     colour_pref_setter = ""    # prefs method that stores a location's colour
     last_folder_pref = ""
-    selection_attr = ""    # the rest of what activate() varies on: the selection model and delegate to point the shared grid at, and the prefs list of registered folders behind last_folder_pref
+    selection_attr = ""    # with delegate_attr, what activate() points the shared grid at
     delegate_attr = ""
-    folders_pref = ""
     search_hint = ""    # these tiles are files on disk with no tags and no categories, so the file name is genuinely all there is to match
     library_model_attrs = ("file_folders_model",)    # the registered folders live in the LIBRARY's locations.json, so a library switch has to re-point them like every other library-backed model ▸p/folders-follow-the-library
 
@@ -1118,13 +1117,11 @@ class FolderSection(Section):
         panel.set_conversion_bar_visible(False)  # may be another section's
         panel.sync_list_columns()  # different section = different names
 
-        registered = getattr(panel.prefs, self.folders_pref, []) or []
-        target_row = 1 if folders.rowCount() > 1 else 0  # the first REAL folder, never "All": "All" eagerly scans and queues thumbnails for every registered folder at once
         last = getattr(panel.prefs, self.last_folder_pref, "")
-        if last == folders.ALL_LABEL:
-            target_row = 0
-        elif last and last in registered:
-            target_row = registered.index(last) + 1
+        target_row = 0 if last == folders.ALL_LABEL else (
+            folders.row_of(last) if last else None)
+        if target_row is None:
+            target_row = 1 if folders.rowCount() > 1 else 0    # never All: it scans every location
         if panel.cat_list and folders.rowCount() > 0:
             target_index = folders.index(target_row, 0)
             selection_model = panel.cat_list.selectionModel()
@@ -1537,7 +1534,6 @@ class FileSection(FolderSection):
     tile_badges = ("open", "favourite", "comment")
     sidebar_attr = "file_folders_model"
     takes_capture = True  # the only context with scene tiles to capture onto
-    folders_pref = "file_folders"
     colour_pref_setter = "set_file_folder_color"
     folders_attr = "file_folders_model"
     files_attr = "file_files_model"

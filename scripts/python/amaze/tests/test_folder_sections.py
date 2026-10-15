@@ -400,6 +400,26 @@ class TheFilesAndProxyArePairedOnce(unittest.TestCase):
         self.assertEqual(3, proxy.calls)
 
 
+class FileOpensOnTheFolderItLeft(unittest.TestCase):
+    """Activation stands on the remembered location's row, on All, or on the first real one."""
+
+    def test_activation_stands_on_the_remembered_row(self):
+        panel = test_support.fixture_panel(self)
+        folders = panel.file_folders_model
+        first = folders.data(folders.index(1, 0), folders.PathRole)
+        second = test_support.fresh_files_folder(self)
+        self.assertTrue(folders.add_folder(second), "premise: a second location")
+        for remembered, row in ((second, folders.row_of(second)),
+                                (folders.ALL_LABEL, 0),
+                                ("/nowhere/registered/", folders.row_of(first))):
+            with self.subTest(remembered=remembered):
+                panel.section_tabs.setChecked("material")
+                panel.prefs.last_file_folder = remembered
+                panel.section_tabs.setChecked("file")
+                QtWidgets.QApplication.processEvents()
+                self.assertEqual(row, panel.cat_list.currentIndex().row())
+
+
 class _Source:
     """The two answers `_files_and_rows` asks a mapped index for."""
 
