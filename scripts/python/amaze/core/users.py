@@ -84,9 +84,7 @@ def delete(preferences, uid) -> bool:
     if not store.retire([uid]):
         return False
     try:
-        if str(preferences.library_user or "") == uid:
-            preferences.library_user = ""
-            preferences.save()
+        preferences.forget_user(uid)
     except (AttributeError, OSError):
         pass    # the next open lands in ASK either way
     return True

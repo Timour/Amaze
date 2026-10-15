@@ -335,6 +335,49 @@ class TheFiveDerivedKeysAreGone(PerUserCase):
             "the record the five derive from was lost with them")
 
 
+class DeletingAUserDropsTheirBlock(PerUserCase):
+    """A deleted user's view state leaves settings.json with them, and every other block stays."""
+
+    def _two_users_with_blocks(self):
+        from amaze.core import users
+        p = test_support.fixture_prefs(self)
+        keep = users.create(p, "Cobalt")
+        gone = users.create(p, "Sienna")
+        for uid in (gone, keep, gone):    # each switch files the user it leaves under their uid
+            users.adopt(p, uid)
+        held = self._blocks(p)
+        self.assertTrue({keep, gone, test_support.FIXTURE_USER} <= set(held),
+                        "premise: every user has a block on disk")
+        return p, keep, gone
+
+    def _blocks(self, p):
+        with open(os.path.join(p.path, "settings.json"),
+                  encoding="utf-8") as handle:
+            return json.load(handle).get("users", {})
+
+    def test_deleting_another_user_drops_only_their_block(self):
+        from amaze.core import users
+        p, keep, gone = self._two_users_with_blocks()
+        users.adopt(p, keep)
+        self.assertTrue(users.delete(p, gone))
+        held = self._blocks(p)
+        self.assertNotIn(gone, held, "the deleted user's block stayed")
+        self.assertIn(keep, held, "a surviving user's block went too")
+        self.assertIn(test_support.FIXTURE_USER, held)
+
+    def test_deleting_yourself_drops_your_block_and_no_other(self):
+        from amaze.core import users
+        p, keep, gone = self._two_users_with_blocks()
+        self.assertEqual(gone, p.library_user, "premise: the current user")
+        self.assertTrue(users.delete(p, gone))
+        held = self._blocks(p)
+        self.assertNotIn(gone, held,
+                         "deleting the current user filed their state "
+                         "back under the deleted uid")
+        self.assertIn(keep, held)
+        self.assertIn(test_support.FIXTURE_USER, held)
+
+
 class TheTableAgreesWithInit(PerUserCase):
 
     def test_every_table_default_matches_a_fresh_prefs(self):

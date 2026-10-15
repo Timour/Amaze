@@ -326,6 +326,14 @@ class _Persistence:
             return  # a user with no block on this machine inherits what is on screen, which is what keeps the arrangement across a first mint
         self._apply_user_block(dict(block), {})
 
+    def forget_user(self, uid) -> None:
+        """Drop one deleted user's block and save, clearing the pointer first when it names them."""
+        uid = str(uid)
+        if self._library_user == uid:
+            self.library_user = ""    # the switch files their state under their uid, popped next
+        self._users_blocks.pop(uid, None)
+        self.save()
+
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
         self._directory = self._directory.replace("\\", "/")  # an UNSET directory stays unset: appending the trailing slash to "" once persisted the filesystem ROOT as the library
