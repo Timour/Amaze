@@ -168,13 +168,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def _tile_image_path(self, row: int) -> str:
         """The file a row's tile loads: its chosen icon, else its render; "" for an unsafe id."""
-        mat_id = self._assets[row].mat_id
-        try:
-            if tile_icons.is_custom(self.tile_icon(row)):
-                return tile_icons.icon_image_path(self.preferences, mat_id)
-            return tile_icons.thumbnail_path(self.preferences, mat_id)
-        except hostos.PathEscape:
-            return ""
+        return tile_icons.tile_read_path(
+            self.preferences, str(self._assets[row].mat_id),
+            tile_icons.is_custom(self.tile_icon(row)))
 
     def switch_model_data(self):
         """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""

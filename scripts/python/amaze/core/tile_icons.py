@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtGui, QtSvg
 
 import amaze
 from amaze import messages
-from amaze.core import debug, keyed_store
+from amaze.core import debug, keyed_store, material
 from amaze.helpers import hostos
 
 ICON_DIR = amaze.package_file("ui", "feather")  # the icon set, through the package's one path join
@@ -302,18 +302,27 @@ def stroke_for(preferences) -> float:
     return FEATHER_STROKE_UNITS if weight == "feather" else STROKE_UNITS
 
 
+def _image_parts(preferences, asset_id, icon: bool) -> tuple:
+    """(image folder, file name) of a render or its icon - the one spelling every door below joins."""
+    return (os.path.join(preferences.dir, preferences.img_dir),
+            str(asset_id) + ("_icon" if icon else "") + preferences.img_ext)
+
+
 def thumbnail_path(preferences, asset_id: str) -> str:
     """`<library>/img/<id>.png` - the ONE composition of a library thumbnail's path (nine hand-concatenations in render/thumbs.py once disagreed with `asset_files()` whenever `prefs.dir` was assigned without its trailing separator: the render reported success while every reader looked at `<lib>/img/` and the tile read Missing Thumbnail forever); contained, like every id-derived path, because the id comes verbatim out of library.json and nothing validates it on load."""
-    return hostos.contained_join(
-        os.path.join(preferences.dir, preferences.img_dir),
-        str(asset_id) + preferences.img_ext)
+    return hostos.contained_join(*_image_parts(preferences, asset_id, False))
 
 
 def icon_image_path(preferences, asset_id: str) -> str:
     """Where a tile's composed icon lives: beside its thumbnail with a suffix so the render underneath survives - composed exactly like `thumbnail_path` and for both of its reasons, and CONTAINED because this is the path `render_for` writes and `clear_for` runs os.remove on."""
-    return hostos.contained_join(
-        os.path.join(preferences.dir, preferences.img_dir),
-        str(asset_id) + "_icon" + preferences.img_ext)
+    return hostos.contained_join(*_image_parts(preferences, asset_id, True))
+
+
+def tile_read_path(preferences, asset_id: str, icon: bool) -> str:
+    """A tile's image path as the two above compose it; "" for an unsafe id. No realpath."""
+    if not material.is_safe_asset_id(asset_id):
+        return ""
+    return os.path.join(*_image_parts(preferences, asset_id, icon))
 
 
 def render_size(preferences) -> int:

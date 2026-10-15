@@ -241,6 +241,38 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             "an id read verbatim from library.json sent the tile loader "
             "outside the library")
 
+    def test_a_rebuild_resolves_no_path_on_disk(self):
+        """The tile map is strings only: it runs after every delete, and a realpath walks the share."""
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        model.rebuild_thumbs()    # warm: the first icon lookup reads its store
+        self.assertGreater(model.rowCount(), 0, "premise: rows to map")
+        calls = []
+        real = os.path.realpath
+
+        def counting(*args, **kwargs):
+            calls.append(args)
+            return real(*args, **kwargs)
+
+        with mock.patch("os.path.realpath", counting):
+            model.rebuild_thumbs()
+        self.assertEqual(
+            [], calls,
+            "rebuilding the tile map resolved %d paths on disk, once per "
+            "row after every delete" % len(calls))
+
+    def test_the_tile_reads_what_the_contained_paths_name(self):
+        """For a safe id the tile's path is `thumbnail_path` or `icon_image_path`; "" when unsafe."""
+        root = self.prefs.dir.rstrip(os.sep)
+        for value in (root, root + os.sep):
+            self.prefs.dir = value
+            self.assertEqual(tile_icons.thumbnail_path(self.prefs, "abc"),
+                             tile_icons.tile_read_path(self.prefs, "abc", False))
+            self.assertEqual(tile_icons.icon_image_path(self.prefs, "abc"),
+                             tile_icons.tile_read_path(self.prefs, "abc", True))
+        for unsafe in ("../../../Documents/x", "..", "a/b"):
+            self.assertEqual("", tile_icons.tile_read_path(
+                self.prefs, unsafe, False))
+
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
     """The RAM cache key carries the library, so two libraries holding one asset id do not share an image."""
