@@ -1095,6 +1095,25 @@ class UnmountedVolumesAreNotGoneTest(unittest.TestCase):
                 "a pointer written on Windows was judged on this "
                 "platform and unregistered")
 
+    UNC = ("//server/share/textures", "\\\\server\\share\\textures")
+
+    def test_a_UNC_share_read_on_WINDOWS_is_its_own_spelling(self):
+        """Windows reads a UNC path as native, so Clean can prune a folder deleted from a share."""
+        with patch.object(hostos, "is_windows", lambda: True):
+            for path in self.UNC:
+                self.assertFalse(
+                    hostos.foreign_path(path),
+                    "%s was read as another platform's path on Windows, "
+                    "so Clean keeps it forever as unmounted" % path)
+
+    def test_a_UNC_share_read_on_POSIX_is_left_alone(self):
+        with patch.object(hostos, "is_windows", lambda: False):
+            for path in self.UNC:
+                self.assertTrue(
+                    self._check(path),
+                    "%s, written on Windows, was judged on this platform "
+                    "and would be unregistered" % path)
+
     def test_a_path_on_an_absent_volume_is_unreachable(self):
         self.assertTrue(
             self._check(self._absent_volume_path()),

@@ -38,7 +38,9 @@ def _home(*parts: str) -> str:
 _HOME_PREFIX_RE = re.compile(r"^(?:[A-Za-z]:)?/(?:Users|home)/[^/]+(?=/)")  # where each OS puts a user's home, and THE ONLY place in the package that may know it
 
 
-_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")    # `C:\` or `C:/`, the Windows absolute; a UNC `\\server\share` is caught by the backslash test beside it
+_DRIVE_RE = re.compile(r"^[A-Za-z]:[\\/]")    # `C:\` or `C:/`, the Windows absolute
+
+_UNC_RE = re.compile(r"^[\\/]{2}[^\\/]")    # a Windows share, `\\server` or `//server` as the library stores it
 
 
 def foreign_path(path: str) -> bool:
@@ -46,9 +48,10 @@ def foreign_path(path: str) -> bool:
     raw = str(path or "")
     if not raw:
         return False
+    windows_spelled = bool(_DRIVE_RE.match(raw) or _UNC_RE.match(raw))
     if is_windows():
-        return raw.startswith("/") and not _DRIVE_RE.match(raw)
-    return bool(_DRIVE_RE.match(raw)) or raw.startswith("\\\\")
+        return raw.startswith("/") and not windows_spelled
+    return windows_spelled
 
 
 def rehome(path: str) -> str:
