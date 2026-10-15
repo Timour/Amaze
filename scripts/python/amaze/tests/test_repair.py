@@ -1117,6 +1117,34 @@ class TheRouteFromCleanLibraryTest(_Case):
             "Clean Library's empty-section guard misses files its own "
             "sweep would move, so an empty list no longer holds it back")
 
+    def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
+        """The Colors list claims a palette's stamp, as Repair's survey reads it."""
+        from amaze.core import gradient_library
+        self._cops([])
+        palettes = gradient_library.GradientLibrary(self.prefs)
+        palettes.add_user_gradient(
+            "Ochre Probe", "Uncategorized",
+            {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
+             "bases": ["Linear", "Linear"]})
+        stamp = os.path.join(self.mat_dir, str(palettes.assets[0].mat_id)
+                             + library_mod.STAMP_SUFFIX)
+        self.assertTrue(os.path.exists(stamp),
+                        "premise: a saved palette writes a recovery stamp")
+        self.assertNotIn(os.path.basename(stamp),
+                         self._survey()["unaccounted"][self.prefs.asset_dir],
+                         "premise: Repair counts the stamp as listed")
+        model = self._material_model()
+        self._clean(model)
+        summary = " ".join(model.last_cleanup_summary)
+        self.assertNotIn(
+            "Amaze could not check", summary,
+            "one saved palette held the whole sweep back while the Nodes "
+            "list is empty")
+        self.assertNotIn("Ochre Probe", summary,
+                         "a palette the Colors list holds was reported as "
+                         "not listed in the library")
+        self.assertTrue(os.path.exists(stamp))
+
 
 class TheRealLibraryRehearsalTest(unittest.TestCase):
     """The same route against the real library's shape, which is only ever read."""

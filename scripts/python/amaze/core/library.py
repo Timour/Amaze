@@ -1235,7 +1235,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         absent_traces = {}
         lists_nothing = []
         claimed, unreadable_files = database.ids_claimed_by(  # THE READ IS NOT THIS METHOD'S - "which ids does each database claim" has one home, and a second copy is how two readers of these shared folders come to disagree about who owns a file. What stays here is the POLICY
-            self.preferences.dir)
+            self.preferences.dir, database.DATABASES)
+        for file_ids in claimed.values():    # Colors too: a palette's stamp sits in mat/, as Repair counts it
+            ids |= file_ids
         for filename in database.ID_CLAIMING_DATABASES:
             full = os.path.join(self.preferences.dir, filename)
             own = filename == self.DB_FILENAME  # THIS model's own database is checked like any other: its in-memory ids are only there because a load put them there, and a REFUSED load leaves _assets honestly empty
@@ -1261,7 +1263,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             file_ids = claimed[filename]  # UNION, never replace: the model's own disk rows are not its in-memory ones, since another session can have added rows and a row this session added may not have reached disk
             if not file_ids and filename in database.ASSET_FILE_OWNERS:  # a list that holds nothing is NOT authoritatively empty; the dangerous condition is emptiness AND unaccounted files, decided below once every sibling is read. ASSET_FILE_OWNERS narrows it to the lists that could own one
                 lists_nothing.append(filename)
-            ids |= file_ids
 
         empty_sections = []
         folder = str(self.preferences.asset_dir).rstrip("/\\")  # the folder as the user sees it in Finder; prefs stores it with the separator, and "the mat/ folder" in a sentence reads as a typo
