@@ -210,6 +210,13 @@ class AssetDialog(QtWidgets.QDialog):
         self.canceled = False
         self.accept()
 
+    def exec(self) -> int:
+        """Run modally, then `deleteLater`; read the answers `_on_accept` stored. ▸r/deferred-delete"""
+        try:
+            return super().exec()
+        finally:
+            self.deleteLater()
+
 
 class NameDialog(AssetDialog):
     """One text field and a title - the house replacement for `hou.ui.readInput`, whose native dialog carries an unwanted "i" icon and separator lines. - `CategoryDialog` was this, in `gradient_dialog`, with one caller. It lives here so a second caller does not have to import the Colors section's dialogs to ask for a name."""

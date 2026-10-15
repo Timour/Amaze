@@ -842,5 +842,59 @@ class TheSaveFamilyIsTheDrawnWidth(unittest.TestCase):
             "layout pass" % dialog.width())
 
 
+class AnAnsweredDialogLeavesNothingBehind(unittest.TestCase):
+    """A modal dialog parented to the panel lives as long as the panel unless deleted. ▸r/menu-lifetime"""
+
+    BUILDERS = {    # every modal the panel and Preferences open with exec()
+        "save": lambda parent: __import__(
+            "amaze.dialogs.save_dialog", fromlist=["_"]).SaveDialog(
+                ["Metal"], "Metal", name="rocks1", parent=parent),
+        "code": lambda parent: __import__(
+            "amaze.dialogs.code_dialog", fromlist=["_"]).CodeDialog(
+                ["Metal"], name="snippet", parent=parent),
+        "category": lambda parent: __import__(
+            "amaze.dialogs.gradient_dialog", fromlist=["_"]).CategoryDialog(
+                parent=parent),
+        "user picker": lambda parent: __import__(
+            "amaze.dialogs.user_dialog", fromlist=["_"]).UserPickerDialog(
+                {"a" * 32: "Cobalt"}, parent=parent),
+        "name": lambda parent: __import__(
+            "amaze.dialogs.base_dialog", fromlist=["_"]).NameDialog(
+                "Rename User", "Cobalt", parent=parent),
+    }
+
+    def _parent(self):
+        parent = QtWidgets.QWidget()
+        self.addCleanup(parent.deleteLater)
+        return parent
+
+    def _answer(self, dialog, answer):
+        QtCore.QTimer.singleShot(0, answer)
+        return dialog.exec()
+
+    def test_three_opens_of_each_leave_no_dialog_alive(self):
+        for label, build in self.BUILDERS.items():
+            with self.subTest(dialog=label):
+                parent = self._parent()
+                for _ in range(3):
+                    dialog = build(parent)
+                    self._answer(dialog, dialog.reject)
+                _app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)    # ▸r/deferred-delete
+                self.assertEqual(
+                    [], parent.findChildren(QtWidgets.QDialog),
+                    "every answered %s dialog stays a live child of its "
+                    "parent for the whole session" % label)
+
+    def test_the_answer_outlives_the_dialog(self):
+        from amaze.dialogs import base_dialog
+        dialog = base_dialog.NameDialog("Rename User", "Cobalt",
+                                        parent=self._parent())
+        dialog._line_name.setText("  Sienna ")
+        self._answer(dialog, dialog._on_accept)
+        _app.sendPostedEvents(None, QtCore.QEvent.Type.DeferredDelete)
+        self.assertEqual((False, "Sienna"), (dialog.canceled, dialog.name),
+                         "the typed answer went with the widgets")
+
+
 if __name__ == "__main__":
     unittest.main()
