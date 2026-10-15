@@ -262,8 +262,9 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         path = catalogue_cache()
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as handle:
-                json.dump({"records": [r.to_dict() for r in records]}, handle)
+            hostos.write_json_atomic(
+                path, {"records": [r.to_dict() for r in records]},
+                indent=None)
         except OSError as exc:
             debug.event("online", "catalogue cache not written",    # an EVENT: internal, the browser works either way - the unreachable-source line below stays a note because it is about what the user sees
                         error=str(exc))

@@ -540,6 +540,45 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
             "Houdini restarts")
 
 
+class TheCatalogueCacheLandsWhole(unittest.TestCase):
+    """The on-disk Online catalogue is replaced whole or not at all."""
+
+    def test_a_write_that_dies_part_way_keeps_the_last_catalogue(self):
+        import json
+
+        from amaze.tests import test_support
+        from amaze.core import matx_library, matx_sources
+        path = matx_library.catalogue_cache()
+        self.assertTrue(path.startswith(test_support.TEST_CACHE),
+                        "premise: the catalogue is not in the test cache")
+        if os.path.exists(path):
+            shutil.copy2(path, path + ".kept")
+            self.addCleanup(shutil.move, path + ".kept", path)
+        else:
+            self.addCleanup(
+                lambda: os.path.exists(path) and os.remove(path))
+        model = matx_library.MatxOnlineLibrary.__new__(
+            matx_library.MatxOnlineLibrary)
+        model._save_cache([matx_sources.MatxRecord(
+            source="GPUOpen", uid="u%d" % n, title="M%d" % n)
+            for n in range(3)])
+        self.assertEqual(3, len(model._load_cache() or ()),
+                         "premise: the first catalogue did not land")
+
+        def torn(obj, handle, *args, **kwargs):
+            handle.write('{"records": [{"sou')
+            raise OSError(28, "No space left on device")
+
+        with mock.patch.object(json, "dump", torn):
+            with test_support.captured_log():
+                model._save_cache([matx_sources.MatxRecord(
+                    source="GPUOpen", uid="x", title="X")])
+        self.assertEqual(
+            3, len(model._load_cache() or ()),
+            "a write that died part-way left a torn catalogue, so the "
+            "next Online open loses the whole cached list")
+
+
 class ARemapOnAColourChainStillRemaps(unittest.TestCase):
     """mtlxremap and mtlxclamp are signature-polymorphic: wiring a color3 source flips the LIVE parm to the `_color3` variant, so the range values must go through `_set_poly_parm` or they land on the inert plain parm and the remap renders as a no-op."""
 
