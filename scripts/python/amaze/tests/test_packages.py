@@ -382,6 +382,53 @@ class PackageImportTest(unittest.TestCase):
             "the import folder is not a registered location, so the "
             "landed file is invisible in the File section")
 
+    def test_the_import_location_arrives_as_a_sidebar_row(self):
+        """Registered through the sidebar model, which tells its views and keeps its counts."""
+        from amaze.core import category, packages
+        from amaze.helpers import hostos as hostos_mod
+        folders = self.panel.file_folders_model
+        folder = hostos_mod.canonical_path_key(
+            os.path.join(self.panel.prefs.dir, "import"))
+        listed = [hostos_mod.canonical_path_key(p)
+                  for p in self.panel.prefs.file_folders]
+        if folder in listed:
+            self.assertTrue(folders.remove_folder(listed.index(folder) + 1),
+                            "premise: the import location stayed listed")
+        sources = tempfile.mkdtemp(prefix="amaze_pkg_rows_")
+        self.addCleanup(
+            __import__("shutil").rmtree, sources, ignore_errors=True)
+
+        def package_of(name):
+            path = os.path.join(sources, name)
+            with open(path, "wb") as handle:
+                handle.write(b"mocap")
+            out = _out_path(self, name + ".amazepkg")
+            packages.write_package(out, [packages.collect_file(path,
+                                                               "other")])
+            return out
+
+        inserted = []
+
+        def heard(_parent, first, last):
+            inserted.append((first, last))
+
+        folders.rowsInserted.connect(heard)
+        self.addCleanup(folders.rowsInserted.disconnect, heard)
+        before = folders.rowCount()
+        self.panel.import_package_file(package_of("walk_a.bvh"))
+        self.assertEqual(
+            [(before, before)], inserted,
+            "the import location was registered behind the sidebar "
+            "model's back, so no view heard about its row")
+        row = folders.row_of(folder)
+        count = folders.data(folders.index(row), category.SIDEBAR_COUNT_ROLE)
+        self.panel.import_package_file(package_of("walk_b.bvh"))
+        self.assertEqual(
+            count + 1,
+            folders.data(folders.index(row), category.SIDEBAR_COUNT_ROLE),
+            "a second import landed a file in the import location and "
+            "its sidebar number did not move")
+
     def test_a_package_missing_a_member_is_refused_whole(self):
         from amaze.core import packages
         model = self.panel.gradient_model

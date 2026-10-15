@@ -2438,9 +2438,18 @@ class AmazePanel(QtWidgets.QWidget):
             for name in sorted(names):
                 st.categories.check_add_category(name)
         if summary.get("files"):
-            folder = os.path.join(self.prefs.dir, "import")
-            self.prefs.add_file_folder(folder)
-            self.prefs.set_file_folder_name(folder, "Import")
+            folder = hostos.canonical_path_key(
+                os.path.join(self.prefs.dir, "import"))
+            self.prefs.set_file_folder_name(folder, "Import")    # first, so the row arrives named
+            folders = getattr(self, "file_folders_model", None)
+            if folders is None:
+                self.prefs.add_file_folder(folder)
+            elif not folders.add_folder(folder):
+                folders.refresh_counts()    # already listed: files landed in it, so its number moved
+                row = folders.row_of(folder)
+                if row is not None:
+                    folders.dataChanged.emit(folders.index(0),
+                                             folders.index(row))
 
     def _import_amaze_package_record(self, record, source, restore,
                                      on_progress=None):
