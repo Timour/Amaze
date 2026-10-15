@@ -134,7 +134,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def __init__(self, preferences: prefs.Prefs) -> None:
         super().__init__()
         self.preferences = preferences  # REQUIRED, and SHARED with the panel: per-model instances each re-read settings.json and drift after any save ▸p/duplication-third-verb
-        self._thumbsize = self.preferences.thumbsize
 
         db = database.DatabaseConnector(self.DB_FILENAME)
         self._data = database.load_survivable(db, self.preferences.dir)
@@ -203,7 +202,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             self._data = database.load_survivable(
                 db, self.preferences.dir, reload=True)
             self._colours_seen = db._colours_adopted
-            self._thumbsize = self.preferences.thumbsize
 
             self._assets = [
                 self._asset_from_row(d) for d in self._data["assets"]
@@ -695,15 +693,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def assets(self) -> list:
         """This model's records, in row order - the live list, not a copy."""
         return self._assets
-
-    @property
-    def thumbsize(self) -> int:
-        """The tile size the size slider last set, in pixels."""
-        return self._thumbsize
-
-    @thumbsize.setter
-    def thumbsize(self, val: int) -> None:
-        self._thumbsize = val
 
     def sanitize_tags(self, tags):
         ts = []

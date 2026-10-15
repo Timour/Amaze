@@ -63,7 +63,6 @@ class TestMaterialLibrary(unittest.TestCase):
         self.mock_prefs.asset_dir = "/assets/"
         self.mock_prefs.ext = ".mat"
         self.mock_prefs.img_ext = ".png"
-        self.mock_prefs.thumbsize = 256
         self.mock_prefs.render_on_import = False
         self.mock_prefs_cls.return_value = self.mock_prefs
 
@@ -113,7 +112,6 @@ class TestMaterialLibrary(unittest.TestCase):
         """Test MaterialLibrary initializes correctly"""
         self.assertIsNotNone(self.library.preferences)
         self.assertEqual(len(self.library._assets), 1)
-        self.assertEqual(self.library._thumbsize, 256)
 
     def test_a_positional_prefs_is_the_preferences(self):
         """`preferences` is first and positional, so the plain call binds it. ▸p/duplication-third-verb"""
@@ -213,15 +211,6 @@ class TestMaterialLibrary(unittest.TestCase):
         assets = self.library.assets
         self.assertEqual(len(assets), 1)
         self.assertEqual(assets[0].name, "TestMaterial")
-
-    def test_thumbsize_property_getter(self):
-        """Test thumbsize property getter"""
-        self.assertEqual(self.library.thumbsize, 256)
-
-    def test_thumbsize_property_setter(self):
-        """Test thumbsize property setter"""
-        self.library.thumbsize = 512
-        self.assertEqual(self.library.thumbsize, 512)
 
     def test_save(self):
         """Test save() writes data to database"""
@@ -398,12 +387,6 @@ class TestMaterialLibrary(unittest.TestCase):
         flags = self.library.flags(index)
 
         self.assertTrue(flags & QtCore.Qt.ItemFlag.ItemIsDragEnabled)
-
-    def test_thumbsize_setter_updates_the_size(self):
-        """The property is the ONE door to the model's size."""
-        self.library.thumbsize = 512
-
-        self.assertEqual(self.library._thumbsize, 512)
 
     def test_render_thumbnail(self):
         """Test render_thumbnail creates thumbnail for asset"""
