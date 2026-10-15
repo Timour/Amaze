@@ -1554,5 +1554,26 @@ class NoTagsIsAnEmptyListTest(unittest.TestCase):
             [], Material().tags, "a bare record starts with a blank tag")
 
 
+class TheContentGuardReadsOneFingerprint(unittest.TestCase):
+
+    def test_the_content_stat_is_the_disk_state_of_the_mat(self):
+        """`_content_stat` answers `hostos.disk_state` of the .mat, None with no .mat or a bad id."""
+        from amaze.core import library as library_mod
+        from amaze.helpers import hostos
+
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        prefs = test_support.fixture_prefs(self)
+        model = library_mod.MaterialLibrary(preferences=prefs)
+        mat = next(model.asset_files(a.mat_id)["mat"] for a in model.assets
+                   if os.path.exists(model.asset_files(a.mat_id)["mat"]))
+        mat_id = os.path.basename(mat)[:-len(prefs.ext)]
+        self.assertEqual(
+            (hostos.disk_state(mat), None, None),
+            (model._content_stat(mat_id), model._content_stat("absent-id"),
+             model._content_stat("../../../Documents/x")),
+            "the content guard's stat drifted from the one fingerprint")
+
+
 if __name__ == "__main__":
     unittest.main()

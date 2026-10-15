@@ -961,9 +961,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def _content_stat(self, mat_id: str):
         """(mtime_ns, size) of an asset's .mat, or None when absent."""
         try:
-            st = os.stat(self.asset_files(mat_id)["mat"])
-            return (st.st_mtime_ns, st.st_size)
-        except (OSError, hostos.PathEscape, TypeError, KeyError):
+            return hostos.disk_state(self.asset_files(mat_id)["mat"])
+        except (hostos.PathEscape, TypeError, KeyError):
             return None
 
     def _remember_content_state(self) -> None:

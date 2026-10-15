@@ -657,11 +657,9 @@ test `sys.platform` or hardcode an OS path convention.
   third mechanism between them) and `migrate_legacy_file(dir, old, new)`
   (rename-once, best-effort, same-directory; three copies before).
 - **`disk_state(path)`** — `(mtime_ns, size)`, or None when the file is
-  not there: the fingerprint every store keeps so it can tell whether
-  ANOTHER session wrote the file since this one read it. Three stores
-  (`Prefs`, `keyed_store.Store`, `texture_library.ThumbnailCache`) each
-  built it inline on both the remember and the compare side — six
-  sites, 2026-08-05.
+  not there: the cheap stat the content stale-write guard keeps per
+  asset (`AssetLibrary._content_stat`). The stores compare content
+  fingerprints instead, through `file_fingerprint` and `peer_read`.
 - **`why_failed(exc, path)` → `(cause, sentence)`** — the ONE place an
   `OSError` becomes something a user can act on: unreachable /
   read-only / full / held, from the errno. `database.save()` answered

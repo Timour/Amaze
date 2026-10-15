@@ -742,7 +742,7 @@ def why_failed(exc: OSError, path: str = "") -> tuple:
 
 
 def disk_state(path: str):
-    """`(mtime_ns, size)` for `path`, or None if it is not there - the fingerprint a store keeps so it can tell whether ANOTHER session wrote the file since this one read it."""
+    """`(mtime_ns, size)` for `path`, or None if it is not there - the per-asset content stat."""
     try:
         stat = os.stat(path)
     except OSError:
