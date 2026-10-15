@@ -175,25 +175,33 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if not self.NOTES_SECTION:
             return 0
         from amaze.core import notes
-        moved = 0
+        pages, carried = {}, []    # key -> the page to write; (asset, field, needs that write)
         for asset in self._assets:
             key = notes.note_key(self.NOTES_SECTION, str(asset.mat_id))
+            items = None
             for field in self.RETIRED_TEXT_FIELDS:
                 text = getattr(asset, field)
                 if not isinstance(text, str) or not text.strip():
-                    continue    # a hand-edited record can carry any type here, and only TEXT is worth moving
+                    continue    # a hand-edited record can carry any type; only TEXT is worth moving
                 text = text.strip()
-                items = list(notes.note_for(self.preferences, key).get(
-                    "items", []))
-                if not any(item.get("t") == "text"    # already carried across on an earlier open, or by another machine through the synced store
-                           and item.get("text", "").strip() == text
-                           for item in items):
-                    if not notes.set_note(
-                            self.preferences, key,
-                            [{"t": "text", "text": text}] + items):
-                        continue    # a read-only library: leave the field alone rather than clear text nothing kept
-                setattr(asset, field, "")
-                moved += 1
+                if items is None:
+                    items = list(notes.note_for(self.preferences, key).get(
+                        "items", []))
+                if any(item.get("t") == "text"    # carried already, here or by another machine
+                       and item.get("text", "").strip() == text
+                       for item in items):
+                    carried.append((asset, field, False))
+                    continue
+                items = [{"t": "text", "text": text}] + items
+                pages[key] = items
+                carried.append((asset, field, True))
+        written = not pages or bool(notes.set_notes(self.preferences, pages))    # ONE write
+        moved = 0
+        for asset, field, needed in carried:
+            if needed and not written:
+                continue    # a read-only library: leave the field rather than clear text nothing kept
+            setattr(asset, field, "")
+            moved += 1
         if moved:
             self.save()
             debug.event("library", "retired text moved into comments",

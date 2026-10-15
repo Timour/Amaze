@@ -1735,14 +1735,40 @@ class AboutBecomesAComment(unittest.TestCase):
         if not model.rowCount():
             self.skipTest("fixture library has no rows")
         model.assets[0].about = "From Ambient CG. CC0."
-        real_set = notes.set_note
-        notes.set_note = lambda *a, **k: False
-        self.addCleanup(setattr, notes, "set_note", real_set)
+        for door in ("set_note", "set_notes"):    # whichever door the move writes through
+            self.addCleanup(setattr, notes, door, getattr(notes, door))
+            setattr(notes, door, lambda *a, **k: False)
 
         self.assertEqual(0, model.adopt_retired_text_into_notes())
         self.assertEqual("From Ambient CG. CC0.", model.assets[0].about,
                          "the credit was cleared off the record after "
                          "the comment refused it - the text is gone")
+
+    def test_many_assets_move_in_one_comments_write(self):
+        from unittest import mock
+        from amaze.helpers import hostos
+        model = self._model()
+        self.assertGreaterEqual(model.rowCount(), 4, "premise: four rows")
+        for row in (1, 2, 3):
+            model.assets[row].about = "Credit %d" % row
+        model.assets[3].description = "Described 3"
+        writes = []
+        real = hostos.write_json_atomic
+
+        def counting(path, *args, **kwargs):
+            if os.path.basename(str(path)) == notes.NOTES_FILE:
+                writes.append(path)
+            return real(path, *args, **kwargs)
+
+        with mock.patch.object(hostos, "write_json_atomic", counting):
+            self.assertEqual(4, model.adopt_retired_text_into_notes())
+        self.assertEqual(1, len(writes),
+                         "four retired fields wrote the comments file %d "
+                         "times" % len(writes))
+        key = notes.note_key(model.NOTES_SECTION, model.assets[3].mat_id)
+        self.assertEqual(["Described 3", "Credit 3"],
+                         [item["text"] for item in
+                          notes.note_for(self.prefs, key).get("items")])
 
 
 class TheCommentsPaneStandsOnItsFrame(unittest.TestCase):
