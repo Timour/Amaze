@@ -396,8 +396,16 @@ class DatabaseConnector:
         """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only). ▸r/peer-read"""
         return hostos.fingerprint_of(self._path + self._filename)
 
+    def _remember_written(self, full: str, written) -> None:
+        """What we wrote is the base only while the file holds it; else the base before it stands."""
+        self._disk_stat = written    # whatever replaced our write, the next save merges it
+        if hostos.fingerprint_of(full) != written:
+            return    # replaced at once, maybe by a save that never saw ours: our rows are not its deletions
+        self._remember_disk_state(hostos.PeerFile(
+            hostos.PEER_CHANGED, self._data, written))
+
     def _remember_disk_state(self, read=None) -> None:
-        """The baseline from one file read: `read` if a load or refresh parsed it. ▸p/merge-needs-a-base"""
+        """The baseline from one document, parsed or written. ▸p/merge-needs-a-base"""
         answer = (read if read is not None
                   else hostos.peer_read(self._path + self._filename))
         if read is None and answer.document is not None:
@@ -478,7 +486,7 @@ class DatabaseConnector:
                     self._refuse_absent(full, traces)
                     return self._data
                 self._data = {"categories": ["_All"], "assets": []}
-                if not self.save():    # a landed save took its baseline from the file
+                if not self.save():    # a landed save set the baseline itself
                     self._remember_disk_state()
             else:
                 with open(full, "rb") as lib_json:
@@ -731,7 +739,8 @@ class DatabaseConnector:
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
             serialised_stat = hostos.file_fingerprint(serialised)    # ▸r/peer-read
             if current_stat is not None and current_stat == serialised_stat:
-                self._remember_disk_state()
+                self._remember_disk_state(hostos.PeerFile(    # these bytes ARE the file
+                    hostos.PEER_CHANGED, self._data, serialised_stat))
                 self._save_outcome = "identical-skip"
                 return True
         except (TypeError, ValueError):
@@ -740,7 +749,7 @@ class DatabaseConnector:
         hostos.snapshot_before_write(full)
         created = not os.path.exists(full)
         try:
-            hostos.write_json_atomic(full, self._data, indent=4)
+            written = hostos.write_json_atomic(full, self._data, indent=4)
         except OSError as exc:
             debug.exception("database save", exc, file=full)
             cause, why = hostos.why_failed(exc, full)
@@ -752,7 +761,7 @@ class DatabaseConnector:
         else:
             if created:
                 hostos.seed_restore_floor(full)
-            self._remember_disk_state()
+            self._remember_written(full, written)
             self._save_outcome = "stored"
             return True
 

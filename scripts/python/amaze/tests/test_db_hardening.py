@@ -2943,5 +2943,79 @@ class TheMembershipBaselineFollowsEverySave(_Case):
                       "row is still outside it for every later merge")
 
 
+class TheBaselineIsWhatTheSaveWrote(_Case):
+    """A write landing just after our save is another machine's: the next save merges it."""
+
+    MINE = {"id": "MINE", "name": "made this session"}
+    THEIRS = {"id": "THEIRS", "name": "added elsewhere"}
+
+    def _peer_lands_after(self, owner, name, theirs):
+        real, armed = getattr(owner, name), [True]
+
+        def then_theirs_land(*args, **kwargs):
+            answer = real(*args, **kwargs)
+            if armed[0]:
+                armed[0] = False
+                self._write(theirs)
+            return answer
+
+        return mock.patch.object(owner, name, then_theirs_land)
+
+    def _next_save_keeps_theirs(self, db):
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0 edited"}]})
+        self.assertTrue(db.save(), "premise: the next save landed")
+        self.assertIn(
+            "THEIRS", [str(r["id"]) for r in self._on_disk()["assets"]],
+            "the asset saved elsewhere right after ours was overwritten")
+        self.assertIn(
+            "THEIRS", [str(r["id"]) for r in db.take_adopted()],
+            "the asset saved elsewhere never reached the model")
+
+    def test_an_asset_saved_elsewhere_right_after_a_write_survives(self):
+        """The keyed store's twin: a save that saw ours, plus a row, lands right after it."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+        theirs = self._document(count=1)
+        theirs["assets"] += [dict(self.MINE), dict(self.THEIRS)]
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           dict(self.MINE)]})
+        with self._peer_lands_after(hostos, "write_json_atomic", theirs):
+            self.assertTrue(db.save(), "premise: our save landed")
+        self.assertEqual("stored", db._save_outcome, "premise: the save wrote")
+        self._next_save_keeps_theirs(db)
+
+    def test_a_save_that_never_saw_ours_costs_neither_side_a_row(self):
+        """It read the file before our write and landed after it: our new row is not its deletion."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+        theirs = self._document(count=1)
+        theirs["assets"].append(dict(self.THEIRS))
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           dict(self.MINE)]})
+        with self._peer_lands_after(hostos, "write_json_atomic", theirs):
+            self.assertTrue(db.save(), "premise: our save landed")
+        self._next_save_keeps_theirs(db)
+        self.assertIn(
+            "MINE", [str(r["id"]) for r in self._on_disk()["assets"]],
+            "our new row was read as the other machine deleting it")
+
+    def test_an_asset_saved_elsewhere_right_after_a_skip_survives(self):
+        """A save whose bytes already match disk takes its baseline from those bytes too."""
+        self._write(self._document(count=1))
+        db, _ = self._load()
+        db.set({"assets": [{"id": "ASSET0", "name": "mat 0"},
+                           dict(self.MINE)]})
+        self.assertTrue(db.save(), "premise: the first save landed")
+        theirs = self._on_disk()
+        theirs["assets"].append(dict(self.THEIRS))
+        with self._peer_lands_after(database.DatabaseConnector,
+                                    "_stat_file", theirs):
+            self.assertTrue(db.save(),
+                            "premise: the second save changed nothing")
+        self.assertEqual("identical-skip", db._save_outcome,
+                         "premise: this is the derived-stat exit")
+        self._next_save_keeps_theirs(db)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

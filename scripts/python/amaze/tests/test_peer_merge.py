@@ -555,10 +555,10 @@ class TheBaselineIsWhatIsOnDisk(_Case):
         real_write = hostos.write_json_atomic
 
         def clobbered(path, data, **kw):
-            real_write(path, data, **kw)
+            answer = real_write(path, data, **kw)
             self._write(before)    # the winner's rename lands on top of ours
             hostos.write_json_atomic = real_write    # once only
-            return None
+            return answer
 
         hostos.write_json_atomic = clobbered
         self.addCleanup(setattr, hostos, "write_json_atomic", real_write)
