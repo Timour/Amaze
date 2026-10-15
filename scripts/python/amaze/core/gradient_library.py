@@ -409,6 +409,8 @@ class GradientFilterProxyModel(multifilterproxy_model.MultiFilterProxyModel):
 
     def set_size_filter(self, bounds) -> None:
         """Show only palettes holding this many colors. `bounds` is (fewest, most), `most` None meaning no upper end; None switches the filter off. panel/sections.py ▸ GradientSection.FILTER_CHOICES is where the pairs live."""
+        if bounds == self._size_filter:
+            return
         self._size_filter = bounds
         self.refilter()
 

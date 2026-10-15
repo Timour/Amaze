@@ -30,6 +30,9 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         if filter_value == "":    # exact match, not falsy: False is a real FavoriteRole value, and storing dead entries costs a data() call per row per filter forever
             self.removeFilter(filter_role)
             return
+        if filter_role in self._filters \
+                and self._filters[filter_role] == filter_value:
+            return    # the value it already holds: no pass
         self._filters[filter_role] = filter_value
         self._folded[filter_role] = (filter_value.lower()
                                      if isinstance(filter_value, str)

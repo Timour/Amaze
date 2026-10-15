@@ -304,10 +304,14 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
         self._kind_filter = ""
 
     def set_name_filter(self, text: str) -> None:
+        if (text or "") == self._name_filter:
+            return
         self._name_filter = text or ""
         self.refilter()
 
     def set_favorites_only(self, enabled: bool) -> None:
+        if enabled == self._favorites_only:
+            return
         self._favorites_only = enabled
         self.refilter()
 
@@ -324,6 +328,8 @@ class TextureFilterProxyModel(grid_proxy.GridProxyModel):
 
     def set_kind_filter(self, kind) -> None:
         """Show only rows of one KIND - a file_library.KIND_* value, or None for every kind (KIND_OTHER included); the kind is what the File section IS since the 2026-07-31 merge, and this is how the toolbar gets back to one of them."""
+        if (kind or "") == self._kind_filter:
+            return
         self._kind_filter = kind or ""
         self.refilter()
 

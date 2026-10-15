@@ -423,6 +423,32 @@ class TypingCostsOnePassNotOnePerKeystroke(unittest.TestCase):
             "the swap cost %d passes, not one - the remove/set pair is "
             "running outside `one_pass`" % swapped)
 
+    def test_a_section_switch_with_every_filter_set_costs_ONE_pass(self):
+        """Category, search, renderer and favourites all standing: coming back is one pass."""
+        panel = self.panel
+        panel._on_tab_toggled("material", True)
+        panel._stand_on_category("usds")
+        panel.line_filter.setText("a")
+        panel.filter_thumb_view()
+        renderers = [label for label in panel.filter_actions if label != "All"]
+        self.assertTrue(renderers, "premise: no renderer filter to set")
+        panel.filter_actions[renderers[0]].trigger()
+        panel.cb_favsonly.setChecked(True)
+        self.addCleanup(panel.cb_favsonly.setChecked, False)
+        self.addCleanup(lambda: panel.filter_actions["All"].trigger())
+        self.addCleanup(panel._stand_on_all_category)
+        proxy = panel.material_sorted_model
+        self.assertEqual(4, len(proxy._filters), "premise: a filter is not set")
+        panel._on_tab_toggled("code", True)
+        with self._passes() as seen:
+            panel._on_tab_toggled("material", True)
+        mine = [p for p in seen if p is proxy]
+        self.assertEqual(1, len(mine),
+                         "coming back to Material cost %d passes" % len(mine))
+        self.assertEqual("usds", proxy.filter_value(
+            panel.material_model.CategoryRole),
+            "the switch did not put the category back")
+
     def test_the_settled_text_is_what_the_grid_filters_on(self):
         """A debounce that dropped the last keystroke would cost more than the passes it saves."""
         self._type("metal")

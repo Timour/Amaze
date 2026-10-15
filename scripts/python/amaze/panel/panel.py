@@ -2045,10 +2045,12 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _apply_context(self, context, key: str) -> None:
         """Activate a context and do everything that MUST follow it - the ONE path every section takes, and the online world with it, so the toolbar, the filter widgets, the restored view state and the Comments subject cannot drift from what is showing."""
-        context.activate()
-        self._sync_toolbar(context)    # EVERY toolbar control, from the one table - Capture included
-        self._sync_filters_to_section(context)
-        self._restore_section_state(key)
+        proxy = context.tile_models()[1]
+        with proxy.one_pass() if proxy is not None else contextlib.nullcontext():    # every filter set below shares one pass ▸p/filter-pass-cost
+            context.activate()
+            self._sync_toolbar(context)    # EVERY toolbar control, from the one table - Capture included
+            self._sync_filters_to_section(context)
+            self._restore_section_state(key)
         self._refresh_notes_subject()
         empty_state.track(self)    # a switch swaps the MODEL under a view that has not changed, so the blank has to re-attach here or it keeps watching the context you left
 

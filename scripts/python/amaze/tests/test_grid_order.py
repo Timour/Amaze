@@ -603,6 +603,45 @@ class AFilterPassFetchesEachRoleOnce(unittest.TestCase):
                          "roles behind it")
 
 
+class AnUnchangedFilterCostsNoPass(unittest.TestCase):
+    """Setting a filter to the value it already holds re-tests nothing, on all three grid proxies."""
+
+    def _passes(self, proxy, first, again):
+        proxy.setSourceModel(_Rows([]))
+        first(proxy)
+        passes = []
+        proxy.invalidateFilter = lambda: passes.append(1)
+        again(proxy)
+        return len(passes)
+
+    def test_the_asset_proxy(self):
+        role = QtCore.Qt.ItemDataRole.DisplayRole
+        for value in ("al", True):
+            with self.subTest(value=value):
+                self.assertEqual(0, self._passes(
+                    multifilterproxy_model.MultiFilterProxyModel(),
+                    lambda p: p.setFilter(role, value),
+                    lambda p: p.setFilter(role, value)))
+
+    def test_the_file_proxy(self):
+        from amaze.core import texture_library
+        for name, value in (("set_name_filter", "al"),
+                            ("set_favorites_only", True),
+                            ("set_kind_filter", "image")):
+            with self.subTest(setter=name):
+                self.assertEqual(0, self._passes(
+                    texture_library.TextureFilterProxyModel(),
+                    lambda p: getattr(p, name)(value),
+                    lambda p: getattr(p, name)(value)))
+
+    def test_the_colour_proxy(self):
+        from amaze.core import gradient_library
+        self.assertEqual(0, self._passes(
+            gradient_library.GradientFilterProxyModel(),
+            lambda p: p.set_size_filter((2, 2)),
+            lambda p: p.set_size_filter((2, 2))))
+
+
 class AFilterChangeIsOnePass(unittest.TestCase):
     """`refilter()` sorts synchronously, and the rows it brings back IN emit the proxy's own `rowsInserted`, which lands in `_schedule_pass` and must not post a second pass."""
 
