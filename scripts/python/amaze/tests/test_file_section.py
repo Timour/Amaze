@@ -2498,6 +2498,85 @@ class ReviewFixesTest(unittest.TestCase):
                          "cache")
 
 
+class _EscDuringTheFirstRender:
+    """A geometry pass whose user presses Esc while the first file renders."""
+
+    def __init__(self, *args, **kwargs):
+        self.ticks = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def updateProgress(self, fraction=-1.0):
+        self.ticks += 1
+        if self.ticks > 1:
+            raise hou.OperationInterrupted()
+
+
+class GeometryThatRendersNothingIsRememberedTest(unittest.TestCase):
+    """A geometry file that yields no picture waits for a change or Rerender Thumbnail."""
+
+    def _geometry(self):
+        folder = tempfile.mkdtemp(prefix="amaze_geo_none_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        path = os.path.join(folder, "rig.fbx")
+        with open(path, "w") as handle:
+            handle.write("no cookable geometry")
+        prefs = _Prefs([folder])
+        self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
+        return folder, path, file_library.FileFiles(prefs)
+
+    def _rendering(self, rendered):
+        from amaze.render import thumbs
+
+        def nothing(_renderer, path, out_path, size):
+            rendered.append(path)
+            return False
+
+        return mock.patch.object(
+            thumbs.ThumbNailRenderer, "create_thumb_geo_file", nothing)
+
+    def test_a_file_that_renders_nothing_is_not_rendered_again(self):
+        folder, _path, model = self._geometry()
+        rendered = []
+        with self._rendering(rendered):
+            model.set_folder(folder)
+            model.set_folder(folder)
+        self.assertEqual(
+            1, len(rendered),
+            "a geometry file that yielded no thumbnail went through the "
+            "blocking render pass again on the next visit")
+
+    def test_a_change_or_rerender_tries_again(self):
+        folder, path, model = self._geometry()
+        rendered = []
+        with self._rendering(rendered):
+            model.set_folder(folder)
+            model.rerender_thumbnails([0])
+            with open(path, "a") as handle:
+                handle.write(" - edited")
+            model.set_folder(folder)
+        self.assertEqual(3, len(rendered),
+                         "Rerender Thumbnail or an edited file did not "
+                         "get another render")
+
+    def test_an_interrupted_render_is_not_remembered(self):
+        folder, _path, model = self._geometry()
+        rendered = []
+        with self._rendering(rendered):
+            with mock.patch.object(hou, "InterruptableOperation",
+                                   _EscDuringTheFirstRender):
+                model.set_folder(folder)
+            model.set_folder(folder)
+        self.assertEqual(
+            2, len(rendered),
+            "an Esc during a render was remembered as a file with no "
+            "geometry, so it never renders again")
+
+
 class LocationColorTest(unittest.TestCase):
     """Locations carry colours like categories do: the sidebar answers the SAME role the asset sidebars answer so one delegate paints both, and the tile reads the colour of the location its file came from."""
 

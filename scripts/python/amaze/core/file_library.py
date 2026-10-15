@@ -381,6 +381,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
                 cached_png = geo_cache.valid_path(full)
                 if cached_png is not None:
                     self._row_specs.append((key, "file", cached_png))
+                elif geo_cache.known_failure(full):
+                    self._row_specs.append((key, "missing", full))    # rendered nothing as it stands
                 else:
                     self._row_specs.append((key, "render", full))
                     geo_misses.append((row, full))
@@ -540,6 +542,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                                              GEO_PASS_LOG_BUDGET):
                             debug.event("file", "geo thumbnail failed",
                                         file=full, error=str(exc))
+                    pictured = False
                     try:
                         if ok:
                             image = QtGui.QImage(tmp_path)
@@ -547,11 +550,15 @@ class FileFiles(grid_columns.GridColumnsMixin,
                                 cache.put(full, image)
                                 thumbnails.engine.deposit(
                                     ("geo", full, cache.cache_dir), image)
+                                pictured = True
                     finally:  # gone before the next item, whatever happened - nothing may be left for a later render to inherit and report as its own
                         try:
                             os.remove(tmp_path)
                         except OSError:
                             pass
+                    if not pictured:
+                        operation.updateProgress(done / total)    # an Esc'd render ends imageless too; this raises
+                        cache.remember_failure(full)
                     done += 1
                     self.progress_changed.emit(done, total)
                     QtWidgets.QApplication.processEvents(  # the pass blocks the event loop; pump paints only, so finished tiles appear mid-pass without letting input re-enter the panel
