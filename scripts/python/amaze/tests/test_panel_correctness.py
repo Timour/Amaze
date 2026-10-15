@@ -1165,6 +1165,40 @@ class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
             "the %s tab shows another section's tiles" % landed)
 
 
+class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
+    """Closing Preferences over File rescans its folder once, and not at all while Online shows."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        self.files = self.panel.file_files_model
+
+    def _scans_while(self, action):
+        from unittest import mock
+        with mock.patch.object(self.files, "_scan",
+                               wraps=self.files._scan) as scan:
+            action()
+            QtWidgets.QApplication.processEvents()
+        return scan.call_count
+
+    def _close_preferences(self):
+        self.panel._prefs_dialog_closed(self.panel.prefs.dir)
+
+    def test_the_folder_showing_is_scanned_once(self):
+        one_pass = self._scans_while(self.files.refresh_current_folder)
+        self.assertGreater(one_pass, 0, "premise: File shows a folder")
+        self.assertEqual(one_pass, self._scans_while(self._close_preferences),
+                         "closing Preferences scanned the folder more than once")
+
+    def test_nothing_is_scanned_while_online_shows(self):
+        self.panel.enter_online_world()
+        self.addCleanup(self.panel.leave_online_world)
+        self.assertTrue(self.panel._is_online(), "premise: online")
+        self.assertEqual(0, self._scans_while(self._close_preferences),
+                         "closing Preferences scanned a File folder nobody sees")
+
+
 class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):
     """Three floors: the grid pays for both side panes, so the panel's proves nothing."""
 

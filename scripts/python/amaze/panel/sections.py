@@ -1519,10 +1519,9 @@ class FileSection(FolderSection):
     last_folder_pref = "last_file_folder"
 
     def prefs_changed(self) -> None:
-        folders = self._p(self.folders_attr)    # Geometry Shading/Background changed in Preferences must show without re-clicking the folder, since geometry rows still render that way
+        folders = self._p(self.folders_attr)    # the folder itself is rescanned by the panel, once
         if folders is not None:
             folders.refresh_counts()    # Show Unknown Files changes what counts as a row, and the sidebar numbers must agree with the grid
-        self.panel.update_selected_cat()
 
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)
