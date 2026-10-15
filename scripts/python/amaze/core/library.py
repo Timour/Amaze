@@ -166,20 +166,15 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         """One stored row becomes one record - THE reader every load path shares (construction, a library switch, an adopted peer row), so a subclass with a rule about its rows states it once."""
         return material.Material.from_dict(row)
 
-    def _get__mat_paths(self):
-        self._mat_paths = []
-        for elem in range(self.rowCount()):
-            mat_id = self._assets[elem].mat_id
-            is_fav = self._assets[elem].fav
-            path = (
-                self.preferences.dir
-                + self.preferences.img_dir
-                + mat_id
-                + self.preferences.img_ext
-            )
-            if tile_icons.is_custom(self.tile_icon(elem)):  # loaded like a render: the PATH swaps
-                path = tile_icons.icon_image_path(self.preferences, mat_id)
-            self._mat_paths.append((path, is_fav, elem))
+    def _tile_image_path(self, row: int) -> str:
+        """The file a row's tile loads: its chosen icon, else its render; "" for an unsafe id."""
+        mat_id = self._assets[row].mat_id
+        try:
+            if tile_icons.is_custom(self.tile_icon(row)):
+                return tile_icons.icon_image_path(self.preferences, mat_id)
+            return tile_icons.thumbnail_path(self.preferences, mat_id)
+        except hostos.PathEscape:
+            return ""
 
     def switch_model_data(self):
         """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""
@@ -210,8 +205,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def rebuild_thumbs(self):
         """Rebuild the row->path and key->row maps. No loading happens here - the engine loads on first view (data()), so opening a big library costs only the visible screen."""
-        self._mat_paths = []
-        self._get__mat_paths()
+        self._mat_paths = [self._tile_image_path(row)
+                           for row in range(self.rowCount())]
         self._thumb_rows = {
             self._thumb_key(row): row for row in range(self.rowCount())
         }
@@ -221,11 +216,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if not 0 <= row < self.rowCount():
             return
         mat_id = self._assets[row].mat_id
-        path = (self.preferences.dir + self.preferences.img_dir
-                + mat_id + self.preferences.img_ext)
-        if tile_icons.is_custom(self.tile_icon(row)):
-            path = tile_icons.icon_image_path(self.preferences, mat_id)
-        entry = (path, self._assets[row].fav, row)
+        entry = self._tile_image_path(row)
         if row < len(self._mat_paths):
             self._mat_paths[row] = entry
         elif row == len(self._mat_paths):
@@ -435,7 +426,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if tile_icons.face_for(self, row) == "generic":
             return tile_icons.chosen_image(self, row)
         key = self._thumb_key(row)
-        image = thumbnails.engine.request_file(key, self._mat_paths[row][0])
+        image = thumbnails.engine.request_file(key, self._mat_paths[row])
         if image is not None:
             return image
         if thumbnails.engine.is_missing(key):

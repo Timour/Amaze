@@ -207,6 +207,40 @@ class TheThumbnailPathIsComposedInOnePlace(unittest.TestCase):
             "the composed icon resolves to different places depending "
             "on a trailing separator: %s" % sorted(answers))
 
+    def _tile_reads(self, model, row):
+        asked = []
+        with mock.patch.object(thumbnails.engine, "request_file",
+                               lambda key, path: asked.append(path)):
+            model._decoration_image(model.index(row, 0))
+        return asked
+
+    def test_the_tile_reads_the_file_the_renderers_write(self):
+        """A tile asks the loader for the path `thumbnail_path` names, separator or not."""
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        row = next(i for i, a in enumerate(model.assets)
+                   if str(a.mat_id) not in ("", "-1"))
+        self.prefs.dir = self.prefs.dir.rstrip(os.sep)
+        model.rebuild_thumbs()
+        self.assertEqual(
+            [tile_icons.thumbnail_path(self.prefs, model.assets[row].mat_id)],
+            self._tile_reads(model, row),
+            "the tile composes its image path by hand, and without a "
+            "trailing separator it reads a file the renderers never write")
+
+    def test_an_unsafe_id_never_points_a_tile_outside_the_library(self):
+        from amaze.core import material
+        model = library_mod.MaterialLibrary(preferences=self.prefs)
+        model._assets.append(material.Material.from_dict(
+            {"id": "../../../Documents/x", "name": "Escapee"}))
+        model.rebuild_thumbs()
+        library = os.path.realpath(self.prefs.dir)
+        outside = [path for path in self._tile_reads(model, model.rowCount() - 1)
+                   if path and not os.path.realpath(path).startswith(library)]
+        self.assertEqual(
+            [], outside,
+            "an id read verbatim from library.json sent the tile loader "
+            "outside the library")
+
 
 class TheCacheKeyCarriesTheLibrary(unittest.TestCase):
     """The RAM cache key carries the library, so two libraries holding one asset id do not share an image."""

@@ -116,16 +116,16 @@ class ChoiceTest(unittest.TestCase):
         return len(self.model.assets) - 1
 
     def test_setting_an_icon_swaps_the_tile_path(self):
-        before = self.model._mat_paths[self.row][0]
+        before = self.model._mat_paths[self.row]
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
-        after = self.model._mat_paths[self.row][0]
+        after = self.model._mat_paths[self.row]
         self.assertNotEqual(before, after)
         self.assertTrue(after.endswith("_icon.png"))
         self.assertTrue(os.path.exists(after), "the icon PNG was not written")
 
     def test_the_render_underneath_is_never_touched(self):
         """An icon must be reversible - so it is written BESIDE the thumbnail, and clearing brings the original path back."""
-        render_path = self.model._mat_paths[self.row][0]
+        render_path = self.model._mat_paths[self.row]
         with open(render_path, "wb") as handle:
             handle.write(b"pretend this is a rendered thumbnail")
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
@@ -134,7 +134,7 @@ class ChoiceTest(unittest.TestCase):
             self.assertEqual(b"pretend this is a rendered thumbnail",
                              handle.read())
         self.model.set_tile_icon(self.row, {})
-        self.assertEqual(render_path, self.model._mat_paths[self.row][0])
+        self.assertEqual(render_path, self.model._mat_paths[self.row])
 
     def test_clearing_an_icon_the_record_never_had_still_works(self):
         """The accept path: the ordinary clear must not change."""
@@ -201,7 +201,7 @@ class ChoiceTest(unittest.TestCase):
     def test_a_library_without_its_png_files_still_shows_icons(self):
         """The choice lives on the asset, so a library copied without its _icon.png files composes them again rather than showing Missing Thumbnail."""
         self.model.set_tile_icon(self.row, {"name": "layers", "bg": "#4af2a1"})
-        os.remove(self.model._mat_paths[self.row][0])
+        os.remove(self.model._mat_paths[self.row])
         image = self.model._missing_thumb_image(self.row)
         self.assertIsNotNone(image)
         self.assertEqual("#4af2a1", QtGui.QColor(image.pixel(4, 4)).name())
