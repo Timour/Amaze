@@ -577,6 +577,7 @@ class DatabaseConnector:
             changed = True
         if changed:
             self.save()
+            self._rebind_model_queues()    # a model builds from `_data`, which holds what this merged
 
     def set(self, assets: dict) -> None:
         """Set data without saving and never rebind the containers - models alias them - so contents change in place and incoming values are copied first because a caller may hand back the very objects being cleared."""
@@ -943,10 +944,14 @@ class DatabaseConnector:
         self._loaded_format = 0
         self._format_ahead = False
         self._format_reported = False
-        self._adopted = []    # what a merge left for the models is that file's too - rebound, never cleared
+        self._rebind_model_queues()    # what a merge left for the models is that file's too
+        self._forgotten = set()
+
+    def _rebind_model_queues(self) -> None:
+        """Empty what merges left for the models - REBOUND, so a rollback can put the old lists back."""
+        self._adopted = []
         self._adopted_fields = []
         self._dropped = []
-        self._forgotten = set()
 
     def _hold_unreadable(self, path: str, document: dict) -> None:
         """Serve `path` with `document` and refuse every write there: its file would not read."""

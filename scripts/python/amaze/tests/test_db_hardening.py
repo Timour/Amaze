@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(
@@ -2808,6 +2809,37 @@ class ALibrarySwitchDropsTheOldBaseline(_Case):
         self.assertEqual(["THEIRS"], [str(r["id"]) for r in db.take_adopted()],
                          "the rollback lost what the merge left for this "
                          "library's model")
+
+
+class ALoadHandsAModelEachRowOnce(_Case):
+    """A model builds from what `load` answers, so the load's own save leaves it nothing queued."""
+
+    def test_a_row_merged_by_the_normalising_save_is_not_queued_too(self):
+        legacy = self._document(count=1)
+        legacy["categories"] = ["All", "Wood"]
+        self._write(legacy)
+        theirs = self._document(count=1)
+        theirs["categories"] = ["All", "Wood"]
+        theirs["assets"].append({"id": "THEIRS", "name": "added elsewhere"})
+        real_loads, armed = json.loads, [True]
+
+        def peer_lands(*args, **kwargs):
+            parsed = real_loads(*args, **kwargs)
+            if armed[0]:
+                armed[0] = False
+                self._write(theirs)
+            return parsed
+
+        with mock.patch.object(json, "loads", peer_lands):
+            db, data = self._load()
+        self.assertIn("THEIRS", [str(r["id"]) for r in data["assets"]],
+                      "premise: the load's save merged the other machine's row")
+        handed = ([str(r["id"]) for r in data["assets"]]
+                  + [str(r["id"]) for r in db.take_adopted()])
+        self.assertEqual(
+            1, handed.count("THEIRS"),
+            "the model builds the row from the load and then adopts it "
+            "again from the queue, so it shows twice")
 
 
 class TheMembershipBaselineFollowsEverySave(_Case):
