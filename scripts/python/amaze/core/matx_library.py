@@ -366,13 +366,12 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         if key in self._requested:
             return None
 
-        if rec.preview_url:    # disk-cache hit decodes here and now - a seen preview must not need a worker (rebrowsing once re-downloaded everything); the texture cache's main-thread hit shape
+        if rec.preview_url:    # a preview already on disk never goes back to the download worker
             path = self._cache_path(rec)
-            if os.path.exists(path):
-                cached = QtGui.QImage(path)
-                if not cached.isNull():
-                    thumbnails.engine.deposit(key, cached)
-                    return cached
+            if not thumbnails.engine.is_missing(key) and (
+                    thumbnails.engine.is_pending(key)
+                    or os.path.exists(path)):
+                return thumbnails.engine.request_file(key, path)    # read off-thread; a miss lands back here
 
         self._requested.add(key)
         self._pending.append(rec)

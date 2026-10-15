@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 import zipfile
 
@@ -1853,6 +1854,66 @@ class OnlineTilePaintingTest(unittest.TestCase):
                          vex_syntax.BACKGROUND.name(),
                          "the snippet preview is not the wrangle-"
                          "editor field the Code section paints")
+
+    def _cached_preview(self, valid):
+        """A model showing one URL record whose preview is already in the disk cache."""
+        from PySide6 import QtGui
+
+        from amaze.core import matx_library, matx_sources, thumbnails
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        record = matx_sources.MatxRecord(
+            source="PolyHaven", uid="d7-%s" % valid, title="Cached",
+            category="Metal", preview_url="https://example.invalid/p.png")
+        path = model._cache_path(record)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        self.addCleanup(lambda: os.path.exists(path) and os.remove(path))
+        if valid:
+            canvas = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_RGB32)
+            canvas.fill(QtGui.QColor("#123456"))
+            canvas.save(path, "PNG")
+        else:
+            with open(path, "wb") as handle:
+                handle.write(b"not an image")
+        model._records = [record]
+        model._key_rows = {model._preview_key(record): 0}
+        model._flush_pending = lambda: None
+        key = model._preview_key(record)
+        thumbnails.engine.discard(key)
+        self.addCleanup(thumbnails.engine.discard, key)
+        return model, key
+
+    def _settle(self, until):
+        deadline = time.monotonic() + 10
+        while not until() and time.monotonic() < deadline:
+            QtWidgets.QApplication.processEvents()
+
+    def test_a_cached_preview_is_decoded_off_the_gui_thread(self):
+        from amaze.core import thumbnails
+        model, key = self._cached_preview(True)
+        index = model.index(0, 0)
+        self.assertIsNone(
+            model.data(index, QtCore.Qt.ItemDataRole.DecorationRole),
+            "the cached preview was decoded inside data(), on the GUI "
+            "thread")
+        self._settle(lambda: thumbnails.engine.peek(key) is not None)
+        self.assertIsNotNone(model.data(
+            index, QtCore.Qt.ItemDataRole.DecorationRole),
+            "the off-thread load never landed")
+        self.assertEqual([], model._pending, "a cached preview was "
+                                             "queued for download")
+
+    def test_a_cached_preview_that_will_not_decode_goes_to_the_worker(self):
+        from amaze.core import thumbnails
+        model, key = self._cached_preview(False)
+        index = model.index(0, 0)
+        model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
+        self._settle(lambda: thumbnails.engine.is_missing(key))
+        model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertEqual([key], [model._preview_key(r)
+                                 for r in model._pending],
+                         "a broken cached preview never reached the "
+                         "worker that clears it")
 
     def test_a_preview_job_may_be_a_callable(self):
         from amaze.core import matx_library
