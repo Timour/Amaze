@@ -394,6 +394,24 @@ class DeletingAUserDropsTheirBlock(PerUserCase):
                          "a second pane wrote the deleted user's block back")
         self.assertIn(keep, held)
 
+    def test_a_user_put_back_and_picked_again_is_saved_again(self):
+        """A restored `users.json` can bring a deleted uid back; picking it keeps their view state."""
+        from amaze.core import users
+        p, keep, gone = self._two_users_with_blocks()
+        users.adopt(p, keep)
+        self.assertTrue(users.delete(p, gone))
+        self.assertTrue(users._store(p).set(gone, {"name": "Sienna"}),
+                        "premise: the record is back in users.json")
+        users.adopt(p, gone)
+        p.view_mode = "list"
+        p.save()
+        held = self._blocks(p)
+        self.assertEqual(
+            "list", held.get(gone, {}).get("view_mode"),
+            "the user came back and was picked, and their view state "
+            "is still left out of every save this session")
+        self.assertIn(keep, held)
+
 
 class TheTableAgreesWithInit(PerUserCase):
 

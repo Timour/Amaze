@@ -13,7 +13,7 @@ def _settings_value(value):
 
 SPEC = keyed_store.bind(keyed_store.SETTINGS, _settings_value)  # settings.json is a registered store; only the normaliser lives here
 
-_deleted_users: set = globals().get("_deleted_users", set())    # every pane leaves these blocks out
+_deleted_users: set = globals().get("_deleted_users", set())    # left out of every save until picked again
 
 
 def _encode_path(path):
@@ -323,6 +323,7 @@ class _Persistence:
             self._users_blocks[old] = block
         if not new:
             return
+        _deleted_users.discard(new)
         block = self._users_blocks.get(new)
         if block is None:
             return  # a user with no block on this machine inherits what is on screen, which is what keeps the arrangement across a first mint
