@@ -577,6 +577,7 @@ class SectionTabBar(QtWidgets.QWidget):
     TRAY_LEFT = theme.ui_px(_DRAWN["tray_left"])
     CHIP_HEIGHT = theme.ui_px(_DRAWN["chip_height"])
     CHIP_RADIUS = theme.ui_px(4)
+    CHIP_RING_W = theme.ui_px(1.0)
     CHIP_PAD_X = theme.ui_px(_DRAWN["chip_pad"])
     CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
     CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
@@ -645,7 +646,7 @@ class SectionTabBar(QtWidgets.QWidget):
     def cancel_visible(self) -> bool:
         return self._cancel_visible
 
-    def _cancel_rect(self):
+    def _cancel_rect(self, rects=None):
         """The Cancel chip's rect at the strip's right end, level with the tabs - or None while hidden, or while the strip is too narrow for the chip to clear the last tab (a hit there would be ambiguous, so neither paint nor press resolves)."""
         if not self._cancel_visible:
             return None
@@ -654,7 +655,8 @@ class SectionTabBar(QtWidgets.QWidget):
         width = metrics.horizontalAdvance(self.CANCEL_LABEL) \
             + 2 * self.CHIP_PAD_X
         x = self.width() - self.TRAY_LEFT - self.CHIP_INSET - width
-        rects = self._chip_rects()
+        if rects is None:
+            rects = self._chip_rects()
         tabs_right = rects[-1][1].right() if rects else 0
         if x < tabs_right + self.CHIP_GAP:
             return None
@@ -700,9 +702,10 @@ class SectionTabBar(QtWidgets.QWidget):
             self.unsetCursor()
             self.update()
 
-    def _tray_rect(self):
+    def _tray_rect(self, rects=None):
         """The tray behind the tabs, flush with the strip's bottom, or None with no tabs."""
-        rects = self._chip_rects()
+        if rects is None:
+            rects = self._chip_rects()
         if not rects:
             return None
         top = self.height() - self.TRAY_HEIGHT
@@ -715,7 +718,7 @@ class SectionTabBar(QtWidgets.QWidget):
         painter.fillRect(self.rect(), self.STRIP_COLOR)
 
         rects = self._chip_rects()
-        tray = self._tray_rect()
+        tray = self._tray_rect(rects)
         if tray is not None:
             tray_path = QtGui.QPainterPath()
             tray_path.addRoundedRect(    # one radius past the bottom, so only the top corners round
@@ -731,17 +734,8 @@ class SectionTabBar(QtWidgets.QWidget):
                 chip_path = QtGui.QPainterPath()
                 chip_path.addRoundedRect(rect, self.CHIP_RADIUS, self.CHIP_RADIUS)
                 painter.fillPath(chip_path, self.CHIP_FILL)
-                ring_w = theme.ui_px(1.0)
-                half = ring_w / 2.0
-                pen = QtGui.QPen(self.CHIP_RING)
-                pen.setWidthF(ring_w)
-                painter.setPen(pen)
-                painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-                painter.drawRoundedRect(
-                    rect.adjusted(half, half, -half, -half),
-                    self.CHIP_RADIUS,
-                    self.CHIP_RADIUS,
-                )
+                draw_ring(painter, rect, self.CHIP_RING, self.CHIP_RING_W,
+                          self.CHIP_RADIUS)
             if checked:
                 painter.setPen(self.TEXT_SELECTED)
             elif key == self._hover_key:
@@ -750,19 +744,10 @@ class SectionTabBar(QtWidgets.QWidget):
                 painter.setPen(self.TEXT_UNSELECTED)
             painter.drawText(rect, QtCore.Qt.AlignmentFlag.AlignCenter, label)
 
-        cancel = self._cancel_rect()
+        cancel = self._cancel_rect(rects)
         if cancel is not None:   # ring only, no fill: a chip that reads as a BUTTON beside tabs that read as tabs
-            ring_w = theme.ui_px(1.0)
-            half = ring_w / 2.0
-            pen = QtGui.QPen(self.CHIP_RING)
-            pen.setWidthF(ring_w)
-            painter.setPen(pen)
-            painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-            painter.drawRoundedRect(
-                cancel.adjusted(half, half, -half, -half),
-                self.CHIP_RADIUS,
-                self.CHIP_RADIUS,
-            )
+            draw_ring(painter, cancel, self.CHIP_RING, self.CHIP_RING_W,
+                      self.CHIP_RADIUS)
             painter.setPen(self.TEXT_HOVER if self._cancel_hover
                            else self.TEXT_UNSELECTED)
             painter.drawText(cancel, QtCore.Qt.AlignmentFlag.AlignCenter,
@@ -774,17 +759,20 @@ class SectionTabBar(QtWidgets.QWidget):
 def draw_chip(painter, rect, fill, ring, inner_border=None):
     """Draw the design's rounded button chip - fill, a light outer ring, and optionally a darker one just inside it, which is what separates the clicked state from hover; shared by IconMenuButton and ChipToggleButton so the two hover looks cannot drift apart."""
     ring_w = theme.ui_px(1)
-    half = ring_w / 2.0
-    outer = QtCore.QRectF(rect).adjusted(half, half, -half, -half)
-    painter.setPen(QtGui.QPen(ring, ring_w))
-    painter.setBrush(fill)
-    painter.drawRoundedRect(outer, theme.ui_px(5), theme.ui_px(5))
+    draw_ring(painter, rect, ring, ring_w, theme.ui_px(5), fill)
     if inner_border is not None:
-        inset = ring_w + half
-        inner = QtCore.QRectF(rect).adjusted(inset, inset, -inset, -inset)
-        painter.setPen(QtGui.QPen(inner_border, ring_w))
-        painter.setBrush(QtCore.Qt.BrushStyle.NoBrush)
-        painter.drawRoundedRect(inner, theme.ui_px(4), theme.ui_px(4))
+        inner = QtCore.QRectF(rect).adjusted(ring_w, ring_w, -ring_w, -ring_w)
+        draw_ring(painter, inner, inner_border, ring_w, theme.ui_px(4))
+
+
+def draw_ring(painter, rect, ink, width, radius,
+              fill=QtCore.Qt.BrushStyle.NoBrush) -> None:
+    """A rounded ring `width` wide drawn wholly inside `rect`, over `fill`."""
+    half = width / 2.0
+    painter.setPen(QtGui.QPen(ink, width))
+    painter.setBrush(fill)
+    painter.drawRoundedRect(
+        QtCore.QRectF(rect).adjusted(half, half, -half, -half), radius, radius)
 
 
 class ToggleSwitch(QtWidgets.QCheckBox):
