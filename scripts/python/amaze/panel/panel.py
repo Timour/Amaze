@@ -2113,7 +2113,7 @@ class AmazePanel(QtWidgets.QWidget):
                 "material"
             ]
             if self._is_online():
-                self._section_before_online = keys[0]    # a SECTION KEY IS NOT A SOURCE NAME: `_on_tab_toggled` would forward it to `open_online_source`, so the section behind the online world is only re-pointed here and switched when it is actually shown again
+                self.current_section = keys[0]    # a tab here is a SOURCE; leaving Online shows this one
             else:
                 self._on_tab_toggled(keys[0], True)
 
@@ -2258,7 +2258,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _is_online(self) -> bool:
         """Is the online world showing? The mode alone answers it - the online world is its own world with its own tab strip of sources, not a view mode over one section, so no section key is part of the question. ONE predicate, so no handler works it out for itself."""
-        return bool(getattr(self, "online_mode", False))    # current_section goes on naming the LOCAL section underneath, untouched while you are away, and that is what leaving puts you back on
+        return bool(getattr(self, "online_mode", False))    # `current_section` still names the local section underneath
 
     def _on_online_source(self, action) -> None:
         """A View menu material-source entry was clicked. Material Library returns to the local library; an online source enters its browser."""
@@ -2277,7 +2277,6 @@ class AmazePanel(QtWidgets.QWidget):
             self._sync_online_chip()
             return
         self._capture_section_state()    # capture on the way IN as well, or leaving (through `_apply_context` -> `_restore_section_state`) puts you back on the category stored at the last TAB SWITCH rather than what you were looking at
-        self._section_before_online = self.current_section
         self.online_mode = True
         first = source or self._online_segments()[0][0]
         self._build_section_tabs()
@@ -2285,16 +2284,12 @@ class AmazePanel(QtWidgets.QWidget):
         self._sync_online_chip()
 
     def leave_online_world(self) -> None:
-        """Back to the local sections, and to the one you left from."""
+        """Back to the local sections, on the one left from, or the first shown if it was hidden."""
         if not self._is_online():
             return
-        back = getattr(self, "_section_before_online", None) \
-            or self.current_section
         self.exit_online_materials()
-        self._build_section_tabs()
-        if back in dict(self.ALL_SECTIONS):
-            self.section_tabs.setChecked(back)
-        section = self._section()    # entering repointed every shared widget at the online models, so leaving has to repoint them back, and nothing else will: on the plain path `back` is a section we never left, so setChecked emits nothing and no _on_tab_toggled or activate() follows. WATCH: `_apply_enabled_sections` re-points `_section_before_online` while online, and on THAT path back != current_section and setChecked does emit - this repoint has to be correct either way
+        self._build_section_tabs()    # checks the tab of `current_section`, emitting nothing
+        section = self._section()    # the section underneath: no tab click re-points the widgets here
         if section is not None:
             self._apply_context(section, section.key)    # THE ONE PATH, as entering already takes - `activate()` alone would leave the toolbar to a separate call
 

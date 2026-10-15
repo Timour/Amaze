@@ -1,6 +1,7 @@
 """Panel and UI correctness: one route per question, not three."""
 
 import ast
+import json
 import os
 import re
 import shutil
@@ -1123,6 +1124,45 @@ class TheOnlineChipIsLiveOnceALibraryIsOpen(_PanelCase):
     def test_setup_turns_the_chip_on(self):
         self.assertTrue(self.panel.btn_online.isEnabled(),
                         "a panel with a library opened with Online off")
+
+
+class LeavingOnlineLandsOnAShownSection(unittest.TestCase):
+    """Online entered from Node, Node hidden in Preferences, then Online left."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _close_preferences_hiding(self, key):
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["enabled_sections"] = [k for k in data["enabled_sections"]
+                                    if k != key]
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        self.panel._prefs_dialog_closed(self.panel.prefs.dir)
+        QtWidgets.QApplication.processEvents()
+
+    def test_the_grid_shows_the_section_of_the_tab_it_lands_on(self):
+        panel = self.panel
+        panel.section_tabs.setChecked("cop")
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual("cop", panel.current_section, "premise: on Node")
+        panel.enter_online_world()
+        self.assertTrue(panel._is_online(), "premise: online")
+
+        self._close_preferences_hiding("cop")
+        panel.leave_online_world()
+        QtWidgets.QApplication.processEvents()
+
+        landed = panel.section_tabs._checked_key
+        self.assertIn(landed, panel.prefs.enabled_sections,
+                      "leaving Online landed on a hidden tab")
+        self.assertEqual(landed, panel.current_section,
+                         "the tab shown and the section behind it disagree")
+        self.assertIs(
+            panel.sections[landed].stack().proxy, panel.thumblist.model(),
+            "the %s tab shows another section's tiles" % landed)
 
 
 class TheGridCannotBeSqueezedOutOfExistence(unittest.TestCase):

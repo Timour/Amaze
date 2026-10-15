@@ -665,7 +665,6 @@ class TheOnlineWorld(unittest.TestCase):
             with self.subTest(section=key):
                 section = panel.sections[key]
                 panel.current_section = key
-                panel._section_before_online = key
                 panel.online_mode = True          # pretend we are there
                 with mock.patch.object(type(section), "activate") as spy:
                     panel.leave_online_world()
