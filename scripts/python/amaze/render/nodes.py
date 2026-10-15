@@ -685,11 +685,13 @@ class NodeHandler:
                 return label
         return ""
 
-    def import_targets(self, mat: material.Material) -> set:
-        """Which of {"mat", "lop"} this material can be imported into."""
+    def import_targets(self, mat: material.Material, saved_type=None) -> set:
+        """Which of {"mat", "lop"} this material can be imported into; `saved_type` spares a read."""
         if material.is_karma_renderer(mat.renderer):
             return {"mat", "lop"}
-        if self.get_saved_node_type(mat) in self.LOP_CAPABLE_NODE_TYPES:
+        if saved_type is None:
+            saved_type = self.get_saved_node_type(mat)
+        if saved_type in self.LOP_CAPABLE_NODE_TYPES:
             return {"mat", "lop"}
         if "Redshift" in mat.renderer and node_type_available(
                 "rs_usd_material_builder"):    # a legacy container is rebuilt into the USD one on its way into a LOP library (load_items_file), so every Redshift material is LOP-capable while the plugin offers that container
@@ -767,7 +769,7 @@ class NodeHandler:
 
         self._context_override = context_node
         try:
-            ok, reason = self.update_context(mat, target)
+            ok, reason = self.update_context(mat, target, saved_type)
         except hou.Error as exc:
             self._context_override = None
             return (False, "cannot import here: %s" % exc)
@@ -781,14 +783,15 @@ class NodeHandler:
         try:
             self._created_cop_net = self.restore_cop_companion(mat)
             self._hou_parent = hou.node("/obj").createNode("matnet")
-            debug.event(
-                "import", "routing by renderer",
-                material=mat.name, renderer=mat.renderer,
-                karma_family=material.is_karma_renderer(mat.renderer),
-                targets=sorted(self.import_targets(mat)),
-                saved_node_type=saved_type,
-            )
-            rebuilt, refusal = self._load_saved(mat)
+            if debug.is_on():
+                debug.event(
+                    "import", "routing by renderer",
+                    material=mat.name, renderer=mat.renderer,
+                    karma_family=material.is_karma_renderer(mat.renderer),
+                    targets=sorted(self.import_targets(mat, saved_type)),
+                    saved_node_type=saved_type,
+                )
+            rebuilt, refusal = self._load_saved(mat, saved_type)
             if not rebuilt:
                 return (False, refusal)
 
@@ -919,9 +922,10 @@ class NodeHandler:
             debug.event("import", "cleanup could not remove a node",
                         node=str(target), error=str(exc))
 
-    def update_context(self, mat: material.Material, target: str = "auto"):
+    def update_context(self, mat: material.Material, target: str = "auto",
+                       saved_type=None):
         """Set _import_path for target auto|mat|lop; only lop can fail."""
-        allowed = self.import_targets(mat)
+        allowed = self.import_targets(mat, saved_type)
 
         if target == "mat":
             world = "mat"
@@ -1021,16 +1025,16 @@ class NodeHandler:
                         material=mat.name, error=str(exc))
             return ""
 
-    def _load_saved(self, mat: material.Material) -> tuple:
+    def _load_saved(self, mat: material.Material, saved_type=None) -> tuple:
         """Rebuild the saved builder under `_hou_parent` by renderer family: (ok, refusal)."""
         if material.is_karma_renderer(mat.renderer):
             self.load_interface_mtlx(mat)
             self.load_items_file_mtlx(mat)
         elif "Redshift" in mat.renderer:
-            self.load_interface_other(mat, "redshift_vopnet")
+            self.load_interface_other(mat, "redshift_vopnet", saved_type)
             self.load_items_file(mat)
         elif "Octane" in mat.renderer:
-            self.load_interface_other(mat, "octane_vopnet")
+            self.load_interface_other(mat, "octane_vopnet", saved_type)
             self.load_items_file(mat)
         else:
             return (False, debug.Damage(
@@ -1060,9 +1064,12 @@ class NodeHandler:
             read_builder_sidecar(self._builder_sidecar(mat)),
         )
 
-    def load_interface_other(self, mat: material.Material, builder_name: str) -> None:
+    def load_interface_other(self, mat: material.Material, builder_name: str,
+                             saved_type=None) -> None:
         """Rebuild the saved container, no exec: type read, parms from sidecar."""
-        saved_type = self.get_saved_node_type(mat) or builder_name
+        if saved_type is None:
+            saved_type = self.get_saved_node_type(mat)
+        saved_type = saved_type or builder_name
         if node_type_available(saved_type):
             builder = self._hou_parent.createNode(saved_type)
             for node in builder.children():

@@ -534,6 +534,59 @@ class TheRedshiftAndOctaneSaveIsOneSave(unittest.TestCase):
                 "renderer would raise after writing the files" % name)
 
 
+class ARedshiftImportReadsItsInterfaceOnce(unittest.TestCase):
+    """A Redshift or Octane import reads its `.interface` once, and logs its routing only when on."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.row = next(r for r, a in enumerate(self.model.assets)
+                        if a.name == "Metal")
+
+    def _import(self, renderer):
+        """Import the fixture's Metal as `renderer` into /mat; answers the `.interface` read count."""
+        self.model.assets[self.row].renderer = renderer
+        reads = []
+        real_open = open
+
+        def counting_open(path, *args, **kwargs):
+            if str(path).endswith(".interface"):
+                reads.append(path)
+            return real_open(path, *args, **kwargs)
+
+        with mock.patch.object(nodes, "open", counting_open, create=True):
+            ok, reason, created = self.model.import_asset_to_scene(
+                self.model.index(self.row, 0), target="mat")
+        for node in created:
+            self.addCleanup(node.destroy)
+        self.assertTrue(ok, reason)
+        return len(reads)
+
+    def test_each_renderer_reads_the_interface_once(self):
+        for renderer in ("Redshift", "Octane"):
+            with self.subTest(renderer=renderer):
+                self.assertEqual(1, self._import(renderer),
+                                 "the import re-read its .interface")
+
+    def test_the_routing_record_is_built_only_with_the_log_on(self):
+        from amaze.core import debug
+        for on in (False, True):
+            with mock.patch.object(debug, "is_on", return_value=on), \
+                    mock.patch.object(debug, "event") as event:
+                self._import("Redshift")
+            routed = [c for c in event.call_args_list
+                      if c.args[:2] == ("import", "routing by renderer")]
+            with self.subTest(debug_on=on):
+                self.assertEqual(1 if on else 0, len(routed))
+            if on:
+                self.assertEqual("subnet", routed[0].kwargs["saved_node_type"])
+                self.assertEqual("Redshift", routed[0].kwargs["renderer"])
+                self.assertIn("mat", routed[0].kwargs["targets"])
+
+
 class TestUnsafeAssetIds(unittest.TestCase):
     """An id out of library.json becomes a FILENAME, so it decides which file the loader opens - and the app does not author the index alone, since a library can arrive edited, synced or damaged. Both halves are tested: the boundary check that rejects the shape, and the containment that catches an escape the shape check missed."""
 
