@@ -183,10 +183,7 @@ def build_stepped_ramp(hex_colors: list) -> hou.Ramp:
     return hou.Ramp(bases, keys, values)
 
 
-RAMP_BASES = (  # the interpolations the Apply as submenu offers, in Houdini's own order - the menu is generated from this table, so a basis added here appears with no menu edit
-    "Constant", "Linear", "CatmullRom", "MonotoneCubic",
-    "Bezier", "BSpline", "Hermite",
-)
+RAMP_BASES = tuple(_RAMP_BASIS)  # the Apply as submenu's entries, in Houdini's own order
 
 
 def build_basis_ramp(hex_colors: list, basis: str) -> hou.Ramp:
@@ -216,17 +213,16 @@ def get_connected_nodes(node: hou.Node) -> list[hou.Node]:
 
 
 def _walk_connected(
-    nodes: list[hou.Node], selected: list[hou.Node], step: str, _visited=None
+    nodes: list[hou.Node], selected: list[hou.Node], step: str
 ) -> list[hou.Node]:
     """Every node reachable from `nodes` by following `step` ("inputs" or "outputs") into `selected`, seeds included - ONE walker for both directions, visited-set bounded (a diamond graph re-walked once per path, exponentially, before). Not `inputAncestors()`: that EXCLUDES the seed, follows REFERENCE inputs, and HOM 22 has no output-side equivalent - checked."""
-    if _visited is None:
-        _visited = set()
-    stack = [n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
+    visited = set()
+    stack =[n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
     while stack:
         node = stack.pop()
-        if node is None or node.path() in _visited:
+        if node is None or node.path() in visited:
             continue
-        _visited.add(node.path())
+        visited.add(node.path())
         selected.append(node)
         stack.extend(
             n for n in reversed(list(getattr(node, step)())) if n is not None)
@@ -234,17 +230,17 @@ def _walk_connected(
 
 
 def get_connected_input_nodes(
-    nodes: list[hou.Node], selected: list[hou.Node], _visited=None
+    nodes: list[hou.Node], selected: list[hou.Node]
 ) -> list[hou.Node]:
     """Every node reachable through inputs(), seeds included."""
-    return _walk_connected(nodes, selected, "inputs", _visited)
+    return _walk_connected(nodes, selected, "inputs")
 
 
 def get_connected_output_nodes(
-    nodes: list[hou.Node], selected: list[hou.Node], _visited=None
+    nodes: list[hou.Node], selected: list[hou.Node]
 ) -> list[hou.Node]:
     """Every node reachable through outputs(), seeds included."""
-    return _walk_connected(nodes, selected, "outputs", _visited)
+    return _walk_connected(nodes, selected, "outputs")
 def sanitize_usd_path(path: str) -> str:
     """The string made safe for .usd files and Solaris - non-alphanumerics to underscores, and a leading digit prefixed (node and USD prim names may not START with one, which `01_ball.obj`-style file names hit constantly)."""
     clean = re.sub("[^a-zA-Z0-9]", "_", path)

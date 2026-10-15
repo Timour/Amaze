@@ -1288,6 +1288,27 @@ class TheFileLoaderQueueDoesNotBusySpin(unittest.TestCase):
             "%s" % delays)
 
 
+class TheOsHandOffsNeverRaise(unittest.TestCase):
+    """The log buttons call these unguarded: a refused or missing handler is swallowed inside."""
+
+    def test_no_platform_branch_raises_when_every_handler_fails(self):
+        def refuse(*_args, **_kwargs):
+            raise FileNotFoundError("no such program")
+
+        for mac, windows in ((True, False), (False, True), (False, False)):
+            with self.subTest(macos=mac, windows=windows), \
+                    mock.patch.object(hostos, "is_macos",
+                                      return_value=mac), \
+                    mock.patch.object(hostos, "is_windows",
+                                      return_value=windows), \
+                    mock.patch.object(hostos.subprocess, "call",
+                                      side_effect=refuse), \
+                    mock.patch.object(hostos.os, "startfile", create=True,
+                                      side_effect=OSError("no app")):
+                hostos.open_path("/nowhere/amaze_debug.jsonl")
+                hostos.reveal_path("/nowhere/amaze_debug.jsonl")
+
+
 class TheUserRowCreatesAndDeletes(unittest.TestCase):
     """Preferences > User grew create and delete beside rename (settled 2026-08-22): the combo carries the picker's own create row, deletion sweeps everything tagged theirs, and the row goes blank on self-delete until somebody is picked."""
 

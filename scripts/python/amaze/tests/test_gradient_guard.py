@@ -1443,6 +1443,15 @@ class ARampHelperIsTotal(unittest.TestCase):
         self.assertEqual([list(v) for v in source.values()],
                          [list(v) for v in back.values()])
 
+    def test_the_menu_offers_every_basis_the_reader_knows_in_order(self):
+        self.assertEqual(
+            ("Constant", "Linear", "CatmullRom", "MonotoneCubic",
+             "Bezier", "BSpline", "Hermite"), self.helpers.RAMP_BASES)
+        for name in self.helpers.RAMP_BASES:
+            ramp = self.helpers.build_basis_ramp(["#ff0000", "#0000ff"], name)
+            self.assertEqual(name, self.helpers.ramp_to_data(ramp)["bases"][0],
+                             "the menu offers a basis the reader cannot name")
+
 
 class TheNodeWalkIsNotRecursive(unittest.TestCase):
     """One frame per node in a chain hit Python's limit; the visited set bounds re-walking, not depth. ▸r/ramp-and-walk-edges"""

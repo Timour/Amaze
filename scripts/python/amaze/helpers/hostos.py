@@ -222,8 +222,6 @@ SNAPSHOT_INTERVAL = 30 * 60  # seconds between snapshots of one file: fine-grain
 
 def preserve_unreadable(path: str, why: str = "") -> str:
     """Copy a file we could not parse to `<path>.unreadable` WRITE-ONCE, returning that copy's path or "" - which is exactly what a caller may claim to the user, since the path may be this call's copy or an earlier one's. Says nothing itself."""
-    import shutil
-
     if not path or not os.path.isfile(path):
         return ""
     try:

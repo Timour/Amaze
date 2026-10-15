@@ -1,7 +1,5 @@
 """The save dialog every section saves through - name, category and tags, built from the house form rows so it shares the shell and the drawn width. ▸p/save-dialog-rows"""
 
-from PySide6 import QtWidgets
-
 from amaze import amazetheme
 from amaze import branding
 from amaze import tooltips
@@ -58,8 +56,6 @@ class SaveDialog(base_dialog.AssetDialog):
 
         self.combo_cats = self.add_combo("Category", ())   # PLAIN: new ones come from the sidebar
         base_dialog.fill_categories(self.combo_cats, cat_list, default_cat)
-        self.combo_cats.setInsertPolicy(
-            QtWidgets.QComboBox.InsertPolicy.InsertAtTop)
 
         self.combo_language = self.add_combo(
             "Language", code_dialog.LANGUAGES,

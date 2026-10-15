@@ -1109,13 +1109,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         folder = os.path.dirname(path)
         try:
             os.makedirs(folder, exist_ok=True)
-            if os.path.exists(path):
-                try:
-                    hostos.open_path(path)
-                except OSError:
-                    hostos.reveal_path(path)   # nothing is associated with .jsonl on a stock Windows install, so show the file selected in its folder
-            else:
-                hostos.open_path(folder)
+            hostos.open_path(path if os.path.exists(path) else folder)    # it reveals what nothing opens
         except Exception as exc:
             debug.event("prefs", "could not open log", error=str(exc))
 
@@ -1149,11 +1143,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         box.addButton(QtWidgets.QMessageBox.Close)
         box.exec()
         if box.clickedButton() is reveal:
-            try:
-                hostos.reveal_path(target)
-            except Exception as exc:                     # noqa: BLE001
-                debug.event("prefs", "could not reveal export",
-                            error=str(exc))
+            hostos.reveal_path(target)
 
     def clear_debug_log(self) -> None:
         # through the ENGINE, not os.remove behind its back: it owns the session header and the flood counters
