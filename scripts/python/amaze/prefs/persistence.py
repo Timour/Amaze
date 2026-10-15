@@ -30,12 +30,11 @@ def _decode_path(path):
     if path.startswith("$AMAZE") or path.startswith("~"):
         return hostos.expand_storage_path(path)    # ONE grammar with every other reader (locations.py decodes the same spellings) - two expansions disagreeing at the edges made one stored value resolve to two strings
     clean = path.replace("\\", "/")
-    if not os.path.exists(clean):
-        rehomed = hostos.rehome(clean)  # another machine's home prefix swapped for this one's, and only when the result exists
-        if rehomed != clean:
-            debug.event("prefs", "path re-homed from another machine",
-                        stored=path, resolved=rehomed)
-            return rehomed
+    rehomed = hostos.rehome(clean)  # asks the disk only for a path under some home folder
+    if rehomed != clean and not os.path.exists(clean):
+        debug.event("prefs", "path re-homed from another machine",
+                    stored=path, resolved=rehomed)
+        return rehomed
     return path
 
 
@@ -44,6 +43,14 @@ def _decode_paths(paths):
     if not isinstance(paths, (list, tuple)):
         return []
     return [_decode_path(p) for p in paths if isinstance(p, str)]
+
+
+def _decode_records(records) -> dict:
+    """Decode a stored records copy's keys: a non-dict answers {}, and a non-dict record is dropped."""
+    if not isinstance(records, dict):
+        return {}
+    return {_decode_path(key): dict(value) for key, value in records.items()
+            if isinstance(key, str) and isinstance(value, dict)}
 
 
 def _encode_paths(paths):
@@ -207,10 +214,7 @@ class _Persistence:
             self._file_favorites = _decode_paths(favourites)
         records = committed("file_location_records")
         if isinstance(records, dict):
-            self._file_location_records = {
-                _decode_path(key): dict(value)
-                for key, value in records.items()
-                if isinstance(key, str) and isinstance(value, dict)}
+            self._file_location_records = _decode_records(records)
 
     _RETIRED_KEYS = (  # keys this build deliberately removed, said out loud because the store's unknown-key courtesy would otherwise re-adopt them off disk on every save
         "star_color_mode", "star_custom_color",
@@ -310,12 +314,8 @@ class _Persistence:
             stored_value("file_folders", []))
         self._file_favorites = _decode_paths(
             stored_value("file_favorites", []))
-        stored = stored_value("file_location_records", None)  # the last-known records the File section serves when the library is unreachable; only the dict shape counts
-        self._file_location_records = {
-            _decode_path(key): dict(value)
-            for key, value in stored.items()
-            if isinstance(key, str) and isinstance(value, dict)
-        } if isinstance(stored, dict) else {}
+        self._file_location_records = _decode_records(    # the copy served while the library is out of reach
+            stored_value("file_location_records", None))
         stored = stored_value("enabled_sections", None)
         self._enabled_sections = (  # a list, or the default: `None`, a str, an int and a dict each used to raise out of load() and kill the panel outright
             [s for s in stored if isinstance(s, str)]

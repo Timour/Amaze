@@ -286,6 +286,87 @@ class TheCopiesFollowTheirUser(PerUserCase):
             doc.get("file_location_records"))
 
 
+class ASaveAsksTheDiskOnlyAboutPathsItCouldReHome(PerUserCase):
+    """A settings save asks the disk about a File copy's path only when it lies under a home folder."""
+
+    SHARE = "/Volumes/AmazeProbeShare/projects"
+
+    def _settings(self):
+        folders = ["%s/job%d/" % (self.SHARE, n) for n in range(3)]
+        return {"library_user": UID_A,
+                "users": {UID_A: {
+                    "file_folders": folders,
+                    "file_favorites": ["%s/job0/tex/f%d.exr" % (self.SHARE, n)
+                                       for n in range(5)],
+                    "file_location_records": {
+                        path: {"registered": True} for path in folders}}}}
+
+    def _share_lookups(self, action):
+        from unittest import mock
+        asked = []
+        real = os.path.exists
+
+        def exists(path):
+            if str(path).startswith(self.SHARE):
+                asked.append(path)
+            return real(path)
+
+        with mock.patch.object(persistence.os.path, "exists", exists):
+            action()
+        return asked
+
+    def test_a_second_save_asks_the_share_nothing(self):
+        self.write_settings(self._settings())
+        p = self.prefs()
+        p.load()
+        p.save()
+        before = (list(p.last_known_folders), list(p.last_known_favourites),
+                  dict(p.last_known_records))
+        asked = self._share_lookups(p.save)
+        self.assertEqual([], asked,
+                         "a save with no copy changed stat'ed %d share paths"
+                         % len(asked))
+        self.assertEqual(before, (list(p.last_known_folders),
+                                  list(p.last_known_favourites),
+                                  dict(p.last_known_records)))
+
+    def test_a_changed_copy_lands_without_asking_the_share(self):
+        self.write_settings(self._settings())
+        p = self.prefs()
+        p.load()
+        p.save()
+        moved = ["%s/job9/" % self.SHARE]
+        asked = self._share_lookups(
+            lambda: p.keep_last_known(None, moved, None))
+        self.assertEqual([], asked, "a share path cannot be re-homed, yet was stat'ed")
+        self.assertEqual(moved, list(p.last_known_folders))
+
+    def test_a_folder_that_appears_after_the_load_is_re_homed_by_the_next_save(self):
+        from unittest import mock
+        here = tempfile.mkdtemp(prefix="amaze_rehome_")
+        self.addCleanup(shutil.rmtree, here, True)
+        elsewhere = "/Users/amaze-probe-elsewhere"
+
+        def rehome(path):    # hostos.rehome, with `here` standing in for this machine's home
+            candidate = here + path[len(elsewhere):]
+            return (candidate if path.startswith(elsewhere + "/")
+                    and os.path.exists(candidate) else path)
+
+        stored = elsewhere + "/job/"
+        self.write_settings({"library_user": UID_A,
+                             "users": {UID_A: {"file_folders": [stored]}}})
+        with mock.patch.object(persistence.hostos, "rehome", rehome):
+            p = self.prefs()
+            p.load()
+            p.save()
+            self.assertEqual([stored], list(p.last_known_folders),
+                             "premise: nothing here to re-home onto yet")
+            os.makedirs(os.path.join(here, "job"))
+            p.save()
+        self.assertEqual([here + "/job/"], list(p.last_known_folders),
+                         "a save kept a dead path after its folder appeared here")
+
+
 class TheFiveDerivedKeysAreGone(PerUserCase):
     """The derived keys were the location record in an older spelling - the record is the one home."""
 
