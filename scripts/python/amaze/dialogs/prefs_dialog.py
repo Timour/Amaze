@@ -984,12 +984,15 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def _sync_rows(self) -> None:
         """The door after a library or user change: every row re-reads, signals blocked."""
+        drawn_weight = self._combo_icon_weight.currentData()    # what the tiles were composed with
         self._reload_library_users()
         self._sync_overwrite_switch()
         for widget, value in self._shown_values():
             for shown in (widget, self._sliders.get(widget)):
                 if shown is not None:
                     _show_quietly(shown, value)
+        if self._prefs.icon_line_weight != drawn_weight:
+            self._recompose_tile_icons()
 
     def _sync_overwrite_switch(self) -> None:
         """Re-read the overwrite switch from the library NOW bound - policy.json travels with the library, not with these preferences."""

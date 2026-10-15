@@ -375,6 +375,29 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
         self.assertEqual(self.SECOND, self.shown(),
                          "the rows still show the previous user's settings")
 
+    def test_picking_a_user_redraws_the_tiles_in_their_line_weight(self):
+        from amaze.core import tile_icons
+        prefs, drawn = self.prefs, []
+
+        class _Model:
+            def rerender_tile_icons(self):
+                drawn.append(tile_icons.stroke_for(prefs))
+                return 0
+
+        class _Panel:
+            def tile_icon_models(self):
+                return (_Model(),)
+
+        self.dialog._panel = _Panel()
+        self.pick_second()
+        self.assertEqual(
+            [tile_icons.FEATHER_STROKE_UNITS], drawn,
+            "Tile Icon Line shows the picked user's weight while the "
+            "tiles keep the previous user's")
+        self.dialog._sync_rows()
+        self.assertEqual(1, len(drawn),
+                         "the tiles were redrawn with no weight change")
+
     def test_a_switch_toggled_after_a_pick_edits_the_picked_users_list(self):
         self.pick_second()
         self.dialog._section_boxes["code"].setChecked(False)
@@ -399,6 +422,9 @@ class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
             def set_library(self):
                 prefs.dir = other + "/"
                 users.adopt(prefs, second)
+
+            def tile_icon_models(self):
+                return ()
 
         self.dialog._panel = _Panel()
         self.dialog.change_library_path()
