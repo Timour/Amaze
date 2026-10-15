@@ -217,7 +217,7 @@ def _walk_connected(
 ) -> list[hou.Node]:
     """Every node reachable from `nodes` by following `step` ("inputs" or "outputs") into `selected`, seeds included - ONE walker for both directions, visited-set bounded (a diamond graph re-walked once per path, exponentially, before). Not `inputAncestors()`: that EXCLUDES the seed, follows REFERENCE inputs, and HOM 22 has no output-side equivalent - checked."""
     visited = set()
-    stack =[n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
+    stack = [n for n in reversed(list(nodes)) if n is not None]    # ITERATIVE: one frame per node in a chain hit Python's recursion limit on a long series, and the visited set bounds re-walking, not depth ▸r/ramp-and-walk-edges
     while stack:
         node = stack.pop()
         if node is None or node.path() in visited:

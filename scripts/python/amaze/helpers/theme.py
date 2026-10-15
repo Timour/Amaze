@@ -26,7 +26,7 @@ def screen_ratio(widget=None) -> float:
     try:
         if widget is not None:
             return float(widget.devicePixelRatioF()) or 1.0
-        screen =QtGui.QGuiApplication.primaryScreen()
+        screen = QtGui.QGuiApplication.primaryScreen()
         return (float(screen.devicePixelRatio()) if screen else 1.0) or 1.0
     except Exception:                                    # noqa: BLE001
         return 1.0
