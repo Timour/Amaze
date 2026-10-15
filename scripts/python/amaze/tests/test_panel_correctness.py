@@ -1254,6 +1254,21 @@ class ClosingPreferencesRescansTheFileFolderOnce(unittest.TestCase):
         self.assertEqual(one_pass, self._scans_while(self._close_preferences),
                          "closing Preferences scanned the folder more than once")
 
+    def test_closing_onto_another_library_scans_its_location_once(self):
+        old = self.panel.prefs.dir
+        theirs = test_support.fresh_files_folder(self)
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.update(directory=test_support.fresh_library(self),
+                    file_folders=[theirs], last_file_folder=theirs,
+                    file_location_records={theirs: {"registered": True}})
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        scans = self._scans_while(lambda: self.panel._prefs_dialog_closed(old))
+        self.assertEqual(theirs, self.files._folder, "premise: File shows the new location")
+        self.assertEqual(1, scans, "the new library's location was scanned %d times" % scans)
+
     def test_nothing_is_scanned_while_online_shows(self):
         self.panel.enter_online_world()
         self.addCleanup(self.panel.leave_online_world)

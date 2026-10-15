@@ -139,6 +139,9 @@ class Section:
         """The AssetStack for the curated machinery, or None for sections that do not use it."""
         return None
 
+    def library_switched(self) -> None:
+        """The models now serve another library: a grid they do not re-point is shown afresh here."""
+
     def menu_export_package(self, indexes, current, payload=None) -> None:
         """ASK half of the grid export: the panel picks the destination, `export_package_to` does the work - headless tests drive that door directly."""
         path = self.panel.ask_package_destination()
@@ -1131,6 +1134,9 @@ class FolderSection(Section):
                 )
                 panel.cat_list.setCurrentIndex(target_index)
             panel.update_selected_cat()
+
+    def library_switched(self) -> None:
+        self.activate()    # the files model lists a folder, not the library
 
     def _browse(self, path) -> None:
         """Point the files model at a folder path (None = the synthetic 'All' row), remember it, and persist."""

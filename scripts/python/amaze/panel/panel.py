@@ -531,6 +531,9 @@ class AmazePanel(QtWidgets.QWidget):
             model_registry.rebind(self.prefs, self.material_model)    # the shared set now serves another tree, so it is re-filed under it - left under the old key, the next panel opened there is handed this library's rows
             self.click_slider.setValue(grid.active_thumbsize(self))
         self._seed_curated_content()    # a switch can land on a library nobody has opened before, and a virgin library gets its curated content however it arrives - the same door construction takes, marker-guarded, so an already-seeded library costs two stat calls
+        section = self._section()
+        if section is not None:
+            section.library_switched()
 
     def _seed_curated_content(self) -> None:
         """Seed the shipped starters once per library - the Code section's Examples snippets and the Colors section's palette sets - through ONE door for construction and the library switch. getattr, not attribute reads: the libraryless shape leaves model attributes None or absent"""
@@ -1673,7 +1676,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.prefs.load()
         debug.configure(self.prefs.debug_mode)
         hostos.set_cache_override(self.prefs.cache_dir)
-        if self.prefs.dir != old_dir:    # only a changed library DIRECTORY needs the models rebuilt: rebuilding unconditionally re-reads the json, drops the per-id usd/shader caches and re-loads every thumbnail PNG, well over a thousand file reads per Preferences close
+        switched = self.prefs.dir != old_dir
+        if switched:    # only another library earns the models' full re-read
             texstore.publish_env(self.prefs)
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
@@ -1689,8 +1693,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.cat_list.viewport().update()
         grid.visible_view(self).viewport().update()
         section = self._section()
-        if section is not None:
-            section.prefs_changed()    # File rescans its folder here; nothing does online
+        if section is not None and not switched:    # a switch has just shown it afresh
+            section.prefs_changed()
         self._apply_enabled_sections()    # visible section tabs may have changed in Preferences
 
     def update_renderer_toggles(self):

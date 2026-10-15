@@ -99,6 +99,35 @@ class TheRegisteredFoldersFollowTheLibrary(unittest.TestCase):
                   "folders, so the pane keeps the previous library's")
 
 
+class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
+    """A switch while File shows re-picks the location; the grid kept the old one until a click."""
+
+    def test_the_grid_and_the_sidebar_land_on_the_new_library(self):
+        panel = test_support.fixture_panel(self)
+        panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        files, folders = panel.file_files_model, panel.file_folders_model
+        old = files._folder
+        self.assertTrue(old, "premise: File shows the fixture's location")
+        theirs = test_support.fresh_files_folder(self)
+        settings = os.path.join(panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.update(directory=test_support.fresh_library(self),
+                    file_folders=[theirs], last_file_folder=theirs,
+                    file_location_records={theirs: {"registered": True}})
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        panel.switch_all_models()
+        QtWidgets.QApplication.processEvents()
+        self.assertNotEqual(old, files._folder,
+                            "the grid still lists the previous library's location")
+        self.assertEqual(theirs, files._folder, "File landed off its remembered location")
+        standing = panel.cat_list.selectionModel().selectedIndexes()
+        self.assertTrue(standing, "the sidebar stands on no location")
+        self.assertEqual(standing[0].data(folders.PathRole) or "", files._folder)
+
+
 class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
     """Every model re-read its file on a switch, so the grid kept a copy the sidebar never writes."""
 
