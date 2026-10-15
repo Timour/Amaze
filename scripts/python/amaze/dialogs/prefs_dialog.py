@@ -108,7 +108,7 @@ def _show_value(widget, value) -> None:
 
 
 def _chooser_path(path: str) -> str:
-    """A folder as `hou.ui.selectFile` spells it: forward slashes, no trailing one unless at a root."""
+    """A folder spelled for `selectFile` and for prefs: forward slashes, trailing one only at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
 
 
