@@ -968,6 +968,12 @@ class RangedFile:
         self._notify = callback
         self._notify_thread = threading.get_ident()    # preview workers read this same cached file
 
+    def copy(self, notify=None) -> "RangedFile":
+        """Its own reader over the same bytes: the blocks fetched so far, its own position and progress."""
+        twin = RangedFile(self.size, self._get, notify=notify)
+        twin._blocks = dict(self._blocks)
+        return twin
+
     def _total_blocks(self) -> int:
         return max(1, (self.size - 1) // RANGED_BLOCK + 1)
 
@@ -1020,6 +1026,7 @@ class AmazeSource(MatxSource):
     RAW_BASE = "https://raw.githubusercontent.com/Timour/AmazePackages/main/"
 
     def __init__(self):
+        self._lock = threading.Lock()    # the reader caches are shared with worker threads
         self.refresh()    # the ONE list of this source's caches lives there - a sixth cache declared here but not there would survive the user's explicit Refresh
 
     PACKAGES_ROOT = "packages"    # categories live UNDER this folder, so the repo root stays free for infrastructure
@@ -1046,8 +1053,11 @@ class AmazeSource(MatxSource):
         return [(folder, name, url) for folder, name, url, _s in rows]    # canned test sources override this whole method with 3-tuples, so sizes stay an optional accelerant
 
     def _open_package(self, url: str):
-        """A zipfile over ranged reads of the hosted package, cached until Refresh."""
-        if url not in self._bundles:
+        """A zipfile over ranged reads of the hosted package, cached until Refresh - one per url."""
+        with self._lock:
+            bundles, remotes = self._bundles, self._remotes
+            bundle = bundles.get(url)
+        if bundle is None:    # the network runs outside the lock; the first to finish is kept
             checked = _checked_url(url)
             known = getattr(self, "_sizes", {}).get(url)
             if known and known <= RANGED_BLOCK:    # the tree already named the size - one plain fetch, no probe-416-refetch round-trip
@@ -1084,15 +1094,22 @@ class AmazeSource(MatxSource):
             else:
                 last = (size - 1) // RANGED_BLOCK
                 remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
-            self._remotes[url] = remote
-            self._bundles[url] = zipfile.ZipFile(remote)
-        return self._bundles[url]
+            bundle = zipfile.ZipFile(remote)
+            with self._lock:
+                if url not in bundles:
+                    bundles[url], remotes[url] = bundle, remote
+                bundle = bundles[url]
+        return bundle
 
-    def progress_hook(self, url: str, callback) -> None:
-        """Attach a package's per-block progress callback, None detaching it; it runs on this thread only."""
-        remote = self._remotes.get(url)
-        if remote is not None:
-            remote.notify = callback
+    def import_reader(self, url: str, notify=None):
+        """A reader of the caller's own over one package, so no worker's block download can hold it."""
+        shared = self._open_package(url)
+        with self._lock:
+            remote = (self._remotes.get(url)
+                      if self._bundles.get(url) is shared else None)
+        if remote is None:
+            return shared    # nothing ranged behind it to copy
+        return zipfile.ZipFile(remote.copy(notify=notify))
 
     def _manifest(self, url: str) -> dict:
         if url not in self._manifests:
@@ -1108,10 +1125,11 @@ class AmazeSource(MatxSource):
         return self._manifests[url]
 
     def refresh(self):
-        self._paths = None
-        self._manifests = {}
-        self._bundles = {}
-        self._remotes = {}    # url -> the RangedFile under the bundle, for progress_hook
+        with self._lock:    # one swap, so no opener pairs a new cache with an old one
+            self._paths = None
+            self._manifests = {}
+            self._bundles = {}
+            self._remotes = {}    # url -> the RangedFile under each bundle, which import_reader copies
         self._sizes = {}    # url -> byte size off the tree listing; a package known smaller than one block fetches whole in ONE plain request
 
     def list_materials(self, search="", offset=0, limit=60) -> list:

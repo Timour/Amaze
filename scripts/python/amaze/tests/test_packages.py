@@ -723,6 +723,42 @@ def _manifest_zip(testcase, entries, members=None,
     return path
 
 
+class _Served:
+    """One canned HTTP answer: the bytes and their headers."""
+
+    def __init__(self, data, headers):
+        self._data, self.headers = data, headers
+
+    def read(self):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        return False
+
+
+def _ranged_server(blob, before=None):
+    """A stand-in for `matx_sources._request` serving `blob` by ranges; `before(spec)` runs first."""
+
+    def serve(url, headers=None):
+        spec = str((headers or {}).get("Range") or "")
+        if before is not None:
+            before(spec)
+        if spec.startswith("bytes=-"):
+            start = max(0, len(blob) - int(spec.split("-", 1)[1]))
+            return _Served(blob[start:], {
+                "Content-Range": "bytes %d-%d/%d"
+                % (start, len(blob) - 1, len(blob))})
+        if spec:
+            lo, _, hi = spec.replace("bytes=", "").partition("-")
+            return _Served(blob[int(lo):min(int(hi), len(blob) - 1) + 1], {})
+        return _Served(blob, {})
+
+    return serve
+
+
 def _palette_entry(n, tag=None):
     return {"type": "asset", "section": "gradient",
             "id": "%032x" % n,
@@ -999,21 +1035,17 @@ class RangedFileTest(unittest.TestCase):
         self.assertTrue(all(t == seen[0][1] for _d, t in seen),
                         "the block total drifted mid-read")
 
-    def test_a_progress_hook_runs_only_on_the_thread_that_installed_it(self):
-        """The import's hook moves a progress bar; preview workers read the same cached package."""
+    def test_a_progress_callback_runs_only_on_the_thread_that_installed_it(self):
+        """A reader's progress moves a bar; another thread reading the same file must not run it."""
         import threading
 
         from amaze.core import matx_sources
-        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
-               "main/packages/defaults/probe.amazepkg")
         remote = matx_sources.RangedFile(
             len(self.PAYLOAD),
             lambda start, end: self.PAYLOAD[start:end + 1])
-        source = matx_sources.AmazeSource()
-        source._remotes[url] = remote
         called_on = []
-        source.progress_hook(
-            url, lambda done, total: called_on.append(threading.get_ident()))
+        remote.notify = (
+            lambda done, total: called_on.append(threading.get_ident()))
 
         def read_block(index):
             remote.seek(index * matx_sources.RANGED_BLOCK)
@@ -1084,6 +1116,47 @@ class RangedFileTest(unittest.TestCase):
         source.refresh()
         self.assertEqual({}, source._bundles,
                          "Refresh left a stale remote zip open")
+
+    def test_two_threads_opening_one_package_share_one_reader(self):
+        """A preview worker and the import may open one package at the same moment."""
+        import threading
+        from unittest import mock
+
+        from amaze.core import matx_sources
+        pkg = _manifest_zip(self, [_palette_entry(n) for n in range(3)],
+                            members={"files/0_big.bin": self.PAYLOAD})
+        url = ("https://raw.githubusercontent.com/Timour/AmazePackages/"
+               "main/packages/defaults/race.amazepkg")
+        inside, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+
+        def stall_the_first(_spec):
+            if threading.current_thread().name == "first-opener":
+                inside.set()
+                release.wait(10)
+
+        source = matx_sources.AmazeSource()
+        opened = {}
+
+        def open_as(name):
+            opened[name] = source._open_package(url)
+
+        with mock.patch.object(matx_sources, "_request",
+                               _ranged_server(_bytes(pkg), stall_the_first)):
+            first = threading.Thread(target=open_as, args=("first",),
+                                     name="first-opener")
+            first.start()
+            self.assertTrue(inside.wait(5),
+                            "premise: the first opener never fetched")
+            second = threading.Thread(target=open_as, args=("second",),
+                                      name="second-opener")
+            second.start()
+            second.join(10)
+            release.set()
+            first.join(10)
+        self.assertIs(opened["first"], opened["second"],
+                      "two threads opening one package got two readers")
+        self.assertEqual([url], list(source._bundles))
 
 
 class OnlinePackageImportTest(unittest.TestCase):
@@ -1231,6 +1304,62 @@ class OnlinePackageImportTest(unittest.TestCase):
         self.assertEqual(1.0, fractions[-1])
         self.assertEqual(sorted(fractions), fractions,
                          "fractions must be non-decreasing")
+
+    def test_the_import_never_waits_behind_a_preview_download(self):
+        """A worker mid-download in the shared reader holds its lock; the import reads its own."""
+        import threading
+        import time
+        from unittest import mock
+
+        from amaze.core import matx_sources
+        entry = {"type": "asset", "section": "material", "id": "8" * 32,
+                 "record": {"id": "8" * 32, "name": "Behind",
+                            "categories": ["X"]},
+                 "note": {}, "files": {"mat": "assets/material/8/8.mat"}}
+        pkg = _manifest_zip(self, [entry], members={
+            "assets/material/8/8.mat": RangedFileTest.PAYLOAD,
+            "thumbs/8.png": RangedFileTest.PAYLOAD[::-1]})
+        blob = _bytes(pkg)
+        inside, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+
+        def stall_the_worker(spec):
+            if threading.current_thread().name == "preview-worker" \
+                    and spec and not spec.startswith("bytes=-"):
+                inside.set()
+                release.wait(10)
+
+        tree_json = {"tree": [{"type": "blob",
+                               "path": "packages/defaults/behind.amazepkg",
+                               "size": len(blob)}]}
+        source = matx_sources.AmazeSource()
+        watchdog = threading.Timer(4.0, release.set)
+        self.addCleanup(watchdog.cancel)
+        with mock.patch.object(matx_sources, "get_json",
+                               return_value=tree_json), \
+                mock.patch.object(matx_sources, "_request",
+                                  _ranged_server(blob, stall_the_worker)):
+            record = source.list_materials(limit=10)[0]
+            url = record.payload["package"]
+            worker = threading.Thread(
+                target=lambda: source._open_package(url).read("thumbs/8.png"),
+                name="preview-worker")
+            worker.start()
+            self.assertTrue(inside.wait(5),
+                            "premise: the worker never reached the network")
+            watchdog.start()
+            started = time.monotonic()
+            with mock.patch.object(self.panel.matx_online_model, "_sources",
+                                   [source]):
+                ok, reason = self.panel.import_online_material(record)
+            waited = time.monotonic() - started
+            release.set()
+            worker.join(10)
+        self.assertTrue(ok, reason)
+        self.assertLess(
+            waited, 2.0,
+            "the import waited %.1fs behind a preview worker's block "
+            "download, and Houdini is frozen for all of it" % waited)
 
     def test_a_corrupt_member_counts_refused_not_fatal(self):
         from unittest import mock

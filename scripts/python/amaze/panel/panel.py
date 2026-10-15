@@ -2462,18 +2462,13 @@ class AmazePanel(QtWidgets.QWidget):
             entry = record.payload.get("entry")
             if not entry:
                 return (False, "the record carries no manifest entry")
-            bundle = source._open_package(url)
-            if on_progress is not None:
-                source.progress_hook(
-                    url, lambda done, total:
-                    on_progress(min(done / float(max(total, 1)), 1.0)))
-            try:
-                summary = packages.import_entries(
-                    self._package_models(), self.prefs, bundle, [entry],
-                    restore=restore)
-            finally:
-                if on_progress is not None:
-                    source.progress_hook(url, None)
+            notify = None if on_progress is None else (
+                lambda done, total:
+                on_progress(min(done / float(max(total, 1)), 1.0)))
+            bundle = source.import_reader(url, notify=notify)    # its own: a preview may hold the shared one
+            summary = packages.import_entries(
+                self._package_models(), self.prefs, bundle, [entry],
+                restore=restore)
             self._last_package_summary = summary
             self._absorb_package_summary(summary)
             if on_progress is not None:
