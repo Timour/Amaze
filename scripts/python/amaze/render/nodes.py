@@ -560,7 +560,7 @@ class NodeHandler:
 
     def __init__(self, preferences: prefs.Prefs) -> None:
         self._preferences = preferences
-        self._builder_node = hou.node("/stage")
+        self._builder_node = None
         self._renderer = ""
         self._import_path = None
         self._hou_parent = None
@@ -780,11 +780,11 @@ class NodeHandler:
                 self.load_interface_mtlx(parms_file_name, mat)
                 self.load_items_file_mtlx(mat)
             elif "Redshift" in mat.renderer:
-                self.load_interface_other(parms_file_name, mat, "redshift_vopnet")
-                self.load_items_file(mat, move_builder=True)
+                self.load_interface_other(mat, "redshift_vopnet")
+                self.load_items_file(mat)
             elif "Octane" in mat.renderer:
-                self.load_interface_other(parms_file_name, mat, "octane_vopnet")
-                self.load_items_file(mat, move_builder=True)
+                self.load_interface_other(mat, "octane_vopnet")
+                self.load_items_file(mat)
             else:
                 return (
                     False,
@@ -816,10 +816,7 @@ class NodeHandler:
                     )
 
             try:
-                if (
-                    self._builder_node is not None
-                    and self._builder_node.path() != "/stage"
-                ):
+                if self._builder_node is not None:
                     self._builder_node.setUserData(
                         "assetlib_id", str(mat.mat_id)
                     )
@@ -1041,9 +1038,7 @@ class NodeHandler:
             read_builder_sidecar(self._builder_sidecar(mat)),
         )
 
-    def load_interface_other(
-        self, parms_file_name: str, mat: material.Material, builder_name: str
-    ) -> None:
+    def load_interface_other(self, mat: material.Material, builder_name: str) -> None:
         """Rebuild the saved container, no exec: type read, parms from sidecar."""
         saved_type = self.get_saved_node_type(mat) or builder_name
         if node_type_available(saved_type):
@@ -1061,8 +1056,8 @@ class NodeHandler:
 
         self._builder_node = builder
 
-    def load_items_file(self, mat: material.Material, move_builder: bool = False) -> None:
-        """Load the .mat; move_builder=True moves the builder, not its kids."""
+    def load_items_file(self, mat: material.Material) -> None:
+        """Load the .mat into the builder and move the builder, never its children, into place."""
         file_name = material.payload_path(
             self._preferences, mat.mat_id, self._preferences.ext
         )
@@ -1071,31 +1066,21 @@ class NodeHandler:
         if problem:
             raise hou.OperationFailed(problem)
 
-        texstore.resolve_parms(self._builder_node, self._preferences)    # BEFORE the move, on the whole container - the no-builder branch moves every child, so resolving after would cover only the first sibling
+        texstore.resolve_parms(self._builder_node, self._preferences)    # the whole container, before it moves
 
-        if move_builder:
-            if (self._import_path.type().name() == "materiallibrary"
-                    and self._builder_node.type().name() == "redshift_vopnet"):    # the classic container does not translate in Solaris; rebuilt into the USD one BEFORE the move, in the staging matnet, so the saved files stay as they are
-                from amaze.render import redshift_converter    # late: render/ reaches back into this module
-                self._builder_node = redshift_converter.upgrade_to_usd_builder(
-                    self._builder_node)
-            new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
-            if not new_mat:
-                raise hou.OperationFailed(
-                    'nothing could be moved into place for "%s" - its '
-                    "saved files look corrupt" % mat.name
-                )
-            self._builder_node = new_mat[0]
-            helpers.auto_place(self._builder_node)
-        else:
-            new_mat = hou.moveNodesTo(self._builder_node.children(), self._import_path)  # type: ignore
-            if not new_mat:
-                raise hou.OperationFailed(
-                    'nothing could be moved into place for "%s" - its '
-                    "saved files look corrupt" % mat.name
-                )
-            self.builder_node.destroy()
-            self._builder_node = new_mat[0]
+        if (self._import_path.type().name() == "materiallibrary"
+                and self._builder_node.type().name() == "redshift_vopnet"):    # Solaris needs the USD container; saved files untouched
+            from amaze.render import redshift_converter    # late: render/ reaches back into this module
+            self._builder_node = redshift_converter.upgrade_to_usd_builder(
+                self._builder_node)
+        new_mat = hou.moveNodesTo((self._builder_node,), self._import_path)  # type: ignore
+        if not new_mat:
+            raise hou.OperationFailed(
+                'nothing could be moved into place for "%s" - its '
+                "saved files look corrupt" % mat.name
+            )
+        self._builder_node = new_mat[0]
+        helpers.auto_place(self._builder_node)
 
     def load_items_file_mtlx(self, mat: material.Material) -> None:
         """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""

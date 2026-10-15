@@ -1394,12 +1394,8 @@ def convert_redshift_material(
         node_handler._hou_parent = scratch
         node_handler._import_path = scratch
         node_handler._use_existing_node = True
-
-        iface_path = material.payload_path(
-            node_handler._preferences, source_mat.mat_id, ".interface"
-        )
-        node_handler.load_interface_other(iface_path, source_mat, "redshift_vopnet")
-        node_handler.load_items_file(source_mat, move_builder=True)
+        node_handler.load_interface_other(source_mat, "redshift_vopnet")
+        node_handler.load_items_file(source_mat)
         vopnet = node_handler.builder_node
 
         shader = find_redshift_shader(vopnet)

@@ -989,5 +989,13 @@ class AnUnreadablePayloadRefusesWithoutAScreenTest(unittest.TestCase):
         self._an_oserror_reaches_no_screen("load_items_file_mtlx")
 
 
+class AFreshHandlerNamesNoBuilder(unittest.TestCase):
+    """Before any import a handler holds no builder, so a cleanup cannot take `/stage` for one."""
+
+    def test_the_builder_starts_empty(self):
+        handler = nodes.NodeHandler(test_support.fixture_prefs(self))
+        self.assertIsNone(handler.builder_node)
+
+
 if __name__ == "__main__":
     unittest.main()

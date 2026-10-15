@@ -764,7 +764,7 @@ class WhatCountsAsAFailure(unittest.TestCase):
         handler._import_path = handler._hou_parent
         mat = material.Material(name="Rough Metal 01", renderer="Redshift")
 
-        handler.load_interface_other("", mat, "subnet")
+        handler.load_interface_other(mat, "subnet")
 
         self.assertEqual(
             "Rough_Metal_01", handler.builder_node.name(),
