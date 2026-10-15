@@ -957,6 +957,11 @@ def _fold(rule: str, ours, theirs, rules: dict = None, path: tuple = ()):
     return None
 
 
+def path_identity(path) -> str:
+    """The spelling two location paths compare by: trailing `/` off, the root kept as `/`."""
+    return str(path).rstrip("/") or "/"
+
+
 def _boundary(prefix: str) -> str:
     """A folder prefix that cannot match a SIBLING - without it, `/a/tex` captures `/a/textures`."""
     return prefix.rstrip("/") + "/"
@@ -1047,10 +1052,10 @@ def relocate(preferences, old: str, new: str) -> dict:
 def location_ids_at(preferences, prefix: str) -> list:
     """Every identity-table id whose path is `prefix` - either trailing-separator spelling."""
     store = open_store(_registry[LOCATION_PATHS], preferences)
-    wanted = hostos.storage_path_key(prefix).rstrip("/") or "/"
+    wanted = path_identity(hostos.storage_path_key(prefix))
     return sorted(
         lid for lid, row in store.all().items()
-        if (str(row.get("path") or "").rstrip("/") or "/") == wanted)
+        if path_identity(row.get("path") or "") == wanted)
 
 
 def retire_prefix(preferences, prefix: str) -> dict:

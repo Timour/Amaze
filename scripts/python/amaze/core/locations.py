@@ -64,7 +64,7 @@ def normalise_location_path(value) -> dict:
 
 def _same_path(a: str, b: str) -> bool:
     """One location, two legal spellings - the trailing separator never separates them."""
-    return (str(a).rstrip("/") or "/") == (str(b).rstrip("/") or "/")
+    return keyed_store.path_identity(a) == keyed_store.path_identity(b)
 
 
 SPEC = keyed_store.bind(LOCATIONS_FILE, normalise)
@@ -209,9 +209,8 @@ def _id_table(preferences) -> dict:
     table = {}
     for lid in sorted(_ids_store(preferences).all()):    # sorted, so the FIRST id at a path is the smallest - the same winner the rival collapse keeps
         path = str(_ids_store(preferences).get(lid).get("path") or "")
-        norm = path.rstrip("/") or "/"
         if path:
-            table.setdefault(norm, lid)
+            table.setdefault(keyed_store.path_identity(path), lid)
     _id_map = (key, _generation, table)
     return table
 
@@ -220,7 +219,7 @@ def location_id(preferences, path: str, mint: bool = False) -> str:
     """The id of the location at `path`, "" when it has none - `mint=True` creates one. The table is untagged and shared, so two users asking about one folder get ONE identity; two machines minting offline converge on the smaller id at conversion."""
     global _generation
     wanted = hostos.storage_path_key(str(path))
-    best = _id_table(preferences).get(wanted.rstrip("/") or "/", "")
+    best = _id_table(preferences).get(keyed_store.path_identity(wanted), "")
     if best or not mint:
         return best
     lid = uuid.uuid4().hex
@@ -777,7 +776,7 @@ def convert_to_ids(preferences) -> None:
         raw = str(ids.get(lid).get("path") or "")
         if not raw.strip():
             continue
-        path = raw.rstrip("/") or "/"
+        path = keyed_store.path_identity(raw)
         id_paths[lid] = path
         if path in by_path:
             losers[lid] = by_path[path]
@@ -788,7 +787,7 @@ def convert_to_ids(preferences) -> None:
         _owner, bare = keyed_store.untagged_key(SPEC, stored)
         if bare.startswith(LOC_PREFIX):
             continue
-        path = bare.rstrip("/") or "/"
+        path = keyed_store.path_identity(bare)
         if path not in by_path and path not in minted:
             minted[path] = uuid.uuid4().hex
             spellings[path] = bare
@@ -834,7 +833,7 @@ def convert_to_ids(preferences) -> None:
                     moves[stored] = tag + prefix + fresh
                 continue
             if spec is SPEC:
-                lid = by_path.get(bare.rstrip("/") or "/")
+                lid = by_path.get(keyed_store.path_identity(bare))
                 if lid:
                     moves[stored] = tag + LOC_PREFIX + lid
                 continue
@@ -873,7 +872,7 @@ def rehome_covered(preferences, path: str) -> bool:
     """Move each key a REMAINING location covers off the one at `path`; False if a store refused."""
     if not library_present(preferences):
         return True
-    gone = hostos.storage_path_key(str(path)).rstrip("/") or "/"
+    gone = keyed_store.path_identity(hostos.storage_path_key(str(path)))
     leaving = set(keyed_store.location_ids_at(preferences, path))
     owners = {base: lid for base, lid in _id_table(preferences).items()
               if base != gone}

@@ -1957,6 +1957,37 @@ class OnlyAUidShapedOwnerCountsAsATagTest(unittest.TestCase):
                 locations.SPEC, uid + "|/plates/wei|rd"))
 
 
+class ALocationPathComparesByOneRule(unittest.TestCase):
+
+    def test_the_rule_answers_what_each_inline_copy_answered(self):
+        """Trailing separators off, the root kept: what the eight inline copies computed."""
+        for given, wanted in (("/tex/a/", "/tex/a"), ("/tex/a", "/tex/a"),
+                              ("/tex/a//", "/tex/a"), ("/", "/"),
+                              ("", "/"), ("~/maps/", "~/maps"),
+                              ("$AMAZE/res/", "$AMAZE/res")):
+            self.assertEqual(wanted, keyed_store.path_identity(given),
+                             "the rule changed for %r" % given)
+
+    def test_no_module_writes_the_rule_out_again(self):
+        package = os.path.dirname(os.path.dirname(
+            os.path.abspath(keyed_store.__file__)))
+        found = []
+        for folder, dirs, files in os.walk(package):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in files:
+                if not name.endswith(".py"):
+                    continue
+                with open(os.path.join(folder, name),
+                          encoding="utf-8") as handle:
+                    for number, line in enumerate(handle, 1):
+                        if 'rstrip("/") or "/"' in line:
+                            found.append("%s:%d" % (name, number))
+        self.assertEqual(["keyed_store.py"],
+                         [where.split(":")[0] for where in found],
+                         "the path rule is written out beside its helper: "
+                         "%s" % found)
+
+
 class TheFingerprintIsOfTheBytesParsed(StoreCase):
     """A write landing between the load's parse and its fingerprint must be merged, not lost."""
 
