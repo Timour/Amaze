@@ -44,18 +44,8 @@ def _logo_image(widget=None):
     path = amaze.package_file("ui", "logo.svg")
     image = None
     try:
-        from PySide6 import QtSvg
-
-        renderer = QtSvg.QSvgRenderer(path)
-        if renderer.isValid():
-            full = QtGui.QImage(1024, 512,
-                                QtGui.QImage.Format.Format_ARGB32)
-            full.fill(QtCore.Qt.GlobalColor.transparent)
-            painter = QtGui.QPainter(full)
-            painter.setRenderHint(
-                QtGui.QPainter.RenderHint.Antialiasing, True)
-            renderer.render(painter)
-            painter.end()
+        full = QtGui.QImage(1024, 512, QtGui.QImage.Format.Format_ARGB32)
+        if ui_helpers.paint_svg(full, path):
             box = QtGui.QRegion(
                 QtGui.QBitmap.fromImage(full.createAlphaMask())
             ).boundingRect()

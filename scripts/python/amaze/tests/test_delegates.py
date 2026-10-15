@@ -274,6 +274,53 @@ class OneSvgPainterTest(unittest.TestCase):
         self.assertFalse(ui_helpers.paint_svg(image, b"<not an svg"))
         self.assertEqual(0, image.pixelColor(4, 4).alpha())
 
+    def test_the_about_logo_artboard_matches_its_antialiased_render(self):
+        from amaze.helpers import ui_helpers
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "ui", "logo.svg")
+        make = lambda: QtGui.QImage(1024, 512, QtGui.QImage.Format.Format_ARGB32)  # noqa: E731
+        want = self._by_hand(make(), path, True)
+        got = make()
+        self.assertTrue(ui_helpers.paint_svg(got, path))
+        self.assertEqual(want, got)
+
+    def test_only_ui_helpers_builds_an_svg_renderer(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        offenders = []
+        for folder, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in files:
+                full = os.path.join(folder, name)
+                if not name.endswith(".py") or full.endswith(
+                        os.path.join("helpers", "ui_helpers.py")):
+                    continue
+                with open(full, encoding="utf-8") as handle:
+                    if "QSvgRenderer" in handle.read():
+                        offenders.append(os.path.relpath(full, root))
+        self.assertEqual([], offenders,
+                         "these render SVG by hand instead of through "
+                         "`ui_helpers.paint_svg`")
+
+    def test_ui_helpers_imports_no_module_twice(self):
+        import ast
+        from amaze.helpers import ui_helpers
+        with open(ui_helpers.__file__, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        top = {alias.asname or alias.name
+               for node in tree.body
+               if isinstance(node, (ast.Import, ast.ImportFrom))
+               for alias in node.names}
+        again = []
+        for func in ast.walk(tree):
+            if not isinstance(func, ast.FunctionDef):
+                continue
+            for node in ast.walk(func):
+                if isinstance(node, (ast.Import, ast.ImportFrom)):
+                    again += ["%s in %s" % (alias.name, func.name)
+                              for alias in node.names
+                              if alias.name.split(".")[-1] in top]
+        self.assertEqual([], again, "imported again inside a function")
+
 
 class PainterBalanceTest(unittest.TestCase):
     """A delegate must hand the painter back exactly as it got it: with save() at the top of _paint and restore() at the bottom, a row raising in between skipped the restore, so the fallback row and every row after it in that pass inherited the leaked pen, font and clip while the save stack grew by one per failing tile - measured before the fix as Qt's own `QPainter::end: Painter ended with 1 saved states`."""

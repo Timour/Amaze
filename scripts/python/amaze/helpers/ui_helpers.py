@@ -110,12 +110,10 @@ def live_current_index(view):
 
 def tooltip_text(text: str, max_px: int = 800) -> str:
     """A tooltip that never draws wider than `max_px` REAL screen pixels - Qt renders a PLAIN-text tooltip as one line however long, and a width-capped table is the one rich-text width control QTextDocument honours; the cap is in DEVICE pixels, a ruler on a screenshot."""
-    from PySide6 import QtWidgets as _QtWidgets
-
     import html
 
     cap = max(1, int(max_px / theme.screen_ratio()))    # the primary screen deliberately: a tooltip is built at setToolTip time, before which monitor it will pop on is knowable ▸r/screen-dpr
-    metrics = QtGui.QFontMetrics(_QtWidgets.QToolTip.font())
+    metrics = QtGui.QFontMetrics(QtWidgets.QToolTip.font())
     if metrics.horizontalAdvance(text) <= cap:
         return html.escape(text) if _might_be_rich(text) else text    # Qt AUTO-DETECTS rich text, so remote catalogue text renders as markup unless this branch escapes too ▸r/tooltip-autodetect
 
@@ -1145,8 +1143,6 @@ def load_ui(path: str, *custom_widgets):
 
 def pick_color(initial, parent=None, title="Select Color"):
     """One colour picker for the whole app - Houdini's when it can be shown, Qt's when it cannot, returning a QColor or None; a NATIVE modal raised while a Qt exec loop is active lands UNDER it, invisible, so `activeModalWidget()` decides at call time and no call site needs to know."""
-    from PySide6 import QtGui, QtWidgets
-
     if isinstance(initial, str):
         initial = QtGui.QColor(initial) if initial else QtGui.QColor()
 
@@ -1168,7 +1164,6 @@ def pick_color(initial, parent=None, title="Select Color"):
         try:
             chosen = hou.ui.selectColor(initial_color=seed)
         except hou.Error as exc:
-            from amaze.core import debug
             debug.event("ui", "houdini colour picker failed - falling "
                         "back to Qt", error=str(exc))
             chosen = None
