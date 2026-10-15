@@ -1483,6 +1483,61 @@ class ANoOpSaveCostsOneRead(unittest.TestCase):
             % len(calls))
 
 
+class AOneRowSaveTouchesOneStamp(unittest.TestCase):
+    """Once a save has checked every stamp, the next touches only the rows it changed."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        from amaze.core import library as library_mod
+        self.library_mod = library_mod
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.assertGreater(self.model.rowCount(), 3, "premise: four rows")
+        self.assertTrue(self.model.save(), "premise: the first save landed")
+
+    def _stamps_opened(self, action):
+        """The asset ids whose stamp `action` opened, to read or to write."""
+        import builtins
+        opened = []
+        real = builtins.open
+
+        def counting(file, *args, **kwargs):
+            name = os.path.basename(str(file))
+            if self.library_mod.STAMP_SUFFIX in name:
+                opened.append(name.split(".")[0])
+            return real(file, *args, **kwargs)
+
+        with mock.patch("builtins.open", counting):
+            action()
+        return opened
+
+    def _stamp(self, mat_id):
+        path = os.path.join(self.prefs.dir, self.prefs.asset_dir,
+                            str(mat_id) + self.library_mod.STAMP_SUFFIX)
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+
+    def test_a_rename_opens_only_the_renamed_asset_s_stamp(self):
+        target = str(self.model.assets[2].mat_id)
+        opened = self._stamps_opened(
+            lambda: self.model.set_tile_name(2, "Renamed Probe"))
+        self.assertEqual(
+            {target}, set(opened),
+            "one rename opened %d stamps - every save walked every asset"
+            % len(opened))
+        self.assertEqual("Renamed Probe", self._stamp(target)["name"])
+
+    def test_a_deleted_asset_brought_back_gets_its_stamp_again(self):
+        asset = self.model.assets[3]
+        self.model.remove_asset(self.model.index(3, 0))
+        self.assertNotIn(asset, self.model.assets, "premise: deleted")
+        self.model._append_record(asset)
+        self.assertTrue(self.model.save(), "premise: the re-add landed")
+        self.assertEqual(str(asset.mat_id), str(self._stamp(asset.mat_id)["id"]),
+                         "the asset came back without its recovery stamp")
+
+
 class QuarantineCrossesVolumes(unittest.TestCase):
     """`os.replace` cannot cross a volume, so the fallback copies then unlinks."""
 

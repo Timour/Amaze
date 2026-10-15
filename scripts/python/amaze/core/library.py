@@ -30,29 +30,46 @@ def _count(count: int, noun: str) -> str:
 STAMP_SUFFIX = ".stamp.json"  # a per-asset recovery stamp, WRITE-ONLY: only repair.py may open one, and test_a_stamp_is_never_read_in_normal_operation holds that from source. ▸p/recovery-stamp
 
 
+_STAMPED: dict = {}    # (library dir, asset id) -> repr of the record its stamp was last seen holding
+
+
 class _StampWriter:
     """Rewrites the stamps that no longer match their record - call only after a SUCCESSFUL index write, since a stamp shadows what reached disk. ▸p/recovery-stamp"""
 
     def __init__(self, library):
         self._library = library
 
+    @staticmethod
+    def forget(preferences, mat_id) -> None:
+        """Drop what this session knows of one asset's stamp, so the next save checks it again."""
+        _STAMPED.pop((str(preferences.dir), str(mat_id)), None)
+
     def refresh(self) -> int:
+        """Write each stamp whose record changed since this session last saw it; returns how many."""
         written = 0
+        preferences = self._library.preferences
         for asset in list(self._library._assets):
+            known = (str(preferences.dir), str(asset.mat_id))
             try:
-                path = self._library.asset_files(asset.mat_id)["stamp"]
-            except (hostos.PathEscape, TypeError, KeyError):
+                record = asset.get_as_dict()
+                seen = repr(record)
+                if _STAMPED.get(known) == seen:
+                    continue
+                if not material.is_safe_asset_id(known[1]):
+                    continue
+                path = material.payload_path(preferences, known[1],
+                                             STAMP_SUFFIX)
+                payload = json.dumps(record, indent=1, sort_keys=True)
+            except hostos.PathEscape:
                 continue
-            try:
-                payload = json.dumps(asset.get_as_dict(), indent=1,
-                                     sort_keys=True)
-            except (TypeError, ValueError) as exc:  # logged, never raised: the save has already succeeded, so failing here would turn a stamp problem into data loss
+            except (TypeError, ValueError) as exc:  # logged, never raised: the index write already landed
                 debug.event("library", "recovery stamp could not be built",
                             mat_id=str(asset.mat_id), error=str(exc))
                 continue
             try:
                 with open(path, "r", encoding="utf-8") as handle:
                     if handle.read() == payload:
+                        _STAMPED[known] = seen
                         continue
             except (OSError, ValueError):
                 pass                       # absent or unreadable: rewrite
@@ -61,6 +78,7 @@ class _StampWriter:
                     with open(scratch, "w", encoding="utf-8") as handle:
                         handle.write(payload)
                 written += 1
+                _STAMPED[known] = seen
             except OSError as exc:  # same: a safety net is never the thing being saved
                 debug.event("library", "recovery stamp not written",
                             mat_id=str(asset.mat_id), error=str(exc))
@@ -468,6 +486,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         except (AttributeError, TypeError) as exc:
             debug.event("library", "could not mark a row for removal",
                         error=str(exc))
+        _StampWriter.forget(self.preferences, going.mat_id)    # its stamp may be unlinked with it
 
         self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # bracketed so attached views and proxies adjust by protocol; del by INDEX, since remove-by-value drops the first EQUAL element, which needn't be this row's
         del self._assets[row]
@@ -680,6 +699,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         for index in range(len(self._assets) - 1, -1, -1):  # ONE pass, highest row first so indices stay valid - a per-row find_asset_row_by_id scan was O(dropped x library)
             if str(self._assets[index].mat_id) not in ids:
                 continue
+            _StampWriter.forget(self.preferences, self._assets[index].mat_id)
             self.beginRemoveRows(QtCore.QModelIndex(), index, index)
             try:
                 del self._assets[index]
