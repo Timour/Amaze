@@ -2456,11 +2456,16 @@ class AmazePanel(QtWidgets.QWidget):
         if summary.get("files"):
             folder = hostos.canonical_path_key(
                 os.path.join(self.prefs.dir, "import"))
-            self.prefs.set_file_folder_name(folder, "Import")    # first, so the row arrives named
             folders = getattr(self, "file_folders_model", None)
-            if folders is None:
-                self.prefs.add_file_folder(folder)
-            elif not folders.add_folder(folder):
+            listed = {hostos.canonical_path_key(path)
+                      for path in self.prefs.file_folders}
+            if folder not in listed:
+                self.prefs.set_file_folder_name(folder, "Import")    # before the row lands, and only here: a rename stays
+                if folders is None:
+                    self.prefs.add_file_folder(folder)
+                else:
+                    folders.add_folder(folder)
+            elif folders is not None:
                 folders.refresh_counts()    # already listed: files landed in it, so its number moved
                 row = folders.row_of(folder)
                 if row is not None:

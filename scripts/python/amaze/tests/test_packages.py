@@ -382,6 +382,37 @@ class PackageImportTest(unittest.TestCase):
             "the import folder is not a registered location, so the "
             "landed file is invisible in the File section")
 
+    def test_a_renamed_import_location_keeps_its_name(self):
+        """Only the import that registers the location names it, so a rename made since stays."""
+        from amaze.core import packages
+        from amaze.helpers import hostos as hostos_mod
+        prefs = self.panel.prefs
+        folder = hostos_mod.canonical_path_key(os.path.join(prefs.dir, "import"))
+        sources = tempfile.mkdtemp(prefix="amaze_pkg_named_")
+        self.addCleanup(
+            __import__("shutil").rmtree, sources, ignore_errors=True)
+
+        def import_one(name):
+            path = os.path.join(sources, name)
+            with open(path, "wb") as handle:
+                handle.write(b"mocap")
+            out = _out_path(self, name + ".amazepkg")
+            packages.write_package(out, [packages.collect_file(path, "other")])
+            self.assertEqual(1, self.panel.import_package_file(out)["files"])
+
+        def name_shown():
+            return {hostos_mod.canonical_path_key(path): name for path, name
+                    in prefs.file_folder_names.items()}.get(folder)
+
+        import_one("walk_named_a.bvh")
+        self.assertEqual("Import", name_shown(),
+                         "premise: the import location arrives named")
+        prefs.set_file_folder_name(folder, "Mocap")
+        self.addCleanup(prefs.set_file_folder_name, folder, "Import")
+        import_one("walk_named_b.bvh")
+        self.assertEqual("Mocap", name_shown(),
+                         "the next import put the location's old name back")
+
     def test_the_import_location_arrives_as_a_sidebar_row(self):
         """Registered through the sidebar model, which tells its views and keeps its counts."""
         from amaze.core import category, packages
