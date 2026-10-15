@@ -1690,9 +1690,7 @@ class AmazePanel(QtWidgets.QWidget):
         grid.visible_view(self).viewport().update()
         section = self._section()
         if section is not None:
-            section.prefs_changed()
-        if self.current_section == "file" and not self._is_online():    # the one rescan on close
-            self.file_files_model.refresh_current_folder()    # geometry look prefs show without a re-click
+            section.prefs_changed()    # File rescans its folder here; nothing does online
         self._apply_enabled_sections()    # visible section tabs may have changed in Preferences
 
     def update_renderer_toggles(self):

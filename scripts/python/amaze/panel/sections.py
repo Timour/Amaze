@@ -1539,9 +1539,11 @@ class FileSection(FolderSection):
     last_folder_pref = "last_file_folder"
 
     def prefs_changed(self) -> None:
-        folders = self._p(self.folders_attr)    # the folder itself is rescanned by the panel, once
+        folders, files = self._p(self.folders_attr), self._p(self.files_attr)
         if folders is not None:
-            folders.refresh_counts()    # Show Unknown Files changes what counts as a row, and the sidebar numbers must agree with the grid
+            folders.refresh_counts()    # Show Unknown Files changes what counts as a row
+        if files is not None:
+            files.refresh_current_folder()    # once, so look preferences show unclicked
 
     def double_click(self, index) -> None:
         self.panel.click_on_row(self, index)

@@ -2558,31 +2558,17 @@ class ReviewFixesTest(unittest.TestCase):
     """The adversarial review round on the merge diff: five confirmed defects, one pin each."""
 
     def test_prefs_close_does_not_refresh_from_another_section(self):
-        """The merged model's refresh can start the BLOCKING geometry render pass, so a prefs close must gate it on the File section actually showing - the next File activation rescans anyway."""
-        import test_drag_gesture  # noqa: F401 - shares sys.path setup
-        from amaze.panel import panel as panel_mod
-
-        calls = []
-
-        class _Model:
-            def refresh_current_folder(self):
-                calls.append("refresh")
-
-        class _Panel:
-            file_files_model = _Model()
-            current_section = "material"
-            prefs = None
-
-        import inspect    # the pin is the GATE itself, source-checked - everything before it needs a constructed panel
-        source = inspect.getsource(panel_mod.AmazePanel._prefs_dialog_closed)
-        self.assertIn('current_section == "file"', source,
-                      "the refresh is not gated on the File section - "
-                      "a prefs close can start the blocking geometry "
-                      "pass from any tab")
-        gate = source.index('current_section == "file"', 0)
-        refresh = source.index('refresh_current_folder', 0)
-        self.assertLess(gate, refresh,
-                        "the gate sits after the refresh it must guard")
+        """The refresh can start the BLOCKING geometry pass, so only File showing earns one."""
+        from unittest import mock
+        panel = test_support.fixture_panel(self)
+        for key, wanted in (("material", 0), ("file", 1), ("gradient", 0)):
+            with self.subTest(section=key):
+                panel.section_tabs.setChecked(key)
+                QtWidgets.QApplication.processEvents()
+                with mock.patch.object(panel.file_files_model,
+                                       "refresh_current_folder") as refresh:
+                    panel._prefs_dialog_closed(panel.prefs.dir)
+                self.assertEqual(wanted, refresh.call_count)
 
     def test_sidebar_count_agrees_with_the_grid(self):
         """The sidebar once counted subdirectories the grid never lists - 3 files + 2 subfolders reads 3, not 5."""
