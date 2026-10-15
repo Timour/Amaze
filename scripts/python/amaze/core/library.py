@@ -333,7 +333,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return ""
         return str(self._assets[row].name or "")
 
-    def set_tile_name(self, row: int, name: str) -> bool:
+    def set_tile_name(self, row: int, name: str, save: bool = True) -> bool:
         """Rename one asset - the one rename path every library section shares. A narrow write: the name field alone changes, then the ordinary save chain runs. A blank or unchanged name is a no-op."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
@@ -342,10 +342,10 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if name == asset.name:
             return False
         asset.name = name
-        self._saved_rows_changed([asset])
+        self._edited(asset, save)
         return True
 
-    def add_tile_tags(self, row: int, line: str) -> bool:
+    def add_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
         """ADD the tags in a comma-separated line to what this asset already has, keeping its own and dropping duplicates - the multi-selection write, where `set_tile_tags` would flatten every row to one line. A blank line adds nothing."""
         if not 0 <= row < len(self._assets):
             return False
@@ -360,7 +360,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if merged == before:
             return False
         asset.tags = ", ".join(merged)
-        self._saved_rows_changed([asset])
+        self._edited(asset, save)
         return True
 
     def tile_category(self, row: int) -> str:
@@ -370,7 +370,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         cats = self._assets[row].categories or []
         return str(cats[0]) if cats else ""
 
-    def set_tile_category(self, row: int, name: str) -> bool:
+    def set_tile_category(self, row: int, name: str, save: bool = True) -> bool:
         """MOVE one asset to `name`, replacing whatever it had - a narrow write beside `set_tile_name`, then the ordinary save chain. Unlike name and tags this one runs over a whole selection, so a blank is a no-op rather than a clear."""
         name = (name or "").strip()
         if not 0 <= row < len(self._assets) or not name:
@@ -379,7 +379,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if list(asset.categories or []) == [name]:
             return False
         asset.categories = name    # the RECORD's own setter splits and drops the blanks
-        self._saved_rows_changed([asset])
+        self._edited(asset, save)
         return True
 
     def tile_tags(self, row: int) -> str:
@@ -388,7 +388,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return ""
         return ", ".join(self._assets[row].tags or [])
 
-    def set_tile_tags(self, row: int, line: str) -> bool:
+    def set_tile_tags(self, row: int, line: str, save: bool = True) -> bool:
         """REPLACE one asset's tags from a comma-separated line: what is in the field becomes the tags, so an empty line clears them. A narrow write beside `set_tile_name`, then the ordinary save chain."""
         if not 0 <= row < len(self._assets):
             return False
@@ -397,7 +397,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         asset.tags = line or ""    # the RECORD's own setter splits and drops the blanks - the one splitter, never a second copy of it here
         if [tag for tag in (asset.tags or []) if tag] == before:
             return False
-        self._saved_rows_changed([asset])
+        self._edited(asset, save)
         return True
 
     def tile_icon(self, row: int) -> dict:
@@ -406,6 +406,17 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return tile_icons.override_for(
                 self.preferences, str(self._assets[row].mat_id))
         return {}
+
+    def _edited(self, asset, save: bool) -> None:
+        """Save and repaint one edited record now, or with `save` False leave it to `commit_tile_edits`."""
+        if save:
+            self._saved_rows_changed([asset])
+
+    def commit_tile_edits(self, keys) -> bool:
+        """ONE save for the records the `save=False` setters changed, named by key, then their repaint."""
+        wanted = {str(key) for key in keys}
+        return self._saved_rows_changed(
+            [asset for asset in self._assets if str(asset.mat_id) in wanted])
 
     def _saved_rows_changed(self, assets, roles=None) -> bool:
         """Save, then repaint each record on the row the save LEFT it on: a save adopts and drops rows."""

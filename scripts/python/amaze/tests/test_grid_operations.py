@@ -1034,5 +1034,60 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
                          "two tiles in two categories opened on a category")
 
 
+class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
+    """Tags and a category typed into Customize over five tiles reach the list in ONE save."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.material_model
+        self.assertGreaterEqual(self.model.rowCount(), 6, "premise: six rows")
+        self.rows = [1, 2, 3, 4, 5]
+        self.ids = [str(self.model.assets[row].mat_id) for row in self.rows]
+
+    def _apply(self, tags, category):
+        from amaze.core import database
+        self.panel.edit_tile_icon(
+            self.model, None, [self.model.index(row, 0) for row in self.rows])
+        dialog = self.panel._icon_dialog
+        self.assertIsNotNone(dialog, "Customize did not open")
+        self.addCleanup(dialog.deleteLater)
+        dialog.canceled = False
+        dialog.spec = {"name": "star", "bg": "#4af2a1", "ink": "dark"}
+        dialog.new_tags = tags
+        dialog.new_category = category
+        with mock.patch.object(database.DatabaseConnector, "save",
+                               autospec=True,
+                               side_effect=database.DatabaseConnector.save) as save:
+            dialog.finished.emit(1)
+            QtWidgets.QApplication.processEvents()
+        return save.call_count
+
+    def _record(self, mat_id):
+        row = self.model.find_asset_row_by_id(mat_id)
+        return self.model.assets[row]
+
+    def test_tags_and_a_category_over_five_tiles_save_once(self):
+        saves = self._apply("probe-tag", "Probe Shelf")
+        self.assertEqual(1, saves,
+                         "Customize over five tiles wrote the list %d times"
+                         % saves)
+        for mat_id in self.ids:
+            record = self._record(mat_id)
+            self.assertIn("probe-tag", record.tags)
+            self.assertEqual(["Probe Shelf"], list(record.categories))
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        with open(path, encoding="utf-8-sig") as handle:
+            on_disk = {str(row.get("id")): row
+                       for row in json.load(handle)["assets"]}
+        for mat_id in self.ids:
+            self.assertEqual(["Probe Shelf"], on_disk[mat_id]["categories"],
+                             "the edit never reached the file")
+
+    def test_an_edit_that_changes_nothing_saves_nothing(self):
+        self._apply("probe-tag", "Probe Shelf")
+        self.assertEqual(0, self._apply("probe-tag", "Probe Shelf"),
+                         "re-applying what every tile already carries saved")
+
+
 if __name__ == "__main__":
     unittest.main()

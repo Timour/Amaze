@@ -2602,23 +2602,29 @@ class AmazePanel(QtWidgets.QWidget):
                     if model.tile_key(row) in held]
             if not rows:
                 return
-            keys = [model.tile_key(row) for row in rows]    # by KEY past here: each write saves, moving rows
             self._apply_icon_spec(model, rows, dialog.spec)
+            edited = set()    # keys of the records changed below - nothing saves until the one commit
             new_name = getattr(dialog, "new_tile_name", None)
-            if new_name and len(keys) == 1 and \
+            if new_name and len(rows) == 1 and \
                     hasattr(model, "set_tile_name"):
-                model.set_tile_name(model.find_asset_row_by_id(keys[0]), new_name)
+                if model.set_tile_name(rows[0], new_name, save=False):
+                    edited.add(model.tile_key(rows[0]))
             new_tags = getattr(dialog, "new_tags", None)
             if new_tags is not None and hasattr(model, "set_tile_tags"):
-                if len(keys) == 1:
-                    model.set_tile_tags(model.find_asset_row_by_id(keys[0]), new_tags)    # "" CLEARS the tags
+                if len(rows) == 1:
+                    if model.set_tile_tags(rows[0], new_tags, save=False):    # "" CLEARS the tags
+                        edited.add(model.tile_key(rows[0]))
                 else:
-                    for key in keys:    # ADDS across a selection: each tile keeps its own tags
-                        model.add_tile_tags(model.find_asset_row_by_id(key), new_tags)
+                    for row in rows:    # ADDS across a selection: each tile keeps its own tags
+                        if model.add_tile_tags(row, new_tags, save=False):
+                            edited.add(model.tile_key(row))
             new_category = getattr(dialog, "new_category", None)
             if new_category and hasattr(model, "set_tile_category"):
-                for key in keys:    # EVERY selected tile, unlike the name and the tags
-                    model.set_tile_category(model.find_asset_row_by_id(key), new_category)
+                for row in rows:    # EVERY selected tile, unlike the name and the tags
+                    if model.set_tile_category(row, new_category, save=False):
+                        edited.add(model.tile_key(row))
+            if edited:
+                model.commit_tile_edits(edited)
 
         def _finished(_result=0, dialog=dialog):
             self._icon_dialog = None
