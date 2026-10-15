@@ -1403,7 +1403,6 @@ class MaterialLibrary(AssetLibrary):
             new_mat.cop_net = handler.cop_info
             inventory = handler.texture_inventory
             if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
-                new_mat._extra = dict(getattr(new_mat, "_extra", None) or {})
                 new_mat._extra["textures"] = list(inventory)
             self._append_record(new_mat)    # per row, so in a multi-save each tile shows as its save lands
             if not self.save():  # THE INDEX WRITE CAN BE REFUSED, and the files are already on disk by now, so say so rather than reporting a save that leaves an asset absent the next time Houdini opens
@@ -1482,7 +1481,6 @@ class MaterialLibrary(AssetLibrary):
                 shutil.rmtree(os.path.dirname(
                     next(iter(pre_edit.values()))), ignore_errors=True)
         mat.cop_net = handler.cop_info
-        mat._extra = dict(getattr(mat, "_extra", None) or {})
         mat._extra.pop("textures", None)    # replaced whole - the new content's references are the inventory now
         inventory = handler.texture_inventory
         if isinstance(inventory, (list, tuple)) and inventory:

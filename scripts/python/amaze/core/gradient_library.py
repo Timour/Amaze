@@ -189,14 +189,12 @@ class GradientLibrary(library.AssetLibrary):
     @staticmethod
     def _colors_of(asset) -> list:
         """The palette's colour dicts - carried through on the record beside the fields the family knows."""
-        extra = getattr(asset, "_extra", None) or {}
-        colors = extra.get("colors")
+        colors = asset._extra.get("colors")
         return colors if isinstance(colors, list) else []
 
     @staticmethod
     def _ramp_of(asset) -> dict:
-        extra = getattr(asset, "_extra", None) or {}
-        ramp = extra.get("ramp")
+        ramp = asset._extra.get("ramp")
         return ramp if isinstance(ramp, dict) else {}
 
     def entry(self, row: int) -> dict | None:

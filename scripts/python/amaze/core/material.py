@@ -118,6 +118,7 @@ class Material:
         self._about = ""
         self._license = ""
         self._node_color: list = []
+        self._extra: dict = {}
 
     _RETIRED_KEYS = frozenset({"favorite", "icon", "builder"})
 
@@ -169,7 +170,7 @@ class Material:
             "license": self._license,
             "node_color": self._node_color,
         }
-        for key, value in (getattr(self, "_extra", None) or {}).items():
+        for key, value in self._extra.items():
             material_dict.setdefault(key, value)
 
         return material_dict

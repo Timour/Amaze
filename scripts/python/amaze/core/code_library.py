@@ -234,9 +234,8 @@ class CodeLibrary(library.AssetLibrary):
                 )
                 mat.code = code
                 mat.description = snip.get("description", "")
-                mat._extra = dict(getattr(mat, "_extra", None) or {},    # the stable identity a restore matches on, riding the record's extra-keys courtesy
-                                  curated="starter/%s"
-                                          % snip.get("name", "Snippet"))
+                mat._extra["curated"] = (    # the stable identity a restore matches on, riding the record's extra-keys courtesy
+                    "starter/%s" % snip.get("name", "Snippet"))
                 self._append_record(mat)
                 added += 1
             if added:

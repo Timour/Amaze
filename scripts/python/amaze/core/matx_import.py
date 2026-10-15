@@ -327,9 +327,7 @@ def import_record(record, source, resolution, library, preferences,
             credited = library.assets[row]   # add_asset() derives the renderer from the NODE and a builder full of mtlx* nodes reads as Karma, which is exactly right since online imports ARE Karma materials rather than a renderer of their own - what is left is crediting the creators
             credited.about = _credit_text(record, source)    # written to the record and moved into the asset's COMMENT by the sweep below, which is where the credit lives now ▸p/d03-retired
             credited.license = record.licence or ""
-            extra = getattr(credited, "_extra", None)
-            if extra is None:
-                extra = credited._extra = {}
+            extra = credited._extra
             extra["source"] = record.source or ""    # WHERE it came from and WHICH one, on the row itself: until 2026-09-04 only the package folder name carried them, and only for downloads after 2026-08-05
             extra["online_uid"] = str(record.uid or "")    # not `uid`: that spelling is the pre-connector id, which packages.py strips on import
             if measurement_note:

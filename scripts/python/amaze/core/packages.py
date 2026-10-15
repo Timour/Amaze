@@ -192,8 +192,8 @@ def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
     if restore:
         tag = str(row.get("curated") or "")
         if tag:    # curated rows match on the TAG - ids are minted per library, so the same palette carries a different id everywhere
-            present = {str((getattr(a, "_extra", None) or {})
-                           .get("curated") or "") for a in model.assets}
+            present = {str(a._extra.get("curated") or "")
+                       for a in model.assets}
         else:
             present = {str(a.mat_id) for a in model.assets}
         if (tag or str(row.get("id") or "")) in present:

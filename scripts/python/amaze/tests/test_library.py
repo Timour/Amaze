@@ -923,6 +923,13 @@ class MaterialRoundTripTest(unittest.TestCase):
             self.fail("a row missing %s aborted the whole model" % exc)
         self.assertEqual("n", asset.name)
 
+    def test_a_record_built_in_code_carries_an_empty_extra(self):
+        """A new record, not read from a row, has `_extra` too, so no reader needs a default."""
+        asset = self._material()()
+        self.assertEqual({}, asset._extra)
+        asset._extra["source"] = "PolyHaven"
+        self.assertEqual("PolyHaven", asset.get_as_dict().get("source"))
+
     def test_an_unknown_key_cannot_overwrite_a_known_one(self):
         """_extra is re-emitted, but it must never win over real state."""
         Material = self._material()
