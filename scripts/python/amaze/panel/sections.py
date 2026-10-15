@@ -583,7 +583,6 @@ class AssetSection(Section):
             st.proxy.setFilter(st.model.RendererRole, value)    # all three asset sections keep their kind in this one field - renderer for Materials, saved-from context for Nodes, language for Code - and MultiFilterProxyModel matches hard-coded role NUMBERS, silently ignoring a filter set on any other role
         st.categories.set_renderer_filter(value or "")    # the sidebar too, or a category of three hidden LOP setups still reads "MyCat (3)" and opens empty; the PROXY's value and never the menu's label, because Categories lowercases what it is given and substring-matches it, so "All" matches no renderer at all and "" is the honest mirror of what the grid does with it
         self.panel._refresh_sidebar_categories()
-        self.panel._ensure_sidebar_selection(self.key)
 
     def select_category(self, index) -> None:
         """Narrow the grid to the clicked row's category, always by the STORED name."""

@@ -1707,8 +1707,7 @@ class AmazePanel(QtWidgets.QWidget):
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         for _sidebar_proxy in self.sidebar_proxies():    # EVERY sidebar proxy, and via sidebar_proxies() rather than a hand-written list: one left out keeps its construction-time hide_empty for the rest of the run
             _sidebar_proxy.hide_empty = self.prefs.hide_empty_categories
-        self._refresh_sidebar_categories()
-        self._ensure_sidebar_selection(self.current_section)    # if hiding empties just hid the category the user was standing in, fall back to All the way a filter switch does
+        self._refresh_sidebar_categories()    # ends in the fall-back to All, should hiding hide its row
         self.cat_list.viewport().update()
         grid.visible_view(self).viewport().update()
         section = self._section()
@@ -3516,15 +3515,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _refresh_sidebar_categories(self) -> None:
         """Re-evaluate empty-category hiding and counts after anything that changed which materials/COPs exist, what they belong to, or which renderer filter is active. For the flows that do NOT emit category_model.layoutChanged themselves (deletes, overwrite, renderer switch); the ones that do refilter automatically."""
-        for cats_model in (
-            getattr(self, "category_model", None),
-            getattr(self, "cop_category_model", None),
-            getattr(self, "code_category_model", None),
-            getattr(self, "gradient_categories_model", None),
-        ):
-            if cats_model is not None:
-                cats_model.drop_count_cache()
         for proxy in self.sidebar_proxies():
+            proxy.sourceModel().drop_count_cache()
             proxy.invalidateFilter()
         if self.cat_list is not None:
             self.cat_list.viewport().update()

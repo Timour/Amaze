@@ -159,6 +159,44 @@ class EveryAssetSidebarFollowsItsFilter(unittest.TestCase):
             "again - the enumeration that was short is exactly how "
             "Code was missed")
 
+    def _panel(self):
+        panel = test_support.fixture_panel(self)
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        return panel
+
+    def test_a_filter_and_a_preferences_close_fall_back_once(self):
+        """The sidebar refresh ends in the fall-back to All; its callers do not repeat it."""
+        from unittest import mock
+        panel = self._panel()
+        for name, act in (
+                ("filter", lambda: panel._section().apply_filter(None)),
+                ("preferences", lambda: panel._prefs_dialog_closed(panel.prefs.dir))):
+            with self.subTest(name), \
+                    mock.patch.object(panel, "_refresh_sidebar_categories",
+                                      wraps=panel._refresh_sidebar_categories) as refresh, \
+                    mock.patch.object(panel, "_ensure_sidebar_selection",
+                                      wraps=panel._ensure_sidebar_selection) as ensure:
+                act()
+                self.assertTrue(refresh.call_count, "premise: the sidebar refreshed")
+                self.assertEqual(refresh.call_count, ensure.call_count)
+
+    def test_the_refresh_drops_every_sidebars_counts(self):
+        """Each sidebar proxy's own category model, the four of them."""
+        from unittest import mock
+        panel = self._panel()
+        models = [getattr(panel, name) for name in (
+            "category_model", "cop_category_model", "code_category_model",
+            "gradient_categories_model")]
+        patches = [mock.patch.object(model, "drop_count_cache") for model in models]
+        dropped = [patch.start() for patch in patches]
+        try:
+            panel._refresh_sidebar_categories()
+        finally:
+            for patch in patches:
+                patch.stop()
+        self.assertEqual([1, 1, 1, 1], [drop.call_count for drop in dropped])
+
     def test_sidebar_proxies_names_all_four(self):
         from amaze.panel import panel as panel_mod
         self.assertEqual(
