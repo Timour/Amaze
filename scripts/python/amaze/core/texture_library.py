@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import shutil
+import weakref
 
 from PySide6 import QtCore, QtGui
 
@@ -30,6 +31,16 @@ def matched_extension(name: str) -> str:
     return hostos.matched_extension(name, IMAGE_EXTENSIONS)
 
 
+_LIVE = globals().get("_LIVE", weakref.WeakSet())    # every ThumbnailCache alive in this process
+
+
+def live_caches(cache_dir: str) -> list:
+    """Every ThumbnailCache this process holds over `cache_dir`."""
+    wanted = os.path.normcase(os.path.normpath(cache_dir))
+    return [cache for cache in list(_LIVE)
+            if os.path.normcase(os.path.normpath(cache.cache_dir)) == wanted]
+
+
 def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:
     # local-machine-only cache with the resolution baked into the dir name, so a RenderSize change cannot serve stale images; hostos owns the root and the legacy-dir migrations
     return os.path.join(hostos.cache_root(), f"{prefix}_{size}")
@@ -45,6 +56,18 @@ class ThumbnailCache:
         os.makedirs(self.cache_dir, exist_ok=True)
         self._manifest: dict = self._load_manifest()
         self._dirty = False
+        self._remember_disk_state()
+        _LIVE.add(self)
+
+    def paths(self) -> list:
+        """Every source path this object holds an entry for, saved or not."""
+        return list(self._manifest)
+
+    def forget(self, paths) -> None:
+        """Drop entries a sweep took off disk, adopting the disk first so no save writes them back."""
+        self._adopt_from_disk()
+        for path in paths:
+            self._manifest.pop(self._key(path), None)
         self._remember_disk_state()
 
     def _load_manifest(self) -> dict:

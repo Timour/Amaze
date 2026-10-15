@@ -78,22 +78,27 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
             continue
         cache_dir = os.path.join(root, name)
         manifest_path = os.path.join(cache_dir, "manifest.json")
-        if not os.path.isfile(manifest_path):
-            continue
+        on_disk = os.path.isfile(manifest_path)
+        manifest = {}
         try:
-            with open(manifest_path, encoding="utf-8") as handle:
-                manifest = json_mod.load(handle)
+            if on_disk:
+                with open(manifest_path, encoding="utf-8") as handle:
+                    manifest = json_mod.load(handle)
             if not isinstance(manifest, dict):
                 raise ValueError("not a manifest")
         except (OSError, ValueError) as exc:
             debug.event("file", "sweep skipped an unreadable manifest",
                         dir=name, error=str(exc))
             continue
-        doomed = [
-            path for path in manifest
+        live = texture_library.live_caches(cache_dir)    # a grid's own cache would save them back
+        held = set(manifest)
+        for cache in live:
+            held.update(cache.paths())
+        doomed = sorted(
+            path for path in held
             if path.startswith(prefix)
             and not any(path.startswith(k) for k in keep_prefixes)
-        ]
+        )
         if not doomed:
             continue
         for path in doomed:
@@ -109,10 +114,13 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
                             error=str(exc))
             manifest.pop(path, None)
         try:
-            hostos.write_json_atomic(manifest_path, manifest)
+            if on_disk:
+                hostos.write_json_atomic(manifest_path, manifest)
         except OSError as exc:
             debug.event("file", "sweep could not rewrite the manifest",
                         dir=name, error=str(exc))
+        for cache in live:
+            cache.forget(doomed)
     if removed:
         debug.event("file", "removed folder's cache swept",
                     folder=folder, thumbnails=removed)

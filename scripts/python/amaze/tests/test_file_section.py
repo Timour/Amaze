@@ -2041,6 +2041,48 @@ class LocationManagementTest(unittest.TestCase):
         self.assertTrue(os.path.exists(marker),
                         "the sweep touched the capture store")
 
+    def test_a_swept_entry_stays_gone_when_the_live_cache_saves(self):
+        """The grid's own cache object held the removed folder's entries, saved and unsaved."""
+        from amaze.core import texture_library
+        doomed_dir = self._tmpdir()
+        kept_dir = self._tmpdir()
+        image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("red"))
+
+        def source(folder, name):
+            path = os.path.join(folder, name)
+            with open(path, "wb") as handle:
+                handle.write(b"x")
+            return hostos.canonical_path_key(path)
+
+        saved, unsaved = (source(doomed_dir, n) for n in ("a.png", "b.png"))
+        kept, later = (source(kept_dir, n) for n in ("c.png", "d.png"))
+        cache = texture_library.ThumbnailCache(
+            256, prefix="texture_thumbnails_sweep_live")
+        self.addCleanup(shutil.rmtree, cache.cache_dir, ignore_errors=True)
+        cache.put(saved, image)
+        cache.put(kept, image)
+        cache.save()
+        cache.put(unsaved, image)
+        prefs = _Prefs([])
+        self.addCleanup(shutil.rmtree, prefs.dir, ignore_errors=True)
+
+        file_library.sweep_folder_cache(prefs, doomed_dir, [kept_dir])
+        cache.put(later, image)
+        cache.save()
+
+        with open(cache.manifest_path, encoding="utf-8") as handle:
+            on_disk = sorted(json.load(handle))
+        self.assertEqual(
+            sorted([kept, later]), on_disk,
+            "the live cache wrote the removed folder's entries back on "
+            "its next save")
+        self.assertFalse(
+            os.path.exists(os.path.join(
+                cache.cache_dir, cache._cache_filename(unsaved))),
+            "a thumbnail the live cache had not saved yet outlived the "
+            "sweep")
+
     def test_remove_folder_drops_the_per_location_state(self):
         """ALL FOUR per-location surfaces read AFTERWARDS - a spy on which setters ran could not see the mechanism running two short, which it did."""
         tmp = self._tmpdir()
