@@ -9,7 +9,7 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (code_library, cop_library, debug, dragengine, file_library,
+from amaze.core import (code_library, cop_library, database, debug, dragengine, file_library,
                         grid_columns, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
@@ -349,6 +349,7 @@ class AssetSection(Section):
         name = self.panel.ask_category_name("Add Category")
         if st is None or not name:
             return
+        name = ",".join(st.categories.stored_name(part) for part in name.split(","))    # WIP is `_WIP`
         st.categories.check_add_category(name)    # NO relayout wrapper: this announces itself with begin/endInsertRows and pairing the two segfaults H21 (research.md, measured 2026-08-04), the same hoist panel.assign_category_active carries
 
     def menu_rename_category(self, indexes, current, payload=None) -> None:
@@ -356,18 +357,25 @@ class AssetSection(Section):
         new_name = self.panel.ask_category_name("Rename Category")
         if st is None or not new_name:
             return
+        new_name = st.categories.stored_name(new_name)    # a typed WIP is the `_WIP` already there
+        if new_name in ("All", "_All"):
+            return    # the All row is a view of everything, never a category to rename onto
         names = []    # STORED names: "_WIP" reads WIP, and its label matches no asset
         for index in indexes:
             name = self.sidebar_key(index)
             if name and name not in ("All", "_All"):
                 names.append(name)
+        standing = self.panel._selected_category_name()
         with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
             for name in names:
                 st.model.rename_category(name, new_name)
         for name in names:
             st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
-        self._refilter_from_sidebar()    # the grid still holds the old name; re-point it as a click does
+        if standing in names:
+            self.panel._stand_on_category(database.category_label(new_name))    # merged rows go
+        else:
+            self._refilter_from_sidebar()    # the grid still holds the old name; re-point it as a click does
         self.panel._refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
     def export_package_to(self, indexes, path: str) -> int:

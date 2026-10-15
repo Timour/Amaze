@@ -167,9 +167,18 @@ class Categories(QtCore.QAbstractListModel):
         self.save()
 
     def rename_category(self, old: str, new: str) -> None:
-        """Rename a category in the library and in every asset."""
-        for count, current in enumerate(self._categories):
-            if current == old:
+        """Rename a category here and in every asset; renamed onto one that exists, the two become one."""
+        merging = new != old and new in self._categories
+        for count in reversed(range(len(self._categories))):
+            if self._categories[count] != old:
+                continue
+            if merging:
+                self.beginRemoveRows(QtCore.QModelIndex(), count, count)
+                try:
+                    del self._categories[count]
+                finally:
+                    self.endRemoveRows()
+            else:
                 self._categories[count] = new
                 index = self.index(count, 0)
                 self.dataChanged.emit(index, index)
@@ -249,7 +258,16 @@ class Categories(QtCore.QAbstractListModel):
         table = self.colors()
         color = table.pop(str(old_name), "")
         if color and new_name:
-            table[str(new_name)] = color
+            table.setdefault(str(new_name), color)    # a merge keeps the surviving row's own colour
+
+    def stored_name(self, typed: str) -> str:
+        """The stored category a TYPED name means: itself, or the one that reads as it (`_WIP` reads WIP)."""
+        typed = str(typed or "").strip()
+        if typed in self._categories:
+            return typed
+        label = display_name(typed)
+        return next((name for name in self._categories
+                     if isinstance(name, str) and display_name(name) == label), typed)
 
     def check_add_category(self, cat: str) -> None:
         """Add this category if it does not exist yet."""

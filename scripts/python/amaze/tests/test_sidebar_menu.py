@@ -417,5 +417,77 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
             for row in range(self.panel.category_model.rowCount())])
 
 
+class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
+    """`_WIP` reads WIP, so a typed WIP names it: Add and Rename never leave two rows reading alike."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        self.section = self.panel.sections["material"]
+        self.categories = self.panel.category_model
+        self.categories.check_add_category("_WIP")
+
+    def _rows_read(self):
+        return [self.categories.data(self.categories.index(row, 0))
+                for row in range(self.categories.rowCount())]
+
+    def _typing(self, name):
+        return mock.patch.object(self.panel, "ask_category_name",
+                                 lambda _title: name)
+
+    def _sidebar_row(self, stored):
+        proxy = self.panel.cat_list.model()
+        role = proxy.sourceModel().CatSortRole
+        found = [proxy.index(row, 0) for row in range(proxy.rowCount())
+                 if proxy.index(row, 0).data(role) == stored]
+        self.assertTrue(found, "premise: no sidebar row is stored %r" % stored)
+        return found[0]
+
+    def _renamed(self, stored, typed):
+        filed = [asset for asset in self.panel.material_model.assets
+                 if stored in asset.categories]
+        self.assertTrue(filed, "premise: nothing is filed under %r" % stored)
+        self.assertTrue(self.panel._stand_on_category(stored), "premise: no row to stand on")
+        index = self._sidebar_row(stored)
+        with self._typing(typed):
+            self.section.menu_rename_category([index], index)
+        return filed
+
+    def test_adding_WIP_adds_no_second_row_reading_WIP(self):
+        with self._typing("WIP"):
+            self.section.menu_add_category([], None)
+        self.assertEqual(1, self._rows_read().count("WIP"),
+                         "Add Category made a second row reading WIP")
+
+    def test_renaming_to_WIP_files_into_the_row_reading_WIP(self):
+        filed = self._renamed("usds", "WIP")
+        self.assertEqual(1, self._rows_read().count("WIP"),
+                         "Rename made a second row reading WIP")
+        self.assertEqual([["_WIP"]] * len(filed),
+                         [list(asset.categories) for asset in filed],
+                         "the renamed tiles are not under the row reading WIP")
+        self.assertEqual("_WIP", self.panel._selected_category_name(),
+                         "the sidebar left the row the renamed tiles went to")
+        self.assertEqual("_WIP", self.panel.material_sorted_model.filter_value(
+            self.panel.material_model.CategoryRole),
+            "the grid is narrowed to a category that is gone")
+
+    def test_renaming_onto_a_row_above_merges_and_stands_there(self):
+        filed = self._renamed("usds", "Karma_Mats")
+        self.assertEqual(1, self._rows_read().count("Karma_Mats"),
+                         "renaming onto a category that exists left two rows")
+        self.assertEqual([["Karma_Mats"]] * len(filed),
+                         [list(asset.categories) for asset in filed])
+        self.assertEqual("Karma_Mats", self.panel._selected_category_name(),
+                         "the sidebar slid onto the row below the merged one")
+
+    def test_renaming_to_All_changes_nothing(self):
+        before = self._rows_read()
+        self._renamed("usds", "All")
+        self.assertEqual(before, self._rows_read(),
+                         "a category was renamed onto the All row")
+
+
 if __name__ == "__main__":
     unittest.main()
