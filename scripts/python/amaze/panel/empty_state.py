@@ -2,6 +2,7 @@
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
+from amaze.core import category
 from amaze.helpers import theme
 from amaze.panel import grid
 
@@ -110,7 +111,7 @@ def _current_category(panel) -> str:
     except RuntimeError:
         return ""
     name = str(name)
-    return "" if name in ("All", "_All") else name
+    return "" if category.is_all(name) else name
 
 
 def quote_for(panel, blank: str) -> tuple:

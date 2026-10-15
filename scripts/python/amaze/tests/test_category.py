@@ -335,5 +335,36 @@ class ALocalEditIsNotReadAsAMerge(unittest.TestCase):
                     "the refresh reset the sidebar after a local %s" % door)
 
 
+class TheAllRowHasOneRule(unittest.TestCase):
+    """All is shown, never stored as a category, and `category.is_all` alone says so."""
+
+    def test_both_spellings_and_nothing_else(self):
+        for name, want in (("_All", True), ("All", True), ("", False), (None, False),
+                           ("_WIP", False), ("all", False), ("All Metals", False)):
+            with self.subTest(name=name):
+                self.assertIs(want, category.is_all(name))
+
+    def test_no_other_module_spells_the_pair(self):
+        import ast
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        home = os.path.join(root, "core", "category.py")
+        offenders = []
+        for folder, dirs, files in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in ("tests", "__pycache__")]
+            for name in sorted(files):
+                path = os.path.join(folder, name)
+                if not name.endswith(".py") or path == home:
+                    continue
+                with open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read())
+                for node in ast.walk(tree):
+                    if not isinstance(node, (ast.Tuple, ast.List, ast.Set)):
+                        continue
+                    words = {e.value for e in node.elts if isinstance(e, ast.Constant)}
+                    if {"All", "_All"} <= words:
+                        offenders.append("%s:%d" % (os.path.relpath(path, root), node.lineno))
+        self.assertEqual([], offenders, "the All rule is written again at %s" % offenders)
+
+
 if __name__ == "__main__":
     unittest.main()

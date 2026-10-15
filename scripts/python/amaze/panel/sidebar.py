@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from amaze.core import debug
+from amaze.core import category, debug
 
 
 class SidebarReorder(QtCore.QObject):
@@ -176,7 +176,7 @@ def droppable_index(panel, pos):
     if not index.isValid():
         return None
     name = panel._raw_category_name(index)
-    if not name or name in ("All", "_All"):
+    if not name or category.is_all(name):
         return None
     if not context.accepts_category_drop(index, name):
         return None

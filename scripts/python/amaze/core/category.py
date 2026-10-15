@@ -14,6 +14,11 @@ SIDEBAR_COLOR_ROLE = int(QtCore.Qt.ItemDataRole.UserRole) + 41  # a category's c
 display_name = database.category_label    # the sidebar label for a STORED category
 
 
+def is_all(name) -> bool:
+    """Whether `name` is the All row, stored `_All` or shown `All`: a view, never a category."""
+    return name in ("All", "_All")
+
+
 class Categories(QtCore.QAbstractListModel):
     """The category list for one library, backed by DB_FILENAME."""
 
@@ -351,6 +356,6 @@ class CategoriesSidebarProxy(QtCore.QSortFilterProxyModel):
         if model.showing_all_renderers():  # All reveals every category, empty ones included
             return True
         raw = model.index(source_row, 0).data(model.CatSortRole)
-        if raw == "_All":
+        if is_all(raw):
             return True
         return model._category_count(raw) > 0

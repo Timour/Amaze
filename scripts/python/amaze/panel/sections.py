@@ -9,7 +9,7 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (code_library, cop_library, database, debug, dragengine, file_library,
+from amaze.core import (category, code_library, cop_library, database, debug, dragengine, file_library,
                         grid_columns, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
@@ -187,7 +187,7 @@ class Section:
         if proxy is None:
             return False
         raw = proxy.index(index.row(), 0).data(source.CatSortRole)
-        return bool(raw) and raw != "_All"
+        return bool(raw) and not category.is_all(raw)
 
     def move_sidebar_row(self, index, to_view_row: int) -> bool:
         """Move the row at `index` to VIEW row `to_view_row`, never above All - clamped, so a drag past the top parks the row at row 1 rather than refusing to follow the hand."""
@@ -328,7 +328,7 @@ class AssetSection(Section):
         if model is not None and proxy is not None:
             proxy.setFilter(
                 model.CategoryRole,
-                "" if selected_name in (None, "All", "_All")
+                "" if selected_name is None or category.is_all(selected_name)
                 else selected_name,
             )
 
@@ -364,12 +364,12 @@ class AssetSection(Section):
         if st is None or not new_name:
             return
         new_name = st.categories.stored_name(new_name)    # a typed WIP is the `_WIP` already there
-        if new_name in ("All", "_All"):
+        if category.is_all(new_name):
             return    # the All row is a view of everything, never a category to rename onto
         names = []    # STORED names: "_WIP" reads WIP, and its label matches no asset
         for index in indexes:
             name = self.sidebar_key(index)
-            if name and name not in ("All", "_All"):
+            if name and not category.is_all(name):
                 names.append(name)
         standing = self.panel._selected_category_name()
         with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
@@ -421,7 +421,7 @@ class AssetSection(Section):
     def menu_export_category(self, indexes, current, payload=None) -> None:
         """ASK half: the clicked sidebar row names the category (All exports the whole section), the panel picks the destination."""
         name = self.sidebar_key(current) if current is not None else None
-        if name in ("All", "_All", ""):
+        if not name or category.is_all(name):
             name = None
         path = self.panel.ask_package_destination()
         if path:
@@ -443,7 +443,7 @@ class AssetSection(Section):
         names = []    # STORED names, same reason as the rename above: remove_category returns early on its own `cat not in self._categories` guard, so removing by the label leaves the row exactly where it was
         for index in indexes:
             name = self.sidebar_key(index)
-            if name and name not in ("All", "_All"):
+            if name and not category.is_all(name):
                 names.append(name)
         if not names:
             return
@@ -594,7 +594,7 @@ class AssetSection(Section):
             return
         stored = self.panel._raw_category_name(index)    # the one home for this question, never index.data(): Categories.data returns elem[1:] for DisplayRole on a leading "_" - the mechanism that sorts the stored _All first and reads it as "All" - so a category stored _WIP displays "WIP", which no asset carries, and the grid empties under a still-highlighted row
         st.proxy.setFilter(st.model.CategoryRole,
-                        "" if stored in ("All", "_All") else stored)    # "" keeps _All meaning everything rather than a literal category nobody has
+                        "" if category.is_all(stored) else stored)    # "" keeps _All meaning everything rather than a literal category nobody has
 
 
 class MaterialSection(AssetSection):
@@ -1811,7 +1811,7 @@ class GradientSection(AssetSection):
         if current is None:
             return False
         name = self.sidebar_key(current)
-        return bool(name) and name not in ("All", "_All")
+        return bool(name) and not category.is_all(name)
 
     def _entry_at(self, index):
         if index is None or not index.isValid():

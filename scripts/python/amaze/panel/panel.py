@@ -1263,7 +1263,7 @@ class AmazePanel(QtWidgets.QWidget):
         for elem in range(model.rowCount()):    # pass the SOURCE model, never the sidebar proxy: the proxy hides empty categories, and every ASSIGNMENT surface (the save dialog, the Edit Info dialog's Category dropdown) must still offer the complete list
             cidx = model.index(elem, 0)
             name = model.data(cidx, model.CatSortRole)    # STORED: "_WIP" displays as WIP
-            if name and name not in ("All", "_All"):
+            if name and not category.is_all(name):
                 names.append(str(name))
         return sorted(names, key=lambda name: category.display_name(name).lower())
 
@@ -1519,7 +1519,7 @@ class AmazePanel(QtWidgets.QWidget):
         index = indexes[0] if indexes else ui_helpers.live_current_index(    # the fallback is deliberate: _restore_section_state's setCurrentIndex leaves the sidebar "current but not selected", and returning "" there would answer All
             self.cat_list)
         name = self._raw_category_name(index)
-        return "" if name in ("All", "_All") else name
+        return "" if category.is_all(name) else name
 
     DEFAULT_SIDEBAR_COLOUR = amazetheme.SIDEBAR_PICKER_START
 
@@ -1539,7 +1539,7 @@ class AmazePanel(QtWidgets.QWidget):
         names = [context.sidebar_key(index)    # ASK THE CONTEXT what a row is keyed by: a category's STORED name in three sections, a registered folder PATH in File. A colour written under the DISPLAYED name ("_WIP" shows as "WIP") is one nothing ever reads
                  for index in self.cat_list.selectedIndexes()]
         names = [name for name in names    # All is skipped: it is a view, not a category, and colouring it would mean colouring everything
-                 if name and name not in ("All", "_All")]
+                 if name and not category.is_all(name)]
         if not names:
             return
 
