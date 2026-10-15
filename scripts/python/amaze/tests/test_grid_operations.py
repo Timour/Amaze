@@ -690,7 +690,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                self._saving_a_twin("rs_twin")), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            self.panel.convert_selected_to_redshift()
+            self.panel.convert_selected("Redshift")
         self.assertEqual(before + 1, self.model.rowCount(),
                          "premise: the conversion added no twin")
         self._assert_no_row_moved_inside(caught, "Convert to Redshift")
@@ -703,10 +703,28 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                self._saving_a_twin("karma_twin")), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            self.panel.convert_selected_to_karma()
+            self.panel.convert_selected("Karma")
         self.assertEqual(before + 1, self.model.rowCount(),
                          "premise: the conversion added no twin")
         self._assert_no_row_moved_inside(caught, "Convert to Karma")
+
+    def test_both_directions_report_in_the_words_they_always_did(self):
+        """One verb, two directions: each summary reads as its own copy did."""
+        ui = mock.Mock()
+        report = types.SimpleNamespace(summary_lines=lambda: ["a line"])
+        for target, source, verb in (
+                ("Redshift", "Karma", "convert_karma_to_redshift"),
+                ("Karma", "Redshift", "convert_redshift_to_karma")):
+            with self.subTest(target=target):
+                self.model.assets[1].renderer = source
+                self._select(1)
+                with mock.patch.object(self.model, verb,
+                                       lambda _index: (True, report)), \
+                        mock.patch.object(hou, "ui", ui, create=True):
+                    self.panel.convert_selected(target)
+                self.assertEqual(
+                    "Converted 1 of 1 %s material(s) to %s.\n\na line"
+                    % (source, target), ui.displayMessage.call_args.args[0])
 
     def test_an_online_import(self):
         record = types.SimpleNamespace(kind="", category="", title="t")
@@ -898,7 +916,7 @@ class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
             return True, types.SimpleNamespace(summary_lines=lambda: [])
 
         with mock.patch.object(model, "convert_karma_to_redshift", convert):
-            self.panel.convert_selected_to_redshift()
+            self.panel.convert_selected("Redshift")
         self.assertEqual(self._ids(chosen), self._ids(converted),
                          "Convert reached other tiles: each twin saves, and the first "
                          "save took in a deletion above the rows it held")

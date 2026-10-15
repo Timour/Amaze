@@ -1619,102 +1619,36 @@ class AmazePanel(QtWidgets.QWidget):
             return
         context.toggle_favourite(list(indexes))    # the flip is the context's own verb, and re-mapping a favourites-only grid after it is the proxy's own invariant (grid_proxy.py) - nothing to force from here
 
-    def _selection_has_redshift(self) -> bool:
-        """Whether any currently-selected material is Redshift - gates showing `Convert to Karma` in the right-click menu."""
-        if not self.material_model:
-            return False
-        for index in grid_columns.selected_rows(
-                self.material_selection_model):
-            idx = self.material_sorted_model.mapToSource(index)
-            mat = self.material_model.assets[idx.row()]
-            if "Redshift" in mat.renderer:
-                return True
-        return False
-
-    def _selection_has_karma(self) -> bool:
-        """Whether any currently-selected material is Karma - gates showing `Convert to Redshift` in the right-click menu."""
-        if not self.material_model:
-            return False
-        for index in grid_columns.selected_rows(
-                self.material_selection_model):
-            idx = self.material_sorted_model.mapToSource(index)
-            mat = self.material_model.assets[idx.row()]
-            if "Karma" in str(mat.renderer):
-                return True
-        return False
-
-    def convert_selected_to_redshift(self) -> None:
-        """Right-click `Convert to Redshift`: the selected Karma materials become Redshift ones beside their sources, non-Karma items in a mixed selection silently skipped - the mirror of `convert_selected_to_karma`."""
-        if not self.material_model:
+    def convert_selected(self, target: str) -> None:
+        """Right-click `Convert to`: each selected material `target` converts from gets a twin beside it."""
+        conversion = sections.MaterialSection.conversion_to(target)
+        if not self.material_model or conversion is None:
             return
         indexes = grid_columns.selected_rows(self.material_selection_model)
         if not indexes:
             return
-        all_lines = []
-        converted_count = 0
-        karma_count = 0
         model = self.material_model
         ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
-               for index in indexes]    # by ID: each twin saves, and a save moves rows
-        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):    # NO layout pair: twins insert
+               for index in indexes]    # by ID, with no layout pair: each twin inserts and saves
+        lines, converted, eligible = [], 0, 0
+        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):
             if row < 0:
                 continue
-            idx = model.index(row, 0)
             mat = model.assets[row]
-            if "Karma" not in str(mat.renderer):
+            if conversion.source not in mat.renderer:
                 continue
-            karma_count += 1
+            eligible += 1
             try:
-                ok, report = self.material_model.convert_karma_to_redshift(idx)
-            except Exception as exc:    # one bad material must not sink the rest, nor their summary
-                all_lines.append(f'"{mat.name}": crashed - {exc}')
+                ok, report = getattr(model, conversion.verb)(model.index(row, 0))
+            except Exception as exc:                          # noqa: BLE001
+                lines.append(f'"{mat.name}": crashed - {exc}')
                 continue
-            if ok:
-                converted_count += 1
-            all_lines.extend(report.summary_lines())
+            converted += 1 if ok else 0
+            lines.extend(report.summary_lines())
         ui = getattr(hou, "ui", None)
         if ui is not None:
-            ui.displayMessage(
-                f"Converted {converted_count} of {karma_count} Karma "
-                "material(s) to Redshift.\n\n" + "\n".join(all_lines)
-            )
-
-    def convert_selected_to_karma(self) -> None:
-        """Right-click `Convert to Karma`: node-graph conversion of the selected Redshift materials to Karma/MaterialX, silently skipping non-Redshift items in a mixed selection."""
-        if not self.material_model:
-            return
-        indexes = grid_columns.selected_rows(self.material_selection_model)
-        if not indexes:
-            return
-        all_lines = []    # ONE summary dialog for successes and skips alike: a "successful" conversion can still have approximated or skipped inputs worth reviewing, and no result is claimed to be a faithful reproduction
-        converted_count = 0
-        redshift_count = 0
-        model = self.material_model
-        ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
-               for index in indexes]    # by ID: each twin saves, and a save moves rows
-        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):    # NO layout pair: twins insert
-            if row < 0:
-                continue
-            idx = model.index(row, 0)
-            mat = model.assets[row]
-            if "Redshift" not in mat.renderer:
-                continue
-            redshift_count += 1
-            try:
-                ok, report = (
-                    self.material_model.convert_redshift_to_karma(idx))    # what is handled: render/material_converter.py
-            except Exception as exc:    # one bad material must not sink the rest; it becomes a summary line
-                all_lines.append(f'"{mat.name}": crashed - {exc}')
-                continue
-            if ok:
-                converted_count += 1
-            all_lines.extend(report.summary_lines())
-        ui = getattr(hou, "ui", None)
-        if ui is not None:
-            ui.displayMessage(
-                f"Converted {converted_count} of {redshift_count} Redshift "
-                "material(s) to Karma.\n\n" + "\n".join(all_lines)
-            )
+            ui.displayMessage(messages.CONVERSION_SUMMARY % (
+                converted, eligible, conversion.source, target, "\n".join(lines)))
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""

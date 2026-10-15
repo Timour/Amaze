@@ -576,10 +576,10 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel._section()
-        with mock.patch.object(panel, "_selection_has_karma",
-                               lambda: karma), \
-                mock.patch.object(panel, "_selection_has_redshift",
-                                  lambda: redshift):
+        held = frozenset(source for source, holds in
+                         (("Karma", karma), ("Redshift", redshift)) if holds)
+        with mock.patch.object(type(context), "_sources_held",
+                               lambda _self, _indexes: held):
             indexes = context.grid_selection()
             menu, _verbs = grid.build_grid_menu(
                 panel, context, indexes, None)
@@ -595,18 +595,62 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         self.assertEqual("Convert to > [Karma, Redshift]",
                          self._material_convert_children(True, True))
 
+    def _select_karma_rows(self, count):
+        """Select up to `count` Karma materials; answers the menu's own selection."""
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        proxy = panel.material_sorted_model
+        model = panel.material_model
+        rows = [row for row in range(proxy.rowCount())
+                if model.assets[proxy.mapToSource(
+                    proxy.index(row, 0)).row()].renderer == "Karma"][:count]
+        selection = panel.material_selection_model
+        selection.clearSelection()
+        for row in rows:
+            selection.select(proxy.index(row, 0),
+                             QtCore.QItemSelectionModel.SelectionFlag.Select)
+        indexes = panel._section().grid_selection()
+        self.assertEqual(len(rows), len(indexes), "premise: the rows are selected")
+        self.assertTrue(indexes, "premise: the fixture has Karma materials")
+        return indexes
+
+    def test_a_right_click_walks_the_selection_once(self):
+        """The parent's state and its children are one answer about one selection."""
+        panel = self.panel
+        indexes = self._select_karma_rows(3)
+        proxy = panel.material_sorted_model
+        with mock.patch.object(proxy, "mapToSource",
+                               wraps=proxy.mapToSource) as mapped:
+            grid.build_grid_menu(panel, panel._section(), indexes, indexes[0])
+        self.assertLessEqual(
+            mapped.call_count, len(indexes),
+            "building the menu mapped %d selected rows %d times"
+            % (len(indexes), mapped.call_count))
+
+    def test_the_parent_greys_when_no_child_is_live(self):
+        """A Karma selection where Redshift is not loaded has nothing to become."""
+        panel = self.panel
+        indexes = self._select_karma_rows(1)
+        with mock.patch.object(material_converter,
+                               "_redshift_type_available", lambda: False):
+            menu, _verbs = grid.build_grid_menu(
+                panel, panel._section(), indexes, indexes[0])
+        row = [r for r in render(menu) if r.startswith("Convert to")]
+        self.assertEqual(["Convert to > [Karma(off), Redshift(off)](off)"], row)
+
     def test_convert_to_dispatches_by_the_child_picked(self):
         """One verb, the payload names the renderer: Redshift reaches the Redshift door and nothing else, Karma the Karma one."""
         panel = self.panel
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel._section()
-        with mock.patch.object(panel, "convert_selected_to_redshift") as rs, \
-                mock.patch.object(panel, "convert_selected_to_karma") as km:
+        with mock.patch.object(panel, "convert_selected") as convert:
             context.menu_convert_to([], None, "Redshift")
-            self.assertEqual((1, 0), (rs.call_count, km.call_count))
             context.menu_convert_to([], None, "Karma")
-            self.assertEqual((1, 1), (rs.call_count, km.call_count))
+            context.menu_convert_to([], None)
+        self.assertEqual([mock.call("Redshift"), mock.call("Karma"),
+                          mock.call("Karma")], convert.call_args_list)
 
     def test_online_import_carries_the_renderer_to_its_door(self):
         """Drawn as C06a/C06b: the child picked under either Import entry reaches the panel door as `renderer`, and a bare call (the double-click door) still means Karma."""

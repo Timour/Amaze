@@ -25,6 +25,9 @@ AssetStack = collections.namedtuple(
 
 CommentSubject = collections.namedtuple("CommentSubject", "key name type")
 
+Conversion = collections.namedtuple(
+    "Conversion", "target source verb needs_redshift")
+
 DropRule = collections.namedtuple(
     "DropRule",
     "on_node on_space resolve outside click_on_node click_resolve "
@@ -671,23 +674,47 @@ class MaterialSection(AssetSection):
             else:
                 self.panel.import_asset_to_mat()
 
+    CONVERSIONS = (    # what a material can become, what it must be first, and the model's converter
+        Conversion("Karma", "Redshift", "convert_redshift_to_karma", False),
+        Conversion("Redshift", "Karma", "convert_karma_to_redshift", True),
+    )
+
+    @classmethod
+    def conversion_to(cls, target: str):
+        """The CONVERSIONS row that ends in `target`, or None."""
+        return next((row for row in cls.CONVERSIONS if row.target == target), None)
+
+    def _sources_held(self, indexes) -> frozenset:
+        """The conversion sources among these rows: one walk per menu, kept for the list asked about."""
+        held = getattr(self, "_held", None)
+        if held is not None and held[0] is indexes:
+            return held[1]
+        wanted = {row.source for row in self.CONVERSIONS}
+        found = set()
+        st = self.stack()
+        for index in (indexes if st is not None else ()):
+            renderer = st.model.assets[st.proxy.mapToSource(index).row()].renderer
+            found.update(source for source in wanted if source in renderer)
+            if found == wanted:
+                break
+        self._held = (indexes, frozenset(found))
+        return self._held[1]
+
     def selection_is_convertible(self, indexes, current) -> bool:
-        """The parent greys when no child would be live - an openable submenu with nothing to pick reads as broken."""
-        return (self.panel._selection_has_karma()
-                or self.panel._selection_has_redshift())
+        """The parent greys when no child would be live: a submenu with nothing to pick reads as broken."""
+        return any(live for *_child, live in self.convert_targets(indexes, current))
 
     def convert_targets(self, indexes, current) -> tuple:
-        """What the selection can BECOME: a child is live when the selection holds a material of another renderer, so a Karma material offers Redshift and greys Karma - Octane joins here when its converter lands."""
-        return (("Karma", "Karma", "", self.panel._selection_has_redshift()),
-                ("Redshift", "Redshift", "",
-                 self.panel._selection_has_karma()
-                 and material_converter._redshift_type_available()))    # greyed without the plugin, like the online import's child: the live path would rebuild every Karma network only to fail at the first Redshift node
+        """What the selection can BECOME: a child is live when the selection holds its source."""
+        held = self._sources_held(indexes)
+        return tuple(
+            (row.target, row.target, "", row.source in held and (
+                not row.needs_redshift
+                or material_converter._redshift_type_available()))    # greyed without the plugin
+            for row in self.CONVERSIONS)
 
     def menu_convert_to(self, indexes, current, payload=None) -> None:
-        if payload == "Redshift":
-            self.panel.convert_selected_to_redshift()
-        else:
-            self.panel.convert_selected_to_karma()
+        self.panel.convert_selected(payload or "Karma")
 
     library_model_attrs = ("material_model", "category_model")
     model_attr = "material_model"
