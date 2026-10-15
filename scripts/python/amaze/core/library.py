@@ -44,6 +44,13 @@ class _StampWriter:
         """Drop what this session knows of one asset's stamp, so the next save checks it again."""
         _STAMPED.pop((str(preferences.dir), str(mat_id)), None)
 
+    @staticmethod
+    def forget_library(preferences) -> None:
+        """Drop what this session knows of every stamp in one library, once its rows are read afresh."""
+        where = str(preferences.dir)
+        for known in [key for key in _STAMPED if key[0] == where]:
+            del _STAMPED[known]
+
     def refresh(self) -> int:
         """Write each stamp whose record changed since this session last saw it; returns how many."""
         written = 0
@@ -160,6 +167,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         self._assets = [self._asset_from_row(d)  # non-dict rows are SKIPPED, never allowed to abort the model: one junk row must not cost the whole library
                         for d in self._data["assets"]
                         if isinstance(d, dict)]
+        _StampWriter.forget_library(self.preferences)
         self._remember_content_state()
 
 
@@ -233,6 +241,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 self._asset_from_row(d) for d in self._data["assets"]
                 if isinstance(d, dict)
             ]
+            _StampWriter.forget_library(self.preferences)
             self._remember_content_state()  # a reload is a fresh read of the library, content included
             self._drop_content_label_caches()
             self.rebuild_thumbs()
@@ -637,6 +646,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         wanted: dict = {}
         for asset_id, field, value in fields:
             wanted.setdefault(str(asset_id), {})[field] = value
+            _StampWriter.forget(self.preferences, asset_id)
         for row, asset in enumerate(self._assets):
             changes = wanted.get(str(asset.mat_id))
             if not changes:
@@ -697,6 +707,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         for row in rows:
             try:
                 parsed.append(self._asset_from_row(row))
+                _StampWriter.forget(self.preferences, parsed[-1].mat_id)
             except Exception as exc:                        # noqa: BLE001
                 debug.event("database", "adopted row not readable",
                             file=self.DB_FILENAME, error=str(exc),

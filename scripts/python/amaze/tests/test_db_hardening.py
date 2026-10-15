@@ -1585,11 +1585,51 @@ class AOneRowSaveTouchesOneStamp(unittest.TestCase):
             action()
         return opened
 
-    def _stamp(self, mat_id):
-        path = os.path.join(self.prefs.dir, self.prefs.asset_dir,
+    def _stamp_path(self, mat_id):
+        return os.path.join(self.prefs.dir, self.prefs.asset_dir,
                             str(mat_id) + self.library_mod.STAMP_SUFFIX)
-        with open(path, encoding="utf-8") as handle:
+
+    def _stamp(self, mat_id):
+        with open(self._stamp_path(mat_id), encoding="utf-8") as handle:
             return json.load(handle)
+
+    def _renamed_elsewhere(self, mat_id, name):
+        """Another machine renames `mat_id`, writing its index row and its stamp as its save does."""
+        index = os.path.join(self.prefs.dir, self.model.DB_FILENAME)
+        with open(index, encoding="utf-8") as handle:
+            document = json.load(handle)
+        for row in document["assets"]:
+            if str(row.get("id")) == mat_id:
+                row["name"] = name
+        with open(index, "w", encoding="utf-8") as handle:
+            json.dump(document, handle)
+        stamp = dict(self._stamp(mat_id), name=name)
+        with open(self._stamp_path(mat_id), "w", encoding="utf-8") as handle:
+            json.dump(stamp, handle, indent=1, sort_keys=True)
+
+    def _undo_rename_here(self, row, mat_id, name):
+        self.assertEqual("Elsewhere", self.model.assets[row].name,
+                         "premise: the rename made elsewhere was taken in")
+        self.assertTrue(self.model.set_tile_name(row, name),
+                        "premise: renamed back here")
+        self.assertEqual(
+            name, self._stamp(mat_id)["name"],
+            "the stamp kept the other machine's name after this one renamed "
+            "it back - a rebuild from stamps would restore the wrong name")
+
+    def test_a_rename_taken_in_from_elsewhere_then_undone_rewrites_the_stamp(self):
+        target, before = str(self.model.assets[2].mat_id), self.model.assets[2].name
+        self._renamed_elsewhere(target, "Elsewhere")
+        db = database.DatabaseConnector(self.model.DB_FILENAME)
+        self.assertTrue(db.refresh(), "premise: the refresh saw the write")
+        self.model.apply_refresh(db)
+        self._undo_rename_here(2, target, before)
+
+    def test_a_rename_read_on_a_library_switch_then_undone_rewrites_the_stamp(self):
+        target, before = str(self.model.assets[2].mat_id), self.model.assets[2].name
+        self._renamed_elsewhere(target, "Elsewhere")
+        self.model.switch_model_data()
+        self._undo_rename_here(2, target, before)
 
     def test_a_rename_opens_only_the_renamed_asset_s_stamp(self):
         target = str(self.model.assets[2].mat_id)
