@@ -67,6 +67,7 @@ def begin(section_key: str, ids=()) -> None:
     _hover["logged_hit"] = 0
     _hover["probes_left"] = 40
     _hover["explained"] = False
+    _hover["snap_failure_said"] = False
     _reset_move()
     _move["snap_pos"] = None
     _move["landing"] = None    # the previous release has had its answer
@@ -186,8 +187,10 @@ def _snap_delta(editor, rect):
                                     editor.allVisibleRects([]))
         if result.isValid():
             return result.delta()
-    except Exception:                                     # noqa: BLE001
-        pass
+    except Exception as exc:                              # noqa: BLE001
+        if not _hover.get("snap_failure_said"):    # once a gesture: this runs on every move
+            _hover["snap_failure_said"] = True
+            _dbg("placement snap unavailable", error=repr(exc))
     return None
 
 
@@ -885,13 +888,16 @@ def keep_editor_focus():
     finally:
         if prev is not None:
             try:
-                with hou.undos.disabler():
-                    for n in hou.selectedNodes():
-                        if n not in prev:
-                            n.setCurrent(False)
-                            n.setSelected(False)
-            except Exception:
-                pass
+                added = [n for n in hou.selectedNodes() if n not in prev]
+            except Exception:                                # noqa: BLE001
+                added = []
+            with hou.undos.disabler():
+                for n in added:
+                    try:
+                        n.setCurrent(False)
+                        n.setSelected(False)
+                    except Exception:                        # noqa: BLE001
+                        continue    # one node that raises must not keep the rest selected
         for pt, pwd in editors:
             try:
                 if pt.pwd() != pwd:

@@ -899,5 +899,33 @@ class TheGestureRunsOnBOTHViews(unittest.TestCase):
             None, view.verticalScrollBar(), 0, 0)
 
 
+class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
+    """A release keeps tidying past a node that raises, and a snap that cannot run says so once."""
+
+    def test_one_node_that_raises_does_not_keep_the_rest_selected(self):
+        from amaze.core import dragengine
+        bad = mock.Mock()
+        bad.setCurrent.side_effect = hou.OperationFailed("gone")
+        good = mock.Mock()
+        with mock.patch.object(hou, "selectedNodes", side_effect=[[], [bad, good]]):
+            with dragengine.keep_editor_focus():
+                pass
+        good.setSelected.assert_called_once_with(False)
+
+    def test_a_snap_that_cannot_run_is_recorded_once_a_gesture(self):
+        from amaze.core import dragengine
+        failing = types.SimpleNamespace(snap=mock.Mock(side_effect=RuntimeError("no snap")))
+        records = []
+        self.addCleanup(dragengine.end)
+        with mock.patch.dict(sys.modules, {"nodegraphsnap": failing}), \
+                mock.patch.object(dragengine, "_dbg",
+                                  lambda msg, **_data: records.append(msg)):
+            for _gesture in range(2):
+                dragengine.begin("Material")
+                for _move in range(3):
+                    self.assertIsNone(dragengine._snap_delta(mock.Mock(), None))
+        self.assertEqual(2, len(records), records)
+
+
 if __name__ == "__main__":
     unittest.main()
