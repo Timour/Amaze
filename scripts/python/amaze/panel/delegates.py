@@ -4,6 +4,7 @@ import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
 
+import amaze
 from amaze import amazetheme
 from amaze import tooltips
 from amaze.core import category, debug
@@ -399,7 +400,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         key = (name, side, round(dpr, 3), opacity)
         pixmap = cls._badge_cache.get(key)
         if pixmap is None:
-            path = ui_helpers.ui_asset(name + ".svg")
+            path = amaze.package_file("ui", name + ".svg")
             if os.path.exists(path):
                 pixmap = ui_helpers.device_pixmap(path, side, dpr, opacity=opacity)
             else:

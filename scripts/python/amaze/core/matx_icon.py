@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import re
 
-from PySide6 import QtCore, QtGui, QtSvg
+from PySide6 import QtGui
 
+import amaze
 from amaze.helpers import ui_helpers
 
 TRANSMISSIVE_ALPHA = 0.25
@@ -27,7 +28,7 @@ def _template(source: str = "") -> str:
     """The SVG source for one value-only source, read once each."""
     name = TEMPLATES.get(source, DEFAULT_TEMPLATE)
     if name not in _SVG_CACHE:
-        path = ui_helpers.ui_asset(name)
+        path = amaze.package_file("ui", name)
         with open(path, "r", encoding="utf-8") as handle:
             _SVG_CACHE[name] = handle.read()
     return _SVG_CACHE[name]
@@ -71,14 +72,5 @@ def render(values: dict, size: int, source: str = "") -> QtGui.QImage:
     image = QtGui.QImage(
         size, size, QtGui.QImage.Format.Format_ARGB32_Premultiplied
     )
-    image.fill(QtCore.Qt.GlobalColor.transparent)
-
-    renderer = QtSvg.QSvgRenderer(
-        QtCore.QByteArray(icon_svg(values, source).encode("utf-8"))
-    )
-    painter = QtGui.QPainter(image)
-    try:
-        renderer.render(painter)
-    finally:
-        painter.end()
+    ui_helpers.paint_svg(image, icon_svg(values, source).encode("utf-8"))
     return image

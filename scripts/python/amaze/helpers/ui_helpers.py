@@ -46,24 +46,16 @@ _svg_image_cache: dict = {}    # rendered ui/ SVGs keyed by (name, side); a stor
 
 
 def svg_image(name: str, side: int = 512):
-    """A ui/ SVG rendered once as a square QImage, or None; the ONE owner of that render, and it resolves its path through `ui_asset` like every other asset lookup in the package."""
+    """A ui/ SVG rendered once as a square QImage, or None when it is missing or unreadable."""
     key = (name, side)
     cached = _svg_image_cache.get(key)
     if cached is None:
         image = None
-        path = ui_asset(name)
+        path = amaze.package_file("ui", name)
         try:
             if os.path.exists(path):
-                from PySide6 import QtSvg
-
-                renderer = QtSvg.QSvgRenderer(path)
-                if renderer.isValid():
-                    img = QtGui.QImage(
-                        side, side, QtGui.QImage.Format.Format_ARGB32)
-                    img.fill(QtCore.Qt.GlobalColor.transparent)
-                    painter = QtGui.QPainter(img)
-                    renderer.render(painter)
-                    painter.end()
+                img = QtGui.QImage(side, side, QtGui.QImage.Format.Format_ARGB32)
+                if paint_svg(img, path):
                     image = img
             else:
                 debug.event("ui", "ui asset missing", name=name, path=path)
@@ -80,20 +72,19 @@ def forget_svg_images() -> None:
     _svg_image_cache.clear()
 
 
-def ui_asset(name: str) -> str:
-    """The absolute path of a ui/ asset, $AMAZE first: saved assets on disk carry literal `$AMAZE/...` parameter values, so the variable is a contract with the user's data and the plugin resolves its own resources the same way."""
-    root = ""
+def paint_svg(device, svg) -> bool:
+    """Fill `device` transparent and draw `svg` - a path, or SVG text as bytes; False if unreadable."""
+    device.fill(QtCore.Qt.GlobalColor.transparent)
+    renderer = QtSvg.QSvgRenderer(
+        QtCore.QByteArray(svg) if isinstance(svg, bytes) else svg)
+    if not renderer.isValid():
+        return False
+    painter = QtGui.QPainter(device)
     try:
-        import hou
-        root = hou.getenv("AMAZE") or ""
-    except Exception:                                    # noqa: BLE001
-        root = ""                  # the module-relative return below is for a genuinely undefined $AMAZE only - tests, and the offline tools that run without hou; preferring it would let a dev tree and an installed $AMAZE disagree silently
-    if root:
-        candidate = os.path.join(
-            root, "scripts", "python", "amaze", "ui", name)
-        if os.path.exists(candidate):
-            return candidate
-    return amaze.package_file("ui", name)
+        renderer.render(painter)
+    finally:
+        painter.end()
+    return True
 
 
 def live_current_index(view):
@@ -159,16 +150,14 @@ def render_svg_pixmap(path, size, color_replacements=None, opacity=None):
     if cached is not None:
         return cached.copy()
     pixmap = QtGui.QPixmap(size, size)
-    pixmap.fill(QtCore.Qt.GlobalColor.transparent)
-    if path and os.path.exists(path):
+    if not (path and os.path.exists(path)):
+        pixmap.fill(QtCore.Qt.GlobalColor.transparent)
+    else:
         with open(path, "r", encoding="utf-8") as f:
             text = f.read()
         for old, new in (color_replacements or {}).items():    # either case: Figma writes hex in capitals
             text = re.sub(re.escape(old), lambda _m, new=new: new, text, flags=re.IGNORECASE)
-        text = at_opacity(text, opacity)
-        painter = QtGui.QPainter(pixmap)
-        QtSvg.QSvgRenderer(QtCore.QByteArray(text.encode("utf-8"))).render(painter)   # QSvgRenderer onto our OWN transparent pixmap: ONE size, dpr and cache rule for every icon in the package - not because QIcon's engine is broken, which was measured and is not ▸r/qicon-svg-engine
-        painter.end()
+        paint_svg(pixmap, at_opacity(text, opacity).encode("utf-8"))    # ▸r/qicon-svg-engine
     _SVG_CACHE[key] = pixmap
     return pixmap.copy()
 

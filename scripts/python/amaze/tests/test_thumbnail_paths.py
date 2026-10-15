@@ -1142,7 +1142,7 @@ class ANodeRefusalIsCaughtAsHouError(unittest.TestCase):
 
 
 class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
-    """Bundled files resolve through the one lookup; `ui_asset` is the named exception, preferring the INSTALLED copy so a dev tree and $AMAZE cannot disagree. ▸p/adoption"""
+    """Bundled files, the ui/ art included, resolve through `amaze.package_file` alone. ▸p/adoption"""
 
     def test_package_file_returns_a_real_bundled_path(self):
         import amaze
@@ -1183,8 +1183,6 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
             "variable raises TypeError instead of naming a file: %s"
             % offenders)
 
-    MAY_SPELL_THE_INSTALL_JOIN = {"ui_helpers.py"}
-
     def test_no_bundled_file_is_located_by_rebuilding_the_install_path(self):
         """Any join whose parts spell the install-relative package path is the hand-built lookup, however the root was obtained. ▸p/source-derived-tests"""
         import ast
@@ -1196,8 +1194,6 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
                 continue
             for name in files:
                 if not name.endswith(".py"):
-                    continue
-                if name in self.MAY_SPELL_THE_INSTALL_JOIN:
                     continue
                 path = os.path.join(folder, name)
                 with open(path, encoding="utf-8") as handle:
@@ -1217,14 +1213,36 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         self.assertEqual(
             [], sorted(offenders),
             "a bundled file is located by rebuilding the install path at "
-            "%s - amaze.package_file and ui_helpers.ui_asset are the two "
-            "lookups" % ", ".join(sorted(offenders)))
+            "%s - amaze.package_file is the one lookup"
+            % ", ".join(sorted(offenders)))
+
+    def test_ui_art_comes_from_the_loaded_package_whatever_AMAZE_names(self):
+        """Under the suite $AMAZE names the live install; a lookup through it draws that tree's art."""
+        from amaze.helpers import ui_helpers
+
+        decoy = tempfile.mkdtemp(prefix="amaze_decoy_install_")
+        self.addCleanup(shutil.rmtree, decoy, True)
+        art = os.path.join(decoy, "scripts", "python", "amaze", "ui")
+        os.makedirs(art)
+        with open(os.path.join(art, "badge_favourite.svg"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">'
+                         '<rect width="8" height="8" fill="#ff0000"/></svg>')
+        real = hou.getenv("AMAZE")
+        hou.putenv("AMAZE", decoy)
+        self.addCleanup(hou.putenv, "AMAZE", real or "")
+        ui_helpers.forget_svg_images()
+        self.addCleanup(ui_helpers.forget_svg_images)
+        image = ui_helpers.svg_image("badge_favourite.svg", 16)
+        self.assertIsNotNone(image, "the shipped badge did not render")
+        self.assertNotEqual(
+            "#ff0000", image.pixelColor(0, 0).name(),
+            "the badge was drawn from the tree $AMAZE names, not the loaded package")
 
     def test_a_bundled_lookup_survives_an_UNSET_install_variable(self):
         """With $AMAZE unset a bundled lookup still finds the file, or the toolbar icons vanish while the badge SVGs draw."""
         import amaze
         from amaze.core import gradient_library
-        from amaze.helpers import ui_helpers
 
         real = hou.getenv("AMAZE")
         hou.putenv("AMAZE", "")
@@ -1232,7 +1250,6 @@ class BundledFilesAreFoundThroughOneLookup(unittest.TestCase):
         for label, found in (
                 ("a bundled resource", amaze.package_file("res", "def",
                                                           "library.json")),
-                ("a ui asset", ui_helpers.ui_asset("badge_favourite.svg")),
                 ("a curated def", gradient_library._def_path("gradients.json")),
         ):
             self.assertTrue(

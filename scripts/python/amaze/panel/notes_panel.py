@@ -75,16 +75,13 @@ _glyph_cache: dict = globals().get("_glyph_cache", {})   # keyed on every input 
 
 def _feather_icon(name: str, side: int, ink: str, widget=None) -> QtGui.QPixmap:
     """One Feather glyph re-inked at device resolution; pass the WIDGET being painted so the ratio is its screen's, not the primary's. ▸r/screen-dpr"""
-    import os
-
     import amaze
     dpr = theme.screen_ratio(widget)
     key = (name, int(side), str(ink), float(dpr))   # EVERY input in the key: ink changes per to-do state, dpr when the window moves screen
     cached = _glyph_cache.get(key)
     if cached is not None:
         return cached
-    path = os.path.join(
-        os.path.dirname(amaze.__file__), "ui", "feather", name + ".svg")
+    path = amaze.package_file("ui", "feather", name + ".svg")
     pixmap = ui_helpers.device_pixmap(path, side, dpr, {"currentColor": ink})
     _glyph_cache[key] = pixmap
     return pixmap

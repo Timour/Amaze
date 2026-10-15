@@ -171,7 +171,6 @@ class AmazePanel(QtWidgets.QWidget):
             raise
 
     def _build(self) -> None:
-        self.script_path = amaze.PACKAGE_ROOT    # the package locates its own bundled files ONE way
         self.prefs = prefs.Prefs()
 
         loaded = self.prefs.load()    # False means only that there was nothing usable on disk - no settings.json, an unreadable one, or a library directory that is gone - and the preferences object is populated either way, so the debug engine, the settings snapshot (the designated restore source) and the cache override must all run on BOTH paths: the session right after a settings loss is exactly the one whose record matters most
@@ -267,10 +266,10 @@ class AmazePanel(QtWidgets.QWidget):
     }
 
     def _ui_icon_path(self, filename: str) -> str:
-        """An icon in ui/, or "" for no filename (callers degrade) - resolved through `ui_asset` like the badge art, never a path join of its own. ▸p/adoption"""
+        """An icon in ui/, or "" for no filename (callers degrade). ▸p/adoption"""
         if not filename:
             return ""
-        return ui_helpers.ui_asset(filename)
+        return amaze.package_file("ui", filename)
 
     def _make_menu_button(self, menu: QtWidgets.QMenu) -> "ui_helpers.IconMenuButton":
         """Opens `menu` from an icon button, standing in for a real QMenuBar item: QMainWindow reserves its menu bar a dock area that cannot share a row with other widgets, so the real menu bar (self.menu) stays alive and owns these QMenu objects but is hidden, and the button pops the same QMenu instance"""
@@ -999,7 +998,7 @@ class AmazePanel(QtWidgets.QWidget):
     def init_ui(self) -> None:
         """Creates the panel-view on load"""
         self.ui = ui_helpers.load_ui(
-            self.script_path + "/ui/amaze.ui",
+            amaze.package_file("ui", "amaze.ui"),
             dragdrop_widgets.DragDropCentralWidget,
             dragdrop_widgets.DragDropListView)
 

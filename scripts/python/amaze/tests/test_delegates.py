@@ -226,6 +226,55 @@ class TheSvgCacheTest(unittest.TestCase):
         self.assertIsNot(first, cached)
 
 
+class OneSvgPainterTest(unittest.TestCase):
+    """`paint_svg` draws what each hand-written render it replaced drew, antialias hint or none."""
+
+    @staticmethod
+    def _by_hand(device, svg, antialias):
+        from PySide6 import QtSvg
+        renderer = QtSvg.QSvgRenderer(
+            QtCore.QByteArray(svg) if isinstance(svg, bytes) else svg)
+        device.fill(QtCore.Qt.GlobalColor.transparent)
+        painter = QtGui.QPainter(device)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, antialias)
+        renderer.render(painter)
+        painter.end()
+        return device
+
+    @staticmethod
+    def _image(device):
+        return device.toImage() if isinstance(device, QtGui.QPixmap) else device
+
+    def test_every_device_and_source_matches_the_copies_it_replaced(self):
+        from amaze.helpers import ui_helpers
+        path = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "ui", "badge_favourite.svg")
+        with open(path, "rb") as handle:
+            text = handle.read()
+        devices = {
+            "ARGB32": lambda: QtGui.QImage(48, 48, QtGui.QImage.Format.Format_ARGB32),
+            "premultiplied": lambda: QtGui.QImage(
+                48, 48, QtGui.QImage.Format.Format_ARGB32_Premultiplied),
+            "pixmap": lambda: QtGui.QPixmap(48, 48),
+        }
+        for source in (path, text):
+            for kind, make in devices.items():
+                for antialias in (False, True):
+                    with self.subTest(source=type(source).__name__, device=kind,
+                                      antialias=antialias):
+                        want = self._image(self._by_hand(make(), source, antialias))
+                        got = make()
+                        self.assertTrue(ui_helpers.paint_svg(got, source))
+                        self.assertEqual(want, self._image(got))
+
+    def test_unreadable_art_answers_false_and_leaves_the_device_clear(self):
+        from amaze.helpers import ui_helpers
+        image = QtGui.QImage(8, 8, QtGui.QImage.Format.Format_ARGB32)
+        image.fill(QtGui.QColor("#ff0000"))
+        self.assertFalse(ui_helpers.paint_svg(image, b"<not an svg"))
+        self.assertEqual(0, image.pixelColor(4, 4).alpha())
+
+
 class PainterBalanceTest(unittest.TestCase):
     """A delegate must hand the painter back exactly as it got it: with save() at the top of _paint and restore() at the bottom, a row raising in between skipped the restore, so the fallback row and every row after it in that pass inherited the leaked pen, font and clip while the save stack grew by one per failing tile - measured before the fix as Qt's own `QPainter::end: Painter ended with 1 saved states`."""
 

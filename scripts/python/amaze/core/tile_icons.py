@@ -6,7 +6,7 @@ import os
 import re
 from collections import OrderedDict
 
-from PySide6 import QtCore, QtGui, QtSvg
+from PySide6 import QtCore, QtGui
 
 import amaze
 from amaze import messages
@@ -149,15 +149,10 @@ def _ink_span_px(body: str, scale: float, stroke: float) -> float:
         % (CANVAS, CANVAS, CANVAS / 2.0 - 12.0 * scale,
            CANVAS / 2.0 - 12.0 * scale, scale, stroke, body)
     )
-    renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.encode("utf-8")))
-    if not renderer.isValid():
-        return 0.0
+    from amaze.helpers import ui_helpers
     image = QtGui.QImage(CANVAS, CANVAS, QtGui.QImage.Format.Format_ARGB32)
-    image.fill(QtCore.Qt.GlobalColor.transparent)
-    painter = QtGui.QPainter(image)
-    painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-    renderer.render(painter)
-    painter.end()
+    if not ui_helpers.paint_svg(image, svg.encode("utf-8")):
+        return 0.0
     box = QtGui.QRegion(  # createAlphaMask, NOT createMaskFromColor - the other polarity returns the whole canvas as "ink" and silently halves every icon; verified against an exhaustive alpha scan (research.md ▸ Qt image measurement)
         QtGui.QBitmap.fromImage(image.createAlphaMask())
     ).boundingRect()
@@ -218,16 +213,10 @@ def compose(name: str, background: str, size: int = CANVAS,
     svg = compose_svg(name, background, stroke_units, ink)
     image = None
     if svg:
-        renderer = QtSvg.QSvgRenderer(QtCore.QByteArray(svg.encode("utf-8")))
-        if renderer.isValid():
-            image = QtGui.QImage(
-                int(size), int(size), QtGui.QImage.Format.Format_ARGB32
-            )
-            image.fill(QtCore.Qt.GlobalColor.transparent)
-            painter = QtGui.QPainter(image)
-            painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
-            renderer.render(painter)
-            painter.end()
+        from amaze.helpers import ui_helpers
+        drawn = QtGui.QImage(int(size), int(size), QtGui.QImage.Format.Format_ARGB32)
+        if ui_helpers.paint_svg(drawn, svg.encode("utf-8")):
+            image = drawn
     global _composed_bytes
     entry = image if image is not None else False
     _composed[key] = entry
