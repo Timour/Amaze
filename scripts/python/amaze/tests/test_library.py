@@ -1317,6 +1317,8 @@ class TheColorsSidebarFollowsTheLibraryTest(unittest.TestCase):
         prefs.save()
         writer = gradient_library.GradientLibrary(preferences=prefs)
         writer.add_user_gradient("P " + name, name, self.RAMP)
+        gradient_library.GradientCategories(
+            preferences=prefs).check_add_category(name)
         return folder
 
     def _labels(self, sidebar):

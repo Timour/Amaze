@@ -219,9 +219,6 @@ class GradientLibrary(library.AssetLibrary):
         category_name = (category_name or "").strip()
         if not category_name:
             return 0
-        cats = self._data.setdefault("categories", [])
-        if category_name not in cats:
-            cats.append(category_name)
         moved = []
         for row in rows:
             if not 0 <= row < len(self._assets):
@@ -244,9 +241,6 @@ class GradientLibrary(library.AssetLibrary):
             )
             colors.append({"name": hex_color, "hex": hex_color})
         category_name = (category_name or "").strip()
-        cats = self._data.setdefault("categories", [])
-        if category_name and category_name not in cats:
-            cats.append(category_name)
         mat = material.Material()
         mat.set_data((name or "Gradient").strip() or "Gradient",
                      category_name, self.sanitize_tags(tags or ""),

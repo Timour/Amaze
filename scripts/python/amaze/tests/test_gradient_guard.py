@@ -1158,6 +1158,22 @@ class TheColorsSidebarIsTheSharedModel(unittest.TestCase):
                       "the sidebar cannot name its own category, so a "
                       "click filters the grid to nothing")
 
+    def test_a_new_category_reaches_the_sidebar_through_its_insert(self):
+        """The save door files a palette, then hands its category to `check_add_category`."""
+        shared = _fixture_prefs(self, self.dir)
+        lib = gradient_library.GradientLibrary(preferences=shared)
+        sidebar = gradient_library.GradientCategories(preferences=shared)
+        told = []
+        sidebar.rowsInserted.connect(
+            lambda *_args: told.append(sidebar.rowCount()))
+        lib.add_user_gradient("new", "Spring",
+                              {"values": [[0.1, 0.2, 0.3]], "keys": [0.0]})
+        sidebar.check_add_category("Spring")
+        self.assertEqual([4], told,
+                         "the sidebar gained a row it was never told about")
+        self.assertEqual(
+            "Spring", sidebar.data(sidebar.index(3, 0), sidebar.CatSortRole))
+
     def test_the_counts_come_from_the_shared_walk(self):
         sidebar = self._sidebar()
         rows = {sidebar.data(sidebar.index(row, 0),
