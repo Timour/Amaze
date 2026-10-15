@@ -240,6 +240,27 @@ class NoDialogSetsItsOwnWidth(unittest.TestCase):
             "name from amazetheme.py:\n  " + "\n  ".join(offenders))
 
 
+class TheNamedFrameSizesAreTheDrawnFrames(unittest.TestCase):
+    """A frame size a call site names is the drawn frame's, for every frame of its family."""
+
+    def test_each_named_size_is_every_family_frame(self):
+        layout = amazetheme.DIALOG_LAYOUT
+        for frames, name, want in (
+                (("D01",), "D01_FRAME", amazetheme.D01_FRAME),
+                (("D02",), "D02 opening size",
+                 (amazetheme.D02_FORM_WIDTH, amazetheme.D02_FRAME_H)),
+                (("D09", "D13"), "SAVE_WIDTH", amazetheme.SAVE_WIDTH),
+                (("D14",), "D14_WIDTH", amazetheme.D14_WIDTH),
+                (("D11",), "D11_FORM_WIDTH", amazetheme.D11_FORM_WIDTH),
+                (("D04", "D05", "D06", "D07", "D08"), "PREFS_FRAME",
+                 amazetheme.PREFS_FRAME)):
+            for frame in frames:
+                drawn = layout[frame]["frame"]
+                with self.subTest(frame=frame, name=name):
+                    self.assertEqual(drawn if isinstance(want, tuple) else drawn[0],
+                                     want, "%s is not %s's drawn size" % (name, frame))
+
+
 class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
 
     def test_every_blank_reads_its_words_from_it(self):

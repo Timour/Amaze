@@ -9,8 +9,7 @@ HEADER_BAND_TEXT_BOLD = True    # the drawn weight on D01, D02 and D11
 
 HOUSE_MARGIN = 5         # ▸ the content margin every compact form dialog wears; a dialog records its reason at the call to differ
 
-D01_FRAME = (256, 185)      # ▸ D01 Versions, header band included
-D01_INSET = 18              # 35, both sides, leaving a 220-wide column
+D01_INSET = 18              # ▸ D01 Versions: 35, both sides, leaving a 220-wide column
 D01_FIRST_FIELD_Y = 15      # 30, the first field's top
 D01_BUTTON_GAP = 19         # 38
 D01_RADIUS = 5              # 10
@@ -18,9 +17,7 @@ D01_LABEL_PX = 10
 D01_BUTTON_PX = 12
 D01_LABEL_INK = "#93b9e7"   # the accent-blue field label, e.g. Change Name
 
-D02_FORM_WIDTH = 335     # ▸ D02 Customize (Tile Icon): ONE narrow column since the 2026-08-27 overhaul; band included
-D02_FRAME_H = 610        # the drawn OPENING height; the dialog stays resizable and the grid is the part that grows
-D02_MARGINS = (8, 6, 8, 12)   # left, top-under-band, right, bottom
+D02_MARGINS = (8, 6, 8, 12)   # ▸ D02 Customize (Tile Icon): left, top-under-band, right, bottom
 D02_CELL = 34            # one icon button in the chooser grid
 D02_COLUMNS = 8          # what the drawn 319 grid column fits at 2px spacing
 D02_FIELD_H = 22         # every field, the search and both buttons
@@ -41,24 +38,15 @@ D02_CHOOSER_RADIUS = 3   # an icon button's corner, UNSCALED - a stylesheet px, 
 D02_CHECKED_BORDER = 2   # the ring on the chosen icon, UNSCALED
 D02_SWATCH_BORDER = 1    # the preset chips and the current-colour chip, UNSCALED
 
-SAVE_WIDTH = 350         # ▸ the save family D09 and D13: both are this wide, whatever its labels. D10/D12 retired 2026-08-30 - one save engine, D09 is THE save dialog
-D14_WIDTH = 369          # ▸ D14 User Picker, the family's shape 19 wider: `Existing Users` is 69 and the family's label column is 60, so the column takes the 19 and the field keeps its 276
-D14_LABEL_RIGHT = 79     # where D14's label column ends, the family's 60 plus that 19
-SAVE_FIELD_WIDTH = 276   # the drawn field width inside it
-SAVE_FRAME_H = {"D09": 177, "D13": 72, "D14": 100}   # each frame's drawn height; the row count is the only difference between them
+D14_LABEL_RIGHT = 79     # ▸ the save family D09, D13 and D14: D14's label column, the family's 60 plus 19
+SAVE_FIELD_WIDTH = 276   # the drawn field width, the same in all three
 SAVE_LABEL_RIGHT = 60    # a label is RIGHT-aligned and ends here
-SAVE_FIELD_X = 67        # every field starts here; 67 + 276 = 343, so the right inset is 7
-SAVE_FIRST_ROW_Y = 11    # the first field's top
 SAVE_FIELD_H = 22
-SAVE_ROW_PITCH = 26      # field top to field top
 SAVE_BUTTON_H = 22       # the OK / Cancel pair, drawn flush right
 SAVE_BUTTON_W = (31, 50)  # OK, Cancel
 SAVE_BUTTON_GAP = 8
-SAVE_BUTTON_RIGHT = 343  # Cancel's right edge, level with the fields'
-SAVE_BUTTON_BOTTOM = 9   # the button row's bottom to the frame's, on D09/D10/D12; D13 draws 11 and is the odd one
 
-D11_FORM_WIDTH = 638     # ▸ D11 Save Code: a FLOOR, not a pin - the only dialog that resizes, because it carries an editor
-D11_EDITOR_H = 364       # the editor's minimum HEIGHT; it spans the full content width, under the two-column form
+D11_EDITOR_H = 364       # ▸ D11 Save Code: the editor's minimum HEIGHT, the full content width under the form
 D11_MARGINS = (18, 19, 8, 13)  # left, top-under-band, right, bottom
 D11_FIELD_H = 22         # every field and button in the frame
 D11_ROW_GAP = 4          # between the two form rows
@@ -67,29 +55,25 @@ D11_HALF_GAP = 18        # between the two form halves
 D11_STACK_GAP = 12       # fields to the editor
 D11_BUTTON_GAP = 8       # editor to the OK/Cancel row
 
-PREFS_FRAME = (498, 451)    # ▸ D04-D08 Preferences, the one tabbed window - the drawn frame, every tab. The width carries Qt's 8 for a tab widget, which no widget draws and every such frame must leave room for ▸r/tabwidget-adds-eight
-PREFS_FORM_WIDTH = 490   # the frame's width, kept under its old name because call sites use it
+PREFS_FORM_WIDTH = 490   # ▸ D04-D08 Preferences: the drawn frame less Qt's 8 for a tab widget ▸r/tabwidget-adds-eight
 PREFS_INSET = 20         # content to the frame edge, both sides: rows span 20..470
 PREFS_DIALOG_MARGIN = 12  # the tabbed window's own margin, outside the tab strip
 PREFS_PAGE_MARGIN = 8    # each tab page's margin, inside it: 12 + 8 is the drawn 20
 PREFS_CONTENT_WIDTH = 450  # the drawn content column, spanned by every row and divider: 20..470. PINNED, because the page is handed more than this - Qt makes the window 8 wider than the tab widget needs and then lets the page use all of it ▸r/tabwidget-adds-eight
 PREFS_TAB_BAR = (12, 12, 466, 22)   # x, y, w, h - the strip above every page
-PREFS_CONTENT_TOP = 42   # the first row's top, under the tab bar
 PREFS_LABEL_RIGHT = 140  # a form label is RIGHT-aligned and ends here
 PREFS_LABEL_COL = 120    # the label column itself, from the inset to LABEL_RIGHT
 PREFS_LABEL_GAP = 8      # a label to its field: FIELD_X less LABEL_RIGHT
 PREFS_FIELD_X = 148      # every field, button and toggle column starts here
 PREFS_FIELD_H = 22       # a line edit, combo or button
 PREFS_SPIN_H = 24        # a spin box is 2 taller, its inner line edit inset 1
-PREFS_TOGGLE_H = 19      # a ToggleSwitch
 PREFS_ROW_GAP = 6        # between rows inside one group
 PREFS_BUTTON_GAP = 8     # between two controls sharing one row, and a spin box to its slider
-PREFS_SECTION_GAP = 27   # across a divider, bottom of one row to top of the next
 PREFS_BROWSE_W = 28      # the `...` button that opens a file dialog
 PREFS_DIVIDER_INK = "#434343"   # the 1px group divider; groups carry no title, like Houdini's own parameter panes
 PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
-PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = PREFS_SECTION_GAP
+PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
 COMMENT_INK = "#1e8051"        # ▸ the Comments pane (N01): the header icon's art colour
 COMMENT_DONE_INK = "#4af2a1"   # a done to-do
@@ -764,6 +748,13 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         ),
     },
 }
+
+D01_FRAME = DIALOG_LAYOUT["D01"]["frame"]    # ▸ the frame sizes call sites name, read from the drawing
+D02_FORM_WIDTH, D02_FRAME_H = DIALOG_LAYOUT["D02"]["frame"]    # the OPENING size; the grid grows
+SAVE_WIDTH = DIALOG_LAYOUT["D09"]["frame"][0]    # D09 and D13 alike, whatever their labels
+D14_WIDTH = DIALOG_LAYOUT["D14"]["frame"][0]
+D11_FORM_WIDTH = DIALOG_LAYOUT["D11"]["frame"][0]    # a FLOOR: D11 resizes around its editor
+PREFS_FRAME = DIALOG_LAYOUT["D04"]["frame"]    # every Preferences tab, D04-D08
 
 _NODE_MARK = " ▸ "       # what separates a node's kind from the note after it
 _TEXT_SUFFIX = _NODE_MARK + "text"
