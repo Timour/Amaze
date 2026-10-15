@@ -106,6 +106,12 @@ def _show_value(widget, value) -> None:
             pass
 
 
+def _show_quietly(widget, value) -> None:
+    """`_show_value` with the widget's signals held, then left blocked or not as they were."""
+    with QtCore.QSignalBlocker(widget):
+        _show_value(widget, value)
+
+
 def _chooser_path(path: str) -> str:
     """A folder spelled for `selectFile` and for prefs: forward slashes, trailing one only at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
@@ -176,17 +182,10 @@ class PrefsDialog(base_dialog.AssetDialog):
         """Fill the picker and select the current user, UNDER `blockSignals`: the first `addItem` emits `currentIndexChanged(0)`, so a plain repopulate would silently switch the user."""
         combo = self.cbb_library_user
         uid = users.current(self._prefs)
-        combo.blockSignals(True)
-        try:
+        with QtCore.QSignalBlocker(combo):
             combo.clear()
-            for user_id, name in sorted(users.all_users(self._prefs).items(),
-                                        key=lambda pair: pair[1].lower()):
-                combo.addItem(name, user_id)
-            combo.addItem("Create a new user...",
-                          user_dialog.UserPickerDialog.CREATE)    # the picker dialog's own create row, LAST so it never reads as a user
+            user_dialog.fill_users(combo, users.all_users(self._prefs))
             combo.setCurrentIndex(max(combo.findData(uid), 0) if uid else -1)
-        finally:
-            combo.blockSignals(False)
         self._btn_edit_user.setEnabled(bool(uid))
         self._btn_delete_user.setEnabled(bool(uid))
 
@@ -273,16 +272,12 @@ class PrefsDialog(base_dialog.AssetDialog):
                 title=branding.APP_NAME,
             )
             if answer != 0:
-                self._cbx_allow_overwrite.blockSignals(True)
-                self._cbx_allow_overwrite.setChecked(False)
-                self._cbx_allow_overwrite.blockSignals(False)
+                _show_quietly(self._cbx_allow_overwrite, False)
                 return
         if not library_policy.set_allow_overwrite(library_dir, checked):
             hou.ui.displayMessage(  # type: ignore
                 messages.LIBRARY_SETTING_NOT_WRITTEN)
-            self._cbx_allow_overwrite.blockSignals(True)
-            self._cbx_allow_overwrite.setChecked(not checked)
-            self._cbx_allow_overwrite.blockSignals(False)
+            _show_quietly(self._cbx_allow_overwrite, not checked)
 
     def _build_library_tab(self) -> QtWidgets.QWidget:
         page, form = self._tab_page()
@@ -936,9 +931,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             self.change_test_path()
             if not self._prefs.test_dir:
                 self._prefs.test_mode = False   # still nothing chosen, so put the switch back rather than leave it lying
-                self._cbx_test_mode.blockSignals(True)    # like every other revert here: an unblocked uncheck re-enters set_test_mode(False) and switches every model for a gesture that applied nothing
-                self._cbx_test_mode.setChecked(False)
-                self._cbx_test_mode.blockSignals(False)
+                _show_quietly(self._cbx_test_mode, False)
                 self._prefs.save()
             return
         if on:
@@ -996,15 +989,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         for widget, value in self._shown_values():
             for shown in (widget, self._sliders.get(widget)):
                 if shown is not None:
-                    with QtCore.QSignalBlocker(shown):
-                        _show_value(shown, value)
+                    _show_quietly(shown, value)
 
     def _sync_overwrite_switch(self) -> None:
         """Re-read the overwrite switch from the library NOW bound - policy.json travels with the library, not with these preferences."""
-        self._cbx_allow_overwrite.blockSignals(True)
-        self._cbx_allow_overwrite.setChecked(
-            library_policy.allow_overwrite(self._prefs.dir))
-        self._cbx_allow_overwrite.blockSignals(False)
+        _show_quietly(self._cbx_allow_overwrite,
+                      library_policy.allow_overwrite(self._prefs.dir))
 
     def clear_texture_cache(self) -> None:
         """Delete every cached image and geometry thumbnail; they regenerate on the next browse. Scene CAPTURES are untouched - hand-framed, not regenerable, and stored under config_root for that reason."""
@@ -1207,9 +1197,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                    if k in self._section_boxes
                    and self._section_boxes[k].isChecked()]
         if not enabled:
-            self._section_boxes["material"].blockSignals(True)
-            self._section_boxes["material"].setChecked(True)
-            self._section_boxes["material"].blockSignals(False)
+            _show_quietly(self._section_boxes["material"], True)
             enabled = ["material"]
         enabled.extend(
             k for k in self._prefs.enabled_sections

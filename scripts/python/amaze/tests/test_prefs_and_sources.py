@@ -1310,6 +1310,43 @@ class TheUserRowCreatesAndDeletes(unittest.TestCase):
                          "reads as a user called Create")
         self.assertTrue(dlg._btn_delete_user.isEnabled())
 
+    def test_the_row_and_the_picker_list_the_same_rows(self):
+        """One filler: the first-open picker and Preferences show the same rows in the same order."""
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog, user_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        for name in ("sienna", "Cobalt", "Fern"):
+            p.library_user = users.create(p, name)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        picker = user_dialog.UserPickerDialog(users.all_users(p))
+        self.addCleanup(picker.deleteLater)
+
+        def rows(combo):
+            return [(combo.itemText(i), combo.itemData(i))
+                    for i in range(combo.count())]
+
+        self.assertEqual(rows(picker._combo), rows(dlg.cbb_library_user))
+        self.assertEqual(["Cobalt", "Fern", "sienna"],
+                         [text for text, _ in rows(picker._combo)[:-1]],
+                         "the users are not listed by name, A to Z")
+
+    def test_a_quiet_set_emits_nothing_and_keeps_an_outer_block(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.helpers import ui_helpers
+        box = ui_helpers.ToggleSwitch("Probe")
+        self.addCleanup(box.deleteLater)
+        heard = []
+        box.toggled.connect(heard.append)
+        prefs_dialog._show_quietly(box, True)
+        self.assertEqual(([], True, False),
+                         (heard, box.isChecked(), box.signalsBlocked()))
+        box.blockSignals(True)
+        prefs_dialog._show_quietly(box, False)
+        self.assertTrue(box.signalsBlocked(),
+                        "a quiet set unblocked a caller's own block")
+
     def test_creating_a_user_switches_to_them(self):
         from amaze.core import users
         from amaze.dialogs import prefs_dialog

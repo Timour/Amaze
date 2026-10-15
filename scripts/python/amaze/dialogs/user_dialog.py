@@ -22,10 +22,7 @@ class UserPickerDialog(AssetDialog):
         self.new_name = ""
 
         self._combo = QtWidgets.QComboBox()
-        for user_id, name in sorted(known.items(),
-                                    key=lambda pair: pair[1].lower()):
-            self._combo.addItem(name, user_id)
-        self._combo.addItem("Create a new user...", self.CREATE)
+        fill_users(self._combo, known)
         self.add_row("Existing Users", self._combo)
         self._line = self.add_line("New User")
 
@@ -46,3 +43,11 @@ class UserPickerDialog(AssetDialog):
         else:
             self.uid = str(data or "")
         super()._on_accept()
+
+
+def fill_users(combo, known: dict) -> None:
+    """Every user by name, A to Z, each carrying its UID, then the create row last."""
+    for user_id, name in sorted(known.items(),
+                                key=lambda pair: pair[1].lower()):
+        combo.addItem(name, user_id)
+    combo.addItem("Create a new user...", UserPickerDialog.CREATE)
