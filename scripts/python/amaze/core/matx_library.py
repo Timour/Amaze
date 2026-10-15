@@ -170,6 +170,11 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
     def sources(self):
         return self._sources
 
+    def source_for(self, record):
+        """The online source `record` came from, by name, or None."""
+        return next((source for source in self._sources
+                     if source.name == record.source), None)
+
     @property
     def source(self):
         return self._source
@@ -413,8 +418,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                 continue
             if rec.kind == "amazepkg":
                 member = rec.payload.get("thumb_member")    # FIRST: a named member is the chosen icon or the real render - it outranks every drawn stand-in, the way local sections rank it
-                source = next((s for s in self.sources
-                               if s.name == rec.source), None)
+                source = self.source_for(rec)
                 if member and source is not None:
                     reader = (lambda path, s=source, r=rec:
                               s.read_thumb_to(r, path))

@@ -2436,7 +2436,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _needs_download(self, records) -> bool:
         """True when importing these records will actually fetch bytes, answered WITHOUT touching the network - the source is looked up DIRECTLY here, never through _online_source_for, which also resolves the download RESOLUTION at one main-thread HTTP GET per package. Asked because the progress bar sits ABOVE the grid, so showing it for a value source (RGL, PhysicallyBased) that carries its numbers in the catalogue and downloads nothing shifts every tile down and back for no work at all."""
         for record in records:
-            source = self._source_of(record)
+            source = self.matx_online_model.source_for(record)
             if source is None:
                 continue
             try:
@@ -2446,14 +2446,9 @@ class AmazePanel(QtWidgets.QWidget):
                 return True          # unknown = assume it downloads
         return False
 
-    def _source_of(self, record):
-        """The online source a record came from, by name, or None."""
-        return next((source for source in self.matx_online_model.sources
-                     if source.name == record.source), None)
-
     def _online_source_for(self, record):
         """The record's source and the resolution to fetch it at: (source, resolution, error)."""
-        source = self._source_of(record)
+        source = self.matx_online_model.source_for(record)
         if source is None:
             return (None, None, "Unknown source %s" % record.source)
         if not source.needs_download(record):    # ASK THE SOURCE, never re-spell its answer as `record.kind == "values"`: that is the BASE class's answer and RGL overrides it, because a uid its shipped table has never seen still costs a measurement download

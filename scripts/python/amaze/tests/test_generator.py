@@ -888,6 +888,14 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
         self.assertFalse(panel._needs_download([stray]))
         self.assertEqual([], self.calls, "a source lookup reached the network")
 
+    def test_the_online_model_names_a_records_source(self):
+        panel = test_support.fixture_panel(self)
+        model = panel.matx_online_model
+        for named in model.sources:
+            record = self._records(named.name, count=1)[0]
+            self.assertIs(named, model.source_for(record))
+        self.assertIsNone(model.source_for(self._records("Nowhere", count=1)[0]))
+
     def test_the_panel_asks_the_cheap_question(self):
         """Derived from the source, so a future edit cannot quietly put the expensive lookup back."""
         import re
