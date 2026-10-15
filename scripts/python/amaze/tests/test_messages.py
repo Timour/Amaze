@@ -26,6 +26,35 @@ def _constants():
             if k.isupper() and isinstance(v, str)}
 
 
+def _literal_words(arg) -> str:
+    """The longest literal in a message argument: plain, before `%`, beside `+`, or in an f-string."""
+    if isinstance(arg, ast.Constant):
+        return arg.value if isinstance(arg.value, str) else ""
+    if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Mod):
+        return _literal_words(arg.left)
+    if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Add):
+        return max(_literal_words(arg.left), _literal_words(arg.right), key=len)
+    if isinstance(arg, ast.JoinedStr):
+        return "".join(part.value for part in arg.values
+                       if isinstance(part, ast.Constant))
+    return ""
+
+
+def _spelled_messages(tree) -> list:
+    """[(line, words)] for each dialog call in `tree` whose message carries its own words."""
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr not in DIALOG_CALLS:
+            continue
+        words = _literal_words(node.args[0])
+        if len(words) > 8:
+            found.append((node.lineno, words))
+    return found
+
+
 class NoDialogSpellsItsOwnMessage(unittest.TestCase):
     """A message written at the call site is a second home for words the design owns, and the one place a Figma edit cannot reach."""
 
@@ -37,23 +66,9 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
                     tree = ast.parse(handle.read(), filename=path)
                 except SyntaxError:
                     continue
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                func = node.func
-                if not isinstance(func, ast.Attribute) \
-                        or func.attr not in DIALOG_CALLS:
-                    continue
-                if not node.args:
-                    continue
-                arg = node.args[0]
-                if isinstance(arg, ast.BinOp) and isinstance(arg.op, ast.Mod):
-                    arg = arg.left
-                if isinstance(arg, ast.Constant) \
-                        and isinstance(arg.value, str) and len(arg.value) > 8:
-                    offenders.append(
-                        "%s:%d  %r" % (os.path.relpath(path, _PKG),
-                                       node.lineno, arg.value[:48]))
+            for line, words in _spelled_messages(tree):
+                offenders.append("%s:%d  %r" % (
+                    os.path.relpath(path, _PKG), line, words[:48]))
         self.assertEqual(
             [], offenders,
             "a dialog spells its own message instead of taking one from "
@@ -62,12 +77,17 @@ class NoDialogSpellsItsOwnMessage(unittest.TestCase):
 
     def test_the_scan_can_see_a_literal(self):
         """A scanner matching nothing passes forever."""
-        tree = ast.parse('ui.displayMessage("a sentence long enough")\n')
-        hits = [n for n in ast.walk(tree)
-                if isinstance(n, ast.Call)
-                and isinstance(n.func, ast.Attribute)
-                and n.func.attr in DIALOG_CALLS]
-        self.assertEqual(1, len(hits))
+        for shape in ('ui.displayMessage("a sentence long enough")',
+                      'ui.displayMessage("a sentence long enough %s" % x)',
+                      'ui.displayMessage("a sentence long enough:\\n" + x)',
+                      'ui.displayMessage(x + "a sentence long enough")',
+                      'ui.displayMessage(f"a sentence {x} long enough")'):
+            with self.subTest(shape=shape):
+                self.assertEqual(1, len(_spelled_messages(ast.parse(shape))))
+
+    def test_the_scan_passes_a_message_from_the_register(self):
+        tree = ast.parse('ui.displayMessage(messages.X % "\\n".join(x))')
+        self.assertEqual([], _spelled_messages(tree))
 
 
 class ThePlaceholdersAgreeWithTheCallers(unittest.TestCase):

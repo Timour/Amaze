@@ -2676,9 +2676,7 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
             ui.displayMessage(
-                "Some node assets could not be imported:\n\n"
-                + "\n".join(failures)
-            )
+                messages.NODE_ASSETS_IMPORT_FAILURES % "\n".join(failures))
 
 
     def get_code_category_names(self) -> list[str]:
@@ -2926,8 +2924,7 @@ class AmazePanel(QtWidgets.QWidget):
                         file=base, error=str(exc))
             if ui is not None:
                 ui.displayMessage(
-                    f"Could not import {base}: {exc}"
-                )
+                    messages.GEOMETRY_IMPORT_FAILED % (base, exc))
             return
         parm = helpers.find_file_parm(loader)
         if parm is None:
@@ -2937,8 +2934,7 @@ class AmazePanel(QtWidgets.QWidget):
                 pass
             if ui is not None:
                 ui.displayMessage(
-                    f'The "{loader_type}" SOP has no file parameter to set.'
-                )
+                    messages.LOADER_SOP_HAS_NO_FILE_PARM % loader_type)
             return
         parm.set(self._scene_path(path))
         try:
@@ -3910,9 +3906,7 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
             ui.displayMessage(
-                "Some materials could not be saved:\n\n"
-                + "\n".join(failures)
-            )
+                messages.MATERIALS_SAVE_FAILURES % "\n".join(failures))
         for renderer in renderers:
             self.enable_renderer_on_add(renderer)
         self.prefs.save()
@@ -3940,8 +3934,7 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if failures and ui is not None:
             ui.displayMessage(
-                "Some materials could not be imported:\n\n" + "\n".join(failures)
-            )
+                messages.MATERIALS_IMPORT_FAILURES % "\n".join(failures))
 
     def _import_selected_materials(self, target: str, failures: list) -> None:
         """The import loop itself - see import_asset for the grouping."""

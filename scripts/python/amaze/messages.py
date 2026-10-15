@@ -230,6 +230,4 @@ CLEANUP_SUMMARY = 'Library cleanup:\n\n%s'
 
 LOADER_SOP_HAS_NO_FILE_PARM = 'The "%s" SOP has no file parameter to set.'
 
-NODE_HAS_NO_COLOR_RAMP = '"%s" (%s) has no color ramp parameter to save.'
-
 GEOMETRY_IMPORT_FAILED = 'Could not import %s: %s'
