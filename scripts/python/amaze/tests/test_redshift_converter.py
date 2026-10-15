@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -747,6 +748,48 @@ class TheMirrorReadsTheForwardConvertersFacts(unittest.TestCase):
             source = handle.read()
         self.assertEqual(0, source.count('parm("signature").evalAsString()'),
                          "read it through `_effective_signature`")
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not loaded")
+class TheTopShaderAndABlendsPartsShareOneTable(unittest.TestCase):
+    """Convert to Karma picks the converter for a material's own shader from the table a blend uses."""
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        self.prefs.render_on_import = 0
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        source = parent.createNode("redshift_vopnet")
+        for child in list(source.children()):
+            if child.type().name() != "redshift_material":
+                child.destroy()
+        shader = source.createNode("redshift::StandardMaterial", "SM")
+        material.redshift_terminal(source).setNamedInput("Surface", shader, 0)
+        self.model.add_asset(source, "Test", "", False, name="rs_standard")
+        source.destroy()
+        self.row = len(self.model.assets) - 1
+
+    def test_the_tables_converter_is_the_one_called(self):
+        from amaze.render import material_converter
+        seen = []
+
+        def stub(rs_node, dest_parent, report):
+            seen.append(rs_node.type().name())
+            return dest_parent.createNode("mtlxstandard_surface")
+
+        with hou.undos.disabler():
+            scratch = hou.node("/obj").createNode("matnet")
+        self.addCleanup(scratch.destroy)
+        with mock.patch.dict(material_converter._UBER_CONVERTERS,
+                             {"redshift::StandardMaterial": stub}):
+            shader, _displacement, report = material_converter.convert_redshift_material(
+                nodes.NodeHandler(self.prefs), self.model.assets[self.row], scratch)
+        self.assertEqual(["redshift::StandardMaterial"], seen, report.summary_lines())
+        self.assertIsNotNone(shader)
 
 
 if __name__ == "__main__":

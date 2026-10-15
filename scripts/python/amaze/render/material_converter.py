@@ -1208,16 +1208,24 @@ def convert_particle_attribute(
     return lookup
 
 
+_BLEND_SHADERS = ("redshift::MaterialBlender", "redshift::MaterialLayer")
+
+
+def _shader_converter(type_name: str):
+    """The converter for one Redshift material type, a blend's included, or None."""
+    if type_name in _BLEND_SHADERS:
+        return convert_material_blend
+    return _UBER_CONVERTERS.get(type_name)
+
+
 def convert_material_shader(
     rs_node: hou.Node, dest_parent: hou.Node, report: ConversionReport
 ) -> hou.Node | None:
     """Any Redshift MATERIAL node -> its MaterialX equivalent: the three uber shaders convert directly, and the blender/layer nodes recurse through here per combined material, so a blend of blends converts as deeply as it nests."""
     type_name = rs_node.type().name()
-    converter = _UBER_CONVERTERS.get(type_name)
+    converter = _shader_converter(type_name)
     if converter is not None:
         return converter(rs_node, dest_parent, report)
-    if type_name in ("redshift::MaterialBlender", "redshift::MaterialLayer"):
-        return convert_material_blend(rs_node, dest_parent, report)
     report.skip(
         "%s feeds a material blend but has no conversion mapping"
         % type_name
@@ -1403,24 +1411,17 @@ def convert_redshift_material(
             )
             return None, None, report
         shader_type = shader.type().name()
-        if shader_type == "redshift::StandardMaterial":
-            mtlx = convert_standard_material(shader, prefs_dir_parent, report)
-        elif shader_type == "redshift::OpenPBRMaterial":
-            mtlx = convert_openpbr_material(shader, prefs_dir_parent, report)
-        elif shader_type == "redshift::Material":
-            mtlx = convert_classic_material(shader, prefs_dir_parent, report)
-        elif shader_type in ("redshift::MaterialBlender",
-                             "redshift::MaterialLayer"):
-            mtlx = convert_material_blend(shader, prefs_dir_parent, report)
-        elif shader_type in _OUT_OF_SCOPE_SHADERS:
+        converter = _shader_converter(shader_type)
+        if shader_type in _OUT_OF_SCOPE_SHADERS:
             report.skip(_OUT_OF_SCOPE_SHADERS[shader_type])
             return None, None, report
-        else:
+        if converter is None:
             report.skip(
                 f"shader is {shader_type}, which has no conversion "
                 "mapping yet"
             )
             return None, None, report
+        mtlx = converter(shader, prefs_dir_parent, report)
         if mtlx is None:    # a blend with no convertible base; the converter put the reason in the report
             return None, None, report
 
