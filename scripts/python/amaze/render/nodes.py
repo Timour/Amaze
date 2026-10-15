@@ -741,10 +741,12 @@ class NodeHandler:
             self._preferences, mat.mat_id, ".interface"
         )
 
-        self._created_cop_net = self.restore_cop_companion(mat)
-        self._hou_parent = hou.node("/obj").createNode("matnet")
+        self._created_cop_net = None
+        self._hou_parent = None
         completed = False
         try:
+            self._created_cop_net = self.restore_cop_companion(mat)
+            self._hou_parent = hou.node("/obj").createNode("matnet")
             debug.event(
                 "import", "routing by renderer",
                 material=mat.name, renderer=mat.renderer,
@@ -804,6 +806,8 @@ class NodeHandler:
                 debug.note("could not stamp imported node: " + str(e))
             completed = True
         except hou.Error as exc:
+            if self._hou_parent is None:
+                raise    # the staging failed before any load, so there is no verdict to give
             debug.event("import", "failed", material=mat.name,
                         phase="load" if not locals().get("loaded_ok")
                         else "placement", error=str(exc))
@@ -819,7 +823,8 @@ class NodeHandler:
                     % (mat.name, mat.renderer, first_line))
         finally:
             self._context_override = None
-            self._hou_parent.destroy()
+            if self._hou_parent is not None:
+                self._hou_parent.destroy()
             if not completed:
                 self._undo_cop_companion()
                 self._drop_created_container()

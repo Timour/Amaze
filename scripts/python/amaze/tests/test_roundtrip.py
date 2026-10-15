@@ -4,6 +4,7 @@ import os
 import stat
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets  # noqa: E402
@@ -275,6 +276,64 @@ class TestRoundTrip(unittest.TestCase):
                          "premise: a damaged .mat must fail the import")
         self.assertEqual(["theirs"], self._libraries(stage),
                          "a failed import removed a library it only reused")
+
+    def _karma_asset(self):
+        return next(a for a in self.model.assets
+                    if material.is_karma_renderer(a.renderer))
+
+    def test_a_companion_that_raises_takes_back_the_library_made(self):
+        stage = hou.node("/obj").createNode("lopnet", "companion_raise_probe")
+        self.addCleanup(stage.destroy)
+        handler = nodes.NodeHandler(self.prefs)
+
+        def refusing(mat):
+            raise hou.OperationFailed("companion refused")
+
+        handler.restore_cop_companion = refusing
+        with self.assertRaises(hou.OperationFailed):
+            handler.import_asset_to_scene(
+                self._karma_asset(), target="lop", context_node=stage)
+        self.assertEqual([], self._libraries(stage),
+                         "the import left the library it made when the COP "
+                         "companion raised")
+        self.assertIsNone(handler._context_override,
+                          "the import kept the context it was handed")
+
+    def test_a_staging_failure_takes_back_the_companion_restored(self):
+        """The companion is restored before the staging network exists, and both are the import's."""
+        stage = hou.node("/obj").createNode("lopnet", "staging_raise_probe")
+        self.addCleanup(stage.destroy)
+        real_node = hou.node
+        self.addCleanup(lambda: [n.destroy() for n in
+                                 [real_node("/obj/staging_probe_cops")]
+                                 if n is not None])
+        handler = nodes.NodeHandler(self.prefs)
+        handler.restore_cop_companion = lambda mat: real_node(
+            "/obj").createNode("copnet", "staging_probe_cops")
+
+        class RefusesStaging:
+            def __init__(self, node):
+                self._node = node
+
+            def createNode(self, type_name, *args, **kwargs):
+                if type_name == "matnet":
+                    raise hou.OperationFailed("staging refused")
+                return self._node.createNode(type_name, *args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(self._node, name)
+
+        def node(path):
+            found = real_node(path)
+            return RefusesStaging(found) if path == "/obj" else found
+
+        with mock.patch.object(hou, "node", node):
+            with self.assertRaises(hou.OperationFailed):
+                handler.import_asset_to_scene(
+                    self._karma_asset(), target="lop", context_node=stage)
+        self.assertIsNone(real_node("/obj/staging_probe_cops"),
+                          "the import left the COP companion it restored")
+        self.assertEqual([], self._libraries(stage))
 
     def test_the_import_is_one_undo_entry(self):
         """Derived from the SOURCE, because driving it needs a live panel: the loop must sit inside a hou.undos.group, like every other import entry point. ▸p/source-derived-tests"""
