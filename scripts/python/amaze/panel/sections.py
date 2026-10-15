@@ -896,16 +896,20 @@ class CodeSection(AssetSection):
         "python": {"Sop": "python"},
     }
 
-    def code_carrier_type(self, index, dest) -> str:
-        """WHICH carrier a snippet becomes in `dest` - a wrangle, an opencl, a python - or "" where this network kind has none. ONE ANSWER, TWO READERS: create_code_node_in builds it and the drag ghost draws its shape before the drop happens, so a ghost computing its own type could promise a wrangle and deliver nothing."""
-        panel = self.panel
-        if index is None or not index.isValid() or not panel.code_model:
+    def _code_asset(self, index) -> tuple:
+        """(row, snippet) under a grid index, or (None, None) where no snippet is."""
+        model = self.panel.code_model
+        if not model or index is None or not index.isValid():
+            return None, None
+        row = self.panel.code_sorted_model.mapToSource(index).row()
+        if not 0 <= row < len(model.assets):
+            return None, None
+        return row, model.assets[row]
+
+    def _carrier_for(self, asset, dest) -> str:
+        """The node type `asset` becomes in `dest`, or "" where that network kind has none."""
+        if asset is None or dest is None:
             return ""
-        source_index = panel.code_sorted_model.mapToSource(index)
-        row = source_index.row()
-        if not 0 <= row < len(panel.code_model.assets) or dest is None:
-            return ""
-        asset = panel.code_model.assets[row]
         language = str(getattr(asset, "renderer", "") or "").lower()
         try:
             category = dest.childTypeCategory()
@@ -914,17 +918,15 @@ class CodeSection(AssetSection):
         return self.CODE_CARRIERS.get(language, {}).get(
             category.name() if category is not None else "", "")
 
+    def code_carrier_type(self, index, dest) -> str:
+        """WHICH carrier a snippet becomes in `dest`: the drag ghost draws the type the drop builds."""
+        return self._carrier_for(self._code_asset(index)[1], dest)
+
     def create_code_node_in(self, index, dest, position=None) -> bool:
-        """The code creation rule: the language's own carrier - a wrangle, an opencl, a python - wherever the network kind has one, loaded through the same apply the node drop uses."""
+        """The snippet's carrier in `dest`, where that network kind has one, loaded with the snippet."""
         panel = self.panel
-        if index is None or not index.isValid() or not panel.code_model:
-            return False
-        source_index = panel.code_sorted_model.mapToSource(index)
-        row = source_index.row()
-        if not 0 <= row < len(panel.code_model.assets):
-            return False
-        asset = panel.code_model.assets[row]
-        type_name = self.code_carrier_type(index, dest)
+        row, asset = self._code_asset(index)
+        type_name = self._carrier_for(asset, dest)
         if not type_name:
             return False
         name = helpers.sanitize_usd_path(
@@ -966,10 +968,7 @@ class CodeSection(AssetSection):
 
     def _code_row(self, current):
         """The code model's row under a grid index, or None."""
-        if current is None or not current.isValid():
-            return None
-        source = self.panel.code_sorted_model.mapToSource(current)
-        return source.row() if source.isValid() else None
+        return self._code_asset(current)[0]
 
     def menu_edit(self, indexes, current, payload=None) -> None:
         row = self._code_row(current)

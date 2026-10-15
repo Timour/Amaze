@@ -150,6 +150,29 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
                          "that has a ui")
 
 
+class EveryDoorFindsTheSameVisibleNetworkEditor(unittest.TestCase):
+    """The current tab first, then any; the panel's two doors and the node handler agree."""
+
+    def test_the_three_readers_agree(self):
+        panel = test_support.fixture_panel(self)
+
+        def editor(name, current, pwd):
+            return types.SimpleNamespace(
+                name=name, isCurrentTab=lambda: current, pwd=lambda: pwd,
+                type=lambda: hou.paneTabType.NetworkEditor)
+
+        hidden, shown, twin = (editor("hidden", False, "/obj"),
+                               editor("shown", True, "/stage"),
+                               editor("twin", True, "/stage"))
+        viewer = types.SimpleNamespace(type=lambda: hou.paneTabType.SceneViewer)
+        ui = types.SimpleNamespace(paneTabs=lambda: [viewer, hidden, shown, twin])
+        with mock.patch.object(hou, "ui", ui, create=True):
+            self.assertEqual("/stage", panel._active_network_pwd())
+            self.assertEqual(["/stage", "/obj"], panel._view_create_networks())
+            self.assertIs(shown, nodes.NodeHandler(
+                panel.prefs).get_active_network_editor())
+
+
 class TheCleanSummaryHeadingIsTrueOfEveryLine(unittest.TestCase):
     """Clean moves, keeps and removes, so its summary may not open by calling all of that removed."""
 

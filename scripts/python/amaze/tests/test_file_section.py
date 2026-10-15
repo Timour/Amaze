@@ -713,6 +713,18 @@ class CreationRuleTest(unittest.TestCase):
             asset.code, helpers.find_code_parm(children[0]).eval(),
             "the wrangle does not carry the snippet")
 
+    def test_a_snippet_carrier_reads_its_row_once(self):
+        """The carrier's type and the snippet it carries come from one read of the row."""
+        from unittest import mock
+        net = self._geo()
+        proxy = self.panel.code_sorted_model
+        index = proxy.index(0, 0)
+        self.assertTrue(index.isValid(), "premise: the fixture has snippets")
+        with mock.patch.object(proxy, "mapToSource",
+                               wraps=proxy.mapToSource) as mapped:
+            self.panel.sections["code"].create_code_node_in(index, net)
+        self.assertEqual(1, mapped.call_count)
+
     def test_a_vop_network_refuses_a_vex_snippet(self):
         net = self._matnet()
         index = self.panel.code_sorted_model.index(0, 0)

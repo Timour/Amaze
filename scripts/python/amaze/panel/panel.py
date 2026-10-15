@@ -2435,11 +2435,7 @@ class AmazePanel(QtWidgets.QWidget):
     def _needs_download(self, records) -> bool:
         """True when importing these records will actually fetch bytes, answered WITHOUT touching the network - the source is looked up DIRECTLY here, never through _online_source_for, which also resolves the download RESOLUTION at one main-thread HTTP GET per package. Asked because the progress bar sits ABOVE the grid, so showing it for a value source (RGL, PhysicallyBased) that carries its numbers in the catalogue and downloads nothing shifts every tile down and back for no work at all."""
         for record in records:
-            source = next(
-                (s for s in self.matx_online_model.sources
-                 if s.name == record.source),
-                None,
-            )
+            source = self._source_of(record)
             if source is None:
                 continue
             try:
@@ -2449,13 +2445,14 @@ class AmazePanel(QtWidgets.QWidget):
                 return True          # unknown = assume it downloads
         return False
 
+    def _source_of(self, record):
+        """The online source a record came from, by name, or None."""
+        return next((source for source in self.matx_online_model.sources
+                     if source.name == record.source), None)
+
     def _online_source_for(self, record):
-        """The Source object a record came from, and the resolution to fetch it at: (source, resolution, error)."""
-        source = next(
-            (s for s in self.matx_online_model.sources
-             if s.name == record.source),
-            None,
-        )
+        """The record's source and the resolution to fetch it at: (source, resolution, error)."""
+        source = self._source_of(record)
         if source is None:
             return (None, None, "Unknown source %s" % record.source)
         if not source.needs_download(record):    # ASK THE SOURCE, never re-spell its answer as `record.kind == "values"`: that is the BASE class's answer and RGL overrides it, because a uid its shipped table has never seen still costs a measurement download
@@ -2828,20 +2825,10 @@ class AmazePanel(QtWidgets.QWidget):
             )
 
     def _active_network_pwd(self) -> hou.Node | None:
-        """The network the user is most likely looking at: the visible (current-tab) network editor's pwd, falling back to any open editor - the same preference get_active_network_editor uses on the material side."""
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return None
-        editors = [
-            pt
-            for pt in ui.paneTabs()
-            if pt.type() == hou.paneTabType.NetworkEditor
-        ]
-        if not editors:
-            return None
-        visible = [e for e in editors if e.isCurrentTab()]
+        """The pwd of the network editor the user most likely looks at, or None."""
+        editors = nodes.NodeHandler.network_editors()
         try:
-            return (visible or editors)[0].pwd()
+            return editors[0].pwd() if editors else None
         except AttributeError:
             return None
 
@@ -4029,17 +4016,8 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _view_create_networks(self) -> list:
         """The click doors' aim when nothing is selected: every visible network editor's pwd, current tabs first. The caller creates in the FIRST network that can hold the carrier - one resolver for every door, so a payload finds the network that supports it instead of failing on whichever editor happens to be listed first."""
-        ui = getattr(hou, "ui", None)
-        if ui is None:
-            return []
-        editors = [
-            pt
-            for pt in ui.paneTabs()  # type: ignore
-            if pt.type() == hou.paneTabType.NetworkEditor
-        ]
-        editors.sort(key=lambda editor: not editor.isCurrentTab())
         networks = []
-        for editor in editors:
+        for editor in nodes.NodeHandler.network_editors():
             try:
                 pwd = editor.pwd()
             except AttributeError:

@@ -876,6 +876,18 @@ class NoNetworkBeforeTheProgressBarTest(unittest.TestCase):
                 "decision blocks the UI thread"
                 % (source.name, len(self.calls)))
 
+    def test_both_doors_find_a_records_source_one_way(self):
+        """The bar's question and the import's find the same source by name, or none."""
+        panel = test_support.fixture_panel(self)
+        named = panel.matx_online_model.sources[0]
+        record = self._records(named.name, kind="values", count=1)[0]
+        stray = self._records("Nowhere", count=1)[0]
+        self.assertIs(named, panel._online_source_for(record)[0])
+        self.assertEqual((None, None, "Unknown source Nowhere"),
+                         panel._online_source_for(stray))
+        self.assertFalse(panel._needs_download([stray]))
+        self.assertEqual([], self.calls, "a source lookup reached the network")
+
     def test_the_panel_asks_the_cheap_question(self):
         """Derived from the source, so a future edit cannot quietly put the expensive lookup back."""
         import re

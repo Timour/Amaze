@@ -585,20 +585,21 @@ class NodeHandler:
         self._pending_cop_promote = None
         self._context_override = None
 
+    @staticmethod
+    def network_editors() -> list:
+        """Every Network Editor pane tab, current tabs first; empty when headless."""
+        ui = getattr(hou, "ui", None)
+        if ui is None:
+            return []
+        editors = [pt for pt in ui.paneTabs()
+                   if pt.type() == hou.paneTabType.NetworkEditor]
+        editors.sort(key=lambda editor: not editor.isCurrentTab())
+        return editors
+
     def get_active_network_editor(self):
         """The visible NetworkEditor, else any, else None when headless."""
-        try:
-            editors = [
-                pt
-                for pt in hou.ui.paneTabs()  # type: ignore
-                if pt.type() == hou.paneTabType.NetworkEditor
-            ]
-        except AttributeError:
-            return None          # no hou.ui: headless session
-        if not editors:
-            return None
-        visible = [e for e in editors if e.isCurrentTab()]
-        return (visible or editors)[0]
+        editors = self.network_editors()
+        return editors[0] if editors else None
 
     def get_current_network_node(self) -> None | hou.Node:
         """The displayed network: an explicit override wins, else pwd()."""
