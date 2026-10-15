@@ -120,16 +120,6 @@ class Categories(QtCore.QAbstractListModel):
         finally:
             self.endResetModel()
 
-    def refresh(self) -> bool:
-        """Take the categories another machine added or removed, WITHOUT writing - the sidebar half of the asset models' refresh. ▸p/refresh-is-a-merge"""
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        if not db.serves(self.preferences.dir):
-            return False
-        db.refresh()
-        from amaze.core import model_registry
-        return any(model is self for model in
-                   model_registry.apply_merged(db, also=self))
-
     def apply_refresh(self, db) -> bool:
         """Signal the rows a refresh already merged. This list IS the connector's, so the merge landed in it unseen; what is missing is the reset the views need. True when the sidebar moved. ▸p/mutate-not-rebind"""
         recoloured = db._colours_adopted != self._colours_seen

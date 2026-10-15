@@ -549,16 +549,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
 
-    def refresh(self) -> bool:
-        """Take what another machine wrote since we read the file, without writing anything. True when rows or fields moved; for a DOOR a person opens, since it costs one read. ▸r/peer-read"""
-        db = database.DatabaseConnector(self.DB_FILENAME)
-        if not db.serves(self.preferences.dir):
-            return False
-        db.refresh()    # the answer is not read: what this model takes is the honest signal
-        from amaze.core import model_registry
-        return any(model is self for model in
-                   model_registry.apply_merged(db, also=self))
-
     def apply_refresh(self, db) -> bool:
         """Drain what any merge on this connector left for the model. True when the model moved."""
         rows, fields, gone = (db.take_adopted(), db.take_adopted_fields(),

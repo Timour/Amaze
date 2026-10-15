@@ -110,25 +110,6 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
         with open(self.path, encoding="utf-8-sig") as handle:
             return json.load(handle)
 
-    def test_a_row_another_machine_added_arrives_on_refresh(self):
-        self.assertTrue(self.model.save(), "premise: the first save failed")
-        before = self.model.rowCount()
-
-        document = self._document()
-        document["assets"].append({"id": "FROM-ELSEWHERE",
-                                   "name": "Their material",
-                                   "categories": [], "tags": []})
-        with open(self.path, "w", encoding="utf-8") as handle:
-            json.dump(document, handle, indent=4)
-
-        self.model.refresh()
-
-        self.assertEqual(before + 1, self.model.rowCount(),
-                         "a material saved on another machine is invisible "
-                         "until Houdini restarts")
-        self.assertIn("Their material",
-                      [asset.name for asset in self.model.assets])
-
     def test_the_registry_door_reaches_every_shared_model(self):
         """What `onActivateInterface` calls when the tab comes back."""
         from amaze.core import model_registry
@@ -159,16 +140,20 @@ class AnAssetSavedElsewhereShowsUpWithoutARestart(unittest.TestCase):
 
         heard = []
         sidebar.modelReset.connect(lambda: heard.append("reset"))
-        self.assertTrue(sidebar.refresh(), "the sidebar reported no change")
+        from amaze.core import model_registry
+        self.assertIn("category_model", model_registry.refresh_all(),
+                      "the sidebar reported no change")
 
         self.assertEqual(before + 1, sidebar.rowCount(),
                          "the category is not in the sidebar")
         self.assertTrue(heard, "the rows changed and no view was told")
 
     def test_a_refresh_with_nobody_writing_changes_nothing(self):
+        from amaze.core import model_registry
         self.assertTrue(self.model.save())
         before = self.model.rowCount()
-        self.assertFalse(self.model.refresh(), "nothing moved, yet it re-read")
+        self.assertNotIn("material_model", model_registry.refresh_all(),
+                         "nothing moved, yet it re-read")
         self.assertEqual(before, self.model.rowCount())
 
 
