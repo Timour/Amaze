@@ -197,6 +197,29 @@ class TheDownloadTest(_FeedMixin):
         self.assertTrue(
             os.path.exists(updater.download("https://x.invalid/z", self.dir)))
 
+    def test_an_unreadable_length_is_unknown_rather_than_an_error(self):
+        """A header that is not a number raised `ValueError`, outside the sentence contract."""
+        self.answer(b"PK\x03\x04body", headers={"Content-Length": "junk"})
+        self.assertTrue(
+            os.path.exists(updater.download("https://x.invalid/z", self.dir)))
+
+    def test_the_release_streams_through_the_one_download_loop(self):
+        streamed = []
+        real = matx_sources.stream_into
+
+        def spy(url, path, on_bytes=None):
+            streamed.append(url)
+            return real(url, path, on_bytes)
+
+        matx_sources.stream_into = spy
+        self.addCleanup(setattr, matx_sources, "stream_into", real)
+        self.answer(b"PK\x03\x04body", headers={"Content-Length": "8"})
+        updater.download("https://x.invalid/z", self.dir)
+        matx_sources.download("https://x.invalid/p",
+                              os.path.join(self.dir, "p.png"))
+        self.assertEqual(["https://x.invalid/z", "https://x.invalid/p"],
+                         streamed)
+
     def test_a_transfer_that_DIES_mid_read_leaves_nothing_behind(self):
         """The structural half the length check cannot cover: a transfer that RAISES reaches no check at all. ▸p/updater-shape"""
         class _Dying(_Response):

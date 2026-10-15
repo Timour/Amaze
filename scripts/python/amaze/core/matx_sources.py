@@ -187,29 +187,42 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
     return repairs
 
 
+class ShortDownload(OSError):
+    """A body that ended before the length its server declared; `read` and `total` say where."""
+
+    def __init__(self, url: str, read: int, total: int) -> None:
+        super().__init__("truncated download: got %d of %d bytes from %s"
+                         % (read, total, url))
+        self.read = read
+        self.total = total
+
+
+def stream_into(url: str, path: str, on_bytes=None) -> int:
+    """The body at `url` written into `path`; answers the bytes read, raises ShortDownload."""
+    with _request(url) as resp, open(path, "wb") as fh:
+        try:
+            total = int(resp.headers.get("Content-Length") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        read = 0
+        while True:
+            chunk = resp.read(1 << 16)
+            if not chunk:
+                break
+            fh.write(chunk)
+            read += len(chunk)
+            if on_bytes is not None:
+                on_bytes(read, total)
+    if total and read != total:    # a short body ends the loop normally ▸r/matx-source-quirks
+        raise ShortDownload(url, read, total)
+    return read
+
+
 def download(url: str, dest_path: str, on_bytes=None) -> str:
-    """Stream a URL to disk and answer dest_path - on_bytes(read, total) fires per 64KB chunk (total 0 without Content-Length), the write lands whole via scratch-beside, and a short body raises rather than promoting a fragment. ▸r/matx-source-quirks"""
+    """Stream a URL to `dest_path` through a scratch beside it; on_bytes(read, total) per 64KB chunk."""
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     with hostos.scratch_beside(dest_path) as tmp_path:    # a fixed .part name was one shared buffer between concurrent fetches
-        with _request(url) as resp, open(tmp_path, "wb") as fh:
-            try:
-                total = int(resp.headers.get("Content-Length") or 0)
-            except (TypeError, ValueError):
-                total = 0
-            read = 0
-            while True:
-                chunk = resp.read(1 << 16)
-                if not chunk:
-                    break
-                fh.write(chunk)
-                read += len(chunk)
-                if on_bytes is not None:
-                    on_bytes(read, total)
-        if total and read != total:    # HTTPResponse does not raise on a short body, so a cut transfer exits NORMALLY and would promote a fragment - ▸r/matx-source-quirks
-            raise OSError(
-                "truncated download: got %d of %d bytes from %s"
-                % (read, total, url)
-            )
+        stream_into(url, tmp_path, on_bytes)
     return dest_path
 
 

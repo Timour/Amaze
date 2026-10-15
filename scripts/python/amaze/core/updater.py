@@ -137,31 +137,27 @@ def _verify_digest(path: str, digest: str) -> None:
 
 def download(url: str, into: str, digest: str = "", size: int = 0) -> str:
     """Stream a release to `into`, returning the file written - raises OSError with a finished sentence on any of short, empty, oversized, wrong-sized or wrong-hashed, and promotes nothing unless all pass. ▸r/release-digest ▸p/updater-shape"""
+    from amaze.core import matx_sources
     from amaze.helpers import hostos
 
     os.makedirs(into, exist_ok=True)
     target = os.path.join(into, "amaze-update.zip")
     ceiling = min(size, MAX_DOWNLOAD_BYTES) if size else MAX_DOWNLOAD_BYTES
-    read = 0
-    with hostos.scratch_beside(target) as scratch:
-        with _open(url) as response:
-            declared = response.headers.get("Content-Length")
-            with open(scratch, "wb") as handle:
-                while True:
-                    chunk = response.read(65536)
-                    if not chunk:
-                        break
-                    handle.write(chunk)
-                    read += len(chunk)
-                    if read > ceiling:
-                        raise OSError(
-                            "the download is larger than a release should "
-                            "be (over %d bytes). Nothing has been changed."
-                            % ceiling)
-        if declared is not None and read != int(declared):
+
+    def below_the_ceiling(read, _total):
+        if read > ceiling:
             raise OSError(
-                "the download stopped early - %d bytes of %s. Nothing has "
-                "been changed." % (read, declared))
+                "the download is larger than a release should "
+                "be (over %d bytes). Nothing has been changed."
+                % ceiling)
+
+    with hostos.scratch_beside(target) as scratch:
+        try:
+            read = matx_sources.stream_into(url, scratch, below_the_ceiling)
+        except matx_sources.ShortDownload as short:
+            raise OSError(
+                "the download stopped early - %d bytes of %d. Nothing has "
+                "been changed." % (short.read, short.total)) from short
         if not read:
             raise OSError(
                 "the download was empty. Nothing has been changed.")
