@@ -949,11 +949,16 @@ class EveryActivateEstablishesADefaultRow(unittest.TestCase):
     def test_all_four_use_the_shared_helper(self):
         """`setModel` leaves nothing selected, and one `activate` fixes it."""
         self.assertIn(
-            "_select_default_sidebar_row",
+            "self._stand_on_first_row()",
             method_source("panel/sections.py", "AssetSection",
                           "activate"),
             "AssetSection.activate establishes its default sidebar "
             "row on its own again, or not at all")
+        self.assertIn(
+            "_select_default_sidebar_row",
+            method_source("panel/sections.py", "AssetSection",
+                          "_stand_on_first_row"),
+            "the shared default row no longer goes through the panel's helper")
         from amaze.panel import sections
         self.assertIs(
             sections.GradientSection.activate,

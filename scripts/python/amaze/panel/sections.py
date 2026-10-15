@@ -321,8 +321,14 @@ class AssetSection(Section):
                               self._p(self.delegate_attr))
         panel.set_conversion_bar_visible(False)  # may be another section's
         panel.sync_list_columns()  # different section = different names
+        self._stand_on_first_row()
 
-        selected_name = panel._select_default_sidebar_row(sidebar)  # the filter follows the row actually selected; the programmatic select fires no clicked()
+    def library_switched(self) -> None:
+        self._stand_on_first_row()
+
+    def _stand_on_first_row(self) -> None:
+        """Select the sidebar's first row and filter the grid to it; a select from code fires no click."""
+        selected_name = self.panel._select_default_sidebar_row(self._p(self.sidebar_attr))
         model = self._p(self.model_attr)
         proxy = self._p(self.proxy_attr)
         if model is not None and proxy is not None:

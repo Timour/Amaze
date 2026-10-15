@@ -128,6 +128,42 @@ class AfterASwitchFileShowsTheNewLibrarysLocation(unittest.TestCase):
         self.assertEqual(standing[0].data(folders.PathRole) or "", files._folder)
 
 
+class AfterASwitchAnAssetGridFollowsItsSidebar(unittest.TestCase):
+    """A switch reset an asset section's sidebar and left its grid filtered on the old category."""
+
+    def _switch_to_a_fresh_library(self, panel):
+        settings = os.path.join(panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data.update(directory=test_support.fresh_library(self))
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+        panel.switch_all_models()
+        QtWidgets.QApplication.processEvents()
+
+    def test_the_grid_and_the_sidebar_stand_on_one_category(self):
+        panel = test_support.fixture_panel(self)
+        for key in ("material", "cop", "code", "gradient"):
+            with self.subTest(section=key):
+                panel.section_tabs.setChecked(key)
+                QtWidgets.QApplication.processEvents()
+                st = panel._section().stack()
+                st.categories.check_add_category("Probe")
+                sidebar = panel.cat_list.model()
+                sidebar.hide_empty = False
+                sidebar.invalidateFilter()
+                self.assertTrue(panel._stand_on_category("Probe"), "premise: Probe is a row")
+                self.assertEqual("Probe", st.proxy.filter_value(st.model.CategoryRole),
+                                 "premise: the grid is filtered on Probe")
+                self._switch_to_a_fresh_library(panel)
+                self.assertEqual(
+                    panel._selected_category_name(),
+                    st.proxy.filter_value(st.model.CategoryRole) or "",
+                    "the grid keeps the previous library's category")
+                self.assertTrue(panel.cat_list.selectionModel().selectedIndexes(),
+                                "the sidebar stands on no row")
+
+
 class AfterASwitchTheGridAndTheSidebarShareOneDocument(unittest.TestCase):
     """Every model re-read its file on a switch, so the grid kept a copy the sidebar never writes."""
 
