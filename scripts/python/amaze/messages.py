@@ -44,6 +44,24 @@ CONFIRM_PUT_SAVED_COPY_BACK = 'Put the %s list back to the copy from %s?'
 
 SAVED_COPY_PUT_BACK_DONE = 'The %s list is back to the copy from %s.\n\nOpen Amaze to look at it. %s'
 
+SETTINGS_UNREADABLE_REPAIR_REPORT = 'Your Amaze settings could not be read, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
+
+SETTINGS_COPY_LINE_UNREADABLE = '%s - this copy cannot be read'
+
+SETTINGS_UNREADABLE_NO_COPIES = 'Your Amaze settings could not be read, and there is no saved copy of them to put back.\n\nTo start again with new settings, move settings.json out of this folder and open Amaze:\n\n%s'
+
+SETTINGS_COPY_CANNOT_BE_READ = 'That copy of your settings cannot be read.'
+
+CONFIRM_PUT_SETTINGS_BACK = 'Put your Amaze settings back to the copy from %s?'
+
+HELP_PUT_SETTINGS_BACK = 'Amaze then opens the library it was set to at that time, with the view it had.%s'
+
+SETTINGS_NOW_SAVED_FIRST = ' The settings you have now are saved beside them first - run Repair again and it offers that copy back.'
+
+SETTINGS_PUT_BACK_DONE = 'Your Amaze settings are back to the copy from %s.\n\nOpen Amaze to use them.%s'
+
+SETTINGS_EARLIER_COPY_KEPT = ' The settings you had a moment ago are kept too: run Repair again and put back the copy from %s to return to them.'
+
 CONFIRM_MOVE_FILES_ASIDE = 'Move %s aside?'
 
 NOTHING_MOVED_ASIDE_REASON = 'Amaze moved nothing: %s.'

@@ -6,7 +6,7 @@ import os
 import hou
 
 from amaze import branding
-from amaze.core import database, debug, material
+from amaze.core import database, debug, keyed_store, material
 from amaze.core.library import STAMP_SUFFIX
 from amaze.helpers import helpers, hostos, restore as restore_lib
 from amaze import messages
@@ -17,6 +17,8 @@ from amaze.render.nodes import BUILDER_SUFFIX
 DATABASES = database.DATABASES
 
 ASSET_SIDECARS = (".mat", ".interface", BUILDER_SUFFIX, STAMP_SUFFIX)
+
+_SETTINGS = keyed_store.SETTINGS    # machine-local, beside its own saved copies in the settings folder
 
 
 def side_tables() -> tuple:
@@ -277,8 +279,8 @@ def unaccounted_total(findings: dict) -> int:
 def restorable(findings: dict) -> list:
     """Every copy that could be put back, newest first, in panel order."""
     offers = []
-    for entry in findings["lists"]:
-        for tier, snap in entry["snapshots"]:
+    for entry in findings["lists"] + [findings.get("settings") or {}]:
+        for tier, snap in entry.get("snapshots", ()):
             offers.append((entry["filename"], tier, snap, entry["info"]))
     return offers
 
@@ -292,6 +294,9 @@ def _holdings(entry: dict) -> str:
 
 def _copy_named_by_what_it_holds(filename: str, snap: dict) -> str:
     """A saved copy named by its date and count, never by its storage tier."""
+    if filename == _SETTINGS:    # a count of settings tells the reader nothing
+        return ("from %s, cannot be read" if snap["error"]
+                else "from %s") % snap["when"]
     if snap["error"]:
         return "from %s, cannot be read" % snap["when"]
     count = snap["count"] or 0
@@ -561,12 +566,20 @@ def _write_json(path: str, document) -> None:
             json.dump(document, handle, indent=4)
 
 
+def _target_of(findings: dict, filename: str) -> str:
+    """The file a saved copy goes back over: settings.json in its own folder, a list in the library."""
+    settings = findings.get("settings") or {}
+    if filename == settings.get("filename"):
+        return settings["path"]
+    return os.path.join(findings["directory"], filename)
+
+
 def put_back(findings: dict, filename: str, tier: str) -> dict:
     """One saved copy back, through the shared restore; raises `RestoreRefused`."""
     _refuse_a_houdini_that_holds_the_library(
         lambda phrase: restore_lib.RestoreRefused(
             "Nothing was put back: %s." % phrase))
-    target = os.path.join(findings["directory"], filename)
+    target = _target_of(findings, filename)
     done = restore_lib.put_back(target, tier, allow_loss=True)
     debug.event("repair", "saved copy put back", file=filename, tier=tier,
                 undo=done["undo"])
@@ -597,8 +610,73 @@ def session_has_a_library_open() -> bool:
     return bool(database.DatabaseConnector._instances)
 
 
+_ONLY_A_REPORT_NOW = (
+    "Repair can only tell you this much right now: Amaze has "
+    "already read this library since Houdini started, and it would "
+    "write what it remembers back over anything put right here. "
+    "Quit Houdini, start it again, and run Repair before you open "
+    "Amaze - then Repair can also put a saved copy back, or move "
+    "unlisted files aside for you.")
+
+
+def settings_survey(preferences=None):
+    """settings.json as a list Repair can put back; None when no settings folder is named."""
+    folder = (hostos.config_root() if preferences is None
+              else str(getattr(preferences, "path", "") or ""))
+    if not folder:
+        return None
+    path = os.path.join(folder, _SETTINGS)
+    facts = restore_lib.info(path)
+    if not facts["exists"]:
+        state = "absent"
+    elif facts["error"] or facts["count"] is None:
+        state = "unreadable"
+    else:
+        state = "ok"
+    return {"filename": _SETTINGS,
+            "label": database.section_label(_SETTINGS),
+            "path": path, "info": facts, "ids": set(), "trace": "",
+            "state": state,
+            "snapshots": [(tier, restore_lib.info(snap))
+                          for tier, snap in restore_lib.snapshots(path)]}
+
+
+def _repair_settings(settings: dict) -> None:
+    """settings.json will not read: offer its saved copies back, or say there are none."""
+    folder = os.path.dirname(settings["path"])
+    if not settings["snapshots"]:
+        hou.ui.displayMessage(                           # type: ignore
+            messages.SETTINGS_UNREADABLE_NO_COPIES % folder,
+            title=messages.TITLE_AMAZE_REPAIR)
+        return
+    if open_panel_tab() is not None:
+        hou.ui.displayMessage(                           # type: ignore
+            messages.AMAZE_OPEN_STOPS_REPAIR,
+            title=messages.TITLE_AMAZE_REPAIR)
+        return
+    findings = {"directory": folder, "lists": [], "settings": settings,
+                "complete": False, "unaccounted": {}}
+    report = messages.SETTINGS_UNREADABLE_REPAIR_REPORT % "\n".join(
+        messages.SETTINGS_COPY_LINE_UNREADABLE % snap["when"] if snap["error"]
+        else snap["when"] for _tier, snap in settings["snapshots"])
+    may_change = not session_has_a_library_open()
+    if not may_change:
+        report += "\n\n" + _ONLY_A_REPORT_NOW
+    choices, actions = _choices(findings, may_change)
+    picked = hou.ui.displayMessage(                       # type: ignore
+        report, buttons=tuple(choices),
+        default_choice=len(choices) - 1, close_choice=len(choices) - 1,
+        title=messages.TITLE_AMAZE_REPAIR)
+    if 0 <= picked < len(actions) and actions[picked] == "restore":
+        _do_restore(findings)
+
+
 def run(preferences=None) -> None:
     """The shelf tool: reports always, changes only with no library open."""
+    settings = settings_survey(preferences)
+    if settings is not None and settings["state"] == "unreadable":
+        _repair_settings(settings)    # with no settings, no library can be named
+        return
     configured = configured_library(preferences)
     if not configured:
         hou.ui.displayMessage(                           # type: ignore
@@ -624,6 +702,7 @@ def run(preferences=None) -> None:
         return
 
     findings = survey(directory)
+    findings["settings"] = settings
     debug.event("repair", "surveyed", complete=findings["complete"],
                 unaccounted=unaccounted_total(findings),
                 states={entry["filename"]: entry["state"]
@@ -632,15 +711,7 @@ def run(preferences=None) -> None:
     lines = report_lines(findings)
     may_change = not session_has_a_library_open()
     if not may_change:
-        lines += [
-            "",
-            "Repair can only tell you this much right now: Amaze has "
-            "already read this library since Houdini started, and it would "
-            "write what it remembers back over anything put right here. "
-            "Quit Houdini, start it again, and run Repair before you open "
-            "Amaze - then Repair can also put a saved copy back, or move "
-            "unlisted files aside for you.",
-        ]
+        lines += ["", _ONLY_A_REPORT_NOW]
 
     choices, actions = _choices(findings, may_change)
     picked = hou.ui.displayMessage(                       # type: ignore
@@ -691,6 +762,9 @@ def _do_restore(findings: dict) -> None:
     if not chosen:
         return
     filename, tier, snap, current = offers[chosen[0]]
+    if filename == _SETTINGS:
+        _do_restore_settings(findings, tier, snap)
+        return
     label = database.section_label(filename)
     if snap["error"]:
         hou.ui.displayMessage(                            # type: ignore
@@ -739,6 +813,40 @@ def _do_restore(findings: dict) -> None:
                      "go back to.")
     hou.ui.displayMessage(                                # type: ignore
         messages.SAVED_COPY_PUT_BACK_DONE % (label, snap["when"], went_back),
+        title=messages.TITLE_AMAZE_REPAIR)
+
+
+def _do_restore_settings(findings: dict, tier: str, snap: dict) -> None:
+    """Confirm, put the chosen settings copy back through the shared door, and say how to undo it."""
+    if snap["error"]:
+        hou.ui.displayMessage(                            # type: ignore
+            messages.SETTINGS_COPY_CANNOT_BE_READ,
+            title=messages.TITLE_AMAZE_REPAIR)
+        return
+    reads_now = findings["settings"]["state"] == "ok"
+    if hou.ui.displayMessage(                             # type: ignore
+        messages.CONFIRM_PUT_SETTINGS_BACK % snap["when"],
+        help=messages.HELP_PUT_SETTINGS_BACK % (
+            messages.SETTINGS_NOW_SAVED_FIRST if reads_now else ""),
+        buttons=messages.BUTTONS_PUT_COPY_BACK,
+        default_choice=1, close_choice=1,
+        severity=hou.severityType.Warning,                # type: ignore
+        title=messages.TITLE_AMAZE_REPAIR,
+    ) != 0:
+        return
+    try:
+        done = put_back(findings, _SETTINGS, tier)
+    except restore_lib.RestoreRefused as exc:
+        hou.ui.displayMessage(str(exc), title=messages.TITLE_AMAZE_REPAIR)  # type: ignore
+        return
+    folder = os.path.dirname(_target_of(findings, _SETTINGS))
+    undo = (restore_lib.info(os.path.join(folder, done["undo"]))
+            if done["undo"] else None)
+    kept = (messages.SETTINGS_EARLIER_COPY_KEPT % undo["when"]    # never a way back to a broken file
+            if undo is not None and undo["exists"] and not undo["error"]
+            else "")
+    hou.ui.displayMessage(                                # type: ignore
+        messages.SETTINGS_PUT_BACK_DONE % (snap["when"], kept),
         title=messages.TITLE_AMAZE_REPAIR)
 
 

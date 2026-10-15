@@ -949,6 +949,125 @@ class TheWholeFlowTest(_Case):
                       "the user is not told the files are kept")
 
 
+class _SettingsPrefs:
+    """A Preferences stand-in naming a settings folder and a library."""
+    asset_dir = "mat/"
+    img_dir = "img/"
+
+    def __init__(self, path, directory=""):
+        self.path = path
+        self.dir = directory
+
+
+class TheSettingsComeBackTest(_Case):
+    """Repair puts settings.json back from its saved copies, the way it puts a list back."""
+
+    GOOD = {"directory": "/somewhere/library/", "view_mode": "list"}
+
+    def setUp(self):
+        super().setUp()
+        self.config = tempfile.mkdtemp(prefix="amaze_repair_settings_")
+        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
+        self.settings = os.path.join(self.config, "settings.json")
+
+    def _broken(self):
+        with open(self.settings, "w", encoding="utf-8") as handle:
+            handle.write('{"directory": "/somewhere/libr')
+
+    def _copy(self, tier="bak-1"):
+        self._write(self.settings + "." + tier, self.GOOD)
+
+    def _run(self, buttons, listed=None, prefs=None):
+        ui = MagicMock()
+        ui.displayMessage.side_effect = list(buttons)
+        ui.selectFromList.return_value = listed if listed is not None else ()
+        with patch.object(hou, "ui", ui, create=True):
+            repair.run(preferences=prefs or _SettingsPrefs(self.config))
+        return ui
+
+    def _said(self, ui):
+        return " ".join(str(value)
+                        for call in ui.displayMessage.call_args_list
+                        for value in list(call.args) + list(call.kwargs.values()))
+
+    def test_an_unreadable_settings_file_is_put_back_from_a_copy(self):
+        self._broken()
+        self._copy()
+        # the report's restore button, the confirm, the closing note
+        ui = self._run(buttons=[0, 0, 0], listed=(0,))
+        report = ui.displayMessage.call_args_list[0]
+        self.assertIn("could not be read", str(report))
+        self.assertIn("Put a Saved Copy Back", report.kwargs["buttons"],
+                      "the settings that cannot be read are not offered back")
+        self.assertEqual(self.GOOD, self._read(self.settings),
+                         "the saved copy did not land")
+        self.assertTrue([name for name in os.listdir(self.config)
+                         if name.startswith("settings.json.bak-before-restore")],
+                        "the unreadable settings were not kept aside first")
+        self.assertNotIn("No library folder", self._said(ui),
+                         "Repair still says no library is set")
+
+    def test_the_confirm_promises_no_way_back_to_settings_that_do_not_read(self):
+        self._broken()
+        self._copy()
+        ui = self._run(buttons=[0, 1], listed=(0,))    # the restore button, then the confirm declined
+        self.assertNotIn(
+            "offers that copy back", ui.displayMessage.call_args_list[1].kwargs["help"],
+            "the confirm promises the unreadable settings back, and Repair refuses them")
+
+    def test_the_confirm_promises_readable_settings_back(self):
+        self._write(self.settings, {"directory": self.dir})
+        self._copy()
+        findings = self._survey()
+        findings["settings"] = repair.settings_survey(
+            _SettingsPrefs(self.config, self.dir))
+        ui = MagicMock()
+        ui.displayMessage.return_value = 1    # declined
+        with patch.object(hou, "ui", ui, create=True):
+            repair._do_restore_settings(
+                findings, "bak-1", dict(findings["settings"]["snapshots"])["bak-1"])
+        self.assertIn("offers that copy back",
+                      ui.displayMessage.call_args.kwargs["help"])
+
+    def test_the_report_names_each_saved_copy_on_a_line_of_its_own(self):
+        self._broken()
+        self._copy("bak-1")
+        with open(self.settings + ".bak-2", "w", encoding="utf-8") as handle:
+            handle.write("{")
+        ui = self._run(buttons=[99])    # past the last button: the report is closed
+        lines = ui.displayMessage.call_args_list[0].args[0].splitlines()
+        when = {tier: restore_lib.info(self.settings + "." + tier)["when"]
+                for tier in ("bak-1", "bak-2")}
+        self.assertIn(when["bak-1"], lines)
+        self.assertIn(when["bak-2"] + " - this copy cannot be read", lines)
+
+    def test_with_no_copy_it_says_so_and_changes_nothing(self):
+        self._broken()
+        ui = self._run(buttons=[0])
+        self.assertEqual(1, ui.displayMessage.call_count)
+        said = self._said(ui)
+        self.assertIn("no saved copy", said)
+        self.assertIn(self.config, said, "the folder to look in is not named")
+        with open(self.settings, encoding="utf-8") as handle:
+            self.assertTrue(handle.read().endswith("/libr"),
+                            "Repair changed the settings with nothing to restore")
+
+    def test_a_readable_library_offers_the_settings_copies_too(self):
+        self._write(self.settings, {"directory": self.dir})
+        self._copy()
+        prefs = _SettingsPrefs(self.config, self.dir)
+        findings = self._survey()
+        findings["settings"] = repair.settings_survey(prefs)
+        offered = [(filename, tier) for filename, tier, _snap, _info
+                   in repair.restorable(findings)]
+        self.assertIn(("settings.json", "bak-1"), offered)
+        repair.put_back(findings, "settings.json", "bak-1")
+        self.assertEqual(self.GOOD, self._read(self.settings),
+                         "the settings copy was put back somewhere else")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "settings.json")),
+                         "the settings copy landed in the library folder")
+
+
 class TheRouteFromCleanLibraryTest(_Case):
     """The step a refusal names must actually work, so the route is tested."""
 
