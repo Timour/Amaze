@@ -14,6 +14,7 @@ from amaze.prefs.persistence import (
     _INTRODUCED_SECTIONS,
     _Persistence,
     _default_sections,
+    _normalised_dir,
 )
 
 
@@ -36,14 +37,6 @@ def test_library_dir(folder: str) -> str:
     if not folder:
         return ""
     return _normalised_dir(os.path.join(folder, TEST_LIB_SUBDIR))
-
-
-def _normalised_dir(path: str) -> str:
-    """Forward slashes and one trailing slash - the shape save() already forces on `directory`, so the overlay cannot hand out a differently-shaped path than the field it stands in for."""
-    out = str(path).replace("\\", "/")
-    if out and not out.endswith("/"):
-        out += "/"
-    return out
 
 
 def write_fresh_index(path: str, document: dict) -> None:

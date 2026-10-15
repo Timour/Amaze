@@ -50,6 +50,14 @@ def _encode_paths(paths):
     return [_encode_path(p) for p in paths]
 
 
+def _normalised_dir(path) -> str:
+    """Forward slashes and one trailing slash. Empty stays empty: "/" would be the filesystem root."""
+    out = str(path or "").replace("\\", "/")
+    if out and not out.endswith("/"):
+        out += "/"
+    return out
+
+
 def _default_sections() -> list:
     """Every registered section key, in tab order, derived from the panel's own registry."""
     try:
@@ -357,10 +365,7 @@ class _Persistence:
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
-        self._directory = self._directory.replace("\\", "/")  # an UNSET directory stays unset: appending the trailing slash to "" once persisted the filesystem ROOT as the library
-        if self._directory and not self._directory.endswith("/"):
-            self._directory = self._directory + "/"
-
+        self._directory = _normalised_dir(self._directory)
         self.data["directory"] = _encode_path(self._directory)
         self.data["shared_settings"] = {  # the last-known COPY, one dict under one key, serving the next session when the library is unreachable; the truth goes through `_push_shared`
             stored: getattr(self, attr)

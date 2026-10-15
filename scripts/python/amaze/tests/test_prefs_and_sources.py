@@ -313,6 +313,22 @@ class TheTestLibrarySwitchIsAnOverlay(unittest.TestCase):
         p.test_mode = True
         self.assertEqual("/tmp/amaze_probe/lib/", p.dir)
 
+    def test_the_overlay_and_the_saved_pointer_take_one_shape(self):
+        """The test path and the saved `directory` are shaped by one helper, as each copy did."""
+        from amaze.prefs import persistence
+        for raw, shaped in (("C:\\Lib\\3D", "C:/Lib/3D/"),
+                            ("/srv/lib/", "/srv/lib/"),
+                            ("/srv/lib", "/srv/lib/"), ("", "")):
+            self.assertEqual(shaped, persistence._normalised_dir(raw))
+            p = prefs_mod.Prefs()
+            p.path = tempfile.mkdtemp(prefix="amaze_dir_shape_")
+            self.addCleanup(shutil.rmtree, p.path, True)
+            p._directory = raw
+            p.refresh_data()
+            self.assertEqual(shaped, p.real_dir,
+                             "the saved pointer took another shape")
+        self.assertEqual("C:/Lib/lib/", prefs_mod.test_library_dir("C:\\Lib"))
+
     def test_the_cache_does_not_move_with_the_library(self):
         """The File section's thumbnails are keyed by file path on disk, so they say nothing about which library is open."""
         p = self._prefs()
