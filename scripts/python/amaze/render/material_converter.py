@@ -1391,13 +1391,7 @@ def convert_redshift_material(
     with hou.undos.disabler():    # off the undo stack at BOTH ends: a create/destroy pair on the live stack resurrects the scratch with the whole reconstructed copy on one Ctrl+Z (#278)
         scratch = hou.node("/obj").createNode("matnet")
     try:
-        node_handler._hou_parent = scratch
-        node_handler._import_path = scratch
-        node_handler._use_existing_node = True
-        node_handler.load_interface_other(source_mat, "redshift_vopnet")
-        node_handler.load_items_file(source_mat)
-        vopnet = node_handler.builder_node
-
+        vopnet = node_handler.rebuild_saved(source_mat, scratch)
         shader = find_redshift_shader(vopnet)
         if shader is None:
             reason = out_of_scope_reason(vopnet)

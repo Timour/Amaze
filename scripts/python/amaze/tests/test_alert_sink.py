@@ -182,7 +182,7 @@ class TheDamageDoorMarksItsRefusalsTest(unittest.TestCase):
 
     ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     DOORS = ("_payload_or_refusal", "_import_asset_to_scene_inner",
-             "_import_cop_asset_inner")
+             "_import_cop_asset_inner", "_load_saved")
 
     DAMAGE = {    # opening words -> is the LIBRARY broken? A forwarded reason (a bare name) is absent: it keeps its origin's marking
         '"%s": asset file is missing on disk.': True,

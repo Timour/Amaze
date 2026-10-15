@@ -997,5 +997,34 @@ class AFreshHandlerNamesNoBuilder(unittest.TestCase):
         self.assertIsNone(handler.builder_node)
 
 
+class ASavedAssetRebuildsInsideAScratchNetwork(unittest.TestCase):
+    """`NodeHandler.rebuild_saved` puts a saved asset back together in a scratch network for reading."""
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.model = library_mod.MaterialLibrary(preferences=self.prefs)
+        self.karma = next(
+            self.model.assets[r] for r in range(self.model.rowCount())
+            if material.is_karma_renderer(self.model.assets[r].renderer))
+        with hou.undos.disabler():
+            self.scratch = hou.node("/obj").createNode("matnet")
+        self.addCleanup(self.scratch.destroy)
+
+    def test_a_karma_asset_lands_in_the_scratch_and_nowhere_else(self):
+        obj_before = set(hou.node("/obj").children())
+        builder = nodes.NodeHandler(self.prefs).rebuild_saved(self.karma, self.scratch)
+        self.assertEqual(self.scratch.path(), builder.parent().path())
+        self.assertTrue(builder.children(), "the builder came back empty")
+        self.assertEqual(obj_before, set(hou.node("/obj").children()))
+
+    def test_an_unknown_renderer_is_refused_as_the_import_refuses_it(self):
+        odd = material.Material(name="odd", renderer="", mat_id=self.karma.mat_id)
+        with self.assertRaises(hou.OperationFailed) as caught:
+            nodes.NodeHandler(self.prefs).rebuild_saved(odd, self.scratch)
+        self.assertIn("unrecognised renderer", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

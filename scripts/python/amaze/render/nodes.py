@@ -759,10 +759,6 @@ class NodeHandler:
             self._context_override = None
             return (False, reason)
 
-        parms_file_name = material.payload_path(
-            self._preferences, mat.mat_id, ".interface"
-        )
-
         self._created_cop_net = None
         self._hou_parent = None
         completed = False
@@ -776,24 +772,9 @@ class NodeHandler:
                 targets=sorted(self.import_targets(mat)),
                 saved_node_type=saved_type,
             )
-            if material.is_karma_renderer(mat.renderer):
-                self.load_interface_mtlx(parms_file_name, mat)
-                self.load_items_file_mtlx(mat)
-            elif "Redshift" in mat.renderer:
-                self.load_interface_other(mat, "redshift_vopnet")
-                self.load_items_file(mat)
-            elif "Octane" in mat.renderer:
-                self.load_interface_other(mat, "octane_vopnet")
-                self.load_items_file(mat)
-            else:
-                return (
-                    False,
-                    debug.Damage(
-                        '"%s" has an unrecognised renderer (%r), so there is '
-                        "no way to rebuild it. Re-save it from a material "
-                        "builder, or set its renderer in Info."
-                        % (mat.name, mat.renderer)),
-                )
+            rebuilt, refusal = self._load_saved(mat)
+            if not rebuilt:
+                return (False, refusal)
 
             loaded_ok = True
             if (
@@ -1027,6 +1008,36 @@ class NodeHandler:
             debug.event("import", "builder sidecar path refused",
                         material=mat.name, error=str(exc))
             return ""
+
+    def _load_saved(self, mat: material.Material) -> tuple:
+        """Rebuild the saved builder under `_hou_parent` by renderer family: (ok, refusal)."""
+        if material.is_karma_renderer(mat.renderer):
+            self.load_interface_mtlx(
+                material.payload_path(self._preferences, mat.mat_id, ".interface"), mat)
+            self.load_items_file_mtlx(mat)
+        elif "Redshift" in mat.renderer:
+            self.load_interface_other(mat, "redshift_vopnet")
+            self.load_items_file(mat)
+        elif "Octane" in mat.renderer:
+            self.load_interface_other(mat, "octane_vopnet")
+            self.load_items_file(mat)
+        else:
+            return (False, debug.Damage(
+                '"%s" has an unrecognised renderer (%r), so there is '
+                "no way to rebuild it. Re-save it from a material "
+                "builder, or set its renderer in Info."
+                % (mat.name, mat.renderer)))
+        return (True, "")
+
+    def rebuild_saved(self, mat: material.Material, scratch: hou.Node) -> hou.Node:
+        """A saved asset rebuilt inside `scratch` for reading, never placed; answers its builder."""
+        self._hou_parent = scratch
+        self._import_path = scratch
+        self._use_existing_node = True
+        ok, refusal = self._load_saved(mat)
+        if not ok:
+            raise hou.OperationFailed(refusal)
+        return self._builder_node
 
     def load_interface_mtlx(self, parms_file_name, mat: material.Material) -> None:
         """Rebuild the mtlx builder, no exec. ▸p/material-import-door"""
