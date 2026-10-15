@@ -1326,5 +1326,30 @@ class TheAfterSaveThumbnailIsOneBlock(unittest.TestCase):
             "same guard")
 
 
+class TheThumbnailPicksItsRendererAsTheImportDoes(unittest.TestCase):
+    """A stored renderer label is matched by containment, the rule the import door already keeps."""
+
+    def _rendered_by(self, label):
+        from amaze.core import material
+        from amaze.render import nodes
+        mat = material.Material(name="labelled", renderer=label)
+        calls = []
+        with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",
+                               return_value=(True, "", [])), \
+                mock.patch.object(nodes.NodeHandler, "cleanup"), \
+                mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_redshift",
+                                  lambda _self, *_args: calls.append("Redshift")), \
+                mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_octane",
+                                  lambda _self, *_args: calls.append("Octane")):
+            thumbs.ThumbNailRenderer(mock.Mock(), mat).create_thumbnail()
+        return calls
+
+    def test_a_longer_redshift_label_still_renders_in_redshift(self):
+        self.assertEqual(["Redshift"], self._rendered_by("Redshift 3.6"))
+
+    def test_a_longer_octane_label_still_renders_in_octane(self):
+        self.assertEqual(["Octane"], self._rendered_by("Octane 2026"))
+
+
 if __name__ == "__main__":
     unittest.main()

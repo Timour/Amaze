@@ -441,10 +441,9 @@ def generate_random_material(parent: hou.Node, rng=None):
     if not wired:
         debug.event("generate", "generated material is not wired",    # a black render here is the GENERATOR's defect, so the whole spec is logged - it is the only thing that reproduces it
                     name=name, spec=dict(spec))
-    if builder is not None:
-        try:
-            builder.setComment(provenance)
-        except hou.Error as exc:
-            debug.event("generate", "comment not set", error=str(exc))
+    try:
+        builder.setComment(provenance)
+    except hou.Error as exc:
+        debug.event("generate", "comment not set", error=str(exc))
     debug.event("generate", "provenance", name=name, text=provenance)
     return builder, spec

@@ -49,14 +49,13 @@ class ThumbNailRenderer:
             return
         node_handler = nodes.NodeHandler(self._preferences)
         with hou.undos.disabler():    # the import into /mat and its cleanup are a pair ▸r/undo-groups
-            if self._mat:
-                ok, reason, _created = node_handler.import_asset_to_scene(
-                    self._mat, target="mat")  # `mat`, never `auto`: from a LOP editor, auto leaves a dead entry
-                if not ok:  # refused: there is no builder node to render
-                    ui = getattr(hou, "ui", None)
-                    if reason and ui is not None:
-                        ui.displayMessage(reason)
-                    return
+            ok, reason, _created = node_handler.import_asset_to_scene(
+                self._mat, target="mat")  # `mat`, never `auto`: from a LOP editor, auto leaves a dead entry
+            if not ok:  # refused: there is no builder node to render
+                ui = getattr(hou, "ui", None)
+                if reason and ui is not None:
+                    ui.displayMessage(reason)
+                return
 
             try:
                 with hou.InterruptableOperation(
@@ -72,10 +71,10 @@ class ThumbNailRenderer:
                         else:
                             self.create_thumb_mtlx(
                                 node_handler.builder_node, self._mat.mat_id)
-                    elif self._mat.renderer == "Redshift":
+                    elif "Redshift" in self._mat.renderer:
                         self.create_thumb_redshift(
                             node_handler.builder_node, self._mat.mat_id)
-                    elif self._mat.renderer == "Octane":
+                    elif "Octane" in self._mat.renderer:
                         self.create_thumb_octane(
                             node_handler.builder_node, self._mat.mat_id)
             finally:

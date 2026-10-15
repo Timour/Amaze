@@ -276,7 +276,6 @@ def staged_asset(preferences, mat, loader) -> "object":
         staging = hou.node("/obj").createNode("matnet")
         try:
             handler = NodeHandler(preferences)
-            handler._hou_parent = staging
             saved_type = handler.get_saved_node_type(mat)
             if saved_type and node_type_available(saved_type):
                 builder = staging.createNode(saved_type)
@@ -779,7 +778,6 @@ class NodeHandler:
             loaded_ok = True
             if (
                 material.is_karma_renderer(mat.renderer)
-                and self._builder_node is not None
                 and self._builder_node.parent() == self._hou_parent
             ):
                 with debug.timed("import", "move builder to destination"):
@@ -797,11 +795,8 @@ class NodeHandler:
                     )
 
             try:
-                if self._builder_node is not None:
-                    self._builder_node.setUserData(
-                        "assetlib_id", str(mat.mat_id)
-                    )
-                    apply_node_color(self._builder_node, mat.node_color)
+                self._builder_node.setUserData("assetlib_id", str(mat.mat_id))
+                apply_node_color(self._builder_node, mat.node_color)
             except (hou.OperationFailed, hou.ObjectWasDeleted) as e:
                 debug.note("could not stamp imported node: " + str(e))
             completed = True
