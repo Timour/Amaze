@@ -1940,7 +1940,7 @@ class AmazePanel(QtWidgets.QWidget):
         if ui is None or ui.displayMessage(
             messages.CLEAN_LIBRARY_CONFIRM,
             help=messages.HELP_CLEAN_LIBRARY,
-            buttons=messages.BUTTONS_CLEAN_LIBRARY,    # confirm BEFORE, because this DELETES: it unlinks .mat/.interface/.png files and drops folder pointers and favourites, and two one-click entry points reach it
+            buttons=messages.BUTTONS_CLEAN_LIBRARY,    # BEFORE: it moves files aside and drops dead locations, from two one-click doors
             default_choice=1, close_choice=1,
             severity=hou.severityType.Warning,
             title=messages.TITLE_AMAZE,
@@ -1979,9 +1979,8 @@ class AmazePanel(QtWidgets.QWidget):
 
         if sections:
             if ui is not None:
-                ui.displayMessage(
-                    "Library cleanup removed:\n\n" + "\n\n".join(sections)    # the RECORD of an irreversible act, not a notification that work ended: the grid cannot show an unlinked file or a dropped pointer
-                )
+                ui.displayMessage(    # the RECORD: the grid cannot show a moved file or a dropped location
+                    messages.CLEANUP_SUMMARY % "\n\n".join(sections))
         else:
             debug.event("cleanup", "nothing to clean")    # no dialog - nothing changed, and the log keeps the record
 

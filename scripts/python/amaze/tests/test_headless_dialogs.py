@@ -150,6 +150,35 @@ class TheGuardStillOpensTheDialogTest(unittest.TestCase):
                          "that has a ui")
 
 
+class TheCleanSummaryHeadingIsTrueOfEveryLine(unittest.TestCase):
+    """Clean moves, keeps and removes, so its summary may not open by calling all of that removed."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.shown = []
+
+    def _answer(self, text, *_args, **_kwargs):
+        self.shown.append(text)
+        return 0    # the confirm's first button, Clean Library
+
+    def test_the_heading_claims_nothing_its_lines_deny(self):
+        mats = os.path.join(self.panel.prefs.dir, self.panel.prefs.asset_dir)
+        with open(os.path.join(mats, "LEFTOVERHERE1.mat"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("in no list at all\n")    # beside an empty Node list: the sweep stops
+        screen = types.SimpleNamespace(displayMessage=self._answer)
+        with mock.patch.object(hou, "ui", screen, create=True):
+            self.panel.cleanup_db()
+        summary = self.shown[-1]
+        self.assertIn("Nothing was deleted", summary,
+                      "premise: this run's sweep did not stop")
+        heading = summary.split("\n", 1)[0].lower()
+        for claim in ("removed", "deleted", "finished"):
+            self.assertNotIn(claim, heading,
+                             "the summary opens with %r above lines that "
+                             "say otherwise" % claim)
+
+
 class TheThumbnailRefusalNeedsNoScreenTest(unittest.TestCase):
     """`create_thumbnail` refuses an asset that will not import, and that runs inside a headless batch render."""
 

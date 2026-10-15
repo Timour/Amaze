@@ -226,7 +226,7 @@ MATERIALS_SAVE_FAILURES = 'Some materials could not be saved:\n\n%s'
 
 MATERIALS_IMPORT_FAILURES = 'Some materials could not be imported:\n\n%s'
 
-CLEANUP_REMOVED_SUMMARY = 'Library cleanup removed:\n\n%s'
+CLEANUP_SUMMARY = 'Library cleanup:\n\n%s'
 
 LOADER_SOP_HAS_NO_FILE_PARM = 'The "%s" SOP has no file parameter to set.'
 
