@@ -1485,6 +1485,62 @@ class TheCacheWipeCannotBeSuppressed(unittest.TestCase):
             "cached thumbnail with no question asked")
 
 
+class PreferencesSpeakTheDrawnWords(unittest.TestCase):
+    """Three Preferences messages take the drawn wording from `messages.py`, not an inline copy."""
+
+    def _dialog(self):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        return dlg
+
+    def test_the_cache_wipe_confirm(self):
+        from amaze import messages
+        seen = TheCacheWipeCannotBeSuppressed._asked_with(self, self._dialog())
+        self.assertEqual(messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
+                         seen.get("text"))
+
+    def test_the_material_versions_help(self):
+        from amaze import messages
+        from amaze.core import library_policy
+        dlg = self._dialog()
+        library_policy.set_allow_overwrite(dlg._prefs.dir, False)
+        seen = {}
+
+        def display(text, *_args, **kwargs):
+            seen.update(kwargs, text=text)
+            return 1    # Cancel, so nothing is written
+
+        with mock.patch.object(hou, "ui",
+                               types.SimpleNamespace(displayMessage=display),
+                               create=True):
+            dlg.set_allow_overwrite(True)
+        self.assertEqual(messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM,
+                         seen.get("text"), "premise: the confirm was asked")
+        self.assertEqual(messages.HELP_MATERIAL_VERSIONS, seen.get("help"))
+
+    def test_the_log_save_failure(self):
+        from amaze import messages
+        from amaze.core import debug
+        from amaze.tests import test_support
+        dlg = self._dialog()
+        folder = test_support.scratch_dir("amaze_log_save_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        failure = OSError("the disk is full")
+        shown = []
+        with mock.patch.object(QtWidgets.QFileDialog, "getExistingDirectory",
+                               return_value=folder), \
+                mock.patch.object(debug, "export_log", side_effect=failure), \
+                mock.patch.object(QtWidgets.QMessageBox, "warning",
+                                  lambda *args: shown.append(args)):
+            dlg.save_debug_log()
+        self.assertEqual(1, len(shown), "premise: the failure was shown")
+        self.assertEqual(messages.LOG_NOT_SAVED_UNEXPECTED % failure,
+                         shown[0][2])
+
+
 class ThePickersStartInAForwardSlashPath(unittest.TestCase):
     """`hou.ui.selectFile` documents `start_directory` as forward slashes on Windows, and `os.path.join` there hands out backslashes - so an os.sep-flavoured path has to be canonicalised before it is passed."""
 

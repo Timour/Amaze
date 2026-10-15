@@ -260,12 +260,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         if checked and not library_policy.allow_overwrite(library_dir):
             answer = hou.ui.displayMessage(  # type: ignore
                 messages.MATERIAL_VERSIONS_TURN_ON_CONFIRM,
-                help="This applies to EVERYONE who opens this library, "
-                     "on every machine - it is stored with the library, "
-                     "not in your preferences.\n\n"
-                     "With it on, saving over an existing material "
-                     "offers Save Version: the old version is kept and "
-                     "the tile's badge switches between them.",
+                help=messages.HELP_MATERIAL_VERSIONS,
                 buttons=messages.BUTTONS_TURN_ON,
                 default_choice=1, close_choice=1,
                 severity=hou.severityType.Warning,
@@ -1002,9 +997,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def clear_texture_cache(self) -> None:
         """Delete every cached image and geometry thumbnail; they regenerate on the next browse. Scene CAPTURES are untouched - hand-framed, not regenerable, and stored under config_root for that reason."""
         if not hou.ui.displayConfirmation(
-            "This deletes all cached image and geometry thumbnails "
-            "from disk. They will regenerate automatically next time "
-            "each folder is browsed. Scene captures are kept. Continue?",
+            messages.CONFIRM_CLEAR_THUMBNAIL_CACHE,
             suppress=hou.confirmType.NoConfirmType,   # NOT the default, which is `hou.confirmType.OverwriteFile` - Houdini's GLOBAL do-not-ask-again flag for file overwrites, so one tick of that box anywhere would let this delete every thumbnail unasked
         ):
             return
@@ -1130,7 +1123,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         except Exception as exc:                         # noqa: BLE001
             QtWidgets.QMessageBox.warning(
                 self, messages.TITLE_LOG_NOT_SAVED,
-                "Unexpected error: %s" % exc)
+                messages.LOG_NOT_SAVED_UNEXPECTED % exc)
             return
         box = QtWidgets.QMessageBox(self)
         box.setWindowTitle("Amaze - log saved")
