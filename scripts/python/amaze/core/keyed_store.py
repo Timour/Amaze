@@ -799,7 +799,7 @@ class Store:
                 indent=1, sort_keys=True)
             if created:
                 hostos.seed_restore_floor(self.path)  # a write-once file has no .bak
-            self._disk_state = written  # the bytes the base below describes, never a re-read
+            self._disk_state = written  # whatever replaced our write, the next one merges it
             self.state = READ           # written is READ, never still FRESH
         except OSError as exc:
             cause, why = hostos.why_failed(exc, self.path)
@@ -813,7 +813,8 @@ class Store:
         self._table = staged            # only NOW does the cache move
         self._foreign = foreign
         self._orphans = {}              # the file no longer holds them
-        self._remember_base(staged)     # what we just wrote IS on disk, so it is the next merge's base
+        if hostos.fingerprint_of(self.path) == written:    # else a save that never saw ours replaced it
+            self._remember_base(staged)     # still on disk, so what we wrote is the next base
         return Written(True, REASON_NONE, "", keys)
 
     def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:

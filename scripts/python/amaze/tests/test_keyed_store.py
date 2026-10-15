@@ -1969,7 +1969,7 @@ class TheFingerprintIsOfTheBytesParsed(StoreCase):
             "the note written while the file was being read was overwritten")
 
     def test_a_note_written_right_after_our_save_survives_the_next(self):
-        """The base is what we wrote, so the fingerprint must be of those bytes, never a re-read."""
+        """A save landing right after ours is merged by our next one, never taken as already seen."""
         store = self.store()
         theirs = {"notes": {"material:1": self.page("first"),
                             "material:2": self.page("theirs")}}
@@ -1991,6 +1991,31 @@ class TheFingerprintIsOfTheBytesParsed(StoreCase):
             sorted(self.on_disk()["notes"]),
             "the note written right after our save was overwritten by "
             "the next one")
+
+    def test_a_save_that_never_saw_ours_costs_neither_side_a_note(self):
+        """It read the file before our write and landed after it: our new note is not its deletion."""
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"notes": {"material:1": self.page("first")}}, handle)
+        store = self.store()
+        theirs = {"notes": {"material:1": self.page("first"),
+                            "material:2": self.page("theirs")}}
+        real_write, armed = hostos.write_json_atomic, [True]
+
+        def then_theirs_land(*args, **kwargs):
+            answer = real_write(*args, **kwargs)
+            if armed[0]:
+                armed[0] = False
+                with open(self.path(), "w", encoding="utf-8") as handle:
+                    json.dump(theirs, handle)
+            return answer
+
+        with mock.patch.object(hostos, "write_json_atomic", then_theirs_land):
+            self.assertTrue(store.set("material:3", self.page("ours")).ok)
+        self.assertTrue(store.set("material:4", self.page("later")).ok)
+        self.assertEqual(
+            ["material:1", "material:2", "material:3", "material:4"],
+            sorted(self.on_disk()["notes"]),
+            "our new note was read as the other machine deleting it")
 
 
 class AnUnreadableAlertIsTrueWhereverItIsRaised(StoreCase):
