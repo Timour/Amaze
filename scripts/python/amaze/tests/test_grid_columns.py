@@ -748,11 +748,16 @@ class TheTableViewIsWiredToTheSameEVERYTHING(unittest.TestCase):
         panel = self.panel
         panel.show()
         self.addCleanup(panel.hide)
+        original = QtGui.QFont(panel.thumblist.font())
+        self.addCleanup(panel.thumblist.setFont, original)
+        distinctive = QtGui.QFont(original)
+        distinctive.setPointSizeF(17.5)    # set HERE, so no font an earlier module left can stand in
+        panel.thumblist.setFont(distinctive)
         self._mode("list")
         self.assertEqual(panel.thumblist.palette().base().color(),
                          panel.thumbtable.palette().base().color())
-        self.assertEqual(panel.thumblist.font().pointSizeF(),
-                         panel.thumbtable.font().pointSizeF())
+        self.assertEqual(17.5, panel.thumbtable.font().pointSizeF(),
+                         "the table does not wear the grid's font")
 
 
 class TheHeaderSORTS(unittest.TestCase):
