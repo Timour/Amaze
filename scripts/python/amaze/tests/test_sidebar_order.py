@@ -339,16 +339,17 @@ class PanelWiresNoSidebarSortTest(unittest.TestCase):
                     "is the '2 above All' bug coming back" % needle)
 
     def test_color_goes_through_the_shared_sidebar_proxy(self):
-        self.assertIn(
-            "self.gradient_category_sorted_model="
-            "category.CategoriesSidebarProxy(",
-            self.flat_source,
-            "Color's sidebar bypasses the shared proxy - the odd one "
-            "out is how the sections drifted apart in the first place")
-        self.assertIn(
-            "self.gradient_category_sorted_model.setSourceModel("
-            "self.gradient_categories_model)",
-            self.flat_source)
+        """Every sidebar, Color included, is built by `_sidebar_proxy`, which never sorts."""
+        for attr in self.SIDEBAR_PROXIES:
+            self.assertIn(
+                "self.%s=self._sidebar_proxy(" % attr, self.flat_source,
+                "%s bypasses the shared sidebar proxy - the odd one out "
+                "is how the sections drifted apart in the first place" % attr)
+        start = self.panel_source.index("def _sidebar_proxy(")
+        body = self.panel_source[start:self.panel_source.index("\n    def ", start + 1)]
+        self.assertIn("category.CategoriesSidebarProxy(", body)
+        for call in (".sort(", ".setSortRole(", ".setSortCaseSensitivity("):
+            self.assertNotIn(call, body, "the shared sidebar proxy sorts")
 
     def test_the_save_dialog_dropdown_keeps_its_sort(self):
         """Alphabetical by the label a row shows, sorted in the ONE category-names home."""
