@@ -39,9 +39,11 @@ _TOKEN_RE = re.compile(
     re.VERBOSE | re.DOTALL,
 )
 
+_CALL_RE = re.compile(r"\s*\(")    # `\s` and `str.lstrip` strip the same characters
+
 
 def spans(line: str):
-    """Yield (start, length, QColor) runs for ONE line of code - a word immediately followed by `(` is coloured as a function call, which is how the wrangle editor tells them from plain identifiers. ▸p/vex-block-comments"""
+    """(start, length, QColor) runs for ONE line; a word before `(` is a call. ▸p/vex-block-comments"""
     for m in _TOKEN_RE.finditer(line):
         kind = m.lastgroup
         color = DEFAULT
@@ -59,19 +61,24 @@ def spans(line: str):
                 color = KEYWORD
             elif text in TYPES:
                 color = TYPE
-            elif line[m.end():].lstrip().startswith("("):
+            elif _CALL_RE.match(line, m.end()):
                 color = FUNCTION
             else:
                 color = DEFAULT
         else:
             color = DEFAULT
-        yield m.start(), len(m.group()), color
+        yield m.start(), m.end() - m.start(), color
 
 
 def open_comment_at(line: str):
-    """Index of a `/*` on `line` that is still OPEN at its end, else None - a `/*` inside a string or an already-closed comment is not one. ▸p/vex-block-comments"""
+    """Index of a `/*` still OPEN at the end of `line`, else None. ▸p/vex-block-comments"""
+    return _open_comment(line, spans(line))
+
+
+def _open_comment(line: str, runs):
+    """`open_comment_at` over runs `spans` already made for `line`."""
     masked = set()
-    for start, length, color in spans(line):
+    for start, length, color in runs:
         if color in (STRING, COMMENT):
             masked.update(range(start, start + length))
     found = line.find("/*")
@@ -105,10 +112,11 @@ class VexHighlighter(QtGui.QSyntaxHighlighter):
         self.setCurrentBlockState(0)
 
         rest = text[offset:]
-        opened = open_comment_at(rest)
+        runs = list(spans(rest))
+        opened = _open_comment(rest, runs)
         if opened is not None:
             self._paint(offset + opened, len(rest) - opened, COMMENT)
-            rest = rest[:opened]
+            runs = [run for run in runs if run[0] < opened]    # no run crosses an open `/*`
             self.setCurrentBlockState(self.IN_BLOCK_COMMENT)
-        for start, length, color in spans(rest):
+        for start, length, color in runs:
             self._paint(offset + start, length, color)

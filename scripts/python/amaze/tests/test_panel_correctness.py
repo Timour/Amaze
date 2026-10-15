@@ -1391,5 +1391,73 @@ class ABlockCommentSurvivesTheLineBreak(unittest.TestCase):
             "a second, unterminated /* on the same line was missed")
 
 
+class TheHighlighterReadsEachLineOnce(unittest.TestCase):
+    """One tokenizer pass per line, painting the colours the two-pass highlighter painted."""
+
+    PAINTED = [    # (line, one letter per character, block state) as painted before the change
+        ("int a = 1;   /* opens here",
+         "tttdddddnddddccccccccccccc", 1),
+        ("still inside the comment",
+         "cccccccccccccccccccccccc", 1),
+        ("and closes */ vector v = set(1, 2.5, 3); foo (x);",
+         "cccccccccccccdttttttdddddfffdnddnnnddndddfffddddd", 0),
+        ('string s = "not /* a comment"; f@pscale = fit01 (rand(@ptnum), 0.1);',
+         "ttttttdddddssssssssssssssssssddaaaaaaaadddfffffddffffdaaaaaadddnnndd", 0),
+        ("bar /* (open after a word",
+         "ddddccccccccccccccccccccc", 1),
+        ("*/ return addpoint(0, @P) // tail /* ignored",
+         "ccdkkkkkkdffffffffdnddaaddcccccccccccccccccc", 0),
+        ("a /* one */ b /* two",
+         "ddcccccccccdddcccccc", 1),
+        ("*/", "cc", 0),
+        ("#include <math.h>", "ccccccccccccccccc", 0),
+        ("if (x) { i@id = 'c'; } else { break; }",
+         "kkdddddddaaaadddsssddddkkkkdddkkkkkddd", 0),
+    ]
+
+    def _letters(self, line, runs):
+        from amaze.helpers import vex_syntax as vs
+        names = {vs.DEFAULT.name(): "d", vs.COMMENT.name(): "c",
+                 vs.STRING.name(): "s", vs.NUMBER.name(): "n",
+                 vs.TYPE.name(): "t", vs.KEYWORD.name(): "k",
+                 vs.FUNCTION.name(): "f", vs.ATTRIB.name(): "a"}
+        chars = ["."] * len(line)
+        for start, length, colour in runs:
+            for i in range(start, start + length):
+                chars[i] = names[colour]
+        return "".join(chars)
+
+    def test_the_colours_are_the_ones_painted_before(self):
+        rows = ABlockCommentSurvivesTheLineBreak._painted(
+            self, [line for line, _letters, _state in self.PAINTED])
+        for (line, letters, state), (_text, runs, got_state) in zip(
+                self.PAINTED, rows):
+            with self.subTest(line=line):
+                self.assertEqual(letters, self._letters(line, runs))
+                self.assertEqual(state, got_state)
+
+    def test_a_line_that_opens_a_comment_is_tokenized_once(self):
+        from unittest import mock
+        from amaze.helpers import vex_syntax
+        real = vex_syntax._TOKEN_RE
+        passes = []
+
+        class Counting:
+            def finditer(self, *args, **kwargs):
+                passes.append(args[0] if args else "")
+                return real.finditer(*args, **kwargs)
+
+            def __getattr__(self, name):
+                return getattr(real, name)
+
+        with mock.patch.object(vex_syntax, "_TOKEN_RE", Counting()):
+            ABlockCommentSurvivesTheLineBreak._painted(
+                self, ["int a = 1;   /* opens here", "still inside",
+                       "closes */ foo(1);"])
+        self.assertEqual(
+            2, len(passes),
+            "the highlighter tokenized a line more than once: %r" % passes)
+
+
 if __name__ == "__main__":
     unittest.main()
