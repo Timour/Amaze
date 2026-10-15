@@ -1,6 +1,8 @@
 """Prefs, online sources, and the long tail - several of these read the SOURCE, and by AST rather than by text."""
 
 import ast
+import contextlib
+import ntpath
 import os
 import shutil
 import sys
@@ -1338,6 +1340,52 @@ class ThePickersStartInAForwardSlashPath(unittest.TestCase):
             "D:/shots/amaze_test", start,
             "the test-folder picker opens on a native Windows path; "
             "selectFile requires forward slashes there and ignores the rest")
+
+
+class APickedRootKeepsItsSlash(unittest.TestCase):
+    """Only a trailing slash that is not the root goes: `D:` is relative to drive D's current folder."""
+
+    WINDOWS_OS = types.SimpleNamespace(path=ntpath, sep="\\")    # what os.path and os.sep are there
+
+    def _picked(self, method, answer, windows=False):
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        p.cache_dir = p.test_dir = "/start"    # so neither picker asks for the machine's cache root
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        seeded = []
+        ui = types.SimpleNamespace(selectFile=lambda *_a, **_k: answer,
+                                   displayMessage=lambda *_a, **_k: 0)
+        with contextlib.ExitStack() as stack:
+            stack.enter_context(mock.patch.object(hou, "ui", ui, create=True))
+            stack.enter_context(mock.patch.object(p, "save", lambda: None))
+            stack.enter_context(mock.patch.object(
+                prefs_dialog.hostos, "set_cache_override", lambda _path: None))
+            stack.enter_context(mock.patch.object(
+                prefs_dialog.prefs_mod, "seed_test_folder",
+                lambda folder: seeded.append(folder) or (False, "refused")))
+            if windows:
+                stack.enter_context(mock.patch.object(
+                    prefs_dialog.hostos, "os", self.WINDOWS_OS))
+            getattr(dlg, method)()
+        return p.cache_dir if method == "change_cache_path" else seeded[0]
+
+    def test_a_picked_root_is_kept_whole(self):
+        for method in ("change_cache_path", "change_test_path"):
+            for answer, windows in (("/", False), ("D:/", True)):
+                with self.subTest(picker=method, picked=answer):
+                    self.assertEqual(answer,
+                                     self._picked(method, answer, windows))
+
+    def test_any_other_folder_loses_its_trailing_slash(self):
+        for method in ("change_cache_path", "change_test_path"):
+            for answer, windows, kept in (
+                    ("/Volumes/cache/", False, "/Volumes/cache"),
+                    ("D:/shots/", True, "D:/shots")):
+                with self.subTest(picker=method, picked=answer):
+                    self.assertEqual(kept,
+                                     self._picked(method, answer, windows))
 
 
 if __name__ == "__main__":

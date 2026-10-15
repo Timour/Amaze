@@ -107,8 +107,8 @@ def _show_value(widget, value) -> None:
             pass
 
 
-def _picker_start(path: str) -> str:
-    """A `start_directory` in the spelling `hou.ui.selectFile` requires: forward slashes on every OS, since on Windows the documented form is `D:/temp` while `os.path.join` there hands out backslashes."""
+def _chooser_path(path: str) -> str:
+    """A folder as `hou.ui.selectFile` spells it: forward slashes, no trailing one unless at a root."""
     return hostos.canonical_path_key(path) if path else ""   # empty stays empty: `canonical_path_key("")` is `"."`, which would open the chooser on the process working directory
 
 
@@ -885,13 +885,13 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
-        start = _picker_start(self._prefs.cache_dir or hostos.cache_root())
+        start = _chooser_path(self._prefs.cache_dir or hostos.cache_root())
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
         )
         if not path:
             return
-        self._prefs.cache_dir = hou.text.expandString(path).rstrip("/")
+        self._prefs.cache_dir = _chooser_path(hou.text.expandString(path))
         self._prefs.save()
         hostos.set_cache_override(self._prefs.cache_dir)
         self.line_cache.setText(self._prefs.cache_dir)
@@ -905,13 +905,13 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def change_test_path(self) -> None:
         """Pick the folder holding the test lib and cache, SEEDED on the way in: a directory with no index does not load, so an empty folder would answer with a traceback."""
-        start = _picker_start(self._prefs.test_dir or self._prefs.dir)
+        start = _chooser_path(self._prefs.test_dir or self._prefs.dir)
         path = hou.ui.selectFile(
             start_directory=start, file_type=hou.fileType.Directory
         )
         if not path:
             return
-        folder = hou.text.expandString(path).rstrip("/")
+        folder = _chooser_path(hou.text.expandString(path))
         ok, what = prefs_mod.seed_test_folder(folder)
         if not ok:
             hou.ui.displayMessage(  # type: ignore
