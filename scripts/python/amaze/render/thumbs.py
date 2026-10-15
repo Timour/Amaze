@@ -1,6 +1,5 @@
 import contextlib
 import os
-import time
 import hou
 
 from amaze.core import debug
