@@ -730,5 +730,24 @@ class AnOnlineMaterialCanLandAsRedshift(unittest.TestCase):
         self.assertNotIn("uid", row, "`uid` is the pre-connector id spelling, which a package import strips")
 
 
+class TheMirrorReadsTheForwardConvertersFacts(unittest.TestCase):
+    """One signature reader and one colour table, shared with the forward converter."""
+
+    def test_the_openpbr_colour_inputs_are_the_standard_ones_by_openpbr_name(self):
+        from amaze.render import redshift_converter
+        self.assertEqual(
+            frozenset({"base_color", "specular_color", "transmission_color",
+                       "subsurface_color", "fuzz_color", "coat_color",
+                       "emission_color"}),
+            redshift_converter.OPENPBR_COLOUR_INPUTS)
+
+    def test_no_signature_is_read_by_hand(self):
+        from amaze.render import redshift_converter
+        with open(redshift_converter.__file__, encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertEqual(0, source.count('parm("signature").evalAsString()'),
+                         "read it through `_effective_signature`")
+
+
 if __name__ == "__main__":
     unittest.main()

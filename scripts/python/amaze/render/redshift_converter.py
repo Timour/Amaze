@@ -17,15 +17,15 @@ from amaze.render.material_converter import (    # the forward converter's table
     TANGENT_SPACE_NORMAL,
     _COLOUR_INPUTS,
     _copy_constant_parm,
+    _effective_signature,
     _named_inputs,
 )
 
 KARMA_SHADERS = ("mtlxstandard_surface", "mtlxopen_pbr_surface")
 
-OPENPBR_COLOUR_INPUTS = frozenset({    # the OpenPBR inputs that carry COLOUR, read sRGB; every other texture is data ▸r/redshift-nodes
-    "base_color", "specular_color", "transmission_color",
-    "subsurface_color", "fuzz_color", "coat_color", "emission_color",
-})
+OPENPBR_COLOUR_INPUTS = frozenset(    # the standard colour inputs by their OpenPBR names ▸r/redshift-nodes
+    openpbr for openpbr, standard in OPENPBR_MATERIAL_PARM_MAP
+    if standard in _COLOUR_INPUTS)
 
 GEOMETRY_TYPES = ("mtlxtexcoord", "mtlxtangent", "mtlxnormal", "mtlxposition")    # Redshift supplies these itself; nothing to build and nothing to report
 
@@ -309,8 +309,7 @@ def convert_displacement(node: hou.Node, builder: hou.Node, report: ConversionRe
     """mtlxdisplacement -> RS Displacement as a height field, the map on `texMap`, `scale` across. ▸r/redshift-nodes"""
     disp = builder.createNode("redshift::Displacement")
     disp.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
-    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
-    if signature == "vector3":    # a vector displacement map: written as a tangent-space vector (map_encoding 0 = Vector, space_type 2 = Tangent ▸r/redshift-nodes), not as a height along the normal
+    if _effective_signature(node) == "vector3":    # a tangent-space vector (encoding 0, space 2), not a height ▸r/redshift-nodes
         disp.parm("map_encoding").set("0")
         disp.parm("space_type").set("2")
         report.approximate('"%s": vector displacement written as a tangent-space vector map' % node.name())
@@ -341,9 +340,7 @@ def convert_mix(node: hou.Node, builder: hou.Node, report: ConversionReport, rol
 
 def convert_multiply(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxmultiply -> RS Mul (float) or RS Mul Vector (colour and vector), each input converted or copied."""
-    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
-    scalar = signature in ("default", "float", "FA")
-    mul = builder.createNode("redshift::RSMathMul" if scalar else "redshift::RSMathMulVector")
+    mul = builder.createNode("redshift::RSMathMul" if _is_scalar(node) else "redshift::RSMathMulVector")
     mul.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
     wired = _named_inputs(node)
     for mtlx_name, rs_name in (("in1", "input1"), ("in2", "input2")):
@@ -367,8 +364,7 @@ TWO_INPUT_MATH = {    # mtlx category -> (Redshift float node, Redshift vector n
 
 
 def _is_scalar(node: hou.Node) -> bool:
-    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
-    return signature in ("default", "float", "FA")
+    return _effective_signature(node) in ("default", "float", "FA")
 
 
 def convert_math(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
@@ -390,7 +386,7 @@ def convert_clamp(node: hou.Node, builder: hou.Node, report: ConversionReport, r
     """mtlxclamp -> RS Change Range holding its input between `low` and `high`: the same range in and out, clamp on. Float only; a colour clamp is reported."""
     if not _is_scalar(node):
         report.skip('"%s" (mtlxclamp %s) has no Redshift equivalent - the input keeps '
-                    "the shader's own value" % (node.name(), node.parm("signature").evalAsString()))
+                    "the shader's own value" % (node.name(), _effective_signature(node)))
         return None
     rng = builder.createNode("redshift::RSMathRange")
     rng.setName(helpers.sanitize_usd_path(node.name()), unique_name=True)
@@ -406,7 +402,7 @@ def convert_clamp(node: hou.Node, builder: hou.Node, report: ConversionReport, r
 
 def convert_remap(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
     """mtlxremap -> RS Change Range, float only; a colour remap is reported."""
-    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
+    signature = _effective_signature(node)
     if signature not in ("default", "float"):
         report.skip('"%s" (mtlxremap %s) has no Redshift equivalent - the input keeps '
                     "the shader's own value" % (node.name(), signature))
@@ -449,8 +445,7 @@ def convert_constant(node: hou.Node, builder: hou.Node, report: ConversionReport
 
 def _signature_slots(node: hou.Node, name: str) -> tuple:
     """The parm names to try for one MaterialX input, live slot first: `<name>_<signature>`, then the bare float name - every signature's slot exists on the node, so the dead ones read as zeros. ▸r/mtlx-vop-tuple-parms"""
-    signature = node.parm("signature").evalAsString() if node.parm("signature") else "default"
-    return ("%s_%s" % (name, signature), name)
+    return ("%s_%s" % (name, _effective_signature(node)), name)
 
 
 def _copy_signature_parm(src: hou.Node, src_name: str, dst: hou.Node, dst_name: str) -> None:
