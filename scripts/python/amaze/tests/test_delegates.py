@@ -75,7 +75,7 @@ class TheTileStandsOnItsFrame(unittest.TestCase):
         rect = QtCore.QRect(0, 0, self.px(width), self.px(height))
         for badge in delegates.BADGES:
             with self.subTest(badge=badge.name):
-                got = self.D._badge_rect(self.D.__new__(self.D), rect, True, badge.name)
+                got = self.D._badge_rect(self.D.__new__(self.D), rect, badge.name)
                 self.assertEqual(self._drawn(badge),
                                  (got.x(), got.y(), got.width(), got.height()))
 

@@ -217,6 +217,14 @@ class TheRealPanelInListMode(unittest.TestCase):
         table.setFont(font)
         QtWidgets.QApplication.processEvents()
 
+    def test_the_grid_view_never_leaves_icon_mode(self):
+        """List mode is the table: the view wearing the tile delegate stays a grid in both modes."""
+        self.addCleanup(self._mode, "grid")
+        for mode in ("list", "grid", "list"):
+            self._mode(mode)
+            self.assertEqual(QtWidgets.QListView.ViewMode.IconMode,
+                             self.panel.thumblist.viewMode(), mode)
+
     def test_the_grid_slider_runs_64_to_512(self):
         self.assertEqual(
             (64, 512),

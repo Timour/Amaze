@@ -346,7 +346,7 @@ class AmazePanel(QtWidgets.QWidget):
             tile_model=file_library.FileFiles,
             on_badge=self._badge_verb,
         )
-        self._sync_notes_button_pixmaps()    # the star preference colours the NOTES surfaces (chip lit + pane accent); tile badges render as drawn and take no colour push. The accent sweep for the tile delegates runs at the END of setup() instead, because tile_delegates() derives from self.sections, which do not exist yet here - a sweep at this point walks an empty tuple. The "Type" header label follows the same accent as the type entries the delegates paint
+        self._sync_notes_button_pixmaps()
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
         thumbnails.engine.set_budget_mb(self.prefs.ram_cache_mb)
         self.file_files_model.progress_changed.connect(
@@ -371,7 +371,7 @@ class AmazePanel(QtWidgets.QWidget):
             tile_badges=sections.GradientSection.tile_badges,
             tile_model=gradient_library.GradientLibrary,
             on_badge=self._badge_verb,
-        )    # no per-delegate accent is set here: the one sweep at the end of setup() covers every tile delegate, and a hand-set on this one masked the dead early sweep for exactly one of five
+        )
 
         self.cop_category_sorted_model = category.CategoriesSidebarProxy(self)    # the Cop section is standalone COP-network assets over its own cops.json (core/cop_library.py), mirroring the material proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
         self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
@@ -445,9 +445,6 @@ class AmazePanel(QtWidgets.QWidget):
         self.sections = sections.build_sections(self)    # the section registry: one object per tab, each encapsulating how it drives the shared widgets (activate/filter/favourites/category-select/double-click). Shared handlers dispatch to self._section() instead of branching on current_section, so a new section is a new class in panel/sections.py, not edits here
 
         self.sidebar_reorder = sidebar.SidebarReorder(self)    # the press-hold sidebar reorder: one controller for the one sidebar list, asking whichever context is active, parented to cat_list so it dies with the widget
-
-        for tile_delegate in self.tile_delegates():    # the tile subtitle line follows the accent preference for EVERY tile delegate; the instance attribute shadows the class default and show_prefs() refreshes it when the accent changes. AFTER build_sections deliberately, because tile_delegates() derives from the sections and any earlier sweep walks an empty tuple
-            tile_delegate.DIM = theme.accent(self.prefs.accent_color)
 
         first_key = next(    # start on the first ENABLED section - usually Materials, but a user may have hidden it; the models all exist regardless of which tabs are shown
             (k for k, _ in self.ALL_SECTIONS if k in self.prefs.enabled_sections),
@@ -745,11 +742,7 @@ class AmazePanel(QtWidgets.QWidget):
             candidate = self.thumblist.indexAt(point)
             if candidate.isValid():
                 badge = delegate.button_badge_at(
-                    candidate,
-                    self.thumblist.visualRect(candidate),
-                    point,
-                    self.thumblist.viewMode()
-                    != QtWidgets.QListView.ViewMode.ListMode)    # the WIDGET's own answer, like the delegate's - prefs.view_mode would be a third proxy for one fact
+                    candidate, self.thumblist.visualRect(candidate), point)
                 if badge is not None:
                     index = candidate
         previous = delegate._button_hover
@@ -1712,8 +1705,6 @@ class AmazePanel(QtWidgets.QWidget):
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
         self.texture_progress.set_accent_color(accent)
-        for tile_delegate in self.tile_delegates():
-            tile_delegate.DIM = accent    # the tile subtitle line ("Redshift:Standard", "HDR", ...) tracks the accent too
         self._sync_notes_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)
         self.sidebar_delegate.show_counts = self.prefs.sidebar_counts
@@ -2186,7 +2177,7 @@ class AmazePanel(QtWidgets.QWidget):
         return getattr(self, "sections", {}).get(self.current_section)
 
     def tile_delegates(self) -> tuple:
-        """EVERY tile delegate, once, for the sites that have to reach all of them - the accent sweep and the column widths among them. Built from the SECTIONS rather than written out here, so a section that arrives with a delegate of its own joins by existing."""
+        """EVERY tile delegate, once, derived from the sections - the tests' way to reach them all."""
         found = []
         for section in getattr(self, "sections", {}).values():
             name = getattr(section, "delegate_attr", "")

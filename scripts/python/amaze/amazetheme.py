@@ -107,7 +107,7 @@ LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView p
 LIST_HEADER_DIVIDER = "#454545"
 
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
-TILE_SUBTITLE = "#5d7abd"       # the accent DEFAULT only - overwritten per instance from `prefs.accent_color`
+TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
 BADGE_REST_OPACITY = 0.75       # every button badge at rest, ground and icon alike
 BADGE_HOVER_OPACITY = 1.0       # and under the pointer

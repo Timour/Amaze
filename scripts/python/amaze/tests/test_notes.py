@@ -1148,13 +1148,13 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         delegate = self._delegate()
         index = self._index(3)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._badge_rect(rect, True, "versions")
+        badge = delegate._badge_rect(rect, "versions")
         self.assertTrue(
-            delegate.button_badge_at(index, rect, badge.center(), True),
+            delegate.button_badge_at(index, rect, badge.center()),
             "the badge does not answer at its own centre")
         outside = QtCore.QPoint(rect.right() - 2, rect.top() + 2)
         self.assertFalse(
-            delegate.button_badge_at(index, rect, outside, True),
+            delegate.button_badge_at(index, rect, outside),
             "the badge answers for a point in the opposite corner")
 
     def test_a_single_version_asset_has_no_badge_to_hover(self):
@@ -1162,9 +1162,9 @@ class VersionsBadgeHoverTest(unittest.TestCase):
         delegate = self._delegate()
         index = self._index(1)
         rect = QtCore.QRect(0, 0, 120, 140)
-        badge = delegate._badge_rect(rect, True, "versions")
+        badge = delegate._badge_rect(rect, "versions")
         self.assertFalse(
-            delegate.button_badge_at(index, rect, badge.center(), True),
+            delegate.button_badge_at(index, rect, badge.center()),
             "an asset with one version offers a badge to hover")
 
     def test_hover_swaps_the_art_the_PAINTER_lays_down(self):

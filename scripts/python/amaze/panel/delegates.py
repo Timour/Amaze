@@ -180,11 +180,10 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                     if "centre" not in (place[0], place[2]))    # the corner badges' drawn size
     DRAWN_THUMB = theme.ui_px(_TILE["thumb"])    # the thumbnail side the T frames draw
     TEXT_COLOR = QtGui.QColor(amazetheme.TILE_TEXT)
-    DIM = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # the accent DEFAULT only: `setup()`/`show_prefs()` overwrite it per instance from `prefs.accent_color`, so the subtitle line tracks the accent preference live instead of drifting each time the accent moves
     THUMB_BG_COLOR = theme.color("surface_low")    # the dark ground behind the thumbnail area, so a non-square image still shows a tile boundary instead of blending into the panel. Its OWN constant: it was tied to `ClickSlider.RIGHT_COLOR` once, and tuning the slider silently recoloured every tile
 
     GRID_NAME_COLOR = theme.color("text")           # GRID tiles are quieter than list mode - the name in the neutral grey the design system already uses for unselected tabs
-    GRID_SUBTITLE_COLOR = theme.color("text_dim")   # and the subtitle a dimmer grey rather than the accent, which list mode keeps
+    GRID_SUBTITLE_COLOR = theme.color("text_dim")   # and the subtitle a dimmer grey, never the accent
     GRID_TEXT_INSET = theme.ui_px(_TILE["text_inset"])
     GRID_BOTTOM_PAD = theme.ui_px(_TILE["bottom_pad"])
     GRID_IMG_TEXT_GAP = theme.ui_px(_TILE["img_text_gap"])
@@ -501,25 +500,14 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
     def _is_button_pressed(self, name, index) -> bool:
         return self._button_down and self._is_button_hovered(name, index)
 
-    def _is_list(self, option) -> bool:
-        """IS THIS A LIST ROW? One question asked one way - it was asked three (the view's `viewMode()`, `option.decorationPosition`, and `prefs.view_mode`), nothing kept them in step, and the click was the one that drifted: it fired in list mode over a badge that mode never draws."""
-        try:
-            return (option.widget.viewMode()
-                    == QtWidgets.QListView.ViewMode.ListMode)
-        except Exception:                                # noqa: BLE001
-            return False
-
-    def button_badge_at(self, index, option_rect, point, mode_grid):
-        """The BUTTON badge under `point` on this tile, or None. Only a badge with a wired click answers, and only where it is actually DRAWN - versions below two is absent, a star's off state exists only where wired - because a tooltip or a swallowed click over empty pixels is a lie."""
-        if not mode_grid:
-            return None    # A LIST ROW HAS NO BADGES - they became columns there, because at list size a badge is 12px and its art rasterises to a dark smudge; so there is nothing to hover, tooltip or click
+    def button_badge_at(self, index, option_rect, point):
+        """The wired BUTTON badge drawn under `point` on this tile, or None."""
         if not index.isValid():
             return None
         for badge in BADGES:
             if (badge.name in self._badge_clicks
                     and self._badge_state(badge, index)
-                    and self._badge_rect(option_rect, mode_grid,
-                                         badge.name).contains(point)):
+                    and self._badge_rect(option_rect, badge.name).contains(point)):
                 return badge
         return None
 
@@ -532,11 +520,10 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
             return "on" if badge.shows(value) else ""
         return "off" if badge.off_art and badge.name in self._badge_clicks else ""    # a button's rest
 
-    def _badge_rect(self, option_rect, mode_grid, name):
+    def _badge_rect(self, option_rect, name):
         """Where the badge `name` sits, for hit-testing - the paint's own placement."""
         pad = self.PAD
-        icon_side = option_rect.width() - 2 * pad if mode_grid \
-            else max(option_rect.height() - 2 * pad, 1)
+        icon_side = option_rect.width() - 2 * pad
         return QtCore.QRect(*self._badge_at(
             name, option_rect.left() + pad, option_rect.top() + pad, icon_side))
 
@@ -550,9 +537,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """A button badge names itself on hover and the rest of the tile stays silent; Qt asks the delegate first, so this is the hook - a tooltip set on the ITEM would follow the cursor across the whole tile."""
         if (event is not None
                 and event.type() == QtCore.QEvent.Type.ToolTip):
-            badge = self.button_badge_at(
-                index, option.rect, event.pos(),
-                not self._is_list(option))
+            badge = self.button_badge_at(index, option.rect, event.pos())
             words = self._badge_tooltip(badge, index) if badge else ""
             if words:
                 QtWidgets.QToolTip.showText(
@@ -568,8 +553,7 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         if (event.type() == QtCore.QEvent.Type.MouseButtonRelease
                 and event.button() == QtCore.Qt.MouseButton.LeftButton):
             badge = self.button_badge_at(
-                index, option.rect, event.position().toPoint(),
-                not self._is_list(option))
+                index, option.rect, event.position().toPoint())
             if badge is not None:
                 try:
                     self._badge_clicks[badge.name](index)
@@ -614,13 +598,8 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
         """Mirror the `gridSize` the view was given, exactly, so layout and paint rect always agree - without this Qt falls back to a heuristic partly keyed on whether `DecorationRole` currently holds an icon, and a section whose thumbnail arrives late paints a tiny image adrift in a mostly empty tile."""
         try:
             grid = option.widget.gridSize()
-            if grid.isValid() and grid.height() > 0:
-                is_list = self._is_list(option)
-                if is_list:
-                    width = option.widget.viewport().width()
-                    return QtCore.QSize(width if width > 0 else grid.width(), grid.height())
-                if grid.width() > 0:
-                    return grid
+            if grid.isValid() and grid.height() > 0 and grid.width() > 0:
+                return grid
         except Exception:
             pass
         return super().sizeHint(option, index)
@@ -753,7 +732,7 @@ class SidebarItemDelegate(QtWidgets.QStyledItemDelegate):
         super().__init__(parent)
         self.show_counts = True    # counts on individual categories can be toggled off in Preferences; All always shows its total
         self.drag_row = -1         # row highlighted while an asset is dragged over it, -1 for none
-        self._drag_color = QtGui.QColor(AssetItemDelegate.DIM)
+        self._drag_color = QtGui.QColor(amazetheme.TILE_SUBTITLE)    # until the panel sets the accent
         self.color_role = None     # role carrying a category's colour, or None for sidebars that have none (folders, palette groups)
 
     def set_drag_color(self, color: QtGui.QColor) -> None:

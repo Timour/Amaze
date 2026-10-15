@@ -972,51 +972,6 @@ class TheCommentGlyphsAreRasterisedOnce(unittest.TestCase):
             "unchecked to-do would share one pixmap")
 
 
-class TheAccentReachesEveryDelegateAtBirth(_PanelCase):
-    """`tile_delegates` derives from the sections, so the sweep runs after."""
-
-    def test_every_tile_delegate_wears_the_accent(self):
-        """Vacuous under a default accent; the order test below is the pin."""
-        panel = self.panel
-        delegates = panel.tile_delegates()
-        self.assertGreaterEqual(
-            len(delegates), 4,
-            "premise: the delegates exist and are enumerable")
-        expected = theme.accent(panel.prefs.accent_color)
-        wrong = [type(d).__name__ for d in delegates
-                 if d.DIM != expected]
-        self.assertEqual([], wrong)
-
-    def test_the_sweep_runs_after_the_sections_exist(self):
-        """Read as order: a painted result cannot tell a dead sweep from a live one."""
-        import inspect
-        import textwrap
-
-        from amaze.panel import panel as panel_mod
-
-        source = textwrap.dedent(
-            inspect.getsource(panel_mod.AmazePanel.setup))
-        tree = ast.parse(source)
-        sections_line = sweep_line = None
-        for node in ast.walk(tree):
-            if (isinstance(node, ast.Call)
-                    and getattr(node.func, "attr", "")
-                    == "build_sections"):
-                sections_line = node.lineno
-            if (isinstance(node, ast.For)
-                    and isinstance(node.iter, ast.Call)
-                    and getattr(node.iter.func, "attr", "")
-                    == "tile_delegates"):
-                sweep_line = node.lineno
-        self.assertIsNotNone(sections_line, "build_sections not found")
-        self.assertIsNotNone(sweep_line, "the accent sweep not found")
-        self.assertGreater(
-            sweep_line, sections_line,
-            "the accent sweep runs before the sections exist, so "
-            "tile_delegates() is empty and every subtitle keeps the "
-            "class default until Preferences is opened once")
-
-
 class TheColourBandFollowsTheOwningLocation(unittest.TestCase):
     """The owning location resolves by prefix, once per folder, cached."""
 
