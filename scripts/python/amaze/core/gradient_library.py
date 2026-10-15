@@ -103,9 +103,8 @@ class GradientLibrary(library.AssetLibrary):
         """Whether the connector is refusing to write this file - read through to the connector's own latch."""
         if self.preferences is None:
             return False
-        return bool(getattr(
-            database.DatabaseConnector(self.DB_FILENAME),
-            "_write_blocked", False))
+        return bool(
+            database.DatabaseConnector(self.DB_FILENAME)._write_blocked)
 
     _SEED_MARKER = ".amaze_gradient_seed_v1"  # bump when the seed contents change, so a new set re-seeds
 

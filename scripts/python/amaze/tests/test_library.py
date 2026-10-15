@@ -1233,6 +1233,21 @@ class LibrarySwitchTest(unittest.TestCase):
             "switch_model_data raised and left the model mid-reset - "
             "endResetModel must be in a finally")
 
+    def test_a_switch_drops_the_content_labels_once(self):
+        """The USD and shader-type labels read from the files go on a switch, in one drop."""
+        from unittest.mock import patch
+
+        self.model._usd_cache = {"stale": True}
+        self.model._shader_type_cache = {"stale": "PBR"}
+        real = self.model._drop_content_label_caches
+        with patch.object(self.model, "_drop_content_label_caches",
+                          wraps=real) as dropped:
+            self._switch_to_an_empty_library()
+        self.assertEqual(({}, {}), (self.model._usd_cache,
+                                    self.model._shader_type_cache))
+        self.assertEqual(1, dropped.call_count,
+                         "a library switch drops the content labels twice")
+
 
 class GradientSwitchTest(unittest.TestCase):
     """Colors is library-backed too, and is the model easiest to leave out of a switch - a tab still holding the previous library's palettes would write all of them into the NEW library on the next colour edit. Two defences are asserted here: the model resets on a switch, and the inherited `db.serves()` guard refuses the save even if some path forgets to."""

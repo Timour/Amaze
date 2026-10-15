@@ -179,7 +179,7 @@ class CopLibrary(library.AssetLibrary):
         """Only a RENDERABLE context can hold a picture; any other node asset shows its node icon."""
         if not 0 <= row < len(self._assets):
             return False
-        return str(getattr(self._assets[row], "renderer", "") or "").upper() in self.RENDERABLE
+        return str(self._assets[row].renderer or "").upper() in self.RENDERABLE
 
     def import_asset_to_scene(
         self, index, target: str = "auto", context_node=None
@@ -194,9 +194,9 @@ class CopLibrary(library.AssetLibrary):
         """Rerender one COP asset's thumbnail from its saved files - replaces the material version's shaderball pipeline with the network's own output image, and notes a sentence instead when the asset's context has no picture to take."""
         try:
             asset = self._assets[row]
-            info = getattr(asset, "cop_net", {}) or {}
+            info = asset.cop_net or {}
             thumber = thumbs.ThumbNailRenderer(self.preferences)
-            context = str(getattr(asset, "renderer", "") or "").upper()
+            context = str(asset.renderer or "").upper()
             outcome = thumber.render_network_thumbnail(    # the Cop-or-Sop decision lives there, the one home shared with the save side; it answers None for a context with no picture, which is the branch below
                 context, str(asset.mat_id),
                 str(info.get("thumb_node", "")))

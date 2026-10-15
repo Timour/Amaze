@@ -148,8 +148,3 @@ def adopt(preferences, uid):
     except (AttributeError, OSError):
         return uid    # the session still works; the next one asks again
     return uid
-
-
-def forget() -> None:
-    """Drop the cache - a library switch or a test needs a re-read."""
-    keyed_store.release()

@@ -140,7 +140,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         for asset in self._assets:
             key = notes.note_key(self.NOTES_SECTION, str(asset.mat_id))
             for field in self.RETIRED_TEXT_FIELDS:
-                text = getattr(asset, field, "")
+                text = getattr(asset, field)
                 if not isinstance(text, str) or not text.strip():
                     continue    # a hand-edited record can carry any type here, and only TEXT is worth moving
                 text = text.strip()
@@ -545,7 +545,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         stored = db.save()
         from amaze.core import model_registry
         model_registry.apply_merged(db, also=self)    # every model on this file takes what the save merged
-        if stored and getattr(db, "_save_outcome", "") != "identical-skip":
+        if stored and db._save_outcome != "identical-skip":
             _StampWriter(self).refresh()  # AFTER the index write and only when it landed; skipped on an identical-skip, where no record changed and the scan would find nothing to rewrite ▸p/recovery-stamp
         return stored
 
@@ -610,8 +610,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         finally:
             self.endInsertRows()
         self._add_thumb_paths(row)
-        if not hasattr(self, "_content_state"):
-            self._content_state = {}
         self._content_state[str(record.mat_id)] = self._content_stat(
             record.mat_id)
         return row
@@ -749,10 +747,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def report_refused_index_write(self, asset) -> None:
         """Say that the content was written and the list was not - call it from EVERY add_asset, which is why it is hoisted here rather than left on one subclass. The files are deliberately left where they are: content without a row is the safe direction of this failure, and Repair Library recovers exactly that shape."""
-        name = getattr(asset, "name", "") or "The asset"
+        name = asset.name or "The asset"
         debug.event("save", "asset content written but the index write "
-                    "was refused", name=name,
-                    mat_id=getattr(asset, "mat_id", ""),
+                    "was refused", name=name, mat_id=asset.mat_id,
                     model=self.DB_FILENAME)
         if self.CONTENT_SURVIVES_A_REFUSED_INDEX_WRITE:
             debug.alert(
@@ -814,8 +811,6 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
     def remove_asset(self, index: QtCore.QModelIndex) -> None:
         """Remove one asset from this library AND from disk. THE LIST IS WRITTEN FIRST AND ITS ANSWER IS HONOURED - library.json IS the truth here, so nothing on disk is touched until the list that stops naming the asset has actually been written, and a refused write puts the row back with every file still there. save() returns False WITHOUT RAISING on several paths, so never discard its answer."""
         if not self.hasIndex(index.row(), 0):
-            return
-        if len(self._assets) < index.row() + 1:
             return
         row = index.row()
         asset = self._assets[row]
@@ -1341,10 +1336,6 @@ class MaterialLibrary(AssetLibrary):
         self._usd_cache = {}  # both are derived by READING the saved files, so they are cached per material id rather than paid on every repaint
         self._shader_type_cache = {}
 
-    def switch_model_data(self):
-        super().switch_model_data()
-        self._drop_content_label_caches()
-
     def _drop_content_label_caches(self, mat_id=None) -> None:
         if not hasattr(self, "_usd_cache"):  # USD-ness and shader type, this model's two content-derived labels: evicted whole on a reload, per id on a version switch or content update. The guard is because the base constructor reloads before this subclass's __init__ has made the caches
             return
@@ -1409,13 +1400,13 @@ class MaterialLibrary(AssetLibrary):
         debug.event(
             "save", "save_node result",
             ok=bool(saved), name=new_mat.name,
-            renderer=getattr(handler, "_renderer", None),
+            renderer=handler._renderer,
             node=node.path(), node_type=node.type().name(),
             mat_id=new_mat.mat_id,
         )
         if saved:
             new_mat.cop_net = handler.cop_info
-            inventory = getattr(handler, "texture_inventory", None)
+            inventory = handler.texture_inventory
             if isinstance(inventory, (list, tuple)) and inventory:    # rides _extra like the curated tag - old builds ignore it, get_as_dict carries it
                 new_mat._extra = dict(getattr(new_mat, "_extra", None) or {})
                 new_mat._extra["textures"] = list(inventory)
@@ -1442,7 +1433,7 @@ class MaterialLibrary(AssetLibrary):
                         "does not allow it", mat_id=str(mat.mat_id),
                         name=mat.name)
             return ""
-        known = getattr(self, "_content_state", {}).get(str(mat.mat_id))  # THE CONTENT STALE-WRITE GUARD: this write stays exclusive even with Versions, because content is outside the index merge entirely and two structural updates to one id silently last-write-wins. The refusal itself preserves the edit - the network is still in the scene
+        known = self._content_state.get(str(mat.mat_id))    # content is outside the index merge: last write would win
         current = self._content_stat(mat.mat_id)
         if known is not None and current is not None and current != known:
             debug.event("library", "content update refused - the files "
@@ -1498,7 +1489,7 @@ class MaterialLibrary(AssetLibrary):
         mat.cop_net = handler.cop_info
         mat._extra = dict(getattr(mat, "_extra", None) or {})
         mat._extra.pop("textures", None)    # replaced whole - the new content's references are the inventory now
-        inventory = getattr(handler, "texture_inventory", None)
+        inventory = handler.texture_inventory
         if isinstance(inventory, (list, tuple)) and inventory:
             mat._extra["textures"] = list(inventory)
         if renderer:

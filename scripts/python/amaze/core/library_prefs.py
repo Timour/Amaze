@@ -68,8 +68,3 @@ def clear(preferences, keys) -> bool:
     """Reset the named settings out loud - a retire, because absence is not a delete anywhere in this engine."""
     return bool(_store(preferences).retire(
         [str(key) for key in keys]))
-
-
-def forget() -> None:
-    """Drop the cache - a test seam like its keyed-store siblings; the product's library switch drops every table through `keyed_store.release()` at the switch door."""
-    keyed_store.release()
