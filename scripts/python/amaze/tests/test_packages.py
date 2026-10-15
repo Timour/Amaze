@@ -626,12 +626,10 @@ class CuratedKeysTest(unittest.TestCase):
         self.assertGreater(model.rowCount(), before,
                            "premise: the seed never ran")
         fresh = model._assets[before:]
-        untagged = [a.name for a in fresh
-                    if not (getattr(a, "_extra", None) or {}).get("curated")]
+        untagged = [a.name for a in fresh if not a._extra.get("curated")]
         self.assertEqual([], untagged[:5],
                          "seeded palettes carry no curated tag")
-        sets_seen = {str((getattr(a, "_extra", None) or {})
-                         .get("curated", "")).split("/")[0]
+        sets_seen = {str(a._extra.get("curated", "")).split("/")[0]
                      for a in fresh}
         self.assertLessEqual({"wada", "klee", "albers", "itten"},
                              sets_seen)
@@ -646,8 +644,8 @@ class CuratedKeysTest(unittest.TestCase):
                            "premise: the seed never ran")
         fresh = model._assets[before:]
         untagged = [a.name for a in fresh
-                    if not str((getattr(a, "_extra", None) or {})
-                               .get("curated", "")).startswith("starter/")]
+                    if not str(a._extra.get("curated", ""))
+                    .startswith("starter/")]
         self.assertEqual([], untagged[:5],
                          "seeded snippets carry no starter/ tag")
 
@@ -657,8 +655,7 @@ class CuratedKeysTest(unittest.TestCase):
         model = gradient_library.GradientLibrary(p)
         model.seed_curated_palettes(_Cats())
         wada = [a for a in model._assets
-                if str((getattr(a, "_extra", None) or {})
-                       .get("curated", "")).startswith("wada/")]
+                if str(a._extra.get("curated", "")).startswith("wada/")]
         self.assertGreater(len(wada), 100, "premise: the Wada set seeded")
         out = _out_path(self, "wada.amazepkg")
         packages.write_package(
