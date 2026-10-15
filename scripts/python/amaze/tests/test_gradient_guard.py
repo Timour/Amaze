@@ -968,6 +968,29 @@ class ColorsHonourARefusedSave(unittest.TestCase):
             "ghost", self._on_disk_names(),
             "the refused palette reached disk with an unrelated save")
 
+    def _stamp_of(self, asset_id):
+        path = self.lib.asset_files(asset_id)["stamp"]
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"id": asset_id, "name": "doomed"}, fh)
+        return path
+
+    def test_a_delete_removes_the_palettes_stamp(self):
+        """A stamp no list claims is what Repair rebuilds from, so a deleted palette takes its own."""
+        stamp = self._stamp_of("doomeduid")
+        self.lib.remove_user_gradient(self._row_named("doomed"))
+        self.assertFalse(os.path.exists(stamp),
+                         "the deleted palette's stamp stayed in the asset folder")
+
+    def test_a_refused_delete_keeps_the_stamp(self):
+        from unittest.mock import patch
+        stamp = self._stamp_of("doomeduid")
+        with patch.object(database.DatabaseConnector, "save",
+                          return_value=False):
+            self.lib.remove_user_gradient(self._row_named("doomed"))
+        self.assertTrue(os.path.exists(stamp),
+                        "a delete the list refused took the stamp anyway")
+
     def test_an_ordinary_delete_still_works(self):
         """The accept path: the refusal must not be the normal one."""
         row = self._row_named("doomed")

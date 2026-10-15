@@ -14,6 +14,7 @@ from amaze.core import material
 from amaze.core import multifilterproxy_model
 from amaze.core import thumbnails
 from amaze.core import tile_icons
+from amaze.helpers import hostos
 from amaze import messages
 
 THUMB_SIZE = 256
@@ -256,12 +257,12 @@ class GradientLibrary(library.AssetLibrary):
         self.row_changed(0)
 
     def remove_asset(self, index) -> None:
-        """The family's delete verb in Colors' terms - a palette owns nothing on disk beyond its row, so there is no file pass."""
+        """The family's delete verb in Colors' terms: a palette owns its row and its stamp."""
         if index.isValid():
             self.remove_user_gradient(index.row())
 
     def remove_user_gradient(self, row: int) -> None:
-        """Delete a palette, honouring the connector's answer."""
+        """Delete a palette, then its stamp - only once the list stops naming it."""
         if not 0 <= row < len(self._assets):
             return
         asset = self._assets[row]
@@ -272,6 +273,17 @@ class GradientLibrary(library.AssetLibrary):
             debug.alert(
                 messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
                 key="colors-delete-refused")
+            return
+        try:
+            stamp = self.asset_files(asset.mat_id).get("stamp", "")
+        except hostos.PathEscape:
+            stamp = ""
+        if stamp and os.path.exists(stamp):
+            try:
+                os.remove(stamp)
+            except OSError as exc:
+                debug.event("gradient", "palette stamp remove skipped",
+                            file=stamp, error=str(exc))
 
     def cleanup_db(self, show_dialog: bool = True) -> int:
         """Reduced to a state flush: palettes are stored inline, so the inherited missing-file and lonely-file passes would call every one an orphan."""
