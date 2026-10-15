@@ -63,8 +63,8 @@ def normalise(value) -> dict:
 SPEC = keyed_store.bind(NOTES_FILE, normalise)  # the engine DECLARES this store; this attaches the one thing it cannot know - what a well-formed page is
 
 
-def _store(preferences):
-    return keyed_store.open_store(SPEC, preferences)
+def _store(preferences, library: str = ""):
+    return keyed_store.open_store(SPEC, preferences, library)
 
 
 def notes(preferences) -> dict:
@@ -82,9 +82,9 @@ def has_note(preferences, key: str) -> bool:
     return _store(preferences).has(key)
 
 
-def set_note(preferences, key: str, items: list) -> bool:
+def set_note(preferences, key: str, items: list, library: str = "") -> bool:
     """Store one asset's page (an ordered item flow); an empty page removes the key. Returns whether the write actually happened - a read-only library must not take notes it will lose at restart. The failure reporting is the ENGINE's: the words on the store's Spec (`denied_alert`), the policy in `_commit`."""
-    return bool(_store(preferences).set(key, {"items": items}))
+    return bool(_store(preferences, library).set(key, {"items": items}))
 
 
 def set_notes(preferences, pages: dict):

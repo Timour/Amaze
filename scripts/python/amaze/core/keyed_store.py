@@ -395,10 +395,10 @@ register(
 _open: dict = {}                    # (filename, resolved path) -> Store
 
 
-def _root_for(spec: Spec, preferences) -> str:
+def _root_for(spec: Spec, preferences, library: str = "") -> str:
     """Which directory this store's file lives in; REFUSES rather than defaulting to the library. ▸p/store-declarations"""
     if spec.in_library:
-        return str(preferences.dir)
+        return str(library or preferences.dir)
     root = str(getattr(preferences, "path", "") or "")
     if not root:
         raise ValueError(
@@ -413,9 +413,9 @@ def _same_file(path: str) -> str:
     return hostos.canonical_path_key(path)
 
 
-def open_store(spec: Spec, preferences) -> "Store":
-    """The store for this library, read once and CACHED - every reader the same rows. ▸p/one-file-one-table"""
-    path = os.path.join(_root_for(spec, preferences), spec.filename)
+def open_store(spec: Spec, preferences, library: str = "") -> "Store":
+    """The store in `library`, else in the one `preferences` names; CACHED. ▸p/one-file-one-table"""
+    path = os.path.join(_root_for(spec, preferences, library), spec.filename)
     handle = _open.get((spec.filename, _same_file(path)))
     if handle is None:
         handle = Store(spec, path, preferences)

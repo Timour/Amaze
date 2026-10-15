@@ -547,6 +547,9 @@ class AmazePanel(QtWidgets.QWidget):
 
     def switch_all_models(self) -> None:
         """Re-point every library-backed model at `prefs.dir` - THE ONE ROUTE ONTO ANOTHER LIBRARY and the only route that re-points models at all, because a model a switch skips goes on serving the previous library with every save refused"""
+        pane = getattr(self, "notes_panel", None)
+        if pane is not None:
+            pane.clear_subject()    # a pending edit goes to its own library; the switch selects nothing
         locations.forget()    # drop EVERY cached store table first (keyed_store.release inside), so a switch BACK to a library re-reads what is on disk instead of serving the session's old rows - sync can land another machine's edits behind the cache (test_switch_rereads is the pin) - and re-arm the migration retry guards, since a switch is exactly the change that earns another try
         models = self.library_models()
         if not models:

@@ -1,9 +1,12 @@
 """The Comments area: a context says what its own subject is - `takes_comments` answers CAN this context ever carry one (the toolbar chip, with nothing selected), `comment_subject(index)` answers what the subject is RIGHT NOW, and only a context can map its own index."""
 
 import ast
+import json
 import os
 import sys
+import types
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -16,8 +19,9 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze import amazetheme  # noqa: E402
 from amaze.panel import sections  # noqa: E402
-from amaze.core import notes  # noqa: E402
+from amaze.core import keyed_store, notes  # noqa: E402
 from amaze.panel import notes_panel, sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -387,6 +391,88 @@ class APendingEditIsNotLostOnTheWayOUT(unittest.TestCase):
         before = self._stored("material:asset-2")
         self.pane.close()
         self.assertEqual(before, self._stored("material:asset-2"))
+
+
+class ALibrarySwitchLeavesTheNoteWhereItWasTyped(unittest.TestCase):
+    """A page is written to the library it was read from, and a switch leaves nothing selected."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.resize(1400, 800)
+        self.panel.show()
+        self.addCleanup(self.panel.hide)
+        self.addCleanup(keyed_store.release)
+        self.panel.section_tabs.setChecked("material")
+        self.panel.btn_notes.setChecked(True)
+        QtWidgets.QApplication.processEvents()
+
+    def _pick_tile(self, row):
+        view = self.panel.thumblist
+        pos = QtCore.QPointF(view.visualRect(view.model().index(row, 0)).center())
+        left = QtCore.Qt.MouseButton.LeftButton
+        plain = QtCore.Qt.KeyboardModifier.NoModifier
+        view.mousePressEvent(QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseButtonPress, pos, left, left, plain))
+        view.mouseReleaseEvent(QtGui.QMouseEvent(
+            QtCore.QEvent.Type.MouseButtonRelease, pos, left,
+            QtCore.Qt.MouseButton.NoButton, plain))
+        QtWidgets.QApplication.processEvents()
+
+    def _switch_library(self):
+        """Set Library's own door, the folder picker answering the way a real pick saves."""
+        other = test_support.fresh_library(self)
+        settings = os.path.join(self.panel.prefs.path, "settings.json")
+        with open(settings, encoding="utf-8") as handle:
+            data = json.load(handle)
+        data["directory"] = other
+        with open(settings, "w", encoding="utf-8") as handle:
+            json.dump(data, handle)
+
+        def picked():
+            self.panel.prefs.dir = other
+            return True
+
+        with mock.patch.object(self.panel.prefs, "get_dir_from_user", picked):
+            self.panel.set_library()
+        QtWidgets.QApplication.processEvents()
+        return other
+
+    def _typed_in(self, library, key):
+        keyed_store.release()    # the page as it is ON DISK, not as a cached table holds it
+        page = notes.note_for(types.SimpleNamespace(dir=library), key)
+        return [item.get("text", "") for item in page.get("items", [])]
+
+    def test_a_pending_edit_is_written_to_the_library_it_was_typed_in(self):
+        pane = self.panel.notes_panel
+        self._pick_tile(1)
+        key = pane._key
+        self.assertIsNotNone(key, "no tile picked, so nothing can be typed")
+        old = self.panel.prefs.dir
+        pane.text_edit.setPlainText("typed before the switch")
+        self.assertTrue(pane._save_timer.isActive(),
+                        "nothing is pending, so this test cannot say anything")
+
+        new = self._switch_library()
+        self.assertNotEqual(old, self.panel.prefs.dir)
+        pane.flush()    # the debounce firing after the switch
+
+        self.assertIn("typed before the switch", self._typed_in(old, key),
+                      "the edit never reached the library it was typed in")
+        self.assertNotIn("typed before the switch", self._typed_in(new, key),
+                         "the edit was written into the library switched to")
+
+    def test_after_a_switch_the_pane_shows_nothing_selected(self):
+        pane = self.panel.notes_panel
+        self._pick_tile(1)
+        self.assertIsNotNone(pane._key, "no tile picked, so this proves nothing")
+
+        self._switch_library()
+
+        self.assertIsNone(pane._key,
+                          "the pane still shows the previous library's asset")
+        self.assertFalse(pane.text_edit.isEnabled(),
+                         "the pane still takes typing for an asset not on screen")
+        self.assertEqual(amazetheme.COMMENT_DIM_NAME, pane.name_label.text())
 
 
 class ThePANEL_BEING_DESTROYED_writesAPendingEdit(unittest.TestCase):

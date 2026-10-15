@@ -467,6 +467,7 @@ class NotesPanel(ui_helpers.HeldPane):
                          theme.ui_px(_DRAWN["width"]), parent)
         self.preferences = preferences
         self._key = None
+        self._library = ""    # the library the page was read from, and so the one its saves write to
         self._loading = False
         self._save_timer = QtCore.QTimer(self)
         self._save_timer.setSingleShot(True)
@@ -571,17 +572,18 @@ class NotesPanel(ui_helpers.HeldPane):
     def set_subject(self, subject) -> None:
         """Point the page at one asset, flushing any pending edit for the previous one first; `subject` is a `sections.CommentSubject`, read BY NAME."""
         key = subject.key
-        if key == self._key:    # a rename: the header follows, and a reload would lose what is being typed
+        library = str(getattr(self.preferences, "dir", "") or "")
+        if (key, library) == (self._key, self._library):    # a rename: a reload would lose the typing
             self.set_header(subject.name, subject.type)
             return
         self.flush()
         self._key = key
+        self._library = library
         self._loading = True
         try:
             self.set_header(subject.name, subject.type)
             note = notes.note_for(self.preferences, key)
-            self.text_edit.library_dir = str(    # re-read per page: a library switch moves where an image's relative src points ▸p/comment-images
-                getattr(self.preferences, "dir", "") or "")
+            self.text_edit.library_dir = library    # what an image's relative src resolves against ▸p/comment-images
             self.text_edit.load_items(note.get("items", []))
         finally:
             self._loading = False
@@ -598,6 +600,7 @@ class NotesPanel(ui_helpers.HeldPane):
     def clear_subject(self) -> None:
         self.flush()
         self._key = None
+        self._library = ""
         self._show_ghost()
 
     def _show_ghost(self) -> None:
@@ -669,7 +672,8 @@ class NotesPanel(ui_helpers.HeldPane):
         if self._key is None:
             return
         written = notes.set_note(
-            self.preferences, self._key, self.text_edit.serialize())
+            self.preferences, self._key, self.text_edit.serialize(),
+            self._library)
         if written:
             self.changed.emit(self._key)
         else:
