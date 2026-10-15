@@ -51,7 +51,7 @@ def survey(directory: str, asset_dir: str = "mat/",
     for folder, extensions, tail in (
             (asset_dir, ASSET_SIDECARS, "_cop"),
             (img_dir, (".png",), "_icon")):
-        names = _unlisted_in(directory, folder, extensions, tail, ids)
+        names = unlisted_in(directory, folder, extensions, tail, ids)
         if names is None:
             unreadable_folders.append(folder)
             unaccounted[folder] = []
@@ -113,8 +113,8 @@ def _survey_one(directory: str, filename: str) -> dict:
     return entry
 
 
-def _unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
-                 known_ids: set):
+def unlisted_in(directory: str, folder: str, extensions: tuple, tail: str,
+                known_ids: set):
     """Files no list accounts for, or None when the folder could not be read."""
     full = os.path.join(directory, folder)
     try:

@@ -1100,6 +1100,23 @@ class TheRouteFromCleanLibraryTest(_Case):
         self.assertNotIn("STRAY1.mat.writing", mine,
                          "premise: a scratch file must be out of the set")
 
+    def test_clean_library_counts_a_stray_builder_and_stamp_too(self):
+        """The guard counts every sidecar the sweep takes, as Repair does."""
+        self._cops([])
+        for name in ("STRAY3.builder.json", "STRAY4.stamp.json"):
+            with open(os.path.join(self.mat_dir, name), "w",
+                      encoding="utf-8") as handle:
+                handle.write("{}\n")
+        model = self._material_model()
+        clean = model._files_no_section_accounts_for(
+            {str(a.mat_id) for a in model.assets})
+        mine = self._survey()["unaccounted"][self.prefs.asset_dir]
+        self.assertIn("STRAY3.builder.json", mine, "premise: Repair counts it")
+        self.assertEqual(
+            sorted(mine), sorted(clean),
+            "Clean Library's empty-section guard misses files its own "
+            "sweep would move, so an empty list no longer holds it back")
+
 
 class TheRealLibraryRehearsalTest(unittest.TestCase):
     """The same route against the real library's shape, which is only ever read."""
@@ -1607,6 +1624,19 @@ class QuarantineIsBoundedTest(unittest.TestCase):
         self.assertTrue(os.path.exists(recent_dir),
                         "a recent quarantine day was removed - the window "
                         "is what makes a wrong sweep recoverable")
+
+    def test_one_folder_holds_what_is_moved_counted_and_expired(self):
+        """What `quarantine_file` moves, `quarantine_size` counts and `prune_quarantine` expires."""
+        import time as _t
+        stray = os.path.join(self.dir, "stray.mat")
+        with open(stray, "w") as fh:
+            fh.write("xyz")
+        moved = library_mod.quarantine_file(self.dir, stray)
+        self.assertTrue(moved.startswith(library_mod.quarantine_folder(self.dir)))
+        self._day(_t.strftime("%Y-%m-%d", _t.localtime(_t.time() - 60 * 86400)))
+        self.assertEqual((2, 4), library_mod.quarantine_size(self.dir))
+        self.assertEqual(1, library_mod.prune_quarantine(self.dir))
+        self.assertEqual((1, 3), library_mod.quarantine_size(self.dir))
 
     def test_the_window_follows_the_NAME_not_mtime(self):
         """A copy rewrites mtime; the name says which day they were taken out."""

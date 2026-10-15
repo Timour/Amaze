@@ -15,17 +15,21 @@ QUARANTINE_PREFIX = "quarantine"
 QUARANTINE_DAYS = 30
 
 
+def _quarantine_root(library_dir: str) -> str:
+    """This library's quarantine, every day of it, in the machine-local history folder."""
+    return os.path.join(hostos.history_root(
+        os.path.join(library_dir, "library.json")), QUARANTINE_PREFIX)
+
+
 def quarantine_folder(library_dir: str) -> str:
     """One folder per day, so a second run the same day adds rather than scatters. Held for `QUARANTINE_DAYS` - a sweep nobody noticed inside the window was not wrong about anything needed, and keeping it longer costs disk forever."""
-    return os.path.join(hostos.history_root(
-        os.path.join(library_dir, "library.json")),
-        QUARANTINE_PREFIX, time.strftime("%Y-%m-%d"))
+    return os.path.join(_quarantine_root(library_dir),
+                        time.strftime("%Y-%m-%d"))
 
 
 def prune_quarantine(library_dir: str, days: int = QUARANTINE_DAYS) -> int:
     """Removes quarantine days older than `days`, BY THE DATE IN THE NAME - mtime records the last touch, which a backup pass rewrites. The removal here is PERMANENT and sanctioned: this folder IS the trash, and a second one would only mean the same files sit in two places forever."""
-    root = os.path.join(hostos.history_root(
-        os.path.join(library_dir, "library.json")), QUARANTINE_PREFIX)
+    root = _quarantine_root(library_dir)
     cutoff = time.strftime(
         "%Y-%m-%d", time.localtime(time.time() - days * 86400))
     removed = 0
@@ -52,10 +56,8 @@ def prune_quarantine(library_dir: str, days: int = QUARANTINE_DAYS) -> int:
 
 def quarantine_size(library_dir: str) -> tuple:
     """(files, bytes) currently held for this library, across all days."""
-    root = os.path.join(hostos.history_root(
-        os.path.join(library_dir, "library.json")), QUARANTINE_PREFIX)
     count = total = 0
-    for folder, _dirs, files in os.walk(root):
+    for folder, _dirs, files in os.walk(_quarantine_root(library_dir)):
         for name in files:
             try:
                 total += os.path.getsize(os.path.join(folder, name))

@@ -1104,44 +1104,32 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             names=mat_names)
         spared = set()  # AWAITING REPAIR IS NOT LEFT OVER - files with a readable stamp and no row are the one shape Repair exists for, and a stamp with no .mat beside it is normal (Code keeps its text inline)
 
-        for f in mat_names:
-            split = database.asset_id_for_file(  # the same classifier the guard above counted with
-                f, (".mat", ".interface", nodes.BUILDER_SUFFIX,
-                    STAMP_SUFFIX), "_cop")
-            if split is not None:
-                found = str(split) in known_ids
-                if not found and str(split) in awaiting_repair:
-                    spared.add(str(split))
+        def take_unclaimed(folder, names, extensions, tail) -> int:
+            """Quarantine the files here no list claims, sparing an id awaiting Repair; answers how many."""
+            taken = 0
+            for f in names:
+                split = database.asset_id_for_file(f, extensions, tail)
+                if split is None or str(split) in known_ids:
                     continue
-                if not found:
-                    moved = quarantine_file(self.preferences.dir,
-                                            os.path.join(mats_path, f))
-                    if moved:
-                        lone_count += 1
-                        quarantined.append(f)
-                        quarantined_paths.append(
-                            [os.path.join(mats_path, f), moved])
+                if str(split) in awaiting_repair:
+                    spared.add(str(split))    # in EVERY folder, or Repair puts the row back blank
+                    continue
+                moved = quarantine_file(self.preferences.dir,
+                                        os.path.join(folder, f))
+                if moved:
+                    taken += 1
+                    quarantined.append(f)
+                    quarantined_paths.append([os.path.join(folder, f), moved])
+            return taken
 
-        mats_path = os.path.join(self.preferences.dir, self.preferences.img_dir)
-        if unreadable_abort or not os.path.isdir(mats_path):  # isdir, because a library whose img/ has not been created yet raised straight out of cleanup
-            listing = []
-        else:
-            listing = os.listdir(mats_path)
-        for f in listing:
-            split = database.asset_id_for_file(f, (".png",), "_icon")  # "_icon" is a tile icon, not a leftover - the same shape the .mat pass handles for "_cop"
-            if split is not None:
-                found = str(split) in known_ids
-                if not found and str(split) in awaiting_repair:  # THE SAME ID IS SPARED IN BOTH FOLDERS, or Repair puts the row back blank
-                    spared.add(str(split))
-                    continue
-                if not found:
-                    moved = quarantine_file(self.preferences.dir,
-                                            os.path.join(mats_path, f))
-                    if moved:
-                        lone_count += 1
-                        quarantined.append(f)
-                        quarantined_paths.append(
-                            [os.path.join(mats_path, f), moved])
+        lone_count += take_unclaimed(    # the classifier the guard above counts with
+            mats_path, mat_names, repair.ASSET_SIDECARS, "_cop")
+        images = os.path.join(self.preferences.dir, self.preferences.img_dir)
+        lone_count += take_unclaimed(    # "_icon" is a tile icon as "_cop" is a companion
+            images,
+            [] if unreadable_abort or not os.path.isdir(images)    # img/ may not exist yet
+            else os.listdir(images),
+            (".png",), "_icon")
         if quarantined_paths:
             debug.event("cleanup", "files quarantined",  # ONE record carrying EVERY move: it is the only trace of where a file went, so a sample is useless the moment somebody needs one back
                         moved=len(quarantined_paths),
@@ -1247,21 +1235,10 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def _files_no_section_accounts_for(self, known_ids: set):
         """Names of the files in the asset folder that NO section lists, or None when the folder could not be read at all. PASS A FINISHED UNION as `known_ids` - orphanhood is relative to every list sharing the directory, and a half-built one reports a live COP asset's files as unclaimed. None rather than [] on a failed listing, because an empty list reads as a clean folder, and that reading is what lets the sweep run. ▸p/clean-library-sweep"""
-        assets_dir = os.path.join(
-            self.preferences.dir, self.preferences.asset_dir)
-        try:
-            names = sorted(os.listdir(assets_dir))
-        except OSError as exc:
-            debug.event("cleanup", "asset folder could not be listed",
-                        path=assets_dir, error=str(exc))
-            return None
-        found = []
-        for name in names:
-            asset_id = database.asset_id_for_file(
-                name, (".mat", ".interface"), "_cop")
-            if asset_id is not None and str(asset_id) not in known_ids:
-                found.append(name)
-        return found
+        from amaze.core import repair    # here: repair imports this module
+        return repair.unlisted_in(self.preferences.dir,
+                                  self.preferences.asset_dir,
+                                  repair.ASSET_SIDECARS, "_cop", known_ids)
 
     def _all_known_asset_ids(self) -> tuple:
         """(ids, unreadable, absent_traces, empty_sections) for EVERY database file in the library dir, read straight off disk, so one library's cleanup never deletes files belonging to another. `unreadable` is (section name, why) as two halves because the caller writes them into two different sentences; `absent_traces` maps a database that is merely NOT THERE YET to the trace that says so, and `empty_sections` the ones that parse fine and list nothing while files sit unaccounted for - separate because the way out is a different sentence for each. code.json belongs here even though snippets keep their text inline: a Code asset with a tile icon owns a PNG in the shared image folder. ▸p/clean-library-sweep"""
