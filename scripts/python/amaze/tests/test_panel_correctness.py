@@ -280,21 +280,10 @@ class CaptureIsDecidedInOnePlace(unittest.TestCase):
     def test_the_tile_menu_does_not_re_decide(self):
         """The policy is only that the target is the current scene."""
         source = func_source("panel/sections.py", "menu_capture_enabled")
-        self.assertNotIn(
-            "amaze_opened_current_scene", source,
-            "the tile's Capture gate re-decides the retired rule; the "
-            "shared path dropped it deliberately and the shelf tool "
-            "cannot be made to share it")
         self.assertIn(
             "current_scene_path", source,
             "the gate no longer tests the thing the capture is filed "
             "against")
-
-    def test_the_shared_policy_still_does_not_require_it(self):
-        self.assertNotIn(
-            "amaze_opened_current_scene",
-            func_source("core/scene_captures.py", "capture_open_scene"),
-            "the shared policy grew the retired clause back")
 
 
 class TheMapNamesEveryModule(unittest.TestCase):

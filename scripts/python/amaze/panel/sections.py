@@ -1408,7 +1408,6 @@ class FileSection(FolderSection):
                 severity=hou.severityType.Error)
             debug.event("hip", "open failed", file=path, error=str(exc))
             return
-        scene_captures.note_opened(path)
         debug.event("hip", "scene opened", file=path)
 
     def drop_file_path_on_node(self, index, node) -> bool:

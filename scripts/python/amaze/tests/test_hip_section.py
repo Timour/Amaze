@@ -274,49 +274,6 @@ class ScratchNameKeepsTheImageFormatTest(unittest.TestCase):
                          "the scratch file was left behind")
 
 
-class OnlyTheAmazeOpenedSceneTest(unittest.TestCase):
-    """The capture photographs the CURRENT viewport, so it must only be filed against the scene that viewport is showing - getting this wrong files a picture under another scene's name, silently, and the result looks entirely plausible."""
-
-    def setUp(self):
-        self.addCleanup(scene_captures.note_opened, "")
-
-    def test_nothing_opened_means_not_ours(self):
-        scene_captures.note_opened("")
-        self.assertFalse(scene_captures.amaze_opened_current_scene())
-
-    def test_a_mismatch_with_the_live_scene_is_rejected(self):
-        scene_captures.note_opened("/tmp/some_other_scene.hiplc")
-        self.assertFalse(
-            scene_captures.amaze_opened_current_scene(),
-            "a scene Amaze did not open was accepted as capturable")
-
-    def test_a_match_is_accepted(self):
-        real = scene_captures.current_scene_path
-        self.addCleanup(setattr, scene_captures, "current_scene_path", real)
-        scene_captures.current_scene_path = lambda: "/tmp/match.hiplc"
-        scene_captures.note_opened("/tmp/match.hiplc")
-        self.assertTrue(scene_captures.amaze_opened_current_scene())
-
-    def test_the_check_is_a_comparison_not_a_flag(self):
-        """Guards the guard: if it ever becomes did-Amaze-open-anything, these tests pass while the protection is gone."""
-        real = scene_captures.current_scene_path
-        self.addCleanup(setattr, scene_captures, "current_scene_path", real)
-        scene_captures.note_opened("/tmp/a.hiplc")
-        scene_captures.current_scene_path = lambda: "/tmp/b.hiplc"
-        self.assertFalse(
-            scene_captures.amaze_opened_current_scene(),
-            "the check no longer compares paths - any opened scene "
-            "would now authorise a capture")
-
-    def test_the_opened_path_survives_a_module_reload(self):
-        """The panel reloads modules in place; a plain assignment would forget which scene was opened on every reload."""
-        import importlib
-        scene_captures.note_opened("/tmp/kept.hiplc")
-        importlib.reload(scene_captures)
-        self.assertEqual("/tmp/kept.hiplc", scene_captures.opened_path(),
-                         "the opened scene was forgotten on reload")
-
-
 class NoAutomaticCaptureTest(unittest.TestCase):
     """A capture must never happen on its own - pinned in the SOURCE because the failure cannot be reproduced in a test: it needs a GUI, a heavy scene, and it ends with Houdini dead. A capture scheduled 1.2s after opening a cloth-sim scene blocked 22 SECONDS on the first file and never returned on the second - 86GB of RAM consumed, Houdini crashed. A capture runs a flipbook, a flipbook forces the scene to COOK, and cooking someone else's scene is work of unbounded size; no delay fixes that, so there is no delay and no automatic capture at all."""
 
@@ -367,19 +324,19 @@ class NoAutomaticCaptureTest(unittest.TestCase):
             "Houdini with an 86GB allocation on 2026-07-29")
 
     def test_opening_a_scene_does_not_capture(self):
-        """open_hip_scene must record the path and stop there."""
+        """open_hip_scene must open the scene and stop there."""
         code = self._sections_source()
         start = code.find("def open_hip_scene")
         self.assertGreater(start, -1, "open_hip_scene is gone - this "
                                       "test is not exercising anything")
         end = code.find("def ", start + 10)
         body = code[start:end if end > 0 else len(code)]
-        for verb in ("capture_thumbnail(", "capture_open_scene(",  # THE CALLS, not the word: a bare substring scan read the module name in scene_captures.note_opened - the recording this method is SUPPOSED to do - and called it a capture; a new entry point joins this tuple
+        for verb in ("capture_thumbnail(", "capture_open_scene(",  # the CALLS, not the bare word; a new entry point joins this tuple
                      "_capture_and_report(", "capture_hip_thumbnail("):
             self.assertNotIn(
                 verb, body,
-                "opening a scene calls %s; it must only record which "
-                "scene was opened" % verb)
+                "opening a scene calls %s; it must only open the scene"
+                % verb)
 
     def test_the_scan_can_actually_see_the_panel(self):
         """Guards the guard: an empty read passes every assertion above - each file scan must see the function it is aimed at."""
@@ -595,8 +552,6 @@ class SlowCapturePromptTest(unittest.TestCase):
         """A viewport rendering through Karma, with capture sabotaged so any attempt to proceed fails the test rather than passing it."""
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: self.scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         self._patch("viewport_state",
                     lambda *a: {"blocking": True, "renderer": "Karma CPU"})
         self._patch("capture_thumbnail", lambda p, v=None: self.fail(
@@ -629,8 +584,6 @@ class SlowCapturePromptTest(unittest.TestCase):
         order = []
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: self.scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         self._patch("viewport_state",
                     lambda *a: order.append("state") or {"blocking": False})
         self._patch("capture_thumbnail",
@@ -740,8 +693,6 @@ class OpenSceneBadgeTest(unittest.TestCase):
     def test_the_badge_follows_the_LIVE_scene_not_what_amaze_opened(self):
         """A scene opened by File > Open still gets the badge: the mark answers whether this is the one on screen, which has one true answer regardless of who opened it."""
         from amaze.helpers import hostos
-        scene_captures.note_opened("")
-        self.addCleanup(scene_captures.note_opened, "")
         scene_captures.current_scene_path = \
             lambda: hostos.canonical_path_key(self.b)
         self.assertEqual([False, True], self._flags())
@@ -1091,8 +1042,6 @@ class CaptureDecisionPathTest(unittest.TestCase):
     def test_a_target_that_is_not_open_is_refused(self):
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: self.scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         with self.assertRaises(scene_captures.CaptureRefused) as caught:
             scene_captures.capture_open_scene(_real_scene(self, "other.hiplc"))
         self.assertIn("different scene", str(caught.exception))
@@ -1100,8 +1049,6 @@ class CaptureDecisionPathTest(unittest.TestCase):
     def test_a_rendering_viewport_is_refused(self):
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: self.scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         self._patch("viewport_state",
                     lambda *a: {"blocking": True, "renderer": "Karma CPU"})
         self._patch("capture_thumbnail",
@@ -1116,8 +1063,6 @@ class CaptureDecisionPathTest(unittest.TestCase):
         viewers = iter(["FIRST", "SECOND", "THIRD"])
         self.scene = _real_scene(self)
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: self.scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         self._patch("scene_viewer", lambda: next(viewers))
         self._patch("viewport_state",
                     lambda v=None: handed.append(("guard", v))
@@ -1139,8 +1084,6 @@ class CaptureDecisionPathTest(unittest.TestCase):
         taken = []
         self.scene = _real_scene(self, "manual.hiplc")
         self._patch("current_scene_path", lambda: self.scene)
-        self._patch("opened_path", lambda: "")
-        self._patch("amaze_opened_current_scene", lambda: False)
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("capture_thumbnail",
                     lambda p, v=None: taken.append(p) or "/tmp/shot.png")
@@ -1163,8 +1106,7 @@ class CaptureDecisionPathTest(unittest.TestCase):
             self.assertIn(
                 "_capture_and_report", body,
                 "%s does not use the shared path" % name)
-            for owned in ("viewport_state(", "amaze_opened_current_scene(",
-                          "displayMessage("):
+            for owned in ("viewport_state(", "displayMessage("):
                 self.assertNotIn(
                     owned, body,
                     "%s re-decides with %s - that belongs to "
@@ -1278,18 +1220,6 @@ class ReviewFixesTest(unittest.TestCase):
 
     def test_an_empty_path_stays_empty(self):
         self.assertEqual("", scene_captures._key(""))
-        scene_captures.note_opened("")
-        self.assertEqual("", scene_captures.opened_path())
-        self.assertFalse(
-            scene_captures.opened_path(),
-            "an empty opened path is truthy, so the guard never fires")
-
-    def test_a_reset_does_not_claim_amaze_opened_the_scene(self):
-        self._patch("current_scene_path", lambda: "")
-        scene_captures.note_opened("")
-        self.assertFalse(
-            scene_captures.amaze_opened_current_scene(),
-            "after a reset Amaze claims to have opened the open scene")
 
     def test_an_unsaved_scene_is_refused(self):
         self._patch("current_scene_path", lambda: "/nope/untitled.hip")
@@ -1304,8 +1234,6 @@ class ReviewFixesTest(unittest.TestCase):
         tmp = _Tmp(self)
         scene = tmp.touch("open.hiplc")
         self._patch("current_scene_path", lambda: scene)
-        self._patch("opened_path", lambda: "")
-        self._patch("amaze_opened_current_scene", lambda: False)
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("scene_viewer", lambda: "V")
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/s.png")
@@ -1353,8 +1281,6 @@ class AnyViewerContextCanBeCapturedTest(unittest.TestCase):
     def _capture_from(self, category):
         scene = _real_scene(self)
         self._patch("current_scene_path", lambda: scene)
-        self._patch("opened_path", lambda: scene)
-        self._patch("amaze_opened_current_scene", lambda: True)
         self._patch("scene_viewer", lambda: self._Viewer(category))
         self._patch("viewport_state", lambda *a: {"blocking": False})
         self._patch("capture_thumbnail", lambda p, v=None: "/tmp/shot.png")

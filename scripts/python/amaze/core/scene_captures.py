@@ -122,23 +122,9 @@ def _record_manifest(hip_path: str, png: str) -> None:
         debug.event("hip", "manifest not written", error=str(exc))
 
 
-
-
-_state = globals().get("_state", {"opened": ""})  # survives importlib.reload - the panel reloads modules in place, and a plain assignment would forget which scene Amaze opened
-
-
 def _key(path: str) -> str:
     """canonical_path_key, but "" stays "" - normpath("") is ".", a TRUTHY key equal to current_scene_path() when nothing is open, which failed OPEN the one check that prevents mis-filing."""
     return hostos.canonical_path_key(path) if path else ""
-
-
-def note_opened(path: str) -> None:
-    """Remember that Amaze opened this scene."""
-    _state["opened"] = _key(path or "")
-
-
-def opened_path() -> str:
-    return _state.get("opened", "")
 
 
 def current_scene_path() -> str:
@@ -147,13 +133,6 @@ def current_scene_path() -> str:
         return _key(hou.hipFile.path() or "")
     except Exception:                                    # noqa: BLE001
         return ""
-
-
-def amaze_opened_current_scene() -> bool:
-    """Whether the scene on screen is the one Amaze opened - compares the RECORDED path against what is actually open, so a File > Open or a crash recovery simply stops matching with nothing to get out of sync; the capture policy deliberately dropped this clause (two source-derived tests pin that it stays dropped), and the behaviour tests keep the fail-closed semantics honest, which is its reason to stay."""
-    opened = opened_path()
-    return bool(opened) and opened == current_scene_path()
-
 
 
 FAST_DELEGATES = ("houdini gl", "houdini vk")  # delegates that DRAW the viewport rather than render it - a capture through one costs a raster frame; 22.0.394 reports "Houdini VK", older builds "Houdini GL"
