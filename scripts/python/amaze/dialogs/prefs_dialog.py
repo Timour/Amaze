@@ -179,7 +179,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         return page, form
 
     def _reload_library_users(self) -> None:
-        """Fill the picker and select the current user, UNDER `blockSignals`: the first `addItem` emits `currentIndexChanged(0)`, so a plain repopulate would silently switch the user."""
+        """Fill the picker and select the current user, signals held so the refill cannot switch user."""
         combo = self.cbb_library_user
         uid = users.current(self._prefs)
         with QtCore.QSignalBlocker(combo):
