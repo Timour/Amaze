@@ -12,16 +12,17 @@ import time
 from amaze import messages
 from amaze.core import debug, users
 from amaze.helpers import hostos
+from amaze.render.nodes import BUILDER_SUFFIX
 
 _STEM_NUMBER = re.compile(r"(?:^|-)(\d+)$")    # a stem is `<writer>-<n>`, or bare `<n>` whenever `writer_tag` answers empty (no user picked, unreadable prefs, a name with nothing alphanumeric left) - the trailing number IS the version number either way
 
 _KINDS = ((".mat", True), (".interface", False),    # the kinds a version archives - a missing .builder.json or .png is fine (older assets, no capture), a missing .mat is not a version
-          (".builder.json", False), (".png", False))
+          (BUILDER_SUFFIX, False), (".png", False))
 
 SOURCE_KINDS = {    # `asset_files()` kind -> the archive suffix it fills; a kind absent here (cop, stamp, tile icon) is not versioned, and library.py keys its pre-edit hold on this by filename suffix - `<id>_cop.mat` once collided with `<id>.mat` and archived the companion as Version 1's material
     "mat": ".mat",
     "interface": ".interface",
-    "builder": ".builder.json",
+    "builder": BUILDER_SUFFIX,
     "thumbnail": ".png",
 }
 
@@ -304,7 +305,7 @@ def _base_is_archived(preferences, mat_id: str, ledger: dict) -> bool:
         return False
     archive = _archive_paths(preferences, mat_id, _row_stem(row))
     base = _base_paths(preferences, mat_id)
-    for kind in (".mat", ".interface", ".builder.json"):
+    for kind in (".mat", ".interface", BUILDER_SUFFIX):
         base_path, archive_path = base.get(kind), archive.get(kind)
         in_base = bool(base_path) and os.path.exists(base_path)
         in_archive = bool(archive_path) and os.path.exists(archive_path)

@@ -1663,7 +1663,7 @@ class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
         package = os.path.dirname(os.path.dirname(
             os.path.abspath(repair.__file__)))
         found = []
-        for name in ("repair.py", "database.py"):
+        for name in ("repair.py", "database.py", "versions.py"):
             with open(os.path.join(package, "core", name),
                       encoding="utf-8") as handle:
                 text = handle.read()
