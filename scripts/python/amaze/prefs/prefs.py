@@ -10,7 +10,9 @@ from amaze.core import database
 from amaze.core import debug
 from amaze.helpers import hostos
 from amaze.prefs.persistence import (
-    RENDERER_DEFAULTS,
+    ASSET_SUBDIR,
+    IMG_SUBDIR,
+    SHARED_KEYS,
     _INTRODUCED_SECTIONS,
     _Persistence,
     _default_sections,
@@ -19,8 +21,6 @@ from amaze.prefs.persistence import (
 
 
 TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because the dialog, the seeder and the overlay all have to agree. A `cache/` left in an older test folder is inert ▸ `cache_dir`
-IMG_SUBDIR = "img/"  # the two folders a library cannot work without: `panel.ensure_library_dirs` and `seed_test_folder` each CREATE the pair, and `persistence.load()` still spells both defaults literally ▸p/library-creation-doors
-ASSET_SUBDIR = "mat/"
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
 RENDERSAMPLES_RANGE = (1, 1024)
@@ -92,15 +92,8 @@ class Prefs(_Persistence):
         self.path: str = hostos.config_root()  # where the OS keeps preferences, never under $AMAZE - that puts a user's library path inside the plugin folder, and inside a git tree for anyone who installed by cloning
         self._directory = ""
         self.data = {}
-        self._ext = ".mat"
-        self._img_ext = ".png"
-        self._img_dir = IMG_SUBDIR
-        self._asset_dir = ASSET_SUBDIR
-        self._rendersize = 256
-        self._rendersamples = 256
-        self._render_on_import = 1
-        for _attr, _default in RENDERER_DEFAULTS.items():  # THE SAME DEFAULTS load() APPLIES, from one table - this list was all False against load()'s True/False/True/True, only ONE of the four agreeing, and a machine with no settings.json kept the Falses and opened with every renderer switched off ▸p/prefs-defaults
-            setattr(self, _attr, _default)
+        for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
+            setattr(self, attr, default)
         self._show_categories = True
         self._section_filters: dict = {}  # the Filter menu's choice PER SECTION KEY, as the entry's LABEL - one shared key narrowed Nodes to nothing when Materials picked Redshift, and a label survives a section changing what its entries filter ON
         self._view_mode = "grid"
@@ -115,12 +108,8 @@ class Prefs(_Persistence):
         self._show_notes = False
         self._notes_panel_width = 0  # 0 = never dragged, so the 450px launch width applies
         self._sidebar_width = 0  # same contract, 220px design width - both side panes OWN their width and the grid is the splitter's only flexible pane
-        self._path_style = "home"  # how Amaze WRITES paths: "home"/"job"/"hip" pin one variable, "absolute" writes the literal (the setter maps a stored "auto" to "home")
-        self._geometry_shading_mode = "hiddenlineghost"  # flipbook ROP shadingmode token; paired with the black background below for the highest-contrast look out of the box
-        self._geometry_bg = "black"  # "black"/"white" swap the flipbook's grey sky for a solid bgimage; "default" keeps the flipbook's own look
         self._icon_line_weight = "template"  # "template" (the design template's thin 10px stroke) or "feather" (the icon set's default) - a look, not a measurement, which is why it is a preference
         self._sidebar_counts = True  # entry counts on INDIVIDUAL categories/folders; "All" always shows its total regardless
-        self._ram_cache_mb = 256  # past it, least-recently-viewed thumbnails drop from memory and reload from disk when scrolled back
         self._cache_dir = ""  # "" = this OS's own convention via hostos.cache_root()
         self._test_mode = False  # THE TEST LIBRARY OVERLAY, and an overlay never a write: `_directory` keeps the real path the whole time, because that is the only way back. It moves the LIBRARY only - the cache is keyed by file path, so moving it threw thousands of valid thumbnails away and protected nothing ▸ `cache_dir`
         self._test_dir = ""
@@ -129,13 +118,9 @@ class Prefs(_Persistence):
         self._sections_seen = {  # a fresh Prefs has every section, so their seen flags start recorded; load() recomputes from the active user's block
             "enabled_sections_seen_%s" % key: True
             for key in _INTRODUCED_SECTIONS}
-        self._texture_parallel_conversions = 4  # how many iconvert conversions run at once (1-8)
         self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
-        self._karma_rendersamples = 9  # Karma's own default, and separate from `rendersamples` which drives the Redshift ROP's UnifiedMaxSamples - the CPU engine needs far fewer
         self._scroll_speed = 0.75  # wheel factor for the grid/list, settled by live tuning and shown as a percent in Preferences
         self._debug_mode = False
-        self._matx_parallel_downloads = 8
-        self._matx_resolution = "2k"
         self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
 
     def get_dir_from_user(self) -> bool:
@@ -500,6 +485,7 @@ class Prefs(_Persistence):
 
     @property
     def path_style(self) -> str:
+        """How Amaze writes paths: home, job or hip pin one variable; absolute writes the literal."""
         return self._path_style
 
     @path_style.setter
@@ -510,6 +496,7 @@ class Prefs(_Persistence):
 
     @property
     def geometry_shading_mode(self) -> str:
+        """The flipbook ROP's shading token; with the black background, the highest-contrast look."""
         return self._geometry_shading_mode
 
     @geometry_shading_mode.setter
@@ -518,6 +505,7 @@ class Prefs(_Persistence):
 
     @property
     def geometry_bg(self) -> str:
+        """black or white swap the flipbook's grey sky for a solid image; default keeps the sky."""
         return self._geometry_bg
 
     @geometry_bg.setter
@@ -545,6 +533,7 @@ class Prefs(_Persistence):
 
     @property
     def ram_cache_mb(self) -> int:
+        """Past it, the least recently viewed thumbnails leave memory and reload from disk."""
         return self._ram_cache_mb
 
     @ram_cache_mb.setter
@@ -580,6 +569,7 @@ class Prefs(_Persistence):
 
     @property
     def texture_parallel_conversions(self) -> int:
+        """How many image conversions run at once."""
         return self._texture_parallel_conversions
 
     @texture_parallel_conversions.setter
@@ -588,6 +578,7 @@ class Prefs(_Persistence):
 
     @property
     def karma_rendersamples(self) -> int:
+        """Karma CPU's samples per pixel, apart from `rendersamples`, which is the Redshift dial."""
         return self._karma_rendersamples
 
     @karma_rendersamples.setter

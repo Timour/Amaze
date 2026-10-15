@@ -77,7 +77,7 @@ def _through_setter(target, name, value, default):
         setattr(target, name, default)
 
 
-RENDERER_DEFAULTS = {  # which renderers a library shows before anyone has chosen - ONE table, read by __init__ and by load() (▸p/prefs-defaults)
+RENDERER_DEFAULTS = {  # the renderers a library shows before anyone chooses; SHARED_KEYS carries them
     "_renderer_matx_enabled": True,
     "_renderer_redshift_enabled": True,
     "_renderer_octane_enabled": True,
@@ -89,30 +89,35 @@ RENDERER_KEYS = {  # attribute -> the key it is stored under, which is a contrac
     "_renderer_octane_enabled": "renderer_octane",
 }  # `renderer_mantra` was the fourth until 2026-08-14; nothing migrates it away and nothing may re-declare that spelling
 
-SHARED_KEYS = {  # the keys whose truth is the LIBRARY's `prefs.json`; stored key -> (property, attribute), a None property being read-only and adopted straight onto the attribute
-    "extension": (None, "_ext"),
-    "img_extension": (None, "_img_ext"),
-    "img_dir": (None, "_img_dir"),
-    "asset_dir": (None, "_asset_dir"),
-    "rendersize": ("rendersize", "_rendersize"),
-    "rendersamples": ("rendersamples", "_rendersamples"),
+IMG_SUBDIR = "img/"  # the two folders a library needs ▸p/library-creation-doors
+ASSET_SUBDIR = "mat/"
+
+SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or None, attr, default)
+    "extension": (None, "_ext", ".mat"),
+    "img_extension": (None, "_img_ext", ".png"),
+    "img_dir": (None, "_img_dir", IMG_SUBDIR),
+    "asset_dir": (None, "_asset_dir", ASSET_SUBDIR),
+    "rendersize": ("rendersize", "_rendersize", 256),
+    "rendersamples": ("rendersamples", "_rendersamples", 256),
     "karma_rendersamples":
-        ("karma_rendersamples", "_karma_rendersamples"),
-    "render_on_import": ("render_on_import", "_render_on_import"),
-    "matx_resolution": ("matx_resolution", "_matx_resolution"),
-    "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb"),
+        ("karma_rendersamples", "_karma_rendersamples", 9),
+    "render_on_import": ("render_on_import", "_render_on_import", 1),
+    "matx_resolution": ("matx_resolution", "_matx_resolution", "2k"),
+    "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb", 256),
     "matx_parallel_downloads":
-        ("matx_parallel_downloads", "_matx_parallel_downloads"),
+        ("matx_parallel_downloads", "_matx_parallel_downloads", 8),
     "texture_parallel_conversions":
         ("texture_parallel_conversions",
-         "_texture_parallel_conversions"),
+         "_texture_parallel_conversions", 4),
     "geometry_shading_mode":
-        ("geometry_shading_mode", "_geometry_shading_mode"),
-    "geometry_bg": ("geometry_bg", "_geometry_bg"),
-    "path_style": ("path_style", "_path_style"),
+        ("geometry_shading_mode", "_geometry_shading_mode",
+         "hiddenlineghost"),
+    "geometry_bg": ("geometry_bg", "_geometry_bg", "black"),
+    "path_style": ("path_style", "_path_style", "home"),
 }
-SHARED_KEYS.update({  # ONE table, walked by load(), refresh_data(), the adopt and the push - a key added to one walker and not the others loads and silently never travels
-    stored: (attr[1:], attr) for attr, stored in RENDERER_KEYS.items()})
+SHARED_KEYS.update({  # every walker and __init__ read this one table ▸p/prefs-defaults
+    stored: (attr[1:], attr, RENDERER_DEFAULTS[attr])
+    for attr, stored in RENDERER_KEYS.items()})
 
 _INTRODUCED_SECTIONS = ("file",)  # sections younger than settings: absent from a saved list without its seen flag means the list predates the section, not a deliberate OFF
 
@@ -233,7 +238,7 @@ class _Persistence:
         values = library_prefs.all_values(self)
         if not values:
             return          # fresh, latched or empty - the copy holds
-        for stored, (prop, attr) in SHARED_KEYS.items():
+        for stored, (prop, attr, _default) in SHARED_KEYS.items():
             if stored not in values:
                 continue
             value = values[stored]
@@ -254,7 +259,7 @@ class _Persistence:
             return
         library_prefs.set_values(self, {
             stored: getattr(self, attr)
-            for stored, (_prop, attr) in SHARED_KEYS.items()})
+            for stored, (_prop, attr, _default) in SHARED_KEYS.items()})
 
     def _user_state_document(self) -> dict:
         """The current per-user state as its stored keys - ONE composer for the block branch, the flat branch and the switch snapshot."""
@@ -369,7 +374,7 @@ class _Persistence:
         self.data["directory"] = _encode_path(self._directory)
         self.data["shared_settings"] = {  # the last-known COPY, one dict under one key, serving the next session when the library is unreachable; the truth goes through `_push_shared`
             stored: getattr(self, attr)
-            for stored, (_prop, attr) in SHARED_KEYS.items()}
+            for stored, (_prop, attr, _default) in SHARED_KEYS.items()}
         self.data["library_user"] = self._library_user
         self.data["cache_dir"] = _encode_path(self._cache_dir)
         self.data["test_mode"] = self._test_mode
@@ -413,54 +418,16 @@ class _Persistence:
         self._apply_user_block(
             self._users_blocks.get(self._library_user, {}), data)
         self._directory = _decode_path(data.get("directory", ""))
-        self._ext = shared.get("extension", data.get("extension", ".mat"))
-        self._img_ext = shared.get(
-            "img_extension", data.get("img_extension", ".png"))
-        self._img_dir = shared.get("img_dir", data.get("img_dir", "img/"))
-        self._asset_dir = shared.get(
-            "asset_dir", data.get("asset_dir", "mat/"))
-        _through_setter(self, "rendersize", shared.get(
-            "rendersize", data.get("rendersize", 256)), 256)
-        _through_setter(self, "render_on_import", shared.get(
-            "render_on_import", data.get("render_on_import", 1)), 1)
-        for _attr, _key in RENDERER_KEYS.items():
-            setattr(self, _attr,
-                    shared.get(_key,
-                               data.get(_key, RENDERER_DEFAULTS[_attr])))
-        _through_setter(self, "rendersamples", shared.get(
-            "rendersamples", data.get("rendersamples", 256)), 256)
-        _through_setter(self, "ram_cache_mb",  # through the setter: it clamps 64-4096 and casts int, and a string here reaches QSpinBox.setValue
-                        shared.get("ram_cache_mb",
-                                   data.get("ram_cache_mb", 256)), 256)
+        for stored, (prop, attr, default) in SHARED_KEYS.items():
+            value = shared.get(stored, data.get(stored, default))
+            if prop is None:    # the folder layout: paths are built from it, so only a string lands
+                setattr(self, attr,
+                        value if isinstance(value, str) else default)
+            else:
+                _through_setter(self, prop, value, default)
         self._cache_dir = _decode_path(data.get("cache_dir", ""))
         self._test_mode = bool(data.get("test_mode", False))
         self._test_dir = _decode_path(data.get("test_dir", ""))
-        self.path_style = shared.get(
-            "path_style", data.get("path_style", "home"))
-        self.geometry_shading_mode = shared.get(
-            "geometry_shading_mode",
-            data.get("geometry_shading_mode", "hiddenlineghost"))
-        self.geometry_bg = shared.get(
-            "geometry_bg", data.get("geometry_bg", "black"))
-        _through_setter(  # through the setter: it clamps 1-8
-            self, "texture_parallel_conversions",
-            shared.get("texture_parallel_conversions",
-                       data.get("texture_parallel_conversions", 4)), 4)
-        _through_setter(self, "karma_rendersamples",  # through the setter: max(1, int)
-                        shared.get("karma_rendersamples",
-                                   data.get("karma_rendersamples", 9)), 9)
-        try:  # the one cast in this method, and it is guarded because load() may not raise: "abc" gives ValueError, null/[]/{} give TypeError
-            self._matx_parallel_downloads = int(
-                shared.get("matx_parallel_downloads",
-                           data.get("matx_parallel_downloads", 8))
-            )
-        except (TypeError, ValueError):
-            debug.event("prefs", "unreadable matx_parallel_downloads - "
-                        "using the default",
-                        value=repr(data.get("matx_parallel_downloads")))
-            self._matx_parallel_downloads = 8
-        self.matx_resolution = shared.get(
-            "matx_resolution", data.get("matx_resolution", "2k"))
 
         if not isinstance(self._directory, str):  # _decode_path passes a non-str straight through, and `null`, `{}` or `[]` then reach os.path.exists
             self._directory = ""

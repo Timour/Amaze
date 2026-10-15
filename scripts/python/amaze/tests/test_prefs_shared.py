@@ -312,8 +312,8 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
         from amaze.prefs import persistence
         reread = {prop for _row, prop in self.dialog._SHARED_ROWS}
         reread |= set(self.dialog._renderer_boxes)
-        shared = {prop for prop, _attr in persistence.SHARED_KEYS.values()
-                  if prop}
+        shared = {prop for prop, _attr, _default
+                  in persistence.SHARED_KEYS.values() if prop}
         self.assertEqual(
             shared, reread,
             "a shared setting's row is not re-read when the library "

@@ -107,7 +107,8 @@ class RendererDefaultsAgree(unittest.TestCase):
         p = prefs_mod.Prefs()
         p.path = empty
         p.load()
-        for attr, default in prefs_mod.RENDERER_DEFAULTS.items():
+        from amaze.prefs import persistence
+        for attr, default in persistence.RENDERER_DEFAULTS.items():
             self.assertEqual(
                 default, getattr(p, attr.lstrip("_")),
                 "%s does not match the documented default on a machine "
@@ -126,6 +127,57 @@ class RendererDefaultsAgree(unittest.TestCase):
                    if getattr(p, attr, False)]
         self.assertIn("Karma", offered)
         self.assertIn("Redshift", offered)
+
+
+class SharedDefaultsLiveInOneTable(unittest.TestCase):
+    """`SHARED_KEYS` states each shared default once; `__init__` and `load()` both read it."""
+
+    def _settings(self, document):
+        import json
+        folder = tempfile.mkdtemp(prefix="amaze_shared_defaults_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        with open(os.path.join(folder, "settings.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(document, handle)
+        return folder
+
+    def test_a_fresh_prefs_holds_every_table_default(self):
+        from amaze.prefs import persistence
+        p = prefs_mod.Prefs()
+        for stored, (_prop, attr, default) in \
+                persistence.SHARED_KEYS.items():
+            self.assertEqual(default, getattr(p, attr),
+                             "%s: __init__ disagrees with the table" % stored)
+
+    def test_load_falls_back_to_every_table_default(self):
+        from amaze.prefs import persistence
+        p = prefs_mod.Prefs()
+        p.path = self._settings({"library_user": ""})
+        for _prop, attr, _default in persistence.SHARED_KEYS.values():
+            setattr(p, attr, "left over")
+        p.load()
+        for stored, (_prop, attr, default) in \
+                persistence.SHARED_KEYS.items():
+            self.assertEqual(default, getattr(p, attr),
+                             "%s: load() kept a value the file never "
+                             "held" % stored)
+
+    def test_load_takes_only_a_string_for_the_folder_layout(self):
+        """The adopt refused a non-string for these; load() took it, and paths were built from it."""
+        p = prefs_mod.Prefs()
+        p.path = self._settings(
+            {"shared_settings": {"img_dir": 5, "extension": None}})
+        p.load()
+        self.assertEqual(("img/", ".mat"), (p.img_dir, p.ext),
+                         "a junk folder-layout value loaded raw")
+
+    def test_load_clamps_parallel_downloads_as_the_adopt_does(self):
+        p = prefs_mod.Prefs()
+        p.path = self._settings(
+            {"shared_settings": {"matx_parallel_downloads": 64}})
+        p.load()
+        self.assertEqual(16, p.matx_parallel_downloads,
+                         "load() skipped the setter's 1-16 clamp")
 
 
 class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
