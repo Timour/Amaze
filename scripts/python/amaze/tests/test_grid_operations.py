@@ -1034,6 +1034,65 @@ class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):
                          "two tiles in two categories opened on a category")
 
 
+class ADeleteOverASelectionSavesOnce(unittest.TestCase):
+    """Five tiles deleted together cost one list write and one thumbnail-map rebuild."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.material_model
+        self.assertGreaterEqual(self.model.rowCount(), 6, "premise: six rows")
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        self.rows = [1, 2, 3, 4, 5]
+        self.ids = [str(self.model.assets[row].mat_id) for row in self.rows]
+        self.files = [path for mat_id in self.ids
+                      for path in self.model.asset_files(mat_id).values()
+                      if os.path.exists(path)]
+        self.assertTrue(self.files, "premise: the assets own files")
+
+    def _delete(self, refuse=False):
+        from amaze.core import database, library
+        save = database.DatabaseConnector.save
+        with mock.patch.object(database.DatabaseConnector, "save",
+                               autospec=True,
+                               side_effect=(lambda db: False) if refuse
+                               else save) as saves, \
+                mock.patch.object(library.AssetLibrary, "rebuild_thumbs",
+                                  autospec=True,
+                                  side_effect=library.AssetLibrary.rebuild_thumbs
+                                  ) as rebuilds:
+            self.panel._section().delete_rows(
+                [self.model.index(row, 0) for row in self.rows])
+            QtWidgets.QApplication.processEvents()
+        return saves.call_count, rebuilds.call_count
+
+    def test_five_tiles_go_in_one_save_and_one_rebuild(self):
+        saves, rebuilds = self._delete()
+        self.assertEqual((1, 1), (saves, rebuilds),
+                         "a five-tile delete saved %d times and rebuilt the "
+                         "thumbnail maps %d times" % (saves, rebuilds))
+        left = [str(a.mat_id) for a in self.model.assets]
+        self.assertEqual([], [mat_id for mat_id in self.ids if mat_id in left])
+        self.assertEqual([], [p for p in self.files if os.path.exists(p)],
+                         "a deleted asset's files stayed behind")
+        self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
+
+    def test_a_refused_save_puts_every_row_back_and_keeps_every_file(self):
+        before = [str(a.mat_id) for a in self.model.assets]
+        self._delete(refuse=True)
+        self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
+                         "a refused delete did not put every row back where "
+                         "it was")
+        self.assertEqual(self.files, [p for p in self.files if os.path.exists(p)],
+                         "a refused delete unlinked files")
+        self.assertTrue(self.model.save(), "premise: the next save landed")
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        with open(path, encoding="utf-8-sig") as handle:
+            on_disk = {str(row.get("id")) for row in json.load(handle)["assets"]}
+        self.assertEqual(set(self.ids), set(self.ids) & on_disk,
+                         "the declined delete reached disk with the next save")
+
+
 class ACustomizeOverASelectionSavesOnce(unittest.TestCase):
     """Tags and a category typed into Customize over five tiles reach the list in ONE save."""
 

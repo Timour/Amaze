@@ -256,34 +256,23 @@ class GradientLibrary(library.AssetLibrary):
             return
         self.row_changed(0)
 
-    def remove_asset(self, index) -> None:
-        """The family's delete verb in Colors' terms: a palette owns its row and its stamp."""
-        if index.isValid():
-            self.remove_user_gradient(index.row())
-
     def remove_user_gradient(self, row: int) -> None:
         """Delete a palette, then its stamp - only once the list stops naming it."""
-        if not 0 <= row < len(self._assets):
-            return
-        asset = self._assets[row]
-        if not self.removeRow(row):  # says the delete out loud - the connector unions rows, so an unspoken delete comes straight back
-            return
-        if not self.save():
-            self._take_back_refused_removal(row, asset)
-            debug.alert(
-                messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
-                key="colors-delete-refused")
-            return
+        self.remove_rows([row])
+
+    def _owned_paths(self, mat_id) -> tuple:
+        """A palette owns its stamp and nothing else on disk: it is stored inline."""
         try:
-            stamp = self.asset_files(asset.mat_id).get("stamp", "")
+            stamp = self.asset_files(mat_id).get("stamp", "")
         except hostos.PathEscape:
             stamp = ""
-        if stamp and os.path.exists(stamp):
-            try:
-                os.remove(stamp)
-            except OSError as exc:
-                debug.event("gradient", "palette stamp remove skipped",
-                            file=stamp, error=str(exc))
+        return ({"stamp": stamp} if stamp else {}), {}
+
+    def _report_refused_delete(self, asset) -> None:
+        """A palette's refused delete, in Colors' words."""
+        debug.alert(
+            messages.PALETTE_NOT_DELETED % (asset.name or "That palette"),
+            key="colors-delete-refused")
 
     def cleanup_db(self, show_dialog: bool = True) -> int:
         """Reduced to a state flush: palettes are stored inline, so the inherited missing-file and lonely-file passes would call every one an orphan."""

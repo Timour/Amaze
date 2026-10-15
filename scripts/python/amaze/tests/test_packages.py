@@ -599,6 +599,56 @@ class ARefusedImportIsTakenBackWhole(unittest.TestCase):
             "but the save had already dropped a row above it")
 
 
+class AFiveAssetImportSavesOnce(unittest.TestCase):
+    """Five materials out of one package reach the list in ONE save; a refused one takes all five back."""
+
+    def setUp(self):
+        from amaze.core import packages
+        self.panel = test_support.fixture_panel(self)
+        self.model = self.panel.material_model
+        owners = [a for a in self.model.assets
+                  if any(os.path.exists(p) for p in
+                         self.model.asset_files(a.mat_id).values())]
+        self.assertGreaterEqual(len(owners), 5, "premise: five materials")
+        self.out = _out_path(self)
+        packages.write_package(self.out, [
+            packages.collect_asset(self.model, a.mat_id) for a in owners[:5]])
+
+    def _import(self, refuse=False):
+        from unittest import mock
+        from amaze.core import database, packages
+        save = database.DatabaseConnector.save
+        with mock.patch.object(database.DatabaseConnector, "save",
+                               autospec=True,
+                               side_effect=(lambda db: False) if refuse
+                               else save) as saves:
+            summary = packages.import_package(
+                self.panel._package_models(), self.panel.prefs, self.out)
+        return summary, saves.call_count
+
+    def test_five_materials_land_in_one_save(self):
+        before = self.model.rowCount()
+        summary, saves = self._import()
+        self.assertEqual(5, summary["imported"], summary)
+        self.assertEqual(1, saves, "five imported materials saved the list "
+                                   "%d times" % saves)
+        self.assertEqual(before + 5, self.model.rowCount())
+        path = os.path.join(self.panel.prefs.dir, "library.json")
+        with open(path, encoding="utf-8-sig") as handle:
+            on_disk = {str(r.get("id")) for r in json.load(handle)["assets"]}
+        self.assertTrue({str(a.mat_id) for a in self.model.assets[-5:]}
+                        <= on_disk, "the imported rows never reached the file")
+
+    def test_a_refused_save_takes_all_five_back(self):
+        before = [str(a.mat_id) for a in self.model.assets]
+        summary, _saves = self._import(refuse=True)
+        self.assertEqual((0, 5), (summary["imported"], summary["refused"]),
+                         summary)
+        self.assertEqual(before, [str(a.mat_id) for a in self.model.assets],
+                         "a refused import left rows in the grid")
+        self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
+
+
 class _Cats:
     _categories = []    # the rename helper reads the sidebar list; empty means nothing to rename
 

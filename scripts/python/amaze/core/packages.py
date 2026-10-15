@@ -158,13 +158,16 @@ def import_entries(models, prefs, bundle, entries,
         raise PackageError("no library set - nowhere to import into")
     summary = {"imported": 0, "skipped": 0, "files": 0, "refused": 0,
                "categories": {}, "problems": []}
+    staged = []    # appended rows, saved once per model by `_commit_assets`
     for entry in entries:
         name = str((entry.get("record") or {}).get("name")
                    or entry.get("name") or "?")
         try:
             if entry.get("type") == "asset":
-                _import_asset(models, prefs, bundle, entry, restore,
-                              summary)
+                appended = _import_asset(models, prefs, bundle, entry,
+                                         restore, summary)
+                if appended is not None:
+                    staged.append(appended)
             elif entry.get("type") == "file":
                 _import_file(prefs, bundle, entry, summary)
         except zipfile.BadZipFile as exc:
@@ -178,11 +181,48 @@ def import_entries(models, prefs, bundle, entries,
                         name=name)
             summary["refused"] += 1
             summary["problems"].append("%s: %s" % (name, exc))    # the REAL cause, not re-costumed as a data failure: a sandbox refusal or a full disk is not a corrupt package
+    _commit_assets(prefs, staged, summary)
     return summary
 
 
-def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
-    """One asset entry into its section's model - payload family first, then the row, then save, then the note; a refused save takes the row back out and counts `refused`."""
+def _commit_assets(prefs, staged, summary) -> None:
+    """Save each model once for its appended rows, then the notes of those that landed; refused, back."""
+    by_model = {}
+    for item in staged:
+        by_model.setdefault(id(item[0]), []).append(item)
+    for items in by_model.values():
+        model = items[0][0]
+        try:
+            stored = model.save()
+        except Exception as exc:                          # noqa: BLE001
+            debug.event("packages", "entry refused", error=str(exc),
+                        name=model.DB_FILENAME)
+            summary["problems"].extend("%s: %s" % (item[1].name or "?", exc)
+                                       for item in items)
+            stored = False
+        if not stored:
+            for _model, asset, _entry, _row in reversed(items):
+                model._take_back_refused_append(asset)    # the payload files left behind are Clean Library's
+            summary["refused"] += len(items)
+            continue
+        for _model, asset, entry, row in items:
+            page = entry.get("note") or {}
+            section = str(entry.get("section") or "")
+            if page.get("items"):
+                try:    # the asset is already saved - a failed note page must not recount it as refused
+                    notes.set_note(prefs, notes.note_key(section, asset.mat_id),
+                                   page["items"])
+                except Exception as exc:                          # noqa: BLE001
+                    debug.event("packages", "note not written",
+                                error=str(exc), name=str(asset.mat_id))
+            cats = row.get("categories") or []
+            summary["categories"].setdefault(section, set()).update(
+                [cats] if isinstance(cats, str) else cats)
+            summary["imported"] += 1
+
+
+def _import_asset(models, prefs, bundle, entry, restore, summary):
+    """One asset entry's files and row into its section's model, unsaved; None when skipped."""
     section = str(entry.get("section") or "")
     model = models.get(section)
     if model is None:
@@ -233,22 +273,7 @@ def _import_asset(models, prefs, bundle, entry, restore, summary) -> None:
             with open(scratch, "wb") as handle:
                 handle.write(data)
     model._append_record(asset)
-    if not model.save():
-        model._take_back_refused_append(asset)    # the payload files left behind are Clean Library's
-        summary["refused"] += 1
-        return
-    page = entry.get("note") or {}
-    if page.get("items"):
-        try:    # the asset is already saved - a failed note page must not recount a landed import as refused
-            notes.set_note(prefs, notes.note_key(section, asset.mat_id),
-                           page["items"])
-        except Exception as exc:                          # noqa: BLE001
-            debug.event("packages", "note not written", error=str(exc),
-                        name=str(asset.mat_id))
-    cats = row.get("categories") or []
-    summary["categories"].setdefault(section, set()).update(
-        [cats] if isinstance(cats, str) else cats)
-    summary["imported"] += 1
+    return model, asset, entry, row
 
 
 def _import_file(prefs, bundle, entry, summary) -> None:

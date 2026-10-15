@@ -490,20 +490,26 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         /,
         parent: QtCore.QModelIndex | QtCore.QPersistentModelIndex = ...,
     ) -> bool:
+        if not self._unlist_row(row):
+            return False
+        self.rebuild_thumbs()  # rows shifted, so remap keys to rows; the dropped image ages out of the LRU
+        return True
+
+    def _unlist_row(self, row: int) -> bool:
+        """Take one row out of the model, marked for removal at the next save; maps NOT rebuilt."""
         if not 0 <= row < len(self._assets):
             return False
         going = self._assets[row]
-        try:  # SAY THE DELETE OUT LOUD: the connector unions rows, so a row merely missing from the next set() reads as "this pane has not heard of it" and is adopted straight back
+        try:  # SAY THE DELETE: the connector unions rows, so a row only left out of set() comes back
             database.DatabaseConnector(self.DB_FILENAME).forget(going.mat_id)
         except (AttributeError, TypeError) as exc:
             debug.event("library", "could not mark a row for removal",
                         error=str(exc))
         _StampWriter.forget(self.preferences, going.mat_id)    # its stamp may be unlinked with it
 
-        self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # bracketed so attached views and proxies adjust by protocol; del by INDEX, since remove-by-value drops the first EQUAL element, which needn't be this row's
+        self.beginRemoveRows(QtCore.QModelIndex(), row, row)  # del by INDEX: by value drops the first EQUAL one
         del self._assets[row]
         self.endRemoveRows()
-        self.rebuild_thumbs()  # rows shifted, so remap keys to rows; the removed asset's cached image ages out of the shared LRU on its own
         return True
 
     def renderer_label(self, asset) -> str:
@@ -824,64 +830,78 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return {}
 
     def remove_asset(self, index: QtCore.QModelIndex) -> None:
-        """Remove one asset from this library AND from disk. THE LIST IS WRITTEN FIRST AND ITS ANSWER IS HONOURED - library.json IS the truth here, so nothing on disk is touched until the list that stops naming the asset has actually been written, and a refused write puts the row back with every file still there. save() returns False WITHOUT RAISING on several paths, so never discard its answer."""
-        if not self.hasIndex(index.row(), 0):
-            return
-        row = index.row()
-        asset = self._assets[row]
+        """Remove one asset from the list, then from disk - `remove_rows` over one row."""
+        if self.hasIndex(index.row(), 0):
+            self.remove_rows([index.row()])
 
-        owned = self.asset_files(asset.mat_id)  # asset_files(), never a list spelled out here: the hand-written one fell behind every time a new per-asset file appeared
-        owned_dirs = self.asset_directories(asset.mat_id)
+    def remove_rows(self, rows) -> int:
+        """Delete these rows in ONE list write, their files only once it lands; returns how many went."""
+        going = [(row, self._assets[row])
+                 for row in sorted({int(r) for r in rows})
+                 if 0 <= row < len(self._assets)]
+        if not going:
+            return 0
+        owned = [self._owned_paths(asset.mat_id) for _row, asset in going]
+        for row, _asset in reversed(going):    # highest first, so every row number still holds
+            self._unlist_row(row)
+        self.rebuild_thumbs()
+        if not self.save():    # the list is the truth: answered False, nothing on disk is touched
+            self._take_back_refused_removals(going)
+            self._report_refused_delete(going[-1][1])
+            return 0
+        for files, folders in owned:
+            self._unlink_owned(files, folders)
+        return len(going)
 
-        if not self.removeRow(row):
-            return
-        if not self.save():
-            self._take_back_refused_removal(row, asset)    # nothing is unlinked yet, so this is the whole undo
-            debug.event("library", "delete refused - the library list "
-                        "could not be written", name=asset.name,
-                        mat_id=str(asset.mat_id))
-            debug.alert(
-                messages.ASSET_NOT_DELETED_LIST_NOT_UPDATED % asset.name,
-                key="delete-refused-index-write")
-            return
+    def _owned_paths(self, mat_id) -> tuple:
+        """(files, folders) a deleted asset takes with it - from `asset_files()`, never a hand list."""
+        return self.asset_files(mat_id), self.asset_directories(mat_id)
 
-        for path in owned.values():  # the list no longer names this asset, so its files are unclaimed; guarded per file, because a transient hold (sync client, AV scanner, the thumbnail loader's read) must not abort the sequence and cleanup_db sweeps whatever is left
+    def _report_refused_delete(self, asset) -> None:
+        """Tell the user a delete did not happen because the list could not be written."""
+        debug.event("library", "delete refused - the library list "
+                    "could not be written", name=asset.name,
+                    mat_id=str(asset.mat_id))
+        debug.alert(
+            messages.ASSET_NOT_DELETED_LIST_NOT_UPDATED % asset.name,
+            key="delete-refused-index-write")
+
+    @staticmethod
+    def _unlink_owned(files: dict, folders: dict) -> None:
+        """Remove what a listed-no-more asset owned, each guarded: Clean Library sweeps a held one."""
+        for path in files.values():
             if os.path.exists(path):
                 try:
                     os.remove(path)
                 except OSError as exc:
-                    debug.event(
-                        "library",
-                        "asset file remove skipped",
-                        file=path,
-                        error=str(exc),
-                    )
-        for path in owned_dirs.values():  # the version store: its id leaves every list the moment the save above lands, so no later run could decide the folder was safe to take
+                    debug.event("library", "asset file remove skipped",
+                                file=path, error=str(exc))
+        for path in folders.values():    # the version store goes with its id
             if os.path.isdir(path):
                 try:
                     shutil.rmtree(path)
                 except OSError as exc:
-                    debug.event(
-                        "library",
-                        "asset version store remove skipped",
-                        folder=path,
-                        error=str(exc),
-                    )
+                    debug.event("library",
+                                "asset version store remove skipped",
+                                folder=path, error=str(exc))
 
-    def _take_back_refused_removal(self, row: int, asset) -> None:
-        """Put back a row whose delete the save refused - in the model and in the connector's document."""
-        row = min(max(row, 0), len(self._assets))    # the save's drain may have dropped rows above it
-        self.beginInsertRows(QtCore.QModelIndex(), row, row)
-        try:
-            self._assets.insert(row, asset)
-        finally:
-            self.endInsertRows()
+    def _take_back_refused_removals(self, going) -> None:
+        """Put back `(row, record)` pairs whose delete the save refused, in the model and the document."""
+        for row, asset in going:    # ascending, so each lands where it stood
+            row = min(max(row, 0), len(self._assets))    # the save's drain may have dropped rows above it
+            self.beginInsertRows(QtCore.QModelIndex(), row, row)
+            try:
+                self._assets.insert(row, asset)
+            finally:
+                self.endInsertRows()
         self.rebuild_thumbs()
         try:
             connector = database.DatabaseConnector(self.DB_FILENAME)
-            connector.unforget(asset.mat_id)    # else the next save carries out the declined delete
+            for _row, asset in going:
+                connector.unforget(asset.mat_id)    # else the next save carries out the declined delete
             if connector.serves(self.preferences.dir):    # a serves() refusal never ran set()
-                connector.set({"assets": [asset.get_as_dict()]})    # set() dropped it from the document
+                connector.set({"assets": [asset.get_as_dict()
+                                          for _row, asset in going]})    # set() dropped them
         except (AttributeError, TypeError) as exc:
             debug.event("library", "could not take back a row removal",
                         error=str(exc))

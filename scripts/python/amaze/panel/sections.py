@@ -509,12 +509,7 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        model = st.model
-        ids = [model.tile_key(index.row())    # by ID: each removal saves, and a save moves rows
-               for index in sorted(indexes, key=lambda i: i.row(), reverse=True)]
-        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids if mat_id):
-            if row >= 0:
-                model.remove_asset(model.index(row, 0))
+        st.model.remove_rows([index.row() for index in indexes])    # ONE save for the selection
         self.panel._refresh_sidebar_categories()
 
     def sidebar_key(self, index) -> str:
@@ -877,10 +872,6 @@ class CodeSection(AssetSection):
                     "already applied to a node is not affected.")
         return ("Delete %d snippets? They go for good. Code already "
                 "applied to a node is not affected." % count)
-
-    def delete_rows(self, indexes) -> None:
-        super().delete_rows(indexes)
-        self.panel.code_model.save()    # remove_asset already saves per row like every sibling; this is the belt on the braces for a store keeping every snippet in ONE json, where a half-written removal loses more than one row
 
     key = "code"
     label = "Code"
