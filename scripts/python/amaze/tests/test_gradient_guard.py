@@ -362,13 +362,13 @@ class GradientRowRideTest(unittest.TestCase):
         self._pre_bump_library()
         first = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
-        minted = first.note_uid(_row_named(self, first, "bare"))
+        minted = first.tile_key(_row_named(self, first, "bare"))
         self.assertTrue(minted, "no identity was minted at all")
         test_support.reset_database_singletons()
         again = gradient_library.GradientLibrary(
             preferences=_fixture_prefs(self, self.dir))
         self.assertEqual(
-            minted, again.note_uid(_row_named(self, again, "bare")),
+            minted, again.tile_key(_row_named(self, again, "bare")),
             "the identity did not survive the reload, so every launch "
             "keys the palette's notes and icon differently")
 
@@ -533,7 +533,7 @@ class GradientSeedNoteTest(unittest.TestCase):
         pages = [row for row in range(lib.rowCount())
                  if notes.note_for(
                      self.prefs,
-                     notes.note_key("gradient", lib.note_uid(row))
+                     notes.note_key("gradient", lib.tile_key(row))
                  ).get("items")]
         self.assertTrue(pages,
                         "no seeded palette carries its colour text, so "
@@ -597,7 +597,7 @@ class GradientFirstOpenWriteCountTest(unittest.TestCase):
         pages = sum(1 for row in range(lib.rowCount())
                     if notes.note_for(
                         self.prefs,
-                        notes.note_key("gradient", lib.note_uid(row))
+                        notes.note_key("gradient", lib.tile_key(row))
                     ).get("items"))
         self.assertEqual(_curated_note_count(), pages,
                          "%d of %d curated notes reached their page"

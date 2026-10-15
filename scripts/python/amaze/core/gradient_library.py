@@ -211,12 +211,6 @@ class GradientLibrary(library.AssetLibrary):
             "ramp": self._ramp_of(asset),
         }
 
-    def note_uid(self, row: int) -> str:
-        """A palette's identity: its record id, the key its Comments page and tile icon file under."""
-        if not 0 <= row < len(self._assets):
-            return ""
-        return str(self._assets[row].mat_id)
-
     def user_categories(self) -> list:
         """The categories the save dialog lists, with neither spelling of All (`_All`, `All`)."""
         return [name for name in self._data.get("categories", [])

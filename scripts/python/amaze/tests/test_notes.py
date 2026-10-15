@@ -791,7 +791,7 @@ class GradientNotesTest(unittest.TestCase):
 
     def test_every_gradient_is_born_with_identity(self):
         """After construction every entry has a uid and a reload keeps it."""
-        uids = [self.model.note_uid(row)
+        uids = [self.model.tile_key(row)
                 for row in range(self.model.rowCount())]
         self.assertTrue(all(uids),
                         "an entry exists without identity - the "
@@ -802,7 +802,7 @@ class GradientNotesTest(unittest.TestCase):
         test_support.reset_database_singletons()
         reloaded = gradient_library.GradientLibrary(
             preferences=self.prefs)
-        self.assertEqual(uids[0], reloaded.note_uid(0),
+        self.assertEqual(uids[0], reloaded.tile_key(0),
                          "the identity did not survive a reload - "
                          "notes will orphan")
 
@@ -813,15 +813,15 @@ class GradientNotesTest(unittest.TestCase):
         row = next(r for r in range(self.model.rowCount())
                    if self.model.entry(r).get("name") == "BirthTest")
         self.addCleanup(self.model.remove_user_gradient, row)
-        self.assertTrue(self.model.note_uid(row),
+        self.assertTrue(self.model.tile_key(row),
                         "a freshly saved gradient has no identity - "
                         "birth is where every section stamps it")
-        self.assertEqual(32, len(self.model.note_uid(row)),  # one mint app-wide: the family's full uuid4 hex; legacy 12-char keys stay valid
+        self.assertEqual(32, len(self.model.tile_key(row)),  # one mint app-wide: the family's full uuid4 hex; legacy 12-char keys stay valid
                          "the gradient mint is not the asset family's "
                          "full uuid4 hex")
 
     def test_a_gradient_note_roundtrips_and_badges(self):
-        uid = self.model.note_uid(0)
+        uid = self.model.tile_key(0)
         key = notes.note_key("gradient", uid)
         index = self.model.index(0, 0)
         self.assertFalse(self.model.data(index, self.model.NotesRole))
@@ -841,7 +841,7 @@ class GradientNotesTest(unittest.TestCase):
             "an identity-less palette reads a note - no id can own "
             "that page")
         self.assertEqual(
-            "", self.model.note_uid(row),
+            "", self.model.tile_key(row),
             "a paint-path read stamped an identity - identity work "
             "belongs to load and birth")
 

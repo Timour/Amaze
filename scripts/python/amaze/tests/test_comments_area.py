@@ -144,7 +144,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "the key names one file and the header names another")
 
     def test_a_colour_subject_is_keyed_by_the_SELECTED_palettes_uid(self):
-        """`note_uid(row)` is the same row-number read, checked the same way: the uid is looked up in the source model, and the name stored against it must be the name the header shows."""
+        """`tile_key(row)` is the same row-number read: the key's uid names the palette the header shows."""
         subject, _index = self._subject_for_last_row("gradient")
         self.assertIsNotNone(
             subject, "no subject for a palette - the fixture has none, "
@@ -157,7 +157,7 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
         model = self.panel.gradient_model
         named = [model.entry(row).get("name", "")
                  for row in range(model.rowCount())
-                 if model.note_uid(row) == uid]
+                 if model.tile_key(row) == uid]
         self.assertEqual(
             [subject.name], named,
             "the uid in the comment key belongs to a different palette "
