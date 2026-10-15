@@ -297,6 +297,22 @@ def staged_asset(preferences, mat, loader) -> "object":
             staging.destroy()
 
 
+def op_path_parms(nodes):
+    """(parm, unexpanded text) for each parm on `nodes` and everything under them holding `op:`."""
+    scan = []
+    for node in nodes:
+        scan.append(node)
+        scan.extend(node.allSubChildren())
+    for n in scan:
+        for parm in n.parms():
+            try:
+                raw = parm.unexpandedString()
+            except hou.OperationFailed:
+                continue
+            if "op:" in raw:
+                yield parm, raw
+
+
 def clear_inherited_stamps(container: hou.Node, include_self=False) -> int:
     """Strip `assetlib_id` from everything a load brought IN, returning how many were cleared - pass `include_self` for a loose node that IS the loaded item rather than a container the caller stamps afterwards. ▸r/inherited-stamps"""
     cleared = 0
@@ -1181,32 +1197,21 @@ class NodeHandler:
     def _collect_cop_refs(self, nodes) -> list:
         """op: parms referencing COPs, as (parm, cop_node, container)."""
         refs = []
-        scan = []
-        for node in nodes:
-            scan.append(node)
-            scan.extend(node.allSubChildren())
-        for n in scan:
-            for parm in n.parms():
+        for parm, raw in op_path_parms(nodes):
+            for p in re.findall(r"op:(/[\w/\.\-]+)", raw):
+                target = hou.node(p)
+                if target is None:
+                    continue
                 try:
-                    raw = parm.unexpandedString()
-                except hou.OperationFailed:
+                    cat = target.type().category().name().lower()
+                except AttributeError:
                     continue
-                if "op:" not in raw:
+                if cat not in ("cop2", "cop"):
                     continue
-                for p in re.findall(r"op:(/[\w/\.\-]+)", raw):
-                    target = hou.node(p)
-                    if target is None:
-                        continue
-                    try:
-                        cat = target.type().category().name().lower()
-                    except AttributeError:
-                        continue
-                    if cat not in ("cop2", "cop"):
-                        continue
-                    container = self._find_cop_container(target)
-                    if container is None:
-                        continue
-                    refs.append((parm, target, container))
+                container = self._find_cop_container(target)
+                if container is None:
+                    continue
+                refs.append((parm, target, container))
         return refs
 
     def _discard_pending_cop_promote(self) -> None:
@@ -1303,26 +1308,15 @@ class NodeHandler:
         if not path_map:
             return
         keys = sorted(path_map.keys(), key=len, reverse=True)
-        scan = []
-        for node in nodes:
-            scan.append(node)
-            scan.extend(node.allSubChildren())
-        for n in scan:
-            for parm in n.parms():
+        for parm, raw in list(op_path_parms(nodes)):
+            new = raw
+            for key in keys:
+                new = new.replace(key, path_map[key])
+            if new != raw:
                 try:
-                    raw = parm.unexpandedString()
-                except hou.OperationFailed:
-                    continue
-                if "op:" not in raw:
-                    continue
-                new = raw
-                for key in keys:
-                    new = new.replace(key, path_map[key])
-                if new != raw:
-                    try:
-                        parm.set(new)
-                    except (hou.OperationFailed, hou.PermissionError):
-                        pass
+                    parm.set(new)
+                except (hou.OperationFailed, hou.PermissionError):
+                    pass
 
     def _undo_cop_companion(self) -> None:
         """Remove a companion THIS import created; a reused one is left."""
