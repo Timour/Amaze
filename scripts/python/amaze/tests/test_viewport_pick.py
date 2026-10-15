@@ -209,5 +209,54 @@ class TestViewportResolutionStillWorks(unittest.TestCase):
             % [m for m, _ in records])
 
 
+class TheCursorIsReadOnlyForARecord(unittest.TestCase):
+    """`_cursor_truth` feeds only the pick record, so a pick with the debug log off never reads it."""
+
+    class _Seen(_Viewer):
+        def qtWindow(self):
+            window = QtWidgets.QWidget()
+            window.resize(481, 279)
+            return window
+
+        def locateSceneGraphPrim(self, x, y):
+            return (-1, "")
+
+    def _picked(self, log_on):
+        """[(world, record data)] for one obj and one lop pick; counts `_cursor_truth` reads."""
+        from unittest import mock
+        _Version(self, 21)
+        vp = _Viewport()
+        vp.resolutionInPixels = lambda: (962, 558)
+        reads, records = [], []
+        real = dragengine._cursor_truth
+
+        def counting(viewer):
+            reads.append(viewer)
+            return real(viewer)
+
+        dragengine.begin("material")
+        with mock.patch.object(dragengine, "_cursor_truth", counting), \
+                mock.patch.object(dragengine, "_dbg_on", return_value=log_on), \
+                mock.patch.object(dragengine, "_dbg",
+                                  lambda msg, **kw: records.append(kw)):
+            for world in ("obj", "lop"):
+                dragengine._pick(self._Seen(vp), world, 10, 10, 2.0, 279)
+        return reads, records
+
+    def test_a_pick_with_the_log_off_reads_no_cursor(self):
+        reads, records = self._picked(False)
+        self.assertEqual([], records, "premise: nothing is recorded")
+        self.assertEqual(0, len(reads),
+                         "the pick read the cursor for a record it never wrote")
+
+    def test_a_recorded_pick_still_carries_the_cursor(self):
+        reads, records = self._picked(True)
+        self.assertEqual(2, len(reads))
+        self.assertEqual(["obj", "lop"], [r["world"] for r in records])
+        for record in records:
+            self.assertEqual((481, 279), record["widget"])
+            self.assertEqual((962, 558), record["resolution"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -694,11 +694,11 @@ def _viewport_at(viewer, x, y, scale=1.0, widget_h=0):
 
 
 
-def _pick_trace(world, x, y, result, extra=None):
-    """One record per pick carrying what was PASSED and what came back TOGETHER - separated, they cannot be paired, and the difference between them is the whole measurement."""
+def _pick_trace(world, x, y, result, viewer=None):
+    """One record per pick: what was PASSED beside what came back, with the cursor read only here."""
     if not (_dbg_on() and _pick_log_budget(hit=bool(result))):
         return
-    data = dict(extra or {})
+    data = _cursor_truth(viewer) if viewer is not None else {}
     data.update(world=str(world), passed=(int(x), int(y)),
                 hit=str(result or ""),
                 houdini=hou.applicationVersionString())
@@ -728,10 +728,10 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
                  x=x, y=y, houdini=hou.applicationVersionString())
             return ""
         if depth is None or depth < 0:
-            _pick_trace("lop", x, y, "", _cursor_truth(viewer))
+            _pick_trace("lop", x, y, "", viewer)
             return ""
         found = _clean_prim_path(str(path))
-        _pick_trace("lop", x, y, found, _cursor_truth(viewer))
+        _pick_trace("lop", x, y, found, viewer)
         return found
     if world == "obj":
         try:
@@ -747,7 +747,7 @@ def _pick(viewer, world, x, y, scale=1.0, widget_h=0):
                  x=x, y=y, houdini=hou.applicationVersionString())
             return ""
         found = node.path() if node is not None else ""
-        _pick_trace("obj", lx, ly, found, _cursor_truth(viewer))
+        _pick_trace("obj", lx, ly, found, viewer)
         return found
     return ""
 
