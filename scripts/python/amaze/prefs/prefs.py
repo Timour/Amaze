@@ -22,6 +22,15 @@ TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because 
 IMG_SUBDIR = "img/"  # the two folders a library cannot work without: `panel.ensure_library_dirs` and `seed_test_folder` each CREATE the pair, and `persistence.load()` still spells both defaults literally ▸p/library-creation-doors
 ASSET_SUBDIR = "mat/"
 
+RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
+RENDERSAMPLES_RANGE = (1, 1024)
+
+
+def _clamped(value, bounds) -> int:
+    """`value` as an int inside `bounds`; junk raises, so `_through_setter` uses the default."""
+    low, high = bounds
+    return max(low, min(high, int(value)))
+
 
 def test_library_dir(folder: str) -> str:
     """The library inside a test folder, with the trailing separator the connectors concatenate onto. ▸r/atomic-writes"""
@@ -205,7 +214,7 @@ class Prefs(_Persistence):
 
     @rendersize.setter
     def rendersize(self, val: int) -> None:
-        self._rendersize = val
+        self._rendersize = _clamped(val, RENDERSIZE_RANGE)
 
     @property
     def rendersamples(self) -> int:
@@ -213,7 +222,7 @@ class Prefs(_Persistence):
 
     @rendersamples.setter
     def rendersamples(self, val: int) -> None:
-        self._rendersamples = val
+        self._rendersamples = _clamped(val, RENDERSAMPLES_RANGE)
 
     @property
     def show_categories(self) -> bool:
@@ -262,7 +271,7 @@ class Prefs(_Persistence):
 
     @render_on_import.setter
     def render_on_import(self, val: int) -> None:
-        self._render_on_import = val
+        self._render_on_import = 1 if int(val) else 0
 
     @property
     def img_dir(self) -> str:

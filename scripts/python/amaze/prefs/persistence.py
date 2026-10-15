@@ -385,16 +385,16 @@ class _Persistence:
         self._img_dir = shared.get("img_dir", data.get("img_dir", "img/"))
         self._asset_dir = shared.get(
             "asset_dir", data.get("asset_dir", "mat/"))
-        self._rendersize = shared.get(
-            "rendersize", data.get("rendersize", 256))
-        self._render_on_import = shared.get(
-            "render_on_import", data.get("render_on_import", 1))
+        _through_setter(self, "rendersize", shared.get(
+            "rendersize", data.get("rendersize", 256)), 256)
+        _through_setter(self, "render_on_import", shared.get(
+            "render_on_import", data.get("render_on_import", 1)), 1)
         for _attr, _key in RENDERER_KEYS.items():
             setattr(self, _attr,
                     shared.get(_key,
                                data.get(_key, RENDERER_DEFAULTS[_attr])))
-        self._rendersamples = shared.get(
-            "rendersamples", data.get("rendersamples", 256))
+        _through_setter(self, "rendersamples", shared.get(
+            "rendersamples", data.get("rendersamples", 256)), 256)
         _through_setter(self, "ram_cache_mb",  # through the setter: it clamps 64-4096 and casts int, and a string here reaches QSpinBox.setValue
                         shared.get("ram_cache_mb",
                                    data.get("ram_cache_mb", 256)), 256)

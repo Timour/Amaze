@@ -135,15 +135,21 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         "karma_rendersamples": None,
         "view_mode": None,
         "accent_color": None,
+        "rendersize": None,
+        "rendersamples": "lots",
+        "render_on_import": None,
     }
 
-    def test_a_poisoned_settings_file_still_loads(self):
+    def _write_poison(self, folder, **extra):
         import json
-        folder = tempfile.mkdtemp(prefix="amaze_prefs_poison_")
-        self.addCleanup(shutil.rmtree, folder, True)
         with open(os.path.join(folder, "settings.json"), "w",
                   encoding="utf-8") as handle:
-            json.dump(self.POISON, handle)
+            json.dump(dict(self.POISON, **extra), handle)
+
+    def test_a_poisoned_settings_file_still_loads(self):
+        folder = tempfile.mkdtemp(prefix="amaze_prefs_poison_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        self._write_poison(folder)
 
         p = prefs_mod.Prefs()
         p.path = folder
@@ -156,6 +162,41 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         self.assertIsInstance(p.karma_rendersamples, int)
         self.assertIn(p.view_mode, ("grid", "list"))
         self.assertTrue(p.accent_color)
+        self.assertEqual((256, 256, 1), (p.rendersize, p.rendersamples,
+                                         p.render_on_import),
+                         "a junk render setting loaded raw instead of "
+                         "falling back to its default")
+
+    def test_preferences_opens_over_a_poisoned_file(self):
+        """The Render rows hand these straight to spin boxes, which raise on anything but a number."""
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        self._write_poison(p.path, directory=p.dir,
+                           library_user=test_support.FIXTURE_USER)
+        p.load()
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        self.assertEqual(256, dlg.line_rendersize.value())
+        self.assertEqual(256, dlg.line_rendersamples.value())
+        self.assertTrue(dlg.cbx_render_on_import.isChecked())
+
+    def test_the_render_setters_cast_and_clamp_to_the_rows_ranges(self):
+        p = prefs_mod.Prefs()
+        for name, given, kept in (("rendersize", "512", 512),
+                                  ("rendersize", 99999, 1024),
+                                  ("rendersize", 8, 64),
+                                  ("rendersamples", 0, 1),
+                                  ("rendersamples", 4096.0, 1024),
+                                  ("render_on_import", "0", 0),
+                                  ("render_on_import", 7, 1)):
+            with self.subTest(setting=name, value=given):
+                setattr(p, name, given)
+                self.assertEqual(kept, getattr(p, name))
+        for name in ("rendersize", "rendersamples", "render_on_import"):
+            with self.subTest(setting=name, value=None):
+                with self.assertRaises((TypeError, ValueError)):
+                    setattr(p, name, None)    # a raise is how a junk value reaches its default
 
     def test_load_assigns_through_the_setters(self):
         """Source pin on the file holding load(): the values are clamped in the setters, and a raw assignment bypasses every one."""

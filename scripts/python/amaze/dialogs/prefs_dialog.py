@@ -388,21 +388,22 @@ class PrefsDialog(base_dialog.AssetDialog):
 
         self.line_rendersize = QtWidgets.QSpinBox()
         # range BEFORE value: a fresh QSpinBox clamps to Qt's default 0-99, so setValue(256) landed as 99 and persisted
-        self.line_rendersize.setRange(64, 1024)
+        self.line_rendersize.setRange(*prefs_mod.RENDERSIZE_RANGE)
         self.line_rendersize.setValue(self._prefs.rendersize)
         self.line_rendersize.valueChanged.connect(self.set_rendersize)
         self.line_rendersize.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_RENDER_SIZE))
-        form.addRow(self._label("RenderSize"), self._field_slider_row(self.line_rendersize, 64, 1024)
-        )
+        form.addRow(self._label("RenderSize"), self._field_slider_row(
+            self.line_rendersize, *prefs_mod.RENDERSIZE_RANGE))
         self.line_rendersamples = QtWidgets.QSpinBox()   # the Redshift dial (its ROP's UnifiedMaxSamples); Karma is CPU and needs its own far smaller scale
-        self.line_rendersamples.setRange(1, 1024)
+        self.line_rendersamples.setRange(*prefs_mod.RENDERSAMPLES_RANGE)
         self.line_rendersamples.setValue(self._prefs.rendersamples)
         self.line_rendersamples.valueChanged.connect(self.set_rendersamples)
         self.line_rendersamples.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_SAMPLES_REDSHIFT))
         form.addRow(self._label("Samples (Redshift)"),
-            self._field_slider_row(self.line_rendersamples, 1, 1024),
+            self._field_slider_row(self.line_rendersamples,
+                                   *prefs_mod.RENDERSAMPLES_RANGE),
         )
         self.spin_karma_samples = QtWidgets.QSpinBox()
         self.spin_karma_samples.setRange(1, 256)
