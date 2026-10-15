@@ -48,21 +48,12 @@ def _redshift_type_available() -> bool:
 
 def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
     """The surface shader inside a reconstructed redshift_vopnet: what feeds the output node's Surface input, falling back to shaderball_scene.py's name scan when no output node or an unwired Surface."""
-    for child in vopnet.children():
-        if child.type().name() in material.REDSHIFT_TERMINALS:
-            inputs = child.inputs()
-            if inputs and inputs[0] is not None:
-                tname = inputs[0].type().name()
-                if material.is_surface_shader_type(tname):    # inputs() can return a compacted tuple (only displacement wired), where index 0 is not the Surface input at all - trust only what looks like a surface shader
-                    return inputs[0]
-            break
-    for child in vopnet.children():
-        tname = child.type().name()
-        if tname in material.REDSHIFT_TERMINALS:
-            continue
-        if material.is_surface_shader_type(tname):
-            return child
-    return None
+    terminal = material.redshift_terminal(vopnet)
+    inputs = terminal.inputs() if terminal is not None else ()
+    if inputs and inputs[0] is not None:
+        if material.is_surface_shader_type(inputs[0].type().name()):    # with only displacement wired, index 0 is not Surface
+            return inputs[0]
+    return material.redshift_surface_shader(vopnet)
 
 
 _UBER_CONVERTERS = {}    # Redshift material shader -> its converter; populated at the bottom once every converter it names exists, and convert_material_shader reading it is what lets a blended material recurse into its parts
@@ -1433,11 +1424,7 @@ def convert_redshift_material(
         if mtlx is None:    # a blend with no convertible base; the converter put the reason in the report
             return None, None, report
 
-        out_node = None    # bump and displacement live on the redshift_material OUTPUT node's own named inputs, never on the shader - walked from there
-        for child in vopnet.children():
-            if child.type().name() in material.REDSHIFT_TERMINALS:
-                out_node = child
-                break
+        out_node = material.redshift_terminal(vopnet)    # bump and displacement live on the terminal
         out_inputs = _named_inputs(out_node) if out_node is not None else {}
         shader_inputs = _named_inputs(shader)    # bump arrives THREE ways - the shader's bump_input (StandardMaterial), its geometry_normal (OpenPBR), or the output node's bump input, asked by ROLE because the classic and USD forms spell it differently (material.TERMINAL_INPUTS); shader-level wins when both exist
         bump_src = (

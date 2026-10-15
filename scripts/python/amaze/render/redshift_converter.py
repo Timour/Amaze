@@ -45,21 +45,14 @@ def make_redshift_builder(parent: hou.Node, name: str) -> hou.Node:
     for child in list(builder.children()):
         if child.type().name() not in material.REDSHIFT_TERMINALS + ("suboutput",):    # the stock terminal and the suboutput it feeds stay; the stock shader goes
             child.destroy()
-    if redshift_terminal(builder) is None:
+    if material.redshift_terminal(builder) is None:
         builder.createNode("redshift_usd_material")
     return builder
 
 
-def redshift_terminal(builder: hou.Node):
-    for child in builder.children():
-        if child.type().name() in material.REDSHIFT_TERMINALS:
-            return child
-    return None
-
-
 def wire_redshift_output(builder, shader, displacement=None) -> bool:
     """Surface and Displacement onto the terminal, by ROLE - the two terminal forms spell their inputs differently. Answers whether the surface landed."""
-    terminal = redshift_terminal(builder)
+    terminal = material.redshift_terminal(builder)
     if terminal is None:
         return False
     names = list(terminal.inputNames())
@@ -205,7 +198,7 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
             if bump_input:
                 _connect(rs, bump_input, bump, normal_src, report)
             else:
-                terminal = redshift_terminal(builder)
+                terminal = material.redshift_terminal(builder)
                 names = list(terminal.inputNames()) if terminal is not None else []
                 spelling = next((s for s in material.TERMINAL_INPUTS["bump"] if s in names), "")
                 if spelling:
@@ -531,7 +524,7 @@ def upgrade_to_usd_builder(builder: hou.Node) -> hou.Node:
     _bypass_dots(builder)    # moveNodesTo takes nodes only, so a wire through a network dot would die with the old container
     if movers:
         hou.moveNodesTo(movers, fresh)
-    terminal = redshift_terminal(fresh)
+    terminal = material.redshift_terminal(fresh)
     for input_name, (source_name, index) in feeds.items():
         source = fresh.node(source_name)
         if source is None or terminal is None:

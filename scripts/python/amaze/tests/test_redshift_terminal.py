@@ -163,5 +163,47 @@ class TheSpellingTableIsWhatThePluginSays(unittest.TestCase):
         self.assertEqual("Input 1", terminal.inputLabels()[0])
 
 
+class AContainerWithNoTerminalAnswersNone(unittest.TestCase):
+    """The shared lookups on a container with no Redshift node in it; needs no plugin."""
+
+    def test_neither_lookup_finds_anything(self):
+        with hou.undos.disabler():
+            subnet = hou.node("/obj").createNode("subnet")
+        self.addCleanup(subnet.destroy)
+        self.assertIsNone(material.redshift_terminal(subnet))
+        self.assertIsNone(material.redshift_surface_shader(subnet))
+
+
+@unittest.skipUnless(_redshift_available(),
+                     "the Redshift plugin is not installed")
+class OneLookupFindsTheTerminalAndTheShader(unittest.TestCase):
+    """Both terminal forms and the stock shader, found by the helpers in `core/material.py`."""
+
+    def _container(self, parent, builder_type):
+        with hou.undos.disabler():
+            builder = parent.createNode(builder_type)
+        self.addCleanup(builder.destroy)
+        return builder
+
+    def test_the_classic_terminal_is_found(self):
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        builder = self._container(parent, "redshift_vopnet")
+        self.assertEqual("redshift_material",
+                         material.redshift_terminal(builder).type().name())
+
+    def test_the_usd_terminal_is_found(self):
+        lib = self._container(hou.node("/stage"), "materiallibrary")
+        builder = self._container(lib, "rs_usd_material_builder")
+        self.assertEqual("redshift_usd_material",
+                         material.redshift_terminal(builder).type().name())
+
+    def test_the_stock_shader_is_found_and_no_terminal_is_taken_for_it(self):
+        parent = hou.node("/mat") or hou.node("/").createNode("mat")
+        builder = self._container(parent, "redshift_vopnet")
+        shader = material.redshift_surface_shader(builder)
+        self.assertNotIn(shader.type().name(), material.REDSHIFT_TERMINALS)
+        self.assertTrue(material.is_surface_shader_type(shader.type().name()))
+
+
 if __name__ == "__main__":
     unittest.main()

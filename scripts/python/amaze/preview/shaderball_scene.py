@@ -87,20 +87,10 @@ class ShaderBallSetup:
 
             rsmat = self.mat.node("StandardMaterial1")    # the auto-created surface material's name differs between Redshift versions - older builds create StandardMaterial1, newer an OpenPBR material
             if rsmat is None:
-                for child in self.mat.children():
-                    tname = child.type().name()
-                    if tname in material.REDSHIFT_TERMINALS:
-                        continue
-                    if material.is_surface_shader_type(tname):
-                        rsmat = child
-                        break
+                rsmat = material.redshift_surface_shader(self.mat)
             if rsmat is None:
                 rsmat = self.mat.createNode("redshift::StandardMaterial")
-                out = None
-                for child in self.mat.children():
-                    if child.type().name() in material.REDSHIFT_TERMINALS:
-                        out = child
-                        break
+                out = material.redshift_terminal(self.mat)
                 if out is not None:
                     out.setInput(0, rsmat, 0)
 
