@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import time
+import types
 
 from amaze import messages
 from amaze.core import debug, users
@@ -145,15 +146,12 @@ def active_version_name(preferences, mat_id: str) -> str:
 
 
 def _base_paths(preferences, mat_id: str) -> dict:
-    assets = os.path.join(preferences.dir, preferences.asset_dir)
-    images = os.path.join(preferences.dir, preferences.img_dir)
-    mat_id = str(mat_id)
-    return {
-        ".mat": os.path.join(assets, mat_id + ".mat"),
-        ".interface": os.path.join(assets, mat_id + ".interface"),
-        ".builder.json": os.path.join(assets, mat_id + ".builder.json"),
-        ".png": os.path.join(images, mat_id + ".png"),
-    }
+    """The asset's own files by archive suffix, named by `AssetLibrary.asset_files`."""
+    from amaze.core import library    # late: library imports this module
+    owned = library.AssetLibrary.asset_files(
+        types.SimpleNamespace(preferences=preferences), mat_id)
+    return {suffix: owned[kind] for kind, suffix in SOURCE_KINDS.items()
+            if kind in owned}
 
 
 def writer_tag(preferences) -> str:
@@ -383,8 +381,8 @@ def record_render(preferences, mat_id: str) -> bool:
         active_row = _row_for(ledger, active)
         if active_row is None:
             return False
-        source = _base_paths(preferences, mat_id)[".png"]
-        if not os.path.exists(source):
+        source = _base_paths(preferences, mat_id).get(".png")
+        if not source or not os.path.exists(source):
             return False
         target = _archive_paths(preferences, mat_id,
                                 _row_stem(active_row))[".png"]

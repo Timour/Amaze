@@ -220,6 +220,44 @@ class TheArchiveIsEachVersionsDurableThumbnail(_Case):
                 "active slot did not follow")
 
 
+class TheBaseFilesFollowTheLibrarysExtensions(_Case):
+    """A library whose shared settings name other file extensions versions the files it holds."""
+
+    def setUp(self):
+        super().setUp()
+        self.prefs._ext = ".matx"
+        self.prefs._img_ext = ".jpg"
+        renamed = self.base_mat[:-len(".mat")] + ".matx"
+        os.replace(self.base_mat, renamed)
+        self.legacy_mat, self.base_mat = self.base_mat, renamed
+        images = os.path.join(self.prefs.dir, self.prefs.img_dir)
+        os.makedirs(images, exist_ok=True)
+        self.base_image = os.path.join(images, self.mat_id + ".jpg")
+        with open(self.base_image, "wb") as fh:
+            fh.write(b"RENDER-AS-JPEG")
+
+    def _archived(self, kind):
+        stem = versions.list_versions(self.prefs, self.mat_id)[-1]["file"]
+        with open(os.path.join(versions.versions_dir(self.prefs, self.mat_id),
+                               stem + kind), "rb") as fh:
+            return fh.read()
+
+    def test_the_payload_and_its_render_are_archived(self):
+        self.assertEqual(1, versions.create_version(self.prefs, self.mat_id))
+        self.assertEqual(self._base_bytes(), self._archived(".mat"))
+        self.assertEqual(b"RENDER-AS-JPEG", self._archived(".png"))
+
+    def test_a_switch_writes_the_payload_under_its_own_extension(self):
+        original = self._base_bytes()
+        versions.create_version(self.prefs, self.mat_id)
+        self._rewrite_base(b"EDITED-STATE")
+        versions.create_version(self.prefs, self.mat_id)
+        self.assertTrue(versions.switch_active(self.prefs, self.mat_id, 1))
+        self.assertEqual(original, self._base_bytes())
+        self.assertFalse(os.path.exists(self.legacy_mat),
+                         "the switch wrote a payload this library never reads")
+
+
 class StoreTest(_Case):
 
     def test_no_versions_is_the_ordinary_state(self):
