@@ -670,18 +670,8 @@ class Store:
             return Written(True, REASON_UNCHANGED)
         if self.spec.user_tagged and not self.user_tag():
             return Written(False, REASON_NO_USER)
-        moves = {self._key(str(k)): self._key(str(v))
-                 for k, v in (moves or {}).items()}
-        moves = {k: v for k, v in moves.items() if k != v}
-        touched = [k for k in moves if k in self._table]
-        if not touched:
-            return Written(True, REASON_UNCHANGED)
-        staged = dict(self._table)
-        for old in touched:
-            value = staged.pop(old)
-            staged.setdefault(moves[old], value)  # a destination entry WINS
-        return self._commit(staged, touched,
-                            retire=[k for k in touched if k not in staged])    # the OLD keys as retired, or the commit's disk adoption resurrects them - sparing one another move re-filled as its destination
+        return self.rekey_stored({self._key(str(k)): self._key(str(v))
+                                  for k, v in moves.items()})
 
     def adopt_orphans(self) -> Written:
         """File every ownerless row under the current user in ONE write; adoption only ADDS. ▸p/store-commit-order"""

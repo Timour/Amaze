@@ -998,6 +998,22 @@ class TheKeyLifecycle(StoreCase):
             "five keys moved in %d writes - a half-rewritten keyspace "
             "is worse than the orphaning it fixes" % len(writes))
 
+    def test_rekey_moves_only_this_users_keys_and_a_destination_wins(self):
+        """`rekey` is `rekey_stored` over this user's spelling of each key."""
+        store = keyed_store.open_store(locations.SPEC, self.prefs)
+        theirs = SECOND_USER + keyed_store.USER_SEP + "/a/x"
+        store.update({"/a/x": {"registered": True, "name": "x"},
+                      "/a/y": {"registered": True, "name": "old"},
+                      "/b/y": {"registered": True, "name": "chosen"}})
+        store._table[theirs] = {"registered": True, "name": "theirs"}
+        self.assertTrue(store.rekey({"/a/x": "/b/x", "/a/y": "/b/y"}))
+        self.assertEqual(
+            {"/b/x": {"registered": True, "name": "x"},
+             "/b/y": {"registered": True, "name": "chosen"}},
+            store.all(), "this user's keys did not move as stored keys do")
+        self.assertIn(theirs, store.everyones(),
+                      "a move made by one user carried another's key")
+
     def test_an_existing_entry_at_the_destination_is_not_overwritten(self):
         store = self.store()
         store.set(notes.note_key("file", "/old/a.exr"), self.page("old"))
