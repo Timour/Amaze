@@ -1483,6 +1483,79 @@ class ANoOpSaveCostsOneRead(unittest.TestCase):
             % len(calls))
 
 
+class ASaveSerialisesOnceAndReadsOnce(_Case):
+    """One save turns the document into text once, and reads a changed file once before writing."""
+
+    def _saved(self):
+        """(reads of the file, serialisations of the document) in one save after an edit."""
+        import builtins
+        db, data = self._load()
+        self.assertTrue(db.save(), "premise: the first save landed")
+        data["assets"][0]["name"] = "edited here"
+        reads, encodes = [], []
+        real_open, real_dumps, real_dump = builtins.open, json.dumps, json.dump
+
+        def opening(file, mode="r", *args, **kwargs):
+            if os.path.abspath(str(file)) == os.path.abspath(self.path) \
+                    and "r" in mode:
+                reads.append(1)
+            return real_open(file, mode, *args, **kwargs)
+
+        def dumps(obj, *args, **kwargs):
+            if obj is data:
+                encodes.append("dumps")
+            return real_dumps(obj, *args, **kwargs)
+
+        def dump(obj, *args, **kwargs):
+            if obj is data:
+                encodes.append("dump")
+            return real_dump(obj, *args, **kwargs)
+
+        with mock.patch("builtins.open", opening), \
+                mock.patch.object(json, "dumps", dumps), \
+                mock.patch.object(json, "dump", dump):
+            self.assertTrue(db.save(), "premise: the edit landed")
+        return reads, encodes
+
+    def test_a_save_serialises_the_document_once(self):
+        self._write(self._document())
+        _reads, encodes = self._saved()
+        self.assertEqual(1, len(encodes),
+                         "one save turned the document into text %s" % encodes)
+
+    def test_a_file_another_machine_changed_is_read_once_before_the_write(self):
+        self._write(self._document())
+        db, data = self._load()
+        self.assertTrue(db.save(), "premise: the first save landed")
+        theirs = self._on_disk()
+        theirs["assets"][1]["name"] = "edited there"
+        self._write(theirs)
+        data["assets"][0]["name"] = "edited here"
+        reads = self._reads_during(db.save)
+        self.assertEqual(
+            2, len(reads),
+            "a save after another machine's edit read the file %d times - "
+            "once to decide and merge, once to check the write" % len(reads))
+        on_disk = self._on_disk()["assets"]
+        self.assertEqual(["edited here", "edited there"],
+                         [on_disk[0]["name"], on_disk[1]["name"]])
+
+    def _reads_during(self, action):
+        import builtins
+        reads = []
+        real_open = builtins.open
+
+        def opening(file, mode="r", *args, **kwargs):
+            if os.path.abspath(str(file)) == os.path.abspath(self.path) \
+                    and "r" in mode:
+                reads.append(1)
+            return real_open(file, mode, *args, **kwargs)
+
+        with mock.patch("builtins.open", opening):
+            self.assertTrue(action(), "premise: the save landed")
+        return reads
+
+
 class AOneRowSaveTouchesOneStamp(unittest.TestCase):
     """Once a save has checked every stamp, the next touches only the rows it changed."""
 

@@ -678,11 +678,15 @@ class _Recorded:
 
 
 def write_json_atomic(path: str, data, indent: int = 4,
-                      sort_keys: bool = False) -> tuple:
-    """The JSON front door: no reader sees a write half-done. Answers the `file_fingerprint` it wrote."""
+                      sort_keys: bool = False, serialised=None) -> tuple:
+    """The JSON front door, never half-done; `serialised` is the caller's utf-8 dumps of `data`."""
     check_sandbox(path)
     with scratch_beside(path) as scratch:
-        with open(scratch, "w", encoding="utf-8", newline="\n") as stream:  # newline="\n" or Windows text mode writes CRLF, and a caller that skips a no-op write by comparing `json.dumps(...)` (LF) against the file read in BINARY can then never match - so on Windows every save wrote, costing a snapshot rotation and a sync upload each time, and the two machines' guards mismatched after each other in the library they share
+        if serialised is not None:
+            with open(scratch, "wb") as stream:
+                stream.write(serialised)
+            return file_fingerprint(serialised)
+        with open(scratch, "w", encoding="utf-8", newline="\n") as stream:  # LF on Windows too, or no json.dumps compare ever matches
             recorded = _Recorded(stream)
             json.dump(data, recorded, indent=indent, sort_keys=sort_keys)
     return file_fingerprint("".join(recorded.pieces).encode("utf-8"))

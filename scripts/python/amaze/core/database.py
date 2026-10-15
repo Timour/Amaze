@@ -384,8 +384,8 @@ class DatabaseConnector:
         return inst
 
     def _stat_file(self):
-        """(size, sha256) of the file on disk, or None when unreadable - CONTENT, not (mtime_ns, size): a same-size edit passes a stat compare and a byte-identical rewrite trips it, so the hash is the verdict (~1.4ms on the real library, saves only). ▸r/peer-read"""
-        return hostos.fingerprint_of(self._path + self._filename)
+        """The file now, in ONE read: a `PeerFile`, its fingerprint a content hash. ▸r/peer-read"""
+        return hostos.peer_read(self._path + self._filename, self._disk_stat)
 
     def _remember_written(self, full: str, written) -> None:
         """What we wrote is the base only while the file holds it; else the base before it stands."""
@@ -675,12 +675,13 @@ class DatabaseConnector:
 
     def _merge_and_write(self, full: str) -> bool:
         """The window a save actually holds: merge what a peer wrote, then replace the file. Callers hold the lock. ▸p/merge-needs-a-base"""
-        current_stat = self._stat_file()
+        seen = self._stat_file()    # one read decides AND merges
+        current_stat = seen.fingerprint
         if self._disk_stat is not None and current_stat not in (
             None, self._disk_stat
         ):
             was_ahead = getattr(self, "_format_ahead", False)
-            if not self._merge_from_disk(full):
+            if not self._merge_from_disk(full, already_read=seen):
                 if not (getattr(self, "_format_ahead", False) and not was_ahead):    # only a latch THIS merge set explains its own refusal; as a bare flag it swallowed a genuinely unreadable peer
                     return self._refuse_unreadable_peer(full)
         if getattr(self, "_write_blocked", False):
@@ -725,7 +726,7 @@ class DatabaseConnector:
         self._data["format"] = max(
             int(getattr(self, "_loaded_format", 0) or 0),
             branding.LIBRARY_FORMAT)
-        serialised_stat = None
+        serialised = None
         try:
             serialised = json.dumps(self._data, indent=4).encode("utf-8")
             serialised_stat = hostos.file_fingerprint(serialised)    # ▸r/peer-read
@@ -740,7 +741,8 @@ class DatabaseConnector:
         hostos.snapshot_before_write(full)
         created = not os.path.exists(full)
         try:
-            written = hostos.write_json_atomic(full, self._data, indent=4)
+            written = hostos.write_json_atomic(full, self._data, indent=4,
+                                               serialised=serialised)
         except OSError as exc:
             debug.exception("database save", exc, file=full)
             cause, why = hostos.why_failed(exc, full)
