@@ -48,6 +48,8 @@ class FolderListModel(QtCore.QAbstractListModel):
         super().__init__()
         self.preferences = preferences
         self._counts: dict = {}    # folder file-counts, cached so painting never touches the disk ▸p/folder-sidebar
+        self._rows: list = []
+        self._rows_key = None    # what `_rows` was read against; None reads again
 
 
     def matches_in(self, path: str, filename: str) -> bool:
@@ -63,7 +65,20 @@ class FolderListModel(QtCore.QAbstractListModel):
         held = getattr(self, "_held", None)    # the rows the views know, while a write is answered
         if held is not None:
             return held
-        return getattr(self.preferences, self.folders_attr)
+        key = self._rows_token()
+        if key != self._rows_key:
+            self._rows = list(getattr(self.preferences, self.folders_attr))
+            self._rows_key = key
+        return self._rows
+
+    def _rows_token(self) -> tuple:
+        """What the registered list derives from: a location write, the copy's order, library, user."""
+        from amaze.core import locations
+        preferences = self.preferences
+        return (locations.generation(),
+                tuple(getattr(preferences, "last_known_folders", ()) or ()),
+                str(getattr(preferences, "dir", "")),
+                str(getattr(preferences, "library_user", "")))
 
     def _answered(self, write) -> tuple:
         """Run one prefs write with the old rows still served, then announce what it changed."""
@@ -110,11 +125,14 @@ class FolderListModel(QtCore.QAbstractListModel):
         self.beginResetModel()
         try:
             self._counts = {}    # counts are per-folder and the folders have just changed
+            self._rows_key = None
         finally:
             self.endResetModel()
 
     def refresh_counts(self) -> None:
+        """Forget the counts and the rows - the doors where the disk or the library may have moved."""
         self._counts = {}
+        self._rows_key = None
 
     def includes_subfolders(self, path: str) -> bool:
         """Whether THIS registered folder scans recursively - the base answers no, and recursion is the location record's. ▸p/folder-sidebar"""

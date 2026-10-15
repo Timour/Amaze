@@ -1919,6 +1919,28 @@ class LocationManagementTest(unittest.TestCase):
                          "the counts do not follow each location's own "
                          "recursion flag")
 
+    def test_a_sidebar_paint_reads_the_location_list_once(self):
+        """One read of the list serves a whole paint, and a write outside the model still shows."""
+        model, prefs = self._folders_model(
+            *[self._tmpdir() for _ in range(5)])
+        self.assertEqual(6, model.rowCount(), "premise: five locations and All")
+        reads = []
+        real = locations_mod.registered_paths
+        roles = (QtCore.Qt.ItemDataRole.DisplayRole,
+                 QtCore.Qt.ItemDataRole.ToolTipRole, model.PathRole)
+        with mock.patch.object(locations_mod, "registered_paths",
+                               lambda p: (reads.append(1), real(p))[1]):
+            for _paint in range(2):
+                for row in range(model.rowCount()):
+                    for role in roles:
+                        model.data(model.index(row, 0), role)
+            self.assertEqual([], reads, "two paints re-read the location "
+                                        "list %d times" % len(reads))
+            prefs.add_file_folder(self._tmpdir())
+            self.assertEqual(7, model.rowCount(),
+                             "a location registered outside the model "
+                             "never reached it")
+
     def test_the_default_name_is_the_folder_s_own_name(self):
         """The row says what the folder IS; the full path is the hover, not the label. Said the collapsed path until 2026-08-27."""
         model, _prefs = self._folders_model("/assets/textures/HDR/")
