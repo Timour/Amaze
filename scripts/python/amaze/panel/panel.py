@@ -3525,9 +3525,11 @@ class AmazePanel(QtWidgets.QWidget):
         """Fill the Filter menu with the ACTIVE section's entries - one menu and one button serve every tab, so the section says what it offers (sections.py ▸ filter_entries) and what an entry MEANS (apply_filter); this never looks inside a value. Runs on every section change, and again whenever Preferences may have changed what is on offer."""
         section = self._section()
         entries = tuple(section.filter_entries()) if section is not None else ()
-        self.menu_filter.clear()
-        self.filter_action_group = QtGui.QActionGroup(self.menu_filter)    # a QActionGroup owns its actions, so a fresh group with the fresh menu is what keeps a stale action from staying checked and answering for a section that is no longer showing
-        self.filter_action_group.setExclusive(True)
+        self.menu_filter.clear()    # deletes the menu's actions, emptying the group, never the group itself
+        if self.filter_action_group is None:
+            self.filter_action_group = QtGui.QActionGroup(self.menu_filter)    # ONE, for the session
+            self.filter_action_group.setExclusive(True)
+            self.filter_action_group.triggered.connect(self.filter_menu_changed)
         self.filter_actions = {}
         self.filter_values = {}
         button = getattr(self, "btn_filter", None)
@@ -3553,7 +3555,6 @@ class AmazePanel(QtWidgets.QWidget):
         act = self.filter_actions.get(remembered) or self.filter_actions[
             entries[0][0]]    # a remembered choice that is no longer offered falls back to entries[0], the everything-entry (sections.py puts it first), so a renderer switched off in Preferences needs no case of its own
         act.setChecked(True)
-        self.filter_action_group.triggered.connect(self.filter_menu_changed)
         self.apply_section_filter()
 
     def filter_menu_changed(self, action) -> None:

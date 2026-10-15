@@ -13,7 +13,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")   # BEFORE the app exists ▸p/first-app-picks-the-platform
-from PySide6 import QtCore, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -103,6 +103,18 @@ class FilterMenuEngineTest(unittest.TestCase):
             self.assertIn(
                 label, ["Karma", "Redshift", "Octane"],
                 "Materials offers something that is not a renderer")
+
+    def test_rebuilds_leave_one_group_holding_only_the_entries_shown(self):
+        """The menu is rebuilt on every tab switch, so what fills it must not pile up."""
+        for key in ("code", "cop", "gradient", "code", "material", "code"):
+            labels = self._labels_for(key)
+        QtWidgets.QApplication.sendPostedEvents(
+            None, QtCore.QEvent.Type.DeferredDelete)
+        groups = self.panel.menu_filter.findChildren(QtGui.QActionGroup)
+        self.assertEqual(1, len(groups),
+                         "%d action groups alive after six rebuilds" % len(groups))
+        self.assertEqual(labels, [act.text() for act in groups[0].actions()],
+                         "the group holds actions the menu no longer shows")
 
     def test_the_panel_never_interprets_a_value(self):
         """The engine's whole claim: two sections filter on values of different TYPES (a renderer string, a (low, high) palette-size pair), so a panel that understood either one could not serve both."""
