@@ -160,5 +160,23 @@ class OneRingTest(unittest.TestCase):
                 self.assertEqual(want, self._ours(width, 4, inset=width))
 
 
+class BothChipRingsAreOneWholePixelWidth(unittest.TestCase):
+    """The tab ring and the toolbar chip ring share one width; an int `ui_px` rounds at any scale."""
+
+    def test_the_tab_ring_is_the_toolbar_chip_ring(self):
+        from unittest import mock
+        widths = []
+        with mock.patch.object(ui_helpers, "draw_ring",
+                               lambda _painter, _rect, _ink, width, *_rest:
+                               widths.append(width)):
+            ui_helpers.draw_chip(None, QtCore.QRectF(0, 0, 20, 20),
+                                 QtGui.QColor("#000000"),
+                                 QtGui.QColor("#ffffff"))
+        tab = ui_helpers.SectionTabBar.CHIP_RING_W
+        self.assertEqual([tab], widths)
+        self.assertIsInstance(widths[0], int, "the toolbar chip ring is not whole pixels")
+        self.assertIsInstance(tab, int, "the tab ring scales by fractions")
+
+
 if __name__ == "__main__":
     unittest.main()

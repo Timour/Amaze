@@ -577,7 +577,7 @@ class SectionTabBar(QtWidgets.QWidget):
     TRAY_LEFT = theme.ui_px(_DRAWN["tray_left"])
     CHIP_HEIGHT = theme.ui_px(_DRAWN["chip_height"])
     CHIP_RADIUS = theme.ui_px(4)
-    CHIP_RING_W = theme.ui_px(1.0)
+    CHIP_RING_W = theme.ui_px(1)
     CHIP_PAD_X = theme.ui_px(_DRAWN["chip_pad"])
     CHIP_GAP = theme.ui_px(_DRAWN["chip_gap"])
     CHIP_INSET = theme.ui_px(_DRAWN["chip_inset"])
