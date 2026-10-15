@@ -316,6 +316,10 @@ class GradientLibrary(library.AssetLibrary):
             self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
         return bool(stored)
 
+    def rerender_tile_icons(self) -> int:
+        """Repaint every palette wearing an icon; the base would write PNGs a palette never has."""
+        return tile_icons.repaint_custom(self)
+
     @staticmethod
     def _is_banded(colors: list, ramp: dict) -> bool:
         """True when the palette paints as bands rather than a gradient - every basis Constant, or no ramp yet."""
@@ -334,8 +338,10 @@ class GradientLibrary(library.AssetLibrary):
         stops = tuple(round(float(k), 6) for k in (ramp.get("keys") or ())  # positions too: same colours in different places paint differently
                       if isinstance(k, (int, float)))
         icon = self.tile_icon(row)
+        weight = (tile_icons.stroke_for(self.preferences)
+                  if tile_icons.is_custom(icon) else 0)
         icon_key = (tile_icons.face_for(self, row), icon.get("name"), icon.get("bg"),
-                    icon.get("ink"))
+                    icon.get("ink"), weight)
         return ("grad", self._is_banded(colors, ramp), hexes, bases,
                 stops, icon_key, THUMB_SIZE)
 

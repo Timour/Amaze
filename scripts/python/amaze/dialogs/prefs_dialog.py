@@ -1181,23 +1181,12 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.ram_cache_mb = value
 
     def _recompose_tile_icons(self, _index=None) -> None:
-        """Line weight changed, so redraw every tile icon that exists; the composed PNGs are baked, and without this the setting only shows on icons chosen afterwards."""
-        panel = self._panel   # NOT parent(): the dialog is reparented to Houdini's main window, so parent() is the application window and every lookup returns None
-        for attr in ("material_model", "cop_model", "code_model"):
-            model = getattr(panel, attr, None)
-            if model is not None and hasattr(model, "rerender_tile_icons"):
-                model.rerender_tile_icons()
-        tile_icons.forget_composed()   # the File section composes in memory, so it needs a repaint AND a cleared cache or it redraws the old weight
-        for attr in ("file_files_model",):
-            model = getattr(panel, attr, None)
-            if model is None:
-                continue
-            rows = model.rowCount()
-            if rows:
-                model.dataChanged.emit(
-                    model.index(0, 0), model.index(rows - 1, 0),
-                    [QtCore.Qt.ItemDataRole.DecorationRole],
-                )
+        """Line weight changed: forget composed pictures, then every tile-icon model redraws."""
+        tile_icons.forget_composed()
+        if self._panel is None:
+            return
+        for model in self._panel.tile_icon_models():
+            model.rerender_tile_icons()
 
     def set_sidebar_counts(self, checked: bool) -> None:
         self._prefs.sidebar_counts = checked

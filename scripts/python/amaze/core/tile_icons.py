@@ -78,6 +78,15 @@ def chosen_image(model, row: int):
         return compose_for(model.preferences, spec)    # in memory: painting never writes
     return generic_image(model.tile_face_art(row))
 
+
+def repaint_custom(model) -> int:
+    """Repaint every row of `model` wearing a custom icon, for a model that composes in memory."""
+    rows = [row for row in range(model.rowCount())
+            if is_custom(model.tile_icon(row))]
+    for row in rows:
+        model.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+    return len(rows)
+
 PRESETS = (  # FOUR presets plus the current-colour chip (the picker) - the D02 swatches, hex-for-hex from the drawing ▸p/one-design-document
     ("Red", "#e0523a"),
     ("Green", "#a4c18a"),

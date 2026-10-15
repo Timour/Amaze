@@ -2265,6 +2265,15 @@ class AmazePanel(QtWidgets.QWidget):
             found.append(online)
         return tuple(found)
 
+    def tile_icon_models(self) -> tuple:
+        """Every model whose tiles can wear an icon, once, from each section's own `tile_models()`."""
+        found = []
+        for section in getattr(self, "sections", {}).values():
+            model = section.tile_models()[0]
+            if model is not None and model not in found:
+                found.append(model)
+        return tuple(found)
+
     def _is_online(self) -> bool:
         """Is the online world showing? The mode alone answers it - the online world is its own world with its own tab strip of sources, not a view mode over one section, so no section key is part of the question. ONE predicate, so no handler works it out for itself."""
         return bool(getattr(self, "online_mode", False))    # `current_section` still names the local section underneath

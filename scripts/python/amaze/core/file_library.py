@@ -766,6 +766,10 @@ class FileFiles(grid_columns.GridColumnsMixin,
     def commit_tile_icons(self, rows=None) -> None:
         """Signature parity with the asset models; already persisted."""
 
+    def rerender_tile_icons(self) -> int:
+        """Repaint every file wearing an icon; they compose in memory, so nothing is written."""
+        return tile_icons.repaint_custom(self)
+
     def _kind(self, row: int) -> str:
         return self._kinds[row] if 0 <= row < len(self._kinds) else ""
 

@@ -1,6 +1,7 @@
 """Tile icons: a chosen symbol on a chosen colour, instead of a tile with nothing to show. - The geometry is the part worth pinning. It was read off the design template by measuring its clipboard against Feather's own clipboard.svg - 250px of ink, a 10px stroke, centred on 512 - and none of that is recoverable from the code if it drifts. So these tests measure rendered pixels rather than trusting the constants: the template's own icon must land where the template put it, and no icon may exceed the 250px rule whatever its shape or the chosen line weight. - The rest is about not losing anything: the render underneath is never overwritten, a nonsense choice degrades to "no icon" instead of a broken grid, and the cache key changes with the icon so a tile cannot be served yesterday's picture."""
 
 import ast
+import contextlib
 import inspect
 import json
 import os
@@ -1234,6 +1235,65 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
             "one row's icon walked the whole model: %d lookups over %d "
             "rows, each a store get with a deepcopy"
             % (len(calls), model.rowCount()))
+
+
+class TheLineWeightRedrawsEverySection(unittest.TestCase):
+    """Look > Tile Icon Line reaches every section with tile icons, Colors included."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def setUp(self):
+        from amaze.dialogs import prefs_dialog
+        prefs = self.panel.prefs
+        self.addCleanup(setattr, prefs, "icon_line_weight",
+                        prefs.icon_line_weight)
+        prefs.icon_line_weight = "template"
+        self.dialog = prefs_dialog.PrefsDialog(prefs, panel=self.panel)
+        self.addCleanup(self.dialog.deleteLater)
+
+    def set_weight(self, token):
+        combo = self.dialog._combo_icon_weight
+        combo.setCurrentIndex(combo.findData(token))
+        self.assertEqual(token, self.panel.prefs.icon_line_weight)
+
+    def test_every_section_with_tile_icons_is_redrawn(self):
+        asked = []
+        models = {key: section.tile_models()[0]
+                  for key, section in self.panel.sections.items()}
+        self.assertNotIn(None, models.values(), "premise: every section has tiles")
+        with contextlib.ExitStack() as stack:
+            for key, model in models.items():
+                stack.enter_context(mock.patch.object(
+                    model, "rerender_tile_icons", create=True,
+                    side_effect=lambda key=key: asked.append(key)))
+            self.set_weight("feather")
+        self.assertEqual(sorted(models), sorted(asked),
+                         "a section's tile icons kept the old line weight")
+
+    def test_a_colour_tile_with_an_icon_repaints_at_the_new_weight(self):
+        model = self.panel.gradient_model
+        self.assertTrue(model.rowCount(), "premise: the fixture has palettes")
+        self.assertTrue(model.set_tile_icon(0, {"name": "layers",
+                                                "bg": "#4af2a1"}))
+        self.addCleanup(model.set_tile_icon, 0, {})
+        index = model.index(0, 0)
+        thin = model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
+        repainted = []
+
+        def heard(top, bottom, _roles=()):
+            repainted.append((top.row(), bottom.row()))
+
+        model.dataChanged.connect(heard)
+        self.addCleanup(model.dataChanged.disconnect, heard)
+        self.set_weight("feather")
+        self.assertTrue(any(top <= 0 <= bottom for top, bottom in repainted),
+                        "the Colors tile was never told to repaint")
+        bold = model.data(index, QtCore.Qt.ItemDataRole.DecorationRole)
+        self.assertNotEqual(thin, bold,
+                            "the Colors tile serves its cached picture at "
+                            "the old line weight")
 
 
 if __name__ == "__main__":
