@@ -404,22 +404,24 @@ class PrefsDialog(base_dialog.AssetDialog):
                                    *prefs_mod.RENDERSAMPLES_RANGE),
         )
         self.spin_karma_samples = QtWidgets.QSpinBox()
-        self.spin_karma_samples.setRange(1, 256)
+        self.spin_karma_samples.setRange(*prefs_mod.KARMA_SAMPLES_RANGE)
         self.spin_karma_samples.setValue(self._prefs.karma_rendersamples)
         self.spin_karma_samples.valueChanged.connect(self.set_karma_rendersamples)
         self.spin_karma_samples.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_SAMPLES_KARMA))
         form.addRow(self._label("Samples (Karma)"),
-            self._field_slider_row(self.spin_karma_samples, 1, 256),
+            self._field_slider_row(self.spin_karma_samples,
+                                   *prefs_mod.KARMA_SAMPLES_RANGE),
         )
         self.spin_ram_cache = QtWidgets.QSpinBox()
-        self.spin_ram_cache.setRange(64, 4096)
+        self.spin_ram_cache.setRange(*prefs_mod.RAM_CACHE_RANGE)
         self.spin_ram_cache.setValue(self._prefs.ram_cache_mb)
         self.spin_ram_cache.valueChanged.connect(self.set_ram_cache_mb)
         self.spin_ram_cache.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_RAM_CACHE))
         form.addRow(self._label("RAM Cache (MB)"),
-            self._field_slider_row(self.spin_ram_cache, 64, 4096),
+            self._field_slider_row(self.spin_ram_cache,
+                                   *prefs_mod.RAM_CACHE_RANGE),
         )
         self._combo_geo_shading = self._data_combo((   # geometry look, on NEWLY rendered thumbnails; each mode/bg combination keeps its own disk cache
             ("Hidden Line Ghost", "hiddenlineghost"),
@@ -454,7 +456,8 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_CONVERSION_THREADS))
         form.addRow(
             self._label("Conversion Threads"),
-            self._field_slider_row(self.spin_parallel, 1, 8),
+            self._field_slider_row(self.spin_parallel,
+                                   *prefs_mod.CONVERSIONS_RANGE),
         )
         self.spin_parallel.setValue(self._prefs.texture_parallel_conversions)   # range BEFORE value, then connect, so the initial set does not write the preference back to itself
         self.spin_parallel.valueChanged.connect(self.set_texture_parallel)
@@ -470,7 +473,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_DOWNLOAD_RESOLUTION))
         form.addRow(self._label("Download Resolution"), self.cbb_matx_res)
         self.spin_matx_parallel = QtWidgets.QSpinBox()
-        self.spin_matx_parallel.setRange(1, 16)
+        self.spin_matx_parallel.setRange(*prefs_mod.DOWNLOADS_RANGE)
         self.spin_matx_parallel.setValue(self._prefs.matx_parallel_downloads)
         self.spin_matx_parallel.valueChanged.connect(
             self.set_matx_parallel_downloads
@@ -478,7 +481,8 @@ class PrefsDialog(base_dialog.AssetDialog):
         self.spin_matx_parallel.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_PARALLEL_DOWNLOADS))
         form.addRow(self._label("Parallel Downloads"),
-            self._field_slider_row(self.spin_matx_parallel, 1, 16),
+            self._field_slider_row(self.spin_matx_parallel,
+                                   *prefs_mod.DOWNLOADS_RANGE),
         )
         spins = (self.line_rendersize, self.line_rendersamples,
                  self.spin_karma_samples, self.spin_ram_cache,
@@ -568,13 +572,14 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_TILE_ICON_LINE))
 
         self.spin_scroll_speed = QtWidgets.QSpinBox()
-        self.spin_scroll_speed.setRange(10, 300)
+        percent = [round(end * 100) for end in prefs_mod.SCROLL_SPEED_RANGE]
+        self.spin_scroll_speed.setRange(*percent)
         self.spin_scroll_speed.setValue(round(self._prefs.scroll_speed * 100))
         self.spin_scroll_speed.valueChanged.connect(self.set_scroll_speed)
         self.spin_scroll_speed.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_SCROLL_SPEED))
         form.addRow(self._label("Scroll Speed (%)"),
-            self._field_slider_row(self.spin_scroll_speed, 10, 300),
+            self._field_slider_row(self.spin_scroll_speed, *percent),
         )
         self._tab_built["D07"] = {
             "QComboBox": (self._combo_path_style, self._combo_icon_weight),

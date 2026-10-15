@@ -252,6 +252,29 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                 with self.assertRaises((TypeError, ValueError)):
                     setattr(p, name, None)    # a raise is how a junk value reaches its default
 
+    def test_every_spin_row_offers_what_its_setter_keeps(self):
+        """A value past a row's end is kept at that end, so the row can always show what is stored."""
+        from amaze.dialogs import prefs_dialog
+        from amaze.tests import test_support
+        p = test_support.fixture_prefs(self)
+        dlg = prefs_dialog.PrefsDialog(p, panel=None)
+        self.addCleanup(dlg.deleteLater)
+        for row, name, scale in (
+                (dlg.line_rendersize, "rendersize", 1),
+                (dlg.line_rendersamples, "rendersamples", 1),
+                (dlg.spin_karma_samples, "karma_rendersamples", 1),
+                (dlg.spin_ram_cache, "ram_cache_mb", 1),
+                (dlg.spin_parallel, "texture_parallel_conversions", 1),
+                (dlg.spin_matx_parallel, "matx_parallel_downloads", 1),
+                (dlg.spin_scroll_speed, "scroll_speed", 100)):
+            for end, past in ((row.minimum(), row.minimum() - 1),
+                              (row.maximum(), row.maximum() + 1)):
+                with self.subTest(setting=name, value=past):
+                    setattr(p, name, past if scale == 1 else past / scale)
+                    self.assertEqual(end, round(getattr(p, name) * scale),
+                                     "the setter keeps a value its row "
+                                     "cannot show")
+
     def test_load_assigns_through_the_setters(self):
         """Source pin on the file holding load(): the values are clamped in the setters, and a raw assignment bypasses every one."""
         body = ast.dump(ast.parse(source_of("prefs/persistence.py")))

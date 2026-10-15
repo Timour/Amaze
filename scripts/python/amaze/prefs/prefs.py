@@ -24,6 +24,11 @@ TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because 
 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
 RENDERSAMPLES_RANGE = (1, 1024)
+KARMA_SAMPLES_RANGE = (1, 256)
+RAM_CACHE_RANGE = (64, 4096)
+CONVERSIONS_RANGE = (1, 8)
+DOWNLOADS_RANGE = (1, 16)
+SCROLL_SPEED_RANGE = (0.1, 3.0)  # a factor; its row shows it as a percent
 
 
 def _clamped(value, bounds) -> int:
@@ -538,7 +543,7 @@ class Prefs(_Persistence):
 
     @ram_cache_mb.setter
     def ram_cache_mb(self, val: int) -> None:
-        self._ram_cache_mb = min(4096, max(64, int(val)))
+        self._ram_cache_mb = _clamped(val, RAM_CACHE_RANGE)
 
     @property
     def cache_dir(self) -> str:
@@ -574,7 +579,7 @@ class Prefs(_Persistence):
 
     @texture_parallel_conversions.setter
     def texture_parallel_conversions(self, val: int) -> None:
-        self._texture_parallel_conversions = max(1, min(8, int(val)))
+        self._texture_parallel_conversions = _clamped(val, CONVERSIONS_RANGE)
 
     @property
     def karma_rendersamples(self) -> int:
@@ -583,7 +588,7 @@ class Prefs(_Persistence):
 
     @karma_rendersamples.setter
     def karma_rendersamples(self, val: int) -> None:
-        self._karma_rendersamples = max(1, int(val))
+        self._karma_rendersamples = _clamped(val, KARMA_SAMPLES_RANGE)
 
     @property
     def scroll_speed(self) -> float:
@@ -591,7 +596,8 @@ class Prefs(_Persistence):
 
     @scroll_speed.setter
     def scroll_speed(self, val: float) -> None:
-        self._scroll_speed = max(0.1, min(3.0, float(val)))
+        low, high = SCROLL_SPEED_RANGE
+        self._scroll_speed = max(low, min(high, float(val)))
 
     @property
     def debug_mode(self) -> bool:
@@ -609,7 +615,7 @@ class Prefs(_Persistence):
 
     @matx_parallel_downloads.setter
     def matx_parallel_downloads(self, val: int) -> None:
-        self._matx_parallel_downloads = max(1, min(16, int(val)))
+        self._matx_parallel_downloads = _clamped(val, DOWNLOADS_RANGE)
 
     @property
     def accent_color(self) -> str:
