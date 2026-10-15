@@ -254,12 +254,7 @@ class GradientLibrary(library.AssetLibrary):
                      category_name, self.sanitize_tags(tags or ""),
                      False, "")
         mat._extra = {"colors": colors, "ramp": ramp_data}
-        self.beginInsertRows(QtCore.QModelIndex(), 0, 0)  # at the TOP: the Colors grid shows source order and the newest palette belongs where the eye is
-        try:
-            self._assets.insert(0, mat)
-        finally:
-            self.endInsertRows()
-        self.rebuild_thumbs()
+        self._append_record(mat, row=0)    # the TOP: Colors shows source order, newest where the eye is
         if not self.save():  # nothing reached disk, so nothing stays on screen
             self._take_back_refused_append(mat)
             debug.alert(

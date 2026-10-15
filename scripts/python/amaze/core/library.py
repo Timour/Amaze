@@ -591,15 +591,18 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             asset.__dict__.update(fresh.__dict__)
             self.row_changed(row)    # the whole row: an adopted field can reach any column
 
-    def _append_record(self, record) -> int:
-        """Append a new record as the last row, with its signals, thumbnail maps and content baseline."""
-        row = len(self._assets)
+    def _append_record(self, record, row: int | None = None) -> int:
+        """Add a new record at `row`, the end by default, with its signals, maps and content baseline."""
+        row = len(self._assets) if row is None else row
         self.beginInsertRows(QtCore.QModelIndex(), row, row)
         try:
-            self._assets.append(record)
+            self._assets.insert(row, record)
         finally:
             self.endInsertRows()
-        self._add_thumb_paths(row)
+        if row == len(self._assets) - 1:
+            self._add_thumb_paths(row)
+        else:
+            self.rebuild_thumbs()    # every row below it moved down one
         self._content_state[str(record.mat_id)] = self._content_stat(
             record.mat_id)
         return row

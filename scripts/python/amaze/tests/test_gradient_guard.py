@@ -131,6 +131,19 @@ class GradientStaleWriteTest(unittest.TestCase):
             "is not a delete through the connector, so it has to be "
             "said out loud")
 
+    def test_a_saved_palette_lands_on_top_with_its_maps_in_step(self):
+        """The newest palette is row 0, and every row's thumbnail key maps to the row it sits on."""
+        self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
+        rows = range(self.lib.rowCount())
+        self.assertEqual(["mine", "ours"],
+                         [self.lib.entry(row)["name"] for row in rows])
+        self.assertEqual(self.lib.rowCount(), len(self.lib._mat_paths))
+        self.assertEqual(
+            list(rows),
+            [self.lib._thumb_rows.get(self.lib._thumb_key(row)) for row in rows],
+            "a palette saved on top left the rows below it mapped to "
+            "their old places, so a repaint lands on the wrong tile")
+
     def test_the_scratch_file_is_not_left_behind(self):
         self.lib.add_user_gradient("mine", "", {"values": [], "keys": []})
         strays = [n for n in os.listdir(self.dir)
