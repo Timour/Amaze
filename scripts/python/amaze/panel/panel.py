@@ -2639,7 +2639,7 @@ class AmazePanel(QtWidgets.QWidget):
         for row in rows:
             if not model.set_tile_icon(row, spec, save=False):
                 failed += 1
-        model.commit_tile_icons(rows)    # ONE save for the whole selection: set_tile_icon saves the index per call, so Ctrl-A over 546 materials would be 546 full database writes of a cloud-synced file at ~10ms each, freezing the panel for five seconds
+        model.commit_tile_icons(rows)    # once per selection, never per row
         ui = getattr(hou, "ui", None)
         if failed and ui is not None:
             ui.displayMessage(

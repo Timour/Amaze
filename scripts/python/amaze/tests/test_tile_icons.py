@@ -1237,6 +1237,77 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
             % (len(calls), model.rowCount()))
 
 
+class AnIconEditWritesNoIndex(unittest.TestCase):
+    """An icon lives in its own store, so choosing one writes no record list, and touches one row."""
+
+    SPEC = {"name": "circle", "bg": "#e0523a", "ink": "dark"}
+
+    def setUp(self):
+        from amaze.core import library as library_mod
+        self.prefs = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        self.library_mod = library_mod
+
+    def _saves_during(self, action):
+        from amaze.core import database
+        with mock.patch.object(database.DatabaseConnector, "save",
+                               autospec=True,
+                               side_effect=database.DatabaseConnector.save) as save:
+            action()
+        return save.call_count
+
+    def test_the_panel_s_icon_pass_saves_no_index(self):
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+        rows = list(range(model.rowCount()))
+
+        def icon_pass():
+            for row in rows:
+                self.assertTrue(model.set_tile_icon(row, self.SPEC, save=False))
+            model.commit_tile_icons(rows)
+
+        self.assertEqual(0, self._saves_during(icon_pass),
+                         "an icon choice wrote the material list, whose "
+                         "records no icon field lives in")
+        self.assertTrue(model.tile_icon(0), "premise: the icon landed")
+
+    def test_a_colour_icon_saves_no_index(self):
+        from amaze.core import gradient_library
+        model = gradient_library.GradientLibrary(self.prefs)
+        model.add_user_gradient(
+            "Icon Probe", "Uncategorized",
+            {"keys": [0.0, 1.0], "values": [[1, 0, 0], [0, 0, 1]],
+             "bases": ["Linear", "Linear"]})
+        self.assertTrue(model.rowCount(), "premise: a palette was saved")
+        self.assertEqual(
+            0, self._saves_during(lambda: model.set_tile_icon(0, self.SPEC)),
+            "a palette's icon wrote the Colors list")
+
+    def test_one_row_s_icon_scans_no_other_row_and_reads_no_ledger(self):
+        from amaze.core import versions
+        model = self.library_mod.MaterialLibrary(preferences=self.prefs)
+
+        class Counted(dict):
+            scanned = 0
+
+            def items(self):
+                Counted.scanned += len(self)
+                return dict.items(self)
+
+        model._thumb_rows = Counted(model._thumb_rows)
+        with mock.patch.object(versions, "record_render",
+                               wraps=versions.record_render) as ledger:
+            self.assertTrue(model.set_tile_icon(1, self.SPEC, save=False))
+        self.assertEqual(0, Counted.scanned,
+                         "one row's icon scanned every row's thumbnail key")
+        ledger.assert_not_called()
+        key = model._thumb_key(1)
+        self.assertEqual(1, model._thumb_rows.get(key),
+                         "the row's new picture key does not lead back to it")
+        self.assertEqual([1], [row for row in model._thumb_rows.values()
+                               if row == 1], "the row's old key was kept")
+
+
 class TheLineWeightRedrawsEverySection(unittest.TestCase):
     """Look > Tile Icon Line reaches every section with tile icons, Colors included."""
 

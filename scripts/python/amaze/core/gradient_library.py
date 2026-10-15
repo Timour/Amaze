@@ -301,11 +301,7 @@ class GradientLibrary(library.AssetLibrary):
         spec = tile_icons.choice_for(self, row, spec)
         stored = tile_icons.set_override(
             self.preferences, str(self._assets[row].mat_id), spec)
-        if save:
-            self._saved_rows_changed([self._assets[row]],
-                                     [QtCore.Qt.ItemDataRole.DecorationRole])
-        else:
-            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])    # `save` unused: no record moves
         return bool(stored)
 
     def rerender_tile_icons(self) -> int:

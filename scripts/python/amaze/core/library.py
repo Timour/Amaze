@@ -241,11 +241,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         """Rebuild the row->path and key->row maps. No loading happens here - the engine loads on first view (data()), so opening a big library costs only the visible screen."""
         self._mat_paths = [self._tile_image_path(row)
                            for row in range(self.rowCount())]
-        self._thumb_rows = {
-            self._thumb_key(row): row for row in range(self.rowCount())
-        }
+        self._row_keys = [self._thumb_key(row)
+                          for row in range(self.rowCount())]    # row -> its key, the map read backwards
+        self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
 
-    def _add_thumb_paths(self, row: int):
+    def _add_thumb_paths(self, row: int, base_changed: bool = True):
         """Refresh ONE row's thumbnail maps and repaint it - never a whole-model rebuild, which made a multi-select icon pass O(rows^2) in store lookups. Serves add_asset, render_thumbnail and update_asset_content alike."""
         if not 0 <= row < self.rowCount():
             return
@@ -257,13 +257,17 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             self._mat_paths.append(entry)    # add_asset appends the row first, so the maps grow by one here
         else:
             self.rebuild_thumbs()    # the maps fell out of step with the rows - resync whole
-        for stale in [key for key, mapped in self._thumb_rows.items()
-                      if mapped == row]:
-            del self._thumb_rows[stale]
         key = self._thumb_key(row)
+        if row < len(self._row_keys):
+            stale = self._row_keys[row]
+            if self._thumb_rows.get(stale) == row:
+                del self._thumb_rows[stale]
+            self._row_keys[row] = key
+        else:
+            self._row_keys.append(key)
         self._thumb_rows[key] = row
-        versions.record_render(self.preferences,  # every path that declares this row's PNG fresh comes through here, so the ACTIVE version's archive slot follows the base picture; identical bytes are skipped inside
-                               mat_id)
+        if base_changed:    # the ACTIVE version's archive slot follows a fresh base picture
+            versions.record_render(self.preferences, mat_id)
         thumbnails.engine.discard(key)
         self.row_changed(
             row, [QtCore.Qt.ItemDataRole.DecorationRole])
@@ -418,13 +422,13 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return str(self._assets[row].mat_id)
 
     def set_tile_icon(self, index, spec, save: bool = True) -> bool:
-        """Give one asset a tile icon, or clear it with an empty spec: writes the composed PNG and repaints the row. save=False leaves the index write to commit_tile_icons(), so a selection costs one database write instead of one per row. False means the icon could not be written - a read-only library must not report success."""
+        """One asset's icon ({} clears); False when not written. `save` is unused: no record moves."""
         row = index.row() if hasattr(index, "row") else int(index)
         if not 0 <= row < len(self._assets):
             return False
         asset = self._assets[row]
         spec = tile_icons.choice_for(self, row, spec)
-        stored = tile_icons.set_override(  # the store is the ONE home since schema 5 stripped the record field, so a clear here is the whole delete
+        stored = tile_icons.set_override(  # the store is the ONE home, so a clear here is the whole delete
             self.preferences, str(asset.mat_id), spec)
         written = bool(stored)
         if tile_icons.is_custom(spec):
@@ -433,14 +437,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             )
         else:
             tile_icons.clear_for(self.preferences, asset.mat_id)
-        self._add_thumb_paths(row)
-        if save:
-            self.save()
+        self._add_thumb_paths(row, base_changed=False)
         return written
 
     def commit_tile_icons(self, rows=None) -> None:
-        """Persist icon changes made with save=False, once."""
-        self.save()
+        """Nothing to commit: each icon went to its own store, and no record field moved."""
 
     def rerender_tile_icons(self) -> int:
         """Recompose every icon in this library - for when the LOOK changed (the line-weight preference) rather than the choice."""
@@ -451,7 +452,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 continue
             if tile_icons.render_for(self.preferences, asset.mat_id, spec):
                 made += 1
-            self._add_thumb_paths(row)
+            self._add_thumb_paths(row, base_changed=False)
         return made
 
     def _decoration_image(self, index: QtCore.QModelIndex):
