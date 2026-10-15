@@ -859,9 +859,12 @@ def _restore_highlight() -> None:
             with hou.undos.disabler():
                 hou.clearAllSelected()
                 for p in orig:
-                    n = hou.node(p)
-                    if n is not None:
-                        n.setSelected(True)
+                    try:
+                        n = hou.node(p)
+                        if n is not None:
+                            n.setSelected(True)
+                    except Exception:                    # noqa: BLE001
+                        continue    # one node that raises must not keep the rest unselected
     except Exception:
         pass
 

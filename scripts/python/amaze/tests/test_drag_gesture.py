@@ -912,6 +912,21 @@ class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
                 pass
         good.setSelected.assert_called_once_with(False)
 
+    def test_one_node_that_raises_does_not_keep_the_rest_unselected(self):
+        """The hover's OBJ highlight gives the user's selection back node by node."""
+        from amaze.core import dragengine
+        bad = mock.Mock()
+        bad.setSelected.side_effect = hou.OperationFailed("gone")
+        good = mock.Mock()
+        found = {"/obj/bad": bad, "/obj/good": good}
+        self.addCleanup(dragengine._hover.update, dict(dragengine._hover))
+        dragengine._hover.update(viewer=mock.Mock(), world="obj", dirty=True,
+                                 orig=["/obj/bad", "/obj/good"])
+        with mock.patch.object(hou, "node", side_effect=found.get), \
+                mock.patch.object(hou, "clearAllSelected"):
+            dragengine._restore_highlight()
+        good.setSelected.assert_called_once_with(True)
+
     def test_a_snap_that_cannot_run_is_recorded_once_a_gesture(self):
         from amaze.core import dragengine
         failing = types.SimpleNamespace(snap=mock.Mock(side_effect=RuntimeError("no snap")))
