@@ -1299,6 +1299,21 @@ class TheAllMarkerIsNotChurnedOnEverySave(unittest.TestCase):
                          "the save dialog would offer the marker as a "
                          "category")
 
+    def test_a_plain_All_on_disk_is_not_offered_either(self):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            json.dump({"categories": ["_All", "All", "Warm"],
+                       "assets": []}, fh, indent=1)
+        test_support.reset_database_singletons()
+        lib = gradient_library.GradientLibrary(
+            preferences=_fixture_prefs(self, self.dir))
+        self.assertEqual(["Warm"], lib.user_categories(),
+                         "the save dialog offers All as a category to file under")
+
+    def test_a_plain_All_held_in_memory_is_not_offered_either(self):
+        self.lib._data["categories"].append("All")    # as a merge of another machine's list can leave it
+        self.assertEqual(["Warm"], self.lib.user_categories(),
+                         "the save dialog offers All as a category to file under")
+
 
 class TheGradientEntryIsResolvedOnce(unittest.TestCase):
     """Every Colors door reaches its entry through `_entry_at`; a door that walks the proxy itself is how one of them keeps a guard the others lose."""

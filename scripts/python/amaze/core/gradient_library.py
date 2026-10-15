@@ -219,9 +219,9 @@ class GradientLibrary(library.AssetLibrary):
         return str(self._assets[row].mat_id)
 
     def user_categories(self) -> list:
-        """The categories the save dialog lists, without the `_All` marker."""
+        """The categories the save dialog lists, with neither spelling of All (`_All`, `All`)."""
         return [name for name in self._data.get("categories", [])
-                if isinstance(name, str) and name != "_All"]
+                if isinstance(name, str) and name not in ("All", "_All")]
 
     def set_user_category(self, rows: list, category_name: str) -> int:
         """Move the given rows' palettes to a category; returns how many moved."""
