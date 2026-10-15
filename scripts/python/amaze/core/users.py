@@ -57,11 +57,9 @@ def all_users(preferences) -> dict:
 
 
 def roster(preferences) -> set:
-    """Every uid this library's `users.json` holds, if a store already open has read it; else empty."""
+    """Every uid `users.json` holds now, checked against the file; empty when that cannot be proved."""
     store = keyed_store.opened(SPEC, preferences)
-    if store is None or store.state != keyed_store.READ:
-        return set()
-    return store.held_keys()
+    return (store.held_keys() if store is not None else None) or set()
 
 
 def name_for(preferences, uid) -> str:

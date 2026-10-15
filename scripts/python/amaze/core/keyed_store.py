@@ -622,8 +622,15 @@ class Store:
     def count(self) -> int:
         return len(self._table)
 
-    def held_keys(self) -> set:
-        """Every key the file holds as stored, the ones this build cannot read included."""
+    def held_keys(self):
+        """Every key the file holds NOW, unreadable ones included; None unless a read proves it current."""
+        answer = hostos.peer_read(self.path, self._disk_state)
+        if answer.verdict == hostos.PEER_CHANGED:
+            self.reread()
+        elif answer.verdict != hostos.PEER_UNCHANGED:
+            return None
+        if self.state != READ:
+            return None
         return set(self._table) | set(self._foreign)
 
     @property

@@ -542,6 +542,38 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         users.adopt(p, other)
         self.assertNotIn(keep, self._blocks(p))
 
+    def test_a_user_another_houdini_added_keeps_their_block(self):
+        """A roster read before another Houdini added a user is stale, never grounds to prune."""
+        from amaze.core import keyed_store, users
+        p, keep = self._library()
+        elsewhere = keyed_store.Store(
+            users.SPEC, os.path.join(p.dir, users.USERS_FILE), p)
+        self.assertTrue(elsewhere.set(self.STRANGER, {"name": "Sienna"}),
+                        "premise: the other Houdini added a user")
+        library = self._key(p)
+        self._rewrite(p, lambda blocks: blocks.update(
+            {self.STRANGER: {"view_mode": "list", "library": library}}))
+        p.save()
+        self.assertIn(self.STRANGER, self._blocks(p),
+                      "premise: the save took the other Houdini's block in")
+        p.save()
+        self.assertIn(self.STRANGER, self._blocks(p),
+                      "a user missing only from a stale roster lost their block")
+
+    def test_a_roster_that_will_not_read_again_prunes_nothing(self):
+        from amaze.core import users
+        p, keep = self._library()
+        gone = users.create(p, "Sienna")
+        users.adopt(p, gone)
+        users.adopt(p, keep)
+        self.assertTrue(users._store(p).retire([gone]), "premise")
+        with open(os.path.join(p.dir, users.USERS_FILE), "w",
+                  encoding="utf-8") as handle:
+            handle.write('{"users": {"')
+        p.save()
+        self.assertIn(gone, self._blocks(p),
+                      "a roster a peer left unreadable pruned from its cache")
+
     def test_a_merge_keeps_the_field_a_save_did_not_know(self):
         from amaze.core import keyed_store
         p, keep = self._library()
