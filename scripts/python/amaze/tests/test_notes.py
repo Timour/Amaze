@@ -1965,17 +1965,21 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
                     for y in range(image.height())), key=lambda c: c.lightness())
 
     def test_the_labels_PAINT_at_half_ink(self):
+        """Measured against the SAME label at full ink, so the font a run left behind cancels out."""
         from amaze import amazetheme
-        from amaze.helpers import theme
+        from amaze.panel import notes_panel
         bg = QtGui.QColor(amazetheme.COMMENT_HEADER_BG)
+        dim = amazetheme.COMMENT_DIM_TEXT_OPACITY
         for label, ink in ((self.pane.name_label, "text_bright"),
                            (self.pane.type_label, "text")):
             with self.subTest(label=label.text()):
-                want = QtGui.QColor(theme.color_hex(ink))
                 shown = self._brightest_on_header(label)
+                notes_panel._ink(label, ink, 1.0)
+                full = self._brightest_on_header(label)
                 for part in ("red", "green", "blue"):
-                    half = (getattr(want, part)() + getattr(bg, part)()) / 2.0
-                    self.assertAlmostEqual(half, getattr(shown, part)(), delta=2, msg=part)
+                    ground = getattr(bg, part)()
+                    want = ground + dim * (getattr(full, part)() - ground)
+                    self.assertAlmostEqual(want, getattr(shown, part)(), delta=1.5, msg=part)
 
     def _bubble_on_header(self):
         """The bubble's most solid pixel, and that pixel composited on the header as the screen shows it."""
