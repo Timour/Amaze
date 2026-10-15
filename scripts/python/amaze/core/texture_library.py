@@ -36,9 +36,9 @@ _LIVE = globals().get("_LIVE", weakref.WeakSet())    # every ThumbnailCache aliv
 
 def live_caches(cache_dir: str) -> list:
     """Every ThumbnailCache this process holds over `cache_dir`."""
-    wanted = os.path.normcase(os.path.normpath(cache_dir))
+    wanted = hostos.comparable_path(cache_dir)
     return [cache for cache in list(_LIVE)
-            if os.path.normcase(os.path.normpath(cache.cache_dir)) == wanted]
+            if hostos.comparable_path(cache.cache_dir) == wanted]
 
 
 def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:

@@ -741,6 +741,11 @@ def canonical_path_key(path: str) -> str:
     return os.path.normpath(path).replace(os.sep, "/")
 
 
+def comparable_path(path: str) -> str:
+    """One spelling per file on THIS platform, for comparing paths: separators and case folded."""
+    return os.path.normcase(os.path.normpath(path))
+
+
 def _home_root() -> str:
     """Home in canonical spelling - its own function so a test can pin it, where patching `expanduser` would patch the world."""
     return canonical_path_key(os.path.expanduser("~"))

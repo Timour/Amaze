@@ -125,21 +125,31 @@ import hou
 # Every otls folder a package put on the path, Houdini's own excluded: a
 # file not loaded yet is installed, a loaded one is re-read from disk, and
 # either runs the asset's install script, which is what registers an
-# embedded viewer state.
-hfs = os.path.realpath(hou.getenv("HFS") or "")
-loaded = set(hou.hda.loadedFiles())
-new, again = [], []
-for root in hou.houdiniPath():
-    if hfs and os.path.realpath(root).startswith(hfs):
-        continue
-    for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
-        if path in loaded:
-            hou.hda.reloadFile(path)
-            again.append(path)
-        else:
-            hou.hda.installFile(path)
-            new.append(path)
-hou.ui.setStatusMessage("Amaze: %d asset files reloaded, %d new" % (len(again), len(new)))]]></script>
+# embedded viewer state. Houdini's list and the folder scan can spell one
+# file two ways, so both are compared through one spelling.
+try:
+    from amaze.helpers import hostos
+except ImportError as exc:
+    hou.ui.displayMessage(
+        "Amaze is not importable from this session (%s).\n\n"
+        "Check that $AMAZE points at the install and that Houdini was "
+        "restarted after it changed." % exc)
+else:
+    hfs = os.path.realpath(hou.getenv("HFS") or "")
+    loaded = {hostos.comparable_path(p): p for p in hou.hda.loadedFiles()}
+    new, again = [], []
+    for root in hou.houdiniPath():
+        if hfs and os.path.realpath(root).startswith(hfs):
+            continue
+        for path in sorted(glob.glob(os.path.join(root, "otls", "*.hda"))):
+            known = loaded.get(hostos.comparable_path(path))
+            if known:
+                hou.hda.reloadFile(known)
+                again.append(known)
+            else:
+                hou.hda.installFile(path)
+                new.append(path)
+    hou.ui.setStatusMessage("Amaze: %d asset files reloaded, %d new" % (len(again), len(new)))]]></script>
   </tool>
 
   <toolshelf name="amaze" label="Amaze">

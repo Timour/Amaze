@@ -1531,6 +1531,52 @@ class ShelfTest(unittest.TestCase):
             body = handle.read()
         self.assertNotIn("<hotkey", body.lower())
 
+    def _run_reload(self, houdini_spelling):
+        """Run the Reload tool against one package holding one asset; answers it and the calls made."""
+        import types
+        from unittest import mock
+
+        root = tempfile.mkdtemp(prefix="amaze_reload_")
+        self.addCleanup(shutil.rmtree, root, True)
+        os.makedirs(os.path.join(root, "otls"))
+        asset = os.path.join(root, "otls", "probe.hda")
+        with open(asset, "wb"):
+            pass
+        calls = []
+        fake = types.SimpleNamespace(
+            getenv=lambda name: os.path.join(root, "no-such-hfs"),
+            houdiniPath=lambda: [root],
+            hda=types.SimpleNamespace(
+                loadedFiles=lambda: [houdini_spelling(asset)],
+                reloadFile=lambda path: calls.append(("reload", path)),
+                installFile=lambda path: calls.append(("install", path))),
+            ui=types.SimpleNamespace(setStatusMessage=lambda text: None,
+                                     displayMessage=lambda *a, **k: 0))
+        tool = [t for t in self._shelf().findall("tool")
+                if t.get("name") == "amaze_reload"][0]
+        with mock.patch.dict(sys.modules, {"hou": fake}):
+            exec(compile(tool.find("script").text, "amaze_reload", "exec"),
+                 {"__name__": "amaze_reload"})
+        return asset, calls
+
+    def test_reload_re_reads_a_loaded_file_houdini_spells_its_own_way(self):
+        """Houdini's list and the folder scan can spell one file two ways, as Windows separators do."""
+        def spelled(path):
+            folder, name = os.path.split(path)
+            return os.path.join(os.path.dirname(folder), ".", "otls",
+                                name).replace(os.sep, "/")
+
+        asset, calls = self._run_reload(spelled)
+        self.assertEqual(
+            [("reload", spelled(asset))], calls,
+            "a loaded asset file was installed again as new, because "
+            "the two spellings of its path were compared as text")
+
+    def test_reload_installs_a_file_houdini_has_not_loaded(self):
+        asset, calls = self._run_reload(
+            lambda path: os.path.join(os.path.dirname(path), "other.hda"))
+        self.assertEqual([("install", asset)], calls)
+
     def test_sync_install_carries_the_toolbar(self):
         """A shipped file the sync does not carry is a file that only ever exists in the repo - the documented under-sync trap."""
         tools = os.path.join(
