@@ -11,11 +11,12 @@ from amaze.core.library import STAMP_SUFFIX
 from amaze.helpers import helpers, hostos, restore as restore_lib
 from amaze import messages
 from amaze.prefs import prefs as prefs_module
+from amaze.render.nodes import BUILDER_SUFFIX
 
 
 DATABASES = database.DATABASES
 
-ASSET_SIDECARS = (".mat", ".interface", ".builder.json", ".stamp.json")
+ASSET_SIDECARS = (".mat", ".interface", BUILDER_SUFFIX, STAMP_SUFFIX)
 
 
 def side_tables() -> tuple:
@@ -219,7 +220,7 @@ def rebuild_from_stamps(directory: str, asset_dir: str = "mat/",
 def repair_index(directory: str, asset_dir: str = "mat/") -> tuple:
     """Newest snapshot that parses, else a rebuild from stamps; (ok, how)."""
     target = os.path.join(directory, "library.json")
-    for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
+    for tier in restore_lib.TIERS:
         source = "%s.%s" % (target, tier)
         try:
             with open(source, "rb") as handle:

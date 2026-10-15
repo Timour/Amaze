@@ -828,6 +828,54 @@ class UpdateExistingIsGuardedAgainstTheOtherSessionTest(unittest.TestCase):
                         "the baseline was not refreshed")
 
 
+class AStaleCompanionGoesWhateverTheExtension(unittest.TestCase):
+
+    def test_an_update_with_no_cop_net_removes_the_companion(self):
+        """The companion's name follows the extension preference, as every other asset file does."""
+        if hou.getenv("OCIO") is None:
+            hou.putenv("OCIO", "/dev/null")
+        prefs = test_support.fixture_prefs(self)
+        prefs._ext = ".cpio"
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=prefs)
+        staging = hou.node("/obj").createNode("matnet")
+        self.addCleanup(staging.destroy)
+        row = next(r for r in range(model.rowCount())
+                   if material.is_karma_renderer(model.assets[r].renderer))
+        companion = model.asset_files(model.assets[row].mat_id)["cop"]
+        self.assertTrue(companion.endswith("_cop.cpio"), companion)
+        with open(companion, "w", encoding="utf-8") as handle:
+            handle.write("a companion the new network no longer uses")
+        node = _build_material(staging, "stale_companion_probe")
+        self.assertTrue(model.update_asset_content(row, node),
+                        "premise: the update lands")
+        self.assertFalse(os.path.exists(companion),
+                         "the stale companion stayed beside the asset")
+
+
+class TheTwinIsRebuiltThroughTheHandlersDoor(unittest.TestCase):
+
+    def test_convert_to_redshift_points_no_handler_field_by_hand(self):
+        """`rebuild_saved` is the one door that rebuilds a saved asset in a scratch network."""
+        import ast
+        import inspect
+        import textwrap
+        source = textwrap.dedent(inspect.getsource(
+            library_mod.MaterialLibrary.convert_karma_to_redshift))
+        poked = [ast.unparse(target)
+                 for node in ast.walk(ast.parse(source))
+                 if isinstance(node, ast.Assign)
+                 for target in node.targets
+                 if isinstance(target, ast.Attribute)
+                 and target.attr.startswith("_")]
+        self.assertEqual([], poked, "the conversion sets handler state")
+        self.assertIn("rebuild_saved", source)
+        self.assertNotIn(
+            "parms_file_name",
+            inspect.signature(nodes.NodeHandler.load_interface_mtlx).parameters)
+
+
 class StructureSignatureTest(unittest.TestCase):
     """The Versions decision rule: same nodes, same wiring, only values differ -> a new version; anything else -> the structural path. The signature is what answers it, so its two directions ARE the feature's correctness. ▸p/structure-signature"""
 

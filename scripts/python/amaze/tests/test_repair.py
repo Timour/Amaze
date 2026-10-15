@@ -1609,6 +1609,34 @@ class TheRebuildDrillTest(unittest.TestCase):
                              "the kept copy is not the damaged bytes")
 
 
+class TheSuffixesAndTiersHaveOneHome(unittest.TestCase):
+
+    def test_the_sidecar_list_is_the_one_it_was(self):
+        from amaze.render import nodes
+        self.assertEqual(
+            (".mat", ".interface", nodes.BUILDER_SUFFIX,
+             library_mod.STAMP_SUFFIX), repair.ASSET_SIDECARS)
+        self.assertEqual((".builder.json", ".stamp.json"),
+                         (nodes.BUILDER_SUFFIX, library_mod.STAMP_SUFFIX))
+
+    def test_no_reader_restates_a_suffix_or_the_tier_order(self):
+        """The builder and stamp suffixes are their writers', the tiers `restore.TIERS`."""
+        package = os.path.dirname(os.path.dirname(
+            os.path.abspath(repair.__file__)))
+        found = []
+        for name in ("repair.py", "database.py"):
+            with open(os.path.join(package, "core", name),
+                      encoding="utf-8") as handle:
+                text = handle.read()
+            for literal in ('".builder.json"', '".stamp.json"',
+                            '"bak-first"'):
+                if literal in text:
+                    found.append("%s %s" % (name, literal))
+        self.assertEqual([], found, "a copy is written out again")
+        self.assertEqual(("bak-1", "bak-2", "bak-3", "bak-first"),
+                         restore_lib.TIERS)
+
+
 class QuarantineIsBoundedTest(unittest.TestCase):
     """A holding folder that only ever grows is a leak wherever it lives."""
 

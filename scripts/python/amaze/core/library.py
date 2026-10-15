@@ -1491,12 +1491,8 @@ class MaterialLibrary(AssetLibrary):
         mat.set_current_date()
         self._drop_content_label_caches(mat.mat_id)  # a content update is the one flow that changes what is INSIDE the saved files, so the per-id labels read from them genuinely go stale here
         if not mat.cop_net:  # the updated network no longer references a COP net, so the old <id>_cop.mat is stale
-            cop_path = os.path.join(
-                self.preferences.dir,
-                self.preferences.asset_dir,
-                str(mat.mat_id) + "_cop.mat",
-            )
-            if os.path.exists(cop_path):
+            cop_path = self.asset_files(mat.mat_id).get("cop", "")
+            if cop_path and os.path.exists(cop_path):
                 try:
                     os.remove(cop_path)
                 except OSError as exc:
@@ -1596,15 +1592,7 @@ class MaterialLibrary(AssetLibrary):
         with hou.undos.disabler():
             scratch = hou.node("/obj").createNode("matnet")
         try:
-            handler._hou_parent = scratch
-            handler._import_path = scratch
-            handler._use_existing_node = True
-            iface_path = material.payload_path(
-                self.preferences, mat.mat_id, ".interface")
-            handler.load_interface_mtlx(iface_path, mat)
-            handler.load_items_file_mtlx(mat)    # the reconstructed copy is scratch scaffolding for reading values, never left in the scene
-            source = handler.builder_node
-
+            source = handler.rebuild_saved(mat, scratch)    # scratch scaffolding for reading values
             builder, shader, wired, report = redshift_converter.convert_karma_builder(
                 source, scratch, mat.name)
             if shader is None:

@@ -1024,8 +1024,7 @@ class NodeHandler:
     def _load_saved(self, mat: material.Material) -> tuple:
         """Rebuild the saved builder under `_hou_parent` by renderer family: (ok, refusal)."""
         if material.is_karma_renderer(mat.renderer):
-            self.load_interface_mtlx(
-                material.payload_path(self._preferences, mat.mat_id, ".interface"), mat)
+            self.load_interface_mtlx(mat)
             self.load_items_file_mtlx(mat)
         elif "Redshift" in mat.renderer:
             self.load_interface_other(mat, "redshift_vopnet")
@@ -1051,7 +1050,7 @@ class NodeHandler:
             raise hou.OperationFailed(refusal)
         return self._builder_node
 
-    def load_interface_mtlx(self, parms_file_name, mat: material.Material) -> None:
+    def load_interface_mtlx(self, mat: material.Material) -> None:
         """Rebuild the mtlx builder, no exec. ▸p/material-import-door"""
         self._builder_node = make_karma_builder(
             self._hou_parent, mat.name

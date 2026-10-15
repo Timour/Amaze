@@ -10,7 +10,7 @@ from typing import Self
 
 from amaze import branding
 from amaze.core import debug
-from amaze.helpers import hostos
+from amaze.helpers import hostos, restore
 from amaze import messages
 
 
@@ -514,7 +514,7 @@ class DatabaseConnector:
         try:
             here = len(self._data.get("assets") or [])
             newest = None
-            for tier in ("bak-1", "bak-2", "bak-3", "bak-first"):
+            for tier in restore.TIERS:
                 candidate = full + "." + tier
                 if os.path.exists(candidate):
                     newest = candidate
