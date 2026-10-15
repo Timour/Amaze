@@ -667,13 +667,27 @@ def check_sandbox(path: str) -> None:
             % (SANDBOX_VAR, root, resolved))
 
 
+class _Recorded:
+    """A text stream that keeps every piece written through it."""
+
+    def __init__(self, stream) -> None:
+        self._stream = stream
+        self.pieces: list = []
+
+    def write(self, text: str) -> int:
+        self.pieces.append(text)
+        return self._stream.write(text)
+
+
 def write_json_atomic(path: str, data, indent: int = 4,
-                      sort_keys: bool = False) -> None:
-    """Serialise `data` to `path` so no reader can ever see it half-written - the JSON front door onto `scratch_beside`, and the one place every JSON write in the package goes through."""
+                      sort_keys: bool = False) -> tuple:
+    """The JSON front door: no reader sees a write half-done. Answers the `file_fingerprint` it wrote."""
     check_sandbox(path)
     with scratch_beside(path) as scratch:
         with open(scratch, "w", encoding="utf-8", newline="\n") as stream:  # newline="\n" or Windows text mode writes CRLF, and a caller that skips a no-op write by comparing `json.dumps(...)` (LF) against the file read in BINARY can then never match - so on Windows every save wrote, costing a snapshot rotation and a sync upload each time, and the two machines' guards mismatched after each other in the library they share
-            json.dump(data, stream, indent=indent, sort_keys=sort_keys)
+            recorded = _Recorded(stream)
+            json.dump(data, recorded, indent=indent, sort_keys=sort_keys)
+    return file_fingerprint("".join(recorded.pieces).encode("utf-8"))
 
 
 FAILED_UNREACHABLE = "unreachable"  # what a failed write WAS, in one word - the cause kept separate from the sentence so a caller can branch (log, retry, offer Repair) without matching on prose

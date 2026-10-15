@@ -89,6 +89,12 @@ class AtomicWriteTest(unittest.TestCase):
             "the file holds rows from BOTH writers - this is the "
             "parseable corruption the fixed .tmp name produced")
 
+    def test_the_answer_is_the_fingerprint_of_the_bytes_on_disk(self):
+        answer = hostos.write_json_atomic(
+            self.path, {"rows": ["a", "é"], "n": 2}, indent=1, sort_keys=True)
+        self.assertEqual(hostos.fingerprint_of(self.path), answer,
+                         "the writer names bytes other than the ones it wrote")
+
     def test_no_scratch_file_survives_a_success(self):
         hostos.write_json_atomic(self.path, {"ok": True})
         self.assertEqual([], self._leftovers(),

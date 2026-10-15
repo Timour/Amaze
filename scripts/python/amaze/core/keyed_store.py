@@ -806,13 +806,13 @@ class Store:
             for key in keys:            # a key just SET stops being foreign
                 foreign.pop(key, None)
             hostos.snapshot_before_write(self.path)
-            hostos.write_json_atomic(
+            written = hostos.write_json_atomic(
                 self.path,
                 self._document({**foreign, **staged}),
                 indent=1, sort_keys=True)
             if created:
                 hostos.seed_restore_floor(self.path)  # a write-once file has no .bak
-            self._remember_disk_state()
+            self._disk_state = written  # the bytes the base below describes, never a re-read
             self.state = READ           # written is READ, never still FRESH
         except OSError as exc:
             cause, why = hostos.why_failed(exc, self.path)
@@ -828,9 +828,6 @@ class Store:
         self._orphans = {}              # the file no longer holds them
         self._remember_base(staged)     # what we just wrote IS on disk, so it is the next merge's base
         return Written(True, REASON_NONE, "", keys)
-
-    def _remember_disk_state(self) -> None:
-        self._disk_state = hostos.fingerprint_of(self.path)
 
     def _adopt_from_disk(self, staged: dict, foreign: dict) -> bool:
         """Merge another session's writes in; False: do not replace the file. ▸p/store-commit-order"""
