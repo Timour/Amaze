@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
 import re
 
 from PySide6 import QtCore, QtGui, QtSvg
-
-import hou
 
 from amaze.helpers import ui_helpers
 
