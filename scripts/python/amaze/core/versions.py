@@ -8,7 +8,6 @@ import os
 import re
 import shutil
 import time
-import types
 
 from amaze import messages
 from amaze.core import debug, users
@@ -146,10 +145,9 @@ def active_version_name(preferences, mat_id: str) -> str:
 
 
 def _base_paths(preferences, mat_id: str) -> dict:
-    """The asset's own files by archive suffix, named by `AssetLibrary.asset_files`."""
+    """The asset's own files by archive suffix, named by `library.asset_files_for`."""
     from amaze.core import library    # late: library imports this module
-    owned = library.AssetLibrary.asset_files(
-        types.SimpleNamespace(preferences=preferences), mat_id)
+    owned = library.asset_files_for(preferences, mat_id)
     return {suffix: owned[kind] for kind, suffix in SOURCE_KINDS.items()
             if kind in owned}
 

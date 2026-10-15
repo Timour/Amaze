@@ -75,6 +75,28 @@ quarantine_size = quarantine.quarantine_size
 quarantine_file = quarantine.quarantine_file
 
 
+def asset_files_for(preferences, mat_id: str) -> dict:
+    """{kind: path} of every FILE `mat_id` owns; {} for an unsafe id, and PathEscape propagates."""
+    mat_id = str(mat_id)
+    if not material.is_safe_asset_id(mat_id):    # read verbatim from library.json: `../x` escapes
+        debug.event("library", "asset id cannot name a file - it owns "
+                    "no paths", mat_id=mat_id)
+        return {}
+
+    def owned(suffix):
+        return material.payload_path(preferences, mat_id, suffix)
+
+    return {
+        "mat": owned(preferences.ext),
+        "interface": owned(".interface"),
+        "builder": owned(nodes.BUILDER_SUFFIX),
+        "stamp": owned(STAMP_SUFFIX),
+        "cop": owned("_cop" + preferences.ext),
+        "thumbnail": tile_icons.thumbnail_path(preferences, mat_id),
+        "tile_icon": tile_icons.icon_image_path(preferences, mat_id),
+    }
+
+
 class AssetLibrary(grid_columns.GridColumnsMixin,
                    QtCore.QAbstractTableModel):
     """The SHARED asset model - records, categories, tags, tile icons, saves, deletes, thumbnail plumbing and the connector's guards - that every library-backed section runs on. Nothing renderer-shaped lives here; that is `MaterialLibrary`. overview.md ▸ Models & storage carries the map."""
@@ -750,25 +772,8 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
                 key="index-refused-inline-content")
 
     def asset_files(self, mat_id: str) -> dict:
-        """{kind: absolute path} for every FILE asset `mat_id` owns - THE one place that answers which files an asset owns, so every new per-asset file is added HERE and nowhere else. Paths come back whether or not the file exists, and each caller decides what an absent one means. Directories are `asset_directories()`, never here: these values get unlinked and copyfile'd. An empty dict means the id cannot name a file, so the asset owns nothing on disk."""
-        mat_id = str(mat_id)
-        if not material.is_safe_asset_id(mat_id):  # the id is read verbatim out of library.json and nothing validates it on load, so `../../../Documents/x` would compose outside the library and remove_asset's unlink loop would take the user's own files
-            debug.event("library", "asset id cannot name a file - it owns "
-                        "no paths", mat_id=mat_id)
-            return {}
-
-        def owned(suffix):  # through material.payload_path, the ONE composition, which contains against the directory the leaf goes into; PathEscape propagates and the callers that must survive it already catch it
-            return material.payload_path(self.preferences, mat_id, suffix)
-
-        return {
-            "mat": owned(self.preferences.ext),
-            "interface": owned(".interface"),
-            "builder": owned(nodes.BUILDER_SUFFIX),
-            "stamp": owned(STAMP_SUFFIX),
-            "cop": owned("_cop" + self.preferences.ext),
-            "thumbnail": tile_icons.thumbnail_path(self.preferences, mat_id),  # through tile_icons, so the renderers and this function compose one path from one place
-            "tile_icon": tile_icons.icon_image_path(self.preferences, mat_id),
-        }
+        """`asset_files_for` this library; a new per-asset file is added THERE and nowhere else."""
+        return asset_files_for(self.preferences, mat_id)
 
     def _hold_pre_edit_files(self, mat_id: str) -> dict:
         """Copy the asset's CURRENT files aside for the version store: {archive suffix: held path}, per `versions.SOURCE_KINDS`. Read the source dict by KIND, never by filename suffix - `<id>_cop.mat` shares ".mat" with the material and `<id>_icon.png` shares ".png" with the render, so a suffix key lets whichever comes later overwrite the real payload. Kinds SOURCE_KINDS does not name are not versioned."""
