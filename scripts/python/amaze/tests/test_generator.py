@@ -510,7 +510,7 @@ class ThirdPartyHostTest(unittest.TestCase):
         offenders = [u for u in offenders
                      if "github.com/Timour" not in u
                      and "api.github.com/repos/Timour" not in u
-                     and "githubusercontent.com/Timour" not in u]    # our own repos, GitHub-hosted - the pin is about OUR name inside a third party's domain
+                     and "raw.githubusercontent.com/Timour" not in u]    # our own repos, GitHub-hosted - the pin is about OUR name inside a third party's domain
         self.assertEqual([], offenders,
                          "a third-party URL contains our app name")
 
