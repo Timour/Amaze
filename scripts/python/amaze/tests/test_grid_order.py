@@ -451,7 +451,7 @@ class TheRuleHasOneHome(unittest.TestCase):
         """No caller may `sort()` a proxy beside a mutation - the proxy guarantees its own order."""
         import ast
 
-        BUILDERS = ("setup", "__init__", "_build_models", "_build_ui")   # construction is not a re-sort: the `sort(0)` in `setup()` is what ESTABLISHES the sort column, and without it `sortColumn()` is -1 and nothing sorts at all
+        BUILDERS = ("setup", "_grid_proxy", "__init__", "_build_models", "_build_ui")   # construction is not a re-sort: the `sort(0)` in `setup()` is what ESTABLISHES the sort column, and without it `sortColumn()` is -1 and nothing sorts at all
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         offenders = []
         for relative in ("core/library.py", "core/cop_library.py",

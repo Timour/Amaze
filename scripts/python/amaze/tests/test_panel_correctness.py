@@ -1112,6 +1112,47 @@ class TheOnlineWorldNeedsALibrary(unittest.TestCase):
         self._assert_still_local()
 
 
+class EveryGridProxyIsSetUpOneWay(_PanelCase):
+    """Six grid proxies, one set-up: the base class does the re-sort Qt's dynamic mode would."""
+
+    def test_no_grid_proxy_sorts_or_filters_dynamically(self):
+        names = ("material_sorted_model", "cop_sorted_model", "code_sorted_model",
+                 "file_sorted_model", "gradient_sorted_model", "matx_sorted_model")
+        dynamic = [name for name in names
+                   if getattr(self.panel, name).dynamicSortFilter()]
+        self.assertEqual([], dynamic)
+
+    def test_file_still_drops_an_unstarred_row_once_the_loop_turns(self):
+        """With Qt's dynamic mode off, the base class's pass is what re-filters File."""
+        panel = self.panel
+        panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        self.addCleanup(panel.section_tabs.setChecked, "material")
+        self.addCleanup(panel.cb_favsonly.setChecked, False)
+        proxy, files = panel.file_sorted_model, panel.file_files_model
+        self.assertTrue(proxy.rowCount(), "premise: File shows files")
+        row = proxy.mapToSource(proxy.index(0, 0)).row()
+        files.toggle_favorite(row)
+        panel.cb_favsonly.setChecked(True)
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(1, proxy.rowCount(), "premise: one starred file shows")
+        files.toggle_favorite(row)
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(0, proxy.rowCount(), "the unstarred file stayed")
+
+    def test_every_grid_proxy_has_its_own_selection(self):
+        pairs = (("material_sorted_model", "material_selection_model"),
+                 ("cop_sorted_model", "cop_selection_model"),
+                 ("code_sorted_model", "code_selection_model"),
+                 ("file_sorted_model", "file_selection_model"),
+                 ("gradient_sorted_model", "gradient_selection_model"),
+                 ("matx_sorted_model", "matx_selection_model"))
+        for proxy, selection in pairs:
+            with self.subTest(proxy):
+                self.assertIs(getattr(self.panel, proxy),
+                              getattr(self.panel, selection).model())
+
+
 class AStartOnAnySectionTakesTheOnePath(unittest.TestCase):
     """The section a panel opens on is shown the way a tab click shows it, once."""
 

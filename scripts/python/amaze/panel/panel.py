@@ -280,23 +280,31 @@ class AmazePanel(QtWidgets.QWidget):
         name = "btn_menu_" + "".join(c for c in menu.title().lower() if c.isalnum())
         return ui_helpers.IconMenuButton(menu, icon_path, name=name)    # stable: B01 and the snapshots key on it
 
+    def _grid_proxy(self, proxy, model, sort: bool = False) -> tuple:
+        """`proxy` set up over `model` the one way grid proxies are, and its selection model."""
+        proxy.setSourceModel(model)
+        proxy.setSortCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+        proxy.setFilterCaseSensitivity(QtCore.Qt.CaseSensitivity.CaseInsensitive)
+        if sort:
+            proxy.sort(0)
+        proxy.setDynamicSortFilter(False)    # the base class re-sorts and re-filters ▸r/proxy-invariant
+        return proxy, QtCore.QItemSelectionModel(proxy, self)
+
+    def _sidebar_proxy(self, model):
+        """A sidebar proxy over `model`: never sorted, as the stored order is the sidebar's."""
+        proxy = category.CategoriesSidebarProxy(self)
+        proxy.setSourceModel(model)
+        proxy.hide_empty = self.prefs.hide_empty_categories
+        return proxy
+
     def setup(self):
         for attr, model in model_registry.models_for(self.prefs).items():
             setattr(self, attr, model)    # SHARED with every other panel on this library; only the proxies, selections and delegates below are this panel's own
 
-        self.category_sorted_model = category.CategoriesSidebarProxy(self)    # category_model is UNSORTED, all four sidebar proxies: the stored list order IS the sidebar order, manual and drag-to-reorder. A name sort put "_All" below any digit-named category; the proxy presents source order (probed) and only filters
-        self.category_sorted_model.setSourceModel(self.category_model)
-        self.category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-
-        self.material_sorted_model = multifilterproxy_model.MultiFilterProxyModel(self)
-        self.material_sorted_model.setSourceModel(self.material_model)
-        self.material_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.material_sorted_model.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.material_sorted_model.sort(0)
-        self.material_sorted_model.setDynamicSortFilter(False)  # Improves Performance
-        self.material_selection_model = QtCore.QItemSelectionModel(
-            self.material_sorted_model, self
-        )
+        self.category_sorted_model = self._sidebar_proxy(self.category_model)
+        self.material_sorted_model, self.material_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(self), self.material_model,
+            sort=True)
         self.thumb_delegate = AssetItemDelegate(
             self.material_model.RendererLabelRole,
             self.thumblist,
@@ -330,12 +338,8 @@ class AmazePanel(QtWidgets.QWidget):
             tile_badges=sections.CodeSection.tile_badges,
             tile_model=code_library.CodeLibrary, **node_roles)
 
-        self.file_sorted_model = texture_library.TextureFilterProxyModel(self)    # the File section merges Images, Geometry and HIP: one folder-pointer list plus the synthetic "All" row, and a live, non-persisted listing of EVERY file in the selected folder, each row behaving as its kind. Filtered here for the search box and favourites star; see core/file_library.py
-        self.file_sorted_model.setSourceModel(self.file_files_model)
-        self.file_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.file_selection_model = QtCore.QItemSelectionModel(
-            self.file_sorted_model, self
-        )
+        self.file_sorted_model, self.file_selection_model = self._grid_proxy(
+            texture_library.TextureFilterProxyModel(self), self.file_files_model)
         self.file_delegate = AssetItemDelegate(
             self.file_files_model.FormatRole,
             self.thumblist,
@@ -352,17 +356,10 @@ class AmazePanel(QtWidgets.QWidget):
         self.file_files_model.progress_changed.connect(
             self._on_file_folder_progress)    # a BOUND method, never a lambda: the model outlives a closed pane tab (it stays wired to the reload-stable thumbnails relay), and a lambda receiver survives the widget's death to drive a deleted progress bar
 
-        self.gradient_category_sorted_model = category.CategoriesSidebarProxy(self)    # the Gradients section is curated read-only content: painted thumbnails, no files and no workers, so the proxy trio is all there is to set up (core/gradient_library.py). The SAME proxy class as the other three sidebars and unsorted like them; nothing hides here, since no renderer filter is ever pushed
-        self.gradient_category_sorted_model.setSourceModel(
+        self.gradient_category_sorted_model = self._sidebar_proxy(
             self.gradient_categories_model)
-        self.gradient_category_sorted_model.hide_empty = (
-            self.prefs.hide_empty_categories)
-        self.gradient_sorted_model = gradient_library.GradientFilterProxyModel(self)
-        self.gradient_sorted_model.setSourceModel(self.gradient_model)
-        self.gradient_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.gradient_selection_model = QtCore.QItemSelectionModel(
-            self.gradient_sorted_model, self
-        )
+        self.gradient_sorted_model, self.gradient_selection_model = self._grid_proxy(
+            gradient_library.GradientFilterProxyModel(self), self.gradient_model)
         self.gradient_delegate = AssetItemDelegate(
             self.gradient_model.RendererLabelRole,
             self.thumblist,
@@ -373,27 +370,14 @@ class AmazePanel(QtWidgets.QWidget):
             on_badge=self._badge_verb,
         )
 
-        self.cop_category_sorted_model = category.CategoriesSidebarProxy(self)    # the Cop section is standalone COP-network assets over its own cops.json (core/cop_library.py), mirroring the material proxy/selection construction above. It uses `asset_delegate`, NOT thumb_delegate
-        self.cop_category_sorted_model.setSourceModel(self.cop_category_model)
-        self.cop_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-        self.cop_sorted_model = multifilterproxy_model.MultiFilterProxyModel(self)
-        self.cop_sorted_model.setSourceModel(self.cop_model)
-        self.cop_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.cop_sorted_model.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.cop_sorted_model.sort(0)
-        self.cop_sorted_model.setDynamicSortFilter(False)
-        self.cop_selection_model = QtCore.QItemSelectionModel(self.cop_sorted_model, self)
-
-        self.code_category_sorted_model = category.CategoriesSidebarProxy(self)    # the Code section is reusable snippets over its own code.json (core/code_library.py): the same material machinery as COP, storing snippet text inline and painting a code preview
-        self.code_category_sorted_model.setSourceModel(self.code_category_model)
-        self.code_category_sorted_model.hide_empty = self.prefs.hide_empty_categories
-        self.code_sorted_model = multifilterproxy_model.MultiFilterProxyModel(self)
-        self.code_sorted_model.setSourceModel(self.code_model)
-        self.code_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.code_sorted_model.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.code_sorted_model.sort(0)
-        self.code_sorted_model.setDynamicSortFilter(False)
-        self.code_selection_model = QtCore.QItemSelectionModel(self.code_sorted_model, self)
+        self.cop_category_sorted_model = self._sidebar_proxy(self.cop_category_model)
+        self.cop_sorted_model, self.cop_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(self), self.cop_model,
+            sort=True)
+        self.code_category_sorted_model = self._sidebar_proxy(self.code_category_model)
+        self.code_sorted_model, self.code_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(self), self.code_model,
+            sort=True)
         self._seed_curated_content()    # seeds the snippets AND the palettes once per library, through one door a library switch also takes, so a virgin library seeds whichever way it arrives
 
         for _model in (self.material_model, self.cop_model, self.code_model):    # multi-category was removed, so every asset collapses to its first category; idempotent, so this one-time migration no-ops on every subsequent launch
@@ -406,14 +390,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.matx_online_model = matx_library.MatxOnlineLibrary(    # the online MaterialX browser is NOT a section but a VIEW MODE over the Materials grid (View > Online Materials); it uses the same role numbers as MaterialLibrary, so the existing delegate and filter proxy serve it unchanged
             preferences=self.prefs
         )
-        self.matx_sorted_model = multifilterproxy_model.MultiFilterProxyModel(self)
-        self.matx_sorted_model.setSourceModel(self.matx_online_model)
-        self.matx_sorted_model.setSortCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.matx_sorted_model.setFilterCaseSensitivity(QtCore.Qt.CaseInsensitive)  # type: ignore
-        self.matx_sorted_model.setDynamicSortFilter(False)
-        self.matx_selection_model = QtCore.QItemSelectionModel(
-            self.matx_sorted_model, self
-        )
+        self.matx_sorted_model, self.matx_selection_model = self._grid_proxy(
+            multifilterproxy_model.MultiFilterProxyModel(self), self.matx_online_model)
         self.matx_source_model = matx_library.MatxSidebarModel(
             self.matx_online_model
         )
