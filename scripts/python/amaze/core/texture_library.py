@@ -56,7 +56,6 @@ class ThumbnailCache:
         os.makedirs(self.cache_dir, exist_ok=True)
         self._manifest: dict = self._load_manifest()
         self._dirty = False
-        self._remember_disk_state()
         _LIVE.add(self)
 
     def paths(self) -> list:
@@ -68,16 +67,18 @@ class ThumbnailCache:
         self._adopt_from_disk()
         for path in paths:
             self._manifest.pop(self._key(path), None)
-        self._remember_disk_state()
 
     def _load_manifest(self) -> dict:
         """The manifest, or {} - a file that EXISTS but will not parse latches `_unreadable`, because reading it as empty and writing over it turns one truncated write into permanent loss of the whole map (every PNG orphaned, ~6.2s per EXR to re-convert; tile_icons is the reference policy)."""
         self._unreadable = False
+        self._disk_state = None
         if not os.path.exists(self.manifest_path):
             return {}
         try:
-            with open(self.manifest_path, encoding="utf-8") as f:
-                loaded = json.load(f)
+            with open(self.manifest_path, "rb") as f:
+                raw = f.read()
+            self._disk_state = hostos.file_fingerprint(raw)    # of the bytes parsed, never a second read
+            loaded = json.loads(raw.decode("utf-8"))
             if isinstance(loaded, dict):
                 return loaded
             raise ValueError("manifest is %s, not an object"
@@ -91,14 +92,11 @@ class ThumbnailCache:
                 % exc, path=self.manifest_path)
             return {}
 
-    def _remember_disk_state(self) -> None:
-        """The manifest's fingerprint as this object last saw it."""
-        self._disk_state = hostos.fingerprint_of(self.manifest_path)
-
     def _adopt_from_disk(self) -> None:
         """Fold in entries another writer added since this object read - adoption can only ADD (an entry is per-file and self-describing): a key this session does not hold is another writer's and is kept, a key both hold takes ours, because ours was just measured against the file on disk. Without it, two tabs flushing left the later writer's 40 entries and orphaned the earlier one's 300 PNGs."""
         answer = hostos.peer_read(self.manifest_path,    # ▸r/peer-read
                                   getattr(self, "_disk_state", None))
+        self._disk_state = answer.fingerprint    # the read just made, never a second one
         if answer.verdict != hostos.PEER_CHANGED:
             return      # unchanged, absent, or an unreadable peer, which is _load_manifest's
         adopted = 0
@@ -121,9 +119,8 @@ class ThumbnailCache:
             return
         try:
             self._adopt_from_disk()  # temp-then-replace through the atomic writer, whose UNIQUE scratch name matters here: two sessions share this exact path (the dir derives from size+prefix, nothing per-process), and a fixed scratch name measured 790 unparseable reads plus 794 that parsed holding both writers' content; indent=None keeps a cache file's bytes as they were
-            hostos.write_json_atomic(self.manifest_path, self._manifest,
-                                     indent=None)
-            self._remember_disk_state()
+            self._disk_state = hostos.write_json_atomic(    # what we wrote, never a re-read
+                self.manifest_path, self._manifest, indent=None)
             self._dirty = False
         except Exception as exc:                         # noqa: BLE001
             debug.note("failed to save the texture thumbnail manifest: %s"

@@ -393,6 +393,69 @@ class TheThumbnailManifestKeepsAnotherWritersWork(unittest.TestCase):
             "PNGs are still on disk and nothing will ever find them again, "
             "so the folder re-converts from scratch on every visit")
 
+    def test_entries_written_right_after_our_save_survive_the_next(self):
+        """A manifest landing just after our write is another writer's, never taken as seen."""
+        cache = texture_library.ThumbnailCache(size=256)
+        cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
+        cache._dirty = True
+        disarm = self._theirs_land_after(hostos, "write_json_atomic",
+                                         cache.manifest_path)
+        cache.save()
+        disarm()
+        self.assertEqual(3, self._saved_metal(cache),
+                         "the entries another writer saved right after ours "
+                         "were dropped by our next save, orphaning their PNGs")
+
+    def _theirs_land_after(self, owner, name, path):
+        theirs = {"/textures/metal/%d.exr" % n: {"mtime": 1, "size": 1}
+                  for n in range(3)}
+        real, armed = getattr(owner, name), [True]
+
+        def then_theirs_land(*args, **kwargs):
+            answer = real(*args, **kwargs)
+            if armed[0]:
+                armed[0] = False
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(theirs, fh)
+            return answer
+
+        setattr(owner, name, then_theirs_land)
+        self.addCleanup(setattr, owner, name, real)
+        return lambda: setattr(owner, name, real)
+
+    def _saved_metal(self, cache):
+        cache._manifest["/textures/wood/2.exr"] = {"mtime": 1, "size": 1}
+        cache._dirty = True
+        cache.save()
+        with open(cache.manifest_path, encoding="utf-8") as fh:
+            return len([k for k in json.load(fh) if "/metal/" in k])
+
+    def test_entries_written_while_the_manifest_loads_survive_our_save(self):
+        """The fingerprint is of the bytes parsed, so a write landing after the parse is merged."""
+        path = texture_library.ThumbnailCache(size=256).manifest_path
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"/textures/wood/1.exr": {"mtime": 1, "size": 1}}, fh)
+        disarm = self._theirs_land_after(json, "loads", path)
+        cache = texture_library.ThumbnailCache(size=256)
+        disarm()
+        self.assertEqual(3, self._saved_metal(cache),
+                         "the entries written while the manifest loaded "
+                         "were dropped by our save")
+
+    def test_entries_written_while_a_sweep_is_forgotten_survive_our_save(self):
+        """A forget adopts the file once and keeps that read's fingerprint, never a second one."""
+        cache = texture_library.ThumbnailCache(size=256)
+        cache._manifest["/textures/wood/1.exr"] = {"mtime": 1, "size": 1}
+        cache._dirty = True
+        cache.save()
+        disarm = self._theirs_land_after(hostos, "peer_read",
+                                         cache.manifest_path)
+        cache.forget(["/textures/wood/1.exr"])
+        disarm()
+        self.assertEqual(3, self._saved_metal(cache),
+                         "the entries written while a sweep was forgotten "
+                         "were dropped by our save")
+
     def test_reconcile_matches_a_folder_stored_with_a_trailing_slash(self):
         """Locate Folder GUARANTEES the trailing slash the manifest's canonicalised keys lack - the two never matched, so a relocated folder was never reconciled again."""
         images = os.path.join(self.root, "images")
