@@ -549,6 +549,60 @@ class PaintOnlyRolesCostNoPass(unittest.TestCase):
                                 "empty means everything changed")
 
 
+class _Counted(QtCore.QAbstractListModel):
+    """Five roles on the MaterialLibrary numbers, every row passing every filter, fetches counted."""
+
+    ROLES = {256 + 1: ["Wood"], 256 + 2: True, 256 + 3: "Karma",
+             256 + 4: ["oak"]}
+
+    def __init__(self, names):
+        super().__init__()
+        self._names = list(names)
+        self.fetched = {}
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._names)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid():
+            return None
+        self.fetched[int(role)] = self.fetched.get(int(role), 0) + 1
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
+            return self._names[index.row()]
+        return self.ROLES.get(int(role))
+
+
+class AFilterPassFetchesEachRoleOnce(unittest.TestCase):
+    """A pass reads each filtered role at most once per row and stops at the first test a row fails."""
+
+    FILTERS = {257: "wood", 258: True, 259: "karma", 260: "oak"}
+
+    def _pass(self, name_filter):
+        source = _Counted(["alpha", "beta", "gamma"])
+        proxy = multifilterproxy_model.MultiFilterProxyModel()
+        proxy.setSourceModel(source)
+        with proxy.one_pass():
+            proxy.setFilter(QtCore.Qt.ItemDataRole.DisplayRole, name_filter)
+            for role, value in self.FILTERS.items():
+                proxy.setFilter(role, value)
+        source.fetched.clear()
+        proxy.invalidateFilter()
+        return source.fetched, proxy.rowCount()
+
+    def test_a_row_that_passes_reads_every_role_once(self):
+        fetched, shown = self._pass("a")
+        self.assertEqual(3, shown, "premise: every row passes every filter")
+        self.assertEqual({0: 3, 257: 3, 258: 3, 259: 3, 260: 3}, fetched,
+                         "a pass read some role more than once per row")
+
+    def test_a_row_failing_the_name_reads_nothing_else(self):
+        fetched, shown = self._pass("zz")
+        self.assertEqual(0, shown, "premise: no row matches the name")
+        self.assertEqual({0: 3}, fetched,
+                         "rows failing the cheapest test still read the "
+                         "roles behind it")
+
+
 class AFilterChangeIsOnePass(unittest.TestCase):
     """`refilter()` sorts synchronously, and the rows it brings back IN emit the proxy's own `rowsInserted`, which lands in `_schedule_pass` and must not post a second pass."""
 

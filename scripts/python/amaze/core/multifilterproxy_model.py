@@ -58,49 +58,21 @@ class MultiFilterProxyModel(grid_proxy.GridProxyModel):
         source_row: int,
         source_parent: QtCore.QModelIndex | QtCore.QPersistentModelIndex,
     ) -> bool:
-        if not self._filters:
+        filters = self._filters
+        if not filters:
             return True
-
-        name_filter = True
-        cat_filter = True
-        tag_filter = True
-        render_filter = True
+        folded = self._folded
         index = self.sourceModel().index(source_row, 0, source_parent)
-        for role, curr_filter in self._filters.items():
-            data = index.data(role)
-            folded = self._folded.get(role, curr_filter)  # lowered at set time; only the raw-comparing favourites role reads curr_filter
-
-            if role == 0:  # Check Names
-                if curr_filter != "" \
-                        and not self._name_matches(folded, index):
-                    name_filter = False
-            elif role == 257:  # Check Category: a row matches if ANY of its categories equals the filter
-                if curr_filter == "":
-                    cat_filter = True
-                elif len(data) < 1:
-                    cat_filter = False
-                else:
-                    cat_filter = any(
-                        folded == str(elem).strip().lower()
-                        for elem in data
-                    )
-
-            elif role == 258:  # Check Favorite:
-                if curr_filter != data and curr_filter != "":
-                    return False
-            elif role == 259:  # Check Renderer: all_renderers is tested FIRST and an empty renderer is no special case - repair mints those rows ▸r/filter-role-numbers
-                if folded not in data.lower():
-                    if "all_renderers" not in folded:
-                        render_filter = False
-
-            elif role == 260:  # is TagRole: an empty filter accepts every row INCLUDING one with no tags - testing that inside the loop hid every untagged material ▸r/filter-role-numbers
-                if curr_filter == "":
-                    tag_filter = True
-                else:
-                    tag_filter = any(
-                        folded in str(elem).lower() for elem in data
-                    )
-
-        if tag_filter and cat_filter and name_filter and render_filter:    # no fav_filter: the favourites role returns early above
-            return True
-        return False
+        if 0 in filters and not self._name_matches(folded[0], index):    # cheapest data() first, the favourite's store read last ▸r/filter-role-numbers
+            return False
+        if 257 in filters and not any(
+                folded[257] == str(elem).strip().lower()
+                for elem in index.data(257)):
+            return False
+        if 260 in filters and not any(
+                folded[260] in str(elem).lower() for elem in index.data(260)):
+            return False
+        if 259 in filters and "all_renderers" not in folded[259] \
+                and folded[259] not in index.data(259).lower():
+            return False
+        return 258 not in filters or filters[258] == index.data(258)
