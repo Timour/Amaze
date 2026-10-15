@@ -166,28 +166,28 @@ class TheChipFollowsTheBar(unittest.TestCase):
 
     def test_the_chip_shows_exactly_when_the_bar_shows(self):
         panel = self._file_section_quiet()
-        panel._on_folder_progress("file", 1, 10)
+        panel._on_file_folder_progress(1, 10)
         self.assertFalse(panel.texture_progress.isHidden())
         self.assertTrue(panel.section_tabs.cancel_visible())
-        panel._on_folder_progress("file", 10, 10)
+        panel._on_file_folder_progress(10, 10)
         self.assertTrue(panel.texture_progress.isHidden())
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_the_chip_survives_a_strip_rebuild(self):
         """The strip is torn down and rebuilt on an enabled_sections change or a world flip - mid-batch the new strip must show the chip the old one was showing, READ from the bar itself, never re-derived."""
         panel = self._file_section_quiet()
-        panel._on_folder_progress("file", 1, 10)
+        panel._on_file_folder_progress(1, 10)
         panel._build_section_tabs()
         self.assertTrue(
             panel.section_tabs.cancel_visible(),
             "the rebuilt strip forgot the chip mid-batch")
-        panel._on_folder_progress("file", 10, 10)
+        panel._on_file_folder_progress(10, 10)
         panel._build_section_tabs()
         self.assertFalse(panel.section_tabs.cancel_visible())
 
     def test_activation_hides_the_chip_with_the_bar(self):
         panel = self._file_section_quiet()
-        panel._on_folder_progress("file", 1, 10)
+        panel._on_file_folder_progress(1, 10)
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         self.assertTrue(panel.texture_progress.isHidden())
@@ -199,7 +199,7 @@ class TheChipFollowsTheBar(unittest.TestCase):
     def test_the_chip_press_reaches_the_engine(self):
         """The whole chain: press -> hit -> signal -> panel -> model -> engine, with the flush ahead of the cancel."""
         panel = self._file_section_quiet()
-        panel._on_folder_progress("file", 1, 10)
+        panel._on_file_folder_progress(1, 10)
         panel.section_tabs.resize(600, panel.section_tabs.HEIGHT)
         rect = panel.section_tabs._cancel_rect()
         self.assertIsNotNone(rect)

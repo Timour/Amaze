@@ -940,16 +940,6 @@ class PanelWiringTest(unittest.TestCase):
             self.panel.notes_panel.maximumWidth(), theme.ui_px(1000),
             "a maximum width crept in - 450 is the LAUNCH width only")
 
-    def test_the_accent_push_is_harmless_now_that_it_does_nothing(self):
-        """set_note_accent stays a callable no-op - the panel still calls it."""
-        panel = self.panel
-        panel.notes_panel.set_note_accent("#123456")
-        panel._sync_notes_button_pixmaps()
-        self.assertFalse(
-            hasattr(panel.notes_panel, "_accent"),
-            "the pane is carrying an accent again - Comments has one "
-            "fixed colour, and two sources for it will drift")
-
     def test_a_drag_remembers_and_the_pane_asks_for_it_back(self):
         """A splitter drag records the width; the sizeHint asks it back (landing end-to-end is test_comments_area's pin)."""
         panel = self.panel

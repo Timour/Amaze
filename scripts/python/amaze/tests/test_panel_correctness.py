@@ -644,7 +644,7 @@ class OneProgressBarOwnerPerThingShown(unittest.TestCase):
 
     def test_the_folder_bar_is_hidden_in_the_online_world(self):
         """`current_section` still names the local section in the online world."""
-        source = func_source("panel/panel.py", "_on_folder_progress")
+        source = func_source("panel/panel.py", "_on_file_folder_progress")
         self.assertIn(
             "_is_online()", source,
             "a conversion batch started in a File folder draws its bar "

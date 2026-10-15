@@ -537,9 +537,6 @@ class NotesPanel(ui_helpers.HeldPane):
         self._ghost = True
         self._show_ghost()
 
-    def set_note_accent(self, hex_color: str) -> None:
-        """KEPT AS A NO-OP: Comments has its own colour so no accent reaches here, but the panel calls this on every accent change and a missing method is an AttributeError in a signal handler."""
-
     def _paint_accents(self) -> None:
         import amaze
         dpr = theme.screen_ratio(self)

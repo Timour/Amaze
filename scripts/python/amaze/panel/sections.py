@@ -659,9 +659,6 @@ class MaterialSection(AssetSection):
         panel._import_materials_into_context(context, ids, position)
         return True
 
-    def selection_has_redshift(self, indexes, current) -> bool:
-        return self.panel._selection_has_redshift()
-
     def copy_to_targets(self, indexes, current) -> tuple:
         """WHERE the saved material lands; the entries name the destination the way Houdini writes the PATH - /stage, not the Solaris marketing name."""
         return (("/mat", "mat", "", True),
@@ -673,9 +670,6 @@ class MaterialSection(AssetSection):
                 self.panel.import_asset_to_lop()
             else:
                 self.panel.import_asset_to_mat()
-
-    def selection_has_karma(self, indexes, current) -> bool:
-        return self.panel._selection_has_karma()
 
     def selection_is_convertible(self, indexes, current) -> bool:
         """The parent greys when no child would be live - an openable submenu with nothing to pick reads as broken."""
@@ -694,12 +688,6 @@ class MaterialSection(AssetSection):
             self.panel.convert_selected_to_redshift()
         else:
             self.panel.convert_selected_to_karma()
-
-    def activate(self) -> None:
-        if getattr(self.panel, "online_mode", False):  # Materials alone remembers the online world: a tab round-trip must not drop out of it
-            self.panel.enter_online()
-            return
-        super().activate()
 
     library_model_attrs = ("material_model", "category_model")
     model_attr = "material_model"

@@ -576,10 +576,8 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
         panel.section_tabs.setChecked("material")
         QtWidgets.QApplication.processEvents()
         context = panel._section()
-        with mock.patch.object(type(context), "selection_has_karma",
-                               lambda *a, **k: karma), \
-                mock.patch.object(panel, "_selection_has_karma",
-                                  lambda: karma), \
+        with mock.patch.object(panel, "_selection_has_karma",
+                               lambda: karma), \
                 mock.patch.object(panel, "_selection_has_redshift",
                                   lambda: redshift):
             indexes = context.grid_selection()

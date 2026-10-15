@@ -991,7 +991,6 @@ class AmazePanel(QtWidgets.QWidget):
             splitter.splitterMoved.connect(self._on_splitter_moved)
             self.notes_panel.changed.connect(self._on_note_saved)
             self.notes_panel.setVisible(bool(self.prefs.show_notes))
-            self.notes_panel.set_note_accent(theme.color_hex("star"))
             splitter.setHandleWidth(theme.ui_px(self._SIDEBAR["handle"]))    # width only; Houdini draws the grip ▸r/sidebar-from-frame
         self.cat_wrapper = ui_helpers.HeldPane(    # the sidebar OWNS its width like the notes pane does: the remembered drag, or the 220 design width, asked of the splitter rather than left to cat_list's bare size hint
             self.prefs, "sidebar_width", theme.ui_px(self._SIDEBAR["width"]))
@@ -3490,12 +3489,8 @@ class AmazePanel(QtWidgets.QWidget):
             panel.set_subject(subject)
 
     def _on_file_folder_progress(self, done: int, total: int) -> None:
-        """The File model's progress, as the auto-disconnectable slot the connection needs."""
-        self._on_folder_progress("file", done, total)
-
-    def _on_folder_progress(self, section: str, done: int, total: int) -> None:
-        """The conversion bar, but only while its OWN section is showing and the local world is up: the bar sits ABOVE the grid, so drawing it for a batch whose section you have left shifts every tile of whatever is on screen down and back up again."""
-        if self._is_online() or self.current_section != section:    # `current_section` deliberately keeps naming the LOCAL section while the online world is showing (see _is_online), so the section test alone cannot see that the user has left
+        """The File model's progress: the bar shows only while File shows, in the local world."""
+        if self._is_online() or self.current_section != "file":    # online, it still names File
             return
         self._on_texture_progress(done, total)
 
@@ -4218,7 +4213,5 @@ class AmazePanel(QtWidgets.QWidget):
         value = self.click_slider.value()
         self.prefs.thumbsize = value
         self._thumbsize_save_timer.start()    # persisted debounced (500ms after the last slider tick): writing settings.json on every pixel of a drag would thrash a file that lives in the cloud-synced install folder
-        self.material_model.thumbsize = value    # the property is the ONE door to the model's size
-
         self.apply_view_mode()    # sizing for the active mode - grid grows icons, list grows rows
 
