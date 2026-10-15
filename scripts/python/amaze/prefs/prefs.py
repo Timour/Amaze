@@ -13,7 +13,6 @@ from amaze.prefs.persistence import (
     RENDERER_DEFAULTS,
     _INTRODUCED_SECTIONS,
     _Persistence,
-    _decode_path,
     _default_sections,
 )
 

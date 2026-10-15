@@ -2,7 +2,6 @@
 
 import os
 import platform
-import shutil
 import urllib.parse
 
 import hou
