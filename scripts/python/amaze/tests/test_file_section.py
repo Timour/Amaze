@@ -3079,6 +3079,7 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
         SWAPS = {"set_library", "switch_all_models"}
         tree = ast.parse(inspect.getsource(prefs_dialog))
         offenders = []
+        door = set()
         for node in ast.walk(tree):
             if not isinstance(node, ast.FunctionDef):
                 continue
@@ -3087,8 +3088,13 @@ class TheUserPickerFollowsTheLibrary(unittest.TestCase):
                 if isinstance(inner, ast.Call)
                 and isinstance(inner.func, ast.Attribute)
             }
-            if called & SWAPS and "_reload_library_users" not in called:
+            if node.name == "_sync_rows":
+                door = called
+            if called & SWAPS and "_sync_rows" not in called:
                 offenders.append(node.name)
+        self.assertIn("_reload_library_users", door,
+                      "the door every library change takes no longer "
+                      "reloads the user picker")
         self.assertEqual(
             [], offenders,
             "these change which library is live but leave the user "

@@ -320,5 +320,93 @@ class TheTestLibrarySwitchKeepsEachLibrarysSettings(SharedPrefsCase):
             "changes, so it goes on showing the previous library's value")
 
 
+class EveryRowFollowsAUserOrLibraryChange(SharedPrefsCase):
+    """Preferences shows the user and library NOW in use, so a switch toggled next edits theirs."""
+
+    SECOND = {    # the second user's view state, unlike every default
+        "enabled_sections": ["material", "code"],
+        "sidebar_counts": False,
+        "hide_empty_categories": False,
+        "file_show_unknown": False,
+        "icon_line_weight": "feather",
+        "scroll_speed": 1.5,
+        "debug_mode": True,
+    }
+
+    def setUp(self):
+        super().setUp()
+        from amaze.core import users
+        from amaze.dialogs import prefs_dialog
+        self.prefs = self.machine(self.home_a)
+        self.first = users.create(self.prefs, "Cobalt")
+        self.second = users.create(self.prefs, "Sienna")
+        users.adopt(self.prefs, self.first)
+        users.adopt(self.prefs, self.second)
+        for name, value in self.SECOND.items():
+            setattr(self.prefs, name, value)
+        users.adopt(self.prefs, self.first)
+        self.assertNotEqual(self.SECOND["enabled_sections"],
+                            self.prefs.enabled_sections,
+                            "premise: the first user's state is not the second's")
+        self.dialog = prefs_dialog.PrefsDialog(self.prefs, panel=None)
+        self.addCleanup(self.dialog.deleteLater)
+
+    def shown(self):
+        d = self.dialog
+        return {
+            "enabled_sections": [key for key, box in d._section_boxes.items()
+                                 if box.isChecked()],
+            "sidebar_counts": d._cbx_sidebar_counts.isChecked(),
+            "hide_empty_categories": d._cbx_hide_empty.isChecked(),
+            "file_show_unknown": d._cbx_show_unknown.isChecked(),
+            "icon_line_weight": d._combo_icon_weight.currentData(),
+            "scroll_speed": d.spin_scroll_speed.value() / 100.0,
+            "debug_mode": d._cbx_debug.isChecked(),
+        }
+
+    def pick_second(self):
+        combo = self.dialog.cbb_library_user
+        combo.setCurrentIndex(combo.findData(self.second))
+        self.assertEqual(self.second, self.prefs.library_user,
+                         "premise: the picker switched the user")
+
+    def test_picking_a_user_shows_their_settings(self):
+        self.pick_second()
+        self.assertEqual(self.SECOND, self.shown(),
+                         "the rows still show the previous user's settings")
+
+    def test_a_switch_toggled_after_a_pick_edits_the_picked_users_list(self):
+        self.pick_second()
+        self.dialog._section_boxes["code"].setChecked(False)
+        self.assertEqual(["material"], self.prefs.enabled_sections,
+                         "the toggle saved the previous user's list as "
+                         "the picked user's")
+
+    def test_a_library_change_rereads_the_shared_and_per_user_rows(self):
+        from amaze.core import users
+        other = tempfile.mkdtemp(prefix="amaze_shared_lib_other_")
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        shutil.copy(os.path.join(self.lib, users.USERS_FILE), other)
+        elsewhere = prefs_mod.Prefs()
+        elsewhere.path = self.home_b
+        elsewhere.dir = other + "/"
+        elsewhere.rendersize = 512
+        elsewhere.save()
+        keyed_store.release()
+        prefs, second = self.prefs, self.second
+
+        class _Panel:
+            def set_library(self):
+                prefs.dir = other + "/"
+                users.adopt(prefs, second)
+
+        self.dialog._panel = _Panel()
+        self.dialog.change_library_path()
+        self.assertEqual(512, self.dialog.line_rendersize.value(),
+                         "a shared row kept the previous library's value")
+        self.assertEqual(self.SECOND, self.shown(),
+                         "a per-user row kept the previous user's value")
+
+
 if __name__ == "__main__":
     unittest.main()

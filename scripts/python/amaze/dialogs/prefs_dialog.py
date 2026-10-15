@@ -199,8 +199,7 @@ class PrefsDialog(base_dialog.AssetDialog):
             return
         if data:
             users.adopt(self._prefs, data)
-            self._btn_edit_user.setEnabled(True)
-            self._btn_delete_user.setEnabled(True)
+            self._sync_rows()
 
     def rename_library_user(self, name: str) -> None:
         """Relink the current user's NAME; the UID is untouched so everything already tagged stays tagged - one field write, not a migration."""
@@ -223,7 +222,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         uid = users.create(self._prefs, name)
         if uid:
             users.adopt(self._prefs, uid)
-        self._reload_library_users()
+        self._sync_rows()
 
     def _ask_create_library_user(self) -> None:
         dialog = base_dialog.NameDialog("Create User", "", parent=self)
@@ -236,7 +235,7 @@ class PrefsDialog(base_dialog.AssetDialog):
     def delete_library_user(self, uid) -> None:
         """Delete `uid` and everything tagged theirs; the row goes blank until somebody is picked - nobody is adopted silently."""
         if users.delete(self._prefs, uid):
-            self._reload_library_users()
+            self._sync_rows()
 
     def _ask_delete_library_user(self) -> None:
         uid = users.current(self._prefs)
@@ -882,9 +881,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._prefs.save()    # before the switch: unsaved edits belong to the library they were made in
         self._panel.set_library()
         self.line_workdir.setText(self._prefs.dir)
-        self._reload_library_users()    # the users live in the library, as policy.json does
-        self._sync_overwrite_switch()
-        self._sync_shared_rows()
+        self._sync_rows()
 
     def change_cache_path(self) -> None:
         """Pick a custom thumbnail-cache location; an empty selection keeps the current one and existing caches regenerate at the new location on demand."""
@@ -953,9 +950,7 @@ class PrefsDialog(base_dialog.AssetDialog):
                     library=self._prefs.dir)
         if self._panel is not None:
             self._panel.switch_all_models()   # NOT open(): that reloads the library already bound, so the connectors keep serving the previous one and every save is refused
-        self._reload_library_users()    # a different library means different people, and the picker is open in front of them
-        self._sync_overwrite_switch()
-        self._sync_shared_rows()
+        self._sync_rows()
 
     _SHARED_ROWS = (    # (row attribute, the shared setting it shows); renderer switches ride beside
         ("line_rendersize", "rendersize"),
@@ -971,12 +966,30 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("cbx_render_on_import", "render_on_import"),
     )
 
-    def _sync_shared_rows(self) -> None:
-        """Show the shared settings of the library now in use; signals blocked, so nothing writes back."""
-        rows = [(getattr(self, name), prop) for name, prop in self._SHARED_ROWS]
-        rows.extend((box, attr) for attr, box in self._renderer_boxes.items())
-        for widget, prop in rows:
-            value = getattr(self._prefs, prop)
+    _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll ride beside
+        ("_cbx_sidebar_counts", "sidebar_counts"),
+        ("_cbx_hide_empty", "hide_empty_categories"),
+        ("_cbx_show_unknown", "file_show_unknown"),
+        ("_combo_icon_weight", "icon_line_weight"),
+        ("_cbx_debug", "debug_mode"),
+    )
+
+    def _shown_values(self):
+        """(row, the value it shows) for every row holding a shared or a per-user setting."""
+        prefs = self._prefs
+        for name, prop in self._SHARED_ROWS + self._USER_ROWS:
+            yield getattr(self, name), getattr(prefs, prop)
+        for attr, box in self._renderer_boxes.items():
+            yield box, getattr(prefs, attr)
+        for key, box in self._section_boxes.items():
+            yield box, key in prefs.enabled_sections
+        yield self.spin_scroll_speed, round(prefs.scroll_speed * 100)
+
+    def _sync_rows(self) -> None:
+        """The door after a library or user change: every row re-reads, signals blocked."""
+        self._reload_library_users()
+        self._sync_overwrite_switch()
+        for widget, value in self._shown_values():
             for shown in (widget, self._sliders.get(widget)):
                 if shown is not None:
                     with QtCore.QSignalBlocker(shown):
