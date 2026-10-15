@@ -720,6 +720,27 @@ class PuttingASavedCopyBackTest(_Case):
                          "the live list was overwritten with something "
                          "that does not parse")
 
+    def test_the_copy_put_back_is_the_copy_that_was_checked(self):
+        """A save elsewhere can rotate the copy between two reads, so the restore reads it once."""
+        self._cops([{"id": "LIVE1"}])
+        source = self.cops + ".bak-1"
+        self._write(source, {"assets": [{"id": "A"}, {"id": "B"}]})
+        findings, real_open, reads = self._survey(), open, []
+
+        def rotating_open(path, *args, **kwargs):
+            if os.path.abspath(str(path)) == os.path.abspath(source):
+                if reads:
+                    self._write(source, {"assets": []})
+                reads.append(path)
+            return real_open(path, *args, **kwargs)
+
+        with patch.object(restore_lib, "open", rotating_open, create=True):
+            repair.put_back(findings, "cops.json", "bak-1")
+        self.assertEqual(
+            ["A", "B"], [r["id"] for r in self._read(self.cops)["assets"]],
+            "the restore wrote bytes from a later read than the one it "
+            "checked")
+
     def test_the_terminal_tool_and_the_shelf_tool_read_the_same_copies(self):
         self._cops([])
         for tier in ("bak-1", "bak-3"):

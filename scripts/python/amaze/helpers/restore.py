@@ -33,11 +33,20 @@ class RestoreRefused(Exception):
 
 def read_document(path: str):
     """`(document, error)`, error `""` on success. utf-8-SIG: plain utf-8 here reads a BOM'd file as invalid JSON and refuses to put back a copy the app itself calls healthy."""
+    return read_payload(path)[1:]
+
+
+def read_payload(path: str):
+    """`(bytes, document, error)` from ONE read, for a caller that writes back what it checked."""
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            return json.load(handle), ""
-    except (OSError, ValueError) as exc:
-        return None, str(exc)
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        return b"", None, str(exc)
+    try:
+        return raw, json.loads(raw.decode("utf-8-sig")), ""
+    except ValueError as exc:
+        return raw, None, str(exc)
 
 
 def count_in(document):
@@ -160,15 +169,12 @@ def put_back(target: str, tier: str, allow_loss: bool = False) -> dict:
             "That copy is no longer in the library folder, so nothing was "
             "put back and the list you have now is untouched.",
             detail="%s does not exist" % source)
-    document, error = read_document(source)
+    payload, document, error = read_payload(source)
     if error:
         raise RestoreRefused(
             "That copy of %s cannot be read, so nothing was put back and "
             "the list you have now is untouched."
             % os.path.basename(target), detail=error)
-
-    with open(source, "rb") as handle:
-        payload = handle.read()
 
     current_doc, current_error = read_document(target) \
         if os.path.exists(target) else (None, "absent")
