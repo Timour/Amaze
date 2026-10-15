@@ -19,7 +19,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import matx_import, tile_icons  # noqa: E402
+from amaze.core import library_policy, matx_import, tile_icons  # noqa: E402
 from amaze.dialogs import base_dialog, code_dialog  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
@@ -753,7 +753,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                                updating), \
                 test_support.row_moves_inside_a_layout_change(
                     self.model) as caught:
-            self.panel._update_existing_asset(1, None)
+            self.panel._update_existing_asset(self.model.tile_key(1), None)
         self.assertIn("Saved elsewhere",
                       [asset.name for asset in self.model.assets],
                       "premise: the save adopted nothing")
@@ -782,8 +782,8 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._assert_no_row_moved_inside(caught, "Edit Snippet")
 
 
-class ARowHeldAcrossACategorySaveIsFoundAgain(unittest.TestCase):
-    """A category list's save takes in another machine's deletions, so a row held across it moves."""
+class ARowHeldAcrossASaveIsFoundAgain(unittest.TestCase):
+    """Every save takes in another machine's deletions, so a row number held across one names another."""
 
     def setUp(self):
         self.panel = test_support.fixture_panel(self)
@@ -841,6 +841,120 @@ class ARowHeldAcrossACategorySaveIsFoundAgain(unittest.TestCase):
             "// edited here", target.code,
             "the edit landed on another snippet: the category list's save "
             "took in a deletion above it, and the row held from before moved")
+
+    def _material_tiles(self):
+        self.panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        model = self.panel.material_model
+        self.assertGreaterEqual(len(model.assets), 7, "premise: too few assets")
+        return model
+
+    @staticmethod
+    def _ids(assets):
+        return sorted(str(asset.mat_id) for asset in assets)
+
+    def test_customize_moves_exactly_the_tiles_chosen(self):
+        model = self._material_tiles()
+        proxy = self.panel.material_sorted_model
+        chosen = [model.assets[row] for row in (2, 4, 6)]
+        target = "Moved Here"
+        self.panel.category_model.check_add_category(target)
+        self._deleted_elsewhere(model, model.assets[1].mat_id)
+        indexes = [proxy.mapFromSource(model.index(model.assets.index(asset), 0))
+                   for asset in chosen]
+        self.panel.sections["material"].menu_customize(indexes, indexes[0])
+        dialog = self.panel._icon_dialog
+        combo = dialog.category_combo
+        self.assertGreaterEqual(combo.findData(target), 0, "premise: not offered")
+        combo.setCurrentIndex(combo.findData(target))
+        dialog.accept_button.click()
+        QtWidgets.QApplication.processEvents()
+
+        moved = [asset for asset in model.assets if list(asset.categories) == [target]]
+        self.assertEqual(self._ids(chosen), self._ids(moved),
+                         "Customize moved other tiles: each move saves, and the first "
+                         "save took in a deletion above the rows it held")
+
+    def test_converting_a_selection_converts_exactly_the_tiles_chosen(self):
+        model = self._material_tiles()
+        proxy = self.panel.material_sorted_model
+        shown = [model.assets[proxy.mapToSource(proxy.index(row, 0)).row()]
+                 for row in range(proxy.rowCount())]
+        for asset in shown:
+            asset.renderer = "Karma"    # a stale row then converts another tile, never skips it
+        chosen = [shown[row] for row in (2, 4, 6)]
+        selection = self.panel.material_selection_model
+        selection.clearSelection()
+        for row in (2, 4, 6):
+            selection.select(proxy.index(row, 0),
+                             QtCore.QItemSelectionModel.SelectionFlag.Select
+                             | QtCore.QItemSelectionModel.SelectionFlag.Rows)
+        self._deleted_elsewhere(model, shown[0].mat_id)
+        converted = []
+
+        def convert(index):
+            converted.append(model.assets[index.row()])
+            model.save()    # the twin's own save, which takes the deletion in
+            return True, types.SimpleNamespace(summary_lines=lambda: [])
+
+        with mock.patch.object(model, "convert_karma_to_redshift", convert):
+            self.panel.convert_selected_to_redshift()
+        self.assertEqual(self._ids(chosen), self._ids(converted),
+                         "Convert reached other tiles: each twin saves, and the first "
+                         "save took in a deletion above the rows it held")
+
+    def test_saving_over_several_materials_updates_exactly_those(self):
+        model = self._material_tiles()
+        chosen = [model.assets[row] for row in (2, 4, 6)]
+        nodes = [object() for _asset in chosen]
+        where = {id(node): model.assets.index(asset)
+                 for node, asset in zip(nodes, chosen)}
+        self._deleted_elsewhere(model, model.assets[1].mat_id)
+        updated = []
+
+        def update(row, _node):
+            if 0 <= row < len(model.assets):
+                updated.append(model.assets[row])
+            model.save()    # the update's own last step, which takes the deletion in
+            return "Karma"
+
+        asking = types.SimpleNamespace(displayMessage=lambda *_a, **_k: 0)    # Save Version
+        with mock.patch.object(hou, "selectedNodes", lambda: nodes), \
+                mock.patch.object(hou, "ui", asking, create=True), \
+                mock.patch.object(self.panel, "_find_existing_asset_row",
+                                  lambda node: where[id(node)]), \
+                mock.patch.object(library_policy, "allow_overwrite",
+                                  lambda *_a: True), \
+                mock.patch.object(model, "update_asset_content", update):
+            self.panel.save_asset()
+        self.assertEqual(self._ids(chosen), self._ids(updated),
+                         "Save Version wrote over other materials: each update saves, "
+                         "and the first save took in a deletion above the rows it held")
+
+    def test_deleting_a_selection_deletes_exactly_the_tiles_chosen(self):
+        model = self._material_tiles()
+        chosen = [model.assets[row] for row in (2, 4, 6)]
+        elsewhere = model.assets[1]
+        before = {str(asset.mat_id) for asset in model.assets}
+        self._deleted_elsewhere(model, elsewhere.mat_id)
+        self.panel.sections["material"].delete_rows(
+            [model.index(model.assets.index(asset), 0) for asset in chosen])
+        self.assertEqual(
+            sorted(before - set(self._ids(chosen)) - {str(elsewhere.mat_id)}),
+            self._ids(model.assets),
+            "Delete removed other assets: each removal saves, and the first "
+            "save took in a deletion above the rows it held")
+
+    def test_one_edit_repaints_the_row_its_asset_moved_to(self):
+        model = self._material_tiles()
+        asset = model.assets[5]
+        self._deleted_elsewhere(model, model.assets[1].mat_id)
+        painted = []
+        model.dataChanged.connect(
+            lambda top, _bottom, _roles=(): painted.append(top.row()))
+        model.set_tile_tags(5, "moved, below")
+        self.assertIn(model.assets.index(asset), painted,
+                      "the edit repainted the row its asset left, not the one it is on")
 
 
 class CustomizeOffersTheOwningSectionsCategories(unittest.TestCase):

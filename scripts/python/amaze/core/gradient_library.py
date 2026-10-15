@@ -231,19 +231,17 @@ class GradientLibrary(library.AssetLibrary):
         cats = self._data.setdefault("categories", [])
         if category_name not in cats:
             cats.append(category_name)
-        moved = 0
+        moved = []
         for row in rows:
             if not 0 <= row < len(self._assets):
                 continue
             asset = self._assets[row]
             if asset.categories != [category_name]:
                 asset.categories = category_name
-                moved += 1
+                moved.append(asset)
         if moved:
-            self.save()
-            for row in rows:
-                self.row_changed(row)
-        return moved
+            self._saved_rows_changed(moved)
+        return len(moved)
 
     def add_user_gradient(self, name: str, category_name: str,
                           ramp_data: dict, tags: str = "") -> None:
@@ -312,8 +310,10 @@ class GradientLibrary(library.AssetLibrary):
         stored = tile_icons.set_override(
             self.preferences, str(self._assets[row].mat_id), spec)
         if save:
-            self.save()
-        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+            self._saved_rows_changed([self._assets[row]],
+                                     [QtCore.Qt.ItemDataRole.DecorationRole])
+        else:
+            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
         return bool(stored)
 
     @staticmethod

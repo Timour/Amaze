@@ -1654,9 +1654,14 @@ class AmazePanel(QtWidgets.QWidget):
         all_lines = []
         converted_count = 0
         karma_count = 0
-        for index in indexes:    # NO layout pair: a twin is an insert, and that pairing segfaults H21
-            idx = self.material_sorted_model.mapToSource(index)
-            mat = self.material_model.assets[idx.row()]
+        model = self.material_model
+        ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
+               for index in indexes]    # by ID: each twin saves, and a save moves rows
+        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):    # NO layout pair: twins insert
+            if row < 0:
+                continue
+            idx = model.index(row, 0)
+            mat = model.assets[row]
             if "Karma" not in str(mat.renderer):
                 continue
             karma_count += 1
@@ -1685,9 +1690,14 @@ class AmazePanel(QtWidgets.QWidget):
         all_lines = []    # ONE summary dialog for successes and skips alike: a "successful" conversion can still have approximated or skipped inputs worth reviewing, and no result is claimed to be a faithful reproduction
         converted_count = 0
         redshift_count = 0
-        for index in indexes:    # NO layout pair: a twin is an insert, and that pairing segfaults H21
-            idx = self.material_sorted_model.mapToSource(index)
-            mat = self.material_model.assets[idx.row()]
+        model = self.material_model
+        ids = [model.tile_key(self.material_sorted_model.mapToSource(index).row())
+               for index in indexes]    # by ID: each twin saves, and a save moves rows
+        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids):    # NO layout pair: twins insert
+            if row < 0:
+                continue
+            idx = model.index(row, 0)
+            mat = model.assets[row]
             if "Redshift" not in mat.renderer:
                 continue
             redshift_count += 1
@@ -2695,22 +2705,23 @@ class AmazePanel(QtWidgets.QWidget):
                     if model.tile_key(row) in held]
             if not rows:
                 return
+            keys = [model.tile_key(row) for row in rows]    # by KEY past here: each write saves, moving rows
             self._apply_icon_spec(model, rows, dialog.spec)
             new_name = getattr(dialog, "new_tile_name", None)
-            if new_name and len(rows) == 1 and \
+            if new_name and len(keys) == 1 and \
                     hasattr(model, "set_tile_name"):
-                model.set_tile_name(rows[0], new_name)
+                model.set_tile_name(model.find_asset_row_by_id(keys[0]), new_name)
             new_tags = getattr(dialog, "new_tags", None)
             if new_tags is not None and hasattr(model, "set_tile_tags"):
-                if len(rows) == 1:
-                    model.set_tile_tags(rows[0], new_tags)    # `is not None`, never truth: "" is a real answer that CLEARS this tile's tags
+                if len(keys) == 1:
+                    model.set_tile_tags(model.find_asset_row_by_id(keys[0]), new_tags)    # "" CLEARS the tags
                 else:
-                    for row in rows:    # ADDS across a selection: each tile keeps its own tags and gains these, so one shared line cannot flatten them all
-                        model.add_tile_tags(row, new_tags)
+                    for key in keys:    # ADDS across a selection: each tile keeps its own tags
+                        model.add_tile_tags(model.find_asset_row_by_id(key), new_tags)
             new_category = getattr(dialog, "new_category", None)
             if new_category and hasattr(model, "set_tile_category"):
-                for row in rows:    # EVERY selected row, unlike the name and the tags: moving a whole selection to one category is what the field is for
-                    model.set_tile_category(row, new_category)
+                for key in keys:    # EVERY selected tile, unlike the name and the tags
+                    model.set_tile_category(model.find_asset_row_by_id(key), new_category)
 
         def _finished(_result=0, dialog=dialog):
             self._icon_dialog = None
@@ -3899,12 +3910,12 @@ class AmazePanel(QtWidgets.QWidget):
                     messages.NO_LIBRARY_CONFIGURED_2
                 )
             return
-        existing = []    # which of the dropped nodes already exist, so the choice is offered ONCE for the whole drop rather than per node or not at all
+        existing = []    # (asset id, node) per node held: ONE choice for all; ids, as saves move rows
         new_nodes = []
         for node in sel:
             row = self._find_existing_asset_row(node)
             if row >= 0:
-                existing.append((row, node))
+                existing.append((self.material_model.tile_key(row), node))
             else:
                 new_nodes.append(node)
         debug.event("save", "overwrite check",
@@ -3912,7 +3923,8 @@ class AmazePanel(QtWidgets.QWidget):
         if existing:
             if len(sel) == 1:
                 name = self.material_model.data(
-                    self.material_model.index(existing[0][0], 0),
+                    self.material_model.index(
+                        self.material_model.find_asset_row_by_id(existing[0][0]), 0),
                     QtCore.Qt.ItemDataRole.DisplayRole,
                 )
                 message = '"%s" already exists in the library.' % name
@@ -3944,8 +3956,8 @@ class AmazePanel(QtWidgets.QWidget):
             if choice == cancel_at:
                 return
             if choice == overwrite_at:
-                for row, node in existing:    # an overwrite neither inserts nor removes rows, so the collected row indexes stay valid through the loop - which is only true while the pump cannot deliver a click that removes one
-                    self._update_existing_asset(row, node)
+                for mat_id, node in existing:
+                    self._update_existing_asset(mat_id, node)
                     QtWidgets.QApplication.processEvents(
                         QtCore.QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents
                     )
@@ -3963,13 +3975,13 @@ class AmazePanel(QtWidgets.QWidget):
                 return row
         return self.material_model.find_asset_row_by_name(node.name())
 
-    def _update_existing_asset(self, row: int, node: hou.Node) -> None:
-        """Overwrite an existing library entry's content from the scene node: same entry/metadata, new node files + thumbnail + type."""
+    def _update_existing_asset(self, mat_id: str, node: hou.Node) -> None:
+        """Overwrite asset `mat_id`'s content from the scene node: same entry and metadata, new files."""
         model = self.material_model
-        held = model.assets[row].mat_id if 0 <= row < len(model.assets) else None    # by ID: saves move rows
-        renderer = model.update_asset_content(row, node)    # NO layout pair: it saves, which adopts rows
-        if renderer and held is not None:
-            model.row_changed(model.find_asset_row_by_id(held))    # renderer and date changed IN PLACE
+        renderer = model.update_asset_content(    # NO layout pair: it saves, which adopts rows
+            model.find_asset_row_by_id(mat_id), node)
+        if renderer:
+            model.row_changed(model.find_asset_row_by_id(mat_id))    # renderer and date changed IN PLACE
         self._refresh_sidebar_categories()    # a re-detected renderer can shift counts and hiding
         if not renderer:
             ui = getattr(hou, "ui", None)

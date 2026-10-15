@@ -313,9 +313,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if name == asset.name:
             return False
         asset.name = name
-        self.save()
-        model_index = self.index(row, 0)
-        self.row_changed(model_index.row())
+        self._saved_rows_changed([asset])
         return True
 
     def add_tile_tags(self, row: int, line: str) -> bool:
@@ -333,8 +331,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if merged == before:
             return False
         asset.tags = ", ".join(merged)
-        self.save()
-        self.row_changed(row)
+        self._saved_rows_changed([asset])
         return True
 
     def tile_category(self, row: int) -> str:
@@ -353,8 +350,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if list(asset.categories or []) == [name]:
             return False
         asset.categories = name    # the RECORD's own setter splits and drops the blanks
-        self.save()
-        self.row_changed(row)
+        self._saved_rows_changed([asset])
         return True
 
     def tile_tags(self, row: int) -> str:
@@ -372,8 +368,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         asset.tags = line or ""    # the RECORD's own setter splits and drops the blanks - the one splitter, never a second copy of it here
         if [tag for tag in (asset.tags or []) if tag] == before:
             return False
-        self.save()
-        self.row_changed(row)
+        self._saved_rows_changed([asset])
         return True
 
     def tile_icon(self, row: int) -> dict:
@@ -382,6 +377,14 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return tile_icons.override_for(
                 self.preferences, str(self._assets[row].mat_id))
         return {}
+
+    def _saved_rows_changed(self, assets, roles=None) -> bool:
+        """Save, then repaint each record on the row the save LEFT it on: a save adopts and drops rows."""
+        stored = self.save()
+        rows = {str(asset.mat_id): row for row, asset in enumerate(self._assets)}
+        for asset in assets:
+            self.row_changed(rows.get(str(asset.mat_id), -1), roles)
+        return stored
 
     def tile_key(self, row: int) -> str:
         """WHAT THIS ROW IS KEYED BY for tile icons - the asset's own id, "" for a row that does not exist. Hold this, never a row NUMBER: a reset re-numbers everything and kills every persistent index, and the non-modal Customize dialog outlives exactly that."""
@@ -736,9 +739,9 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         asset.set_data(name, cats, tags, asset.fav, None, about=about,
                        license=license)
         if save:
-            self.save()
-        model_index = self.index(index.row(), 0)
-        self.row_changed(model_index.row())  # full-row repaint, all roles: name, categories, tags and favourite may all have changed
+            self._saved_rows_changed([asset])
+        else:
+            self.row_changed(index.row())  # full-row repaint: name, categories, tags and star may all change
 
     def collapse_multicategory(self) -> int:
         """Drop every asset to its FIRST category, and return how many were collapsed. Idempotent, so it is safe on every load, and it saves only when something actually changed."""

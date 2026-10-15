@@ -488,8 +488,11 @@ class AssetSection(Section):
         if st is None:
             return
         model = st.model
-        for index in sorted(indexes, key=lambda i: i.row(), reverse=True):
-            model.remove_asset(index)
+        ids = [model.tile_key(index.row())    # by ID: each removal saves, and a save moves rows
+               for index in sorted(indexes, key=lambda i: i.row(), reverse=True)]
+        for row in (model.find_asset_row_by_id(mat_id) for mat_id in ids if mat_id):
+            if row >= 0:
+                model.remove_asset(model.index(row, 0))
         self.panel._refresh_sidebar_categories()
 
     def sidebar_key(self, index) -> str:

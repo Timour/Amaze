@@ -184,8 +184,7 @@ class CodeLibrary(library.AssetLibrary):
         asset.code = code
         thumbnails.engine.discard(key_before)
         self.rebuild_thumbs()
-        self.save()
-        self.row_changed(row)
+        self._saved_rows_changed([asset])
         return True
 
     def data(self, index, role=0):
