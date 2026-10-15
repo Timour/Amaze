@@ -496,6 +496,17 @@ class RepaintDoesNotStatTheDiskTest(unittest.TestCase):
             "repaint is re-asking the disk a question this process "
             "already answered" % len(calls))
 
+    def test_a_zero_byte_capture_is_no_capture(self):
+        """The tile asks the store's own rule, so an empty file in the slot paints the placeholder."""
+        model = file_library.FileFiles(_Prefs([self.tmp.dir]))
+        model.set_folder(self.tmp.dir)
+        png = scene_captures.thumb_path(self.scene)
+        os.makedirs(os.path.dirname(png), exist_ok=True)
+        open(png, "wb").close()
+        self.assertEqual(
+            "", model._capture_png(self.scene),
+            "a zero-byte file was handed to the tile as this scene's capture")
+
     def test_a_landed_capture_forgets_the_remembered_answer(self):
         """The cache may not outlive the fact it caches - without this the optimisation is a bug: capture a scene that was showing the placeholder and the tile keeps showing it, because the model remembers the no-PNG answer forever."""
         model = file_library.FileFiles(_Prefs([self.tmp.dir]))

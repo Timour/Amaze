@@ -87,7 +87,7 @@ def thumb_path(hip_path: str) -> str:
 
 
 def has_thumbnail(hip_path: str) -> bool:
-    """Whether a non-empty capture exists for this scene - the tests pin the store's contract through it (a zero-byte file is no thumbnail, and a re-saved scene must not lose one), which is its reason to stay."""
+    """Whether a non-empty capture exists for this scene: a zero-byte file is no capture."""
     path = thumb_path(hip_path)
     try:
         return os.path.isfile(path) and os.path.getsize(path) > 0

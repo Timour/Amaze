@@ -1928,8 +1928,8 @@ class ALocationIsAnIdAndItsPathIsAProperty(unittest.TestCase):
         other = _Prefs(self.dir, library_user=SECOND_USER)
         locations.set_favourite(other, ident, True)
 
-        keyed_store.retire_location(self.prefs, lid)
-        locations.drop_location_id(self.prefs, lid)
+        keyed_store.retire_prefix(self.prefs, folder)
+        locations.touch()
 
         favourites = keyed_store.open_store(locations.FAVOURITES_SPEC,
                                             self.prefs)

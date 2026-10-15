@@ -234,14 +234,6 @@ def location_path_for(preferences, locid: str) -> str:
     return str(_ids_store(preferences).get(str(locid)).get("path") or "")
 
 
-def drop_location_id(preferences, locid: str) -> keyed_store.Written:
-    """The identity row goes too - a removal is a shared act; `keyed_store.retire_location` sweeps the dependents."""
-    global _generation
-    written = _ids_store(preferences).retire([str(locid)])
-    _generation += 1    # AFTER the retire, or a lookup between bump and write re-caches the pre-edit map as current
-    return written
-
-
 def _path_of_key(preferences, key: str) -> str:
     """The STORAGE-spelling path behind a record key - resolved through the identity table for a `loc:` key, the key itself for a legacy path."""
     key = str(key)

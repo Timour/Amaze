@@ -594,8 +594,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         """This scene's capture PNG, or an empty path if it has none. The stat is remembered per scene (`_capture_seen`): a repaint must not ask the filesystem a question this process already answered - `_on_capture_landed` forgets the one path a capture just changed, a rescan forgets the lot, so the only way to a stale answer is deleting a PNG from under a running panel, re-read on the next folder visit."""
         seen = self._capture_seen.get(hip_path)
         if seen is None:
-            png = scene_captures.thumb_path(hip_path)
-            seen = png if (png and os.path.isfile(png)) else ""
+            seen = (scene_captures.thumb_path(hip_path)
+                    if scene_captures.has_thumbnail(hip_path) else "")
             self._capture_seen[hip_path] = seen
         return seen
 
