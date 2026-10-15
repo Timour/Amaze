@@ -583,6 +583,51 @@ class RefreshDropsEveryCacheASourceKeeps(unittest.TestCase):
             "Houdini restarts")
 
 
+class TheShippedTableIsClosedAfterTheSizeCheck(unittest.TestCase):
+
+    def test_judging_a_live_answer_leaves_no_file_open(self):
+        """`_usable` reads the shipped table to size a live answer, and closes it."""
+        import gc
+        import warnings
+        from amaze.core import matx_sources
+        live = [{"name": "M%d" % n, "color": [0.5, 0.5, 0.5]}
+                for n in range(200)]
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always", ResourceWarning)
+            matx_sources.PhysicallyBasedSource()._usable(live)
+            gc.collect()
+        self.assertEqual(
+            [], [str(w.message) for w in caught
+                 if issubclass(w.category, ResourceWarning)],
+            "the shipped table was left open after the size check")
+
+
+class AFullSourceIsLogged(unittest.TestCase):
+
+    def _source(self, name, short_by):
+        class Source:
+            def list_materials(self, search="", offset=0, limit=60):
+                return [object()] * (limit - short_by)
+        found = Source()
+        found.name = name
+        return found
+
+    def test_a_source_that_fills_the_cap_says_so(self):
+        """No source fills the cap today; the log says when one starts to."""
+        from amaze.core import matx_library
+        from amaze.tests import test_support
+        with test_support.captured_log() as log:
+            matx_library._CatalogueWorker(
+                [self._source("Full", 0), self._source("Short", 1)],
+                0).run()
+        full = [r["data"].get("source")
+                for r in log.records("online")
+                if "cap" in str(r.get("msg", ""))]
+        self.assertEqual(["Full"], full,
+                         "a source that filled the catalogue cap left "
+                         "no line in the log, or a short one did")
+
+
 class TheCatalogueCacheLandsWhole(unittest.TestCase):
     """The on-disk Online catalogue is replaced whole or not at all."""
 

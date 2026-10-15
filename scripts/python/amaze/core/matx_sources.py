@@ -609,9 +609,8 @@ class PhysicallyBasedSource(MatxSource):
         if len(good) < len(payload) // 2:
             return False
         try:
-            shipped = len(json.load(
-                open(self._table_path(), encoding="utf-8")
-            ).get("materials", {}))
+            with open(self._table_path(), encoding="utf-8") as handle:
+                shipped = len(json.load(handle).get("materials", {}))
         except (OSError, ValueError):
             shipped = 0
         return len(good) >= max(1, shipped // 2)    # a real shrink happens (withdrawn materials); losing MOST of the set means it is not the dataset

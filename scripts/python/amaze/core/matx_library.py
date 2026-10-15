@@ -49,8 +49,11 @@ def _purge_legacy_caches():
             pass
 
 
+CATALOGUE_CAP = 1000    # records asked of each source; none holds more today ▸r/matx-source-quirks
+
+
 class _CatalogueWorker(QtCore.QThread):
-    """Fetches EVERY source's full catalogue off the UI thread - ~1800 records over FIVE sources (GPUOpen 454 and PolyHaven 783 by API, Amaze by ranged manifest reads, PhysicallyBased 86 and RGL 62 from shipped tables in ~1ms); no paging, one flat list the filter box narrows."""
+    """Every source's whole catalogue off the UI thread, ~1900 records (PolyHaven 869), no paging."""
 
     done = QtCore.Signal(object, object, int)   # (records, errors, generation)
 
@@ -63,7 +66,12 @@ class _CatalogueWorker(QtCore.QThread):
         records, errors = [], []
         for src in self._sources:
             try:
-                records.extend(src.list_materials(limit=1000))
+                found = src.list_materials(limit=CATALOGUE_CAP)
+                if len(found) >= CATALOGUE_CAP:
+                    debug.event("online", "a source filled the catalogue "
+                                "cap - anything past it is not listed",
+                                source=src.name, cap=CATALOGUE_CAP)
+                records.extend(found)
             except Exception as exc:                    # noqa: BLE001
                 errors.append("%s: %s: %s"    # the MESSAGE, not just the type - the reason is what makes a missing source diagnosable
                               % (src.name, type(exc).__name__, exc))
