@@ -130,6 +130,15 @@ def selected_current(view, indexes):
     return current
 
 
+def selected_current_in(view, selection):
+    """`selected_current` asked of the selection MODEL: one row tested, the list built only on a miss."""
+    current = ui_helpers.live_current_index(view)
+    if current is not None and selection is not None \
+            and selection.isSelected(current):
+        return current
+    return selected_current(view, grid_columns.selected_rows(selection))
+
+
 def _open(panel, context, entries, indexes, view) -> None:
     """Build a menu, show it, and run whatever was picked - the selection and the current row are read ONCE here, for every menu."""
     if not entries or view is None:

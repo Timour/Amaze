@@ -3350,8 +3350,8 @@ class AmazePanel(QtWidgets.QWidget):
         context = self._section()
         if context is None or not context.takes_comments:    # ASK THE CONTEXT, do not test which world this is: the online world answers no because an online record is not a library asset, a fact that belongs on it rather than in a branch here
             return None
-        index = grid.selected_current(    # a SELECTED row: Qt keeps the current one after a deselect
-            self.thumblist, context.grid_selection())
+        index = grid.selected_current_in(    # a SELECTED row: Qt keeps the current one after a deselect
+            self.thumblist, context.grid_selection_model())
         if index is None:
             return None
         return context.comment_subject(index)

@@ -163,6 +163,31 @@ class TheSubjectIsRightForEachContext(unittest.TestCase):
             "the uid in the comment key belongs to a different palette "
             "than the one the header names")
 
+    def test_a_selected_current_row_is_answered_without_listing_the_selection(self):
+        """Every selection change asks this, so a wide selection must not cost a walk of it."""
+        panel = self.panel
+        panel.section_tabs.setChecked("material")
+        QtWidgets.QApplication.processEvents()
+        proxy = panel.thumblist.model()
+        selection = panel.material_selection_model
+        flags = QtCore.QItemSelectionModel.SelectionFlag
+        current = proxy.index(proxy.rowCount() - 1, 0)
+        selection.setCurrentIndex(current, flags.NoUpdate)
+        selection.select(QtCore.QItemSelection(proxy.index(0, 0), current),
+                         flags.ClearAndSelect | flags.Rows)
+        self.addCleanup(selection.clearSelection)
+        listed = []
+        real = selection.selectedIndexes
+        selection.selectedIndexes = lambda: (listed.append(1), real())[1]
+        self.addCleanup(delattr, selection, "selectedIndexes")
+        subject = panel._notes_subject()
+        model = panel._section().stack().model
+        self.assertEqual(
+            "material:%s" % current.data(model.IdRole), subject.key,
+            "the subject is not the current row, which is selected")
+        self.assertEqual([], listed, "the lookup listed the whole selection "
+                                     "to test one row")
+
     def test_the_online_world_has_no_subject_at_all(self):
         """An online record is not a library asset: nothing to write a comment against, and the pane must clear rather than keep pointing at whatever was selected before."""
         panel = self.panel

@@ -99,7 +99,11 @@ class Section:
 
     def grid_selection(self) -> list:
         """This section's grid selection as ITS OWN proxy's indexes, ONE per row - a menu asks the SECTION, not the widget, so a test can drive one without switching to it."""
-        return grid_columns.selected_rows(self._p(self.selection_attr))
+        return grid_columns.selected_rows(self.grid_selection_model())
+
+    def grid_selection_model(self):
+        """This section's grid selection MODEL, for a question about one row."""
+        return self._p(self.selection_attr)
 
     def tile_models(self):
         """(model, proxy) for the tile a menu is acting on - what the shared Customize handler needs."""
