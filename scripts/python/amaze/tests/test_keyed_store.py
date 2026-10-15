@@ -1993,6 +1993,37 @@ class TheFingerprintIsOfTheBytesParsed(StoreCase):
             "the next one")
 
 
+class AnUnreadableAlertIsTrueWhereverItIsRaised(StoreCase):
+    """A load and a refused save raise the same alert, and only the load empties the tables."""
+
+    def test_a_refused_save_raises_it_with_this_session_s_rows_still_held(self):
+        store = self.store()
+        self.assertTrue(store.set("material:1", self.page("kept")).ok)
+        with open(self.path(), "w", encoding="utf-8") as handle:
+            json.dump({"icons": {}}, handle)
+        raised = []
+        with mock.patch.object(keyed_store.debug, "alert",
+                               lambda msg, **kw: raised.append(kw.get("key"))):
+            self.assertFalse(store.set("material:2", self.page("no")).ok)
+        self.assertIn(notes.SPEC.alert_key, raised)
+        self.assertEqual(["material:1"], sorted(store.all()),
+                         "premise: the save path keeps what this session read")
+
+    def test_no_alert_describes_what_only_a_load_leaves_on_screen(self):
+        for spec in keyed_store.stores():
+            for claim in ("for now", " shows ", "showing", "opened with",
+                          "still there", "working without"):
+                self.assertNotIn(
+                    claim, spec.unreadable_alert,
+                    "%s's alert says %r, which is false when a save "
+                    "raises it" % (spec.filename, claim))
+
+    def test_the_comments_alert_calls_them_comments(self):
+        alert = notes.SPEC.unreadable_alert
+        self.assertIn("comments", alert)
+        self.assertNotIn("Notes", alert)
+
+
 class AnUnreadablePeerIsNotOverwritten(StoreCase):
     """The second read has the first read's refusal, or a peer's work is lost."""
 

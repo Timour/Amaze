@@ -177,10 +177,9 @@ register(
     category="notes",
     alert_key="notes-unreadable",
     unreadable_alert=(
-        "Your notes could not be read, so Amaze will not save over "
+        "Your comments could not be read, so Amaze will not save over "
         "them.\n\n"
-        "Nothing has been lost. The Notes panel shows empty pages for "
-        "now, and anything you write will not be kept.\n\n"
+        "Any comment you write now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -212,9 +211,7 @@ register(
     unreadable_alert=(
         "Your registered folders' paths could not be read, so Amaze "
         "will not save over them.\n\n"
-        "Nothing has been lost. The File section is showing the copy "
-        "your last session left behind, and any folder you add or "
-        "move now will not be kept.\n\n"
+        "Any folder you add or move now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -235,9 +232,7 @@ register(
     unreadable_alert=(
         "Your registered folders could not be read, so Amaze will not "
         "save over them.\n\n"
-        "Nothing has been lost. The File section is showing the copy "
-        "your last session left behind, and any folder you add or "
-        "rename now will not be kept.\n\n"
+        "Any folder you add or rename now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -257,10 +252,9 @@ register(
     category="file",
     alert_key="favourites-unreadable",
     unreadable_alert=(
-        "Your file favorites could not be read, so Amaze will not save "
-        "over them.\n\n"
-        "Nothing has been lost. The star shows nothing for now, and "
-        "anything you star will not be kept.\n\n"
+        "Your favorites could not be read, so Amaze will not save over "
+        "them.\n\n"
+        "Anything you star now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -282,9 +276,7 @@ register(
     unreadable_alert=(
         "The list of people using this library could not be read, so "
         "Amaze will not save over it.\n\n"
-        "Nothing has been lost. Amaze is working without a user for "
-        "now, so anything you star or register this session will not "
-        "be kept.\n\n"
+        "Any user you add, rename or delete now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -305,8 +297,7 @@ register(
     unreadable_alert=(
         "The tile icons you chose could not be read, so Amaze will not "
         "save over them.\n\n"
-        "Nothing has been lost. Your tiles show their default icons for "
-        "now, and any icon you pick will not be kept.\n\n"
+        "Any icon you pick now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -333,9 +324,7 @@ register(
     unreadable_alert=(
         "The library's shared settings could not be read, so Amaze "
         "will not save over them.\n\n"
-        "Nothing has been lost. Amaze is using the settings your last "
-        "session left behind for now, and any setting you change will "
-        "not be kept.\n\n"
+        "Any shared setting you change now will not be kept.\n\n"
         "Close Houdini and put back a recent copy with the Repair tool "
         "in the Amaze shelf."),
     refused_sentence=(
@@ -373,11 +362,9 @@ register(
     },
     alert_key="prefs-unreadable",
     unreadable_alert=(
-        "Your Amaze settings could not be read, so Amaze has opened "
-        "with the defaults.\n\n"
-        "Nothing has been lost. Your settings file was kept untouched, "
-        "and Amaze will not save over it - so your library path, "
-        "folders and favourites are still there.\n\n"
+        "Your Amaze settings could not be read, so Amaze will not save "
+        "over them.\n\n"
+        "Any setting you change now will not be kept.\n\n"
         "Your settings are also recorded in the debug log. Use the "
         "Repair tool in the Amaze shelf to put them back."),
     refused_sentence=(
