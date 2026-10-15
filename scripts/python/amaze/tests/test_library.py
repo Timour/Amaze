@@ -22,10 +22,11 @@ from amaze.tests import test_support  # noqa: E402,F401 - import redirects the d
 
 def names_a_sibling_database(path) -> bool:
     """True for any path that would tell cleanup a SIBLING database exists or once existed - the file, its `.bak-*`/`.unreadable` copies, or a seed marker beside it. A blanket `os.path.exists -> True` mock silences the sweep entirely, so a test that needs it to RUN must say what reads absent, and say it about every trace rather than only the .json. ▸p/clean-library-sweep"""
+    from amaze.core import database
     path = str(path)
     return (
-        "cops.json" in path
-        or "code.json" in path
+        any(name in path for name in database.ID_CLAIMING_DATABASES
+            if name != "library.json")
         or os.path.basename(path).startswith((".amaze_", ".assetlib_"))
     )
 

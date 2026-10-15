@@ -1117,6 +1117,26 @@ class TheRouteFromCleanLibraryTest(_Case):
             "Clean Library's empty-section guard misses files its own "
             "sweep would move, so an empty list no longer holds it back")
 
+    def test_an_unreadable_colors_list_holds_the_sweep_back(self):
+        """Colors claims ids like every other list, so a Colors file that will not parse stops it."""
+        with open(os.path.join(self.dir, "gradients.json"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('{"assets": [{"id": "c0de')
+        model = self._material_model()
+        self._clean(model)
+        self.assertIn("Color (gradients.json): Amaze cannot read it.",
+                      model.last_cleanup_summary)
+
+    def test_a_missing_colors_list_with_a_trace_holds_the_sweep_back(self):
+        with open(os.path.join(self.dir, ".amaze_gradient_seed_v1"), "w",
+                  encoding="utf-8") as handle:
+            handle.write("seeded\n")
+        model = self._material_model()
+        self._clean(model)
+        self.assertIn("Color (gradients.json): it is not there yet - "
+                      ".amaze_gradient_seed_v1 beside it says it was here",
+                      " ".join(model.last_cleanup_summary))
+
     def test_a_saved_palette_does_not_hold_back_an_empty_list(self):
         """The Colors list claims a palette's stamp, as Repair's survey reads it."""
         from amaze.core import gradient_library
@@ -1432,6 +1452,25 @@ class TheRebuildDrillTest(unittest.TestCase):
         self.assertNotIn(
             "Toolbox", rebuilt["categories"],
             "a category that belongs to Code came with it")
+
+    def test_a_rebuild_leaves_a_saved_palette_to_colors(self):
+        """Palettes stamp the shared asset folder too, and `gradients.json` claims them."""
+        from amaze.core import gradient_library
+        palettes = gradient_library.GradientLibrary(preferences=self.prefs)
+        palettes.add_user_gradient("Dusk", "",
+                                   {"values": [[0.1, 0.2, 0.3]], "keys": [0.0]})
+        palette = str(next(a for a in palettes.assets
+                           if a.name == "Dusk").mat_id)
+        self.assertIn(palette + library_mod.STAMP_SUFFIX, self._stamps(),
+                      "premise: the palette's stamp is in the asset folder")
+
+        rebuilt = repair.rebuild_from_stamps(self.prefs.dir,
+                                             self.prefs.asset_dir)
+
+        ids = {str(r.get("id")) for r in rebuilt["assets"]}
+        self.assertNotIn(palette, ids,
+                         "the rebuilt material index took a palette in")
+        self.assertEqual({str(a.mat_id) for a in self.model.assets}, ids)
 
     def test_the_rebuilt_index_carries_this_builds_stamps(self):
         """A rebuild writes this build's schema and its `format` stamp."""
