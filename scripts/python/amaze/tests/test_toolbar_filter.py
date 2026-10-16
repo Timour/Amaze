@@ -81,7 +81,7 @@ class FilterMenuEngineTest(unittest.TestCase):
         self.panel._on_tab_toggled(key, True)
         self.assertEqual(key, self.panel.current_section,
                          "the tab switch to %r did not take" % key)
-        return [act.text() for act in self.panel.menu_filter.actions()]
+        return [act.text() for act in self.panel.menu_filter.actions() if not act.isSeparator()]
 
     def test_every_section_fills_the_menu_with_its_own_entries(self):
         """The design, tab by tab: four sections pin their lists exactly; Materials is prefs-gated so only its everything-entry is fixed."""
@@ -189,6 +189,19 @@ class FilterMenuEngineTest(unittest.TestCase):
             "Code did not come back to the language it was left on")
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.filter_menu_changed(self.panel.filter_actions["All"])
+
+    def test_the_material_menu_has_icons_and_sets_all_apart(self):
+        """Every Material entry carries its icon and a separator follows All; Code keeps plain text."""
+        self._labels_for("material")
+        actions = self.panel.menu_filter.actions()
+        self.assertTrue(actions[1].isSeparator(), "no separator under All")
+        entries = [act for act in actions if not act.isSeparator()]
+        self.assertTrue(all(not act.icon().isNull() for act in entries),
+                        "a Material entry has no icon")
+        self._labels_for("code")
+        actions = self.panel.menu_filter.actions()
+        self.assertFalse(any(act.isSeparator() for act in actions), "Code grew a separator")
+        self.assertTrue(all(act.icon().isNull() for act in actions), "Code grew icons")
 
     def test_the_choice_is_saved_by_id_so_its_label_can_change(self):
         """The MaterialX entry saves its id `Karma`, and a saved `Karma` checks it again."""

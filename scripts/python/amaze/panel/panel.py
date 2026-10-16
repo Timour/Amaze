@@ -3438,13 +3438,19 @@ class AmazePanel(QtWidgets.QWidget):
                     section.filter_tooltip))
         if not entries:
             return
-        for entry_id, label, value in entries:
+        side, ratio = theme.ui_px(amazetheme.MENU_ICON), theme.screen_ratio(self)
+        for entry_id, label, value, icon in entries:
             act = self.menu_filter.addAction(label)
+            if icon:
+                act.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
+                    amaze.package_file("ui", icon + ".svg"), side, ratio)))
             act.setCheckable(True)
             act.setData(entry_id)
             self.filter_action_group.addAction(act)
             self.filter_actions[entry_id] = act
             self.filter_values[entry_id] = value
+            if icon and entry_id == entries[0].id:
+                self.menu_filter.addSeparator()    # a menu with icons sets the everything-entry apart
         remembered = self.prefs.section_filter(self.current_section)
         act = self.filter_actions.get(remembered) or self.filter_actions[
             entries[0][0]]    # a remembered choice that is no longer offered falls back to entries[0], the everything-entry (sections.py puts it first), so a renderer switched off in Preferences needs no case of its own

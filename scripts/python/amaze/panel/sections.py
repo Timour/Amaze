@@ -29,7 +29,7 @@ Conversion = collections.namedtuple(
     "Conversion", "target source verb needs_redshift")
 
 FilterEntry = collections.namedtuple(    # `id` is what the remembered choice saves, so a label can change
-    "FilterEntry", "id label value")
+    "FilterEntry", "id label value icon", defaults=(None,))
 
 DropRule = collections.namedtuple(
     "DropRule",
@@ -761,11 +761,15 @@ class MaterialSection(AssetSection):
         ("Redshift", "renderer_redshift_enabled"),
         ("Octane", "renderer_octane_enabled"),
     )
+    FILTER_ICONS = {"Karma": "filter_materialx", "Redshift": "filter_redshift",
+                    "Octane": "filter_octane"}    # each entry's Filter menu icon, ui/<name>.svg, 16 px
+    FILTER_ALL_ICON = "filter_all"
 
     def filter_entries(self) -> tuple:
         prefs = self.panel.prefs    # the only section whose entries are not a constant: a renderer switched off in Preferences is not offered here. Rebuilt rather than shown and hidden, so there is one mechanism, and the panel's own fallback to All covers a remembered choice no longer on offer, in every section rather than only this one
-        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None),) + tuple(
-            FilterEntry(stored, material.shown_renderer(stored), stored)
+        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None, self.FILTER_ALL_ICON),) + tuple(
+            FilterEntry(stored, material.shown_renderer(stored), stored,
+                        self.FILTER_ICONS.get(stored))
             for stored, flag in self.RENDERER_PREFS if getattr(prefs, flag, False)
         )
 

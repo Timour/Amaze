@@ -97,6 +97,7 @@ CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, und
 CODE_TILE_GROUND = "#1b1b1b"    # and the ground under it, the one the default tile faces have
 BADGE_REST_OPACITY = 0.75       # every button badge at rest, ground and icon alike
 BADGE_HOVER_OPACITY = 1.0       # and under the pointer
+MENU_ICON = 16                  # ▸ C13: a menu entry's icon box, the size Houdini draws it ▸r/menu-checked-look
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category
 LIST_SELECTED_TEXT = "#000000"  # selection turns EVERY column black: the palette's highlightedText was not reliably dark against the amber highlight
 BAND_TEXT_DARK = "#262626"      # text on a coloured band; a category colour can be any lightness at all
