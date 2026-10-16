@@ -323,7 +323,7 @@ class TheRenderScratchIsNeverShared(unittest.TestCase):
             "the geometry pass still shares one fixed scratch name for "
             "every item and every process")
         self.assertIn(
-            "hostos.unique_scratch(", source,
+            "hostos.render_scratch(", source,
             "the geometry pass does not mint a unique scratch")
 
     def test_the_sop_thumbnail_mints_a_unique_scratch(self):

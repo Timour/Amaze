@@ -49,8 +49,10 @@ def _cache_dir_for(size: int, prefix: str = "texture_thumbnails") -> str:
 class ThumbnailCache:
     """Disk-backed cache of generated thumbnails, keyed by canonical source path and kept 1:1 with the folder by reconcile(); main-thread only - the background worker generates images and never touches the cache."""
 
-    def __init__(self, size: int, prefix: str = "texture_thumbnails") -> None:
+    def __init__(self, size: int, prefix: str = "texture_thumbnails",
+                 failure_tag: str = "") -> None:
         self.size = size
+        self._failure_tag = failure_tag    # a failure kept only if this tag wrote it; a new tag retries once
         self.cache_dir = _cache_dir_for(size, prefix)
         self.manifest_path = os.path.join(self.cache_dir, "manifest.json")
         os.makedirs(self.cache_dir, exist_ok=True)
@@ -207,12 +209,16 @@ class ThumbnailCache:
         self._manifest[full_path] = {"mtime": st.st_mtime,
                                      "size": st.st_size,
                                      "failed": True}
+        if self._failure_tag:
+            self._manifest[full_path]["tag"] = self._failure_tag
         self._dirty = True
 
     def known_failure(self, full_path: str, stat=None) -> bool:
         """True when this exact file has already defeated every converter - the skip that keeps a folder open fast."""
         entry = self._manifest.get(self._key(full_path))
         if not entry or not entry.get("failed"):
+            return False
+        if entry.get("tag", "") != self._failure_tag:
             return False
         try:
             st = (stat or os.stat)(full_path)

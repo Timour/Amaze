@@ -348,9 +348,7 @@ def capture_thumbnail(hip_path: str, viewer=None) -> str:
 
 def _capture_scratch(out: str) -> str:
     """The name Houdini writes a capture to before it is put in place - three rules, each got wrong once, a function so a headless test can pin them: write ASIDE and replace (never move the live thumbnail first), the suffix goes BEFORE the extension (Houdini picks the format from it - ▸r/image-extension), and the name must be UNIQUE (▸r/atomic-writes). `create=False`, so `not os.path.isfile(scratch)` keeps meaning that Houdini wrote nothing."""
-    root, ext = os.path.splitext(out)
-    return hostos.unique_scratch(out, suffix=".capturing" + (ext or ".png"),
-                                 create=False)
+    return hostos.render_scratch(out, "capturing")
 
 
 def _legacy_capture_scratch(out: str) -> str:

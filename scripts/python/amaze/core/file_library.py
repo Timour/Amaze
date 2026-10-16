@@ -50,6 +50,7 @@ _STYLE_VARS = {"hip": "$HIP", "job": "$JOB", "home": "$HOME"}
 GEO_PASS_LOG = "geo thumbnails"  # per-item records the geo pass may write per RUN: event()'s flood guard keys on (category, message) alone, so these shared one key and went dark after 5 of 273 - always the first five files, not a sample worth having
 GEO_PASS_FAIL_LOG = "geo thumbnails failed"
 GEO_PASS_LOG_BUDGET = 20
+GEO_FAILURE_TAG = "png-scratch"  # untagged failures came from a scratch Qt could not read; retried once
 
 
 def houdini_path(path: str, style: str = "home") -> str:
@@ -278,7 +279,8 @@ class FileFiles(grid_columns.GridColumnsMixin,
         key = (size, mode, bg, hostos.cache_generation())
         if self._geo_cache is None or self._geo_cache_key != key:
             self._geo_cache = texture_library.ThumbnailCache(
-                size, prefix="geo_thumbnails_%s_%s" % (mode, bg))
+                size, prefix="geo_thumbnails_%s_%s" % (mode, bg),
+                failure_tag=GEO_FAILURE_TAG)
             self._geo_cache_key = key
         return self._geo_cache
 
@@ -561,8 +563,7 @@ class FileFiles(grid_columns.GridColumnsMixin,
                         debug.event("file", "geo thumbnail",
                                     i=done + 1, total=total, file=full)
                     ok = False
-                    tmp_path = hostos.unique_scratch(
-                        scratch_seed, suffix=".render", create=False)
+                    tmp_path = hostos.render_scratch(scratch_seed)
                     try:
                         ok = thumber.create_thumb_geo_file(
                             full, tmp_path, size)

@@ -388,6 +388,33 @@ class EveryScratchWriterIsUniqueTest(unittest.TestCase):
                          "the capture scratch name is not unique (%r)"
                          % sorted(seen))
 
+    def test_every_render_scratch_keeps_its_destination_extension(self):
+        """Houdini picks the format from the LAST extension; an unknown one writes PIC2. ▸r/image-extension"""
+        for name in ("geo_render.png", "frame.exr", "shot.jpg"):
+            out = os.path.join(self.dir, name)
+            scratch = hostos.render_scratch(out)
+            self.assertEqual(
+                os.path.splitext(name)[1], os.path.splitext(scratch)[1],
+                "the render scratch %r does not end in its destination's "
+                "extension, so Houdini writes a format Qt cannot read"
+                % os.path.basename(scratch))
+            self.assertFalse(os.path.exists(scratch),
+                             "a renderer is handed a file that exists")
+
+    def test_both_renderers_name_their_scratch_through_one_helper(self):
+        """SOURCE-DERIVED: one call site per renderer, read from the code that names the scratch."""
+        import inspect
+        from amaze.core import file_library, scene_captures
+
+        geo = inspect.getsource(file_library.FileFiles._render_geo_misses)
+        capture = inspect.getsource(scene_captures._capture_scratch)
+        for where, source in (("the geometry pass", geo),
+                              ("the scene capture", capture)):
+            self.assertIn(
+                "hostos.render_scratch(", source,
+                "%s names its own render scratch, so the extension rule "
+                "is back in a caller's hands" % where)
+
     def test_the_capture_call_site_uses_the_shared_naming_helper(self):
         """SOURCE-DERIVED: `capture_thumbnail` needs a live viewer, so the decision is unreachable at runtime. Comments are stripped first. ▸p/testing-can-fail"""
         import inspect

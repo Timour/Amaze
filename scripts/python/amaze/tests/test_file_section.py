@@ -3140,6 +3140,42 @@ class GeometryThatRendersNothingIsRememberedTest(unittest.TestCase):
                          "Rerender Thumbnail or an edited file did not "
                          "get another render")
 
+    def test_a_rendered_picture_reaches_the_cache(self):
+        """The renderer writes through Houdini's own image writer, which picks the format from the name."""
+        folder, path, model = self._geometry()
+        from amaze.render import thumbs
+
+        def picture(_renderer, _path, out_path, _size):
+            hou.saveImageDataToFile([1.0, 0.0, 0.0, 1.0] * 4, 2, 2, out_path)
+            return True
+
+        with mock.patch.object(
+                thumbs.ThumbNailRenderer, "create_thumb_geo_file", picture):
+            model.set_folder(folder)
+        cache = model._get_geo_cache()
+        self.assertFalse(
+            cache.known_failure(path),
+            "a render that wrote a picture was remembered as a file with no "
+            "geometry: the scratch name made Houdini write a format Qt cannot read")
+        self.assertIsNotNone(cache.valid_path(path),
+                             "the rendered picture never reached the cache")
+
+    def test_a_failure_an_older_build_recorded_is_tried_again(self):
+        folder, path, model = self._geometry()
+        cache = model._get_geo_cache()
+        st = os.stat(path)
+        cache._manifest[cache._key(path)] = {
+            "mtime": st.st_mtime, "size": st.st_size, "failed": True}
+        cache.save()
+        rendered = []
+        with self._rendering(rendered):
+            model.set_folder(folder)
+            model.set_folder(folder)
+        self.assertEqual(
+            1, len(rendered),
+            "an untagged failure from the build whose scratch Qt could not "
+            "read kept the file unpictured, or the retry was not remembered")
+
     def test_an_interrupted_render_is_not_remembered(self):
         folder, _path, model = self._geometry()
         rendered = []

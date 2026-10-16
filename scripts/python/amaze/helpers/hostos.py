@@ -608,6 +608,12 @@ def unique_scratch(path: str, suffix: str = ".writing",
     return scratch
 
 
+def render_scratch(path: str, tag: str = "rendering") -> str:
+    """A unique name for a renderer to write `path` to, its extension kept LAST ▸r/image-extension."""
+    ext = os.path.splitext(path)[1] or ".png"
+    return unique_scratch(path, suffix="." + tag + ext, create=False)
+
+
 def promote_scratch(scratch: str, path: str) -> None:
     """fsync `scratch`, give it the permissions the destination should have, and swap it into place. Raises whatever `replace_file` raises. ▸r/atomic-writes"""
     check_sandbox(path)
