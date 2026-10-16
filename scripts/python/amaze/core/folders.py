@@ -155,7 +155,7 @@ class FolderListModel(QtCore.QAbstractListModel):
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
     COUNT_WORKERS = 4    # walks at once: a slow share holds one, the other counts keep landing
     ANNOUNCE_MS = 100    # counts landing inside this window repaint the sidebar once, not each
-    _counts_asked = QtCore.Signal()    # queued: an ask from ANY thread dispatches on this model's
+    _counts_asked = QtCore.Signal()    # queued: an ask from ANY thread dispatches on the GUI thread
 
     def __init__(self, preferences, parent: QtCore.QObject | None = None) -> None:
         super().__init__()
