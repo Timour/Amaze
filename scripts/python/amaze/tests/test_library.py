@@ -14,6 +14,7 @@ sys.path.insert(  # THREE dirnames up = scripts/python, the directory holding th
 
 from PySide6 import QtCore, QtWidgets
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
 
 import hou  # noqa: E402

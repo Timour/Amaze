@@ -994,6 +994,40 @@ class TestEveryTestFileIsInTheGate(unittest.TestCase):
                            "no longer matches the shell syntax")
 
 
+class EveryAppBuilderPicksOffscreen(unittest.TestCase):
+    """The first module to build the app picks the platform for the run ▸p/first-app-picks-the-platform"""
+
+    GUARD = 'os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")'
+
+    def _builders(self):
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        found = {}
+        for name in sorted(os.listdir(tests_dir)):
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            with open(os.path.join(tests_dir, name), encoding="utf-8") as fh:
+                source = fh.read()
+            built = re.search(r"\bQ(?:Gui)?Application\(", source)
+            if built:
+                found[name[:-3]] = (source, built.start())
+        return found
+
+    def test_every_app_builder_sets_the_platform_first(self):
+        unguarded = sorted(
+            name for name, (source, at) in self._builders().items()
+            if not 0 <= source.find(self.GUARD) < at)
+        self.assertEqual(
+            [], unguarded,
+            "these modules build the app before setting the platform, so a "
+            "run they lead goes native and fails another module's layout "
+            "asserts: %s" % unguarded)
+
+    def test_the_scan_sees_the_app_builders(self):
+        """Guards the guard: a scan that matches nothing passes."""
+        self.assertGreater(len(self._builders()), 40,
+                           "the app-construction pattern no longer matches")
+
+
 class EveryToolSpeaksTheResolver(unittest.TestCase):
     """Every `tools/*.sh` reaching for hython sources the one resolver, and the two recorded trap spellings are banned from the directory."""
 

@@ -12,6 +12,7 @@ from PySide6 import QtCore, QtWidgets
 from amaze.core import category, database
 from amaze.tests import test_support
 
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])    # ▸p/first-app-picks-the-platform
 
 
