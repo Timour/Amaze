@@ -147,15 +147,11 @@ PLACEHOLDER_VERSION_NAME = "Rename this version"
 TITLE_TILE_ICON = "Tile Icon"    # what D02 says when the selection has no ONE name to show
 BAND_UNTITLED = "Untitled"       # what D11's band says for a snippet that has no name yet
 
-EMPTY_SHARED = {    # ▸ E06-E08, the blanks EVERY section shares. Each row is (headline, sentence, button label, verb); a blank verb means no button, and `%s` takes the section's own noun
+EMPTY_SHARED = {    # ▸ E06 E08 E09, the blanks every section shares, read by `empty_state.words_for`
     "nothing-matches": (
         'Nothing matches "%s"',
         "No saved %s has that in its name, tags or category.",
         BTN_CLEAR_SEARCH, "clear_filter_box"),
-    "nothing-here": (
-        '"%s" is empty',
-        "Drag and drop to add a %s to this category.",
-        BTN_SHOW_ALL, "show_all_categories"),
     "no-favourites": (
         "No favorites yet",
         "Click the favorites button on a tile to favorite it.",

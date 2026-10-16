@@ -3539,7 +3539,7 @@ class AmazePanel(QtWidgets.QWidget):
         return None
 
     def _stand_on_all_category(self) -> None:
-        """Point the sidebar at All and refilter - the hidden-category fallback and the empty state's Show All button."""
+        """Point the sidebar at All and refilter - the hidden-category fallback."""
         self._stand_on_category("All")
 
     def _stand_on_category(self, label: str) -> bool:
@@ -3564,10 +3564,6 @@ class AmazePanel(QtWidgets.QWidget):
                 break
         self.update_selected_cat()
         return found
-
-    def show_all_categories(self) -> None:
-        """The empty state's Show All button."""
-        self._stand_on_all_category()
 
     def clear_favourites_filter(self) -> None:
         """The favourites blank's Show All button: uncheck the star chip and its own `toggled` handler carries the change to the active context - `toggled` fires on a programmatic setChecked, unlike the filter box's `textEdited` one verb up."""

@@ -268,6 +268,11 @@ class TheDrawnWordsComeFromTheDocument(unittest.TestCase):
         self.assertIs(amazetheme.EMPTY_SHARED, empty_state.SHARED,
                       "the shared blanks grew a second copy of their "
                       "words")
+        self.assertEqual(
+            {empty_state.NO_MATCH, empty_state.NO_FAVOURITES,
+             empty_state.UNREACHABLE}, set(amazetheme.EMPTY_SHARED),
+            "the shared blanks are not the three drawn - an empty category "
+            "shows its grid, never words")
         for key, cls, expected in (
                 ("material", sections.MaterialSection,
                  amazetheme.EMPTY_MATERIAL),

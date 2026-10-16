@@ -2,13 +2,11 @@
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import category
 from amaze.helpers import theme
 from amaze.panel import grid
 
 NOTHING_YET = "nothing-yet"
 NO_MATCH = "nothing-matches"
-NOTHING_HERE = "nothing-here"
 NO_FAVOURITES = "no-favourites"
 UNREACHABLE = "unreachable"
 
@@ -56,7 +54,7 @@ def verdict(panel) -> tuple:
         return (NO_MATCH, search)
     if _favourites_only(panel) and not _any_favourite(source):
         return (NO_FAVOURITES, "")
-    return (NOTHING_HERE, _current_category(panel))
+    return (None, "")    # an empty category shows its grid, so a right-click there reaches its menu
 
 
 def _favourites_only(panel) -> bool:
@@ -71,7 +69,7 @@ def _favourites_only(panel) -> bool:
 
 
 def _any_favourite(source) -> bool:
-    """Does ANY row of `source` carry a star? Separates a library with no favourites at all (its own blank) from a category that merely holds none of them (the category blank still explains that one, and its Show All lands on the favourites)."""
+    """Does ANY row of `source` carry a star? Without one the favourites star has its own blank."""
     role = getattr(source, "FavoriteRole", None)
     if role is None:
         return True    # a model with no star column cannot claim "no favorites yet"
@@ -96,22 +94,6 @@ def unreadable_folder(panel) -> str:
         if sidebar is None or sidebar.row_of(folder) is not None:
             return folder
     return ""
-
-
-def _current_category(panel) -> str:
-    """The category the sidebar is on, or "" for All."""
-    view = getattr(panel, "cat_list", None)
-    if view is None:
-        return ""
-    try:
-        index = view.currentIndex()
-        if not index.isValid():
-            return ""
-        name = index.data(QtCore.Qt.ItemDataRole.DisplayRole) or ""
-    except RuntimeError:
-        return ""
-    name = str(name)
-    return "" if category.is_all(name) else name
 
 
 def quote_for(panel, blank: str) -> tuple:
