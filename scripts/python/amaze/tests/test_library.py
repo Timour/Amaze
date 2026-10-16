@@ -226,9 +226,9 @@ class TestMaterialLibrary(unittest.TestCase):
         with patch.object(library_mod.locations, "is_favourite",
                           return_value=False), \
                 patch.object(library_mod.locations,
-                             "set_favourite") as wrote:
+                             "set_favourites") as wrote:
             self.library.toggle_fav(index.row())
-        wrote.assert_called_once_with(self.mock_prefs, mat_id, True)
+        wrote.assert_called_once_with(self.mock_prefs, {mat_id: True})
 
     def test_toggle_fav_true_to_false(self):
         """The other direction, through the same door."""
@@ -238,16 +238,16 @@ class TestMaterialLibrary(unittest.TestCase):
         with patch.object(library_mod.locations, "is_favourite",
                           return_value=True), \
                 patch.object(library_mod.locations,
-                             "set_favourite") as wrote:
+                             "set_favourites") as wrote:
             self.library.toggle_fav(index.row())
-        wrote.assert_called_once_with(self.mock_prefs, mat_id, False)
+        wrote.assert_called_once_with(self.mock_prefs, {mat_id: False})
 
     def test_toggle_fav_does_not_write_the_library(self):
         """Stated as its own assertion: a favourite toggle never touches the shared index."""
         from amaze.core import library as library_mod
         with patch.object(library_mod.locations, "is_favourite",
                           return_value=False), \
-                patch.object(library_mod.locations, "set_favourite"), \
+                patch.object(library_mod.locations, "set_favourites"), \
                 patch.object(self.library, "save") as mock_save:
             self.library.toggle_fav(0)
         mock_save.assert_not_called()

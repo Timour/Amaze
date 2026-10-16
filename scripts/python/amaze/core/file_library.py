@@ -698,14 +698,25 @@ class FileFiles(grid_columns.GridColumnsMixin,
         return ""
 
     def toggle_favorite(self, row: int) -> None:
-        key = self.file_key(row)    # the ONE identity per file - the raw path here left the star keyed to a spelling the id conversion abandons
-        if not key:
+        self.toggle_favorites([row])
+
+    def toggle_favorites(self, rows) -> None:
+        """Flip the star on every row in `rows` in ONE store write, each keyed by its one file identity."""
+        wanted = {}
+        flipped = []
+        for row in rows:
+            key = self.file_key(row)
+            if not key:
+                continue
+            current = wanted[key] if key in wanted else \
+                locations.is_favourite(self.preferences, key)
+            wanted[key] = not current
+            flipped.append(row)
+        if not wanted:
             return
-        locations.set_favourite(
-            self.preferences, key,
-            not locations.is_favourite(self.preferences, key))
-        index = self.index(row, 0)
-        self.row_changed(index.row(), [self.FavoriteRole])
+        locations.set_favourites(self.preferences, wanted)
+        for row in flipped:
+            self.row_changed(row, [self.FavoriteRole])
 
     def rerender_thumbnails(self, rows: list) -> None:
         """Force-regenerate rendered thumbnails: image rows re-convert, geometry rows re-render; hip rows are SKIPPED (a capture is hand-framed, only a new capture replaces it) and other rows have nothing to render."""

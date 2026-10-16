@@ -545,18 +545,26 @@ def _repoint(preferences, old: str, new: str) -> keyed_store.Written:
 
 
 def set_favourite(preferences, path: str, on: bool) -> keyed_store.Written:
-    migrate_asset_favourites(preferences)  # the migration runs BEFORE the write, so an unstar cannot be resurrected by a later union of the not-yet-moved settings list
+    return set_favourites(preferences, {path: on})
+
+
+def set_favourites(preferences, wanted: dict) -> keyed_store.Written:
+    """Star or unstar every `{path: on}` in ONE store write and one settings save; later keys win."""
+    migrate_asset_favourites(preferences)  # BEFORE the write, so a later union cannot resurrect an unstar
     if not _ready(preferences):
-        return _write_copy_favourite(
-            preferences, hostos.storage_path_key(path), bool(on))
-    key = str(path)
-    ident = (key if key.startswith(LOC_PREFIX)
-             else file_ident(preferences, key))
-    home = ident or key    # the ident is the ONE home when the file has one; a star must not mint a path twin, and an unstar must kill whichever spelling any build left
-    updates = {home: bool(on)}
-    for twin in (key, _legacy_spelling(preferences, ident)):
-        if twin and twin != home:
-            updates[twin] = False
+        return _write_copy_favourites(
+            preferences, {hostos.storage_path_key(path): bool(on)
+                          for path, on in wanted.items()})
+    updates = {}
+    for path, on in wanted.items():
+        key = str(path)
+        ident = (key if key.startswith(LOC_PREFIX)
+                 else file_ident(preferences, key))
+        home = ident or key    # the ident is the one home; an unstar kills every twin spelling
+        updates[home] = bool(on)
+        for twin in (key, _legacy_spelling(preferences, ident)):
+            if twin and twin != home:
+                updates[twin] = False
     written = _favourites_store(preferences).update(updates)
     _sync_mirror(preferences)
     return written
@@ -610,26 +618,33 @@ def _write_copy(preferences, path: str, value) -> keyed_store.Written:
     return keyed_store.Written(True, keyed_store.REASON_NONE, "", (path,))
 
 
-def _write_copy_favourite(preferences, path: str,
-                          on: bool) -> keyed_store.Written:
+def _write_copy_favourites(preferences,
+                           wanted: dict) -> keyed_store.Written:
+    """`set_favourites` with no library: the copy's star list, rewritten and saved once."""
+    keys = tuple(wanted)
     keep = getattr(preferences, "keep_last_known", None)
     if not callable(keep):
         return keyed_store.Written(False, keyed_store.REASON_DENIED, "",
-                                   (path,))
+                                   keys)
     favourites = _copy_favourites(preferences)
-    if on and path not in favourites:
-        favourites.append(path)
-    elif not on and path in favourites:
-        favourites.remove(path)
-    else:
+    changed = False
+    for path, on in wanted.items():
+        if on and path not in favourites:
+            favourites.append(path)
+        elif not on and path in favourites:
+            favourites.remove(path)
+        else:
+            continue
+        changed = True
+    if not changed:
         return keyed_store.Written(True, keyed_store.REASON_UNCHANGED,
-                                   keys=(path,))
+                                   keys=keys)
     tagged = _tag_for_copy(preferences, favourites)
     if tagged is None:
-        return keyed_store.Written(False, keyed_store.REASON_NO_USER, "",  # nobody picked, nobody to attribute to - the store refuses the same write for the same reason
-                                   (path,))
+        return keyed_store.Written(False, keyed_store.REASON_NO_USER, "",  # nobody to attribute to
+                                   keys)
     keep(None, None, tagged)
-    return keyed_store.Written(True, keyed_store.REASON_NONE, "", (path,))
+    return keyed_store.Written(True, keyed_store.REASON_NONE, "", keys)
 
 
 def _sync_mirror(preferences) -> None:

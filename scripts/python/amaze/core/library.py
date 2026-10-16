@@ -1361,13 +1361,25 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def toggle_fav(self, row: int) -> None:
         """Flip this row's star. Goes to the library's favourites store under its owner, never onto the shared record, so one user's stars cannot collide with another's - and with no user picked it refuses silently. A row outside the model writes nothing: -1 is what an invalid index answers and it would otherwise star the LAST asset."""
-        if not 0 <= row < self.rowCount():
+        self.toggle_favs([row])
+
+    def toggle_favs(self, rows) -> None:
+        """Flip the star on every row in `rows` in ONE store write; rows outside the model are skipped."""
+        wanted = {}
+        flipped = []
+        for row in rows:
+            if not 0 <= row < self.rowCount():
+                continue
+            mat_id = self._assets[row].mat_id
+            current = wanted[mat_id] if mat_id in wanted else \
+                locations.is_favourite(self.preferences, mat_id)
+            wanted[mat_id] = not current
+            flipped.append(row)
+        if not wanted:
             return
-        mat_id = self._assets[row].mat_id
-        locations.set_favourite(
-            self.preferences, mat_id,
-            not locations.is_favourite(self.preferences, mat_id))
-        self.row_changed(row, [self.FavoriteRole])
+        locations.set_favourites(self.preferences, wanted)
+        for row in flipped:
+            self.row_changed(row, [self.FavoriteRole])
 
     def render_thumbnail(self, row) -> None:
         """Re-render one row's preview. The base has nothing to render; the sections that do override this."""

@@ -50,9 +50,9 @@ class AStarNeverLandsOnARowThatWasNotAskedFor(unittest.TestCase):
         written = []
         with mock.patch.object(locations, "is_favourite",
                                lambda prefs, mat_id: False), \
-             mock.patch.object(locations, "set_favourite",
-                               lambda prefs, mat_id, on:
-                               written.append(mat_id)), \
+             mock.patch.object(locations, "set_favourites",
+                               lambda prefs, wanted:
+                               written.extend(wanted)), \
              mock.patch.object(model, "row_changed", lambda *a, **k: None), \
              mock.patch.object(model, "index", lambda r, c: _FakeIndex(r)), \
              mock.patch.object(model, "rowCount", lambda: len(model._assets)):

@@ -502,10 +502,9 @@ class AssetSection(Section):
         st = self.stack()
         if st is None:
             return
-        for index in indexes:
-            source = st.proxy.mapToSource(index)
-            if source.isValid():
-                st.model.toggle_fav(source.row())
+        sources = (st.proxy.mapToSource(index) for index in indexes)
+        st.model.toggle_favs([source.row() for source in sources
+                              if source.isValid()])
 
     deletes_rows = True
 
@@ -1233,9 +1232,9 @@ class FolderSection(Section):
         self.panel.capture_hip_thumbnail(current)
 
     def toggle_favourite(self, indexes) -> None:
-        files, rows = self._files_and_rows(indexes)    # keyed by PATH here, so the model takes a row and resolves it itself - the same shape, a different key
-        for row in rows:
-            files.toggle_favorite(row)
+        files, rows = self._files_and_rows(indexes)    # the model resolves each row to its path key
+        if files is not None:
+            files.toggle_favorites(rows)
 
     colour_title = "Location Color"
 

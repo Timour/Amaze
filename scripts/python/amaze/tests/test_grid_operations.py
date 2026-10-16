@@ -488,6 +488,54 @@ class FavouritingWorksInEverySection(unittest.TestCase):
                     "only %s grid" % key)
 
 
+class AStarOverASelectionWritesOnce(unittest.TestCase):
+    """One star gesture over many tiles commits the favourites store once and saves settings once."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _gesture(self, key):
+        from amaze.helpers import hostos
+        from amaze.prefs import prefs as prefs_mod
+        self.panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        context = self.panel._section()
+        proxy = self.panel.thumblist.model()
+        rows = range(min(proxy.rowCount(), 5))
+        self.assertGreater(len(rows), 1, "premise: %s shows two tiles" % key)
+        context.toggle_favourite([proxy.index(0, 0)])    # a first star migrates
+        context.toggle_favourite([proxy.index(0, 0)])
+        QtWidgets.QApplication.processEvents()
+        role = proxy.sourceModel().FavoriteRole
+        before = [bool(proxy.index(r, 0).data(role)) for r in rows]
+        writes, saves = [], []
+        real_write = hostos.write_json_atomic
+
+        def counted(path, *args, **kwargs):
+            if os.path.basename(path) == "favourites.json":
+                writes.append(path)
+            return real_write(path, *args, **kwargs)
+
+        with mock.patch.object(hostos, "write_json_atomic", counted), \
+                mock.patch.object(prefs_mod.Prefs, "save",
+                                  lambda *_a, **_k: saves.append(1)):
+            context.toggle_favourite([proxy.index(r, 0) for r in rows])
+        QtWidgets.QApplication.processEvents()
+        after = [bool(proxy.index(r, 0).data(role)) for r in rows]
+        return before, after, len(writes), len(saves)
+
+    def test_each_section_writes_a_selection_s_stars_once(self):
+        for key in ("material", "gradient", "file"):
+            with self.subTest(section=key):
+                before, after, writes, saves = self._gesture(key)
+                self.assertEqual([not star for star in before], after,
+                                 "%s did not flip every tile" % key)
+                self.assertEqual(1, writes, "%s wrote favourites.json %d "
+                                 "times for one gesture" % (key, writes))
+                self.assertEqual(1, saves, "%s saved settings %d times "
+                                 "for one gesture" % (key, saves))
+
+
 class ANonModalDialogHoldsIDENTITYNotRowNumbers(unittest.TestCase):
     """Customize opens NON-MODALLY - it has to, because its Custom Color button opens Houdini's own picker and a native modal lands UNDER a Qt exec loop (research.md). So the library can move while the dialog is open: a save appends, a delete shifts every row after it, a reload rebuilds the lot. - The handler captured plain ROW NUMBERS at open. Delete a tile while the dialog is up, press OK, and the icon lands on whatever now sits at that row - a different asset, silently."""
 
