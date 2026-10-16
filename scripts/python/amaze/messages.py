@@ -46,6 +46,8 @@ SAVED_COPY_PUT_BACK_DONE = 'The %s list is back to the copy from %s.\n\nOpen Ama
 
 SETTINGS_UNREADABLE_REPAIR_REPORT = 'Your Amaze settings could not be read, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
 
+SETTINGS_MISSING_REPAIR_REPORT = 'Your Amaze settings file is missing, so Repair cannot tell which library to look at.\n\nSaved copies of your settings:\n%s'
+
 SETTINGS_COPY_LINE_UNREADABLE = '%s - this copy cannot be read'
 
 SETTINGS_UNREADABLE_NO_COPIES = 'Your Amaze settings could not be read, and there is no saved copy of them to put back.\n\nTo start again with new settings, move settings.json out of this folder and open Amaze:\n\n%s'

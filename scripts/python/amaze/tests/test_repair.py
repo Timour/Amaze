@@ -23,6 +23,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou                                                # noqa: E402
 
+from amaze import messages                                # noqa: E402
 from amaze.core import category, database, repair         # noqa: E402
 from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
@@ -1051,6 +1052,39 @@ class TheSettingsComeBackTest(_Case):
         with open(self.settings, encoding="utf-8") as handle:
             self.assertTrue(handle.read().endswith("/libr"),
                             "Repair changed the settings with nothing to restore")
+
+    def test_a_missing_settings_file_is_put_back_from_a_copy(self):
+        self._copy()
+        when = restore_lib.info(self.settings + ".bak-1")["when"]
+        # the report's restore button, the confirm, the closing note
+        ui = self._run(buttons=[0, 0, 0], listed=(0,))
+        report = ui.displayMessage.call_args_list[0]
+        self.assertIn("Put a Saved Copy Back", report.kwargs.get("buttons", ()),
+                      "the saved copies of missing settings are not offered back")
+        confirm = ui.displayMessage.call_args_list[1]
+        self.assertIn(when, report.args[0].splitlines(),
+                      "the report does not name the saved copy")
+        self.assertNotIn("could not be read", report.args[0],
+                         "a missing settings file is reported as one that will not read")
+        self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0],
+                         "the missing case does not use the same confirm")
+        self.assertNotIn("offers that copy back", confirm.kwargs["help"],
+                         "the confirm promises back settings that were never there")
+        self.assertEqual(self.GOOD, self._read(self.settings),
+                         "the saved copy did not land")
+        self.assertEqual(messages.SETTINGS_PUT_BACK_DONE % (when, ""),
+                         ui.displayMessage.call_args_list[2].args[0],
+                         "the closing note offers a way back to settings that were never there")
+        self.assertNotIn("No library folder", self._said(ui),
+                         "Repair still says no library is set")
+
+    def test_a_missing_settings_file_with_no_copy_is_a_fresh_start(self):
+        ui = self._run(buttons=[0])
+        self.assertEqual([messages.NO_LIBRARY_FOLDER_CONFIGURED],
+                         [call.args[0] for call in ui.displayMessage.call_args_list],
+                         "a fresh start no longer reads as one")
+        self.assertFalse(os.path.exists(self.settings),
+                         "Repair wrote settings where there were none")
 
     def test_a_readable_library_offers_the_settings_copies_too(self):
         self._write(self.settings, {"directory": self.dir})

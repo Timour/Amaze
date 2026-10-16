@@ -642,7 +642,7 @@ def settings_survey(preferences=None):
 
 
 def _repair_settings(settings: dict) -> None:
-    """settings.json will not read: offer its saved copies back, or say there are none."""
+    """settings.json will not read or is missing: offer its saved copies back, or say there are none."""
     folder = os.path.dirname(settings["path"])
     if not settings["snapshots"]:
         hou.ui.displayMessage(                           # type: ignore
@@ -656,9 +656,12 @@ def _repair_settings(settings: dict) -> None:
         return
     findings = {"directory": folder, "lists": [], "settings": settings,
                 "complete": False, "unaccounted": {}}
-    report = messages.SETTINGS_UNREADABLE_REPAIR_REPORT % "\n".join(
+    copies = "\n".join(
         messages.SETTINGS_COPY_LINE_UNREADABLE % snap["when"] if snap["error"]
         else snap["when"] for _tier, snap in settings["snapshots"])
+    report = (messages.SETTINGS_MISSING_REPAIR_REPORT % copies
+              if settings["state"] == "absent"
+              else messages.SETTINGS_UNREADABLE_REPAIR_REPORT % copies)
     may_change = not session_has_a_library_open()
     if not may_change:
         report += "\n\n" + _ONLY_A_REPORT_NOW
@@ -674,7 +677,8 @@ def _repair_settings(settings: dict) -> None:
 def run(preferences=None) -> None:
     """The shelf tool: reports always, changes only with no library open."""
     settings = settings_survey(preferences)
-    if settings is not None and settings["state"] == "unreadable":
+    if settings is not None and (settings["state"] == "unreadable" or (
+            settings["state"] == "absent" and settings["snapshots"])):
         _repair_settings(settings)    # with no settings, no library can be named
         return
     configured = configured_library(preferences)
