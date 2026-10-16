@@ -190,6 +190,24 @@ class TestRoundTrip(unittest.TestCase):
             "the imported material has nothing wired to its surface "
             "terminal - it renders black")
 
+    def test_a_save_of_a_builders_contents_imports_with_one_set_of_terminals(self):
+        """A save holding the builder's own connectors imports with them alone, wired. ▸r/save-shape"""
+        asset = next(a for a in self.model.assets if a.name == "plastic")    # such a save
+        handler = nodes.NodeHandler(self.prefs)
+        ok, reason, _created = handler.import_asset_to_scene(asset, target="mat")
+        self.assertTrue(ok, reason)
+        imported = handler.builder_node
+        outputs = sorted((c.name(), c.parm("parmname").eval()) for c in imported.children()
+                         if c.type().name() == "subnetconnector"
+                         and c.parm("connectorkind").eval() == 1)
+        self.assertEqual([("displacement_output", "displacement"),
+                          ("surface_output", "surface")], outputs,
+                         "the import holds a second set of output connectors")
+        self.assertTrue(nodes.surface_terminal_wired(imported),
+                        "the imported material renders the default grey")
+        self.assertEqual(1, len([c for c in imported.children()
+                                 if c.type().name() == "subinput"]))
+
     @unittest.skipUnless(_redshift_available(),
                          "the Redshift plugin is not loaded")
     def test_an_import_keeps_its_builder(self):

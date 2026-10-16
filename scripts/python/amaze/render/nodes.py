@@ -74,6 +74,36 @@ def wire_builder_output(builder, surface_node, displacement_node=None):
     return False
 
 
+def _plumbing_role(node):
+    """What a connector or subnet input/output is for: equal roles answer the same output."""
+    tname = node.type().name()
+    if tname == "subnetconnector":
+        kind, name = node.parm("connectorkind"), node.parm("parmname")
+        return (tname, kind.eval() if kind else None, name.eval() if name else "")
+    if tname in ("subinput", "suboutput"):
+        return (tname,)
+    return None
+
+
+def replace_stock_plumbing(builder, loaded) -> int:
+    """Saved connectors replace the builder's own of the same role, keeping their wiring."""
+    saved = {}
+    for node in loaded:
+        role = _plumbing_role(node)
+        if role is not None:
+            saved.setdefault(role, node)
+    replaced = 0
+    for stock in [c for c in builder.children() if c not in loaded]:
+        keeper = saved.get(_plumbing_role(stock))
+        if keeper is None:
+            continue
+        name = stock.name()
+        stock.destroy()
+        keeper.setName(name)    # the stock name: the network reads as a fresh builder
+        replaced += 1
+    return replaced
+
+
 def custom_node_color(node) -> list:
     """The node's chosen color as [r, g, b]; [] when it is default grey."""
     try:
@@ -1225,6 +1255,7 @@ class NodeHandler:
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
             self._place_whole_builder(mat, loaded[0])
             return
+        replace_stock_plumbing(self._builder_node, loaded)    # one wired set, not two ▸r/save-shape
 
         shader_node = None
         displacement_node = None
