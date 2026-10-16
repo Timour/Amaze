@@ -476,7 +476,8 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                 continue
             if not rec.preview_url:
                 continue
-            jobs.append((key, rec.preview_url, self._cache_path(rec)))
+            url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
+            jobs.append((key, url, self._cache_path(rec)))
         if not jobs:
             return
         self._preview_total += len(jobs)

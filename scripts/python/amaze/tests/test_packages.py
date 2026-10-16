@@ -1794,6 +1794,27 @@ class OnlineTilePaintingTest(unittest.TestCase):
             "the online palette face differs from the Color section's "
             "for the same colours - a second painter has crept in")
 
+    def test_a_webp_preview_is_fetched_as_png(self):
+        """Houdini's Qt reads no WebP, so a preview named as WebP is asked for as PNG."""
+        from unittest import mock
+        from amaze.core import matx_library, matx_sources, thumbnails
+        thumbs = "https://cdn.polyhaven.com/asset_img/thumbs/"
+        record = matx_sources.MatxRecord(
+            source="PolyHaven", uid="bamboo_veneer", title="Bamboo Veneer",
+            preview_url=thumbs + "bamboo_veneer.png?width=256&format=webp&v=1")
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        thumbnails.engine.discard(model._preview_key(record))
+        jobs = []
+        with mock.patch.object(
+                matx_library, "_PreviewWorker",
+                side_effect=lambda given: jobs.extend(given) or mock.MagicMock()):
+            model._queue_previews([record])
+        self.assertEqual(
+            [thumbs + "bamboo_veneer.png?width=256&format=png&v=1"],
+            [url for _key, url, _path in jobs],
+            "a WebP preview is downloaded as WebP, which Qt cannot decode")
+
     def test_a_thumbless_tile_shows_its_sections_own_face(self):
         from amaze.core import cop_library, library, matx_library, \
             matx_sources, thumbnails, tile_icons
