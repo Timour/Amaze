@@ -1,6 +1,7 @@
 """A structural fingerprint of the CONSTRUCTED panel - widgets, layouts, models, menus, connected signals and the panel's own attributes, canonically. Two snapshots comparing equal mean a refactor was code motion.  `hython tests/ui_snapshot.py --out after.json --compare before.json`  ▸archive/ui_snapshot.py"""
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -244,19 +245,19 @@ def _diff(before: dict, after: dict) -> list:
     return out
 
 
-def _protect_live_settings():
-    """Constructing the real panel WRITES the real settings.json, so saving is disabled outright rather than restored afterwards - a restore races the panel's own deferred save timers. The log is redirected too: a snapshot is not a session anyone had."""
-    from amaze.tests import test_support
-    test_support.isolate_debug_log()
+class _Cleanups(contextlib.ExitStack):
+    """An ExitStack that answers `addCleanup`, so a test fixture can run outside a test."""
 
-    from amaze.prefs import prefs as prefs_mod
+    def addCleanup(self, function, *args, **kwargs):
+        self.callback(function, *args, **kwargs)
 
-    original = prefs_mod.Prefs.save
-    prefs_mod.Prefs.save = lambda self, *a, **k: None
 
-    def restore():
-        prefs_mod.Prefs.save = original
-    return restore
+def _fixture_snapshot() -> dict:
+    """Fingerprint a panel over the committed fixture library, the same panel on every machine."""
+    from amaze.tests import test_support    # arms the sandbox and redirects the log and the cache
+
+    with _Cleanups() as cleanups:
+        return snapshot(test_support.fixture_panel(cleanups))
 
 
 def main() -> int:
@@ -266,14 +267,7 @@ def main() -> int:
                         help="an earlier snapshot to diff against")
     args = parser.parse_args()
 
-    from amaze.panel import panel as panel_mod
-
-    restore = _protect_live_settings()
-    try:
-        widget = panel_mod.AmazePanel()
-        data = snapshot(widget)
-    finally:
-        restore()
+    data = _fixture_snapshot()
     print("widgets: %d   attributes: %d"
           % (data["widget_count"], len(data["attributes"])))
     print("connected signals: %d"

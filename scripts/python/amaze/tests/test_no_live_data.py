@@ -1,10 +1,16 @@
 """The suite must not read the machine's own files - PROVEN, not assumed, because a run that quietly scans a real photograph archive modifies nothing, fails nothing and says nothing. Two independent checks: a SOURCE one, that no test builds a panel directly, and a RUNTIME one, that every directory the models would scan is inside the temp dir. ▸archive/test_no_live_data.py
 """
 
+import contextlib
+import io
+import json
 import os
 import re
+import shutil
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtWidgets                                  # noqa: E402
@@ -28,7 +34,7 @@ def _test_modules():
 class NoTestBuildsItsOwnPanel(unittest.TestCase):
     """Building the panel class directly reads the machine's real settings, and through them the real library. Asserted as an empty SET, never a count, or the check goes vacuous the day the constructor is renamed."""
 
-    ALLOWED = {"ui_snapshot.py", "test_support.py"}
+    ALLOWED = {"test_support.py"}
 
     def test_no_test_module_constructs_a_panel_directly(self):
         offenders = {}
@@ -102,6 +108,32 @@ class AFixturePanelScansNothingOfTheUsers(unittest.TestCase):
                 expected, kinds,
                 "the fixture file location has no %s in it, so that "
                 "branch of the File section is never reached" % expected)
+
+
+class TheSnapshotToolFingerprintsALibrary(unittest.TestCase):
+    """Armed, the machine's settings are out of reach, so `ui_snapshot.py` needs its own library."""
+
+    def test_the_snapshot_grid_has_a_model_with_rows(self):
+        from amaze.tests import ui_snapshot
+
+        folder = test_support.scratch_dir("amaze_test_snapshot_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        out = os.path.join(folder, "after.json")
+        argv = ["ui_snapshot.py", "--out", out]
+        with mock.patch.object(sys, "argv", argv), \
+                contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(0, ui_snapshot.main())
+        with open(out, encoding="utf-8") as handle:
+            widgets = json.load(handle)["widgets"]
+        grids = {path: entry for path, entry in widgets.items()
+                 if path.endswith("/thumbview")}
+        self.assertTrue(grids, "the snapshot holds no thumbview to check")
+        for path, entry in grids.items():
+            self.assertTrue(
+                entry["model"] and entry["rows"],
+                "%s has model %r and %r rows, so the snapshot is of a "
+                "panel with no library" % (path, entry["model"],
+                                           entry["rows"]))
 
 
 class TheSUITETestsTheCheckoutAndNotTheInstall(unittest.TestCase):
