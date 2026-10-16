@@ -929,7 +929,8 @@ class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
 
     def test_a_snap_that_cannot_run_is_recorded_once_a_gesture(self):
         from amaze.core import dragengine
-        failing = types.SimpleNamespace(snap=mock.Mock(side_effect=RuntimeError("no snap")))
+        failing = types.ModuleType("nodegraphsnap")    # never a namespace ▸r/module-fakes-need-a-name
+        failing.snap = mock.Mock(side_effect=RuntimeError("no snap"))
         records = []
         self.addCleanup(dragengine.end)
         with mock.patch.dict(sys.modules, {"nodegraphsnap": failing}), \
@@ -940,6 +941,8 @@ class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
                 for _move in range(3):
                     self.assertIsNone(dragengine._snap_delta(mock.Mock(), None))
         self.assertEqual(2, len(records), records)
+        self.assertEqual(6, failing.snap.call_count,
+                         "the snap stand-in was never reached: %r" % records)
 
 
 if __name__ == "__main__":
