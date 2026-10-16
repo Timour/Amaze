@@ -97,6 +97,22 @@ def apply_node_color(node, color) -> None:
 
 REDSHIFT_TERMINALS = material.REDSHIFT_TERMINALS      # re-export; owned there
 
+OCTANE_BUILDER_MARK = "octane_material_builder"      # Octane's user data ▸r/octane-builder
+
+
+def is_octane_builder(node) -> bool:
+    """Octane's own builder: a plain subnet with Octane's marker, tested as Octane tests it."""
+    try:
+        return (node.type().name() == "subnet"
+                and node.userData(OCTANE_BUILDER_MARK) == "1")
+    except (AttributeError, hou.Error):
+        return False
+
+
+def saved_as_octane_builder(renderer, saved_type) -> bool:
+    """An Octane asset whose .interface starts with a plain subnet: Octane's builder, saved whole."""
+    return "Octane" in str(renderer or "") and saved_type == "subnet"
+
 
 def surface_terminal_wired(builder) -> bool:
     """Is a surface terminal wired? Three shapes. ▸r/save-shape"""
@@ -628,6 +644,8 @@ class NodeHandler:
             self._renderer = "Octane"
         elif "octane_solaris_material_builder" in node.type().name():
             self._renderer = "Octane"
+        elif is_octane_builder(node):    # before the MaterialX walk: it may hold MaterialX nodes
+            self._renderer = "Octane"
         elif "mtlxopen_pbr_surface" in node.type().name():
             self._renderer = "Karma"
         elif "mtlxstandard_surface" in node.type().name():
@@ -659,18 +677,50 @@ class NodeHandler:
         match = re.search(r'createNode\(\s*[\'"]([^\'"]+)[\'"]', text)
         return match.group(1) if match else ""
 
-    SHADER_TYPE_LABELS = (
-        ("redshift::ToonMaterial", "Toon"),
-        ("redshift::OpenPBRMaterial", "PBR"),
-        ("redshift::StandardMaterial", "Standard"),
-        ("redshift::MaterialBlender", "Blend"),
-        ("redshift::Hair", "Hair"),
-        ("redshift::Volume", "Volume"),
-        ("redshift::rsOSL", "OSL"),
-    )
+    SHADER_TYPE_LABELS = {    # renderer -> (type in the saved .mat, label); the first one found wins
+        "Redshift": (
+            ("redshift::ToonMaterial", "Toon"),
+            ("redshift::OpenPBRMaterial", "PBR"),
+            ("redshift::StandardMaterial", "Standard"),
+            ("redshift::MaterialBlender", "Blend"),
+            ("redshift::Hair", "Hair"),
+            ("redshift::Volume", "Volume"),
+            ("redshift::rsOSL", "OSL"),
+        ),
+        "Octane": (    # what mixes or layers first: a layer type starts with a material's ▸r/octane-builder
+            ("octane::NT_MAT_MIX", "Mix"),
+            ("octane::NT_MAT_LAYER", "Layered"),
+            ("octane::NT_MAT_COMPOSITE", "Composite"),
+            ("octane::NT_MAT_STANDARD_SURFACE", "Standard Surface"),
+            ("octane::NT_MAT_OPEN_PBR_SURFACE", "OpenPBR"),
+            ("octane::NT_MAT_UNIVERSAL", "Universal"),
+            ("octane::NT_MAT_TOON", "Toon"),
+            ("octane::NT_MAT_HAIR", "Hair"),
+            ("octane::NT_MAT_METAL", "Metallic"),
+            ("octane::NT_MAT_GLOSSY", "Glossy"),
+            ("octane::NT_MAT_SPECULAR", "Specular"),
+            ("octane::NT_MAT_DIFFUSE", "Diffuse"),
+            ("octane::NT_MAT_SHADOW_CATCHER", "Shadow Catcher"),
+            ("octane::NT_MAT_CLIPPING", "Clipping"),
+            ("octane::NT_MAT_PORTAL", "Portal"),
+            ("octane::NT_MAT_NULL", "Null"),
+            ("mtlxstandard_surface", "MaterialX"),
+            ("mtlxopen_pbr_surface", "MaterialX"),
+        ),
+    }
+
+    @classmethod
+    def shader_type_table(cls, renderer) -> tuple:
+        """The label table for a stored renderer, or () when it has none."""
+        name = str(renderer or "")
+        return next((table for family, table in cls.SHADER_TYPE_LABELS.items()
+                     if family in name), ())
 
     def get_shader_type_label(self, mat: material.Material) -> str:
         """Shader-type label by text search of the .mat. ▸r/save-shape"""
+        table = self.shader_type_table(mat.renderer)
+        if not table:
+            return ""
         mat_path = material.payload_path(
             self._preferences, mat.mat_id, self._preferences.ext
         )
@@ -680,7 +730,7 @@ class NodeHandler:
         except OSError:
             return ""
         text = data.decode("latin-1")
-        for needle, label in self.SHADER_TYPE_LABELS:
+        for needle, label in table:
             if ("type = " + needle) in text:
                 return label
         return ""
@@ -692,6 +742,8 @@ class NodeHandler:
         if saved_type is None:
             saved_type = self.get_saved_node_type(mat)
         if saved_type in self.LOP_CAPABLE_NODE_TYPES:
+            return {"mat", "lop"}
+        if saved_as_octane_builder(mat.renderer, saved_type):    # lives in both, as Karma's does
             return {"mat", "lop"}
         if "Redshift" in mat.renderer and node_type_available(
                 "rs_usd_material_builder"):    # a legacy container is rebuilt into the USD one on its way into a LOP library (load_items_file), so every Redshift material is LOP-capable while the plugin offers that container
@@ -1037,8 +1089,13 @@ class NodeHandler:
             self.load_interface_other(mat, "redshift_vopnet", saved_type)
             self.load_items_file(mat)
         elif "Octane" in mat.renderer:
-            self.load_interface_other(mat, "octane_vopnet", saved_type)
-            self.load_items_file(mat)
+            if saved_type is None:
+                saved_type = self.get_saved_node_type(mat)
+            if saved_as_octane_builder(mat.renderer, saved_type):
+                self.load_octane_builder(mat)
+            else:
+                self.load_interface_other(mat, "octane_vopnet", saved_type)
+                self.load_items_file(mat)
         else:
             return (False, debug.Damage(
                 '"%s" has an unrecognised renderer (%r), so there is '
@@ -1113,8 +1170,8 @@ class NodeHandler:
         self._builder_node = new_mat[0]
         helpers.auto_place(self._builder_node)
 
-    def load_items_file_mtlx(self, mat: material.Material) -> None:
-        """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""
+    def _load_into_holder(self, mat: material.Material) -> list:
+        """Load the .mat into the holder `_builder_node`: the nodes it added, textures resolved."""
         file_name = material.payload_path(
             self._preferences, mat.mat_id, self._preferences.ext
         )
@@ -1130,22 +1187,40 @@ class NodeHandler:
                 'nothing could be loaded for "%s" - its .mat file looks '
                 "corrupt or empty (%s)" % (mat.name, file_name)
             )
-        texstore.resolve_parms(self._builder_node, self._preferences)    # before any move, on both exits below - scenes get plain absolute paths
+        texstore.resolve_parms(self._builder_node, self._preferences)    # before any move: scenes get plain absolute paths
+        return loaded
 
+    def _place_whole_builder(self, mat: material.Material, inner) -> None:
+        """The .mat held the builder itself: move it out of its holder into place, drop the holder."""
+        moved = hou.moveNodesTo((inner,), self._import_path)[0]  # type: ignore
+        holder = self._builder_node
+        self._builder_node = moved
+        holder.destroy()
+        moved.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
+        moved.setGenericFlag(hou.nodeFlag.Material, True)
+        helpers.auto_place(moved)
+        if not surface_terminal_wired(moved):
+            debug.note('Amaze: "%s" imported, but nothing is wired to its '
+                "surface output - it will render black."
+                % mat.name)
+            debug.event("import", "surface terminal not wired",
+                        material=mat.name, node=moved.path())
+
+    def load_octane_builder(self, mat: material.Material) -> None:
+        """Octane's builder is saved whole: the one subnet in the .mat IS the material. ▸r/octane-builder"""
+        self._builder_node = self._hou_parent.createNode("subnet")    # the holder, dropped once empty
+        loaded = self._load_into_holder(mat)
+        if len(loaded) != 1 or not is_octane_builder(loaded[0]):
+            raise hou.OperationFailed(
+                '"%s" is saved as an Octane builder, but its .mat holds %s'
+                % (mat.name, ", ".join(sorted(n.type().name() for n in loaded))))
+        self._place_whole_builder(mat, loaded[0])
+
+    def load_items_file_mtlx(self, mat: material.Material) -> None:
+        """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""
+        loaded = self._load_into_holder(mat)
         if len(loaded) == 1 and loaded[0].type().name() == "subnet":
-            inner = hou.moveNodesTo((loaded[0],), self._import_path)[0]  # type: ignore
-            outer = self._builder_node
-            self._builder_node = inner
-            outer.destroy()
-            inner.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
-            inner.setGenericFlag(hou.nodeFlag.Material, True)
-            helpers.auto_place(inner)
-            if not surface_terminal_wired(inner):
-                debug.note('Amaze: "%s" imported, but nothing is wired to its '
-                    "surface output - it will render black."
-                    % mat.name)
-                debug.event("import", "surface terminal not wired",
-                            material=mat.name, node=inner.path())
+            self._place_whole_builder(mat, loaded[0])
             return
 
         shader_node = None
@@ -1684,6 +1759,14 @@ class NodeHandler:
 
     def save_node_mtlx(self, node: hou.Node, asset_id: str, update: bool) -> bool:
         """Save the MtlX node to disk; the library is not touched."""
+        return self._save_builder_whole(
+            node, asset_id, update, "Karma", "create_thumb_mtlx")
+
+    def _save_builder_whole(
+        self, node: hou.Node, asset_id: str, update: bool,
+        renderer: str, thumb_method: str,
+    ) -> bool:
+        """A builder subnet saved whole, its own data riding along: MaterialX's and Octane's."""
         file_name = material.payload_path(
             self._preferences, asset_id, self._preferences.ext
         )
@@ -1718,9 +1801,9 @@ class NodeHandler:
                 builder.destroy()
 
         self.after_save_thumbnail(
-            update, "Karma", asset_id, node.path(),
-            lambda: thumbs.ThumbNailRenderer(
-                self._preferences).create_thumb_mtlx(node, asset_id))
+            update, renderer, asset_id, node.path(),
+            lambda: getattr(thumbs.ThumbNailRenderer(self._preferences),
+                            thumb_method)(node, asset_id))
         return True
 
     def save_node_redshift(self, node: hou.Node, asset_id: str, update: bool) -> bool:
@@ -1729,7 +1812,10 @@ class NodeHandler:
             node, asset_id, update, "Redshift", "create_thumb_redshift")
 
     def save_node_octane(self, node: hou.Node, asset_id: str, update: bool) -> bool:
-        """Saves the Octane node to disk - does not add to library"""
+        """Octane's own builder saves whole, as MaterialX's does; the typed containers stage."""
+        if is_octane_builder(node):    # its marker is user data, which only a whole save keeps
+            return self._save_builder_whole(
+                node, asset_id, update, "Octane", "create_thumb_octane")
         return self._save_staged_with_cop_companion(
             node, asset_id, update, "Octane", "create_thumb_octane")
 

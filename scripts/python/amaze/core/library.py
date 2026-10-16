@@ -1451,8 +1451,8 @@ class MaterialLibrary(AssetLibrary):
         return result
 
     def shader_type_label(self, asset) -> str:
-        """Best-effort shader-type suffix (Standard/PBR/Toon/...), cached per material id. Only meaningful for Redshift - every other renderer answers ''."""
-        if "Redshift" not in str(asset.renderer or ""):
+        """Shader-type suffix (PBR, Standard Surface...) cached per id; '' for a renderer with no table."""
+        if not nodes.NodeHandler.shader_type_table(asset.renderer):
             return ""
         mid = asset.mat_id
         if mid in self._shader_type_cache:
@@ -1466,7 +1466,7 @@ class MaterialLibrary(AssetLibrary):
         return result
 
     def renderer_label(self, asset) -> str:
-        """Human label for the material's renderer: 'USD ' prefix for the USD-builder types and a ':<ShaderType>' suffix for Redshift when it can be determined, so 'USD Redshift:PBR'. "" when the renderer is unknown."""
+        """'USD ' for a USD-builder type, ':<shader>' where a table names it: `USD Redshift:PBR`."""
         renderer = material.shown_renderer(str(asset.renderer or "").strip())
         if not renderer:
             return ""

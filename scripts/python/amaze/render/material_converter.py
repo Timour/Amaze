@@ -46,6 +46,17 @@ def _redshift_type_available() -> bool:
     return False
 
 
+OCTANE_BUILDER_SHADER = "octane::NT_MAT_STANDARD_SURFACE"    # what Octane's own builder starts with
+
+
+def _octane_type_available() -> bool:
+    """True if the Octane plugin is loaded: its builder's shader creatable in ANY category."""
+    for cat in hou.nodeTypeCategories().values():
+        if hou.nodeType(cat, OCTANE_BUILDER_SHADER) is not None:
+            return True
+    return False
+
+
 def find_redshift_shader(vopnet: hou.Node) -> hou.Node | None:
     """The surface shader inside a reconstructed redshift_vopnet: what feeds the output node's Surface input, falling back to shaderball_scene.py's name scan when no output node or an unwired Surface."""
     terminal = material.redshift_terminal(vopnet)
