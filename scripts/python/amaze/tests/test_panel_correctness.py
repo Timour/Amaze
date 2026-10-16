@@ -913,17 +913,16 @@ class ThereIsOneFontTable(unittest.TestCase):
 
 class PaintingTheSidebarNeverTouchesTheDisk(unittest.TestCase):
 
-    def test_the_all_row_only_sums_what_is_already_counted(self):
-        """`_counts` keeps painting off the disk, and `activate` empties it."""
-        source = func_source("core/folders.py", "data")
-        all_branch = source[source.index('if row == 0:', 0):]
-        all_branch = all_branch[:all_branch.index("path = self._folders()")]
-        self.assertNotIn(
-            "self._folder_count(", all_branch,
-            "the All row forces a count for every registered location "
-            "inside data(), which for a recursive one is a full "
-            "walk_following_links with a realpath per directory AND per "
-            "child name - synchronously, inside paint")
+    def test_a_paint_only_asks_for_a_count(self):
+        """The walk runs on the count worker; `data()` and what it calls on a miss only ask."""
+        for name in ("data", "_folder_count", "_ask_count"):
+            source = func_source("core/folders.py", name)
+            for walk in ("listdir", "walk_following_links", "count_files("):
+                self.assertNotIn(
+                    walk, source,
+                    "%s reaches %s on the GUI thread - for a recursive "
+                    "location a full walk with a realpath per directory "
+                    "and per child, inside paint" % (name, walk))
 
     def test_a_row_still_counts_its_own_folder(self):
         source = func_source("core/folders.py", "data")

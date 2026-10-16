@@ -5,6 +5,8 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
@@ -1911,10 +1913,7 @@ class LocationManagementTest(unittest.TestCase):
                          "the flat location descended anyway - "
                          "recursion leaked across locations")
         folders_model = file_library.FileFolders(prefs)
-        from amaze.core import category
-        counts = [folders_model.data(folders_model.index(i, 0),
-                                     category.SIDEBAR_COUNT_ROLE)
-                  for i in (1, 2)]
+        counts = _landed_counts(folders_model)[1:]
         self.assertEqual([2, 1], counts,
                          "the counts do not follow each location's own "
                          "recursion flag")
@@ -1998,15 +1997,13 @@ class LocationManagementTest(unittest.TestCase):
 
     def test_an_add_or_a_remove_recounts_only_that_location(self):
         """The other locations keep their counts: one walk for the folder added, none for one removed."""
-        from amaze.core import category
         model, _prefs = self._folders_model(
             *[self._tmpdir() for _ in range(3)])
         extra = self._tmpdir()
         watched = [path.rstrip("/") for path in model._folders()] + [extra]
 
         def paint():
-            for row in range(model.rowCount()):
-                model.data(model.index(row, 0), category.SIDEBAR_COUNT_ROLE)
+            _landed_counts(model)    # a paint asks; the walks land a moment later
 
         paint()
         walked = []
@@ -2029,7 +2026,7 @@ class LocationManagementTest(unittest.TestCase):
             self.assertEqual([], walked, "a remove walked %s" % walked)
 
     def test_with_counts_off_all_still_shows_the_total(self):
-        """All sums the counts its rows fetched, so a row's hidden count must still be fetched."""
+        """With counts off, All still shows its total once the walks the paint asked for land."""
         from amaze.panel import delegates
         folders = [self._tmpdir() for _ in range(3)]
         for n, folder in enumerate(folders):
@@ -2047,6 +2044,8 @@ class LocationManagementTest(unittest.TestCase):
         view.show()
         for _paint in range(3):
             view.grab()
+        self.assertTrue(_pump_until(lambda: not model._walking),
+                        "the walks the paint asked for never landed")
         texts = []
         for row in range(model.rowCount()):
             option = QtWidgets.QStyleOptionViewItem()
@@ -2264,6 +2263,201 @@ class LocationManagementTest(unittest.TestCase):
             "the Show All Files override outlived its folder, or the "
             "removal reached its neighbour")
         sweep.assert_called_once_with(prefs, tmp, [kept])
+
+
+def _landed_counts(model, timeout=10.0):
+    """Every row's count, All first, once no walk is queued or running; a paint only asks."""
+    from amaze.core import category
+    deadline = time.monotonic() + timeout
+    while True:
+        counts = [model.data(model.index(row, 0), category.SIDEBAR_COUNT_ROLE)
+                  for row in range(model.rowCount())]
+        if not getattr(model, "_walking", None) and None not in counts:
+            return counts
+        if time.monotonic() > deadline:
+            raise AssertionError("the counts never landed: %s" % counts)
+        _app.processEvents()
+        time.sleep(0.002)
+
+
+def _pump_until(done, timeout=10.0) -> bool:
+    """Run the event loop until `done()` answers true, or the time is up."""
+    deadline = time.monotonic() + timeout
+    while not done() and time.monotonic() < deadline:
+        _app.processEvents()
+        time.sleep(0.002)
+    return bool(done())
+
+
+class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
+    """The File sidebar's counts walk on a worker; a paint answers what is known now."""
+
+    def _model(self, *sizes, recursive=()):
+        """A sidebar over one fresh location per size, holding that many images each."""
+        roots = []
+        for n, size in enumerate(sizes):
+            root = tempfile.mkdtemp(prefix="amaze_walk_")
+            self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+            target = os.path.join(root, "sub") if n in recursive else root
+            os.makedirs(target, exist_ok=True)
+            for i in range(size):
+                open(os.path.join(target, "f%d.png" % i), "w").close()
+            roots.append(root)
+        prefs = _Prefs(roots)
+        for n in recursive:
+            prefs.set_file_folder_recursive(roots[n], True)
+        model = file_library.FileFolders(prefs)
+        self.addCleanup(lambda: _pump_until(
+            lambda: not getattr(model, "_walking", None)))
+        return model, roots
+
+    def _held_listing(self, held_root):
+        """An `os.listdir` that holds a WORKER inside one location until released."""
+        main = threading.get_ident()
+        entered, release = threading.Event(), threading.Event()
+        self.addCleanup(release.set)
+        real = os.listdir
+
+        def listing(path="."):
+            if (threading.get_ident() != main
+                    and str(path).rstrip("/") == held_root.rstrip("/")):
+                entered.set()
+                release.wait(10)
+            return real(path)
+        return listing, entered, release
+
+    def test_a_paint_walks_no_folder_on_the_gui_thread(self):
+        from amaze.panel import delegates
+        model, roots = self._model(2, 3, recursive=(1,))
+        view = QtWidgets.QListView()
+        self.addCleanup(view.deleteLater)
+        self.addCleanup(view.close)
+        view.setItemDelegate(delegates.SidebarItemDelegate(view))
+        main = threading.get_ident()
+        on_gui = []
+
+        def watched(real):
+            def call(path="."):
+                if (threading.get_ident() == main
+                        and any(str(path).startswith(r) for r in roots)):
+                    on_gui.append(str(path))
+                return real(path)
+            return call
+
+        with mock.patch("os.listdir", watched(os.listdir)), \
+                mock.patch("os.scandir", watched(os.scandir)):
+            view.setModel(model)    # inside: the size hints ask for counts too
+            view.resize(260, 200)
+            view.show()
+            view.grab()
+            counts = _landed_counts(model)
+        self.assertEqual([], on_gui, "a paint read folders on the GUI thread")
+        self.assertEqual([5, 2, 3], counts, "the counts that landed are wrong")
+
+    def test_counts_land_and_all_shows_the_total(self):
+        from amaze.core import category
+        model, _roots = self._model(2, 3, 4)
+        changed = []
+        model.dataChanged.connect(
+            lambda first, last, roles=(): changed.append((first.row(), last.row())))
+        first = [model.data(model.index(row, 0), category.SIDEBAR_COUNT_ROLE)
+                 for row in range(model.rowCount())]
+        self.assertEqual([None] * 4, first,
+                         "a first paint answered counts only a walk could know")
+        self.assertEqual([9, 2, 3, 4], _landed_counts(model),
+                         "the counts or the All total did not land")
+        for row in (0, 1, 2, 3):
+            self.assertIn((row, row), changed,
+                          "row %d was never told its count landed" % row)
+
+    def test_a_location_removed_mid_walk_keeps_no_count(self):
+        model, roots = self._model(2, 3)
+        doomed = model._folders()[0]
+        listing, entered, release = self._held_listing(roots[0])
+        with mock.patch("os.listdir", listing):
+            model.data(model.index(1, 0), model.COUNT_ROLE)
+            self.assertTrue(_pump_until(entered.is_set),
+                            "the walk never ran on a worker")
+            self.assertTrue(model.remove_folder(1), "premise: the remove refused")
+            release.set()
+            counts = _landed_counts(model)
+        self.assertEqual([3, 3], counts, "All or the surviving row is wrong")
+        self.assertNotIn(doomed, model._counts,
+                         "the removed location kept the count its walk brought back")
+
+    def test_a_count_walked_under_an_old_rule_is_dropped(self):
+        """The location's Show All Files changes mid-walk: the walk lands stale, a fresh one counts."""
+        root = tempfile.mkdtemp(prefix="amaze_walk_rule_")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        for name in ("a.png", "b.xyz"):
+            open(os.path.join(root, name), "w").close()
+        prefs = _Prefs([root])
+        prefs.file_show_unknown = False
+        model = file_library.FileFolders(prefs)
+        key = model._folders()[0]
+        shown = []
+        model.dataChanged.connect(
+            lambda first, last, roles=(): shown.append(model._counts.get(key)))
+        listing, entered, release = self._held_listing(root)
+        with mock.patch("os.listdir", listing):
+            model.data(model.index(1, 0), model.COUNT_ROLE)
+            self.assertTrue(_pump_until(entered.is_set),
+                            "the walk never ran on a worker")
+            prefs.set_file_folder_show_all(root, True)
+            model.refresh_counts()
+            release.set()
+            counts = _landed_counts(model)
+        self.assertEqual([2, 2], counts,
+                         "a count walked under the old rule was kept")
+        self.assertNotIn(1, shown, "the old rule's count was announced")
+
+    def test_a_count_asked_from_another_thread_still_lands(self):
+        """hrpyc reads models off the GUI thread; a zero-timer armed there never fires."""
+        model, _roots = self._model(5)
+        asker = threading.Thread(
+            target=lambda: model.data(model.index(1, 0), model.COUNT_ROLE))
+        asker.start()
+        asker.join(10)
+        self.assertTrue(_pump_until(lambda: model._counts.get(model._folders()[0]) == 5),
+                        "a count asked from another thread never landed")
+        self.assertEqual([5, 5], _landed_counts(model),
+                         "the sidebar stopped counting after an ask from another thread")
+
+    def test_shutdown_does_not_wait_out_a_walk(self):
+        """The stop flag is read between folders, so quitting mid-walk returns at once."""
+        from amaze.core import folders as folders_mod
+        root = tempfile.mkdtemp(prefix="amaze_walk_deep_")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        for i in range(40):
+            os.makedirs(os.path.join(root, "d%02d" % i))
+        prefs = _Prefs([root])
+        prefs.set_file_folder_recursive(root, True)
+        model = file_library.FileFolders(prefs)
+        main = threading.get_ident()
+        entered = threading.Event()
+        real = os.scandir
+
+        def slow(path="."):
+            if threading.get_ident() != main and str(path).startswith(root):
+                entered.set()
+                time.sleep(0.25)    # 41 folders: about 10s for a walk nobody stops
+            return real(path)
+
+        with mock.patch("os.scandir", slow):
+            model.data(model.index(1, 0), model.COUNT_ROLE)
+            self.assertTrue(_pump_until(entered.is_set),
+                            "the walk never ran on a worker")
+            running = list(folders_mod.counter._threads)
+            started = time.monotonic()
+            folders_mod.counter.shutdown()
+            elapsed = time.monotonic() - started
+        _pump_until(lambda: not model._walking)
+        self.assertTrue(running, "premise: no walk was running")
+        self.assertLess(elapsed, 1.0, "shutdown waited %.2fs on a walk" % elapsed)
+        self.assertFalse(any(t.isRunning() for t in running),
+                         "a walk outlived the shutdown")
+        self.assertEqual([], folders_mod._unstoppable,
+                         "a walk had to be parked, so terminate() was reached")
 
 
 class RemovingANestedLocationTest(unittest.TestCase):
@@ -2664,14 +2858,12 @@ class ShowUnknownFilesSwitchTest(unittest.TestCase):
                          "recognised-kinds-only view: %r" % names)
 
     def test_the_count_agrees_with_the_grid_in_both_states(self):
-        from amaze.core import category
         tmp = self._folder()
         prefs = _Prefs([tmp])
         for show, expected in ((True, 5), (False, 3)):
             prefs.file_show_unknown = show
             folders_model = file_library.FileFolders(prefs)
-            count = folders_model.data(
-                folders_model.index(1, 0), category.SIDEBAR_COUNT_ROLE)
+            count = _landed_counts(folders_model)[1]
             self.assertEqual(
                 expected, count,
                 "show_unknown=%s: the sidebar says %s while the grid "
@@ -2721,9 +2913,7 @@ class ReviewFixesTest(unittest.TestCase):
         os.makedirs(os.path.join(tmp, "sub_two"))
         prefs = _Prefs([tmp])
         folders_model = file_library.FileFolders(prefs)
-        from amaze.core import category
-        count = folders_model.data(
-            folders_model.index(1, 0), category.SIDEBAR_COUNT_ROLE)
+        count = _landed_counts(folders_model)[1]
         self.assertEqual(3, count,
                          "the sidebar counts entries the grid never "
                          "shows (subdirectories)")
@@ -2749,9 +2939,7 @@ class ReviewFixesTest(unittest.TestCase):
                          "the recursive scan descends into hidden "
                          "directories: %r" % names)
         folders_model = file_library.FileFolders(prefs)
-        from amaze.core import category
-        count = folders_model.data(
-            folders_model.index(1, 0), category.SIDEBAR_COUNT_ROLE)
+        count = _landed_counts(folders_model)[1]
         self.assertEqual(1, count, "the count still includes hidden-"
                          "directory contents")
 
@@ -2966,12 +3154,12 @@ class ShowAllFilesTest(unittest.TestCase):
     def test_the_sidebar_count_agrees_per_location(self):
         folders = file_library.FileFolders(self.prefs)
         self.assertEqual(
-            1, folders._folder_count(self.tmp),
+            1, _landed_counts(folders)[1],
             "hidden unknown files must leave the count too")
         self.prefs.set_file_folder_show_all(self.tmp, True)
         folders.refresh_counts()
         self.assertEqual(
-            2, folders._folder_count(self.tmp),
+            2, _landed_counts(folders)[1],
             "a location showing all files must count all files")
 
 
@@ -3037,7 +3225,7 @@ class AStarSurvivesTheMoveThroughTheModelDoors(unittest.TestCase):
 
 
 class ACountResolvesTheLocationRuleOnce(unittest.TestCase):
-    """The sidebar count runs inside data(), the paint path - resolving the location record per FILE is a store get with a deepcopy, thousands of them on one first paint."""
+    """A count reads its location's rule once, on the GUI thread, never once per file."""
 
     def test_the_rule_is_not_resolved_per_file(self):
         folder = tempfile.mkdtemp(prefix="amaze_count_cost_")
@@ -3055,13 +3243,13 @@ class ACountResolvesTheLocationRuleOnce(unittest.TestCase):
             return real(preferences, location)
 
         with mock.patch.object(file_library.locations, "record", counted):
-            count = model._folder_count(folder)
+            count = _landed_counts(model)[1]
         self.assertEqual(12, count, "premise: every file counted")
         self.assertLess(
             len(calls), 12,
             "the location rule was resolved per FILE (%d record reads "
             "for 12 files) - each is a store get with a deepcopy, on "
-            "the paint path" % len(calls))
+            "the GUI thread" % len(calls))
 
 
 class AssetFavouritesMigrateIntoTheLibraryTest(unittest.TestCase):

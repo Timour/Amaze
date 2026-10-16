@@ -453,11 +453,23 @@ class PackageImportTest(unittest.TestCase):
             "the import location was registered behind the sidebar "
             "model's back, so no view heard about its row")
         row = folders.row_of(folder)
-        count = folders.data(folders.index(row), category.SIDEBAR_COUNT_ROLE)
+
+        def landed():
+            """The row's count once no walk is queued or running; a read only asks."""
+            deadline = time.monotonic() + 10
+            while True:
+                count = folders.data(folders.index(row),
+                                     category.SIDEBAR_COUNT_ROLE)
+                if (count is not None and not folders._walking) \
+                        or time.monotonic() > deadline:
+                    return count
+                _app.processEvents()
+                time.sleep(0.002)
+
+        count = landed()
         self.panel.import_package_file(package_of("walk_b.bvh"))
         self.assertEqual(
-            count + 1,
-            folders.data(folders.index(row), category.SIDEBAR_COUNT_ROLE),
+            count + 1, landed(),
             "a second import landed a file in the import location and "
             "its sidebar number did not move")
 

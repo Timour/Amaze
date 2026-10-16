@@ -1,13 +1,17 @@
 """The ONE folder-pointer sidebar model behind every Folder-archetype section - a flat list of registered paths plus a synthetic All at row 0. POINTERS, not an index: registering a folder scans or copies nothing. ▸p/folder-sidebar
 """
 
-from PySide6 import QtCore
-
+import atexit
+import functools
 import os
 
-from amaze.core import category
+from PySide6 import QtCore
+
+from amaze.core import category, debug
 from amaze.helpers import hostos
 
+
+_unstoppable: list = globals().get("_unstoppable", [])    # walks that would not stop, parked for good ▸r/model-contracts
 
 
 def walk_following_links(root: str):
@@ -29,6 +33,115 @@ def walk_following_links(root: str):
         yield dirpath, dirnames, filenames
 
 
+def count_files(path: str, recursive: bool, matches, stopped=lambda: False):
+    """Files the sidebar counts in one location, None once `stopped()` is true. ▸p/folder-sidebar"""
+    count = 0
+    try:
+        if recursive:
+            for _dirpath, dirnames, filenames in walk_following_links(path):
+                if stopped():
+                    return None
+                dirnames[:] = [d for d in dirnames    # hidden folders pruned, as the grid prunes them
+                               if not d.startswith(".")]
+                dirnames.sort()
+                count += sum(1 for name in filenames if matches(name))
+            return count
+        for name in os.listdir(path):    # FILES only, matching the grid's flat scan
+            if stopped():
+                return None
+            if matches(name) and os.path.isfile(os.path.join(path, name)):
+                count += 1
+    except OSError:
+        return 0
+    return count
+
+
+def _gone(thread) -> bool:
+    """A thread whose C++ side is deleted: it can never emit again."""
+    try:
+        thread.isFinished()
+        return False
+    except RuntimeError:
+        return True
+
+
+class _CountWorker(QtCore.QThread):
+    """Counts a batch of locations off the GUI thread, each by the rule the GUI thread resolved."""
+
+    counted = QtCore.Signal(object, object, object)    # (path, token, count)
+
+    def __init__(self, jobs) -> None:
+        super().__init__()
+        self._jobs = jobs    # [(path, token, recursive, matches)]
+        self._canceled = False    # the stop flag, the thumbnail loaders' contract
+
+    def jobs(self) -> list:
+        return [(path, token) for path, token, _recursive, _matches in self._jobs]
+
+    def cancel(self) -> None:
+        self._canceled = True
+
+    def _stopped(self) -> bool:
+        return self._canceled or self.isInterruptionRequested()
+
+    def run(self) -> None:
+        for path, token, recursive, matches in self._jobs:
+            try:
+                count = count_files(path, recursive, matches, self._stopped)
+            except Exception as exc:                          # noqa: BLE001 - one bad rule must not end the batch
+                debug.event("folders", "count failed", folder=path,
+                            error=str(exc))
+                continue
+            if count is None:
+                return
+            self.counted.emit(path, token, count)
+
+
+class _CountEngine(QtCore.QObject):
+    """Every count walk in the process, held until it finishes and stopped on quit. ▸r/model-contracts"""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
+
+    def start(self, jobs, landed, ended) -> None:
+        """One worker over `jobs`: `landed(path, token, count)` per location, then `ended(worker)`."""
+        worker = _CountWorker(jobs)
+        worker.counted.connect(landed)
+        worker.finished.connect(    # bound here, never sender(): ordering is per sender ▸r/model-contracts
+            functools.partial(self._finished, worker, ended))
+        self._threads.append(worker)
+        worker.start()
+
+    def _finished(self, worker, ended) -> None:
+        self._threads = [t for t in self._threads
+                         if t is not worker and not _gone(t)]
+        ended(worker)
+
+    def shutdown(self) -> None:
+        """Stop every walk, THEN wait for each; safe twice and with nothing running."""
+        for thread in list(self._threads):
+            try:
+                thread.cancel()
+                thread.requestInterruption()
+            except RuntimeError:
+                pass
+        unstopped = []
+        for thread in list(self._threads):
+            try:
+                if thread.isRunning() and not thread.wait(3000):    # bounded, as thumbnails' is
+                    thread.terminate()
+                    if not thread.wait(500):
+                        unstopped.append(thread)
+            except RuntimeError:
+                pass
+        if unstopped:    # parked, not dropped: freed mid-run it takes the process down
+            _unstoppable.extend(unstopped)
+            debug.event("folders", "count walks would not stop - parked",
+                        count=len(unstopped))
+        self._threads = []
+
+
 class FolderListModel(QtCore.QAbstractListModel):
     """Generic registered-folders list - a subclass sets the `*_attr`/`*_method` names to its section's preference surface and implements `matches(filename)`. ▸p/folder-sidebar"""
 
@@ -43,11 +156,24 @@ class FolderListModel(QtCore.QAbstractListModel):
     remove_folder_method = ""
     relocate_folder_method = ""    # re-points one folder IN ITS OWN ROW; named, never an index assignment ▸p/folder-sidebar
     move_folder_method = ""        # the sidebar reorder; empty = this section's folders do not reorder
+    COUNT_WORKERS = 4    # walks at once: a slow share holds one, the other counts keep landing
+    ANNOUNCE_MS = 100    # counts landing inside this window repaint the sidebar once, not each
+    _counts_asked = QtCore.Signal()    # queued: an ask from ANY thread dispatches on this model's
 
     def __init__(self, preferences, parent: QtCore.QObject | None = None) -> None:
         super().__init__()
         self.preferences = preferences
-        self._counts: dict = {}    # folder file-counts, cached so painting never touches the disk ▸p/folder-sidebar
+        self._counts_asked.connect(self._dispatch_counts,    # a zero-timer armed off a Qt thread never fires
+                                   QtCore.Qt.ConnectionType.QueuedConnection)
+        self._counts: dict = {}    # path -> its last count; a paint reads only this ▸p/folder-sidebar
+        self._counted: dict = {}    # path -> the token its count was walked under
+        self._tokens: dict = {}    # path -> the token a current count carries; a change bumps it
+        self._walking: dict = {}    # path -> its ONE walk's token, None while still queued
+        self._queued: list = []
+        self._live = 0    # this model's workers still running
+        self._count_scheduled = False
+        self._unannounced: set = set()    # landed, the views not told yet
+        self._announce_armed = False
         self._rows: list = []
         self._rows_key = None    # what `_rows` was read against; None reads again
         self._records: dict = {}    # path -> its location record, read against `_records_key`
@@ -92,8 +218,8 @@ class FolderListModel(QtCore.QAbstractListModel):
             self._announce(before, after)
         finally:
             self._held = None
-        for path in set(before).symmetric_difference(after):
-            self._counts.pop(path, None)    # the others' counts still hold
+        self._out_of_date(set(before).symmetric_difference(after),    # the others' counts still hold
+                          keep=False)
         return before, after
 
     def _announce(self, before: list, after: list) -> None:
@@ -126,17 +252,28 @@ class FolderListModel(QtCore.QAbstractListModel):
         """Re-point at whichever library is now live - the folders are read THROUGH to `prefs`, so the rows are already right and what was missing is the reset that repaints them. ▸p/folders-follow-the-library"""
         self.beginResetModel()
         try:
-            self._counts = {}    # counts are per-folder and the folders have just changed
+            self._out_of_date(self._known(), keep=False)    # another library's rules: no number carries over
             self._rows_key = None
             self._records_key = None
         finally:
             self.endResetModel()
 
     def refresh_counts(self) -> None:
-        """Forget the counts and the rows - the doors where the disk or the library may have moved."""
-        self._counts = {}
+        """Every count out of date, each shown until a fresh walk lands; the rows read again."""
+        self._out_of_date(self._known())
         self._rows_key = None
         self._records_key = None
+
+    def _known(self) -> set:
+        return set(self._counts) | set(self._walking)
+
+    def _out_of_date(self, paths, keep: bool = True) -> None:
+        """Bump each location's token, so a walk still running for it lands and is dropped."""
+        for path in paths:
+            self._tokens[path] = self._tokens.get(path, 0) + 1
+            if not keep:
+                self._counts.pop(path, None)
+                self._counted.pop(path, None)
 
     def _record(self, path: str) -> dict:
         """One location's record, kept until a location write or a store rereads its file."""
@@ -159,34 +296,90 @@ class FolderListModel(QtCore.QAbstractListModel):
         return os.path.basename(path.rstrip("/\\")) or path
 
     def _matcher_for(self, path: str):
-        """One folder's per-name test with the location rule resolved ONCE - `matches_in` resolves it per FILE, which is a store get and a deepcopy inside the paint path."""
+        """One folder's name test, its rule resolved ONCE here; it runs on the count's worker."""
         return lambda name: self.matches_in(path, name)
 
-    def _folder_count(self, path: str) -> int:
-        count = self._counts.get(path)
-        if count is not None:
-            return count
-        count = 0
-        matches = self._matcher_for(path)
-        try:
-            if self.includes_subfolders(path):
-                for _dirpath, dirnames, filenames in walk_following_links(path):
-                    # hidden directories pruned as hidden files are skipped, or the count disagrees with the grid ▸p/folder-sidebar
-                    dirnames[:] = [d for d in dirnames
-                                   if not d.startswith(".")]
-                    dirnames.sort()
-                    count += sum(1 for name in filenames
-                                 if matches(name))
-            else:
-                count = sum(    # FILES only, matching the grid's flat scan ▸p/folder-sidebar
-                    1 for name in os.listdir(path)
-                    if matches(name)
-                    and os.path.isfile(os.path.join(path, name))
-                )
-        except OSError:
-            count = 0
+    def _folder_count(self, path: str):
+        """The count known now, None before one lands; a stale one is walked off the GUI thread."""
+        if self._counted.get(path) != self._tokens.get(path, 0):
+            self._ask_count(path)
+        return self._counts.get(path)
+
+    def _ask_count(self, path: str) -> None:
+        if path in self._walking:
+            return    # ONE walk per location; a stale one asks again when it lands
+        self._walking[path] = None
+        self._queued.append(path)
+        if not self._count_scheduled:
+            self._count_scheduled = True
+            self._counts_asked.emit()    # one paint's asks, one batch
+
+    def _dispatch_counts(self) -> None:
+        """Hand the queued locations to the free workers, every rule resolved HERE, on the GUI thread."""
+        self._count_scheduled = False
+        free = self.COUNT_WORKERS - self._live
+        if free <= 0 or not self._queued:
+            return    # a worker ending dispatches again
+        queued, self._queued = self._queued, []
+        registered = set(self._folders())
+        jobs = []
+        for path in queued:
+            if path not in registered:
+                self._walking.pop(path, None)    # removed before its walk began
+                continue
+            try:
+                rule = (bool(self.includes_subfolders(path)),
+                        self._matcher_for(path))
+            except Exception as exc:                          # noqa: BLE001 - a bad record skips one count, not all
+                self._walking.pop(path, None)
+                debug.event("folders", "count rule unreadable", folder=path,
+                            error=str(exc))
+                continue
+            token = self._tokens.get(path, 0)
+            self._walking[path] = token
+            jobs.append((path, token) + rule)
+        for chunk in (jobs[i::free] for i in range(free)):
+            if chunk:
+                self._live += 1
+                counter.start(chunk, self._on_counted, self._walk_ended)
+
+    def _on_counted(self, path, token, count) -> None:
+        """A walk landed: kept and announced when still current, dropped and asked again when not."""
+        if self._walking.get(path) == token:
+            self._walking.pop(path)
+        row = self.row_of(path)
+        if row is None:
+            return    # removed while it walked
+        if token != self._tokens.get(path, 0):
+            self._ask_count(path)    # changed while it walked: its answer is the old rule's
+            return
         self._counts[path] = count
-        return count
+        self._counted[path] = token
+        self._unannounced.add(path)
+        if not self._walking:
+            self._announce_counts()    # the last one in: say it now
+        elif not self._announce_armed:
+            self._announce_armed = True
+            QtCore.QTimer.singleShot(self.ANNOUNCE_MS, self._announce_counts)
+
+    def _announce_counts(self) -> None:
+        """Every count landed since the last call, told in ONE pass, so the views repaint once."""
+        self._announce_armed = False
+        paths, self._unannounced = self._unannounced, set()
+        rows = sorted(r for r in map(self.row_of, paths) if r is not None)
+        for at in rows + [0] if rows else []:    # each row, then All, whose total moved
+            index = self.index(at)
+            self.dataChanged.emit(index, index, [self.COUNT_ROLE])
+
+    def _walk_ended(self, worker) -> None:
+        """A worker is done: what it left unanswered may be asked again, and a queue waiting moves."""
+        self._live = max(0, self._live - 1)
+        for path, token in worker.jobs():
+            if path in self._walking and self._walking[path] == token:
+                self._walking.pop(path)
+        if self._queued and not self._count_scheduled:
+            self._count_scheduled = True
+            self._counts_asked.emit()
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
         """Hook: per-location state follows a Locate Folder. Base: none."""
@@ -203,9 +396,8 @@ class FolderListModel(QtCore.QAbstractListModel):
             if role == QtCore.Qt.ItemDataRole.DisplayRole:    # the All row has no real path: PathRole and all but the count stay None ▸p/folder-sidebar
                 return self.ALL_LABEL
             if role == self.COUNT_ROLE:
-                return sum(count for count in    # ONLY WHAT IS ALREADY COUNTED - summing on demand recounts every location inside the paint path ▸p/folder-sidebar
-                           (self._counts.get(p) for p in self._folders())
-                           if count is not None)
+                counts = [self._folder_count(p) for p in self._folders()]    # asks, walks nothing here
+                return None if None in counts else sum(counts)    # no partial total ▸p/folder-sidebar
             return None
         path = self._folders()[row - 1]
         if role == self.COUNT_ROLE:
@@ -316,3 +508,29 @@ class FolderListModel(QtCore.QAbstractListModel):
         self.dataChanged.emit(index, index)
         self.refresh_counts()
         return rewritten
+
+
+_previous_counter = globals().get("counter")    # a reload re-runs this body: stop the old walks first ▸r/module-reload
+if _previous_counter is not None:
+    try:
+        _previous_counter.shutdown()
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        atexit.unregister(_previous_counter.shutdown)
+    except Exception:                                    # noqa: BLE001
+        pass
+    try:
+        _prev_app = QtCore.QCoreApplication.instance()
+        if _prev_app is not None:
+            _prev_app.aboutToQuit.disconnect(_previous_counter.shutdown)
+    except (RuntimeError, TypeError):
+        pass                     # never connected, or already gone
+
+counter = _CountEngine()
+
+_app_instance = QtCore.QCoreApplication.instance()
+if _app_instance is not None:
+    _app_instance.aboutToQuit.connect(counter.shutdown)    # quitting Houdini mid-walk
+
+atexit.register(counter.shutdown)    # headless, aboutToQuit never fires ▸r/model-contracts
