@@ -930,7 +930,7 @@ class SidebarIndentTest(unittest.TestCase):
 
 
 class HiddenCountsAreStillFetched(unittest.TestCase):
-    """With counts off every row's count is still fetched, because the File All sums them."""
+    """With counts off every row's count is still asked, and only All shows its count."""
 
     def _counted(self, show_counts):
         from amaze.core import category
