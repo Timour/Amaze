@@ -25,7 +25,7 @@ from amaze.core import scene_captures, thumbnails, tile_icons  # noqa: E402
 from amaze.core import library as library_mod  # noqa: E402
 from amaze.core import texture_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
-from amaze.render import thumbs  # noqa: E402
+from amaze.render import husk_job, thumbs  # noqa: E402
 from amaze import preview  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -486,19 +486,6 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
                 scene.get_node().destroy()
 
 
-class _KarmaRopStub:
-    """Enough USD Render ROP for the per-material path: `execute` is all `render_usd_into` presses."""
-
-    def __init__(self):
-        self.pressed = []
-
-    def parm(self, name):
-        return _Parm(self.pressed, name)
-
-    def path(self):
-        return "/obj/karma_rop_stub"
-
-
 class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
     """A Karma thumbnail borrows the artist's scene: nothing of its own on their undo stack, their selection back where it was, and the samples preference on the dial the engine it selects actually reads. ▸r/undo-groups"""
 
@@ -506,10 +493,16 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "space": "ACEScg"}
 
     def setUp(self):
-        module = preview.thumbnail_scene    # the SUBMODULE usd_scene calls; headless it finds no viewer
-        real = module.ocio_from_viewer
-        module.ocio_from_viewer = lambda: dict(self.OCIO)
-        self.addCleanup(setattr, module, "ocio_from_viewer", real)
+        for seam in (preview.thumbnail_scene, preview):    # headless, neither finds a viewer
+            patcher = mock.patch.object(seam, "ocio_from_viewer", lambda: dict(self.OCIO))
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        self.submitted = []
+        patcher = mock.patch.object(husk_job.jobs, "submit",    # the scene's half, no husk
+                                    lambda job, blocking=False: self.submitted.append(job))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(lambda: [job.discard() for job in self.submitted])
         self.prefs = test_support.fixture_prefs(self)
         self.out = tempfile.mkdtemp(prefix="amaze_karma_probe_")
         self.addCleanup(shutil.rmtree, self.out, True)
@@ -530,8 +523,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "no scaffold was built although the OCIO seam is patched - "
             "this test can no longer see its subject")
         self.addCleanup(self._drop, scaffold["net"])
-        scaffold["rop"] = _KarmaRopStub()    # a real `execute` would start a Karma render; every node operation around it stays real
-        return scaffold
+        return scaffold    # its real ROP: write_batch writes the USD and starts no render
 
     def _material(self):
         mat = hou.node("/mat").createNode("subnet", "AmazeKarmaProbe")
@@ -582,8 +574,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         scaffold = self._scaffold()
         mat = self._material()
         hou.undos.clear()
-        preview.render_usd_into(
-            scaffold, mat, "UNDO_PROBE", os.path.join(self.out, "u.png"))
+        preview.write_batch(scaffold, [("UNDO_PROBE", mat)], self.out)
         self.assertEqual(
             (), hou.undos.undoLabels(),
             "rendering one material left entries on the live undo "
@@ -598,7 +589,6 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         model = library_mod.MaterialLibrary(preferences=self.prefs)
         asset = next(a for a in model.assets
                      if material.is_karma_renderer(a.renderer))
-        scaffold = self._scaffold()
         imported = []
         real = nodes.NodeHandler.import_asset_to_scene
 
@@ -610,8 +600,8 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         hou.undos.clear()
         with mock.patch.object(nodes.NodeHandler, "import_asset_to_scene",
                                spy):
-            thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
-                scaffold)
+            thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
+        self.assertEqual(1, len(self.submitted), "no husk was asked for")
         self.assertEqual(
             [True], imported,
             "the material never imported - this test cannot see its "
@@ -629,8 +619,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             keeper = hou.node("/obj").createNode("null")
         self.addCleanup(self._drop, keeper)
         keeper.setSelected(True, True)
-        preview.render_usd_into(
-            scaffold, mat, "SEL_PROBE", os.path.join(self.out, "s.png"))
+        preview.write_batch(scaffold, [("SEL_PROBE", mat)], self.out)
         self.assertEqual(
             [keeper], list(hou.selectedNodes()),
             "the render ate the artist's selection: `hou.copyNodesTo` "
@@ -664,8 +653,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
 
     def test_update_preview_takes_back_a_companion_it_restored(self):
         asset = self._asset_with_a_companion()
-        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
-            self._scaffold())
+        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
         self.assertIsNone(
             hou.node("/obj/Amaze/" + self.COMPANION),
             "Update Preview restored the material's COP companion for the "
@@ -683,8 +671,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             shared = root.createNode("copnet", self.COMPANION)
             shared.createNode("null", "keep_me")
         before = (shared.sessionId(), [c.name() for c in shared.children()])
-        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail(
-            self._scaffold())
+        thumbs.ThumbNailRenderer(self.prefs, asset).create_thumbnail()
         survivor = hou.node("/obj/Amaze/" + self.COMPANION)
         self.assertIsNotNone(
             survivor,
@@ -1033,13 +1020,13 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
 
 class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
 
-    def test_render_usd_into_guards_its_index(self):
+    def test_stage_material_guards_its_index(self):
         """The Debug-gated tier may not change behaviour: an unguarded index inside `if debug.is_on()` fails only for people running with Debug on."""
         tree = ast.parse(source_of("preview/usd_scene.py"))
         checked = False
         for function in ast.walk(tree):
             if not (isinstance(function, ast.FunctionDef)
-                    and function.name == "render_usd_into"):
+                    and function.name == "_stage_material"):
                 continue
             for node in ast.walk(function):
                 if not (isinstance(node, ast.If)
@@ -1420,8 +1407,9 @@ class TheThumbnailPicksItsRendererAsTheImportDoes(unittest.TestCase):
                 mock.patch.object(nodes.NodeHandler, "cleanup"), \
                 mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_redshift",
                                   lambda _self, *_args: calls.append("Redshift")), \
-                mock.patch.object(thumbs.ThumbNailRenderer, "create_thumb_octane",
-                                  lambda _self, *_args: calls.append("Octane")):
+                mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
+                                  lambda _prefs, mats: calls.extend(
+                                      thumbs.usd_renderer(m) for m in mats)):
             thumbs.ThumbNailRenderer(mock.Mock(), mat).create_thumbnail()
         return calls
 

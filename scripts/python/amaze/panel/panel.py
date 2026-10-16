@@ -59,6 +59,7 @@ from amaze.core import (
 )
 from amaze.render import (
     generator,
+    husk_job,
     material_converter,
     nodes,
     thumbs,
@@ -92,6 +93,7 @@ if _DEV_RELOAD:
     preview.reload_engine()    # the package RELOADS ITSELF: reloading a package re-runs only __init__.py, which hands back the cached submodules, so the chain would look complete and refresh nothing
 _reload(material_converter)
 _reload(nodes)
+_reload(husk_job)    # before thumbs, which submits to its queue
 _reload(thumbs)
 _reload(tile_icons)    # before gradient_library and the Node Info dialog, which read its facts
 _reload(grid_columns)    # BEFORE library and its siblings: they mix in GridColumnsMixin, so a stale one has the models answering old columns while the header answers new
@@ -1096,6 +1098,8 @@ class AmazePanel(QtWidgets.QWidget):
         self.texture_progress = ui_helpers.ThinProgressBar()    # thin bar for texture thumbnail generation, docked above thumbview in verticalLayout_7 - which wraps thumbview ALONE, isolated from catview/details in the splitter. Built in code rather than the .ui; hidden until a folder with work to do is selected (see _on_texture_progress)
         self.texture_progress.set_accent_color(theme.accent(self.prefs.accent_color))
         self.set_conversion_bar_visible(False)
+        husk_job.jobs.progressed.connect(self._on_render_progress)    # bound: jobs outlive the pane
+        husk_job.jobs.activeChanged.connect(self._on_render_active)
         thumb_layout = self.ui.findChild(QtWidgets.QVBoxLayout, "verticalLayout_7")
         if thumb_layout is not None:
             thumb_layout.insertWidget(0, self.texture_progress)
@@ -3376,13 +3380,29 @@ class AmazePanel(QtWidgets.QWidget):
             tabs.set_cancel_visible(visible)
 
     def _on_cancel_conversions(self) -> None:
-        """The Cancel chip's verb: stop the File batch. The model owns the pair and its order (file_library.cancel_conversions)."""
+        """The Cancel chip's verb: stop a background render, else the File batch's conversions."""
+        if husk_job.jobs.busy():    # a background thumbnail render owns the bar
+            husk_job.jobs.cancel()
+            return
         model = self.file_files_model
         if model is not None:
-            model.cancel_conversions()
+            model.cancel_conversions()    # the model owns the pair and its order
+
+    def _on_render_progress(self, done: int, total: int) -> None:
+        """A background thumbnail render's progress, on the bar whichever tab shows."""
+        self.set_conversion_bar_visible(True)
+        self.texture_progress.set_progress(done, total)
+
+    def _on_render_active(self, active: bool) -> None:
+        """The bar comes up as a background render starts and goes as the last one ends."""
+        self.set_conversion_bar_visible(active)
+        if active:
+            self.texture_progress.set_progress(0, 100)
 
     def _on_texture_progress(self, done: int, total: int) -> None:
         """Shows/updates the thin progress bar above the thumbnail grid while texture thumbnails are generating for the selected folder. Hidden when there's nothing to do (fully cached / empty folder) or once generation completes."""
+        if husk_job.jobs.busy():    # a background thumbnail render owns the bar
+            return
         if total <= 0 or done >= total:
             self.set_conversion_bar_visible(False)
             return

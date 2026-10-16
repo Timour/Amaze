@@ -13,7 +13,8 @@ _DOOR = {
     "safe_set": thumbnail_scene,
     "rig_key": thumbnail_scene,
     "build_usd_scaffold": usd_scene,
-    "render_usd_into": usd_scene,
+    "write_batch": usd_scene,
+    "exr_to_png": usd_scene,
 }
 
 __all__ = list(_DOOR) + ["reload_engine"]

@@ -19,7 +19,7 @@ from amaze.helpers import helpers
 from amaze.helpers import hostos
 from amaze import messages
 from amaze.prefs import prefs
-from amaze.render import thumbs, nodes, material_converter
+from amaze.render import thumbs, nodes, material_converter, husk_job
 
 
 def _count(count: int, noun: str) -> str:
@@ -1414,7 +1414,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
 
 class MaterialLibrary(AssetLibrary):
-    """The Material tab's model - the shared engine plus what a MATERIAL is: renderer detection on save, USD-ness and shader-type labels read from the saved files, the Karma-scaffold render batch, MAT/LOP import routing and the Redshift conversion."""
+    """The Material tab's model: renderer, labels, thumbnail batches, import routing, conversion."""
 
     NOTES_SECTION = "material"
     TILE_FACE = "face_material"    # T06
@@ -1425,6 +1425,13 @@ class MaterialLibrary(AssetLibrary):
         super().__init__(preferences)
         self._usd_cache = {}  # both are derived by READING the saved files, so they are cached per material id rather than paid on every repaint
         self._shader_type_cache = {}
+        husk_job.jobs.thumbnailWritten.connect(self._on_thumbnail_written)    # a bound method
+
+    def _on_thumbnail_written(self, asset_id: str) -> None:
+        """A background render's PNG landed: repaint that one tile, wherever its row is now."""
+        row = self.find_asset_row_by_id(asset_id)
+        if row >= 0:
+            self._add_thumb_paths(row)
 
     def _drop_content_label_caches(self, mat_id=None) -> None:
         if not hasattr(self, "_usd_cache"):  # USD-ness and shader type, this model's two content-derived labels: evicted whole on a reload, per id on a version switch or content update. The guard is because the base constructor reloads before this subclass's __init__ has made the caches
@@ -1609,16 +1616,14 @@ class MaterialLibrary(AssetLibrary):
         self.render_thumbnails([row])  # a batch of one, down the same path
 
     def render_thumbnails(self, rows) -> None:
-        """Re-render every row, building ONE Karma scaffold for the whole batch. The scaffold is a full USD stage composition and is identical for every material, so building it per row pays the stage load per row. A row outside the model is dropped: `isValid()` cannot answer this, a plain index is not invalidated when the rows behind it go away."""
+        """Re-render every row in the model: Karma's and Octane's in ONE husk each. ▸r/husk-startup"""
         rows = [row for row in rows if 0 <= row < self.rowCount()]
         if not rows:
             return
-        with thumbs.ThumbNailRenderer.karma_batch(self.preferences) as scaffold:
-            for row in rows:
-                renderer = thumbs.ThumbNailRenderer(
-                    self.preferences, self._assets[row])
-                renderer.create_thumbnail(scaffold)
-                self._add_thumb_paths(row)
+        thumbs.ThumbNailRenderer.render_assets(
+            self.preferences, [self._assets[row] for row in rows])
+        for row in rows:
+            self._add_thumb_paths(row)
 
     def import_asset_to_scene(
         self,

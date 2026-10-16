@@ -1,20 +1,30 @@
 import contextlib
 import os
+import shutil
+import tempfile
 import hou
 
 from amaze.core import debug
 from amaze.core import material
 import amaze
 from amaze.core import tile_icons
+from amaze.render import husk_job
 from amaze.render import nodes
 from amaze import messages
 from amaze import preview
 from amaze.prefs import prefs
 from amaze.helpers import helpers, hostos
 
-NO_SCENE_VIEWER = object()    # what karma_batch yields when no render in the batch can run
-
 # (module reloads consolidated into panel.py's single chain)
+
+
+def usd_renderer(mat) -> str:
+    """`Karma` or `Octane` for a material husk renders in the background, "" for the rest."""
+    if material.is_karma_renderer(mat.renderer):
+        return "Karma"
+    if "Octane" in str(mat.renderer):
+        return "Octane"
+    return ""
 
 
 class ThumbNailRenderer:
@@ -26,26 +36,85 @@ class ThumbNailRenderer:
         self._builder = None
 
     @staticmethod
-    @contextlib.contextmanager
-    def karma_batch(preferences):
-        """One Karma scaffold for the batch, or NO_SCENE_VIEWER, said once; pass it to create_thumbnail."""
-        scaffold = preview.build_usd_scaffold(preferences, "Karma")  # one stage load for the batch
-        if scaffold is None:    # no Scene Viewer, and every renderer takes its OCIO from one
+    def render_batch(preferences, renderer: str, items) -> bool:
+        """Every (asset_id, node) in ONE background husk, a frame each; False if none can start."""
+        items = [(str(asset_id), node) for asset_id, node in items if node is not None]
+        if not items:
+            return False
+        scaffold = preview.build_usd_scaffold(preferences, renderer)    # one stage, the batch's
+        if scaffold is None:    # no Scene Viewer to read OCIO from
+            return False
+        job_dir = tempfile.mkdtemp(prefix="amaze_thumbs_",
+                                   dir=hou.getenv("HOUDINI_TEMP_DIR") or None)
+        try:
+            batch = preview.write_batch(scaffold, items, job_dir)
+        except hou.Error as exc:
+            debug.exception("thumbnail batch", exc, renderer=renderer, materials=len(items))
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return False
+        finally:
+            with hou.undos.disabler():    # a bare destroy brings the scaffold back on Ctrl+Z
+                scaffold["net"].destroy()
+        frames = [(asset_id, tile_icons.thumbnail_path(preferences, asset_id))
+                  for (asset_id, _node), prim in zip(items, batch["prims"]) if prim]
+        batch["prims"] = [prim for prim in batch["prims"] if prim]
+        if not frames:    # no material node in any of them
+            shutil.rmtree(job_dir, ignore_errors=True)
+            return False
+        husk_job.jobs.submit(husk_job.HuskJob(batch, job_dir, frames),
+                             blocking=not hou.isUIAvailable())
+        return True
+
+    @staticmethod
+    def render_assets(preferences, mats) -> None:
+        """Re-render library materials: Karma's and Octane's each in ONE husk, the rest in turn."""
+        groups = {}
+        others = []
+        for mat in mats:
+            renderer = usd_renderer(mat)
+            if renderer:
+                groups.setdefault(renderer, []).append(mat)
+            else:
+                others.append(mat)
+        if not preview.ocio_from_viewer():    # every renderer takes its OCIO from a Scene Viewer
             debug.event("thumb", "no scene viewer - the batch renders nothing")
             ui = getattr(hou, "ui", None)
             if ui is not None:
                 ui.displayMessage(messages.NO_SCENE_VIEWER_FOR_THUMBNAIL)
-            yield NO_SCENE_VIEWER
             return
-        try:
-            yield scaffold
-        finally:
-            with hou.undos.disabler():  # a bare destroy brings the whole scaffold back on one Ctrl+Z
-                scaffold["net"].destroy()
+        for renderer, group in groups.items():
+            ThumbNailRenderer._render_group(preferences, renderer, group)
+        for mat in others:
+            ThumbNailRenderer(preferences, mat).create_thumbnail()
 
-    def create_thumbnail(self, scaffold=None) -> None:
-        """Render this material's thumbnail; pass the scaffold from `karma_batch` when this render is one of a batch, or leave it None for a single render that builds and destroys its own."""
-        if scaffold is NO_SCENE_VIEWER:    # the batch has said why, and nothing is imported
+    @staticmethod
+    def _render_group(preferences, renderer: str, mats) -> None:
+        """Import each into /mat, write the batch from them, and clear them away again."""
+        handlers = []
+        items = []
+        refused = []
+        with hou.undos.disabler():    # the imports and their cleanup are a pair ▸r/undo-groups
+            try:
+                for mat in mats:
+                    handler = nodes.NodeHandler(preferences)
+                    ok, reason, _created = handler.import_asset_to_scene(mat, target="mat")
+                    handlers.append(handler)
+                    if ok:
+                        items.append((mat.mat_id, handler.builder_node))
+                    elif reason:
+                        refused.append(reason)
+                ThumbNailRenderer.render_batch(preferences, renderer, items)
+            finally:
+                for handler in handlers:
+                    handler.cleanup()    # the stage is written: husk reads the file, not these
+        ui = getattr(hou, "ui", None)
+        if refused and ui is not None:    # ONE message for the batch
+            ui.displayMessage("\n".join(refused))
+
+    def create_thumbnail(self) -> None:
+        """Render this material's thumbnail: Karma's and Octane's in the background."""
+        if usd_renderer(self._mat):
+            ThumbNailRenderer.render_assets(self._preferences, [self._mat])
             return
         node_handler = nodes.NodeHandler(self._preferences)
         with hou.undos.disabler():    # the import into /mat and its cleanup are a pair ▸r/undo-groups
@@ -61,41 +130,15 @@ class ThumbNailRenderer:
                 with hou.InterruptableOperation(
                     "Rendering", "Performing Tasks", open_interrupt_dialog=True
                 ):
-                    if material.is_karma_renderer(self._mat.renderer):
-                        if scaffold is not None:
-                            preview.render_usd_into(  # the batch's scaffold, which karma_batch destroys
-                                scaffold, node_handler.builder_node,
-                                self._mat.mat_id,
-                                tile_icons.thumbnail_path(
-                                    self._preferences, self._mat.mat_id))
-                        else:
-                            self.create_thumb_mtlx(
-                                node_handler.builder_node, self._mat.mat_id)
-                    elif "Redshift" in self._mat.renderer:
+                    if "Redshift" in self._mat.renderer:
                         self.create_thumb_redshift(
-                            node_handler.builder_node, self._mat.mat_id)
-                    elif "Octane" in self._mat.renderer:
-                        self.create_thumb_octane(
                             node_handler.builder_node, self._mat.mat_id)
             finally:
                 node_handler.cleanup()  # in the finally: an interrupted render leaves no copy in /mat
 
     def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
-        """One MaterialX thumbnail; a batch shares one scaffold through `karma_batch` instead."""
-        return self._usd_thumbnail("Karma", node, asset_id)
-
-    def _usd_thumbnail(self, renderer: str, node: hou.Node, asset_id: str) -> bool:
-        """A throwaway USD scaffold for `renderer`, one material rendered into it; False with none."""
-        scaffold = preview.build_usd_scaffold(self._preferences, renderer)
-        if scaffold is None:
-            return False
-        try:
-            return preview.render_usd_into(
-                scaffold, node, asset_id,
-                tile_icons.thumbnail_path(self._preferences, asset_id))
-        finally:
-            with hou.undos.disabler():  # a bare destroy brings the scaffold back on one Ctrl+Z
-                scaffold["net"].destroy()  # in the finally: an interrupt leaves no live ROP in /obj
+        """One MaterialX thumbnail, in the background; a batch of one."""
+        return self.render_batch(self._preferences, "Karma", [(asset_id, node)])
 
     @contextlib.contextmanager
     def _thumb_scene(self, renderer: str):
@@ -526,5 +569,5 @@ class ThumbNailRenderer:
         return self._rendered(path, "Redshift", asset_id, errors)
 
     def create_thumb_octane(self, node: hou.Node, asset_id: str) -> bool:
-        """One Octane thumbnail, in the MaterialX one's USD stage. ▸r/octane-thumbnail"""
-        return self._usd_thumbnail("Octane", node, asset_id)
+        """One Octane thumbnail in the MaterialX one's stage, in the background. ▸r/octane-thumbnail"""
+        return self.render_batch(self._preferences, "Octane", [(asset_id, node)])

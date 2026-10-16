@@ -269,29 +269,6 @@ class OctanesOwnBuilderRoundTrips(unittest.TestCase):
         self.assertEqual("USD Octane:Standard Surface", self.model.renderer_label(asset))
 
 
-class _CapturingRop:
-    """A USD Render ROP whose `execute` reads the stage the render would have seen."""
-
-    def __init__(self, settings):
-        self.settings, self.materials = settings, {}
-
-    def parm(self, name):
-        rop = self
-
-        class _Execute:
-            def pressButton(self):
-                from pxr import UsdShade
-                stage = rop.settings.inputs()[0].stage()
-                rop.materials = {
-                    str(prim.GetPath()): [o.GetFullName()
-                                          for o in UsdShade.Material(prim).GetOutputs()]
-                    for prim in stage.Traverse() if prim.GetTypeName() == "Material"}
-        return _Execute()
-
-    def path(self):
-        return "/obj/capturing_rop"
-
-
 @unittest.skipUnless(_octane_available(), "the Octane plugin is not loaded")
 class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
     """The MaterialX thumbnail's USD stage with Octane's settings; nothing renders."""
@@ -335,8 +312,6 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
         self.assertEqual(77, self.settings.parm(cap).eval())
 
     def test_it_writes_an_acescg_picture_the_size_of_the_tile(self):
-        node, parm = self.scaffold["product"]
-        self.assertEqual((self.scaffold["rop"].path(), "outputimage"), (node.path(), parm))
         self.assertEqual("ACEScg", self.settings.parm(
             "xn__octaneglobalociocolorspace_fjbg").evalAsString())
         self.assertEqual((self.prefs.rendersize,) * 2,
@@ -374,26 +349,29 @@ class TheOctaneThumbnailIsTheMaterialXStage(unittest.TestCase):
                      if c.type().name() == "mtlxtiledimage")
         self.assertTrue(image.parm("file").unexpandedString().endswith(".rat"))
 
-    def _rendered_materials(self, node):
-        self.scaffold["rop"] = _CapturingRop(self.settings)
+    def _batch_material(self, node):
+        """The material prim the batch USD holds for `node`, and its outputs."""
+        from pxr import Usd, UsdShade
         folder = test_support.scratch_dir("amaze_octane_thumb_")
         self.addCleanup(shutil.rmtree, folder, True)
-        out = os.path.join(folder, "t.png")
-        self.assertFalse(preview.render_usd_into(self.scaffold, node, "PROBE", out))
-        return self.scaffold["rop"].materials
+        batch = preview.write_batch(self.scaffold, [("PROBE", node)], folder)
+        prim = batch["prims"][0]
+        stage = Usd.Stage.Open(batch["usd"])
+        outputs = [o.GetFullName()
+                   for o in UsdShade.Material(stage.GetPrimAtPath(prim)).GetOutputs()]
+        return prim, outputs
 
-    def test_each_container_reaches_the_ball_as_an_octane_material(self):
+    def test_each_container_is_an_octane_material_in_the_batch(self):
         mat = hou.node("/mat")
         for kind in ("builder", "octane_solaris_material_builder", "octane_vopnet"):
             with self.subTest(container=kind):
                 node = (_octane_builder(mat) if kind == "builder"
                         else mat.createNode(kind))
                 self.addCleanup(self._drop, node)
-                materials = self._rendered_materials(node)
-                ball = [path for path in materials if path.startswith("/materials/")]
-                self.assertEqual(1, len(ball), materials)
+                prim, outputs = self._batch_material(node)
+                self.assertTrue(prim.startswith("/materials/"), prim)
                 self.assertTrue(any(o.endswith(":surface") and ":mtlx:" not in o
-                                    for o in materials[ball[0]]), materials)
+                                    for o in outputs), outputs)
 
     def test_a_classic_container_keeps_its_own_shader(self):
         vopnet = hou.node("/mat").createNode("octane_vopnet")

@@ -37,7 +37,7 @@ panel how to drive the shared widgets. Data is read/written through
 |---|---|---|
 | **Panel** | The whole window. One class, built once. | `panel/panel.py` → `AmazePanel` |
 | **Toolbar** | Top strip, mirrored left: Categories, View + Filter menus, Online, Comments, Grid/List toggle, Favourites star, size slider, Filter box, then Capture (File tab only) and the Preferences gear at the far right. Categories and Online were promoted out of the View menu (2026-08-01): a control that toggles state is a button, not a menu row, and having both is how a toggle ends up disagreeing with the thing it toggles. Every chip's four state pixmaps come from `ChipToggleButton.set_art` — art as drawn at rest, hover lightens, and a chip whose ON state is carried by COLOUR (star amber, Online amber) does not lighten at all. Disabled chips paint at 50%. | built in `init_ui()`, states in `ui_helpers.ChipToggleButton.set_art` |
-| **Section Tab Strip** | The Material/Color/Node/Code/File tab bar (singular since the 2026-07-31 merge; stored keys keep their historical names). Carries the **Cancel chip** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the bar's ONE visibility door and moves both — it stops the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
+| **Section Tab Strip** | The Material/Color/Node/Code/File tab bar (singular since the 2026-07-31 merge; stored keys keep their historical names). Carries the **Cancel chip** at its right end: shown exactly while the conversion bar shows — `panel.set_conversion_bar_visible` is the bar's ONE visibility door and moves both — it stops a background thumbnail render while one runs (`husk_job.jobs`, which owns the bar meanwhile), otherwise the File section's image batch (flush first, then cancel). | `ui_helpers.SectionTabBar` |
 | **Sidebar** | Left list: categories (asset sections + Color) or folders (File). Rows sit in the STORED order — the name sort retired 2026-08-14 — with "All" pinned to row 0 by the database, and the ORDER IS THE USER'S: hold a row for the platform's press-hold time (`QApplication.startDragTime`) and it grabs — live moves under the mouse, one write on release, Esc restores. One controller (`sidebar.SidebarReorder`) speaks the Section contract (`reorders_sidebar` + four verbs), so every section works the same and Online simply answers no. Whether a dragged tile may be DROPPED on a row is the context's answer — `Section.takes_category_drops` and `accepts_category_drop` — not a list of section keys held by the panel (`CATEGORY_SECTIONS`, retired 2026-08-04). | the `cat_list` widget, `panel/sidebar.py` |
 | **Grid** | The main thumbnail area. GRID scales 64-512 with a magnet at 128; LIST is a table fixed at its smallest size (the slider greys out) whose row is as wide as its COLUMNS need, scrolling sideways rather than squeezing or dropping any. LIST mode is a real `QTableView` over a real `QAbstractTableModel` (the migration completed 2026-08-04); the painted header strip, `ListColumnHeader`, `ListColumns` and the delegate's list-painting branch are all retired. **The grid selection speaks in ROWS** (2026-08-06): a SelectRows selection answers one index per CELL - ten per row, hidden thumb column included - so every reader collapses to one index per row at column 0 through `grid_columns.selected_rows`, and the current, double-click and drag indexes are normalised to column 0 the same way (`live_current_index`, the panel's double-click entry, the drag press). The table carries the same context-menu and double-click wiring as the list view. The column ORDER lives once, in `core/grid_columns.COLUMNS`, which every grid model answers per column. WIDTHS are fixed defaults the user can DRAG (`panel.COLUMN_DEFAULT_WIDTH`, derived from the real library), with the last column taking the slack — nothing is measured at runtime. Tile badges are grid-only: at list size a badge is 12px and its art rasterises to a dark smudge, so those four facts are columns there instead. | the `thumblist` and `thumbtable` widgets, `panel/grid.py`, `panel/delegates.py` |
 | **Tile** | One item in the Grid (thumbnail + name + subtitle). Painted by the **Tile Delegate**. | `AssetItemDelegate` |
@@ -686,7 +686,7 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 - **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
   `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
   `rig_key(renderer)` · `build_usd_scaffold(prefs, renderer)` ·
-  `render_usd_into(scaffold, node, id, png_path)`
+  `write_batch(scaffold, items, out_dir)` · `exr_to_png(exr, png, ocio, id)`
 - **Two scenes.** Redshift renders in an `/obj` scene (`ThumbNailScene`)
   with its own lights and a studio HDRI; `rig_key` answers the light-size
   spelling and RAISES on a renderer it does not name. Karma and Octane
@@ -697,11 +697,22 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
   write an ACEScg EXR that one conversion turns into the PNG through the
   viewer's OCIO display and view. A classic `octane_vopnet` is rebuilt
   into Octane's Solaris builder for the render, which LOPs can read.
-- **The USD stage is built once and the caller names the file.** It is
-  too expensive to build per material, so a batch renders many
-  materials into one — but like the `/obj` scene it writes where the
-  caller says, which is why `png_path` is an argument rather than
-  something the engine works out from the library.
+- **One stage and ONE husk per batch, in the background.** `write_batch`
+  writes the batch's stage once, every material its own prim, with the
+  USD Render ROP's Run Command off; `render/husk_job.py` then runs ONE
+  husk over it, frame N rendering material N — a pre-frame script binds
+  it to the ball, since a binding cannot be animated — and a post-frame
+  script names each frame's EXR, which `exr_to_png` turns into the tile's
+  PNG as it lands. husk starts without the Houdini plugins of renderers
+  it does not use; Octane restarts its delegate per frame or keeps the
+  first material. Most of a thumbnail was husk starting, once per
+  material (research.md ▸r/husk-startup). Like the `/obj` scene, it
+  writes where the caller says: `png_path` is the caller's, per material.
+- **The background job** (`husk_job.jobs`): one husk at a time, the rest
+  queued; `progressed` drives the panel's thin bar, the Cancel chip calls
+  `jobs.cancel()` (husk is stopped, finished PNGs stay), and
+  `thumbnailWritten(asset_id)` repaints that one tile. With no event loop
+  (hython, the suite) `render_batch` runs the same husk to the end.
 - **The part that is not Python:** the scene's node carries seven spare
   parameters the caller drives it through — `mat`, `path`,
   `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
@@ -1071,6 +1082,8 @@ core/library_prefs.py     the SHARED settings store (prefs.json) - the
 panel/notes_panel.py      the Comments pane (right splitter dock)
 core/{texture,geo}_library.py   per-kind engines: image cache/proxy, geo knowledge
 render/thumbs.py          Thumbnail SCENE building (shaderball, flipbook)
+render/husk_job.py        ONE background husk per thumbnail batch:
+                          its command, progress, Cancel, each PNG
 prefs/prefs.py            Prefs - what a setting IS (the property pairs)
 prefs/persistence.py      how it is STORED - save/load/merge/migrate,
                           mixed into Prefs, plus the portable paths
@@ -1105,8 +1118,8 @@ preview/                  THE PREVIEW ENGINE (below) - the scene a
 preview/shaderball_scene.py  the ball, the plane and their materials
 preview/thumbnail_scene.py   the room around them: lights, camera,
                           output - Redshift
-preview/usd_scene.py      Karma's and Octane's, one USD stage: built
-                          once, many materials rendered into it
+preview/usd_scene.py      Karma's and Octane's, one USD stage: written
+                          once per batch, a material prim each
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question

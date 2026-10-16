@@ -390,14 +390,12 @@ class TestMaterialLibrary(unittest.TestCase):
         self.assertTrue(flags & QtCore.Qt.ItemFlag.ItemIsDragEnabled)
 
     def test_render_thumbnail(self):
-        """Test render_thumbnail creates thumbnail for asset"""
-        mock_renderer = Mock()
-        self.mock_thumbs_cls.return_value = mock_renderer
-
+        """render_thumbnail hands that one asset to the renderer, as a batch of one."""
         index = self.library.index(0, 0)
         self.library.render_thumbnail(index.row())
 
-        mock_renderer.create_thumbnail.assert_called_once()
+        self.mock_thumbs_cls.render_assets.assert_called_once_with(
+            self.library.preferences, [self.mock_material])
 
     def test_import_asset_to_scene(self):
         """Test import_asset_to_scene imports asset to Houdini"""

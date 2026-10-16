@@ -151,17 +151,12 @@ class ABatchRefusesARowItCannotRender(unittest.TestCase):
         model.preferences = test_support.fixture_prefs(self)
         model._assets = [_Asset("id0")]
         from amaze.render import thumbs
-        from amaze import preview
         rendered = []
         with mock.patch.object(model, "_add_thumb_paths",
                                lambda row: None), \
              mock.patch.object(model, "rowCount", lambda: 1), \
-             mock.patch.object(preview, "build_usd_scaffold",
-                               lambda preferences, renderer="Karma":
-                               {"net": mock.Mock()}), \
-             mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
-                               lambda self, scaffold=None:
-                               rendered.append(scaffold)):
+             mock.patch.object(thumbs.ThumbNailRenderer, "render_assets",
+                               lambda preferences, mats: rendered.extend(mats)):
             model.render_thumbnails([0, 5])
         self.assertEqual(
             1, len(rendered),

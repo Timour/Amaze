@@ -159,6 +159,14 @@ Cancel**. Multi-selections always save as new.
 > and view transform they use. Renders can be switched off entirely in
 > Preferences ▸ Render.
 
+Karma and Octane thumbnails render in the background, and Houdini can
+be used while they render. **Update Preview** on several materials
+renders them in one pass. The thin bar above the grid shows how far the
+render has got, and each tile updates as its picture is finished.
+**Cancel**, at the right end of the tab row, stops the render: finished
+thumbnails are kept, and the rest keep their previous picture. Redshift
+thumbnails render inside Houdini, which waits for them.
+
 ### Versions
 
 Saving over a material you already have creates a version.

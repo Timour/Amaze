@@ -1,6 +1,5 @@
-"""The USD preview scene, Karma's and Octane's: one stage, rendered into once per material."""
+"""The USD preview scene, Karma's and Octane's: one stage per batch, written for husk to render."""
 import os
-import time
 
 import hou
 
@@ -10,6 +9,8 @@ from amaze.helpers import helpers, hostver
 from amaze.preview import thumbnail_scene
 
 RENDER_CAMERA = "/shaderBallScene/cameras/RenderCam"
+BALL = "/shaderBallScene/geo/ball"    # the prim every thumbnail material is bound to
+BATCH_MATERIAL = "/materials/amaze_thumb_%d"    # one per material in a batch's stage
 FLOOR_TEXTURE = {    # Octane reads no `.rat`; the EXR is the same picture ▸r/octane-thumbnail
     "Karma": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat",
     "Octane": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
@@ -41,7 +42,7 @@ def _octane_classic_into(lib, vopnet):
 
 
 def _karma_settings(net, preferences) -> tuple:
-    """Karma CPU's render properties and ROP: (settings, rop, (node, parm) naming the picture)."""
+    """Karma CPU's render properties and ROP: (settings, rop); husk's `-o` names the picture."""
     render_props = net.createNode("karmarenderproperties")
     render_props.parm("camera").set(RENDER_CAMERA)
     render_props.parm("res_mode").set("manual")
@@ -60,7 +61,7 @@ def _karma_settings(net, preferences) -> tuple:
     rop.parm("renderer").set("BRAY_HdKarma")    # Karma CPU
     rop.setFirstInput(render_props)
     rop.parm("soho_foreground").set(1)
-    return render_props, rop, (render_props, "picture")
+    return render_props, rop
 
 
 OCTANE_SETTINGS = "otoy::Octane"    # Octane's render settings LOP ▸r/octane-thumbnail
@@ -85,7 +86,7 @@ def _octane_settings(net, preferences) -> tuple:
     rop.parm("renderer").set("HdOctaneRendererPlugin")
     rop.setFirstInput(settings)
     rop.parm("soho_foreground").set(1)
-    return settings, rop, (rop, "outputimage")
+    return settings, rop
 
 
 RENDER_SETTINGS = {"Karma": _karma_settings, "Octane": _octane_settings}
@@ -141,8 +142,7 @@ def build_usd_scaffold(preferences, renderer="Karma"):
             lib1.parm("geopath1").set("/shaderBallScene/geo/plane/mesh_0")
             lib1.parm("assign1").set(1)
 
-            render_props, rop, product = RENDER_SETTINGS[renderer](
-                net, preferences)
+            render_props, rop = RENDER_SETTINGS[renderer](net, preferences)
         except Exception:
             net.destroy()    # a half-built scaffold is never handed back, and the destroy is under the same disabler as the create
             raise
@@ -152,178 +152,157 @@ def build_usd_scaffold(preferences, renderer="Karma"):
         "lib1": lib1,
         "render_props": render_props,
         "rop": rop,
-        "product": product,
         "display": display,
         "view": view,
         "space": space,
     }
 
 
-def render_usd_into(scaffold, node, asset_id: str, png_path: str) -> bool:
-    """One material into a built scaffold, True only if `png_path` is then there. ▸r/undo-groups"""
-    net = scaffold["net"]
-    lib1 = scaffold["lib1"]
-    render_props = scaffold["render_props"]
-    rop = scaffold["rop"]
-    display = scaffold["display"]
-    view = scaffold["view"]
-    space = scaffold["space"]
+def _stage_material(lib, node, asset_id, prim_path: str) -> str:
+    """One material copied into `lib` as its one entry at `prim_path`; the path, "" with none."""
+    curr_items = node
+    if not isinstance(node, list):
+        if curr_items.type().name() in COPIED_WHOLE:
+            curr_items = (node,)
+        elif "mtlxopen_pbr_surface" in curr_items.type().name():
+            curr_items = (node,)
+        else:
+            curr_items = node.children()
 
-    path = "%s.%d.acescg.exr" % (    # UNIQUE per render (timestamp suffix): Houdini caches images by file path, so a rerender writing the same intermediate EXR name can have its EXR->PNG conversion served the PREVIOUS render's cached pixels - a fresh-looking PNG with stale content. Off the same composition as `png_path`, so intermediate and final can never land in different directories
-        os.path.splitext(png_path)[0], int(time.time() * 1000))
+    with debug.timed("batch", "copy nodes into lib", asset_id=str(asset_id)):
+        if not isinstance(node, list) and node.type().name() == "octane_vopnet":
+            curr_nodes = [_octane_classic_into(lib, node)]
+        else:
+            curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
+    if curr_nodes:    # empty for a builder subnet with no children: nothing to render
+        curr_nodes[0].setSelected(True)
 
-    lib = None
-    copnet = None
-    with helpers.preserving_selection_and_current():    # `hou.copyNodesTo` below CLEARS the selection and selects its copies (documented), and the copies are destroyed at the end, so without this a thumbnail leaves the artist with nothing selected; restores on the interrupt and exception paths too. OUTSIDE the disabler, which it does not need - it opens its own for the restore, selection calls being undo entries ▸r/node-graph
-        with hou.undos.disabler():    # THE WHOLE PER-MATERIAL RENDER, not only the staging pairs: every node operation in here is an undo entry that destroying the per-material nodes does not remove ▸r/undo-groups
-            try:
-                lib = net.createNode("materiallibrary")
-                lib.setFirstInput(lib1)
+    mat_node = None
+    for n in curr_nodes:
+        if n.type().name() == "collect":
+            n.setGenericFlag(hou.nodeFlag.Material, True)
+            mat_node = n
 
-                curr_items = node
-                if not isinstance(node, list):
-                    if curr_items.type().name() in COPIED_WHOLE:
-                        curr_items = (node,)
-                    elif "mtlxopen_pbr_surface" in curr_items.type().name():
-                        curr_items = (node,)
-                    else:
-                        curr_items = node.children()
-
-                with debug.timed("batch", "copy nodes into lib",
-                                 asset_id=str(asset_id)):
-                    if (not isinstance(node, list)
-                            and node.type().name() == "octane_vopnet"):
-                        curr_nodes = [_octane_classic_into(lib, node)]
-                    else:
-                        curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
-                if curr_nodes:    # empty when the material is a builder subnet with zero children - nothing to select, nothing to render
-                    curr_nodes[0].setSelected(True)
-
-                mat_node = None
-                for n in curr_nodes:
-                    if n.type().name() == "collect":
-                        n.setGenericFlag(hou.nodeFlag.Material, True)
-                        mat_node = n
-
-                if mat_node is None:
-                    for n in curr_nodes:
-                        if n.type().name() == "mtlxstandard_surface":
-                            n.setGenericFlag(hou.nodeFlag.Material, True)
-                            mat_node = n
-                            break
-                        elif ("subnet" in n.type().name()
-                              or n.type().name() == OCTANE_LOP_CONTAINER):
-                            n.setGenericFlag(hou.nodeFlag.Material, True)
-                            mat_node = n
-                            break
-
-                if debug.is_on():
-                    debug.event(
-                        "thumb", "karma material content",
-                        asset_id=str(asset_id),
-                        ocio_display=scaffold.get("display"),
-                        ocio_view=scaffold.get("view"),
-                        textures=(debug.texture_snapshot(curr_nodes[0])
-                                  if curr_nodes else None),    # GUARDED like the identical index above: a diagnosis aid must never change the outcome, and an unguarded one here raises only for the people running with Debug Mode on
-                    )
-                debug.event(
-                    "thumb", "karma material node chosen",
-                    asset_id=str(asset_id),
-                    mat_node=mat_node.name() if mat_node else None,
-                    mat_type=mat_node.type().name() if mat_node else None,
-                    candidates=[(n.name(), n.type().name())
-                                for n in curr_nodes],
-                )
-                if mat_node is not None:
-                    lib.parm("materials").set(1)    # ONE explicit entry, the pattern lib1 already uses, not `fillmaterials`: auto-fill writes an entry per material-ish node in the copied network and the extra entries' prims never generate, one yellow `Ignoring missing explicit primitive` node error each, on every render
-                    lib.parm("matnode1").set(mat_node.name())
-                    lib.parm("matpath1").set("/materials/" + mat_node.name())
-                else:
-                    lib.parm("fillmaterials").pressButton()    # no recognisable material node - auto-fill rather than render nothing
-                lib.parm("assign1").set(1)
-                lib.parm("geopath1").set("/shaderBallScene/geo/ball")
-
-                product_node, product_parm = scaffold["product"]
-                product_node.parm(product_parm).set(path)
-                render_props.setFirstInput(lib)
-
-                with debug.timed("batch", "husk render (rop execute)",
-                                 asset_id=str(asset_id)):
-                    rop.parm("execute").pressButton()
-
-                if not os.path.exists(path):
-                    debug.event(    # the render produced nothing - fail loudly instead of letting the conversion write a PNG from stale data; the old PNG stays, honestly old
-                        "thumb", "karma render produced no EXR",
-                        asset_id=str(asset_id), expected=path,
-                        rop=rop.path(),
-                        rop_errors=helpers.node_errors(rop),
-                        lib_errors=helpers.node_errors(lib),
-                    )
-                    debug.note("Karma thumbnail render produced no EXR for "
-                               + str(asset_id)
-                               + " - keeping the old thumbnail")
-                    return False
-
-                if hostver.has_new_cops():
-                    copnet = net.createNode("copnet")
-                    copnet.setName("exr_to_png", unique_name=True)
-
-                    cop_file = copnet.createNode("file")
-                    cop_file.parm("filename").set(path)
-                    cop_file.parm("aovs").set(1)
-                    cop_file.parm("aov1").set("C")
-                    cop_out = copnet.createNode("rop_image")
-                    cop_out.parm("trange").set(0)
-
-                    cop_out.setInput(0, cop_file)
-                    cop_out.parm("colorconversion").set(1)    # Bake OpenColorIO
-                    cop_out.parm("ociodisplay").set(display)
-                    cop_out.parm("ocioview").set(view)
-
-                    cop_out.parm("copoutput").set(png_path)
-                    with debug.timed("batch", "exr->png conversion",
-                                     asset_id=str(asset_id)):
-                        cop_out.parm("execute").pressButton()
-
-                else:
-                    copnet = net.createNode("cop2net")    # the old COPs, whose OCIO capabilities are more restricted
-                    copnet.setName("exr_to_png", unique_name=True)
-
-                    cop_file = copnet.createNode("file")
-                    cop_file.parm("nodename").set(0)
-                    cop_file.parm("filename1").set(path)
-                    cop_file.parm("colorspace").set(3)    # OpenColorIO
-                    cop_file.parm("ocio_space").set(space)
-                    cop_out = copnet.createNode("rop_comp")
-                    cop_out.parm("trange").set(0)
-
-                    cop_out.setInput(0, cop_file)
-                    cop_out.parm("convertcolorspace").set(3)
-                    cop_out.parm("ocio_display").set(display)
-                    cop_out.parm("ocio_view").set(view)
-
-                    cop_out.parm("copoutput").set(png_path)
-                    cop_out.parm("execute").pressButton()
-            finally:
-                if copnet is not None:    # ONLY the per-material nodes, so the scaffold stays clean for the next material; in the `finally`, so an interrupt leaves no orphaned material lib or copnet behind
-                    copnet.destroy()
-                if lib is not None:
-                    lib.destroy()
-                if os.path.exists(path):    # also INSIDE the finally: `hou.OperationInterrupted` from ESC used to propagate past the removal, and the names are timestamp-unique by design, so nothing ever reclaimed what an interrupted render left in the LIBRARY's image directory
-                    try:
-                        os.remove(path)
-                    except OSError as exc:
-                        debug.event(    # a held intermediate (sync client, viewer) must not fail the render
-                            "thumb", "intermediate not removed",
-                            path=path, error=str(exc))
+    if mat_node is None:
+        for n in curr_nodes:
+            if n.type().name() == "mtlxstandard_surface":
+                n.setGenericFlag(hou.nodeFlag.Material, True)
+                mat_node = n
+                break
+            elif ("subnet" in n.type().name()
+                  or n.type().name() == OCTANE_LOP_CONTAINER):
+                n.setGenericFlag(hou.nodeFlag.Material, True)
+                mat_node = n
+                break
 
     if debug.is_on():
-        debug.event("thumb", "karma thumbnail written",    # measure the PNG that was actually written: at tile size an all-zero render, a transparent image and a stale file are indistinguishable by eye and are different bugs
-                    asset_id=str(asset_id), **debug.image_stats(png_path))
+        debug.event(
+            "thumb", "karma material content",
+            asset_id=str(asset_id),
+            textures=(debug.texture_snapshot(curr_nodes[0])
+                      if curr_nodes else None),    # guarded: a diagnosis aid never changes the outcome
+        )
+    debug.event(
+        "thumb", "karma material node chosen",
+        asset_id=str(asset_id),
+        mat_node=mat_node.name() if mat_node else None,
+        mat_type=mat_node.type().name() if mat_node else None,
+        candidates=[(n.name(), n.type().name()) for n in curr_nodes],
+    )
+    if mat_node is not None:
+        lib.parm("materials").set(1)    # ONE entry: auto-fill's extra entries never generate
+        lib.parm("matnode1").set(mat_node.name())
+        lib.parm("matpath1").set(prim_path)
+    else:
+        lib.parm("fillmaterials").pressButton()    # no recognisable material node: auto-fill
+    lib.parm("assign1").set(0)    # husk binds each frame's material itself ▸r/husk-startup
+    if not lib.parm("materials").evalAsInt():
+        return ""
+    return lib.parm("matpath1").evalAsString()
 
+
+def write_batch(scaffold, items, out_dir: str) -> dict:
+    """Every (asset_id, node) into ONE USD file for husk, a material prim each. ▸r/husk-startup"""
+    net = scaffold["net"]
+    render_props = scaffold["render_props"]
+    rop = scaffold["rop"]
+    libs = []
+    prims = []
+    with helpers.preserving_selection_and_current():    # copyNodesTo clears it ▸r/node-graph
+        with hou.undos.disabler():    # every node operation is an undo entry ▸r/undo-groups
+            try:
+                upstream = scaffold["lib1"]
+                for i, (asset_id, node) in enumerate(items):
+                    lib = net.createNode("materiallibrary")
+                    lib.setFirstInput(upstream)
+                    libs.append(lib)
+                    prims.append(_stage_material(lib, node, asset_id, BATCH_MATERIAL % i))
+                    upstream = lib
+                render_props.setFirstInput(upstream)
+                rop.parm("runcommand").set(0)    # the caller starts husk, in the background
+                rop.parm("savetodirectory_directory").set(out_dir)
+                with debug.timed("batch", "write batch usd", materials=len(items)):
+                    rop.render()
+            finally:
+                render_props.setFirstInput(scaffold["lib1"])
+                for lib in reversed(libs):
+                    lib.destroy()
+    return {
+        "usd": os.path.join(out_dir, rop.parm("lopoutput").evalAsString()),
+        "prims": prims,
+        "ball": BALL,
+        "renderer": scaffold["renderer"],
+        "ocio": (scaffold["display"], scaffold["view"], scaffold["space"]),
+    }
+
+
+def exr_to_png(exr_path: str, png_path: str, ocio, asset_id: str = "") -> bool:
+    """husk's ACEScg EXR as the tile's PNG, through the viewer's OCIO display and view."""
+    display, view, space = ocio
+    copnet = None
+    with hou.undos.disabler():    # a create/destroy pair on the live stack returns on Ctrl+Z
+        try:
+            if hostver.has_new_cops():
+                copnet = hou.node("/obj").createNode("copnet")
+                copnet.setName("amaze_exr_to_png", unique_name=True)
+                cop_file = copnet.createNode("file")
+                cop_file.parm("filename").set(exr_path)
+                cop_file.parm("aovs").set(1)
+                cop_file.parm("aov1").set("C")
+                cop_out = copnet.createNode("rop_image")
+                cop_out.parm("trange").set(0)
+                cop_out.setInput(0, cop_file)
+                cop_out.parm("colorconversion").set(1)    # Bake OpenColorIO
+                cop_out.parm("ociodisplay").set(display)
+                cop_out.parm("ocioview").set(view)
+                cop_out.parm("copoutput").set(png_path)
+                with debug.timed("batch", "exr->png conversion", asset_id=str(asset_id)):
+                    cop_out.parm("execute").pressButton()
+            else:
+                copnet = hou.node("/obj").createNode("cop2net")    # the old COPs
+                copnet.setName("amaze_exr_to_png", unique_name=True)
+                cop_file = copnet.createNode("file")
+                cop_file.parm("nodename").set(0)
+                cop_file.parm("filename1").set(exr_path)
+                cop_file.parm("colorspace").set(3)    # OpenColorIO
+                cop_file.parm("ocio_space").set(space)
+                cop_out = copnet.createNode("rop_comp")
+                cop_out.parm("trange").set(0)
+                cop_out.setInput(0, cop_file)
+                cop_out.parm("convertcolorspace").set(3)
+                cop_out.parm("ocio_display").set(display)
+                cop_out.parm("ocio_view").set(view)
+                cop_out.parm("copoutput").set(png_path)
+                cop_out.parm("execute").pressButton()
+        finally:
+            if copnet is not None:
+                copnet.destroy()
+
+    if debug.is_on():
+        debug.event("thumb", "karma thumbnail written",    # a black, empty or stale PNG look alike
+                    asset_id=str(asset_id), **debug.image_stats(png_path))
     if not os.path.exists(png_path) or os.path.getsize(png_path) == 0:
-        debug.event("thumb", "karma produced no PNG",    # THE OUTPUT IS CHECKED, not assumed - a copnet that would not cook, an unwritable `img/` or a rejected OCIO string otherwise read as success, and a failed render keeps the OLD thumbnail, so the tile shows the previous image and nothing says the new one never happened. The measurement above cannot do this job: it runs only under Debug Mode
+        debug.event("thumb", "karma produced no PNG",    # checked, never assumed: the old one stays
                     asset_id=str(asset_id), path=png_path)
         return False
-
     return True
