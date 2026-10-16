@@ -1583,6 +1583,26 @@ class ADocumentIsNotATableOfRows(StoreCase):
                          "a retired key was adopted off the peer's copy "
                          "and written straight back")
 
+    def test_a_settle_judges_what_the_adoption_took_in_before_the_write(self):
+        """A rule only the caller can judge runs over the peer's folded-in blocks, and its answer lands."""
+        store = self._own(self._spec(self.NESTED))
+        store.replace({"users": {"u1": {}}})
+        self._peer_wrote({"users": {"u1": {}, "u2": {"x": 1}}})
+        seen = []
+
+        def settle(document):
+            seen.append(sorted(document["users"]))
+            document["users"] = {uid: block for uid, block
+                                 in document["users"].items() if uid != "u2"}
+
+        self.assertTrue(store.replace({"users": {"u1": {}}}, settle=settle))
+        self.assertEqual([["u1", "u2"]], seen,
+                         "the settle ran before the peer's block was folded in")
+        self.assertEqual({"u1"}, set(self.on_disk("doc.json")["users"]),
+                         "the settle's answer is not what was written")
+        self.assertEqual({"u1"}, set(store.everyones()["users"]),
+                         "the cache disagrees with the file")
+
     def test_a_key_the_document_drops_is_GONE(self):
         """Delete-by-omission is what the callers here do - a migration pops the key it consumed."""
         store = self._own(self._spec())

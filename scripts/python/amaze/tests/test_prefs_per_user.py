@@ -667,6 +667,69 @@ class EachBlockKnowsItsLibrary(PerUserCase):
         self.assertEqual(self._key(p), self._blocks(p)[keep].get("library"),
                          "a writer that did not carry the field erased it")
 
+    def _elsewhere(self):
+        """The other Houdini's own open tables, kept between its steps as a second process keeps them."""
+        from unittest import mock
+        from amaze.core import keyed_store
+        tables = self.__dict__.setdefault("_other_tables", {})
+        return mock.patch.object(keyed_store, "_open", tables)
+
+    def _two_houdinis(self):
+        from amaze.core import users
+        p, keep = self._library()
+        gone = users.create(p, "Sienna")
+        users.adopt(p, gone)
+        users.adopt(p, keep)
+        return p, keep, gone, self._reopened(p)
+
+    def test_a_stale_houdini_saving_after_a_delete_leaves_the_block_out(self):
+        """Another Houdini deletes a user; this one, its roster read before that, saves."""
+        from amaze.core import keyed_store, users
+        p, keep, gone, other = self._two_houdinis()
+        with self._elsewhere():
+            self.assertTrue(users.delete(other, gone), "premise: deleted there")
+        self.assertIn(gone, keyed_store.opened(users.SPEC, p).everyones(),
+                      "premise: this Houdini's roster is stale")
+        p.view_mode = "list"
+        p.save()
+        self.assertNotIn(gone, self._blocks(p),
+                         "a stale Houdini wrote a deleted user's block back")
+        self.assertIn(keep, self._blocks(p))
+
+    def test_a_delete_that_merges_a_peers_save_leaves_the_block_out(self):
+        """This Houdini saved after the other read; the other's delete and both next saves merge."""
+        from amaze.core import users
+        p, keep, gone, other = self._two_houdinis()
+        p.view_mode = "list"
+        p.save()
+        with self._elsewhere():
+            self.assertTrue(users.delete(other, gone), "premise: deleted there")
+        self.assertNotIn(gone, self._blocks(p),
+                         "the delete's own save merged the block back in")
+        p.save()
+        with self._elsewhere():
+            other.save()
+        self.assertNotIn(gone, self._blocks(p),
+                         "two Houdinis saving in turn kept a deleted user's block")
+        self.assertIn(keep, self._blocks(p))
+
+    def test_a_merged_block_the_rules_spare_is_kept(self):
+        """Merged in from disk: another library's block and one without the field both stay."""
+        p, keep = self._library()
+        p.save()
+
+        def peer(blocks):
+            blocks[self.STRANGER] = {"view_mode": "list",
+                                     "library": "~/another_library/"}
+            blocks[self.STRANGER[::-1]] = {"view_mode": "list"}
+
+        self._rewrite(p, peer)
+        p.save()
+        held = self._blocks(p)
+        self.assertIn(self.STRANGER, held, "another library's block was pruned")
+        self.assertIn(self.STRANGER[::-1], held,
+                      "a block without the field was pruned")
+
 
 class TheTableAgreesWithInit(PerUserCase):
 

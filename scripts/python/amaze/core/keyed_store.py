@@ -752,13 +752,14 @@ class Store:
         return self._drop([self._key(str(k)) for k in keys
                            if self._key(str(k)) in self._table])
 
-    def replace(self, document: dict, retire=()) -> Written:
+    def replace(self, document: dict, retire=(), settle=None) -> Written:
         """Commit a WHOLE document - a key its author dropped is GONE; `retire` names what this build removed. ▸p/document-not-table"""
         if not isinstance(document, dict):
             raise TypeError("a document is an object, not %s"
                             % type(document).__name__)
         staged = {str(key): value for key, value in document.items()}
-        return self._commit(staged, tuple(staged), retire=retire)
+        return self._commit(staged, tuple(staged), retire=retire,
+                            settle=settle)    # settle(document): the caller's rule over what the merge took in
 
     def reread(self) -> Written:
         """Read the file again, discarding this Store's cache, and answer what the reopened store can do. ▸p/keyed-store-slate"""
@@ -780,7 +781,7 @@ class Store:
         self.reread()
         return True
 
-    def _commit(self, staged: dict, keys, retire=()) -> Written:
+    def _commit(self, staged: dict, keys, retire=(), settle=None) -> Written:
         """EVERY write lands here - one guard set, and the cache moves only on success. ▸p/store-commit-order"""
         spec = self.spec
         if not self.writable:
@@ -807,6 +808,8 @@ class Store:
                 foreign.pop(str(key), None)
             for key in keys:            # a key just SET stops being foreign
                 foreign.pop(key, None)
+            if settle is not None:
+                settle(staged)          # last, so it judges the peer's adopted keys too
             hostos.snapshot_before_write(self.path)
             written = hostos.write_json_atomic(
                 self.path,

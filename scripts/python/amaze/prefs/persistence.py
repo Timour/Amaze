@@ -188,7 +188,8 @@ class _Persistence:
         retire = list(self._RETIRED_KEYS)
         if self._library_user:  # the per-user spellings retire only once a user exists to carry them, so a userless session keeps the old flat shape
             retire.extend(USER_RETIRED)
-        if store.replace(self.data, retire=retire):
+        if store.replace(self.data, retire=retire,
+                         settle=self._drop_departed_merged):
             self._absorb_committed(store)
 
     def _absorb_committed(self, store) -> None:
@@ -349,24 +350,51 @@ class _Persistence:
         self._users_blocks.pop(uid, None)
         self.save()
 
+    def _departed(self, blocks: dict, roster=None) -> list:
+        """The uids in `blocks` the prune drops, logged; `roster` is read here only when one could go."""
+        library = _encode_path(str(self.dir or ""))
+        if not library:
+            return []
+        mine = keyed_store.path_identity(library)
+        candidates = [
+            uid for uid, block in blocks.items()
+            if uid != self._library_user and isinstance(block, dict)
+            and isinstance(block.get(LIBRARY_FIELD), str)
+            and block[LIBRARY_FIELD]
+            and keyed_store.path_identity(block[LIBRARY_FIELD]) == mine]
+        if candidates and roster is None:
+            roster = users.roster(self)
+        if not roster:
+            return []    # unread, unreadable or empty: never a roster to prune against
+        doomed = [uid for uid in candidates if uid not in roster]
+        for uid in doomed:
+            debug.event("prefs", "a user the library no longer lists "
+                        "- their view state dropped", uid=uid)
+        return doomed
+
     def _settle_user_blocks(self) -> None:
         """Mark the open library's blocks and drop those whose user its read roster no longer lists."""
         library = _encode_path(str(self.dir or ""))
         roster = users.roster(self) if library else set()
-        if not roster:
-            return    # unread, unreadable or empty: never a roster to prune against
-        mine = keyed_store.path_identity(library)
-        for uid in list(self._users_blocks):
+        for uid in roster.intersection(self._users_blocks):
             block = self._users_blocks[uid]
-            if uid in roster:
-                if block.get(LIBRARY_FIELD) != library:
-                    self._users_blocks[uid] = dict(
-                        block, **{LIBRARY_FIELD: library})
-            elif (uid != self._library_user and keyed_store.path_identity(
-                    block.get(LIBRARY_FIELD) or "") == mine):
-                del self._users_blocks[uid]
-                debug.event("prefs", "a user the library no longer lists "
-                            "- their view state dropped", uid=uid)
+            if block.get(LIBRARY_FIELD) != library:
+                self._users_blocks[uid] = dict(
+                    block, **{LIBRARY_FIELD: library})
+        for uid in self._departed(self._users_blocks, roster):
+            del self._users_blocks[uid]
+
+    def _drop_departed_merged(self, document: dict) -> None:
+        """The same prune over blocks a save's merge took in from disk, because a merge only adds."""
+        blocks = document.get("users")
+        if not isinstance(blocks, dict):
+            return
+        merged = {uid: block for uid, block in blocks.items()
+                  if uid not in self._users_blocks}
+        doomed = self._departed(merged) if merged else []
+        if doomed:
+            document["users"] = {uid: block for uid, block in blocks.items()
+                                 if uid not in doomed}
 
     def refresh_data(self) -> dict:
         """Rebuild self.data as the EXACT dict save() serializes, and return it - one producer, which the debug session snapshot also records."""
