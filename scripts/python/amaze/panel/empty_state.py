@@ -40,7 +40,9 @@ def verdict(panel) -> tuple:
 
     source = proxy.sourceModel() if hasattr(proxy, "sourceModel") else None
     total = source.rowCount() if source is not None else 0
-    if not total:
+    section = panel._section() if hasattr(panel, "_section") else None
+    nothing_yet = section.nothing_yet(source) if section is not None else not total
+    if nothing_yet:
         return (NOTHING_YET, "")
 
     search = ""
@@ -52,9 +54,9 @@ def verdict(panel) -> tuple:
             search = ""
     if search:
         return (NO_MATCH, search)
-    if _favourites_only(panel) and not _any_favourite(source):
+    if total and _favourites_only(panel) and not _any_favourite(source):
         return (NO_FAVOURITES, "")
-    return (None, "")    # an empty category shows its grid, so a right-click there reaches its menu
+    return (None, "")    # an empty category or location shows its grid, and its right-click menu
 
 
 def _favourites_only(panel) -> bool:

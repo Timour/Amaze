@@ -172,6 +172,10 @@ class Section:
         """Narrow this section to one Filter-menu value; the panel owns the menu and this owns what an entry MEANS, which is how five sections share one button over five unrelated dimensions."""
         pass
 
+    def nothing_yet(self, source) -> bool:
+        """Is this section's first-run blank true? `source` is the grid's model, nothing in it."""
+        return not (source.rowCount() if source is not None else 0)
+
     def select_category(self, index) -> None:
         pass
 
@@ -1177,6 +1181,10 @@ class FolderSection(Section):
     def standing_key(self) -> str:
         files = self._p(self.files_attr)
         return files.browsing() if files is not None else ""
+
+    def nothing_yet(self, source) -> bool:
+        folders = self._p(self.folders_attr)    # the grid lists one location; the blank means none
+        return folders is None or not folders._folders()
 
     def tile_models(self):
         return self._p(self.files_attr), self._p(self.files_proxy_attr)

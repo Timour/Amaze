@@ -32,6 +32,28 @@ def pane_hit(panel):
     return host.childAt(host.rect().center())
 
 
+def right_click_menu(testcase, panel, table) -> list:
+    """(label, enabled) per entry of the menu a right-click in the grid pane opens."""
+    grid.show_table(panel, table)
+    hit = pane_hit(panel)
+    view = grid.visible_view(panel)
+    testcase.assertTrue(hit is view or view.isAncestorOf(hit),
+                        "a right-click on the empty grid lands on %s, not the grid"
+                        % type(hit).__name__)
+    hit = view.viewport()    # never shown, so its geometry is not laid out
+    shown = []
+
+    def _exec(menu, *_args, **_kwargs):
+        shown.extend((action.text(), action.isEnabled())
+                     for action in menu.actions() if not action.isSeparator())
+
+    point = QtCore.QPoint(10, 10)
+    with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
+        QtWidgets.QApplication.sendEvent(hit, QtGui.QContextMenuEvent(
+            QtGui.QContextMenuEvent.Reason.Mouse, point, hit.mapToGlobal(point)))
+    return shown
+
+
 class TheDeclarationsAreWellFormed(unittest.TestCase):
     """Source-derived: no panel needed."""
 
@@ -444,26 +466,7 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self._stand_on_a_new_category("code")
         for table in (False, True):
             with self.subTest(list_mode=table):
-                grid.show_table(self.panel, table)
-                hit = pane_hit(self.panel)
-                view = grid.visible_view(self.panel)
-                self.assertTrue(hit is view or view.isAncestorOf(hit),
-                                "a right-click on the empty category lands "
-                                "on %s, not the grid" % type(hit).__name__)
-                hit = view.viewport()    # never shown, so its geometry is not laid out
-                shown = []
-
-                def _exec(menu, *_args, **_kwargs):
-                    shown.extend((action.text(), action.isEnabled())
-                                 for action in menu.actions()
-                                 if not action.isSeparator())
-
-                point = QtCore.QPoint(10, 10)
-                with mock.patch.object(QtWidgets.QMenu, "exec_", _exec):
-                    QtWidgets.QApplication.sendEvent(
-                        hit, QtGui.QContextMenuEvent(
-                            QtGui.QContextMenuEvent.Reason.Mouse, point,
-                            hit.mapToGlobal(point)))
+                shown = right_click_menu(self, self.panel, table)
                 self.assertTrue(shown, "the right-click opened no menu")
                 self.assertEqual(("New File", True), shown[0],
                                  "the empty grid's menu does not lead with "
@@ -547,6 +550,87 @@ class AnEmptyCategoryIsThePlainGrid(unittest.TestCase):
         self.assertEqual((empty_state.UNREACHABLE, gone),
                          empty_state.verdict(panel))
         self.assertEqual(["blank"], faces(panel))
+
+
+class AnEmptyLocationIsThePlainGrid(unittest.TestCase):
+    """A readable File location with no files shows its grid, as an empty category does."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        self.folders = self.panel.file_folders_model
+        self.files = self.panel.file_files_model
+        self.fixture = list(self.folders._folders())
+        self.assertTrue(self.fixture, "premise: the fixture registers a location")
+
+    def _register_empty(self):
+        empty = test_support.posix_path(test_support.scratch_dir("amaze_empty_")) + "/"
+        self.addCleanup(shutil.rmtree, empty, True)
+        self.assertTrue(self.folders.add_folder(empty), "premise: the location registered")
+        return empty
+
+    def _drop_fixture(self):
+        for path in self.fixture:
+            self.assertTrue(self.folders.remove_folder(self.folders.row_of(path)),
+                            "premise: the fixture location was not removed")
+
+    def _stand(self, row):
+        """A left click on the sidebar row: select it, then its own clicked handler."""
+        view = self.panel.cat_list
+        view.selectionModel().setCurrentIndex(
+            view.model().index(row, 0),
+            QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.panel.update_selected_cat()
+        QtWidgets.QApplication.processEvents()
+        self.assertEqual(0, self.files.rowCount(), "premise: the grid lists no file")
+
+    def _assert_plain_grid(self):
+        self.assertEqual((None, ""), empty_state.verdict(self.panel),
+                         "an empty location still asks for a blank")
+        self.assertNotIn("blank", faces(self.panel),
+                         "words cover the grid of an empty location")
+        self.assertEqual(1, len(faces(self.panel)),
+                         "not exactly one grid view is up: %s" % faces(self.panel))
+
+    def test_an_empty_location_shows_the_grid_and_no_words(self):
+        self._stand(self.folders.row_of(self._register_empty()))
+        self._assert_plain_grid()
+
+    def test_all_over_locations_that_hold_nothing_shows_the_grid(self):
+        self._register_empty()
+        self._drop_fixture()
+        self._stand(0)
+        self._assert_plain_grid()
+
+    def test_the_favourites_star_over_an_empty_location_shows_the_grid(self):
+        """An empty location has nothing a star could hide, so its grid stays up."""
+        self._stand(self.folders.row_of(self._register_empty()))
+        self.panel.cb_favsonly.setChecked(True)
+        self.addCleanup(self.panel.cb_favsonly.setChecked, False)
+        QtWidgets.QApplication.processEvents()
+        self._assert_plain_grid()
+
+    def test_a_right_click_on_an_empty_location_opens_the_grid_menu(self):
+        self._stand(self.folders.row_of(self._register_empty()))
+        section = self.panel._section()
+        menu, _verbs = grid.build_grid_menu(self.panel, section, [], None)
+        self.addCleanup(menu.deleteLater)
+        expected = [(action.text(), action.isEnabled()) for action in menu.actions()
+                    if not action.isSeparator()]
+        self.assertTrue(expected, "premise: File builds a grid menu over nothing selected")
+        for table in (False, True):
+            with self.subTest(list_mode=table):
+                self.assertEqual(expected, right_click_menu(self, self.panel, table),
+                                 "the right-click opened another menu")
+
+    def test_no_location_keeps_the_first_run_blank(self):
+        self._drop_fixture()
+        self._stand(0)
+        self.assertEqual((empty_state.NOTHING_YET, ""), empty_state.verdict(self.panel))
+        self.assertEqual(["blank"], faces(self.panel))
+        self.assertEqual(amazetheme.EMPTY_FILE[empty_state.NOTHING_YET][0],
+                         self.panel.empty_page._head.text())
 
 
 class TheUnreachableBlankPointsAtSomethingReal(unittest.TestCase):
