@@ -680,7 +680,7 @@ class MenuWiringTest(unittest.TestCase):
         """One panel handler serves all five, so all five must speak the same two methods - whatever they store the choice in. - What survives in this file is what is about tile ICONS: four menu tests were retired 2026-08-03 with the six per-section handlers they drove - `_material_rc_menu` and its siblings - which checked that Customize reached the handler, that Category had not come back, that Info stayed out of Color and Node, and that the selection law greyed rather than hid; test_grid_menu.py drives every context's real menu through the one builder and asserts the whole rendering instead."""
         for model_attr, _proxy in self.SECTIONS:
             model = getattr(self.panel, model_attr, None)
-            for method in ("tile_icon", "set_tile_icon"):
+            for method in ("tile_icon", "set_tile_icon", "set_tile_icons"):
                 self.assertTrue(
                     callable(getattr(model, method, None)),
                     "%s has no %s()" % (model_attr, method))
@@ -692,6 +692,7 @@ class MenuWiringTest(unittest.TestCase):
         calls = {   # method -> the args the panel handler passes
             "tile_icon":        (0,),
             "set_tile_icon":    (0, {"symbol": "star"}),
+            "set_tile_icons":   ([0], {"symbol": "star"}),
             "commit_tile_icons": ([0],),
         }
         checked = 0
@@ -748,8 +749,8 @@ class MenuWiringTest(unittest.TestCase):
                 continue        # nothing selected-able in this library
             with mock.patch.object(icon_dialog, "IconDialog", _Dialog), \
                     mock.patch.object(type(model), "commit_tile_icons"), \
-                    mock.patch.object(type(model), "set_tile_icon") as applied:
-                applied.return_value = True  # commit_tile_icons is patched too: it calls save(), and nothing here may touch real data
+                    mock.patch.object(type(model), "set_tile_icons") as applied:
+                applied.return_value = 0  # commit_tile_icons is patched too: it calls save(), and nothing here may touch real data
                 self.panel.edit_tile_icon(
                     model, proxy, [proxy.index(0, 0)])
             self.assertTrue(
@@ -1365,6 +1366,46 @@ class TheLineWeightRedrawsEverySection(unittest.TestCase):
         self.assertNotEqual(thin, bold,
                             "the Colors tile serves its cached picture at "
                             "the old line weight")
+
+
+class AnIconOverASelectionWritesOnce(unittest.TestCase):
+    """The shared Customize apply commits `icons.json` once per gesture, and every row still lands."""
+
+    SPEC = {"name": "circle", "bg": "#e0523a", "ink": "dark"}
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def test_every_section_commits_a_selection_s_icon_once(self):
+        from amaze.helpers import hostos
+        self.panel.section_tabs.setChecked("file")    # File lists its rows once shown
+        QtWidgets.QApplication.processEvents()
+        checked = []
+        for attr, _proxy in MenuWiringTest.SECTIONS:
+            model = getattr(self.panel, attr)
+            rows = list(range(model.rowCount()))
+            if len(rows) < 2:
+                continue
+            with self.subTest(model=attr):
+                writes = []
+                real = hostos.write_json_atomic
+
+                def counted(path, *args, writes=writes, **kwargs):
+                    if os.path.basename(path) == tile_icons.OVERRIDES_FILE:
+                        writes.append(path)
+                    return real(path, *args, **kwargs)
+
+                with mock.patch.object(hostos, "write_json_atomic", counted):
+                    self.panel._apply_icon_spec(model, rows, self.SPEC)
+                self.assertEqual(1, len(writes), "%s wrote %s %d times for "
+                                 "one gesture" % (attr, tile_icons.OVERRIDES_FILE,
+                                                  len(writes)))
+                self.assertEqual([tile_icons.normalise(self.SPEC)] * len(rows),
+                                 [model.tile_icon(row) for row in rows],
+                                 "%s: a row did not take the icon" % attr)
+                checked.append(attr)
+        self.assertIn("material_model", checked, "premise: Materials checked")
+        self.assertIn("file_files_model", checked, "premise: File checked")
 
 
 if __name__ == "__main__":

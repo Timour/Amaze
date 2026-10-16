@@ -454,11 +454,29 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         row = index.row() if hasattr(index, "row") else int(index)
         if not 0 <= row < len(self._assets):
             return False
+        return self.set_tile_icons([row], spec) == 0
+
+    def set_tile_icons(self, rows, spec) -> int:
+        """Give every row in `rows` the icon `spec` in ONE store write; answers how many were not written."""
+        valid = [row for row in rows if 0 <= row < len(self._assets)]
+        if not valid:
+            return len(rows)
+        chosen = {row: tile_icons.choice_for(self, row, spec) for row in valid}
+        held = tile_icons.set_overrides(  # the store is the one home, so a clear here is the whole delete
+            self.preferences,
+            {str(self._assets[row].mat_id): choice
+             for row, choice in chosen.items()})
+        failed = len(rows) - len(valid)
+        for row in valid:
+            stored = held[str(self._assets[row].mat_id)]
+            if not self._tile_icon_landed(row, chosen[row], stored):
+                failed += 1
+        return failed
+
+    def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
+        """After the store write: compose or drop this row's icon picture and refresh its tile."""
         asset = self._assets[row]
-        spec = tile_icons.choice_for(self, row, spec)
-        stored = tile_icons.set_override(  # the store is the ONE home, so a clear here is the whole delete
-            self.preferences, str(asset.mat_id), spec)
-        written = bool(stored)
+        written = stored
         if tile_icons.is_custom(spec):
             written = written and bool(
                 tile_icons.render_for(self.preferences, asset.mat_id, spec)
@@ -469,7 +487,7 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         return written
 
     def commit_tile_icons(self, rows=None) -> None:
-        """Nothing to commit: each icon went to its own store, and no record field moved."""
+        """Nothing to commit: `set_tile_icons` wrote the icon store, and no record field moved."""
 
     def rerender_tile_icons(self) -> int:
         """Recompose every icon in this library - for when the LOOK changed (the line-weight preference) rather than the choice."""

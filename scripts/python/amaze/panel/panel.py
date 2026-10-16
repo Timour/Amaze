@@ -2544,7 +2544,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def edit_tile_icon(self, model, proxy, proxy_indexes,
                        categories=()) -> None:
-        """"Edit Icon" on any tile, in any section that has tiles - one handler for all of them, needing only tile_icon()/set_tile_icon() from the model, and applying to the WHOLE selection (one icon for twelve LOP setups is the case it exists for)."""
+        """Customize on any tile: one handler for every section, applied to the WHOLE selection."""
         if model is None or not proxy_indexes:
             return
         held = []    # IDENTITY, not row numbers and not Qt indexes: this dialog is non-modal, so the library can move while it is open - a save appends, a delete shifts every row after it, a RELOAD renumbers the lot - and a QPersistentModelIndex is no better, because endResetModel() invalidates every one of them even when nothing moved
@@ -2643,10 +2643,7 @@ class AmazePanel(QtWidgets.QWidget):
 
     def _apply_icon_spec(self, model, rows, spec) -> None:
 
-        failed = 0
-        for row in rows:
-            if not model.set_tile_icon(row, spec, save=False):
-                failed += 1
+        failed = model.set_tile_icons(rows, spec)    # one icon-store write for the whole selection
         model.commit_tile_icons(rows)    # once per selection, never per row
         ui = getattr(hou, "ui", None)
         if failed and ui is not None:

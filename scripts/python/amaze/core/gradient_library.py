@@ -282,16 +282,10 @@ class GradientLibrary(library.AssetLibrary):
         ]
         return 0
 
-    def set_tile_icon(self, index, spec, save: bool = True) -> bool:
-        """Give one palette a tile icon, or clear it with an empty spec. NO PNG is written - the icon is composed in memory by the paint path."""
-        row = index.row() if hasattr(index, "row") else int(index)
-        if not 0 <= row < len(self._assets):
-            return False
-        spec = tile_icons.choice_for(self, row, spec)
-        stored = tile_icons.set_override(
-            self.preferences, str(self._assets[row].mat_id), spec)
-        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])    # `save` unused: no record moves
-        return bool(stored)
+    def _tile_icon_landed(self, row: int, spec, stored: bool) -> bool:
+        """No PNG is written for a palette - the paint path composes its icon - so only the tile repaints."""
+        self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        return stored
 
     def rerender_tile_icons(self) -> int:
         """Repaint every palette wearing an icon; the base would write PNGs a palette never has."""

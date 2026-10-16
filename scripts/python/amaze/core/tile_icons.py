@@ -384,6 +384,17 @@ def set_override(preferences, key: str, spec) -> bool:
     return bool(_store(preferences).set(key, spec))
 
 
+def set_overrides(preferences, specs: dict) -> dict:
+    """`set_override` for many keys in ONE write; {key: whether the store now holds that choice}."""
+    store = _store(preferences)
+    written = store.update(specs)
+    if written:
+        return dict.fromkeys(specs, True)
+    held = written.reason != keyed_store.REASON_NO_USER    # as `set` answers: an unchanged key holds
+    return {key: held and store.get(key) == normalise(spec)
+            for key, spec in specs.items()}
+
+
 def forget_overrides() -> None:
     """Drop the cached tables - a test seam like its keyed-store siblings; the product's library switch drops them through the one `keyed_store.release()` at the switch door."""
     keyed_store.release()

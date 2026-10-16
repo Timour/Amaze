@@ -788,14 +788,22 @@ class FileFiles(grid_columns.GridColumnsMixin,
 
     def set_tile_icon(self, index, spec, save: bool = True) -> bool:
         row = index.row() if hasattr(index, "row") else int(index)
-        key = self.file_key(row)
-        if not key:
-            return False
-        spec = tile_icons.choice_for(self, row, spec)
-        written = tile_icons.set_override(self.preferences, key, spec)  # report what actually happened - a read-only library must not take icons it will lose at restart
-        model_index = self.index(row, 0)
-        self.row_changed(model_index.row(), [QtCore.Qt.ItemDataRole.DecorationRole])
-        return written
+        return self.set_tile_icons([row], spec) == 0
+
+    def set_tile_icons(self, rows, spec) -> int:
+        """Give every row in `rows` the icon `spec` in ONE store write; answers how many were not written."""
+        keyed = {}
+        for row in rows:
+            key = self.file_key(row)
+            if key:
+                keyed[row] = (key, tile_icons.choice_for(self, row, spec))
+        if not keyed:
+            return len(rows)
+        held = tile_icons.set_overrides(  # what really landed - a read-only library must not take icons
+            self.preferences, dict(keyed.values()))
+        for row in keyed:
+            self.row_changed(row, [QtCore.Qt.ItemDataRole.DecorationRole])
+        return len(rows) - sum(1 for key, _spec in keyed.values() if held[key])
 
     def commit_tile_icons(self, rows=None) -> None:
         """Signature parity with the asset models; already persisted."""
