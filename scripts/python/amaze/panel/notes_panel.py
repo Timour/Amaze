@@ -543,7 +543,8 @@ class NotesPanel(ui_helpers.HeldPane):
         _ink(self.name_label, "text_bright", text)
         _ink(self.type_label, "text", text)
         self._icon_label.setPixmap(_faded(ui_helpers.device_pixmap(
-            amaze.package_file("ui", "icon_comments.svg"), side, dpr),
+            amaze.package_file("ui", "icon_comments.svg"), side, dpr,
+            {amazetheme.COMMENT_INK: amazetheme.COMMENT_DIM_ICON_INK} if dead else None),
             amazetheme.COMMENT_DIM_ICON_OPACITY if dead else 1.0, dpr))
         self.add_button.setIcon(QtGui.QIcon(ui_helpers.device_pixmap(
             amaze.package_file("ui", "icon_comments_add.svg"), plus_side, dpr,

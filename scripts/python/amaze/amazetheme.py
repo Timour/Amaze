@@ -75,16 +75,17 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
-COMMENT_INK = "#9269f1"        # ▸ the Comments pane (N01): the header icon's art colour
+COMMENT_INK = "#a05dfe"        # ▸ the Comments pane (N01): the header icon's art colour
 COMMENT_DONE_INK = "#4af2a1"   # a done to-do
 COMMENT_OPEN_INK = "#ff7760"   # an open to-do
-COMMENT_ADD_INK = "#5d7abd"    # the + art's colour
+COMMENT_ADD_INK = "#a05dfe"    # the + art's colour
 COMMENT_HEADER_BG = "#262626"
 COMMENT_PAGE_BG = "#2d2d2d"
 COMMENT_DIM_NAME = "Nothing Selected"   # ▸ nothing selected (N01B): the header's two labels,
 COMMENT_DIM_TYPE = "Type"
 COMMENT_DIM_TEXT_OPACITY = 0.5          # drawn at half their usual ink
-COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble
+COMMENT_DIM_ICON_OPACITY = 0.25         # the speech bubble,
+COMMENT_DIM_ICON_INK = "#ffffff"        # in white
 COMMENT_DIM_ADD_INK = "#565656"         # the + art; Houdini's menu triangle keeps its colour
 
 LIST_HEADER_BG = "#2a2a2a"       # ▸ list mode's header strip: a QHeaderView picks up none of these, so the strip states them

@@ -2025,7 +2025,8 @@ class TheEmptyPaneStandsOnN01B(unittest.TestCase):
 
     def test_the_speech_bubble_is_at_a_quarter_and_whole_when_live(self):
         from amaze import amazetheme
-        ink, bg = (QtGui.QColor(amazetheme.COMMENT_INK), QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
+        ink, bg = (QtGui.QColor(amazetheme.COMMENT_DIM_ICON_INK),
+                   QtGui.QColor(amazetheme.COMMENT_HEADER_BG))
         opacity = amazetheme.COMMENT_DIM_ICON_OPACITY
         alpha, shown = self._bubble_on_header()
         self.assertAlmostEqual(opacity * 255, alpha, delta=1)
