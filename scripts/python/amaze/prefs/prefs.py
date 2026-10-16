@@ -125,6 +125,7 @@ class Prefs(_Persistence):
             for key in _INTRODUCED_SECTIONS}
         self._accent_color = "#5d7abd"  # size slider / progress bar; matches ClickSlider.LEFT_COLOR
         self._scroll_speed = 0.75  # wheel factor for the grid/list, settled by live tuning and shown as a percent in Preferences
+        self._step_size = True  # the toolbar size slider rests only on its marks
         self._debug_mode = False
         self._users_blocks: dict = {}  # uid -> the keys that are one user's on THIS machine
 
@@ -598,6 +599,14 @@ class Prefs(_Persistence):
     def scroll_speed(self, val: float) -> None:
         low, high = SCROLL_SPEED_RANGE
         self._scroll_speed = max(low, min(high, float(val)))
+
+    @property
+    def step_size(self) -> bool:
+        return self._step_size
+
+    @step_size.setter
+    def step_size(self, val: bool) -> None:
+        self._step_size = bool(val)
 
     @property
     def debug_mode(self) -> bool:

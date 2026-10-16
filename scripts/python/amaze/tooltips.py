@@ -55,7 +55,9 @@ PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come bac
 
 PREFS_SHOW_UNKNOWN_FILES = 'Show files Amaze cannot preview, using their system icon. Each location can turn this off in its right-click menu.'
 
-PREFS_WRITE_PATHS_AS = 'How Amaze writes paths in Copy Path and the File section. A variable is used when the path is inside it; otherwise the path is written as is.'
+PREFS_STEP_SIZE = 'Step the tile size slider from mark to mark.'
+
+PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path and the File section. A variable is used when the path is inside it; otherwise the path is written as is.'
 
 PREFS_TILE_ICON_LINE = 'Line weight of the tile icons: thin or regular.'
 

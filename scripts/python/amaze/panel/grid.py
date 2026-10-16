@@ -437,7 +437,9 @@ def sync_view_mode_controls(panel) -> None:
 
 
 def active_thumbsize(panel) -> int:
-    """The icon size for the CURRENT view mode: the remembered one in grid, the fixed one in list."""
+    """The size in force: list's fixed one, else the remembered one - its nearest mark under Step Size."""
     if panel.prefs.view_mode == "list":
         return panel.LIST_THUMB_SIZE
+    if panel.prefs.step_size:
+        return ui_helpers.ClickSlider.nearest_mark(panel.prefs.thumbsize)
     return panel.prefs.thumbsize

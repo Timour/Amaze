@@ -390,6 +390,53 @@ class ClickSlider(QtWidgets.QSlider):
         super(ClickSlider, self).__init__()
         self.left_color = QtGui.QColor(self.LEFT_COLOR)   # instance-level so Preferences > Appearance > Accent Color overrides the class default per panel without needing a subclass
         self.snap_marks = tuple(self.SNAP_MARKS)   # instance-level too: the marks and their tick dots belong to the toolbar's size slider, and the Preferences parameter rows set this to () for a plain slider with no dots and no magnet zones
+        self.stepped = False
+        self._wheel_rest = 0
+        self.actionTriggered.connect(self._step_action)
+
+    @classmethod
+    def nearest_mark(cls, value: float, marks=None) -> int:
+        """The snap mark closest to `value`, the lower one on a tie."""
+        return min(sorted(marks or cls.SNAP_MARKS), key=lambda mark: abs(mark - value))
+
+    def _mark_beyond(self, value: float, direction: int) -> int:
+        """The next mark past `value` in `direction`, or the last mark that way."""
+        marks = sorted(self.snap_marks)
+        if direction > 0:
+            return next((mark for mark in marks if mark > value), marks[-1])
+        return next((mark for mark in reversed(marks) if mark < value), marks[0])
+
+    def _step_action(self, action: int) -> None:
+        """Step Size: a key's step lands on the next mark that way ▸r/slider-steps."""
+        if not self.stepped or not self.snap_marks:
+            return
+        kind = QtWidgets.QAbstractSlider.SliderAction(action)
+        if kind == QtWidgets.QAbstractSlider.SliderAction.SliderToMinimum:
+            self.setSliderPosition(min(self.snap_marks))
+        elif kind == QtWidgets.QAbstractSlider.SliderAction.SliderToMaximum:
+            self.setSliderPosition(max(self.snap_marks))
+        elif self.sliderPosition() != self.value():
+            self.setSliderPosition(self._mark_beyond(
+                self.value(), 1 if self.sliderPosition() > self.value() else -1))
+
+    @debug.guarded("ClickSlider.wheelEvent")
+    def wheelEvent(self, e: QtGui.QWheelEvent) -> None:
+        if not self.stepped or not self.snap_marks:
+            return super().wheelEvent(e)
+        angle = e.angleDelta()
+        delta = angle.y() if angle.y() else -angle.x()    # Qt's reading: up and right both grow
+        if e.inverted():
+            delta = -delta
+        if delta * self._wheel_rest < 0:
+            self._wheel_rest = 0
+        self._wheel_rest += delta
+        steps = int(self._wheel_rest / 120)
+        self._wheel_rest -= steps * 120
+        value = self.value()
+        for _ in range(abs(steps)):
+            value = self._mark_beyond(value, 1 if steps > 0 else -1)
+        self.setValue(value)
+        e.accept()
 
     def set_accent_color(self, color: QtGui.QColor) -> None:
         """Overrides the filled (left) segment color and repaints."""
@@ -418,6 +465,8 @@ class ClickSlider(QtWidgets.QSlider):
 
     def _snap(self, value: float) -> int:
         """Lock onto the nearest SNAP_MARK within SNAP_RADIUS, else leave the value freely dragged - rounded whole and clamped to the slider's own range."""
+        if self.stepped and self.snap_marks:
+            return self.nearest_mark(value, self.snap_marks)
         for mark in self.snap_marks:
             if abs(value - mark) <= self.SNAP_RADIUS:
                 return mark

@@ -7,10 +7,11 @@ import re
 import shutil
 import sys
 import tempfile
+import types
 import unittest
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
+from PySide6 import QtCore, QtGui, QtTest, QtWidgets  # noqa: E402
 
 _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
@@ -444,6 +445,71 @@ class AClickLeavesTheConfiguredStepsAlone(unittest.TestCase):
             (50, 50), (slider.singleStep(), slider.pageStep()),
             "the press clobbered the configured steps with the click "
             "distance - a handle press leaves them 0")
+
+
+class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
+    """Step Size on: a click, a key and a wheel notch each land on a snap mark."""
+
+    def _slider(self, stepped=True):
+        slider = ui_helpers.ClickSlider()
+        slider.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        slider.setRange(64, 512)
+        slider.setValue(128)
+        slider.resize(200, 24)
+        slider.setSingleStep(50)
+        slider.setPageStep(50)
+        slider.stepped = stepped
+        slider.show()
+        self.addCleanup(slider.close)
+        return slider
+
+    @staticmethod
+    def _wheel(slider, dy):
+        point = QtCore.QPointF(50, 12)
+        QtWidgets.QApplication.sendEvent(slider, QtGui.QWheelEvent(
+            point, slider.mapToGlobal(point), QtCore.QPoint(0, 0), QtCore.QPoint(0, dy),
+            QtCore.Qt.MouseButton.NoButton, QtCore.Qt.KeyboardModifier.NoModifier,
+            QtCore.Qt.ScrollPhase.NoScrollPhase, False))
+
+    def test_a_click_between_marks_lands_on_the_nearest(self):
+        slider = self._slider()
+        slider._apply_mouse_value(slider._x_for_value(200))
+        self.assertEqual(256, slider.value(), "a click at 200 did not land on 256")
+        slider._apply_mouse_value(slider._x_for_value(70))
+        self.assertEqual(128, slider.value(), "a click at 70 did not land on 128")
+
+    def test_keys_step_from_mark_to_mark(self):
+        slider = self._slider()
+        steps = []
+        for key in (QtCore.Qt.Key.Key_Right, QtCore.Qt.Key.Key_End,
+                    QtCore.Qt.Key.Key_Right, QtCore.Qt.Key.Key_Left,
+                    QtCore.Qt.Key.Key_Home):
+            QtTest.QTest.keyClick(slider, key)
+            steps.append(slider.value())
+        self.assertEqual([256, 384, 384, 256, 128], steps)
+
+    def test_a_wheel_notch_is_one_mark_and_half_notches_add_up(self):
+        slider = self._slider()
+        steps = []
+        for dy in (120, 60, 60, -120):
+            self._wheel(slider, dy)
+            steps.append(slider.value())
+        self.assertEqual([256, 256, 384, 256], steps)
+
+    def test_off_the_slider_moves_freely(self):
+        slider = self._slider(stepped=False)
+        QtTest.QTest.keyClick(slider, QtCore.Qt.Key.Key_Right)
+        self.assertEqual(178, slider.value(), "a key no longer moves by the single step")
+        slider._apply_mouse_value(slider._x_for_value(200))
+        self.assertEqual(200, slider.value(), "a click between marks was moved")
+
+    def test_a_size_between_marks_opens_on_the_nearest(self):
+        from amaze.panel import grid
+        prefs = types.SimpleNamespace(view_mode="grid", thumbsize=200, step_size=True)
+        panel = types.SimpleNamespace(prefs=prefs, LIST_THUMB_SIZE=16)
+        self.assertEqual(256, grid.active_thumbsize(panel))
+        prefs.step_size = False
+        self.assertEqual(200, grid.active_thumbsize(panel))
 
 
 class ASelfPaintedWidgetDimsWhenDisabled(unittest.TestCase):

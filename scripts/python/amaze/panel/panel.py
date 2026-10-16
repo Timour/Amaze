@@ -1204,6 +1204,7 @@ class AmazePanel(QtWidgets.QWidget):
         self.click_slider.setPageStep(50)
         self.click_slider.set_accent_color(theme.accent(self.prefs.accent_color))
         self.click_slider.setMinimumWidth(theme.ui_px(38))    # same sizing rule as the filter box: 400px rendered max, 75px min
+        self.click_slider.stepped = self.prefs.step_size
         self._build_slider_and_layout()
 
     def _mirror_toolbar(self) -> None:
@@ -1682,6 +1683,9 @@ class AmazePanel(QtWidgets.QWidget):
             self.switch_all_models()
         accent = theme.accent(self.prefs.accent_color)
         self.click_slider.set_accent_color(accent)
+        self.click_slider.stepped = self.prefs.step_size
+        if self.prefs.view_mode != "list":
+            self.click_slider.setValue(grid.active_thumbsize(self))    # Step Size on: onto the nearest mark
         self.texture_progress.set_accent_color(accent)
         self._sync_notes_button_pixmaps()
         self.sidebar_delegate.set_drag_color(accent)

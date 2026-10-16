@@ -139,6 +139,7 @@ USER_KEYS = {  # one user's view state on THIS machine, under `users.<uid>`; sto
     "hide_empty_categories":
         ("hide_empty_categories", "_hide_empty_categories", True),
     "scroll_speed": ("scroll_speed", "_scroll_speed", 0.75),
+    "step_size": ("step_size", "_step_size", True),
     "accent_color": ("accent_color", "_accent_color", "#5d7abd"),
     "icon_line_weight":
         ("icon_line_weight", "_icon_line_weight", "template"),

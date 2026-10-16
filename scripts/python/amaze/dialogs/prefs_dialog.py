@@ -531,6 +531,13 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._cbx_show_unknown.toggled.connect(self.set_file_show_unknown)
         form.addRow(self._label(""), self._cbx_show_unknown)
 
+        self._cbx_step_size = ui_helpers.ToggleSwitch("Step Size")
+        self._cbx_step_size.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_STEP_SIZE))
+        self._cbx_step_size.setChecked(self._prefs.step_size)
+        self._cbx_step_size.toggled.connect(self.set_step_size)
+        form.addRow(self._label(""), self._cbx_step_size)
+
         self._combo_path_style = self._data_combo((
             ("$HOME", "home"),
             ("$JOB", "job"),
@@ -952,6 +959,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("_cbx_sidebar_counts", "sidebar_counts"),
         ("_cbx_hide_empty", "hide_empty_categories"),
         ("_cbx_show_unknown", "file_show_unknown"),
+        ("_cbx_step_size", "step_size"),
         ("_combo_icon_weight", "icon_line_weight"),
         ("_cbx_debug", "debug_mode"),
     )
@@ -1183,6 +1191,10 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def set_hide_empty_categories(self, checked: bool) -> None:
         self._prefs.hide_empty_categories = checked
+        self._prefs.save()
+
+    def set_step_size(self, checked: bool) -> None:
+        self._prefs.step_size = checked
         self._prefs.save()
 
     def set_karma_rendersamples(self):
