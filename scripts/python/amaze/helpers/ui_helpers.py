@@ -399,6 +399,10 @@ class ClickSlider(QtWidgets.QSlider):
         """The snap mark closest to `value`, the lower one on a tie."""
         return min(sorted(marks or cls.SNAP_MARKS), key=lambda mark: abs(mark - value))
 
+    def drawn_marks(self) -> tuple:
+        """The marks that get a dot: every snap mark strictly inside the range, never the two ends."""
+        return tuple(mark for mark in self.snap_marks if self.minimum() < mark < self.maximum())
+
     def _mark_beyond(self, value: float, direction: int) -> int:
         """The next mark past `value` in `direction`, or the last mark that way."""
         marks = sorted(self.snap_marks)
@@ -512,10 +516,8 @@ class ClickSlider(QtWidgets.QSlider):
         )
 
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, False)   # OFF for the tick marks: crisp pixel-art squares, not smoothed geometry
-        for mark in self.snap_marks:
-            if self.minimum() <= mark <= self.maximum():
-                tick_x = self._x_for_value(mark)
-                self._draw_pixel_dot(painter, tick_x, mid_y)
+        for mark in self.drawn_marks():
+            self._draw_pixel_dot(painter, self._x_for_value(mark), mid_y)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing, True)
 
         handle_pen = QtGui.QPen(self.HANDLE_BORDER_COLOR)

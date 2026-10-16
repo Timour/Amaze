@@ -496,6 +496,11 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
             steps.append(slider.value())
         self.assertEqual([192, 192, 256, 192], steps)
 
+    def test_the_two_ends_are_stops_without_a_dot(self):
+        slider = self._slider()
+        self.assertEqual((128, 192, 256, 320, 384, 448), slider.drawn_marks())
+        self.assertEqual((64, 512), (min(slider.snap_marks), max(slider.snap_marks)))
+
     def test_off_the_slider_moves_freely(self):
         slider = self._slider(stepped=False)
         QtTest.QTest.keyClick(slider, QtCore.Qt.Key.Key_Right)
