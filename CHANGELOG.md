@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0
+
+- Materials built in Octane's own material builder save and import as Octane materials, and their tiles name the shader.
+- Octane thumbnails render with Octane in Solaris, with a Samples (Octane) row in Preferences ▸ Render.
+- Karma and Octane thumbnails render in the background, one render per batch: the bar shows progress, Cancel stops it, and each tile fills in as its picture lands.
+- An Octane material saved as loose nodes imports into its holder.
+- A MaterialX material saved with its own output connectors imports with one set of wires.
+
 ## 1.3.0
 
 - A SimReady tab in the online browser: NVIDIA's OpenPBR materials, imported as MaterialX or Redshift materials with their textures and tags.
