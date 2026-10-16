@@ -321,7 +321,7 @@ class Section:
         self.panel._open_versions_dialog(current)
 
     def menu_comments(self, indexes, current, payload=None) -> None:
-        self.panel._open_comments_from_badge(current)
+        self.panel.btn_notes.click()    # the toolbar Comments button's own click, so the two never differ
 
     def menu_delete(self, indexes, current, payload=None) -> None:
         self.panel.grid_delete(indexes)

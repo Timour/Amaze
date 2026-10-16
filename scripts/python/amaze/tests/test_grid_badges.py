@@ -3,6 +3,7 @@
 import os
 import sys
 import unittest
+from unittest import mock
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PySide6 import QtCore, QtGui, QtWidgets  # noqa: E402
@@ -175,7 +176,7 @@ class _NotedRow(QtCore.QAbstractListModel):
 
 
 class TheCommentBadgeIsAButton(unittest.TestCase):
-    """Clicking the comment badge OPENS the Comments pane - one-way, never closing - through the toolbar chip, one path to one state."""
+    """Clicking the comment badge opens or closes the Comments pane, as the toolbar chip does."""
 
     def test_a_wired_comment_badge_takes_the_click(self):
         clicked = []
@@ -206,7 +207,7 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
 
 
 class TheCommentBadgeOpensThePane(unittest.TestCase):
-    """The handler behind the badge: it opens the Comments pane, never closes it, and leaves a multi-selection standing."""
+    """The comment badge's click is the toolbar Comments button's own click."""
 
     @classmethod
     def setUpClass(cls):
@@ -214,61 +215,23 @@ class TheCommentBadgeOpensThePane(unittest.TestCase):
         cls.panel = test_support.fixture_panel(
             test_support.class_scope(cls))
 
-    def test_the_click_opens_the_pane_one_way(self):
+    def test_the_badge_clicks_the_toolbar_button(self):
         panel = self.panel
-        panel.btn_notes.setChecked(False)
+        panel._on_tab_toggled("material", True)
         index = panel.material_sorted_model.index(0, 0)
-        panel._open_comments_from_badge(index)
-        self.assertTrue(panel.btn_notes.isChecked(),
-                        "the badge click did not open the pane")
-        panel._open_comments_from_badge(index)
-        self.assertTrue(panel.btn_notes.isChecked(),
-                        "a second click CLOSED the pane - the badge "
-                        "only ever opens")
-        current = panel.thumblist.selectionModel().currentIndex()
-        self.assertEqual(index.row(), current.row(),
-                         "the clicked tile did not become the "
-                         "current row, so the pane shows the wrong "
-                         "comments")
+        with mock.patch.object(panel.btn_notes, "click") as click:
+            panel._badge_verb("menu_comments")(index)
+        self.assertEqual(1, click.call_count, "the badge runs code of its own")
 
-    def test_a_badge_inside_a_multi_selection_keeps_it(self):
-        """The star button's law, one badge over: the pane reads the CURRENT row, so collapsing a hand-built selection buys nothing and costs the user the selection."""
+    def test_the_badge_opens_and_closes_the_pane(self):
         panel = self.panel
-        model = panel.material_sorted_model
-        if model.rowCount() < 3:
-            self.skipTest("the fixture library has fewer than 3 rows")
-        flags = QtCore.QItemSelectionModel.SelectionFlag
-        selection = panel.thumblist.selectionModel()
-        rows = [model.index(r, 0) for r in range(3)]
-        selection.clearSelection()
-        for index in rows:
-            selection.select(index, flags.Select)
-
-        panel._open_comments_from_badge(rows[2])
-
-        self.assertEqual(
-            3, len(selection.selectedIndexes()),
-            "clicking the comment badge on a selected tile threw away "
-            "the rest of the selection")
-        self.assertEqual(
-            rows[2].row(), selection.currentIndex().row(),
-            "the clicked tile did not become the current row")
-
-    def test_a_badge_OUTSIDE_the_selection_takes_it_over(self):
-        panel = self.panel
-        model = panel.material_sorted_model
-        if model.rowCount() < 3:
-            self.skipTest("the fixture library has fewer than 3 rows")
-        flags = QtCore.QItemSelectionModel.SelectionFlag
-        selection = panel.thumblist.selectionModel()
-        selection.select(model.index(0, 0), flags.ClearAndSelect)
-
-        panel._open_comments_from_badge(model.index(2, 0))
-
-        self.assertEqual(
-            [2], [i.row() for i in selection.selectedIndexes()],
-            "a badge on a tile outside the selection must select that "
-            "tile, the way a plain click does")
+        panel._on_tab_toggled("material", True)
+        index = panel.material_sorted_model.index(0, 0)
+        panel.btn_notes.setChecked(False)
+        panel._badge_verb("menu_comments")(index)
+        self.assertTrue(panel.btn_notes.isChecked(), "the badge click did not open the pane")
+        panel._badge_verb("menu_comments")(index)
+        self.assertFalse(panel.btn_notes.isChecked(), "the badge click did not close the pane")
 
 
 if __name__ == "__main__":

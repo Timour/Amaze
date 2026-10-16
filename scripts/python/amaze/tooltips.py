@@ -127,7 +127,7 @@ PANEL_VERSION_ROW = 'Pick the active version in the list, or rename it in the fi
 
 BADGE_VERSIONS = 'Click to select a version.'   # ▸ Tile badges, on hover
 
-BADGE_COMMENTS = 'Show comments.'
+BADGE_COMMENTS = 'Show or hide comments.'
 
 BADGE_FAVORITE_REMOVE = 'Remove from favorites.'
 

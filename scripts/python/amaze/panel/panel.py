@@ -1558,19 +1558,6 @@ class AmazePanel(QtWidgets.QWidget):
             context.set_sidebar_colour(name, colour)    # what a colour IS - which store, which models repaint - is the context's (Section.set_sidebar_colour)
 
 
-    def _open_comments_from_badge(self, index) -> None:
-        """The comment badge's click: the tile becomes the selection, then the Comments pane OPENS if closed - through the toolbar chip, one path to one state, and one-way (the badge never closes)."""
-        sel = self.thumblist.selectionModel()
-        if sel is not None and index is not None and index.isValid():
-            flag = QtCore.QItemSelectionModel.SelectionFlag
-            inside = index in grid_columns.selected_rows(sel)    # a badge inside a MULTI-selection moves the current row only: the pane reads the current index alone, so clearing would throw away a hand-built selection to show what it shows either way - the star button's law, one badge over
-            sel.setCurrentIndex(
-                index, flag.NoUpdate if inside else flag.ClearAndSelect)
-        if not self.btn_notes.isChecked():
-            self.btn_notes.setChecked(True)
-        else:
-            self._refresh_notes_subject()    # NoUpdate emits no selectionChanged, and that signal is the pane's only wire
-
     def _badge_verb(self, verb):
         """A badge click as the active section's verb: on the selection when the tile is in it."""
         def click(index):
