@@ -94,6 +94,7 @@ LIST_HEADER_DIVIDER = "#454545"
 TILE_TEXT = "#cdc8bc"           # ▸ the tile and list delegates
 TILE_SUBTITLE = "#5d7abd"       # the sidebar's drag highlight until the panel applies the accent
 CODE_TEXT_OPACITY = 0.5         # T05B: a code tile's text at half strength, under its run button
+CODE_TILE_GROUND = "#1b1b1b"    # and the ground under it, the one the default tile faces have
 BADGE_REST_OPACITY = 0.75       # every button badge at rest, ground and icon alike
 BADGE_HOVER_OPACITY = 1.0       # and under the pointer
 LIST_INK = "#d8d6d4"            # a table is read down its columns, so every column paints in this except Category

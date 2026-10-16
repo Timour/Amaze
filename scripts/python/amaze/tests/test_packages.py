@@ -1877,7 +1877,8 @@ class OnlineTilePaintingTest(unittest.TestCase):
 
     def test_a_snippet_tile_paints_its_code(self):
         from amaze.core import matx_library, matx_sources, thumbnails
-        from amaze.helpers import vex_syntax
+        from amaze import amazetheme
+        from PySide6 import QtGui
         entry = {"type": "asset", "section": "code", "id": "b" * 32,
                  "record": {"id": "b" * 32, "name": "Jitter",
                             "categories": ["Toolbox"], "renderer": "VEX",
@@ -1899,9 +1900,9 @@ class OnlineTilePaintingTest(unittest.TestCase):
                    "tiles in a grid of colours is a package that "
                    "'does not show up'")
         self.assertEqual(image.pixelColor(2, 2).name(),
-                         vex_syntax.BACKGROUND.name(),
-                         "the snippet preview is not the wrangle-"
-                         "editor field the Code section paints")
+                         QtGui.QColor(amazetheme.CODE_TILE_GROUND).name(),
+                         "the snippet preview is not on the ground "
+                         "the Code section paints")
 
     def _cached_preview(self, valid):
         """A model showing one URL record whose preview is already in the disk cache."""
