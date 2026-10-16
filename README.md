@@ -26,7 +26,7 @@ Everything saved to the library appears as a tile in the grid — a picture and 
 
 ## Highlights
 
-- **Online material libraries, built in** — browse free CC0/MIT materials from PolyHaven, AMD GPUOpen, PhysicallyBased and EPFL RGL, plus Amaze's own packages, behind the toolbar's Online button. Import into the library, or directly into the scene.
+- **Online material libraries, built in** — browse free CC0/MIT materials from PolyHaven, AMD GPUOpen, NVIDIA SimReady, PhysicallyBased and EPFL RGL, plus Amaze's own packages, behind the toolbar's Online button. Import into the library, or directly into the scene.
 - **Drag and drop everywhere** — drop a material onto an object in the viewport: in OBJ it is assigned; in Solaris you pick the prim and it imports into that stage's `materiallibrary`. Drag a tile onto a sidebar category to refile it, and files onto parameter fields.
 - **Versions** — re-saving a node that matches a library entry offers Save Version / Save New; previous states are kept as versions.
 - **Converters** — **Convert to** rebuilds a material for MaterialX or Redshift on the same textures, with a report of everything that could not be translated.

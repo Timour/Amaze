@@ -219,6 +219,7 @@ strip where the section tabs were.
 |---|---|---|
 | **PolyHaven** | Photoscanned PBR materials, with textures | CC0 |
 | **GPUOpen** | AMD's MaterialX library, with textures | MIT Public Domain |
+| **SimReady** | NVIDIA's OpenPBR materials, with textures. No previews | MIT-0 |
 | **PhysicallyBased** | 86 measured reference values: real copper, real water, real skin. No textures | CC0 1.0 |
 | **RGL (EPFL)** | 62 laboratory-measured materials from the Realistic Graphics Lab | CC0 1.0 |
 | **Amaze** | The official [packages](#packages), ready to import or restore | per package |
@@ -758,6 +759,7 @@ Tile icons are [Feather](https://feathericons.com) by Cole Bemis (MIT).
 
 Online material sources: [Poly Haven](https://polyhaven.com/) (CC0),
 [AMD GPUOpen](https://matlib.gpuopen.com/) (MIT Public Domain),
+[NVIDIA PhysicalAI-SimReady-Materials](https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials) (MIT-0),
 [Physically Based](https://physicallybased.info/) by Anton Palmqvist
 (CC0 1.0), and [EPFL RGL](https://rgl.epfl.ch/materials) measured
 materials (CC0 1.0). Colour palettes come from public-domain works.
