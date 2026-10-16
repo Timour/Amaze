@@ -1,4 +1,4 @@
-"""The Karma preview scene: ONE USD stage composition, built by `build_karma_scaffold` and rendered into once per material by `render_karma_into`, so a batch pays the stage load once; THE CALLER NAMES THE OUTPUT FILE (`png_path`), exactly as it sets `path` on the other three renderers' own scenes."""
+"""The USD preview scene, Karma's and Octane's: one stage, rendered into once per material."""
 import os
 import time
 
@@ -9,9 +9,108 @@ from amaze.core import debug
 from amaze.helpers import helpers, hostver
 from amaze.preview import thumbnail_scene
 
+RENDER_CAMERA = "/shaderBallScene/cameras/RenderCam"
+FLOOR_TEXTURE = {    # Octane reads no `.rat`; the EXR is the same picture ▸r/octane-thumbnail
+    "Karma": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat",
+    "Octane": "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr",
+}
+OCTANE_LOP_CONTAINER = "octane_solaris_material_builder"    # wired at creation ▸r/octane-builder
+COPIED_WHOLE = ("subnet", OCTANE_LOP_CONTAINER)    # containers a material library takes as they are
+PLUMBING = ("subinput", "suboutput")
 
-def build_karma_scaffold(preferences):
-    """The Karma thumbnail scaffold, built ONCE and rendered into once per material: lopnet, shaderball USD reference (the expensive part - a full stage composition), floor material, Karma render properties and ROP, every one of them identical for every material; a scaffold dict for `render_karma_into`, or None when no Scene Viewer is open to take the OCIO display/view from."""
+
+def _octane_classic_into(lib, vopnet):
+    """A classic `octane_vopnet` rebuilt inside `lib` into the container a LOP renders."""
+    builder = lib.createNode(OCTANE_LOP_CONTAINER, vopnet.name())
+    terminal = next(c for c in builder.children()
+                    if c.type().name() == "octane_material")
+    stock = [c for c in builder.children()
+             if c != terminal and c.type().name() not in PLUMBING]
+    items = [item for item in vopnet.allItems()    # dots too, or wires through them break
+             if not (isinstance(item, hou.Node)
+                     and item.type().name() in PLUMBING)]
+    copies = dict(zip((item.path() for item in items), builder.copyItems(items)))
+    out = next((c for c in vopnet.children() if c.type().name() == "suboutput"), None)
+    surface = next((c for c in (out.inputConnections() if out is not None else ())
+                    if c.inputIndex() == 0), None)
+    copy = copies.get(surface.inputNode().path()) if surface is not None else None
+    terminal.setInput(0, copy, surface.outputIndex() if copy is not None else 0)
+    for child in stock:    # last: never leave the terminal wired to a deleted node
+        child.destroy()
+    return builder
+
+
+def _karma_settings(net, preferences) -> tuple:
+    """Karma CPU's render properties and ROP: (settings, rop, (node, parm) naming the picture)."""
+    render_props = net.createNode("karmarenderproperties")
+    render_props.parm("camera").set(RENDER_CAMERA)
+    render_props.parm("res_mode").set("manual")
+    render_props.parm("res_mode").pressButton()
+    render_props.parm("resolutionx").set(preferences.rendersize)
+    render_props.parm("resolutiony").deleteAllKeyframes()
+    render_props.parm("resolutiony").set(preferences.rendersize)
+    render_props.parm("engine").set("cpu")    # CPU, not XPU ▸r/karma-thumbnail-cost
+    render_props.parm("engine").pressButton()
+    render_props.parm("samplesperpixel").set(    # the CPU dial; `pathtracedsamples` is XPU's
+        preferences.karma_rendersamples)
+    render_props.parm("enabledof").set(0)
+    render_props.parm("enablemblur").set(0)
+
+    rop = net.createNode("usdrender_rop")
+    rop.parm("renderer").set("BRAY_HdKarma")    # Karma CPU
+    rop.setFirstInput(render_props)
+    rop.parm("soho_foreground").set(1)
+    return render_props, rop, (render_props, "picture")
+
+
+OCTANE_SETTINGS = "otoy::Octane"    # Octane's render settings LOP ▸r/octane-thumbnail
+OCTANE_PATH_TRACING_CAP = "xn__octaneglobalmaxsamples4_jebg"    # `maxsamples4` here, not 3
+
+
+def _octane_settings(net, preferences) -> tuple:
+    """Octane's render settings and a USD Render ROP through its delegate, lit by the stage."""
+    settings = net.createNode(OCTANE_SETTINGS)
+    settings.parm("camera").set(RENDER_CAMERA)
+    settings.parm("res_mode").set("manual")
+    settings.parm("res_mode").pressButton()    # unlocks the height, as Karma's does
+    for name in ("resolution1", "resolution2"):
+        settings.parm(name).deleteAllKeyframes()
+        settings.parm(name).set(preferences.rendersize)
+    settings.parm("xn__octaneglobalParmKernel_wcbg").set("NT_KERN_PATHTRACING")
+    settings.parm("xn__octaneglobalParmEnvironment_1kbg").set("NONE")    # the stage's own lights
+    settings.parm(OCTANE_PATH_TRACING_CAP).set(preferences.octane_rendersamples)
+    settings.parm("xn__octaneglobalociocolorspace_fjbg").set("ACEScg")    # as Karma's EXR
+
+    rop = net.createNode("usdrender_rop")
+    rop.parm("renderer").set("HdOctaneRendererPlugin")
+    rop.setFirstInput(settings)
+    rop.parm("soho_foreground").set(1)
+    return settings, rop, (rop, "outputimage")
+
+
+RENDER_SETTINGS = {"Karma": _karma_settings, "Octane": _octane_settings}
+
+OCTANE_LIGHT_SCALE = 0.5    # Octane lights this stage about twice as bright ▸r/octane-thumbnail
+OCTANE_STAGE_EDIT = (    # the camera's f-stop off, as Karma's settings turn DOF off; the lights scaled
+    "from pxr import UsdLux\n"
+    "stage = hou.pwd().editableStage()\n"
+    "stage.GetPrimAtPath(%r).GetAttribute('fStop').Set(0.0)\n"
+    "for prim in stage.Traverse():\n"
+    "    if prim.HasAPI(UsdLux.LightAPI):\n"
+    "        intensity = UsdLux.LightAPI(prim).GetIntensityAttr()\n"
+    "        intensity.Set(intensity.Get() * %r)\n")
+
+
+def _octane_stage(net, upstream):
+    """The stage as Octane needs it, edited after `upstream`: no depth of field, lights scaled."""
+    edit = net.createNode("pythonscript", "octane_stage")
+    edit.parm("python").set(OCTANE_STAGE_EDIT % (RENDER_CAMERA, OCTANE_LIGHT_SCALE))
+    edit.setFirstInput(upstream)
+    return edit
+
+
+def build_usd_scaffold(preferences, renderer="Karma"):
+    """The thumbnail stage for `renderer`, built once; None with no Scene Viewer to read OCIO from."""
     ocio = thumbnail_scene.ocio_from_viewer()
     if not ocio:
         return None
@@ -29,11 +128,11 @@ def build_karma_scaffold(preferences):
                                    "shaderBallScene_Simple.usd"))
             ref.parm("primpath1").set("/shaderBallScene")
             lib1 = net.createNode("materiallibrary")
-            lib1.setFirstInput(ref)
+            lib1.setFirstInput(
+                _octane_stage(net, ref) if renderer == "Octane" else ref)
             surf = lib1.createNode("mtlxstandard_surface")
             tex = lib1.createNode("mtlxtiledimage")
-            tex.parm("file").set(
-                "$AMAZE/scripts/python/amaze/res/img/FloorTexture.rat")
+            tex.parm("file").set(FLOOR_TEXTURE[renderer])
             surf.setInput(1, tex, 0)
             surf.setGenericFlag(hou.nodeFlag.Material, True)
             lib1.parm("materials").set(1)
@@ -42,41 +141,26 @@ def build_karma_scaffold(preferences):
             lib1.parm("geopath1").set("/shaderBallScene/geo/plane/mesh_0")
             lib1.parm("assign1").set(1)
 
-            render_props = net.createNode("karmarenderproperties")
-            render_props.parm("camera").set(
-                "/shaderBallScene/cameras/RenderCam")
-            render_props.parm("res_mode").set("manual")
-            render_props.parm("res_mode").pressButton()
-            render_props.parm("resolutionx").set(preferences.rendersize)
-            render_props.parm("resolutiony").deleteAllKeyframes()
-            render_props.parm("resolutiony").set(preferences.rendersize)
-            render_props.parm("engine").set("cpu")    # CPU, not XPU: XPU's device startup dominates at thumbnail size, so it is the slower of the two here
-            render_props.parm("engine").pressButton()
-            render_props.parm("samplesperpixel").set(    # THE CPU DIAL (Primary Samples). The `pathtracedsamples` beside it is the XPU one - each hides when the other engine is chosen - so the samples preference has to follow whatever `engine` above is set to or it drives nothing. Karma's own pref, deliberately NOT `preferences.rendersamples`, which is the Redshift dial at a very different scale
-                preferences.karma_rendersamples)
-            render_props.parm("enabledof").set(0)
-            render_props.parm("enablemblur").set(0)
-
-            rop = net.createNode("usdrender_rop")
-            rop.parm("renderer").set("BRAY_HdKarma")    # Karma CPU
-            rop.setFirstInput(render_props)
-            rop.parm("soho_foreground").set(1)
+            render_props, rop, product = RENDER_SETTINGS[renderer](
+                net, preferences)
         except Exception:
             net.destroy()    # a half-built scaffold is never handed back, and the destroy is under the same disabler as the create
             raise
     return {
+        "renderer": renderer,
         "net": net,
         "lib1": lib1,
         "render_props": render_props,
         "rop": rop,
+        "product": product,
         "display": display,
         "view": view,
         "space": space,
     }
 
 
-def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
-    """One material rendered into a pre-built scaffold and written to `png_path`, True only when that PNG is really there afterwards: creates and destroys ONLY the per-material nodes (material library, exr->png copnet) so the scaffold survives for the next material, and hands the artist back the undo stack and the selection it found. ▸r/undo-groups"""
+def render_usd_into(scaffold, node, asset_id: str, png_path: str) -> bool:
+    """One material into a built scaffold, True only if `png_path` is then there. ▸r/undo-groups"""
     net = scaffold["net"]
     lib1 = scaffold["lib1"]
     render_props = scaffold["render_props"]
@@ -98,7 +182,7 @@ def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
 
                 curr_items = node
                 if not isinstance(node, list):
-                    if curr_items.type().name() == "subnet":
+                    if curr_items.type().name() in COPIED_WHOLE:
                         curr_items = (node,)
                     elif "mtlxopen_pbr_surface" in curr_items.type().name():
                         curr_items = (node,)
@@ -107,7 +191,11 @@ def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
 
                 with debug.timed("batch", "copy nodes into lib",
                                  asset_id=str(asset_id)):
-                    curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
+                    if (not isinstance(node, list)
+                            and node.type().name() == "octane_vopnet"):
+                        curr_nodes = [_octane_classic_into(lib, node)]
+                    else:
+                        curr_nodes = hou.copyNodesTo(curr_items, lib)  # type: ignore
                 if curr_nodes:    # empty when the material is a builder subnet with zero children - nothing to select, nothing to render
                     curr_nodes[0].setSelected(True)
 
@@ -123,7 +211,8 @@ def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
                             n.setGenericFlag(hou.nodeFlag.Material, True)
                             mat_node = n
                             break
-                        elif "subnet" in n.type().name():
+                        elif ("subnet" in n.type().name()
+                              or n.type().name() == OCTANE_LOP_CONTAINER):
                             n.setGenericFlag(hou.nodeFlag.Material, True)
                             mat_node = n
                             break
@@ -154,7 +243,8 @@ def render_karma_into(scaffold, node, asset_id: str, png_path: str) -> bool:
                 lib.parm("assign1").set(1)
                 lib.parm("geopath1").set("/shaderBallScene/geo/ball")
 
-                render_props.parm("picture").set(path)
+                product_node, product_parm = scaffold["product"]
+                product_node.parm(product_parm).set(path)
                 render_props.setFirstInput(lib)
 
                 with debug.timed("batch", "husk render (rop execute)",

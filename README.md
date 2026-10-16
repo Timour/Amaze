@@ -16,7 +16,7 @@ Drag a material onto an object in the viewport to assign it. Save a group of nod
 
 Everything saved to the library appears as a tile in the grid — a picture and a name — sorted into sections, one tab per kind.
 
-- **Material** — save materials and bring them back into any scene: drag one onto an object in the viewport to assign it, or import into `/mat` or a LOP material library. Redshift (classic + USD builders), Karma/MaterialX, Octane (classic + Solaris builders). Filter by category, tag, favourite or renderer.
+- **Material** — save materials and bring them back into any scene: drag one onto an object in the viewport to assign it, or import into `/mat` or a LOP material library. Redshift (classic + USD builders), Karma/MaterialX, Octane (Material Builder, classic + Solaris). Filter by category, tag, favourite or renderer.
 - **Color** — save gradients and palettes and apply them directly to parameters: stepped or linear ramps to ramp parameters, single swatches to colour parameters. Ships with palettes inspired by the colour theories of Sanzo Wada, Paul Klee, Josef Albers and Johannes Itten.
 - **Node** — save a group of nodes from any context (SOP, Copernicus, LOP, DOP, TOP, CHOP, object level) — a whole network, a selection, or a single node — and import it back into a matching context.
 - **Code** — keep the VEX, OpenCL and Python snippets you rely on: double-click to apply to the selected node, or drop one into the network. Python snippets also run from a button on their tile.

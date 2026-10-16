@@ -3,17 +3,17 @@ import importlib
 
 from amaze.preview import shaderball_scene
 from amaze.preview import thumbnail_scene
-from amaze.preview import karma_scene
+from amaze.preview import usd_scene
 
-_LEAF_FIRST = (shaderball_scene, thumbnail_scene, karma_scene)
+_LEAF_FIRST = (shaderball_scene, thumbnail_scene, usd_scene)
 
 _DOOR = {
     "ThumbNailScene": thumbnail_scene,
     "ocio_from_viewer": thumbnail_scene,
     "safe_set": thumbnail_scene,
     "rig_key": thumbnail_scene,
-    "build_karma_scaffold": karma_scene,
-    "render_karma_into": karma_scene,
+    "build_usd_scaffold": usd_scene,
+    "render_usd_into": usd_scene,
 }
 
 __all__ = list(_DOOR) + ["reload_engine"]

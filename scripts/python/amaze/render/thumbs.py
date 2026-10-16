@@ -29,7 +29,7 @@ class ThumbNailRenderer:
     @contextlib.contextmanager
     def karma_batch(preferences):
         """One Karma scaffold for the batch, or NO_SCENE_VIEWER, said once; pass it to create_thumbnail."""
-        scaffold = preview.build_karma_scaffold(preferences)  # the scaffold is a full USD stage composition - the expensive part of a Karma thumbnail, and identical for every material, so a batch pays the stage load once instead of N times
+        scaffold = preview.build_usd_scaffold(preferences, "Karma")  # one stage load for the batch
         if scaffold is None:    # no Scene Viewer, and every renderer takes its OCIO from one
             debug.event("thumb", "no scene viewer - the batch renders nothing")
             ui = getattr(hou, "ui", None)
@@ -63,7 +63,7 @@ class ThumbNailRenderer:
                 ):
                     if material.is_karma_renderer(self._mat.renderer):
                         if scaffold is not None:
-                            preview.render_karma_into(  # the batch's scaffold, which karma_batch destroys
+                            preview.render_usd_into(  # the batch's scaffold, which karma_batch destroys
                                 scaffold, node_handler.builder_node,
                                 self._mat.mat_id,
                                 tile_icons.thumbnail_path(
@@ -81,17 +81,21 @@ class ThumbNailRenderer:
                 node_handler.cleanup()  # in the finally: an interrupted render leaves no copy in /mat
 
     def create_thumb_mtlx(self, node: hou.Node, asset_id: str) -> bool:
-        """Single Karma thumbnail: build a throwaway scaffold, render one material into it, destroy it; False when no scaffold could be built. A whole batch shares ONE scaffold through `karma_batch` instead."""
-        scaffold = preview.build_karma_scaffold(self._preferences)
+        """One MaterialX thumbnail; a batch shares one scaffold through `karma_batch` instead."""
+        return self._usd_thumbnail("Karma", node, asset_id)
+
+    def _usd_thumbnail(self, renderer: str, node: hou.Node, asset_id: str) -> bool:
+        """A throwaway USD scaffold for `renderer`, one material rendered into it; False with none."""
+        scaffold = preview.build_usd_scaffold(self._preferences, renderer)
         if scaffold is None:
             return False
         try:
-            return preview.render_karma_into(
+            return preview.render_usd_into(
                 scaffold, node, asset_id,
                 tile_icons.thumbnail_path(self._preferences, asset_id))
         finally:
-            with hou.undos.disabler():  # the create is disabled inside build_karma_scaffold, and a bare destroy is the half that resurrects the whole scaffold on one Ctrl+Z (the BOTH-ends rule below)
-                scaffold["net"].destroy()  # in the finally, so an interrupted render leaves no orphaned lopnet with a live ROP in /obj
+            with hou.undos.disabler():  # a bare destroy brings the scaffold back on one Ctrl+Z
+                scaffold["net"].destroy()  # in the finally: an interrupt leaves no live ROP in /obj
 
     @contextlib.contextmanager
     def _thumb_scene(self, renderer: str):
@@ -522,9 +526,5 @@ class ThumbNailRenderer:
         return self._rendered(path, "Redshift", asset_id, errors)
 
     def create_thumb_octane(self, node: hou.Node, asset_id: str) -> bool:
-        path = tile_icons.thumbnail_path(self._preferences, asset_id)
-        with self._thumb_scene("Octane") as (sc, thumb):
-            self._setup_thumb_rop(thumb, node, path)
-            thumb.parm("render").pressButton()
-            errors = helpers.node_errors(getattr(sc, "rop", None))
-        return self._rendered(path, "Octane", asset_id, errors)
+        """One Octane thumbnail, in the MaterialX one's USD stage. ▸r/octane-thumbnail"""
+        return self._usd_thumbnail("Octane", node, asset_id)

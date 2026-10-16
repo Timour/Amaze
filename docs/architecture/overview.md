@@ -685,19 +685,23 @@ Engine** and the thumbnail runner (`render/thumbs.py`), its callers.
 - **Package:** `preview/` · **Door:** `amaze.preview`
 - **API:** `ThumbNailScene(renderer)` → `.get_node()` · `.rop` ·
   `ocio_from_viewer()` · `safe_set(node, parm, value)` ·
-  `rig_key(renderer)` · `build_karma_scaffold(prefs)` ·
-  `render_karma_into(scaffold, node, id, png_path)`
-- **The two light rigs are ONE table.** Redshift and Octane place their
-  key lights from shared constants and differ only in the size parm's
-  spelling (`areasize1/2/3` against `sx/sy/sz`); `rig_key` answers which
-  spelling a renderer uses and RAISES on one the table does not name,
-  rather than placing a light with no size. Intensity is not shared —
-  the two use different physical models.
-- **Karma is the odd shape and the caller still names the file.** Its
-  scene is a USD stage, too expensive to build per material, so it is
-  built once and rendered into many times — but like the other three it
-  writes where the caller says, which is why `png_path` is an argument
-  rather than something the engine works out from the library.
+  `rig_key(renderer)` · `build_usd_scaffold(prefs, renderer)` ·
+  `render_usd_into(scaffold, node, id, png_path)`
+- **Two scenes.** Redshift renders in an `/obj` scene (`ThumbNailScene`)
+  with its own lights and a studio HDRI; `rig_key` answers the light-size
+  spelling and RAISES on a renderer it does not name. Karma and Octane
+  render the SAME USD stage (`preview/usd_scene.py`): the shaderball USD
+  with its own USD lights, a MaterialX floor, and per renderer only the
+  render settings and the USD Render ROP's delegate differ, so a
+  MaterialX tile and an Octane tile are lit alike by construction. Both
+  write an ACEScg EXR that one conversion turns into the PNG through the
+  viewer's OCIO display and view. A classic `octane_vopnet` is rebuilt
+  into Octane's Solaris builder for the render, which LOPs can read.
+- **The USD stage is built once and the caller names the file.** It is
+  too expensive to build per material, so a batch renders many
+  materials into one — but like the `/obj` scene it writes where the
+  caller says, which is why `png_path` is an argument rather than
+  something the engine works out from the library.
 - **The part that is not Python:** the scene's node carries seven spare
   parameters the caller drives it through — `mat`, `path`,
   `cop_out_img`, `resx`/`resy`, `obj_exclude`, `lights`, `render` — and
@@ -988,7 +992,13 @@ an unknown file might be the user's and a leftover scratch never is.
   One predicate: `material.is_karma_renderer()`.
 - **USD-builder** — a material that can live in a LOP/Solaris context
   (`rs_usd_material_builder`, `octane_solaris_material_builder`, and all
-  Karma-family). MAT-only otherwise.
+  Karma-family). MAT-only otherwise. Its tile reads `USD Redshift` or
+  `USD Octane`.
+- **Octane's own builder** — what Octane 2026.6's Create Material makes:
+  a plain `subnet` carrying the user data `octane_material_builder = "1"`,
+  which is how Amaze recognises it (`nodes.is_octane_builder`). It lives
+  in both /mat and LOPs like a Karma builder and saves WHOLE like one, so
+  the marker comes back on import; its tile reads `Octane`, no `USD`.
 
 ---
 
@@ -1094,9 +1104,9 @@ preview/                  THE PREVIEW ENGINE (below) - the scene a
                           use `amaze.preview`, never its insides
 preview/shaderball_scene.py  the ball, the plane and their materials
 preview/thumbnail_scene.py   the room around them: lights, camera,
-                          output - Redshift, Octane
-preview/karma_scene.py    Karma's, which is a USD stage: built once,
-                          many materials rendered into it
+                          output - Redshift
+preview/usd_scene.py      Karma's and Octane's, one USD stage: built
+                          once, many materials rendered into it
 helpers/hostos.py         OS-INTEGRATION ENGINE (all platform branches)
 helpers/hostver.py        HOST-CAPABILITY ENGINE - every "does this
                           environment behave differently here?" question

@@ -38,11 +38,11 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):  # the scaffold is a fu
         built = []
         rendered = []
 
-        def fake_build(preferences):
+        def fake_build(preferences, renderer="Karma"):
             built.append(1)
             return {"net": mock.Mock()}
 
-        with mock.patch.object(preview, "build_karma_scaffold",
+        with mock.patch.object(preview, "build_usd_scaffold",
                                fake_build), \
              mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
                                lambda self, scaffold=None:
@@ -62,8 +62,9 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):  # the scaffold is a fu
         model = self._model(1)
         built = []
         with mock.patch.object(
-                preview, "build_karma_scaffold",
-                lambda preferences: built.append(1) or {"net": mock.Mock()}), \
+                preview, "build_usd_scaffold",
+                lambda preferences, renderer="Karma":
+                built.append(1) or {"net": mock.Mock()}), \
              mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
                                lambda self, scaffold=None: None):
             model.render_thumbnail(0)
@@ -72,8 +73,8 @@ class TheScaffoldIsBuiltOncePerBatch(unittest.TestCase):  # the scaffold is a fu
     def test_the_batch_destroys_its_scaffold_once(self):
         """Both ends, and off the undo stack - a bare destroy is the half that resurrects the whole scaffold on one Ctrl+Z."""
         net = mock.Mock()
-        with mock.patch.object(preview, "build_karma_scaffold",
-                               lambda preferences: {"net": net}):
+        with mock.patch.object(preview, "build_usd_scaffold",
+                               lambda preferences, renderer="Karma": {"net": net}):
             with thumbs.ThumbNailRenderer.karma_batch(
                     test_support.fixture_prefs(self)) as scaffold:
                 self.assertIsNotNone(scaffold)

@@ -10,13 +10,11 @@ ENV_MAP = "$AMAZE/scripts/python/amaze/res/img/photo_studio_01_4k_ACEScg.hdr"
 RIGHT_TRANSLATE = (0.182989, 0.400678, -0.637707)
 RIGHT_ROTATE = (-164.722, -11.677, 0)
 RIGHT_SIZE = (0.5, 0.5, 0.5)
-LEFT_TRANSLATE = {"Redshift": (0.00626206, 0.290401, 0.562686),
-                  "Octane": (-0.0788468, 0.247556, 0.562686)}
+LEFT_TRANSLATE = (0.00626206, 0.290401, 0.562686)
 LEFT_ROTATE = (0, 0, 0)
 LEFT_SIZE = (0.28, 0.5, 0.5)
 
-SIZE_PARMS = {"Redshift": ("areasize1", "areasize2", "areasize3"),
-              "Octane": ("sx", "sy", "sz")}
+SIZE_PARMS = {"Redshift": ("areasize1", "areasize2", "areasize3")}
 
 
 def safe_set(node: hou.Node, parm_name: str, value, **kwargs) -> None:
@@ -104,7 +102,7 @@ class ThumbNailScene:
             self.geo_node.parm("resy").set(512)
             self.geo_node.parm("lights").set("*")
 
-            if "Redshift" in renderer or "Octane" in renderer:
+            if "Redshift" in renderer:
                 self.shaderball = shaderball_scene.ShaderBallSetup(
                     self.renderer, self.geo_node
                 )
@@ -193,7 +191,7 @@ class ThumbNailScene:
             safe_set(self.lgt_right, "RSL_cameraScale", 0)
 
             place_light(self.lgt_left, self.renderer,
-                        LEFT_TRANSLATE["Redshift"], LEFT_ROTATE, LEFT_SIZE)
+                        LEFT_TRANSLATE, LEFT_ROTATE, LEFT_SIZE)
             safe_set(self.lgt_left, "RSL_intensityMultiplier", 7.1)
             safe_set(self.lgt_left, "Light1_exposure", 0)
             safe_set(self.lgt_left, "RSL_samples", 128)
@@ -202,60 +200,6 @@ class ThumbNailScene:
             safe_set(self.lgt_env, "light_intensity", 0.3)
             safe_set(self.lgt_env, "ry", 17.6)
             safe_set(self.lgt_env, "env_map", ENV_MAP)
-        elif "Octane" in self.renderer:
-            self.lgt_right = self.geo_node.createNode("octane_light")
-            self.lgt_right.setName("Right")
-            self.lgt_left = self.geo_node.createNode("octane_light")
-            self.lgt_left.setName("Left")
-
-            if self.lgt_right.parm("blackbody_efficiency_color_A_VALUEr"):
-                for light in (self.lgt_right, self.lgt_left):
-                    for channel in "rgb":
-                        safe_set(
-                            light,
-                            "blackbody_efficiency_color_A_VALUE" + channel,
-                            1)
-
-            place_light(self.lgt_right, self.renderer, RIGHT_TRANSLATE,
-                        RIGHT_ROTATE, RIGHT_SIZE)
-            safe_set(self.lgt_right, "NT_EMIS_BLACKBODY1_power", 30)
-
-            place_light(self.lgt_left, self.renderer,
-                        LEFT_TRANSLATE["Octane"], None, LEFT_SIZE)
-            safe_set(self.lgt_left, "NT_EMIS_BLACKBODY1_power", 15)
-
-            self.mat_net = self.geo_node.createNode("matnet")
-            self.build_octane_environment()
-
-    def build_octane_environment(self) -> None:
-        """Octane's dome is a render-target shader, and its parm names move every version. ▸r/renderer-plugins"""
-        target = self.mat_net.createNode("octane_mat_renderTarget")
-        version = target.type().name()
-
-        if "::2.2" in version:
-            safe_set(target, "kernelMenu", 3)
-            safe_set(target, "environmentMenu", 6)
-            safe_set(target, "maxsamples", 200)
-            safe_set(target, "textureEnvPower_1", 0.2)
-            safe_set(target, "textureEnvFilename_1", ENV_MAP)
-            safe_set(target, "textureEnvColorSpace_1",
-                     "NAMED_COLOR_SPACE_ACESCG")
-        elif "::2.0" in version or "::2.1" in version:
-            safe_set(target, "kernelMenu", 3)
-            safe_set(target, "environmentMenu", 6)
-            safe_set(target, "maxsamples", 200)
-            safe_set(target, "textureEnvPower", 0.2)
-            safe_set(target, "textureEnvironmentFilename", ENV_MAP)
-            safe_set(target, "colorSpace", "NAMED_COLOR_SPACE_ACESCG")
-        else:
-            safe_set(target, "parmKernel", 1)
-            safe_set(target, "parmEnvironment", 1)
-            safe_set(target, "maxSamples2", 200)
-            safe_set(target, "power4", 0.2)
-            safe_set(target, "A_FILENAME4", ENV_MAP)
-            safe_set(target, "colorSpace2", "NAMED_COLOR_SPACE_ACESCG")
-
-        target.setName("Octane_RenderTarget")
 
     def build_cam(self) -> None:
         """Build the render camera; the Redshift spare-parm hscript works on the SELECTION, so the user's is set aside and put back."""
@@ -330,37 +274,6 @@ class ThumbNailScene:
             safe_set(
                 self.rop,
                 "RS_outputFileNamePrefix",
-                self.geo_node.parm("path"),
-                follow_parm_reference=False,
-            )
-
-        if "Octane" in self.renderer:
-            self.rop = self.ropnet.createNode("Octane_ROP")
-
-            safe_set(self.rop, "HO_renderCamera", "../../RenderCam")
-            safe_set(self.rop, "HO_renderTarget",
-                     "../../matnet1/Octane_RenderTarget")
-
-            safe_set(self.rop, "HO_renderToMPlay", 0)
-
-            safe_set(self.rop, "HO_img_colorSpace", 5)
-            safe_set(self.rop, "HO_img_ocioColorSpace", 114)
-
-            safe_set(self.rop, "HO_img_fileFormat", 0)
-
-            safe_set(self.rop, "HO_mbDeformations", 0)
-            safe_set(self.rop, "HO_mbFur", 0)
-            safe_set(self.rop, "HO_mbInstances", 0)
-            safe_set(self.rop, "HO_mbParticles", 0)
-
-            safe_set(self.rop, "HO_img_deepFile", "deep filename")
-
-            safe_set(self.rop, "HO_objects_exclude",
-                     self.geo_node.parm("obj_exclude"))
-
-            safe_set(
-                self.rop,
-                "HO_img_fileName",
                 self.geo_node.parm("path"),
                 follow_parm_reference=False,
             )

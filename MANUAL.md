@@ -137,8 +137,8 @@ a dark backdrop:
 ## Material
 
 Houdini-native material networks with rendered shaderball thumbnails:
-Redshift (classic and USD builders), Karma/MaterialX, Octane (classic
-and Solaris).
+Redshift (classic and USD builders), Karma/MaterialX, Octane (the Octane
+Material Builder, classic and Solaris).
 
 ### Saving
 
@@ -155,9 +155,9 @@ Saving a node Amaze recognises — from the ID stamp a previous save left
 on it, or a unique name match — offers **Save Version / Save New /
 Cancel**. Multi-selections always save as new.
 
-> Thumbnails need `$OCIO` set, and Karma additionally needs an open
-> Scene Viewer (it reads the display/view transform from one). Renders
-> can be switched off entirely in Preferences ▸ Render.
+> Thumbnails need `$OCIO` set and an open Scene Viewer, whose display
+> and view transform they use. Renders can be switched off entirely in
+> Preferences ▸ Render.
 
 ### Versions
 
@@ -642,8 +642,9 @@ this machine.
 
 <img src="docs/images/prefs_render.png" width="440">
 
-**RenderSize**, **Samples (Redshift)** and **Samples (Karma)**,
-**RAM Cache (MB)**, **Geometry Shading**, **Geometry Background** and
+**RenderSize**, **Samples (Redshift)**, **Samples (Karma)** and
+**Samples (Octane)**, **RAM Cache (MB)**, **Geometry Shading**,
+**Geometry Background** and
 **Render Thumbs on Import**. Below the divider, **Conversion Threads**
 for texture conversion, then **Download Resolution** and **Parallel
 Downloads** for the online sources.

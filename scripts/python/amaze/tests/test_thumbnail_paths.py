@@ -101,9 +101,8 @@ class _RendererCase(unittest.TestCase):
         preview.ThumbNailScene = factory
 
     def paths(self):
-        # Every case walks this tuple, so a dropped renderer goes HERE.
-        return (("Redshift", self.renderer.create_thumb_redshift),
-                ("Octane", self.renderer.create_thumb_octane))
+        # Every /obj-scene renderer; Octane renders in the USD stage now.
+        return (("Redshift", self.renderer.create_thumb_redshift),)
 
 
 class ARenderThatWroteNothingReportsFailure(_RendererCase):
@@ -488,7 +487,7 @@ class TheSceneBuildKeepsTheUsersSelection(unittest.TestCase):
 
 
 class _KarmaRopStub:
-    """Enough usdrender ROP for the per-material path to be walked with no licence and no Karma cook - `execute` is the only parm `render_karma_into` presses on it."""
+    """Enough USD Render ROP for the per-material path: `execute` is all `render_usd_into` presses."""
 
     def __init__(self):
         self.pressed = []
@@ -507,7 +506,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             "space": "ACEScg"}
 
     def setUp(self):
-        module = preview.thumbnail_scene    # the SUBMODULE, which karma_scene calls through: headless there is no Scene Viewer to read OCIO from and the build answers None
+        module = preview.thumbnail_scene    # the SUBMODULE usd_scene calls; headless it finds no viewer
         real = module.ocio_from_viewer
         module.ocio_from_viewer = lambda: dict(self.OCIO)
         self.addCleanup(setattr, module, "ocio_from_viewer", real)
@@ -525,7 +524,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
                 pass
 
     def _scaffold(self):
-        scaffold = preview.build_karma_scaffold(self.prefs)
+        scaffold = preview.build_usd_scaffold(self.prefs, "Karma")
         self.assertIsNotNone(
             scaffold,
             "no scaffold was built although the OCIO seam is patched - "
@@ -583,7 +582,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
         scaffold = self._scaffold()
         mat = self._material()
         hou.undos.clear()
-        preview.render_karma_into(
+        preview.render_usd_into(
             scaffold, mat, "UNDO_PROBE", os.path.join(self.out, "u.png"))
         self.assertEqual(
             (), hou.undos.undoLabels(),
@@ -630,7 +629,7 @@ class AKarmaThumbnailLeavesTheSceneAsItFoundIt(unittest.TestCase):
             keeper = hou.node("/obj").createNode("null")
         self.addCleanup(self._drop, keeper)
         keeper.setSelected(True, True)
-        preview.render_karma_into(
+        preview.render_usd_into(
             scaffold, mat, "SEL_PROBE", os.path.join(self.out, "s.png"))
         self.assertEqual(
             [keeper], list(hou.selectedNodes()),
@@ -777,8 +776,7 @@ class TheLightRigDegradesLikeTheRopsDo(unittest.TestCase):
             for node in ast.walk(ast.parse(source))
             if isinstance(node, ast.FunctionDef)
         }
-        for name in ("place_light", "build_lights",
-                     "build_octane_environment"):
+        for name in ("place_light", "build_lights"):
             self.assertIn(
                 name, bodies,
                 "%s is gone, so this test checks nothing - repoint it at "
@@ -1035,13 +1033,13 @@ class ARerenderNeverEntersTheUsersLopContext(unittest.TestCase):
 
 class TheDebugBlockCannotChangeTheOutcome(unittest.TestCase):
 
-    def test_render_karma_into_guards_its_index(self):
+    def test_render_usd_into_guards_its_index(self):
         """The Debug-gated tier may not change behaviour: an unguarded index inside `if debug.is_on()` fails only for people running with Debug on."""
-        tree = ast.parse(source_of("preview/karma_scene.py"))
+        tree = ast.parse(source_of("preview/usd_scene.py"))
         checked = False
         for function in ast.walk(tree):
             if not (isinstance(function, ast.FunctionDef)
-                    and function.name == "render_karma_into"):
+                    and function.name == "render_usd_into"):
                 continue
             for node in ast.walk(function):
                 if not (isinstance(node, ast.If)

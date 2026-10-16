@@ -156,8 +156,9 @@ class ABatchRefusesARowItCannotRender(unittest.TestCase):
         with mock.patch.object(model, "_add_thumb_paths",
                                lambda row: None), \
              mock.patch.object(model, "rowCount", lambda: 1), \
-             mock.patch.object(preview, "build_karma_scaffold",
-                               lambda preferences: {"net": mock.Mock()}), \
+             mock.patch.object(preview, "build_usd_scaffold",
+                               lambda preferences, renderer="Karma":
+                               {"net": mock.Mock()}), \
              mock.patch.object(thumbs.ThumbNailRenderer, "create_thumbnail",
                                lambda self, scaffold=None:
                                rendered.append(scaffold)):

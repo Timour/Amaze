@@ -2,7 +2,6 @@
 
 import hou
 
-from amaze.core import debug
 from amaze.core import material
 
 
@@ -109,34 +108,6 @@ class ShaderBallSetup:
                 rsmat.setNamedInput("base_color", tex, 0)    # the NAMED input works on both material types; index 0 is only guaranteed on StandardMaterial
             except (hou.OperationFailed, AttributeError):
                 rsmat.setInput(0, tex, 0)
-
-            self.mat.setName("Plane", True)
-
-        elif "Octane" in renderer:
-
-            self.mat = self.matnet.createNode("octane_vopnet")
-
-            omat = self.mat.node("Standard_Surface")    # as with Redshift above, the default child's name differs between Octane versions - searched generically rather than crashing when the assumed name is absent
-            if omat is None:
-                for child in self.mat.children():
-                    tname = child.type().name()
-                    if "Surface" in tname or "Material" in tname:
-                        omat = child
-                        break
-
-            if omat is not None:
-                specular = omat.parm("specular")
-                if specular is not None:
-                    specular.set(0)
-
-                tex = self.mat.createNode("octane::NT_TEX_IMAGE")
-                tex.parm("A_FILENAME").set(
-                    "$AMAZE/scripts/python/amaze/res/img/FloorTexture.exr"
-                )
-                omat.setInput(1, tex, 0)
-            else:
-                debug.event("thumb", "octane default material node not "    # event, not note: a renderer version difference in the shaderball's floor is developer detail - the render completes, just without the floor texture
-                            "found - floor texture/specular skipped")
 
             self.mat.setName("Plane", True)
 

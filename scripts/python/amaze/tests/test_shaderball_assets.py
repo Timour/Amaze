@@ -17,7 +17,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
 
     PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     RES = os.path.join(PKG, "res", "usd")
-    ENGINE = os.path.join(PKG, "preview", "karma_scene.py")
+    ENGINE = os.path.join(PKG, "preview", "usd_scene.py")
 
     #: What the engine loads; every other file is reached through it.
     ENTRY = "shaderBallScene_Simple.usd"
@@ -29,7 +29,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
         found = sorted(set(re.findall(r'"(/shaderBallScene[^"]*)"', source)))
         self.assertTrue(
             found,
-            "no /shaderBallScene paths found in karma_scene.py - either the "
+            "no /shaderBallScene paths found in usd_scene.py - either the "
             "engine stopped addressing the scene by prim path, or this "
             "test's search has gone stale. Do not delete the search; find "
             "out which.")
@@ -62,7 +62,7 @@ class ShaderBallAssetsTest(unittest.TestCase):
             prim = stage.GetPrimAtPath(path)
             self.assertTrue(
                 prim and prim.IsActive(),
-                "karma_scene.py addresses %s but the composed scene has no "
+                "usd_scene.py addresses %s but the composed scene has no "
                 "active prim there - the thumbnail would render empty and "
                 "the app would keep the old picture without saying so"
                 % path)
