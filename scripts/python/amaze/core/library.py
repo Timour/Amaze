@@ -221,11 +221,13 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         """One stored row becomes one record - THE reader every load path shares (construction, a library switch, an adopted peer row), so a subclass with a rule about its rows states it once."""
         return material.Material.from_dict(row)
 
-    def _tile_image_path(self, row: int) -> str:
+    def _tile_image_path(self, row: int, spec=None) -> str:
         """The file a row's tile loads: its chosen icon, else its render; "" for an unsafe id."""
+        if spec is None:
+            spec = self.tile_icon(row)
         return tile_icons.tile_read_path(
             self.preferences, str(self._assets[row].mat_id),
-            tile_icons.is_custom(self.tile_icon(row)))
+            tile_icons.is_custom(spec))
 
     def switch_model_data(self):
         """Point this model at whatever library Preferences now names. No worker teardown is needed: engine deliveries are keyed by material id, so an in-flight load cannot misroute."""
@@ -256,10 +258,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
 
     def rebuild_thumbs(self):
         """Rebuild the row->path and key->row maps. No loading happens here - the engine loads on first view (data()), so opening a big library costs only the visible screen."""
-        self._mat_paths = [self._tile_image_path(row)
-                           for row in range(self.rowCount())]
-        self._row_keys = [self._thumb_key(row)
-                          for row in range(self.rowCount())]    # row -> its key, the map read backwards
+        specs = [self.tile_icon(row) for row in range(self.rowCount())]    # one store read per row
+        self._mat_paths = [self._tile_image_path(row, spec)
+                           for row, spec in enumerate(specs)]
+        self._row_keys = [self._thumb_key(row, spec)
+                          for row, spec in enumerate(specs)]    # row -> its key, the map read backwards
         self._thumb_rows = {key: row for row, key in enumerate(self._row_keys)}
 
     def _add_thumb_paths(self, row: int, base_changed: bool = True):
@@ -267,14 +270,15 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
         if not 0 <= row < self.rowCount():
             return
         mat_id = self._assets[row].mat_id
-        entry = self._tile_image_path(row)
+        spec = self.tile_icon(row)    # one store read serves the path and the key
+        entry = self._tile_image_path(row, spec)
         if row < len(self._mat_paths):
             self._mat_paths[row] = entry
         elif row == len(self._mat_paths):
             self._mat_paths.append(entry)    # add_asset appends the row first, so the maps grow by one here
         else:
             self.rebuild_thumbs()    # the maps fell out of step with the rows - resync whole
-        key = self._thumb_key(row)
+        key = self._thumb_key(row, spec)
         if row < len(self._row_keys):
             stale = self._row_keys[row]
             if self._thumb_rows.get(stale) == row:
@@ -308,10 +312,11 @@ class AssetLibrary(grid_columns.GridColumnsMixin,
             return ""
         return str(table.get(cats[0], "") or "")
 
-    def _thumb_key(self, row: int):
+    def _thumb_key(self, row: int, spec=None):
         """Shared-RAM-cache key for one row's picture: stable across reloads and collision-free across the models sharing the budget. EVERY input to the picture belongs in it - the library, the icon choice, the line weight - because nothing clears the app-wide cache on a library switch."""
         home = hostos.canonical_path_key(str(self.preferences.dir or ""))
-        spec = self.tile_icon(row)
+        if spec is None:
+            spec = self.tile_icon(row)
         if not tile_icons.is_custom(spec):
             return (home, self.DB_FILENAME, self._assets[row].mat_id,
                     "", "", "", 0)

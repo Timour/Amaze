@@ -1237,6 +1237,32 @@ class OneRowsIconCostsOneRowsLookups(unittest.TestCase):
             "rows, each a store get with a deepcopy"
             % (len(calls), model.rowCount()))
 
+    def test_a_rebuild_asks_each_row_s_icon_once(self):
+        from amaze.core import library as library_mod
+        from amaze.core import tile_icons
+        prefs_obj = test_support.fixture_prefs(self)
+        test_support.reset_database_singletons()
+        self.addCleanup(test_support.reset_database_singletons)
+        model = library_mod.MaterialLibrary(preferences=prefs_obj)
+        self.assertTrue(model.set_tile_icon(0, {"name": "circle",
+                                                "bg": "#e0523a"}))
+        paths, keys = list(model._mat_paths), list(model._row_keys)
+        calls = []
+        real = tile_icons.override_for
+
+        def counted(preferences, key):
+            calls.append(key)
+            return real(preferences, key)
+
+        with mock.patch.object(tile_icons, "override_for", counted):
+            model.rebuild_thumbs()
+        self.assertEqual(model.rowCount(), len(calls),
+                         "a rebuild of %d rows read the icon store %d times"
+                         % (model.rowCount(), len(calls)))
+        self.assertEqual((paths, keys),
+                         (model._mat_paths, model._row_keys),
+                         "the rebuilt maps differ from the per-row ones")
+
 
 class AnIconEditWritesNoIndex(unittest.TestCase):
     """An icon lives in its own store, so choosing one writes no record list, and touches one row."""
