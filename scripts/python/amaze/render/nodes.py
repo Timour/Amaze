@@ -1069,18 +1069,17 @@ class NodeHandler:
 
     def load_interface_other(self, mat: material.Material, builder_name: str,
                              saved_type=None) -> None:
-        """Rebuild the saved container, no exec: type read, parms from sidecar."""
+        """Rebuild the saved container bare, no exec; a type this session lacks gets `builder_name`."""
         if saved_type is None:
             saved_type = self.get_saved_node_type(mat)
         saved_type = saved_type or builder_name
-        if node_type_available(saved_type):
-            builder = self._hou_parent.createNode(saved_type)
-            for node in builder.children():
-                node.destroy()
+        known = node_type_available(saved_type)
+        builder = self._hou_parent.createNode(saved_type if known else builder_name)
+        for node in builder.children():
+            node.destroy()
+        if known:
             apply_builder(
                 builder, read_builder_sidecar(self._builder_sidecar(mat)))
-        else:
-            builder = self._import_path.createNode(builder_name)
 
         builder.setName(      # a display name is the artist's text and `setName` takes node names only, answering `Invalid name` for a space
             helpers.sanitize_usd_path(mat.name), unique_name=True)

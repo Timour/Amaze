@@ -799,5 +799,36 @@ class WhatCountsAsAFailure(unittest.TestCase):
         saver.assert_called_once_with(collect, "asset1", False)
 
 
+class ASavedBuilderTypeThisSessionLacks(unittest.TestCase):
+    """`load_interface_other` when no category here can create the saved builder type."""
+
+    MISSING = "amaze_absent_builder"
+
+    def setUp(self):
+        self.prefs = test_support.fixture_prefs(self)
+        self.home = hou.node("/obj").createNode("matnet", "missing_type_home")
+        self.addCleanup(self.home.destroy)
+        self.handler = nodes.NodeHandler(self.prefs)
+        self.handler._hou_parent = self.home
+        self.handler._import_path = self.home
+        self.mat = material.Material(name="missing_type", renderer="Redshift")
+
+    def test_the_renderer_container_arrives_without_its_stock_children(self):
+        """A stock terminal and shader sit first, so the converter read them, not the saved ones."""
+        self.handler.load_interface_other(self.mat, "subnet", self.MISSING)
+
+        builder = self.handler.builder_node
+        self.assertEqual("subnet", builder.type().name())
+        self.assertEqual(
+            [], [child.type().name() for child in builder.children()],
+            "the fallback container kept the stock children its type creates")
+
+    def test_with_no_renderer_container_either_it_refuses_and_leaves_nothing(self):
+        """No plugin and no saved type: `createNode`'s own refusal, and no node left behind."""
+        with self.assertRaises(hou.OperationFailed):
+            self.handler.load_interface_other(self.mat, self.MISSING, "")
+        self.assertEqual([], list(self.home.children()))
+
+
 if __name__ == "__main__":
     unittest.main()
