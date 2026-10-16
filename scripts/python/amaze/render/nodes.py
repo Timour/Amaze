@@ -821,8 +821,11 @@ class NodeHandler:
                 debug.note("could not stamp imported node: " + str(e))
             completed = True
         except hou.Error as exc:
-            if self._hou_parent is None:
-                raise    # the staging failed before any load, so there is no verdict to give
+            if self._hou_parent is None:    # the staging failed before any load
+                debug.event("import", "failed", material=mat.name,
+                            phase="staging", error=str(exc))
+                return (False,
+                        messages.MATERIAL_FAILED_TO_IMPORT % mat.name)
             debug.event("import", "failed", material=mat.name,
                         phase="load" if not locals().get("loaded_ok")
                         else "placement", error=str(exc))

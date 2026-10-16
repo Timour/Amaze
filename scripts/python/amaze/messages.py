@@ -168,6 +168,8 @@ LIBRARY_PATH_INVALID = 'The selected path is not valid. Choose a library folder.
 
 IMPORTED_MATERIAL_MAY_NOT_APPEAR = '"%s" was imported into %s but may not appear as a material: %s.'
 
+MATERIAL_FAILED_TO_IMPORT = '"%s" failed to import.'
+
 NO_NODES_SELECTED_TO_SAVE = 'No nodes are selected — nothing to save.'
 
 NETWORK_EMPTY_NOTHING_TO_SAVE = 'The network is empty — nothing to save.'

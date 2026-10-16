@@ -281,6 +281,21 @@ class TestRoundTrip(unittest.TestCase):
         return next(a for a in self.model.assets
                     if material.is_karma_renderer(a.renderer))
 
+    def _assert_refused_plainly(self, handler, stage):
+        """The staging failure answers the plain sentence naming the material, never a raise."""
+        from amaze import messages
+        asset = self._karma_asset()
+        try:
+            ok, reason, created = handler.import_asset_to_scene(
+                asset, target="lop", context_node=stage)
+        except hou.Error as exc:
+            self.fail("the staging failure raised instead of answering: %s"
+                      % exc)
+        self.assertFalse(ok)
+        self.assertEqual(
+            messages.MATERIAL_FAILED_TO_IMPORT % asset.name, reason)
+        self.assertEqual([], created)
+
     def test_a_companion_that_raises_takes_back_the_library_made(self):
         stage = hou.node("/obj").createNode("lopnet", "companion_raise_probe")
         self.addCleanup(stage.destroy)
@@ -290,9 +305,7 @@ class TestRoundTrip(unittest.TestCase):
             raise hou.OperationFailed("companion refused")
 
         handler.restore_cop_companion = refusing
-        with self.assertRaises(hou.OperationFailed):
-            handler.import_asset_to_scene(
-                self._karma_asset(), target="lop", context_node=stage)
+        self._assert_refused_plainly(handler, stage)
         self.assertEqual([], self._libraries(stage),
                          "the import left the library it made when the COP "
                          "companion raised")
@@ -328,9 +341,7 @@ class TestRoundTrip(unittest.TestCase):
             return RefusesStaging(found) if path == "/obj" else found
 
         with mock.patch.object(hou, "node", node):
-            with self.assertRaises(hou.OperationFailed):
-                handler.import_asset_to_scene(
-                    self._karma_asset(), target="lop", context_node=stage)
+            self._assert_refused_plainly(handler, stage)
         self.assertIsNone(real_node("/obj/staging_probe_cops"),
                           "the import left the COP companion it restored")
         self.assertEqual([], self._libraries(stage))
