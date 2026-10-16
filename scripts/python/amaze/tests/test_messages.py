@@ -5,6 +5,7 @@ import re
 import unittest
 
 from amaze import messages
+from amaze.tests import test_support  # noqa: F401
 
 _PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

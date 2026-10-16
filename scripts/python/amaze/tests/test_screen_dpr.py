@@ -5,6 +5,8 @@ import inspect
 import os
 import unittest
 
+from amaze.tests import test_support  # noqa: F401
+
 
 _SRC = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

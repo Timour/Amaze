@@ -1,5 +1,6 @@
 """The shell gates, tested like code because they are code - never on an exit status, always on the words and a terminal marker, and `$AMAZE` is never left empty here. ▸p/gate-fixture-safety ▸archive/test_shell_gates.py"""
 
+import ast
 import hashlib
 import os
 import re
@@ -1026,6 +1027,54 @@ class EveryAppBuilderPicksOffscreen(unittest.TestCase):
         """Guards the guard: a scan that matches nothing passes."""
         self.assertGreater(len(self._builders()), 40,
                            "the app-construction pattern no longer matches")
+
+
+class EveryTestModuleArmsTheSandbox(unittest.TestCase):
+    """Importing `test_support` arms the sandbox, so every module does it at module level."""
+
+    def _imports_the_harness(self, tree):
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = ["%s.%s" % (node.module, alias.name)
+                         for alias in node.names]
+            else:
+                continue
+            if any(name.split(".")[-1] == "test_support" for name in names):
+                return True
+        return False
+
+    def _modules(self):
+        tests_dir = os.path.dirname(os.path.abspath(__file__))
+        found = {}
+        for name in sorted(os.listdir(tests_dir)):
+            if name.startswith("test_") and name.endswith(".py") \
+                    and name != "test_support.py":
+                with open(os.path.join(tests_dir, name),
+                          encoding="utf-8") as handle:
+                    found[name[:-3]] = ast.parse(handle.read(), name)
+        return found
+
+    def test_every_test_module_imports_the_harness(self):
+        unarmed = sorted(name for name, tree in self._modules().items()
+                         if not self._imports_the_harness(tree))
+        self.assertEqual(
+            [], unarmed,
+            "these test modules never import test_support at module level, "
+            "so run on their own they can write the user's real folders: %s"
+            % unarmed)
+
+    def test_the_scan_sees_an_import(self):
+        """Guards the guard: a scan that matches nothing reports everything."""
+        self.assertTrue(self._imports_the_harness(ast.parse(
+            "from amaze.tests import test_support")))
+        self.assertTrue(self._imports_the_harness(ast.parse(
+            "import test_support")))
+        self.assertFalse(self._imports_the_harness(ast.parse(
+            "def f():\n    from amaze.tests import test_support\n")))
+        self.assertGreater(len(self._modules()), 40,
+                           "the test directory scan went vacuous")
 
 
 class EveryToolSpeaksTheResolver(unittest.TestCase):

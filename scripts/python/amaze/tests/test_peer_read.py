@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from amaze.helpers import hostos
+from amaze.tests import test_support  # noqa: F401
 
 
 class PeerReadTest(unittest.TestCase):

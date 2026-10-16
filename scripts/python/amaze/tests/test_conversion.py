@@ -20,6 +20,7 @@ sys.path.insert(
 
 from amaze.core import conversion  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
+from amaze.tests import test_support  # noqa: E402,F401
 
 
 def write_radiance_hdr(path, width=256, height=128):

@@ -14,6 +14,7 @@ sys.path.insert(
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import multifilterproxy_model  # noqa: E402
+from amaze.tests import test_support  # noqa: E402,F401
 
 
 class _Rows(QtCore.QAbstractListModel):

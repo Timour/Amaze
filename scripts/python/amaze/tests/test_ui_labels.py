@@ -9,6 +9,8 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
+from amaze.tests import test_support  # noqa: E402,F401
+
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(PACKAGE)))
 

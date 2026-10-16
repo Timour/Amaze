@@ -26,6 +26,7 @@ from amaze.core import file_library  # noqa: E402
 from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.prefs import prefs as prefs_mod  # noqa: E402
+from amaze.tests import test_support  # noqa: E402,F401
 
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 

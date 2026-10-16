@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 
+from amaze.tests import test_support  # noqa: F401
+
 _TOOL = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))),

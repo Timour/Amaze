@@ -17,6 +17,7 @@ from amaze.core import cop_library                       # noqa: E402
 from amaze.core import gradient_library                  # noqa: E402
 from amaze.core import library                           # noqa: E402
 from amaze.core import matx_library                      # noqa: E402
+from amaze.tests import test_support                     # noqa: E402,F401
 
 _USER = int(QtCore.Qt.ItemDataRole.UserRole)
 

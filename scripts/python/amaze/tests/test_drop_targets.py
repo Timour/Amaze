@@ -18,6 +18,7 @@ sys.path.insert(    # THREE dirnames: tests/ -> amaze/ -> python/.
         os.path.dirname(os.path.abspath(__file__)))))
 
 from amaze.core import dragengine  # noqa: E402
+from amaze.tests import test_support  # noqa: E402,F401
 
 
 class ScriptedEditor(object):

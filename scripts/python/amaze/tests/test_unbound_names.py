@@ -5,6 +5,8 @@ import os
 import sys
 import unittest
 
+from amaze.tests import test_support  # noqa: F401
+
 _AMAZE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 

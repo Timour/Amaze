@@ -4,6 +4,8 @@ import ast
 import os
 import unittest
 
+from amaze.tests import test_support  # noqa: F401
+
 _ROOT = os.path.abspath(__file__)
 for _ in range(5):
     _ROOT = os.path.dirname(_ROOT)

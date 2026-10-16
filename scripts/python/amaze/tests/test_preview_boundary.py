@@ -4,6 +4,8 @@ import os
 import types
 import unittest
 
+from amaze.tests import test_support  # noqa: F401
+
 PACKAGE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENGINE = os.path.join(PACKAGE, "preview")
 

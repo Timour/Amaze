@@ -14,6 +14,7 @@ import hou  # noqa: E402
 
 import amaze  # noqa: E402
 from amaze.helpers import theme, ui_helpers  # noqa: E402
+from amaze.tests import test_support  # noqa: E402,F401
 
 
 def _px(n):
