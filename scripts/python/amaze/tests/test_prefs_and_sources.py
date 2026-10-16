@@ -188,6 +188,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         "ram_cache_mb": None,
         "texture_parallel_conversions": "eight",
         "karma_rendersamples": None,
+        "octane_rendersamples": "many",
         "view_mode": None,
         "accent_color": None,
         "rendersize": None,
@@ -215,6 +216,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
         self.assertIsInstance(p.ram_cache_mb, int)
         self.assertIsInstance(p.texture_parallel_conversions, int)
         self.assertIsInstance(p.karma_rendersamples, int)
+        self.assertEqual(256, p.octane_rendersamples)
         self.assertIn(p.view_mode, ("grid", "list"))
         self.assertTrue(p.accent_color)
         self.assertEqual((256, 256, 1), (p.rendersize, p.rendersamples,
@@ -264,6 +266,7 @@ class LoadNeverRaisesAndAlwaysValidates(unittest.TestCase):
                 (dlg.line_rendersize, "rendersize", 1),
                 (dlg.line_rendersamples, "rendersamples", 1),
                 (dlg.spin_karma_samples, "karma_rendersamples", 1),
+                (dlg.spin_octane_samples, "octane_rendersamples", 1),
                 (dlg.spin_ram_cache, "ram_cache_mb", 1),
                 (dlg.spin_parallel, "texture_parallel_conversions", 1),
                 (dlg.spin_matx_parallel, "matx_parallel_downloads", 1),

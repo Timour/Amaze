@@ -393,6 +393,16 @@ class PrefsDialog(base_dialog.AssetDialog):
             self._field_slider_row(self.spin_karma_samples,
                                    *prefs_mod.KARMA_SAMPLES_RANGE),
         )
+        self.spin_octane_samples = QtWidgets.QSpinBox()
+        self.spin_octane_samples.setRange(*prefs_mod.OCTANE_SAMPLES_RANGE)
+        self.spin_octane_samples.setValue(self._prefs.octane_rendersamples)
+        self.spin_octane_samples.valueChanged.connect(self.set_octane_rendersamples)
+        self.spin_octane_samples.setToolTip(ui_helpers.tooltip_text(
+            tooltips.PREFS_SAMPLES_OCTANE))
+        form.addRow(self._label("Samples (Octane)"),
+            self._field_slider_row(self.spin_octane_samples,
+                                   *prefs_mod.OCTANE_SAMPLES_RANGE),
+        )
         self.spin_ram_cache = QtWidgets.QSpinBox()
         self.spin_ram_cache.setRange(*prefs_mod.RAM_CACHE_RANGE)
         self.spin_ram_cache.setValue(self._prefs.ram_cache_mb)
@@ -465,8 +475,9 @@ class PrefsDialog(base_dialog.AssetDialog):
                                    *prefs_mod.DOWNLOADS_RANGE),
         )
         spins = (self.line_rendersize, self.line_rendersamples,
-                 self.spin_karma_samples, self.spin_ram_cache,
-                 self.spin_parallel, self.spin_matx_parallel)
+                 self.spin_karma_samples, self.spin_octane_samples,
+                 self.spin_ram_cache, self.spin_parallel,
+                 self.spin_matx_parallel)
         self._tab_built["D05"] = {
             "QComboBox": (self._combo_geo_shading, self._combo_geo_bg,
                           self.cbb_matx_res),
@@ -948,6 +959,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         ("line_rendersize", "rendersize"),
         ("line_rendersamples", "rendersamples"),
         ("spin_karma_samples", "karma_rendersamples"),
+        ("spin_octane_samples", "octane_rendersamples"),
         ("spin_ram_cache", "ram_cache_mb"),
         ("spin_parallel", "texture_parallel_conversions"),
         ("spin_matx_parallel", "matx_parallel_downloads"),
@@ -1203,6 +1215,9 @@ class PrefsDialog(base_dialog.AssetDialog):
     def set_karma_rendersamples(self):
         """Set the Karma-specific thumbnail sample count"""
         self._prefs.karma_rendersamples = self.spin_karma_samples.value()
+
+    def set_octane_rendersamples(self):
+        self._prefs.octane_rendersamples = self.spin_octane_samples.value()
 
     def set_render_on_import(self):
         self._prefs.render_on_import = int(self.cbx_render_on_import.isChecked())

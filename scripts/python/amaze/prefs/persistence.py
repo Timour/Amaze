@@ -108,6 +108,8 @@ SHARED_KEYS = {  # truth in the library's prefs.json: stored key -> (property or
     "rendersamples": ("rendersamples", "_rendersamples", 256),
     "karma_rendersamples":
         ("karma_rendersamples", "_karma_rendersamples", 9),
+    "octane_rendersamples":
+        ("octane_rendersamples", "_octane_rendersamples", 256),
     "render_on_import": ("render_on_import", "_render_on_import", 1),
     "matx_resolution": ("matx_resolution", "_matx_resolution", "2k"),
     "ram_cache_mb": ("ram_cache_mb", "_ram_cache_mb", 256),

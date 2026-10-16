@@ -25,6 +25,7 @@ TEST_LIB_SUBDIR = "lib"  # the library inside a test folder, named once because 
 RENDERSIZE_RANGE = (64, 1024)  # the setter clamps to it, and the Preferences row offers it
 RENDERSAMPLES_RANGE = (1, 1024)
 KARMA_SAMPLES_RANGE = (1, 256)
+OCTANE_SAMPLES_RANGE = (1, 1024)
 RAM_CACHE_RANGE = (64, 4096)
 CONVERSIONS_RANGE = (1, 8)
 DOWNLOADS_RANGE = (1, 16)
@@ -590,6 +591,15 @@ class Prefs(_Persistence):
     @karma_rendersamples.setter
     def karma_rendersamples(self, val: int) -> None:
         self._karma_rendersamples = _clamped(val, KARMA_SAMPLES_RANGE)
+
+    @property
+    def octane_rendersamples(self) -> int:
+        """Octane path tracing's sample cap, its own dial like Karma's."""
+        return self._octane_rendersamples
+
+    @octane_rendersamples.setter
+    def octane_rendersamples(self, val: int) -> None:
+        self._octane_rendersamples = _clamped(val, OCTANE_SAMPLES_RANGE)
 
     @property
     def scroll_speed(self) -> float:

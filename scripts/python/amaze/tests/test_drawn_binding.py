@@ -228,7 +228,7 @@ class TheDocumentPairsEveryDrawnButton(unittest.TestCase):
     def test_the_textless_rects_come_back_in_document_order(self):
         """A combo carries no label of its own to pin by, so the frame's `QComboBox` rects in drawn order are what answers the tab's combos."""
         self.assertEqual(
-            ((148, 162, 165, 22), (148, 190, 165, 22), (148, 315, 72, 22)),
+            ((148, 192, 165, 22), (148, 220, 165, 22), (148, 345, 72, 22)),
             amazetheme.drawn_boxes("D05")[("QComboBox", None)])
 
     def test_an_unknown_frame_answers_empty(self):
