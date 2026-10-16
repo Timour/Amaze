@@ -101,7 +101,7 @@ class FilterMenuEngineTest(unittest.TestCase):
                          "Materials lost its everything-entry")
         for label in material[1:]:
             self.assertIn(
-                label, ["Karma", "Redshift", "Octane"],
+                label, ["MaterialX", "Redshift", "Octane"],
                 "Materials offers something that is not a renderer")
 
     def test_rebuilds_leave_one_group_holding_only_the_entries_shown(self):
@@ -190,6 +190,30 @@ class FilterMenuEngineTest(unittest.TestCase):
         self.panel.filter_actions["All"].setChecked(True)
         self.panel.filter_menu_changed(self.panel.filter_actions["All"])
 
+    def test_the_choice_is_saved_by_id_so_its_label_can_change(self):
+        """The MaterialX entry saves its id `Karma`, and a saved `Karma` checks it again."""
+        self._labels_for("material")
+        if "Karma" not in self.panel.filter_actions:
+            self.skipTest("Karma not enabled in this fixture")
+
+        def back_to_all():
+            self._labels_for("material")
+            every = self.panel.filter_actions["All"]
+            every.setChecked(True)
+            self.panel.filter_menu_changed(every)
+        self.addCleanup(back_to_all)
+        act = self.panel.filter_actions["Karma"]
+        self.assertEqual("MaterialX", act.text(), "the Karma entry is not shown as MaterialX")
+        act.setChecked(True)
+        self.panel.filter_menu_changed(act)
+        self.assertEqual("Karma", self.panel.prefs.section_filter("material"),
+                         "the saved choice is the label, so renaming it loses the choice")
+        self._labels_for("code")
+        self._labels_for("material")
+        checked = self.panel.filter_action_group.checkedAction()
+        self.assertEqual("MaterialX", checked.text() if checked is not None else "",
+                         "a saved Karma did not bring the MaterialX entry back")
+
     def test_a_choice_no_longer_offered_falls_back_to_all(self):
         """A renderer switched off in Preferences takes its entry with it - the menu must not be left checked on nothing."""
         self._labels_for("material")
@@ -266,7 +290,8 @@ class FilterMenuEngineTest(unittest.TestCase):
         self.assertEqual(5, everything,
                          "the fixture folder did not load as five rows")
         for label, expected in (("Images", 2), ("Geometry", 1), ("Hip", 1)):
-            kind = dict(sections.FileSection.FILTER_CHOICES)[label]
+            kind = {entry.label: entry.value
+                    for entry in sections.FileSection.FILTER_CHOICES}[label]
             proxy.set_kind_filter(kind)
             self.assertEqual(
                 expected, proxy.rowCount(),

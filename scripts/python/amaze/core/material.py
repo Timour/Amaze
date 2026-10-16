@@ -87,6 +87,14 @@ def normalized_renderer(name) -> str:
     return "Karma" if name in ("MaterialX", "MtlX") else name
 
 
+KARMA_SHOWN = "MaterialX"    # what a person reads for the Karma family; records keep "Karma"
+
+
+def shown_renderer(name) -> str:
+    """The name shown for a stored renderer: the Karma family reads MaterialX, others as stored."""
+    return KARMA_SHOWN if is_karma_renderer(name) else str(name or "")
+
+
 class Material:
     """One asset record. `_RETIRED_KEYS` are keys this build understands but no longer writes - named so they are recognised and DROPPED, because an unknown key rides `_extra` verbatim and the next save would put a retired one straight back, undoing the schema step that stripped it. `MULTIPLE_VALUES` is the mixed-selection sentinel, COMPARED against, so it stays the one spelling (test_library.TheSentinelHasOneHome)."""
 

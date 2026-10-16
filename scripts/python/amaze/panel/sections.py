@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.core import (category, code_library, cop_library, database, debug, dragengine, file_library,
-                        grid_columns, multifilterproxy_model, packages,
+                        grid_columns, material, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -27,6 +27,9 @@ CommentSubject = collections.namedtuple("CommentSubject", "key name type")
 
 Conversion = collections.namedtuple(
     "Conversion", "target source verb needs_redshift")
+
+FilterEntry = collections.namedtuple(    # `id` is what the remembered choice saves, so a label can change
+    "FilterEntry", "id label value")
 
 DropRule = collections.namedtuple(
     "DropRule",
@@ -83,7 +86,8 @@ class Section:
     carrier_type = ""     # what the space door creates, when that is a constant
     carrier_type_verb = ""  # names a method instead, where it is not
     search_hint = ""      # per-ARCHETYPE: the archetype decides what is MATCHED
-    FILTER_CHOICES: tuple = ()  # ((label, value), ...) after the everything-entry
+    FILTER_CHOICES: tuple = ()  # FilterEntry rows after the everything-entry
+    ALL_ID = "All"        # the everything-entry's id
     ALL_LABEL = "All"     # the everything-entry, and the stale-choice fallback
     filter_tooltip = ""   # per SECTION: what the menu narrows by
 
@@ -159,10 +163,10 @@ class Section:
         pass
 
     def filter_entries(self) -> tuple:
-        """((label, value), ...) for the Filter menu, everything-entry first; its value is None, which every apply_filter reads as REMOVE the filter rather than a sentinel accepting every row."""
+        """FilterEntry rows, everything-entry first; its value None makes apply_filter remove the filter."""
         if not self.FILTER_CHOICES:
             return ()
-        return ((self.ALL_LABEL, None),) + tuple(self.FILTER_CHOICES)
+        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None),) + tuple(self.FILTER_CHOICES)
 
     def apply_filter(self, value) -> None:
         """Narrow this section to one Filter-menu value; the panel owns the menu and this owns what an entry MEANS, which is how five sections share one button over five unrelated dimensions."""
@@ -741,7 +745,7 @@ class MaterialSection(AssetSection):
         """What the selection can BECOME: a child is live when the selection holds its source."""
         held = self._sources_held(indexes)
         return tuple(
-            (row.target, row.target, "", row.source in held and (
+            (material.shown_renderer(row.target), row.target, "", row.source in held and (
                 not row.needs_redshift
                 or material_converter._redshift_type_available()))    # greyed without the plugin
             for row in self.CONVERSIONS)
@@ -759,7 +763,7 @@ class MaterialSection(AssetSection):
     tile_badges = ("favourite", "versions", "comment")
     filter_tooltip = "Show materials for one renderer."
 
-    RENDERER_PREFS = (    # (label, the preference deciding whether it is offered); the labels are also the VALUES, matched against the renderer string stored on the material, so the two cannot drift
+    RENDERER_PREFS = (    # (stored renderer value, the preference offering it); shown via material.shown_renderer
         ("Karma", "renderer_matx_enabled"),
         ("Redshift", "renderer_redshift_enabled"),
         ("Octane", "renderer_octane_enabled"),
@@ -767,9 +771,9 @@ class MaterialSection(AssetSection):
 
     def filter_entries(self) -> tuple:
         prefs = self.panel.prefs    # the only section whose entries are not a constant: a renderer switched off in Preferences is not offered here. Rebuilt rather than shown and hidden, so there is one mechanism, and the panel's own fallback to All covers a remembered choice no longer on offer, in every section rather than only this one
-        return ((self.ALL_LABEL, None),) + tuple(
-            (label, label) for label, flag in self.RENDERER_PREFS
-            if getattr(prefs, flag, False)
+        return (FilterEntry(self.ALL_ID, self.ALL_LABEL, None),) + tuple(
+            FilterEntry(stored, material.shown_renderer(stored), stored)
+            for stored, flag in self.RENDERER_PREFS if getattr(prefs, flag, False)
         )
 
     def double_click(self, index) -> None:
@@ -861,13 +865,13 @@ class CopSection(AssetSection):
     filter_tooltip = "Show setups saved from one context."
 
     FILTER_CHOICES = (    # the contexts this section saves, spelled the way Houdini's own network tabs do; CopLibrary.SAVE_CONTEXTS is the same list in Houdini's capitalisation and the match is case-insensitive, so these can read as the user sees them on the node itself. An asset saved before the section learned about contexts carries an empty one and appears under All only - there is nothing truthful to file it under
-        ("SOP", "Sop"),
-        ("COP", "Cop"),
-        ("LOP", "Lop"),
-        ("DOP", "Dop"),
-        ("TOP", "Top"),
-        ("CHOP", "Chop"),
-        ("Object", "Object"),
+        FilterEntry("SOP", "SOP", "Sop"),
+        FilterEntry("COP", "COP", "Cop"),
+        FilterEntry("LOP", "LOP", "Lop"),
+        FilterEntry("DOP", "DOP", "Dop"),
+        FilterEntry("TOP", "TOP", "Top"),
+        FilterEntry("CHOP", "CHOP", "Chop"),
+        FilterEntry("Object", "Object", "Object"),
     )
 
     def double_click(self, index) -> None:
@@ -1054,10 +1058,10 @@ class CodeSection(AssetSection):
     filter_tooltip = "Show snippets in one language."
 
     FILTER_CHOICES = (    # the same four code_dialog.LANGUAGES offers, "Code" being the catch-all; deliberately not imported from there, because this list is what the STORED strings are and a dialog is free to stop offering one while snippets saved under it are still in the library
-        ("VEX", "VEX"),
-        ("OpenCL", "OpenCL"),
-        ("Python", "Python"),
-        ("Code", "Code"),
+        FilterEntry("VEX", "VEX", "VEX"),
+        FilterEntry("OpenCL", "OpenCL", "OpenCL"),
+        FilterEntry("Python", "Python", "Python"),
+        FilterEntry("Code", "Code", "Code"),
     )
 
     def double_click(self, index) -> None:
@@ -1329,9 +1333,9 @@ class FileSection(FolderSection):
     EMPTY = amazetheme.EMPTY_FILE    # a button: registering a folder needs nothing selected
 
     FILTER_CHOICES = (  # the kinds it KNOWS, in the order kind_for tests them; KIND_OTHER is the absence of a kind, not a fourth to browse by
-        ("Images", file_library.KIND_IMAGE),
-        ("Geometry", file_library.KIND_GEO),
-        ("Hip", file_library.KIND_HIP),
+        FilterEntry("Images", "Images", file_library.KIND_IMAGE),
+        FilterEntry("Geometry", "Geometry", file_library.KIND_GEO),
+        FilterEntry("Hip", "Hip", file_library.KIND_HIP),
     )
 
     GRID_MENU = (  # KIND-aware: the selection's kinds decide which primary actions exist. NO Delete anywhere - these are the user's own files on disk
@@ -1661,7 +1665,7 @@ class OnlineContext(Section):
 
     def import_targets(self, indexes, current) -> tuple:
         """The renderer the import BUILDS AS - drawn C06a/C06b; Redshift greys when its plugin is not loaded, so the row still shows where the door leads."""
-        return (("Karma", "Karma", "", True),
+        return ((material.shown_renderer("Karma"), "Karma", "", True),
                 ("Redshift", "Redshift", "",
                  material_converter._redshift_type_available()))
 
@@ -1874,12 +1878,12 @@ class GradientSection(AssetSection):
     search_hint = ""  # this proxy also matches the colour NAMES inside a palette
     filter_tooltip = "Show palettes of one size."
 
-    FILTER_CHOICES = (  # (label, (fewest, most)); `most` None is "5+"'s open end, so the proxy never has to know which entry is last
-        ("1 color", (1, 1)),
-        ("2 colors", (2, 2)),
-        ("3 colors", (3, 3)),
-        ("4 colors", (4, 4)),
-        ("5+ colors", (5, None)),
+    FILTER_CHOICES = (  # value (fewest, most); `most` None is the open end of "5+"
+        FilterEntry("1 color", "1 color", (1, 1)),
+        FilterEntry("2 colors", "2 colors", (2, 2)),
+        FilterEntry("3 colors", "3 colors", (3, 3)),
+        FilterEntry("4 colors", "4 colors", (4, 4)),
+        FilterEntry("5+ colors", "5+ colors", (5, None)),
     )
 
     def apply_filter(self, value) -> None:

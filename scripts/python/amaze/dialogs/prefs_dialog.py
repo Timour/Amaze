@@ -12,8 +12,8 @@ from PySide6.QtGui import QCloseEvent
 import amaze
 from amaze import amazetheme
 from amaze import branding
-from amaze.core import (debug, keyed_store, library_policy, texture_library,
-                        users)
+from amaze.core import (debug, keyed_store, library_policy, material,
+                        texture_library, users)
 from amaze.dialogs import base_dialog, user_dialog
 from amaze.helpers import hostos
 from amaze.core import tile_icons
@@ -481,7 +481,7 @@ class PrefsDialog(base_dialog.AssetDialog):
         self._renderer_boxes = {}
         # the ONE table, like the section list below it
         for label, attr in sections_module.renderer_prefs():
-            box = ui_helpers.ToggleSwitch(label)
+            box = ui_helpers.ToggleSwitch(material.shown_renderer(label))
             box.setToolTip(ui_helpers.tooltip_text(
                 tooltips.PREFS_RENDERER_SWITCH))
             box.setChecked(bool(getattr(self._prefs, attr)))

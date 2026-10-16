@@ -1467,7 +1467,7 @@ class MaterialLibrary(AssetLibrary):
 
     def renderer_label(self, asset) -> str:
         """Human label for the material's renderer: 'USD ' prefix for the USD-builder types and a ':<ShaderType>' suffix for Redshift when it can be determined, so 'USD Redshift:PBR'. "" when the renderer is unknown."""
-        renderer = str(asset.renderer or "").strip()
+        renderer = material.shown_renderer(str(asset.renderer or "").strip())
         if not renderer:
             return ""
         label = ("USD " + renderer) if self.is_usd_material(asset) else renderer

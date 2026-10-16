@@ -244,7 +244,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_material_with_one_selected(self):
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [Karma(off), Redshift(off)](off)",    # the fixture's first material is neither Karma nor Redshift, so nothing here converts and the whole submenu greys
+             "Convert to > [MaterialX(off), Redshift(off)](off)",    # the first fixture material is neither
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
@@ -254,7 +254,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         """Every entry acts on the whole selection and stays live."""
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary]",
-             "Convert to > [Karma(off), Redshift]",
+             "Convert to > [MaterialX(off), Redshift]",
              "----",
              "Update Preview", "Customize", "Favorite", "Export Package",
              "Delete"],
@@ -263,7 +263,7 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
     def test_material_with_nothing_selected(self):
         self.assertEqual(
             ["Copy To > [/mat, /stage/materiallibrary](off)",
-             "Convert to > [Karma(off), Redshift(off)](off)", "----",
+             "Convert to > [MaterialX(off), Redshift(off)](off)", "----",
              "Update Preview(off)", "Customize(off)", "Favorite(off)",
              "Export Package(off)", "Delete(off)"],
             self._show("material"))
@@ -395,8 +395,8 @@ class TheMenusAreWhatSHIPPED(unittest.TestCase):
         menu, _verbs = grid.build_grid_menu(self.panel, context, [], None)
         redshift = "" if material_converter._redshift_type_available() else "(off)"    # the child follows the HOST: greyed where the plugin is not loaded, never a lie either way
         self.assertEqual(
-            ["Import to Materials > [Karma, Redshift%s](off)" % redshift,
-             "Import to Scene > [Karma, Redshift%s](off)" % redshift,
+            ["Import to Materials > [MaterialX, Redshift%s](off)" % redshift,
+             "Import to Scene > [MaterialX, Redshift%s](off)" % redshift,
              "Refresh"],
             render(menu))
 
@@ -588,11 +588,11 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
 
     def test_convert_to_greys_the_renderer_the_selection_already_is(self):
         """Drawn as C01b: the submenu always opens, and the child naming what the selection already is greys - a Karma material offers Redshift alone, a Redshift one Karma alone, a mixed selection both."""
-        self.assertEqual("Convert to > [Karma(off), Redshift]",
+        self.assertEqual("Convert to > [MaterialX(off), Redshift]",
                          self._material_convert_children(True, False))
-        self.assertEqual("Convert to > [Karma, Redshift(off)]",
+        self.assertEqual("Convert to > [MaterialX, Redshift(off)]",
                          self._material_convert_children(False, True))
-        self.assertEqual("Convert to > [Karma, Redshift]",
+        self.assertEqual("Convert to > [MaterialX, Redshift]",
                          self._material_convert_children(True, True))
 
     def _select_karma_rows(self, count):
@@ -637,7 +637,7 @@ class DispatchIsByIDENTITYNotByComparison(unittest.TestCase):
             menu, _verbs = grid.build_grid_menu(
                 panel, panel._section(), indexes, indexes[0])
         row = [r for r in render(menu) if r.startswith("Convert to")]
-        self.assertEqual(["Convert to > [Karma(off), Redshift(off)](off)"], row)
+        self.assertEqual(["Convert to > [MaterialX(off), Redshift(off)](off)"], row)
 
     def test_convert_to_dispatches_by_the_child_picked(self):
         """One verb, the payload names the renderer: Redshift reaches the Redshift door and nothing else, Karma the Karma one."""

@@ -1856,7 +1856,7 @@ class OnlineTilePaintingTest(unittest.TestCase):
         model = matx_library.MatxOnlineLibrary(
             preferences=type("P", (), {"rendersize": 64})())
         cases = [("material", {"renderer": "Redshift"}, "Redshift"),
-                 ("material", {"renderer": "Karma"}, "Karma"),
+                 ("material", {"renderer": "Karma"}, "MaterialX"),
                  ("material", {}, "Material"),
                  ("gradient", {}, "Color"),
                  ("cop", {}, "Node"),

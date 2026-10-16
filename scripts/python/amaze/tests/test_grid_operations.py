@@ -757,12 +757,12 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
         self._assert_no_row_moved_inside(caught, "Convert to Karma")
 
     def test_both_directions_report_in_the_words_they_always_did(self):
-        """One verb, two directions: each summary reads as its own copy did."""
+        """One verb, two directions: each summary names both renderers as the menus show them."""
         ui = mock.Mock()
         report = types.SimpleNamespace(summary_lines=lambda: ["a line"])
-        for target, source, verb in (
-                ("Redshift", "Karma", "convert_karma_to_redshift"),
-                ("Karma", "Redshift", "convert_redshift_to_karma")):
+        for target, source, verb, shown in (
+                ("Redshift", "Karma", "convert_karma_to_redshift", ("MaterialX", "Redshift")),
+                ("Karma", "Redshift", "convert_redshift_to_karma", ("Redshift", "MaterialX"))):
             with self.subTest(target=target):
                 self.model.assets[1].renderer = source
                 self._select(1)
@@ -772,7 +772,7 @@ class NoRowMovesInsideALayoutChange(unittest.TestCase):
                     self.panel.convert_selected(target)
                 self.assertEqual(
                     "Converted 1 of 1 %s material(s) to %s.\n\na line"
-                    % (source, target), ui.displayMessage.call_args.args[0])
+                    % shown, ui.displayMessage.call_args.args[0])
 
     def test_an_online_import(self):
         record = types.SimpleNamespace(kind="", category="", title="t")

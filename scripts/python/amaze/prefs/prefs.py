@@ -100,7 +100,7 @@ class Prefs(_Persistence):
         for _prop, attr, default in SHARED_KEYS.values():  # load() reads the same table
             setattr(self, attr, default)
         self._show_categories = True
-        self._section_filters: dict = {}  # the Filter menu's choice PER SECTION KEY, as the entry's LABEL - one shared key narrowed Nodes to nothing when Materials picked Redshift, and a label survives a section changing what its entries filter ON
+        self._section_filters: dict = {}  # the Filter menu's choice per section key, as the entry's id
         self._view_mode = "grid"
         self._thumbsize = 128  # grid (the legacy key); `_thumbsize_list` is the list view. Both match ClickSlider.DEFAULT_VALUE
         self._thumbsize_list = 128
@@ -215,11 +215,11 @@ class Prefs(_Persistence):
         self._show_categories = val
 
     def section_filter(self, key: str, default: str = "") -> str:
-        """The Filter menu entry this section was left on, by label. A PAIR OF METHODS, not a property over the dict: a property would hand callers something they could mutate without ever reaching save()."""
+        """The Filter entry id this section was left on; a method pair, so no caller can skip save()."""
         return self._section_filters.get(str(key), default)
 
-    def set_section_filter(self, key: str, label: str) -> None:
-        self._section_filters[str(key)] = str(label or "")
+    def set_section_filter(self, key: str, entry_id: str) -> None:
+        self._section_filters[str(key)] = str(entry_id or "")
 
     @property
     def view_mode(self) -> str:

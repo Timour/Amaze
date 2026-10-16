@@ -1617,7 +1617,8 @@ class AmazePanel(QtWidgets.QWidget):
         ui = getattr(hou, "ui", None)
         if ui is not None:
             ui.displayMessage(messages.CONVERSION_SUMMARY % (
-                converted, eligible, conversion.source, target, "\n".join(lines)))
+                converted, eligible, material.shown_renderer(conversion.source),
+                material.shown_renderer(target), "\n".join(lines)))
 
     def show_prefs(self) -> None:
         """Show the Preferences Dialog - NON-MODAL, floating above the main window, and opening with or without a library set (its Library tab is the only way to set one). A second open while the window exists just fronts it."""
@@ -3446,12 +3447,13 @@ class AmazePanel(QtWidgets.QWidget):
                     section.filter_tooltip))
         if not entries:
             return
-        for label, value in entries:
+        for entry_id, label, value in entries:
             act = self.menu_filter.addAction(label)
             act.setCheckable(True)
+            act.setData(entry_id)
             self.filter_action_group.addAction(act)
-            self.filter_actions[label] = act
-            self.filter_values[label] = value
+            self.filter_actions[entry_id] = act
+            self.filter_values[entry_id] = value
         remembered = self.prefs.section_filter(self.current_section)
         act = self.filter_actions.get(remembered) or self.filter_actions[
             entries[0][0]]    # a remembered choice that is no longer offered falls back to entries[0], the everything-entry (sections.py puts it first), so a renderer switched off in Preferences needs no case of its own
@@ -3461,7 +3463,7 @@ class AmazePanel(QtWidgets.QWidget):
     def filter_menu_changed(self, action) -> None:
         """An entry was picked: apply it and remember it for this tab."""
         self.apply_section_filter()
-        self.prefs.set_section_filter(self.current_section, action.text())
+        self.prefs.set_section_filter(self.current_section, action.data())
         self.prefs.save()
 
     def apply_section_filter(self) -> None:
@@ -3471,12 +3473,12 @@ class AmazePanel(QtWidgets.QWidget):
             return
         checked = (self.filter_action_group.checkedAction()
                    if self.filter_action_group is not None else None)
-        label = checked.text() if checked is not None else ""
-        value = self.filter_values.get(label)
+        entry_id = checked.data() if checked is not None else ""
+        value = self.filter_values.get(entry_id)
         section.apply_filter(value)
         debug.event(
             "filter", "section filter applied",
-            section=self.current_section, entry=label, value=str(value),
+            section=self.current_section, entry=entry_id, value=str(value),
             visible=self.thumblist.model().rowCount()
             if self.thumblist.model() is not None else -1,
         )
