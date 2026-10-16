@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- PolyHaven materials in the online browser show their previews again.
+
 ## 1.2.0
 
 Amaze 1.2.0 adds Run and Edit buttons to Code tiles, new tile badges, a reworked Comments pane, Step Size, and a Reload tool on the shelf.
