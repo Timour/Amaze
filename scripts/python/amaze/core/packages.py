@@ -187,6 +187,7 @@ def import_entries(models, prefs, bundle, entries,
 
 def _commit_assets(prefs, staged, summary) -> None:
     """Save each model once for its appended rows, then the notes of those that landed; refused, back."""
+    pages = {}
     by_model = {}
     for item in staged:
         by_model.setdefault(id(item[0]), []).append(item)
@@ -209,16 +210,18 @@ def _commit_assets(prefs, staged, summary) -> None:
             page = entry.get("note") or {}
             section = str(entry.get("section") or "")
             if page.get("items"):
-                try:    # the asset is already saved - a failed note page must not recount it as refused
-                    notes.set_note(prefs, notes.note_key(section, asset.mat_id),
-                                   page["items"])
-                except Exception as exc:                          # noqa: BLE001
-                    debug.event("packages", "note not written",
-                                error=str(exc), name=str(asset.mat_id))
+                pages[notes.note_key(section, asset.mat_id)] = page["items"]
             cats = row.get("categories") or []
             summary["categories"].setdefault(section, set()).update(
                 [cats] if isinstance(cats, str) else cats)
             summary["imported"] += 1
+    if not pages:
+        return
+    try:    # the assets are already saved - a failed note write must not recount them as refused
+        notes.set_notes(prefs, pages)
+    except Exception as exc:                          # noqa: BLE001
+        debug.event("packages", "note not written", error=str(exc),
+                    names=sorted(pages))
 
 
 def _import_asset(models, prefs, bundle, entry, restore, summary):

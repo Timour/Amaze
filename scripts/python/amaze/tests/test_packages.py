@@ -649,6 +649,41 @@ class AFiveAssetImportSavesOnce(unittest.TestCase):
                          "a refused import left rows in the grid")
         self.assertEqual(self.model.rowCount(), len(self.model._mat_paths))
 
+    def test_five_note_pages_land_in_one_write(self):
+        from unittest import mock
+        from amaze.core import notes, packages
+        from amaze.helpers import hostos
+        owners = [a for a in self.model.assets
+                  if any(os.path.exists(p) for p in
+                         self.model.asset_files(a.mat_id).values())][:5]
+        items = []
+        for n, asset in enumerate(owners):
+            item = packages.collect_asset(self.model, asset.mat_id)
+            item["note"] = {"items": [{"t": "text", "text": "page %d" % n}]}
+            items.append(item)
+        noted = _out_path(self, "noted.amazepkg")
+        packages.write_package(noted, items)
+        before = self.model.rowCount()
+        writes = []
+        real = hostos.write_json_atomic
+
+        def counted(path, *args, **kwargs):
+            if os.path.basename(path) == notes.SPEC.filename:
+                writes.append(path)
+            return real(path, *args, **kwargs)
+
+        with mock.patch.object(hostos, "write_json_atomic", counted):
+            summary = packages.import_package(
+                self.panel._package_models(), self.panel.prefs, noted)
+        self.assertEqual(5, summary["imported"], summary)
+        self.assertEqual(1, len(writes), "five note pages wrote %s %d times"
+                         % (notes.SPEC.filename, len(writes)))
+        pages = [notes.note_for(self.panel.prefs,
+                                notes.note_key("material", a.mat_id))
+                 for a in self.model.assets[before:]]
+        self.assertEqual(["page %d" % n for n in range(5)],
+                         [page["items"][0]["text"] for page in pages])
+
 
 class _Cats:
     _categories = []    # the rename helper reads the sidebar list; empty means nothing to rename
@@ -1311,9 +1346,10 @@ class OnlinePackageImportTest(unittest.TestCase):
         before = model.rowCount()
         with mock.patch.object(self.panel.matx_online_model, "_sources",
                                [source]):
-            with mock.patch.object(notes, "set_note",
-                                   side_effect=OSError("notes full")):
+            with mock.patch.object(notes, "set_notes",
+                                   side_effect=OSError("notes full")) as wrote:
                 ok, reason = self.panel.import_online_material(record)
+        self.assertTrue(wrote.called, "premise: the note write was reached")
         self.assertTrue(
             ok, "the asset was imported and SAVED before its note page "
                 "failed - reporting the tile as failed while it sits in "
