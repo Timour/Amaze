@@ -637,12 +637,24 @@ def settings_survey(preferences=None):
             "label": database.section_label(_SETTINGS),
             "path": path, "info": facts, "ids": set(), "trace": "",
             "state": state,
-            "snapshots": [(tier, restore_lib.info(snap))
+            "snapshots": [(tier, _with_library(*restore_lib.surveyed(snap)))
                           for tier, snap in restore_lib.snapshots(path)]}
 
 
+def _with_library(facts: dict, document) -> dict:
+    """A settings copy's facts plus `library`, the folder its `directory` key names or empty."""
+    named = document.get("directory") if isinstance(document, dict) else ""
+    return dict(facts, library=named if isinstance(named, str) else "")
+
+
+def _copies_naming_a_library(settings) -> list:
+    """The saved settings copies that read and name a library folder; the rest are no way back."""
+    return [(tier, snap) for tier, snap in (settings or {}).get("snapshots", ())
+            if not snap["error"] and snap["library"]]
+
+
 def _repair_settings(settings: dict) -> None:
-    """settings.json will not read or is missing: offer its saved copies back, or say there are none."""
+    """settings.json will not read, is missing or names no library: offer saved copies back."""
     folder = os.path.dirname(settings["path"])
     if not settings["snapshots"]:
         hou.ui.displayMessage(                           # type: ignore
@@ -659,9 +671,12 @@ def _repair_settings(settings: dict) -> None:
     copies = "\n".join(
         messages.SETTINGS_COPY_LINE_UNREADABLE % snap["when"] if snap["error"]
         else snap["when"] for _tier, snap in settings["snapshots"])
-    report = (messages.SETTINGS_MISSING_REPAIR_REPORT % copies
-              if settings["state"] == "absent"
-              else messages.SETTINGS_UNREADABLE_REPAIR_REPORT % copies)
+    if settings["state"] == "absent":
+        report = messages.SETTINGS_MISSING_REPAIR_REPORT % copies
+    elif settings["state"] == "no-library":
+        report = messages.SETTINGS_NO_LIBRARY_REPAIR_REPORT % copies
+    else:
+        report = messages.SETTINGS_UNREADABLE_REPAIR_REPORT % copies
     may_change = not session_has_a_library_open()
     if not may_change:
         report += "\n\n" + _ONLY_A_REPORT_NOW
@@ -683,6 +698,10 @@ def run(preferences=None) -> None:
         return
     configured = configured_library(preferences)
     if not configured:
+        named = _copies_naming_a_library(settings)
+        if named:
+            _repair_settings(dict(settings, state="no-library", snapshots=named))
+            return
         hou.ui.displayMessage(                           # type: ignore
             messages.NO_LIBRARY_FOLDER_CONFIGURED,
             title=messages.TITLE_AMAZE_REPAIR)
@@ -827,11 +846,11 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict) -> None:
             messages.SETTINGS_COPY_CANNOT_BE_READ,
             title=messages.TITLE_AMAZE_REPAIR)
         return
-    reads_now = findings["settings"]["state"] == "ok"
+    way_back = findings["settings"]["state"] == "ok"    # only settings that read and name a library are a way back
     if hou.ui.displayMessage(                             # type: ignore
         messages.CONFIRM_PUT_SETTINGS_BACK % snap["when"],
         help=messages.HELP_PUT_SETTINGS_BACK % (
-            messages.SETTINGS_NOW_SAVED_FIRST if reads_now else ""),
+            messages.SETTINGS_NOW_SAVED_FIRST if way_back else ""),
         buttons=messages.BUTTONS_PUT_COPY_BACK,
         default_choice=1, close_choice=1,
         severity=hou.severityType.Warning,                # type: ignore
@@ -846,8 +865,8 @@ def _do_restore_settings(findings: dict, tier: str, snap: dict) -> None:
     folder = os.path.dirname(_target_of(findings, _SETTINGS))
     undo = (restore_lib.info(os.path.join(folder, done["undo"]))
             if done["undo"] else None)
-    kept = (messages.SETTINGS_EARLIER_COPY_KEPT % undo["when"]    # never a way back to a broken file
-            if undo is not None and undo["exists"] and not undo["error"]
+    kept = (messages.SETTINGS_EARLIER_COPY_KEPT % undo["when"]
+            if way_back and undo is not None and undo["exists"] and not undo["error"]
             else "")
     hou.ui.displayMessage(                                # type: ignore
         messages.SETTINGS_PUT_BACK_DONE % (snap["when"], kept),

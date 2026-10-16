@@ -29,6 +29,7 @@ from amaze.core import library as library_mod             # noqa: E402
 from amaze.core import multifilterproxy_model             # noqa: E402
 from amaze.helpers import hostos                          # noqa: E402
 from amaze.helpers import restore as restore_lib          # noqa: E402
+from amaze.prefs import prefs as prefs_module             # noqa: E402
 from amaze.tests import test_support                      # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
@@ -1100,6 +1101,55 @@ class TheSettingsComeBackTest(_Case):
                          "the settings copy was put back somewhere else")
         self.assertFalse(os.path.exists(os.path.join(self.dir, "settings.json")),
                          "the settings copy landed in the library folder")
+
+    def _opened_without_settings(self):
+        """settings.json gone, then the first changes Amaze saves with no library to open."""
+        fresh = prefs_module.Prefs()
+        fresh.path = self.config
+        self.assertFalse(fresh.load(), "premise: Amaze opens unconfigured")
+        fresh.save()
+        fresh.view_mode = "list"
+        fresh.save()
+        self.assertEqual("", self._read(self.settings)["directory"],
+                         "premise: what Amaze wrote names a library")
+
+    def test_settings_that_name_no_library_offer_the_copies_that_do(self):
+        self._copy()
+        older = time.mktime((2026, 1, 2, 3, 4, 0, 0, 0, -1))
+        os.utime(self.settings + ".bak-1", (older, older))
+        when = restore_lib.info(self.settings + ".bak-1")["when"]
+        self._opened_without_settings()
+        with open(self.settings + ".bak-3", "w", encoding="utf-8") as handle:
+            handle.write("{")
+        # the report's restore button, the confirm, the closing note
+        ui = self._run(buttons=[0, 0, 0], listed=(0,))
+        report = ui.displayMessage.call_args_list[0]
+        self.assertIn("Put a Saved Copy Back", report.kwargs.get("buttons", ()),
+                      "the copies that name a library are not offered back")
+        self.assertEqual(messages.SETTINGS_NO_LIBRARY_REPAIR_REPORT % when, report.args[0],
+                         "the report lists a copy that names no library or will not read")
+        self.assertEqual(1, len(ui.selectFromList.call_args.args[0]),
+                         "the pick list offers a copy that names no library or will not read")
+        confirm = ui.displayMessage.call_args_list[1]
+        self.assertEqual(messages.CONFIRM_PUT_SETTINGS_BACK % when, confirm.args[0])
+        self.assertNotIn("offers that copy back", confirm.kwargs["help"],
+                         "the confirm promises back settings that name no library")
+        self.assertEqual(self.GOOD, self._read(self.settings),
+                         "the copy that names a library did not land")
+        self.assertEqual(messages.SETTINGS_PUT_BACK_DONE % (when, ""),
+                         ui.displayMessage.call_args_list[2].args[0],
+                         "the closing note offers a way back to settings that name no library")
+
+    def test_settings_that_name_no_library_with_no_copy_naming_one_say_so(self):
+        self._opened_without_settings()
+        with open(self.settings + ".bak-3", "w", encoding="utf-8") as handle:
+            handle.write("{")
+        before = self._read(self.settings)
+        ui = self._run(buttons=[0])
+        self.assertEqual([messages.NO_LIBRARY_FOLDER_CONFIGURED],
+                         [call.args[0] for call in ui.displayMessage.call_args_list],
+                         "a copy that names no library or will not read was offered")
+        self.assertEqual(before, self._read(self.settings))
 
 
 class TheRouteFromCleanLibraryTest(_Case):
