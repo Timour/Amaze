@@ -74,12 +74,12 @@ The **toolbar** runs along the top of the panel. Left to right:
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/icon_categories.svg" width="20"> | **Show Categories** | Shows and hides the sidebar. |
 | <img src="scripts/python/amaze/ui/icon_renderer.svg" width="20"> | **Import/Generate** | Gallery Import (.gal), Package Import (.amazepkg), Generate Material. |
-| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, Karma, Redshift, Octane. |
+| <img src="scripts/python/amaze/ui/icon_view.svg" width="20"> | **Filter** | Filters the grid. In Material, by renderer: All, MaterialX, Redshift, Octane. |
 | <img src="scripts/python/amaze/ui/icon_online.svg" width="20"> | **Online** | Switches to the online sources and back. |
-| <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens the [Comments pane](#comments). |
+| <img src="scripts/python/amaze/ui/icon_comments.svg" width="20"> | **Comments** | Opens and closes the [Comments pane](#comments). Purple while the pane is open. |
 | <img src="scripts/python/amaze/ui/grid.svg" width="20"> <img src="scripts/python/amaze/ui/list.svg" width="20"> | **Grid / List** | Two views of the same assets. |
 | <img src="scripts/python/amaze/ui/favourite_on.svg" width="20"> | **Favorites** | Shows favorited assets only. |
-| <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Thumbnail size, 16–200 px. Scales list rows too. |
+| <img src="scripts/python/amaze/ui/Icon-slider.svg" width="20"> | **Size slider** | Thumbnail size, 64–512 px. Scales list rows too. |
 | <img src="scripts/python/amaze/ui/icon_search.svg" width="20"> | **Search** | Searches names and tags in the current section. A leading colon searches tags: `:metal` finds everything tagged metal. |
 | <img src="scripts/python/amaze/ui/icon_screenshot.svg" width="20"> | **Capture** | Takes a preview of the open scene. File section only. |
 | <img src="scripts/python/amaze/ui/icon_library.svg" width="20"> | **Preferences** | Opens [Preferences](#preferences). |
@@ -128,9 +128,9 @@ a dark backdrop:
 | | | |
 |:--:|---|---|
 | <img src="scripts/python/amaze/ui/badge_open.svg" width="100"> | top-left | the scene you currently have open (File) |
-| <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | the favorite button — on every tile: an outline heart when not a favorite, brighter under the cursor, a filled yellow heart when favorited. Click to toggle; with several tiles selected, clicking a selected tile's heart toggles them all |
+| <img src="scripts/python/amaze/ui/badge_favourite.svg" width="100"> | top-right | the favorite button — on every tile: an outline heart when not a favorite, coloured under the pointer, a filled pink heart when favorited. Click to toggle; with several tiles selected, clicking a selected tile's heart toggles them all |
 | <img src="scripts/python/amaze/ui/badge_versions.svg" width="100"> | lower-left | has more than one [version](#versions) — click it to browse them |
-| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | carries a [comment](#comments) — click it to open the Comments pane on that asset |
+| <img src="scripts/python/amaze/ui/badge_comment.svg" width="100"> | lower-right | the comments button — on every tile: filled when the asset has [comments](#comments), an outline when it has none. Click to open or close the Comments pane, as the toolbar's Comments button does |
 
 ---
 
@@ -198,7 +198,7 @@ Assets can also be dragged onto a sidebar category to file them there.
 
 ### Convert to
 
-Right-click a material ▸ **Convert to** ▸ **Karma** or **Redshift**.
+Right-click a material ▸ **Convert to** ▸ **MaterialX** or **Redshift**.
 The renderer the material already uses is greyed. The conversion
 rebuilds the network for the other renderer as a new entry next to the
 original, on the same texture files, and reports what it could not
@@ -226,11 +226,11 @@ strip where the section tabs were.
 
 Right-click a material, or a multi-selection:
 
-- **Import to Materials ▸ Karma** or **▸ Redshift** downloads it,
+- **Import to Materials ▸ MaterialX** or **▸ Redshift** downloads it,
   builds the material for that renderer and saves it into your library,
   with a thumbnail if renders are on. Redshift is greyed when the plugin
   is not loaded.
-- **Import to Scene ▸ Karma** or **▸ Redshift** builds it into the
+- **Import to Scene ▸ MaterialX** or **▸ Redshift** builds it into the
   material library you are working in, or `/mat`, and writes nothing to
   your library.
 - **Restore** appears on Amaze packages and puts back the entries a
@@ -363,12 +363,12 @@ right-click any node with a code parameter ▸ **Save to Amaze**. The
 **Language** row is read from the node and can be changed; it is
 greyed for every other section.
 
-A Python snippet's tile has a run button in the middle. It hands the
-snippet the same `kwargs` a shelf tool's script receives on a shelf
+A Python snippet's tile has a green run button in the middle. It hands
+the snippet the same `kwargs` a shelf tool's script receives on a shelf
 click, and everything the snippet changes is one step in
 **Edit ▸ Undo**. If it stops on an error, Houdini's status bar names
-the snippet and the error. The pencil in the lower left opens the
-editor, like **Edit**.
+the snippet and the error. Every snippet's tile has a pencil in the
+lower left that opens the editor, like **Edit**.
 
 ---
 
@@ -460,7 +460,8 @@ sidebar ▸ **Export Category**.
 reads a package into your library. Every asset arrives with a new
 identity and is filed under a category called **Import**, so importing
 the same package twice gives you two copies rather than overwriting
-what you have.
+what you have. Files in a package land in an **Import** folder inside
+the library, which appears as a location in the File sidebar.
 
 **Restoring instead.** The **Amaze** source in the
 [online browser](#online-materials) carries the official packages.
@@ -536,8 +537,8 @@ several places at once.
 
 The <img src="scripts/python/amaze/ui/icon_comments.svg" width="16">
 **Comments** button in the toolbar, between Online and Grid/List, opens
-the **Comments pane**: a page docked beside the grid, one page per
-asset. Its background shows whether the pane is open.
+and closes the **Comments pane**: a page docked beside the grid, one
+page per asset. The button is purple while the pane is open.
 
 <img src="docs/images/comments_pane.png" width="820">
 
@@ -561,11 +562,12 @@ becomes ordinary text and the next backspace eats the words. Deleting
 across the line above or below a to-do simply joins the lines — the
 frame keeps its marker.
 
-Comments are stored **in the library**, so they travel across machines
-and survive a folder being removed and re-added. A tile that carries a
-comment shows the
+Comments are stored **in the library**, so they travel across machines.
+Every tile carries the
 <img src="scripts/python/amaze/ui/badge_comment.svg" width="14"> badge in
-its lower-right corner; click it to open this pane on that asset.
+its lower-right corner, filled when the asset has comments and an
+outline when it has none. Clicking it opens or closes this pane, as the
+toolbar button does.
 
 Every section takes comments — materials, palettes, nodes, snippets and
 File rows alike.
@@ -657,7 +659,8 @@ and which sections appear at all.
 <img src="docs/images/prefs_look.png" width="440">
 
 **Show Counts on Categories**, **Hide Empty Categories**, **All show
-unknown files** (the File section's system-icon rows), **Write Paths
+unknown files** (the File section's system-icon rows), **Step Size**
+(the size slider moves from mark to mark, every 64 px), **Write Paths
 As**, **Tile Icon Line** (Thin, or Feather's own Regular) and **Scroll
 Speed (%)**.
 
@@ -710,8 +713,10 @@ mounted are left alone.
 refuses, or when the panel will not open. It reads your library, says
 what is wrong, and offers two remedies: rebuilding the list from the
 recovery copy stored beside each asset, or putting back one of the
-snapshots. Its strongest action is moving files into a dated folder
-inside your library.
+snapshots. When the settings file that names your library,
+`settings.json`, will not read or is missing, Repair lists the dated
+copies kept beside it and puts one back. Its strongest action is
+moving files into a dated folder inside your library.
 
 It lives on the shelf rather than in the panel because a running panel
 writes the list as you work, and would overwrite a repair made from
