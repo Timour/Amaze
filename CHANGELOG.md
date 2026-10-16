@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+- A SimReady tab in the online browser: NVIDIA's OpenPBR materials, imported as MaterialX or Redshift materials with their textures and tags.
+- Online tiles with no preview show the Generic icon.
+- Imports to Redshift keep a texture's tiling and offset, and an OpenPBR material's normal maps.
+- In a Redshift import, a texture Karma reads as data stays Raw.
+
 ## 1.2.1
 
 - PolyHaven materials in the online browser show their previews again.
