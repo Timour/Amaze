@@ -1,0 +1,679 @@
+"""The SimReady source, from the release listing to a built material. ▸r/simready-release"""
+
+import io
+import os
+import re
+import shutil
+import struct
+import sys
+import tempfile
+import unittest
+import zipfile
+from unittest import mock
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+from PySide6 import QtWidgets  # noqa: E402
+
+_app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+import hou  # noqa: E402
+
+sys.path.insert(
+    0, os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))))
+
+from amaze.tests import test_support  # noqa: E402
+from amaze.tests.test_packages import _ranged_server  # noqa: E402
+
+FIXTURES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "simready")
+BASE = ("https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials/"
+        "releases/download/v9/")
+BIG = 300 * 1024    # one texture spans several blocks, so a split can land inside it
+
+
+def _read(*parts) -> bytes:
+    with open(os.path.join(FIXTURES, *parts), "rb") as handle:
+        return handle.read()
+
+
+def _textures(category, name) -> dict:
+    """{member: bytes} for every texture the fixture material names, the first one BIG."""
+    text = _read("Materials", category, name + ".usda").decode("utf-8")
+    found, members = re.findall(r"_texture_file = @([^@]+)@", text), {}
+    for n, ref in enumerate(found):
+        member = os.path.normpath("Materials/%s/%s" % (category, ref)).replace(os.sep, "/")
+        members[member] = bytes((n + i) % 251 for i in range(BIG if n == 0 else 4096))
+    return members
+
+
+def _archive(category, names, drop=()) -> bytes:
+    """A category zip laid out as the release lays it out; `drop` leaves members out."""
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w") as bundle:
+        for name in names:
+            bundle.writestr("Materials/%s/%s.usda" % (category, name),
+                            _read("Materials", category, name + ".usda"),
+                            zipfile.ZIP_DEFLATED)
+            for member, data in _textures(category, name).items():
+                if member not in drop:
+                    bundle.writestr(member, data)    # stored, as jpgs barely compress
+        bundle.writestr("Materials/%s/LICENSE.md" % category, _read("LICENSE.md"))
+        bundle.writestr("open_pbr_uber_base_class.usda",
+                        _read("open_pbr_uber_base_class.usda"), zipfile.ZIP_DEFLATED)
+    return out.getvalue()
+
+
+def _split(blob: bytes, at: int):
+    """`blob` as `zip -s` writes it: a spanning marker, two parts, the directory in the last."""
+    end = blob.rfind(b"PK\x05\x06")
+    size, offset = struct.unpack("<II", blob[end + 12:end + 20])
+    assert at < offset, "the split must leave the directory whole in the last part"
+    directory, p = bytearray(blob[offset:offset + size]), 0
+    while p < len(directory):
+        name, extra, comment = struct.unpack("<HHH", directory[p + 28:p + 34])
+        header = struct.unpack("<I", directory[p + 42:p + 46])[0]
+        first = header < at
+        struct.pack_into("<H", directory, p + 34, 0 if first else 1)
+        struct.pack_into("<I", directory, p + 42, header + 4 if first else header - at)
+        p += 46 + name + extra + comment
+    record = bytearray(blob[end:])
+    struct.pack_into("<HH", record, 4, 1, 1)
+    struct.pack_into("<I", record, 16, offset - at)
+    return b"PK\x07\x08" + blob[:at], blob[at:offset] + bytes(directory) + bytes(record)
+
+
+def _inside_big(blob: bytes, category: str) -> int:
+    """A byte inside the first material's BIG texture - where the split goes."""
+    with zipfile.ZipFile(io.BytesIO(blob)) as bundle:
+        big = max(bundle.infolist(), key=lambda info: info.compress_size)
+        assert big.compress_size == BIG and category in big.filename
+        return big.header_offset + BIG // 2
+
+
+def _after_big(blob: bytes) -> int:
+    """The header right after the BIG texture - a split there starts the last part on an entry."""
+    with zipfile.ZipFile(io.BytesIO(blob)) as bundle:
+        ordered = sorted(bundle.infolist(), key=lambda info: info.header_offset)
+    big = next(n for n, info in enumerate(ordered) if info.compress_size == BIG)
+    return ordered[big + 1].header_offset
+
+
+class _Release:
+    """Canned release assets, served by ranges through `matx_sources._request`."""
+
+    def __init__(self, objects):
+        self.objects, self.calls = dict(objects), []
+        self.answer = {"tag_name": "v9", "assets": [
+            {"name": name, "size": len(data), "browser_download_url": BASE + name}
+            for name, data in sorted(self.objects.items())]}
+
+    def serve(self, url, headers=None):
+        name = url.rsplit("/", 1)[-1]
+        self.calls.append((name, str((headers or {}).get("Range") or "")))
+        return _ranged_server(self.objects[name])(url, headers)
+
+    def patched(self, testcase):
+        from amaze.core import matx_sources
+        for target, value in (("_request", self.serve),
+                              ("get_json", lambda _url: self.answer)):
+            patcher = mock.patch.object(matx_sources, target, value)
+            patcher.start()
+            testcase.addCleanup(patcher.stop)
+
+
+def _stone_parts():
+    blob = _archive("Stone", ["Volga_Blue", "Ardesia_Grigia_Polished"])
+    return blob, _split(blob, _inside_big(blob, "Stone"))
+
+
+def _release(testcase, skin_drop=()):
+    _blob, (stone_z01, stone_zip) = _stone_parts()
+    release = _Release({
+        "Skin.zip": _archive("Skin", ["Skin_Dark"], drop=skin_drop),
+        "Stone.z01": stone_z01, "Stone.zip": stone_zip,
+        "Glass.zip": _archive("Glass", ["Glass_Clear"]),
+        "README.txt": b"not an archive"})
+    release.patched(testcase)
+    return release
+
+
+class SimReadyListingTest(unittest.TestCase):
+    """Every .usda in every category archive is one tile, read off the directories alone."""
+
+    def test_every_material_is_one_record(self):
+        from amaze.core import matx_sources
+        _release(self)
+        records = matx_sources.SimReadySource().list_materials(limit=100)
+        self.assertEqual(
+            ["Glass/Glass_Clear", "Skin/Skin_Dark", "Stone/Ardesia_Grigia_Polished",
+             "Stone/Volga_Blue"], sorted(r.uid for r in records))
+        volga = next(r for r in records if r.uid == "Stone/Volga_Blue")
+        self.assertEqual(("Volga Blue", "Stone", "package", "SimReady"),
+                         (volga.title, volga.category, volga.kind, volga.source))
+        self.assertEqual("MIT-0 (MIT No Attribution)", volga.licence,
+                         "the licence must be the release's own words")
+        self.assertEqual([BASE + "Stone.z01", BASE + "Stone.zip"],
+                         [url for url, _size in volga.payload["parts"]],
+                         "a split archive's parts must run .z01 first, the .zip last")
+        self.assertEqual("Materials/Stone/Volga_Blue.usda", volga.payload["member"])
+
+    def test_no_range_is_counted_from_the_end(self):
+        """GitHub's release host answers 501 to a suffix range. ▸r/simready-release"""
+        from amaze.core import matx_sources
+        release = _release(self)
+        matx_sources.SimReadySource().list_materials(limit=100)
+        self.assertTrue(release.calls, "premise: the listing read nothing")
+        self.assertEqual([], [c for c in release.calls if c[1].startswith("bytes=-")])
+
+    def test_a_listing_reads_two_ranges_an_archive_and_a_relisting_none(self):
+        from amaze.core import matx_sources
+        release = _release(self)
+        source = matx_sources.SimReadySource()
+        source.list_materials(limit=100)
+        self.assertLessEqual(len(release.calls), 2 * 3,
+                             "the tail and the directory, per archive: %s" % release.calls)
+        release.calls.clear()
+        source.list_materials(limit=100)
+        self.assertEqual([], release.calls, "the directories were not kept")
+        source.refresh()
+        source.list_materials(limit=100)
+        self.assertTrue(release.calls, "Refresh left the directories cached")
+
+    def test_a_directory_past_the_tail_block_is_read_in_one_request(self):
+        """Metal's directory is 497 KB; a directory that outgrows the tail costs one more GET."""
+        from amaze.core import matx_sources
+        out = io.BytesIO()
+        with zipfile.ZipFile(out, "w") as bundle:
+            bundle.writestr("Materials/Big/Glass_Clear.usda",
+                            _read("Materials", "Glass", "Glass_Clear.usda"))
+            for n in range(900):
+                bundle.writestr("Materials/Big/textures/padding_%04d_%s.jpg" % (n, "x" * 40), b"")
+        blob = out.getvalue()
+        end = blob.rfind(b"PK\x05\x06")
+        self.assertGreater(struct.unpack("<I", blob[end + 12:end + 16])[0],
+                           matx_sources.RANGED_BLOCK, "premise: the directory outgrows the tail")
+        release = _Release({"Big.zip": blob})
+        release.patched(self)
+        records = matx_sources.SimReadySource().list_materials(limit=100)
+        self.assertEqual(["Big/Glass_Clear"], [r.uid for r in records])
+        self.assertEqual(2, len(release.calls),
+                         "the tail, then the whole directory: %s" % release.calls)
+
+    def test_an_unreadable_archive_fails_the_listing_instead_of_shortening_it(self):
+        from amaze.core import matx_sources
+        release = _release(self)
+        whole = release.objects["Glass.zip"]
+        half = len(whole) // 2
+        release.objects["Glass.zip"] = whole[:half] + bytes(len(whole) - half)
+        source = matx_sources.SimReadySource()
+        with self.assertRaises(RuntimeError):
+            source.list_materials(limit=100)
+        release.objects["Glass.zip"] = whole
+        release.calls.clear()
+        self.assertEqual(4, len(source.list_materials(limit=100)))
+        self.assertEqual({"Glass.zip"}, {name for name, _r in release.calls},
+                         "the archives that did read were read again")
+
+
+class SplitArchiveTest(unittest.TestCase):
+    """`.z01` + `.zip` read as one zip, a member across the split included. ▸r/simready-release"""
+
+    def test_every_member_reads_back_whole(self):
+        from amaze.core import matx_sources
+        blob, (first, last) = _stone_parts()
+        release = _Release({"Stone.z01": first, "Stone.zip": last})
+        release.patched(self)
+        bundle, remote = matx_sources.open_remote_zip(
+            [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(last))])
+        with zipfile.ZipFile(io.BytesIO(blob)) as original:
+            names = [n for n in original.namelist() if not n.endswith("/")]
+            self.assertTrue(any(i.compress_size == BIG for i in original.infolist()))
+            for name in names:
+                self.assertEqual(original.read(name),
+                                 matx_sources.read_member(bundle, remote, name),
+                                 "%s did not survive the split" % name)
+
+    def test_a_split_at_a_member_boundary_passes_the_overlap_guard(self):
+        """3.12+ zipfile checks entry ends against offsets it took before the parts were aimed."""
+        from amaze.core import matx_sources
+        blob = _archive("Stone", ["Volga_Blue", "Ardesia_Grigia_Polished"])
+        first, last = _split(blob, _after_big(blob))
+        _Release({"Stone.z01": first, "Stone.zip": last}).patched(self)
+        bundle, remote = matx_sources.open_remote_zip(
+            [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(last))])
+        with zipfile.ZipFile(io.BytesIO(blob)) as original:
+            for name in [n for n in original.namelist() if not n.endswith("/")]:
+                self.assertEqual(original.read(name),
+                                 matx_sources.read_member(bundle, remote, name), name)
+
+    def test_a_directory_outside_the_last_part_is_refused(self):
+        from amaze.core import matx_sources
+        _blob, (first, last) = _stone_parts()
+        record = last.rfind(b"PK\x05\x06")
+        bent = bytearray(last)
+        struct.pack_into("<H", bent, record + 6, 0)
+        release = _Release({"Stone.z01": first, "Stone.zip": bytes(bent)})
+        release.patched(self)
+        with self.assertRaises(zipfile.BadZipFile):
+            matx_sources.open_remote_zip(
+                [(BASE + "Stone.z01", len(first)), (BASE + "Stone.zip", len(bent))])
+
+
+class SimReadyFetchTest(unittest.TestCase):
+    """One material's members alone, laid out as released, with its .mtlx beside its .usda."""
+
+    def _fetch(self, uid, skin_drop=()):
+        from amaze.core import matx_sources
+        release = _release(self, skin_drop)
+        source = matx_sources.SimReadySource()
+        record = next(r for r in source.list_materials(limit=100) if r.uid == uid)
+        dest = tempfile.mkdtemp(prefix="amaze_simready_fetch_")
+        self.addCleanup(shutil.rmtree, dest, True)
+        seen = []
+        try:
+            got = source.fetch(record, "original", dest, progress=seen.append)
+        except Exception as exc:                             # noqa: BLE001
+            self.fail("the fetch itself failed, so the import would too: %r" % exc)
+        return record, dest, got, seen, release
+
+    def _files(self, dest):
+        return sorted(os.path.relpath(os.path.join(root, f), dest).replace(os.sep, "/")
+                      for root, _dirs, files in os.walk(dest) for f in files)
+
+    def test_the_package_lands_as_released(self):
+        _record, dest, got, _seen, _release_ = self._fetch("Stone/Volga_Blue")
+        self.assertEqual(
+            ["Materials/Stone/Volga_Blue.mtlx", "Materials/Stone/Volga_Blue.usda",
+             "Materials/Stone/textures/Volga_Blue_diffuse.jpg",
+             "Materials/Stone/textures/Volga_Blue_glossy_roughness.jpg",
+             "Materials/Stone/textures/Volga_Blue_normal.jpg",
+             "open_pbr_uber_base_class.usda"], self._files(dest))
+        self.assertEqual(os.path.join(dest, "Materials", "Stone", "Volga_Blue.mtlx"),
+                         got["mtlx"])
+
+    def test_progress_runs_forward_to_the_end(self):
+        _record, _dest, _got, seen, _release_ = self._fetch("Stone/Volga_Blue")
+        self.assertGreater(len(seen), 2, "premise: the big texture streams in chunks")
+        self.assertEqual(sorted(seen), seen, "the bar stepped backwards")
+        self.assertEqual(1.0, seen[-1])
+
+    def test_a_span_longer_than_its_member_never_runs_the_bar_past_it(self):
+        """A fetch reads whole blocks, so a member's request runs past the member itself."""
+        from amaze.core import matx_sources
+        shares = [matx_sources.member_share(100, 50, read, 80) for read in range(0, 81, 8)]
+        self.assertEqual(sorted(shares), shares, "the share stepped backwards")
+        self.assertEqual(150, shares[-1], "the last byte must land on the members done")
+        self.assertLessEqual(max(shares), 150, "the bar ran into the next member's share")
+
+    def test_each_texture_is_one_request(self):
+        _record, _dest, _got, _seen, release = self._fetch("Skin/Skin_Dark")
+        skin = [c for c in release.calls if c[0] == "Skin.zip"]
+        self.assertLessEqual(len(skin), 2 + 2 + 3,
+                             "tail, directory, two documents and three textures: %s" % skin)
+
+    def test_the_materials_labels_become_its_tags(self):
+        record, _dest, _got, _seen, _release_ = self._fetch("Skin/Skin_Dark")
+        self.assertEqual(["skin", "human", "body", "organic", "character", "dark"],
+                         record.tags)
+
+    def test_a_texture_the_archive_lacks_is_left_to_the_repair(self):
+        from amaze.core import matx_sources
+        missing = "Materials/Skin/textures/Skin_Dark_normal.jpg"
+        _record, dest, got, _seen, _release_ = self._fetch("Skin/Skin_Dark", (missing,))
+        self.assertNotIn(missing, self._files(dest))
+        unresolved = [r["reference"] for r in matx_sources.repair_mtlx_references(
+            got["mtlx"], dest) if not r["fixed_to"]]    # the package root, as the import passes it
+        self.assertEqual(["textures/Skin_Dark_normal.jpg"], unresolved,
+                         "the import's repair is what reports a texture never fetched")
+
+    def test_a_texture_path_out_of_the_package_is_refused(self):
+        from amaze.core import matx_sources
+        text = _read("Materials", "Skin", "Skin_Dark.usda").decode("utf-8")
+        hostile = text.replace("textures/Skin_Dark_normal.jpg", "../../../../escape.jpg")
+        self.assertNotEqual(text, hostile, "premise: the reference was rewritten")
+        release = _Release({"Skin.zip": _archive("Skin", ["Skin_Dark"])})
+        out = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(release.objects["Skin.zip"])) as src, \
+                zipfile.ZipFile(out, "w") as dst:
+            for info in src.infolist():
+                data = src.read(info)
+                if info.filename.endswith("Skin_Dark.usda"):
+                    data = hostile.encode("utf-8")
+                dst.writestr(info, data)
+        release = _Release({"Skin.zip": out.getvalue()})
+        release.patched(self)
+        source = matx_sources.SimReadySource()
+        record = source.list_materials(limit=10)[0]
+        dest = tempfile.mkdtemp(prefix="amaze_simready_fetch_")
+        self.addCleanup(shutil.rmtree, dest, True)
+        with test_support.captured_log() as log:
+            try:
+                source.fetch(record, "original", os.path.join(dest, "pkg"))
+            except Exception as exc:                         # noqa: BLE001
+                self.fail("a hostile path must cost that texture, not the import: %r" % exc)
+        landing = os.path.join(os.path.dirname(dest), "escape.jpg")    # where ../../ from pkg points
+        self.assertFalse(os.path.exists(landing), "a texture was written out of the package")
+        said = [r for r in log.records("online") if "outside the library" in r.get("msg", "")]
+        self.assertEqual(1, len(said), "the refused path was not logged once")
+
+
+class NestedDocumentRepairTest(unittest.TestCase):
+    """A .mtlx's references are relative to its own folder, as the translator reads them."""
+
+    def _package(self, texture, reference):
+        package = tempfile.mkdtemp(prefix="amaze_simready_repair_")
+        self.addCleanup(shutil.rmtree, package, True)
+        folder = os.path.join(package, "Materials", "Skin")
+        os.makedirs(os.path.join(folder, "textures"))
+        with open(os.path.join(folder, "textures", texture), "wb") as handle:
+            handle.write(b"\xff\xd8 not decoded")
+        document = os.path.join(folder, "Skin.mtlx")
+        with open(document, "w", encoding="utf-8") as handle:
+            handle.write('<materialx><tiledimage name="t" type="color3">'
+                         '<input name="file" type="filename" value="%s"/>'
+                         '</tiledimage></materialx>' % reference)
+        return package, document
+
+    def _value(self, document):
+        with open(document, encoding="utf-8") as handle:
+            return re.search(r'value="([^"]+)"', handle.read()).group(1)
+
+    def test_a_working_reference_is_left_alone(self):
+        from amaze.core import matx_sources
+        package, document = self._package("a.jpg", "textures/a.jpg")
+        self.assertEqual([], matx_sources.repair_mtlx_references(document, package))
+        self.assertEqual("textures/a.jpg", self._value(document))
+
+    def test_a_repair_is_written_relative_to_the_document(self):
+        from amaze.core import matx_sources
+        package, document = self._package("a.png", "textures/a.jpg")
+        matx_sources.repair_mtlx_references(document, package)
+        self.assertEqual("textures/a.png", self._value(document),
+                         "repaired relative to the package, not to the document")
+
+
+class SimReadyImportTest(unittest.TestCase):
+    """Through the app's own import door: every texture the material reads is on disk."""
+
+    def test_every_image_points_at_a_downloaded_file(self):
+        from amaze.core import matx_import, matx_sources
+        if hou.getenv("OCIO") is None:
+            hou.putenv("OCIO", "/dev/null")
+        prefs = test_support.fixture_prefs(self)
+        prefs.render_on_import = 0
+        _release(self)
+        source = matx_sources.SimReadySource()
+        record = next(r for r in source.list_materials(limit=100)
+                      if r.uid == "Stone/Volga_Blue")
+        destination = hou.node("/mat") or hou.node("/").createNode("mat")
+        builder, why = matx_import.build_in_scene(record, source, "original",
+                                                  destination, prefs)
+        self.assertIsNotNone(builder, why)
+        self.addCleanup(builder.destroy)
+        files = [node.parm("file").eval() for node in builder.children()
+                 if node.type().name().startswith("mtlxtiledimage")]
+        self.assertEqual(3, len(files), "premise: Volga Blue reads three maps")
+        self.assertEqual([], [f for f in files if not os.path.isfile(f)],
+                         "an image points at a file that is not there - it renders black")
+
+
+class MaterialSpecTest(unittest.TestCase):
+    """The composed USD graph read into constants, maps and normal maps. ▸r/simready-graph"""
+
+    def _spec(self, category, name):
+        from amaze.core import matx_usd
+        return matx_usd.material_spec(os.path.join(FIXTURES, "Materials", category,
+                                                   name + ".usda"))
+
+    def _document(self, spec):
+        import MaterialX as mx
+        from amaze.core import matx_usd
+        folder = tempfile.mkdtemp(prefix="amaze_simready_mtlx_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = matx_usd.write_mtlx(spec, os.path.join(folder, "m.mtlx"))
+        doc = mx.createDocument()
+        mx.readFromXmlFile(doc, path)
+        return doc
+
+    def test_a_raw_colour_map_reads_as_data_then_converts(self):
+        spec = self._spec("Skin", "Skin_Dark")
+        image = spec["images"]["specular_color"]
+        self.assertEqual(("raw", "color3", (5.0, 5.0)),
+                         (image["colorspace"].lower(), image["type"], image["tiling"]))
+        doc = self._document(spec)
+        read = doc.getNode("tiledimage_specular_color")
+        convert = doc.getNode("convert_specular_color")
+        self.assertIsNotNone(convert, "a raw colour map was read as colour, with no convert")
+        self.assertEqual(("vector3", "color3"), (read.getType(), convert.getType()))
+        self.assertEqual("tiledimage_specular_color", convert.getInput("in").getNodeName())
+        self.assertEqual("convert_specular_color", doc.getNode(
+            "open_pbr_surface").getInput("specular_color").getNodeName())
+
+    def test_a_flipped_normal_map_flips_only_its_green(self):
+        spec = self._spec("Stone", "Volga_Blue")
+        self.assertEqual((False, True, False), spec["normals"]["geometry_normal"]["flip"])
+        doc = self._document(spec)
+        self.assertEqual("1, -1, 1", doc.getNode("flip_geometry_normal")
+                         .getInput("in2").getValueString())
+        self.assertEqual("0, 1, 0", doc.getNode("unflip_geometry_normal")
+                         .getInput("in2").getValueString())
+
+    def test_a_coat_normal_map_lands_on_the_coat(self):
+        normals = self._spec("Stone", "Volga_Blue_Deep_Pollished")["normals"]
+        self.assertIn("geometry_coat_normal", normals)
+        self.assertTrue(normals["geometry_coat_normal"]["flip"][1])
+
+    def test_an_srgb_map_says_so(self):
+        doc = self._document(self._spec("Stone", "Volga_Blue"))
+        self.assertEqual("srgb_texture", doc.getNode("tiledimage_base_color")
+                         .getInput("file").getAttribute("colorspace"))
+        self.assertEqual("", doc.getNode("tiledimage_specular_roughness")
+                         .getInput("file").getAttribute("colorspace"),
+                         "a data map carries no colour space; the translator reads it Raw")
+
+    def test_a_values_only_glass_is_its_constants(self):
+        spec = self._spec("Glass", "Glass_Clear")
+        self.assertEqual(({}, {}, []), (spec["images"], spec["normals"], spec["unread"]))
+        self.assertEqual(("float", 1.0), spec["constants"]["transmission_weight"])
+        self.assertAlmostEqual(1.47, spec["constants"]["specular_ior"][1], places=5)
+
+    def test_an_input_nothing_reads_is_left_out(self):
+        spec = self._spec("Stone", "Ardesia_Grigia_Polished")
+        self.assertEqual([], spec["unread"])
+        self.assertNotIn("specular_roughness_", spec["constants"])
+
+    def test_a_dot_slash_texture_path_is_kept_as_written(self):
+        from amaze.core import matx_usd
+        self.assertEqual(["./textures/Plastic_Ivory_White_normal.jpg"],
+                         matx_usd.texture_files(self._spec("Plastic", "Plastic_Ivory_White")))
+
+    def test_a_colour_map_with_no_colour_space_stays_colour(self):
+        """Only raw and linear spaces read as data; auto leaves an 8-bit map to Karma's sRGB."""
+        spec = {"name": "M", "labels": [], "constants": {}, "normals": {}, "unread": [],
+                "images": {"base_color": {"file": "textures/t.jpg", "colorspace": "",
+                                          "type": "color3", "tiling": (1.0, 1.0),
+                                          "offset": (0.0, 0.0)}}}
+        doc = self._document(spec)
+        self.assertEqual("color3", doc.getNode("tiledimage_base_color").getType())
+        self.assertIsNone(doc.getNode("convert_base_color"))
+
+    def test_an_unwired_graph_is_reported_not_raised(self):
+        from amaze.core import matx_usd
+        folder = tempfile.mkdtemp(prefix="amaze_simready_unwired_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        shutil.copytree(os.path.join(FIXTURES, "Materials"), os.path.join(folder, "Materials"))
+        base = _read("open_pbr_uber_base_class.usda").decode("utf-8")
+        wire = ("float3 inputs:in.connect = "
+                "</open_pbr_uber_base/tiledimage_geometry_normal.outputs:out>")
+        self.assertIn(wire, base, "premise: the base class wires the normal image")
+        with open(os.path.join(folder, "open_pbr_uber_base_class.usda"), "w",
+                  encoding="utf-8") as handle:
+            handle.write(base.replace(wire, ""))
+        try:
+            spec = matx_usd.material_spec(os.path.join(
+                folder, "Materials", "Stone", "Ardesia_Grigia_Polished.usda"))
+        except Exception as exc:                             # noqa: BLE001
+            self.fail("an unknown graph failed the whole import: %r" % exc)
+        self.assertNotIn("geometry_normal", spec["normals"])
+        self.assertTrue(any("not wired" in why for why in spec["unread"]), spec["unread"])
+
+    def test_every_fixture_writes_a_valid_document(self):
+        for category, name in (("Skin", "Skin_Dark"), ("Stone", "Volga_Blue"),
+                               ("Stone", "Volga_Blue_Deep_Pollished"),
+                               ("Stone", "Ardesia_Grigia_Polished"),
+                               ("Glass", "Glass_Clear"), ("Plastic", "Plastic_Ivory_White")):
+            with self.subTest(name=name):
+                self.assertTrue(self._document(self._spec(category, name)).validate()[0])
+
+
+class TranslatedVopsTest(unittest.TestCase):
+    """The document through the app's material door: the nodes a hand-built OpenPBR has."""
+
+    def _built(self, category, name):
+        from amaze.core import matx_translate, matx_usd
+        from amaze.render import nodes
+        folder = tempfile.mkdtemp(prefix="amaze_simready_vops_")
+        self.addCleanup(shutil.rmtree, folder, True)
+        path = matx_usd.write_mtlx(matx_usd.material_spec(os.path.join(
+            FIXTURES, "Materials", category, name + ".usda")),
+            os.path.join(folder, name + ".mtlx"))
+        parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(parent.destroy)
+        built = nodes.build_karma_material(
+            parent, name, lambda b: matx_translate.build_material(path, b, name))
+        self.assertTrue(built.wired, "the surface is not wired to the output")
+        return {child.name(): child for child in built.builder.children()}
+
+    def test_a_raw_colour_map_reaches_the_shader_as_colour(self):
+        vops = self._built("Skin", "Skin_Dark")
+        self.assertIn("convert_specular_color", vops, "the raw colour map was not converted")
+        convert = vops["convert_specular_color"]
+        self.assertEqual("vector3color3", convert.parm("signature").eval())
+        self.assertEqual(["color"], list(convert.outputDataTypes()))
+        surface = vops["open_pbr_surface"]
+        fed = surface.input(surface.inputNames().index("specular_color"))
+        self.assertEqual(convert.path(), fed.path() if fed else None)
+
+    def test_the_green_flip_is_built(self):
+        vops = self._built("Stone", "Volga_Blue")
+        self.assertEqual((1.0, -1.0, 1.0),
+                         tuple(vops["flip_geometry_normal"].parmTuple("in2_vector3").eval()))
+        self.assertEqual("srgb_texture",
+                         vops["tiledimage_base_color"].parm("filecolorspace").eval())
+
+    def test_karma_gets_an_openpbr_surface(self):
+        types = {vop.type().name().split("::")[0]
+                 for vop in self._built("Stone", "Volga_Blue").values()}
+        self.assertIn("mtlxopen_pbr_surface", types)
+        self.assertNotIn("mtlxstandard_surface", types)
+
+
+class TranslatorSignatureTest(unittest.TestCase):
+    """A `convert` VOP's signature is its input type then its own. ▸r/simready-graph"""
+
+    def test_convert_names_its_input_type_then_its_own(self):
+        import MaterialX as mx
+        from amaze.core import matx_translate
+        doc = mx.createDocument()
+        image = doc.addNode("tiledimage", "image", "vector3")
+        convert = doc.addNode("convert", "convert", "color3")
+        convert.setConnectedNode("in", image)
+        self.assertEqual("vector3color3", matx_translate._signature(convert))
+        self.assertEqual("vector3", matx_translate._signature(image))
+
+
+class PreviewlessTileTest(unittest.TestCase):
+    """A source that ships no picture shows the Material section's own face. ▸r/tile-faces"""
+
+    def test_a_package_tile_with_no_preview_shows_the_material_face(self):
+        from amaze.core import library, matx_library, matx_sources, thumbnails, tile_icons
+        record = matx_sources.MatxRecord(source="SimReady", uid="Skin/Skin_Dark",
+                                         title="Skin Dark", category="Skin", kind="package")
+        model = matx_library.MatxOnlineLibrary(
+            preferences=type("P", (), {"rendersize": 64})())
+        key = model._preview_key(record)
+        thumbnails.engine.discard(key)
+        model._queue_previews([record])
+        image = thumbnails.engine.peek(key)
+        self.assertIsNotNone(image, "a tile with no preview stayed blank")
+        self.assertEqual(tile_icons.generic_image(library.MaterialLibrary.TILE_FACE), image,
+                         "the online face differs from the Material section's")
+
+
+def _redshift_available():
+    try:
+        return hou.vopNodeTypeCategory().nodeType("redshift_vopnet") is not None
+    except Exception:                                        # noqa: BLE001
+        return False
+
+
+@unittest.skipUnless(_redshift_available(), "the Redshift plugin is not loaded")
+class RedshiftTiledImageTest(unittest.TestCase):
+    """Tiling and a raw colour map cross to Redshift as Karma reads them. ▸r/rs-sampler-uv"""
+
+    def _converted(self, produce):
+        from amaze.render import nodes, redshift_converter
+        parent = hou.node("/obj").createNode("matnet")
+        self.addCleanup(parent.destroy)
+        built = nodes.build_karma_material(parent, "karma_source", produce)
+        rs_builder, shader, _wired, report = redshift_converter.convert_karma_builder(
+            built.builder, parent, "rs_twin")
+        samplers = [c for c in rs_builder.allSubChildren()
+                    if c.type().name() == "redshift::TextureSampler"]
+        return shader, samplers, report
+
+    def test_tiling_and_offset_ride_the_sampler(self):
+        def produce(builder):
+            shader = builder.createNode("mtlxopen_pbr_surface")
+            image = builder.createNode("mtlxtiledimage")
+            image.parm("signature").set("color3")
+            image.parm("file").set("$AMAZELIB/matX/t/textures/tiled.jpg")
+            image.parmTuple("uvtiling").set((4.0, 2.0))
+            image.parmTuple("uvoffset").set((0.4, 0.5))
+            shader.setNamedInput("base_color", image, 0)
+            return shader, None
+        _shader, samplers, report = self._converted(produce)
+        self.assertEqual(1, len(samplers), report.summary_lines())
+        self.assertEqual((4.0, 2.0), tuple(samplers[0].parmTuple("scale").eval()))
+        offset = tuple(round(v, 6) for v in samplers[0].parmTuple("offset").eval())
+        self.assertEqual((-0.1, -0.25), offset, "offset is -uvoffset / scale")
+
+    def test_both_openpbr_normal_maps_reach_redshift(self):
+        """OpenPBR names its normals geometry_normal and geometry_coat_normal, not normal."""
+        def produce(builder):
+            shader = builder.createNode("mtlxopen_pbr_surface")
+            for name in ("geometry_normal", "geometry_coat_normal"):
+                image = builder.createNode("mtlxtiledimage")
+                image.parm("signature").set("vector3")
+                image.parm("file").set("$AMAZELIB/matX/t/textures/%s.jpg" % name)
+                mapped = builder.createNode("mtlxnormalmap")
+                mapped.setNamedInput("in", image, 0)
+                shader.setNamedInput(name, mapped, 0)
+            return shader, None
+        shader, _samplers, report = self._converted(produce)
+        self.assertEqual([], report.skipped, report.summary_lines())
+        for name in ("geometry_normal", "geometry_coat_normal"):
+            fed = shader.input(shader.inputNames().index(name))
+            self.assertEqual("redshift::BumpMap", fed.type().name() if fed else None, name)
+
+    def test_a_raw_colour_map_reads_raw_through_its_convert(self):
+        def produce(builder):
+            shader = builder.createNode("mtlxopen_pbr_surface")
+            image = builder.createNode("mtlxtiledimage")
+            image.parm("signature").set("vector3")
+            image.parm("file").set("$AMAZELIB/matX/t/textures/weight.jpg")
+            convert = builder.createNode("mtlxconvert")
+            convert.parm("signature").set("vector3color3")
+            convert.setNamedInput("in", image, 0)
+            shader.setNamedInput("specular_color", convert, 0)
+            return shader, None
+        shader, samplers, report = self._converted(produce)
+        self.assertEqual([], report.skipped, report.summary_lines())
+        self.assertEqual(1, len(samplers))
+        self.assertEqual("Raw", samplers[0].parm("tex0_colorSpace").evalAsString())
+        fed = shader.input(shader.inputNames().index("specular_color"))
+        self.assertEqual(samplers[0].path(), fed.path() if fed else None)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 import math
 import os
+import posixpath
 import re
 import ssl
+import struct
 import tempfile
 import threading
 import urllib.error
@@ -146,16 +148,17 @@ def repair_mtlx_references(mtlx_path: str, dest_dir: str) -> list:
     if not referenced:
         return repairs
 
+    base = os.path.dirname(mtlx_path)    # a reference is relative to its document, as translated
     on_disk = {}    # what we actually have, indexed by stem
     for root, _dirs, files in os.walk(dest_dir):
         for name in files:
             stem = os.path.splitext(name)[0]
-            rel = os.path.relpath(os.path.join(root, name), dest_dir)
+            rel = os.path.relpath(os.path.join(root, name), base)
             on_disk.setdefault(stem, rel.replace(os.sep, "/"))
 
     changed = False
     for ref in referenced:
-        if os.path.exists(os.path.join(dest_dir, ref)):
+        if os.path.exists(os.path.join(base, ref)):
             continue
         stem = os.path.splitext(os.path.basename(ref))[0]
         have = on_disk.get(stem)
@@ -197,6 +200,20 @@ class ShortDownload(OSError):
         self.total = total
 
 
+def _drain(resp, write, on_bytes=None, total=0) -> int:
+    """A response body through `write` in 64 KB chunks, on_bytes(read, total) after each."""
+    read = 0
+    while True:
+        chunk = resp.read(1 << 16)
+        if not chunk:
+            break
+        write(chunk)
+        read += len(chunk)
+        if on_bytes is not None:
+            on_bytes(read, total)
+    return read
+
+
 def stream_into(url: str, path: str, on_bytes=None) -> int:
     """The body at `url` written into `path`; answers the bytes read, raises ShortDownload."""
     with _request(url) as resp, open(path, "wb") as fh:
@@ -204,18 +221,61 @@ def stream_into(url: str, path: str, on_bytes=None) -> int:
             total = int(resp.headers.get("Content-Length") or 0)
         except (TypeError, ValueError):
             total = 0
-        read = 0
-        while True:
-            chunk = resp.read(1 << 16)
-            if not chunk:
-                break
-            fh.write(chunk)
-            read += len(chunk)
-            if on_bytes is not None:
-                on_bytes(read, total)
+        read = _drain(resp, fh.write, on_bytes, total)
     if total and read != total:    # a short body ends the loop normally ▸r/matx-source-quirks
         raise ShortDownload(url, read, total)
     return read
+
+
+def ranged_reader(url: str):
+    """`get_range(start, end, on_bytes=None)` over one object; on_bytes streams it in chunks."""
+    def get_range(start, end, on_bytes=None):
+        want = end - start + 1
+        with _request(url, headers={"Range": "bytes=%d-%d" % (start, end)}) as resp:
+            if on_bytes is None:
+                data = resp.read()
+            else:
+                chunks = []
+                _drain(resp, chunks.append, on_bytes, want)
+                data = b"".join(chunks)
+        if len(data) != want:    # a host that ignores Range answers the whole object
+            raise ShortDownload(url, len(data), want)
+        return data
+    return get_range
+
+
+def spanned_reader(parts):
+    """`get_range` over an archive published in parts [(url, size)], read as one file."""
+    spans, offset = [], 0
+    for url, size in parts:
+        spans.append((offset, int(size), ranged_reader(url)))
+        offset += int(size)
+
+    def get_range(start, end, on_bytes=None):
+        chunks, done = [], 0
+        for first, size, read in spans:
+            lo, hi = max(start, first), min(end, first + size - 1)
+            if lo > hi:
+                continue
+            if on_bytes is None:
+                chunk = read(lo - first, hi - first)
+            else:
+                chunk = read(lo - first, hi - first,
+                             lambda n, _t, d=done: on_bytes(d + n, end - start + 1))
+            chunks.append(chunk)
+            done += len(chunk)
+        return b"".join(chunks)
+    return get_range
+
+
+def report_unsafe(kind: str, paths) -> None:
+    """One log line and ONE alert for remote paths refused for leaving the library."""
+    if not paths:
+        return
+    debug.event("online", "skipped %s paths outside the library" % kind,
+                count=len(paths), paths=list(paths)[:20])
+    debug.alert(messages.UNSAFE_ARCHIVE_PATHS_SKIPPED % len(paths),
+                key="online-unsafe-archive-paths")
 
 
 def download(url: str, dest_path: str, on_bytes=None) -> str:
@@ -471,14 +531,7 @@ class GPUOpenSource(MatxSource):
                         skipped.append(member)
                     else:
                         safe.append(member)
-                if skipped:
-                    debug.event("online", "skipped archive paths outside "    # aggregated - one archive can carry many bad paths, and a dialog per path is a fault of its own
-                                "the library", count=len(skipped),
-                                members=skipped[:20])
-                    debug.alert(
-                        messages.UNSAFE_ARCHIVE_PATHS_SKIPPED
-                        % len(skipped),
-                        key="online-unsafe-archive-paths")
+                report_unsafe("archive", skipped)
                 zf.extractall(dest_dir, members=safe)
         finally:
             hostos.discard_scratch(zip_path)
@@ -572,13 +625,7 @@ class PolyHavenSource(MatxSource):
                 unsafe.append(rel)
                 continue
             files.append((info["url"], target))
-        if unsafe:
-            debug.event("online", "skipped include paths outside the "    # same shape and the same alert KEY as the archive case - one situation to the user, never two interruptions
-                        "library", count=len(unsafe), paths=unsafe[:20])
-            debug.alert(
-                messages.UNSAFE_ARCHIVE_PATHS_SKIPPED
-                % len(unsafe),
-                key="online-unsafe-archive-paths")
+        report_unsafe("include", unsafe)
         n = len(files)
         for i, (url, path) in enumerate(files):
             def on_bytes(read, total, i=i):
@@ -986,6 +1033,27 @@ class RangedFile:
         twin._blocks = dict(self._blocks)
         return twin
 
+    def seed_tail(self, tail: bytes) -> None:
+        """Hold the bytes already read off the end - every block, when the tail is the file."""
+        if len(tail) == self.size:
+            for n in range(0, self.size, RANGED_BLOCK):
+                self._blocks[n // RANGED_BLOCK] = tail[n:n + RANGED_BLOCK]
+            return
+        last = (self.size - 1) // RANGED_BLOCK
+        self._blocks[last] = tail[-(self.size - last * RANGED_BLOCK):]
+
+    def prefetch(self, start: int, end: int, on_bytes=None) -> None:
+        """The blocks under start..end in ONE request; on_bytes streams it so a UI can pump."""
+        first, last = start // RANGED_BLOCK, min(end, self.size - 1) // RANGED_BLOCK
+        missing = [i for i in range(first, last + 1) if i not in self._blocks]
+        if not missing:
+            return
+        lo = missing[0] * RANGED_BLOCK
+        hi = min(self.size, (missing[-1] + 1) * RANGED_BLOCK) - 1
+        data = self._get(lo, hi) if on_bytes is None else self._get(lo, hi, on_bytes)
+        for n in range(0, len(data), RANGED_BLOCK):
+            self._blocks[(lo + n) // RANGED_BLOCK] = data[n:n + RANGED_BLOCK]
+
     def _total_blocks(self) -> int:
         return max(1, (self.size - 1) // RANGED_BLOCK + 1)
 
@@ -1025,6 +1093,58 @@ class RangedFile:
             self._pos += len(chunk)
             n -= len(chunk)
         return b"".join(out)
+
+
+END_OF_ARCHIVE = b"PK\x05\x06"
+
+
+def open_remote_zip(parts):
+    """(ZipFile, RangedFile) over an archive published in parts [(url, size)]. ▸r/simready-release"""
+    starts, total = [], 0
+    for _url, size in parts:
+        starts.append(total)
+        total += int(size)
+    get_range = spanned_reader(parts)
+    tail = get_range(max(0, total - RANGED_BLOCK), total - 1)    # explicit: a suffix range 501s
+    remote = RangedFile(total, get_range)
+    remote.seed_tail(tail)
+    at = tail.rfind(END_OF_ARCHIVE)
+    if at < 0 or len(tail) - at < 22:
+        raise zipfile.BadZipFile("no end-of-archive record in the last block")
+    disk, cd_disk, _here, _all, _size, cd_offset = struct.unpack(
+        "<HHHHII", tail[at + 4:at + 20])
+    last = len(parts) - 1
+    if 0xFFFF in (disk, cd_disk) or cd_offset == 0xFFFFFFFF:
+        if last:
+            raise zipfile.BadZipFile("a split ZIP64 archive")
+    elif (disk, cd_disk) != (last, last):
+        raise zipfile.BadZipFile("its directory is not in its last part")
+    else:
+        remote.prefetch(starts[last] + cd_offset, total - 1)    # the whole directory, one request
+    bundle = zipfile.ZipFile(remote)
+    for info in bundle.infolist():    # zipfile counts every entry from the last part
+        info.header_offset += starts[info.volume] - starts[last]
+    if last:
+        end = starts[last] + cd_offset
+        for info in sorted(bundle.infolist(), key=lambda i: i.header_offset, reverse=True):
+            if hasattr(info, "_end_offset"):    # zipfile's overlap guard, re-aimed ▸r/simready-release
+                info._end_offset = end
+            end = info.header_offset
+    return bundle, remote
+
+
+def member_share(before: int, size: int, read: int, span: int) -> float:
+    """Member bytes done once `read` of a `span` fetching a `size` member is in - never past it."""
+    return before + size * min(1.0, read / span) if span else before
+
+
+def read_member(bundle, remote, name: str, on_bytes=None) -> bytes:
+    """One member, its header and data fetched in one streamed request; zipfile checks its CRC."""
+    info = bundle.getinfo(name)
+    start = info.header_offset
+    remote.prefetch(start, start + 30 + len(info.filename.encode()) + 1024
+                    + info.compress_size, on_bytes)    # 1024: room for the local extra field
+    return bundle.read(info)
 
 
 class AmazeSource(MatxSource):
@@ -1093,19 +1213,8 @@ class AmazeSource(MatxSource):
                         tail = response.read()
                     size = len(tail)
 
-            def get_range(start, end, _url=checked):
-                with _request(_url, headers={
-                        "Range": "bytes=%d-%d" % (start, end)}) as resp:
-                    return resp.read()
-
-            remote = RangedFile(size, get_range)
-            if len(tail) == size:    # the whole object arrived - seed every block, not just the last
-                for n in range(0, size, RANGED_BLOCK):
-                    remote._blocks[n // RANGED_BLOCK] = \
-                        tail[n:n + RANGED_BLOCK]
-            else:
-                last = (size - 1) // RANGED_BLOCK
-                remote._blocks[last] = tail[-(size - last * RANGED_BLOCK):]
+            remote = RangedFile(size, ranged_reader(checked))
+            remote.seed_tail(tail)
             bundle = zipfile.ZipFile(remote)
             with self._lock:
                 if url not in bundles:
@@ -1188,8 +1297,143 @@ class AmazeSource(MatxSource):
             handle.write(data)
 
 
+class SimReadySource(MatxSource):
+    """NVIDIA's SimReady materials: a release zip per category, each .usda a tile. ▸r/simready-release"""
+
+    name = "SimReady"
+    licence = "MIT-0 (MIT No Attribution)"    # quoted from the release's own LICENSE.md
+    RELEASE = ("https://api.github.com/repos/NVIDIA-Omniverse/"
+               "PhysicalAI-SimReady-Materials/releases/latest")
+    HOME = "https://github.com/NVIDIA-Omniverse/PhysicalAI-SimReady-Materials"
+    BASE_CLASS = "open_pbr_uber_base_class.usda"
+    MATERIAL = re.compile(r"Materials/([^/]+)/([^/]+)\.usda")
+    PART = re.compile(r"(.+)\.(zip|z\d\d)")
+
+    def __init__(self):
+        self.refresh()
+
+    def refresh(self):
+        self._names = {}    # archive urls -> [(category, name)], kept on success only
+
+    def page_url(self, record) -> str:
+        return self.HOME    # no per-material page
+
+    def resolutions(self, record):
+        return ["original"]    # one texture set per material
+
+    @classmethod
+    def _archives(cls, release) -> dict:
+        """category -> its parts [(url, size)]: `.z01`... first, the `.zip` last."""
+        found = {}
+        for asset in release.get("assets") or ():
+            part = cls.PART.fullmatch(str(asset.get("name") or ""))
+            if part:
+                found.setdefault(part.group(1), []).append(
+                    (part.group(2) == "zip", part.group(2),
+                     str(asset.get("browser_download_url") or ""),
+                     int(asset.get("size") or 0)))
+        return {category: [(url, size) for _last, _n, url, size in sorted(parts)]
+                for category, parts in found.items()}
+
+    def _release_materials(self) -> list:
+        """(category, name, parts) for every material of the latest release."""
+        rows, failed = [], []
+        for category, parts in sorted(self._archives(get_json(self.RELEASE)).items()):
+            key = tuple(url for url, _size in parts)
+            names = self._names.get(key)
+            if names is None:
+                try:
+                    bundle, _remote = open_remote_zip(parts)
+                except Exception as exc:                      # noqa: BLE001
+                    debug.event("online", "SimReady archive unreadable",
+                                category=category, error=str(exc))
+                    failed.append(category)
+                    continue
+                names = [m.groups() for m in map(self.MATERIAL.fullmatch,
+                                                 bundle.namelist()) if m]
+                self._names[key] = names
+            rows.extend((folder, name, parts) for folder, name in names)
+        if failed:    # a short list must not replace a whole one in the catalogue cache
+            raise RuntimeError("could not read the SimReady %s archive%s"
+                               % (", ".join(failed), "" if len(failed) == 1 else "s"))
+        return rows
+
+    def list_materials(self, search="", offset=0, limit=60):
+        out = []
+        for folder, name, parts in self._release_materials():
+            title = name.replace("_", " ")
+            if search and search.lower() not in title.lower():
+                continue
+            out.append(MatxRecord(
+                source=self.name, uid="%s/%s" % (folder, name), title=title,
+                author="NVIDIA", category=self._cat(folder), licence=self.licence,
+                kind="package",
+                payload={"parts": [list(part) for part in parts],
+                         "member": "Materials/%s/%s.usda" % (folder, name)}))
+        return out[offset:offset + limit]
+
+    @staticmethod
+    def _extract(bundle, remote, name: str, dest_dir: str, on_bytes=None) -> str:
+        target = hostos.contained_join(dest_dir, name)    # member names come from the network
+        try:
+            data = read_member(bundle, remote, name, on_bytes)
+        except KeyError:
+            raise RuntimeError("%s is not in the SimReady archive" % name) from None
+        os.makedirs(os.path.dirname(target), exist_ok=True)
+        with open(target, "wb") as handle:
+            handle.write(data)
+        return target
+
+    def fetch(self, record, resolution, dest_dir, progress=None):
+        from amaze.core import matx_usd
+        parts = [tuple(part) for part in record.payload.get("parts") or ()]
+        member = str(record.payload.get("member") or "")
+        if not parts or not self.MATERIAL.fullmatch(member):
+            raise RuntimeError("no archive is known for " + record.title)
+        bundle, remote = open_remote_zip(parts)
+        usda = self._extract(bundle, remote, member, dest_dir)
+        self._extract(bundle, remote, self.BASE_CLASS, dest_dir)    # its relative path stays NVIDIA's
+        spec = matx_usd.material_spec(usda)
+        folder, held = posixpath.dirname(member), set(bundle.namelist())
+        textures, unsafe = [], []
+        for ref in matx_usd.texture_files(spec):
+            name = posixpath.normpath(posixpath.join(folder, ref.replace("\\", "/")))
+            try:
+                hostos.contained_join(dest_dir, name)
+            except hostos.PathEscape:
+                unsafe.append(ref)
+                continue
+            if name in held:    # a texture missing from the archive is skipped here
+                textures.append(name)
+        report_unsafe("texture", unsafe)
+        total = sum(bundle.getinfo(name).compress_size for name in textures) or 1
+        done = 0
+        for name in textures:
+            size = bundle.getinfo(name).compress_size
+
+            def on_bytes(read, span, before=done, size=size):
+                if progress:
+                    progress(min(1.0, member_share(before, size, read, span) / total))
+            self._extract(bundle, remote, name, dest_dir, on_bytes)
+            done += size
+        if spec["unread"]:
+            debug.event("online", "SimReady inputs not translated",
+                        material=record.title, inputs=spec["unread"])
+            debug.note(
+                "left %d input%s of %s at the default value: %s. The material "
+                "was built, but may not look exactly like the original."
+                % (len(spec["unread"]), "" if len(spec["unread"]) == 1 else "s",
+                   record.title, "; ".join(spec["unread"])))
+        if not record.tags:
+            record.tags = spec["labels"]    # the material's own labels land on the library asset
+        mtlx = matx_usd.write_mtlx(spec, os.path.splitext(usda)[0] + ".mtlx")
+        if progress:
+            progress(1.0)
+        return {"mtlx": mtlx}
+
+
 SOURCES = (AmazeSource, GPUOpenSource, PolyHavenSource,    # menu order, Amaze FIRST; ambientCG deliberately absent - probed: JPG/PNG zips only, no .mtlx, so it would be a FOURTH source kind (a standard_surface from conventionally-named maps), a v2
-           PhysicallyBasedSource, RGLSource)
+           SimReadySource, PhysicallyBasedSource, RGLSource)
 
 
 def all_sources():

@@ -1,0 +1,40 @@
+#usda 1.0
+(
+    defaultPrim = "Plastic_Ivory_White"
+    subLayers = [
+        @../../open_pbr_uber_base_class.usda@
+    ]
+)
+
+def Material "Plastic_Ivory_White" (
+    prepend apiSchemas = ["SemanticsLabelsAPI:material", "SemanticsLabelsAPI:vMaterial_Ver", "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver", "SemanticsLabelsAPI:OpenPBR_Ver"]
+    inherits = </open_pbr_uber_base>
+)
+{
+    float inputs:base_weight = 1
+    color3f inputs:coat_color = (1, 1, 1)
+    float inputs:coat_roughness = 0.2
+    float inputs:coat_weight = 0.5
+    asset inputs:geometry_normal_texture_file = @./textures/Plastic_Ivory_White_normal.jpg@ (
+        colorSpace = "raw"
+    )
+    bool inputs:geometry_normal_texture_flip_g = 0
+    float inputs:specular_ior = 1.46
+    float inputs:specular_roughness = 0.4
+    float inputs:specular_roughness_anisotropy = 0
+    float inputs:specular_weight = 1
+    color3f inputs:subsurface_color = (0.6560343, 0.6471441, 0.5574627)
+    color3f inputs:subsurface_radius_scale = (0.0026381495, 0.002624241, 0.0024586776)
+    color3f inputs:transmission_color = (7.842898e-15, 1.0519242e-15, 7.551608e-27)
+    float inputs:transmission_depth = 1
+    token[] semantics:labels:material = ["plastic", "artificial", "scattering", "SSS", "diffuse", "translucent", "new", "shiny", "flakes", "metallic", "glitter", "pigment", "white", "bright", "ivory", "warm"]
+    token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver= ["0.1.0"]
+    token[] semantics:labels:OpenPBR_Ver = ["1.1"]
+    token[] semantics:labels:vMaterial_Ver = ["2.2"]
+    custom token[] omni:simready:nonvisual:attributes = ["none"]
+    custom token omni:simready:nonvisual:base = "plastic"
+    custom token omni:simready:nonvisual:coating = "none"
+    color3f inputs:base_color = (0.9411765, 0.91084963, 0.8304498)
+    float inputs:coat_ior = 1.6
+    float inputs:subsurface_weight = 0.2
+}

@@ -49,11 +49,11 @@ def _purge_legacy_caches():
             pass
 
 
-CATALOGUE_CAP = 1000    # records asked of each source; none holds more today ▸r/matx-source-quirks
+CATALOGUE_CAP = 4000    # records asked of each source; none holds more today ▸r/matx-source-quirks
 
 
 class _CatalogueWorker(QtCore.QThread):
-    """Every source's whole catalogue off the UI thread, ~1900 records (PolyHaven 869), no paging."""
+    """Every source's whole catalogue off the UI thread, ~3600 records (SimReady 1705), no paging."""
 
     done = QtCore.Signal(object, object, int)   # (records, errors, generation)
 
@@ -450,13 +450,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                         continue
                     self._requested.discard(key)
                     continue
-                from amaze.core import cop_library, library, tile_icons
-                face = tile_icons.generic_image(    # the local section's own generic face
-                    cop_library.CopLibrary.TILE_FACE
-                    if str(rec.payload.get("section") or "") == "cop"
-                    else library.MaterialLibrary.TILE_FACE)
-                thumbnails.engine.deposit(key, face)    # no icon member, no colours, no code: the LOCAL section's face, never a blank tile
-                self._requested.discard(key)
+                self._deposit_face(key, str(rec.payload.get("section") or ""))
                 continue
             if rec.kind == "values":
                 try:    # no render to download - the tile is DRAWN from the measured numbers, cheap enough on the spot, no worker
@@ -475,6 +469,7 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
                 self._requested.discard(key)    # drawing is cheap: an evicted icon redraws on the next paint - don't hold the marker
                 continue
             if not rec.preview_url:
+                self._deposit_face(key, "material")    # a source that ships no picture
                 continue
             url = rec.preview_url.replace("format=webp", "format=png")    # Qt reads no WebP ▸r/matx-source-quirks
             jobs.append((key, url, self._cache_path(rec)))
@@ -489,6 +484,14 @@ class MatxOnlineLibrary(grid_columns.GridColumnsMixin,
         self._workers.append(worker)
         self._preview_workers.append(worker)
         worker.start()
+
+    def _deposit_face(self, key, section: str) -> None:
+        """The local section's generic face for an online tile with no picture. ▸r/tile-faces"""
+        from amaze.core import cop_library, library, tile_icons
+        thumbnails.engine.deposit(key, tile_icons.generic_image(
+            cop_library.CopLibrary.TILE_FACE if section == "cop"
+            else library.MaterialLibrary.TILE_FACE))
+        self._requested.discard(key)
 
     def _on_preview_attempted(self):
         """One preview download finished (ok or failed) - advance the bar, and on a drained burst reset so the next scroll starts a fresh 0..N."""

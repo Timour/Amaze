@@ -1,0 +1,46 @@
+#usda 1.0
+(
+    defaultPrim = "Volga_Blue_Deep_Pollished"
+    subLayers = [
+        @../../open_pbr_uber_base_class.usda@
+    ]
+)
+
+def Material "Volga_Blue_Deep_Pollished" (
+    inherits = </open_pbr_uber_base>
+           prepend apiSchemas = ["SemanticsLabelsAPI:material", "SemanticsLabelsAPI:vMaterial_Ver", "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver", "SemanticsLabelsAPI:OpenPBR_Ver"]
+    )
+    {
+        token[] semantics:labels:material= ["stone", "rock", "infinite tiling", "natural", "rough", "bumped", "interior", "exterior", "hard", "shiny", "polished"]
+        token[] semantics:labels:vMaterial_Ver= ["2.2"]
+        token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver= ["0.1.0"]
+        token[] semantics:labels:OpenPBR_Ver= ["1.1"]
+        custom token[] omni:simready:nonvisual:attributes = ["none"]
+        custom token omni:simready:nonvisual:base = "stone"
+        custom token omni:simready:nonvisual:coating = "none"
+
+
+        float inputs:base_weight = 1 
+        float inputs:transmission_depth = 1 
+        color3f inputs:transmission_color = (1.0,1.0,1.0) 
+        color3f inputs:subsurface_color = (1.0,1.0,1.0) 
+        float inputs:coat_weight = 1.0 
+        bool inputs:coat_normal_texture_flip_g = 1 
+        asset inputs:coat_normal_texture_file = @textures/Volga_Blue_normal.jpg@         (
+            colorSpace = "raw"
+        )
+        color3f inputs:coat_color = (1.0,1.0,1.0) 
+        asset inputs:coat_roughness_texture_file = @textures/Volga_Blue_Deep_Pollished_coat_roughness.jpg@         (
+            colorSpace = "raw"
+        )
+        float inputs:specular_weight = 1.0 
+        float inputs:specular_ior = 1.4999999930150807 
+        asset inputs:specular_roughness_texture_file = @textures/Volga_Blue_Deep_Pollished_glossy_roughness.jpg@         (
+            colorSpace = "raw"
+        )
+        float inputs:specular_roughness_anisotropy = 0.0 
+        asset inputs:base_color_texture_file = @textures/Volga_Blue_Deep_Pollished_diffuse.jpg@         (
+            colorSpace = "sRGB"
+        )
+        float inputs:subsurface_weight = 0.125 
+    }

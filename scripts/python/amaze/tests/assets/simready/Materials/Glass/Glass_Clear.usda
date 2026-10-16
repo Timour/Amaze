@@ -1,0 +1,35 @@
+#usda 1.0
+(
+    defaultPrim = "Glass_Clear"
+    subLayers = [
+        @../../open_pbr_uber_base_class.usda@
+    ]
+)
+
+def Material "Glass_Clear" (
+    inherits = </open_pbr_uber_base>
+       prepend apiSchemas = ["SemanticsLabelsAPI:material", "SemanticsLabelsAPI:vMaterial_Ver", "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver", "SemanticsLabelsAPI:OpenPBR_Ver"]
+)
+{
+    token[] semantics:labels:material= ["glass", "layered", "construction", "indoor", "outdoor", "design", "shiny", "AEC", "transparent", "clear", "smooth", "new", "refractive", "reflective"]
+    token[] semantics:labels:vMaterial_Ver= ["2.2"]
+    token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver = ["0.1.0"]
+    token[] semantics:labels:OpenPBR_Ver= ["1.1"]
+    custom token[] omni:simready:nonvisual:attributes = ["visually_transparent"]
+    custom token omni:simready:nonvisual:base = "clear_glass"
+    custom token omni:simready:nonvisual:coating = "none"
+
+
+    float inputs:base_weight = 1 
+    float inputs:transmission_depth = 1 
+    color3f inputs:transmission_color = (0.6800016513904951,0.6800016513904951,0.6800016513904951) 
+    color3f inputs:subsurface_color = (2.382614420408717e-06,2.382614420408717e-06,2.382614420408717e-06) 
+    color3f inputs:subsurface_radius_scale = (2.5929411459239713,2.5929411459239713,2.5929411459239713) 
+    float inputs:base_metalness = 0.0 
+    float inputs:specular_roughness = 0.0 
+    float inputs:specular_roughness_anisotropy = 0.0 
+    float inputs:specular_weight = 1.0 
+    float inputs:specular_ior = 1.4700000286102295 
+    color3f inputs:base_color = (0.0,0.0,0.0) 
+    float inputs:transmission_weight = 1.0 
+}

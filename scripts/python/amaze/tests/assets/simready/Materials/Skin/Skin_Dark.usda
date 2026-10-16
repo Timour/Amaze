@@ -1,0 +1,63 @@
+#usda 1.0
+(
+    defaultPrim = "Skin_Dark"
+    subLayers = [
+        @../../open_pbr_uber_base_class.usda@
+    ]
+)
+
+def Material "Skin_Dark" (
+    inherits = </open_pbr_uber_base>
+    prepend apiSchemas = ["SemanticsLabelsAPI:material", "SemanticsLabelsAPI:vMaterial_Ver", "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver", "SemanticsLabelsAPI:OpenPBR_Ver"]
+)
+{
+    token[] semantics:labels:material = ["skin", "human", "body", "organic", "character", "dark"]
+    token[] semantics:labels:vMaterial_Ver = ["2.2"]
+    token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver = ["0.1.0"]
+    token[] semantics:labels:OpenPBR_Ver = ["1.1"]
+    custom token[] omni:simready:nonvisual:attributes = ["none"]
+    custom token omni:simready:nonvisual:base = "skin"
+    custom token omni:simready:nonvisual:coating = "none"
+
+    color3f inputs:base_color = (0.8, 0.8, 0.8)
+    asset inputs:base_color_texture_file = @@ (
+        colorSpace = "raw"
+    )
+    float inputs:base_diffuse_roughness = 0
+    float inputs:base_weight = 1
+    float inputs:coat_weight = 0
+    asset inputs:geometry_normal_texture_file = @textures/Skin_Dark_normal.jpg@ (
+        colorSpace = "raw"
+    )
+    bool inputs:geometry_normal_texture_flip_g = 0
+    color3f inputs:specular_color = (1.0,1.0,1.0)
+    asset inputs:specular_color_texture_file = @textures/Skin_Dark_glossy_weight.jpg@ (
+        colorSpace = "raw"
+    )
+    float inputs:specular_ior = 1.33
+    float inputs:specular_roughness = 0.35
+    asset inputs:specular_roughness_texture_file = @textures/Skin_Dark_glossy_roughness.jpg@ (
+        colorSpace = "raw"
+    )
+    float inputs:specular_weight = 1
+    asset inputs:specular_weight_texture_file = @@ (
+        colorSpace = "raw"
+    )
+    color3f inputs:subsurface_color = (0.078431375, 0.050980393, 0.039215688)
+    float inputs:subsurface_radius = 0.0015
+    color3f inputs:subsurface_radius_scale = (0.72156864, 0.2627451, 0.1254902)
+    float inputs:subsurface_weight = 1
+    float2 inputs:uvtiling = (5, 5) (
+        customData = {
+            dictionary omni = {
+                dictionary kit = {
+                    dictionary property = {
+                        dictionary usd = {
+                            float2 soft_range_ui = (0, 5)
+                        }
+                    }
+                }
+            }
+        }
+    )
+}

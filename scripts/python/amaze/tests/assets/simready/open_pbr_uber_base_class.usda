@@ -1,0 +1,1284 @@
+#usda 1.0
+(
+    defaultPrim = "open_pbr_uber_base"
+)
+
+class "open_pbr_uber_base" (
+        prepend apiSchemas = [
+            "NodeGraphNodeAPI",
+            "SemanticsLabelsAPI:material",
+            "SemanticsLabelsAPI:vMaterial_Ver",
+            "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver",
+            "SemanticsLabelsAPI:OpenPBR_Ver"
+        ]
+)
+{
+    # Semantics
+    token[] semantics:labels:material= ["base"]
+    token[] semantics:labels:vMaterial_Ver= ["2.2"]
+    token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver= ["0.1.0"]
+    token[] semantics:labels:OpenPBR_Ver= ["1.1"]
+    custom token[] omni:simready:nonvisual:attributes = ["none"]
+    custom token omni:simready:nonvisual:base = ""
+    custom token omni:simready:nonvisual:coating = ""
+    custom bool omni:rtx:enableCutoutOpacity = 0
+
+
+    # Base
+    float inputs:base_weight = 1 (
+        displayGroup = "Base"
+        displayName = "Base Weight"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "0"
+            string uiorder = "0"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    color3f inputs:base_color = (0.8, 0.8, 0.8) (
+        displayGroup = "Base"
+        displayName = "Base Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "1"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:base_color_texture_file = @@ (
+        displayGroup = "Base"
+        displayName = "Base Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "2"
+        }
+    )
+    float inputs:base_diffuse_roughness = 0 (
+        displayGroup = "Base"
+        displayName = "Base Diffuse Roughness"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "3"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:base_diffuse_roughness_texture_file = @@ (
+        displayGroup = "Base"
+        displayName = "Base Diffuse Roughness Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "4"
+        }
+    )
+    float inputs:base_metalness = 0 (
+        displayGroup = "Base"
+        displayName = "Base Metalness"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "5"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:base_metalness_texture_file = @@ (
+        displayGroup = "Base"
+        displayName = "Base Metalness Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "6"
+        }
+    )
+
+    # Specular
+    float inputs:specular_weight = 1 (
+        displayGroup = "Specular"
+        displayName = "Specular Weight"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "7"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:specular_weight_texture_file = @@ (
+        displayGroup = "Specular"
+        displayName = "Specular Weight Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "8"
+        }
+    )
+    color3f inputs:specular_color = (1, 1, 1) (
+        displayGroup = "Specular"
+        displayName = "Specular Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "9"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:specular_color_texture_file = @@ (
+        displayGroup = "Specular"
+        displayName = "Specular Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "10"
+        }
+    )
+    float inputs:specular_roughness = 0.3 (
+        displayGroup = "Specular"
+        displayName = "Specular Roughness"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "11"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:specular_roughness_texture_file = @@ (
+        displayGroup = "Specular"
+        displayName = "Specular Roughness Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "12"
+        }
+    )
+    float inputs:specular_ior = 1.5 (
+        displayGroup = "Specular"
+        displayName = "Specular IOR"
+        sdrMetadata = {
+            string uiorder = "13"
+            string uisoftmax = "3"
+            string uisoftmin = "1"
+        }
+    )
+    float inputs:specular_roughness_anisotropy = 0 (
+        displayGroup = "Specular"
+        displayName = "Specular Roughness Anisotropy"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "15"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:specular_roughness_anisotropy_texture_file = @@ (
+        displayGroup = "Specular"
+        displayName = "Specular Roughness Anisotropy Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "16"
+        }
+    )
+
+    # Transmission
+    float inputs:transmission_weight = 0 (
+        displayGroup = "Transmission"
+        displayName = "Transmission Weight"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "19"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:transmission_weight_texture_file = @@ (
+        displayGroup = "Transmission"
+        displayName = "Transmission Weight Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "20"
+        }
+    )
+    color3f inputs:transmission_color = (1, 1, 1) (
+        displayGroup = "Transmission"
+        displayName = "Transmission Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "21"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:transmission_color_texture_file = @@ (
+        displayGroup = "Transmission"
+        displayName = "Transmission Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "22"
+        }
+    )
+    float inputs:transmission_depth = 0 (
+        displayGroup = "Transmission"
+        displayName = "Transmission Depth"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "23"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    color3f inputs:transmission_scatter = (0, 0, 0) (
+        displayGroup = "Transmission"
+        displayName = "Transmission Scatter"
+        sdrMetadata = {
+            string uiorder = "24"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    float inputs:transmission_scatter_anisotropy = 0 (
+        displayGroup = "Transmission"
+        displayName = "Transmission Scatter Anisotropy"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "-1"
+            string uiorder = "25"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    float inputs:transmission_dispersion_scale = 0 (
+        displayGroup = "Transmission"
+        displayName = "Transmission Dispersion Scale"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "0"
+            string uiorder = "26"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    float inputs:transmission_dispersion_abbe_number = 20 (
+        displayGroup = "Transmission"
+        displayName = "Transmission Dispersion Abbe Number"
+        sdrMetadata = {
+            string uimax = "91"
+            string uimin = "9"
+            string uiorder = "27"
+            string uisoftmax = "91"
+            string uisoftmin = "9"
+        }
+    )
+
+    # Subsurface
+    float inputs:subsurface_weight = 0 (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Weight"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "28"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:subsurface_weight_texture_file = @@ (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Weight Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "29"
+        }
+    )
+    color3f inputs:subsurface_color = (0, 0, 0) (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "30"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:subsurface_color_texture_file = @@ (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "31"
+        }
+    )
+    float inputs:subsurface_radius = 1 (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Radius"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "32"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    color3f inputs:subsurface_radius_scale = (1, 0.5, 0.25) (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Radius Scale"
+        sdrMetadata = {
+            string uiorder = "33"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    float inputs:subsurface_scatter_anisotropy = 0 (
+        displayGroup = "Subsurface"
+        displayName = "Subsurface Scatter Anisotropy"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "-1"
+            string uiorder = "34"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+
+    # Fuzz
+    float inputs:fuzz_weight = 0 (
+        displayGroup = "Fuzz"
+        displayName = "Fuzz Weight"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "0"
+            string uiorder = "35"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    color3f inputs:fuzz_color = (1, 1, 1) (
+        displayGroup = "Fuzz"
+        displayName = "Fuzz Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "36"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:fuzz_color_texture_file = @@ (
+        displayGroup = "Fuzz"
+        displayName = "Fuzz Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "37"
+        }
+    )
+    float inputs:fuzz_roughness = 0.5 (
+        displayGroup = "Fuzz"
+        displayName = "Fuzz Roughness"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "0"
+            string uiorder = "38"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+
+    # Coat
+    float inputs:coat_weight = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Weight"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "39"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:coat_weight_texture_file = @@ (
+        displayGroup = "Coat"
+        displayName = "Coat Weight Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "40"
+        }
+    )
+    color3f inputs:coat_color = (1, 1, 1) (
+        displayGroup = "Coat"
+        displayName = "Coat Color"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "41"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+    asset inputs:coat_color_texture_file = @@ (
+        displayGroup = "Coat"
+        displayName = "Coat Color Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "42"
+        }
+    )
+    float inputs:coat_roughness = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Roughness"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "43"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:coat_roughness_texture_file = @@ (
+        displayGroup = "Coat"
+        displayName = "Coat Roughness Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "44"
+        }
+    )
+    float inputs:coat_roughness_anisotropy = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Roughness Anisotropy"
+        sdrMetadata = {
+            string uimax = "1"
+            string uimin = "0"
+            string uiorder = "47"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    float inputs:coat_ior = 1.6 (
+        displayGroup = "Coat"
+        displayName = "Coat IOR"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "45"
+            string uisoftmax = "3"
+            string uisoftmin = "1"
+        }
+    )
+    float inputs:coat_darkening = 1.0 (
+        displayGroup = "Coat"
+        displayName = "Coat Darkening"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "50"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    float inputs:coat_normal_scale = 1 (
+        displayGroup = "Coat"
+        displayName = "Coat Normal Scale"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "65"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:coat_normal_texture_file = @@ (
+        displayGroup = "Coat"
+        displayName = "Coat Normal Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "61"
+        }
+    )
+    bool inputs:coat_normal_texture_flip_r = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Normal Texture Flip R"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "62"
+        }
+    )
+    bool inputs:coat_normal_texture_flip_g = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Normal Texture Flip G"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "63"
+        }
+    )
+    bool inputs:coat_normal_texture_flip_b = 0 (
+        displayGroup = "Coat"
+        displayName = "Coat Normal Texture Flip B"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "64"
+        }
+    )
+
+    # Thin Film
+    float inputs:thin_film_weight = 0 (
+        displayGroup = "Thin Film"
+        displayName = "Thin Film Weight"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "50"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    float inputs:thin_film_ior = 1.5 (
+        displayGroup = "Thin Film"
+        displayName = "Thin Film IOR"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "50"
+            string uisoftmax = "3"
+            string uisoftmin = "1"
+        }
+    )
+    float inputs:thin_film_thickness = 0 (
+        displayGroup = "Thin Film"
+        displayName = "Thin Film Thickness"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "49"
+            string uisoftmax = "2000"
+            string uisoftmin = "0"
+        }
+    )
+
+    # Emission
+    float inputs:emission_luminance = 0 (
+        displayGroup = "Emission"
+        displayName = "Emission Luminance"
+        sdrMetadata = {
+            string uimin = "0"
+            string uiorder = "51"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    color3f inputs:emission_color = (1, 1, 1) (
+        displayGroup = "Emission"
+        displayName = "Emission Color"
+        sdrMetadata = {
+            string uiorder = "52"
+            string uisoftmax = "1,1,1"
+            string uisoftmin = "0,0,0"
+        }
+    )
+
+    # Geometry
+    float inputs:geometry_opacity = 1 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Opacity"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "53"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:geometry_opacity_texture_file = @@ (
+        displayGroup = "Geometry"
+        displayName = "Geometry Opacity Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "54"
+        }
+    )
+    bool inputs:geometry_thin_walled = 0 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Thin Walled"
+        sdrMetadata = {
+            string uiorder = "55"
+        }
+    )
+    float inputs:geometry_normal_scale = 1 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Normal Scale"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "60"
+            string uisoftmax = "1"
+            string uisoftmin = "0"
+        }
+    )
+    asset inputs:geometry_normal_texture_file = @@ (
+        displayGroup = "Geometry"
+        displayName = "Geometry Normal Texture File"
+        colorSpace = "raw"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "56"
+        }
+    )
+    bool inputs:geometry_normal_texture_flip_r = 0 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Normal Texture Flip R"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "57"
+        }
+    )
+    bool inputs:geometry_normal_texture_flip_g = 0 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Normal Texture Flip G"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "58"
+        }
+    )
+    bool inputs:geometry_normal_texture_flip_b = 0 (
+        displayGroup = "Geometry"
+        displayName = "Geometry Normal Texture Flip B"
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "59"
+        }
+    )
+
+    # UV Coord
+    float2 inputs:uvoffset = (0, 0) (
+        displayGroup = "UV Coord"
+        displayName = "UV Offset"
+        sdrMetadata = {
+            string uiorder = "67"
+            string uisoftmax = "1,1"
+            string uisoftmin = "0,0"
+        }
+    )
+    float2 inputs:uvtiling = (1, 1) (
+        displayGroup = "UV Coord"
+        displayName = "UV Tiling"
+        sdrMetadata = {
+            string uiorder = "66"
+            string uisoftmax = "1,1"
+            string uisoftmin = "0,0"
+        }
+    )
+
+    # Outputs
+    token outputs:surface (
+        sdrMetadata = {
+            string uiorder = "1"
+        }
+    )
+    token outputs:mtlx:surface (
+        sdrMetadata = {
+            string uiname = ""
+            string uiorder = "4"
+        }
+    )
+    token outputs:mtlx:surface.connect = </open_pbr_uber_base/open_pbr_surface_surfaceshader.outputs:out>
+
+    uniform float2 ui:nodegraph:node:pos = (-0.6531445, -2.399189)
+
+
+    def Shader "tiledimage_base_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default = (0.8, 0.8, 0.8)
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:base_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:base_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4274666, -17.3145)
+    }
+
+    def Shader "tiledimage_base_diffuse_roughness" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:base_diffuse_roughness>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:base_diffuse_roughness_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4078056, -16.435444)
+    }
+
+    def Shader "tiledimage_base_metalness" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:base_metalness>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:base_metalness_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.392139, -13.433556)
+    }
+
+    def Shader "tiledimage_specular_weight" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 1
+        float inputs:default.connect = </open_pbr_uber_base.inputs:specular_weight>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:specular_weight_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.3995833, -10.392556)
+    }
+
+    def Shader "tiledimage_specular_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default = (1, 1, 1)
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:specular_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:specular_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.3768611, -9.544222)
+    }
+
+    def Shader "tiledimage_specular_roughness" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0.3
+        float inputs:default.connect = </open_pbr_uber_base.inputs:specular_roughness>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:specular_roughness_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.369939, -8.742945)
+    }
+
+    def Shader "tiledimage_specular_roughness_anisotropy" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:specular_roughness_anisotropy>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:specular_roughness_anisotropy_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.3405278, -7.989611)
+    }
+
+    def Shader "tiledimage_transmission_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default = (1, 1, 1)
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:transmission_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:transmission_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.2372944, -3.1878943)
+    }
+
+    def Shader "tiledimage_transmission_weight" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:transmission_weight>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:transmission_weight_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.2332389, -3.9624777)
+    }
+
+    def Shader "tiledimage_subsurface_weight" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:subsurface_weight>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:subsurface_weight_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4225612, -0.5453284)
+    }
+
+    def Shader "tiledimage_subsurface_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:subsurface_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:subsurface_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4075667, 0.2769439)
+    }
+
+    def Shader "texcoord" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_texcoord_vector2"
+        int inputs:index = 0
+        float2 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-6.6373887, -4.295067)
+    }
+
+    def Shader "tiledimage_coat_weight" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:coat_weight>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:coat_weight_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.41415, 4.988106)
+    }
+
+    def Shader "tiledimage_coat_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default = (1, 1, 1)
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:coat_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:coat_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4512666, 5.825778)
+    }
+
+    def Shader "tiledimage_coat_roughness" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 0
+        float inputs:default.connect = </open_pbr_uber_base.inputs:coat_roughness>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:coat_roughness_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4739889, 6.7236667)
+    }
+
+    def Shader "tiledimage_fuzz_color" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_color3"
+        color3f inputs:default = (1, 1, 1)
+        color3f inputs:default.connect = </open_pbr_uber_base.inputs:fuzz_color>
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:fuzz_color_texture_file>
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        color3f outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.3863277, 2.4826555)
+    }
+
+    def Shader "ifequal_geometry_normal_flip_r" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_geometry_normal_texture_inverted.outputs:outx>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_geometry_normal_texture.outputs:outx>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:geometry_normal_texture_flip_r>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (4.9738, 12.781722)
+    }
+
+    def Shader "invert_geometry_normal_texture" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_invert_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/tiledimage_geometry_normal.outputs:out>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (0.68375, 13.984055)
+    }
+
+    def Shader "separate3_geometry_normal_texture_inverted" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_separate3_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/invert_geometry_normal_texture.outputs:out>
+        float outputs:outx
+        float outputs:outy
+        float outputs:outz
+        uniform float2 ui:nodegraph:node:pos = (2.5495832, 13.771999)
+    }
+
+    def Shader "combine3_geometry_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_combine3_vector3"
+        float inputs:in1.connect = </open_pbr_uber_base/ifequal_geometry_normal_flip_r.outputs:out>
+        float inputs:in2.connect = </open_pbr_uber_base/ifequal_geometry_normal_flip_g.outputs:out>
+        float inputs:in3.connect = </open_pbr_uber_base/ifequal_geometry_normal_flip_b.outputs:out>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (6.837222, 13.971889)
+    }
+
+    def Shader "normalmap_geometry_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_normalmap"
+        float3 inputs:in.connect = </open_pbr_uber_base/combine3_geometry_normal.outputs:out>
+        float inputs:scale.connect = </open_pbr_uber_base.inputs:geometry_normal_scale>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (8.665389, 13.806722)
+    }
+
+    def Shader "ifequal_geometry_normal_flip_g" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_geometry_normal_texture_inverted.outputs:outy>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_geometry_normal_texture.outputs:outy>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:geometry_normal_texture_flip_g>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (4.9455776, 14.339111)
+    }
+
+    def Shader "tiledimage_geometry_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_vector3"
+        float3 inputs:default = (0.5, 0.5, 1)
+        float3 inputs:default.connect = None
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:geometry_normal_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.4334167, 14.664223)
+    }
+
+    def Shader "separate3_geometry_normal_texture" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_separate3_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/tiledimage_geometry_normal.outputs:out>
+        float outputs:outx
+        float outputs:outy
+        float outputs:outz
+        uniform float2 ui:nodegraph:node:pos = (2.5491946, 15.423333)
+    }
+
+    def Shader "ifequal_geometry_normal_flip_b" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_geometry_normal_texture_inverted.outputs:outz>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_geometry_normal_texture.outputs:outz>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:geometry_normal_texture_flip_b>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (4.955578, 16.019)
+    }
+
+    def Shader "ifequal_coat_normal_flip_r" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_coat_normal_texture_inverted.outputs:outx>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_coat_normal_texture.outputs:outx>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:coat_normal_texture_flip_r>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (5.104522, 18.275278)
+    }
+
+    def Shader "invert_coat_normal_texture" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_invert_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/tiledimage_coat_normal.outputs:out>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (0.8145278, 19.472334)
+    }
+
+    def Shader "separate3_coat_normal_texture_inverted" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_separate3_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/invert_coat_normal_texture.outputs:out>
+        float outputs:outx
+        float outputs:outy
+        float outputs:outz
+        uniform float2 ui:nodegraph:node:pos = (2.680361, 19.260279)
+    }
+
+    def Shader "combine3_coat_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_combine3_vector3"
+        float inputs:in1.connect = </open_pbr_uber_base/ifequal_coat_normal_flip_r.outputs:out>
+        float inputs:in2.connect = </open_pbr_uber_base/ifequal_coat_normal_flip_g.outputs:out>
+        float inputs:in3.connect = </open_pbr_uber_base/ifequal_coat_normal_flip_b.outputs:out>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (6.961611, 19.438)
+    }
+
+    def Shader "normalmap_coat_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_normalmap"
+        float3 inputs:in.connect = </open_pbr_uber_base/combine3_coat_normal.outputs:out>
+        float inputs:scale.connect = </open_pbr_uber_base.inputs:coat_normal_scale>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (8.708166, 19.336056)
+    }
+
+    def Shader "open_pbr_surface_surfaceshader" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_open_pbr_surface_surfaceshader"
+
+        float inputs:base_weight.connect = </open_pbr_uber_base.inputs:base_weight>
+        color3f inputs:base_color.connect = </open_pbr_uber_base/tiledimage_base_color.outputs:out>
+        float inputs:base_diffuse_roughness.connect = </open_pbr_uber_base/tiledimage_base_diffuse_roughness.outputs:out>
+        float inputs:base_metalness.connect = </open_pbr_uber_base/tiledimage_base_metalness.outputs:out>
+
+        float inputs:coat_weight.connect = </open_pbr_uber_base/tiledimage_coat_weight.outputs:out>
+        color3f inputs:coat_color.connect = </open_pbr_uber_base/tiledimage_coat_color.outputs:out>
+        float inputs:coat_roughness.connect = </open_pbr_uber_base/tiledimage_coat_roughness.outputs:out>
+        float inputs:coat_roughness_anisotropy.connect = </open_pbr_uber_base.inputs:coat_roughness_anisotropy>
+        float inputs:coat_ior.connect = </open_pbr_uber_base.inputs:coat_ior>
+        float inputs:coat_darkening.connect = </open_pbr_uber_base.inputs:coat_darkening>
+
+        float inputs:emission_luminance.connect = </open_pbr_uber_base.inputs:emission_luminance>
+        color3f inputs:emission_color.connect = </open_pbr_uber_base.inputs:emission_color>
+
+        float inputs:fuzz_weight.connect = </open_pbr_uber_base.inputs:fuzz_weight>
+        color3f inputs:fuzz_color.connect = </open_pbr_uber_base/tiledimage_fuzz_color.outputs:out>
+        float inputs:fuzz_roughness.connect = </open_pbr_uber_base.inputs:fuzz_roughness>
+
+        float inputs:geometry_opacity.connect = </open_pbr_uber_base/tiledimage_geometry_opacity.outputs:out>
+        bool inputs:geometry_thin_walled.connect = </open_pbr_uber_base.inputs:geometry_thin_walled>
+        float3 inputs:geometry_coat_normal.connect = </open_pbr_uber_base/normalmap_coat_normal.outputs:out>
+        float3 inputs:geometry_normal.connect = </open_pbr_uber_base/normalmap_geometry_normal.outputs:out>
+
+        float inputs:specular_weight.connect = </open_pbr_uber_base/tiledimage_specular_weight.outputs:out>
+        color3f inputs:specular_color.connect = </open_pbr_uber_base/tiledimage_specular_color.outputs:out>
+        float inputs:specular_roughness.connect = </open_pbr_uber_base/tiledimage_specular_roughness.outputs:out>
+        float inputs:specular_roughness_anisotropy.connect = </open_pbr_uber_base/tiledimage_specular_roughness_anisotropy.outputs:out>
+        float inputs:specular_ior.connect = </open_pbr_uber_base.inputs:specular_ior>
+
+        float inputs:subsurface_weight.connect = </open_pbr_uber_base/tiledimage_subsurface_weight.outputs:out>
+        color3f inputs:subsurface_color.connect = </open_pbr_uber_base/tiledimage_subsurface_color.outputs:out>
+        float inputs:subsurface_radius.connect = </open_pbr_uber_base.inputs:subsurface_radius>
+        color3f inputs:subsurface_radius_scale.connect = </open_pbr_uber_base.inputs:subsurface_radius_scale>
+        float inputs:subsurface_scatter_anisotropy.connect = </open_pbr_uber_base.inputs:subsurface_scatter_anisotropy>
+
+        float inputs:thin_film_weight.connect = </open_pbr_uber_base.inputs:thin_film_weight>
+        float inputs:thin_film_thickness.connect = </open_pbr_uber_base.inputs:thin_film_thickness>
+        float inputs:thin_film_ior.connect = </open_pbr_uber_base.inputs:thin_film_ior>
+
+        float inputs:transmission_weight.connect = </open_pbr_uber_base/tiledimage_transmission_weight.outputs:out>
+        color3f inputs:transmission_color.connect = </open_pbr_uber_base/tiledimage_transmission_color.outputs:out>
+        float inputs:transmission_depth.connect = </open_pbr_uber_base.inputs:transmission_depth>
+        color3f inputs:transmission_scatter.connect = </open_pbr_uber_base.inputs:transmission_scatter>
+        float inputs:transmission_scatter_anisotropy.connect = </open_pbr_uber_base.inputs:transmission_scatter_anisotropy>
+        float inputs:transmission_dispersion_scale.connect = </open_pbr_uber_base.inputs:transmission_dispersion_scale>
+        float inputs:transmission_dispersion_abbe_number.connect = </open_pbr_uber_base.inputs:transmission_dispersion_abbe_number>
+
+        token outputs:out
+
+        uniform float2 ui:nodegraph:node:pos = (16.867777, 3.1199944)
+    }
+
+    def Shader "ifequal_coat_normal_flip_g" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_coat_normal_texture_inverted.outputs:outy>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_coat_normal_texture.outputs:outy>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:coat_normal_texture_flip_g>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (5.0763, 19.827389)
+    }
+
+    def Shader "tiledimage_coat_normal" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_vector3"
+        float3 inputs:default = (0.5, 0.5, 1)
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:coat_normal_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float3 outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.3204668, 20.063667)
+    }
+
+    def Shader "separate3_coat_normal_texture" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_separate3_vector3"
+        float3 inputs:in = (0, 0, 0)
+        float3 inputs:in.connect = </open_pbr_uber_base/tiledimage_coat_normal.outputs:out>
+        float outputs:outx
+        float outputs:outy
+        float outputs:outz
+        uniform float2 ui:nodegraph:node:pos = (2.6799166, 20.911612)
+    }
+
+    def Shader "ifequal_coat_normal_flip_b" (
+        apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_ifequal_floatB"
+        float inputs:in1 = 0
+        float inputs:in1.connect = </open_pbr_uber_base/separate3_coat_normal_texture_inverted.outputs:outz>
+        float inputs:in2 = 0
+        float inputs:in2.connect = </open_pbr_uber_base/separate3_coat_normal_texture.outputs:outz>
+        bool inputs:value1 = 0
+        bool inputs:value1.connect = </open_pbr_uber_base.inputs:coat_normal_texture_flip_b>
+        bool inputs:value2 = 1
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (5.0863, 21.507278)
+    }
+
+    def Shader "tiledimage_geometry_opacity" (
+        prepend apiSchemas = ["NodeGraphNodeAPI"]
+    )
+    {
+        uniform token info:id = "ND_tiledimage_float"
+        float inputs:default = 1
+        float inputs:default.connect = </open_pbr_uber_base.inputs:geometry_opacity>
+        asset inputs:file = @@
+        asset inputs:file.connect = </open_pbr_uber_base.inputs:geometry_opacity_texture_file>
+        float2 inputs:texcoord = (0, 0)
+        float2 inputs:texcoord.connect = </open_pbr_uber_base/texcoord.outputs:out>
+        float2 inputs:uvoffset = (0, 0)
+        float2 inputs:uvoffset.connect = </open_pbr_uber_base.inputs:uvoffset>
+        float2 inputs:uvtiling = (0, 0)
+        float2 inputs:uvtiling.connect = </open_pbr_uber_base.inputs:uvtiling>
+        float outputs:out
+        uniform float2 ui:nodegraph:node:pos = (-1.5583612, 9.5801115)
+    }
+}
+

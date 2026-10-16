@@ -37,6 +37,14 @@ def _vop_type_for(category: str, parent: hou.Node) -> str | None:
     return "mtlx" + category      # let createNode fail and be reported
 
 
+def _signature(mnode) -> str | None:
+    """A node's VOP signature; `convert` names its input type, then its own. ▸r/simready-graph"""
+    inp = mnode.getInput("in") if mnode.getCategory() == "convert" else None
+    if inp is not None:
+        return inp.getType() + mnode.getType()
+    return _TYPE_TO_SIGNATURE.get(mnode.getType())
+
+
 def _resolve_file(value: str, mtlx_dir: str, prefix: str) -> str:
     """Resolve a .mtlx file value (document-relative, plus any active fileprefix) to an absolute path - CONTAINED IN THE PACKAGE: `value` comes out of a DOWNLOADED document and this is the one place in the online path where such a string becomes a filesystem path, so an uncontainable value answers an empty path and is logged, never raised; a texture that does not load is the safe end of a bad reference."""
     if not value:
@@ -160,7 +168,7 @@ def build_material(mtlx_path: str, builder: hou.Node, name: str):
             pass
         vop_by_path[mnode.getNamePath()] = vnode
 
-        sig = _TYPE_TO_SIGNATURE.get(mnode.getType())  # signature from the node's declared type (images especially)
+        sig = _signature(mnode)
         sig_parm = vnode.parm("signature")
         if sig is not None and sig_parm is not None:
             try:

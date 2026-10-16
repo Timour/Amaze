@@ -1,0 +1,37 @@
+#usda 1.0
+(
+    defaultPrim = "Ardesia_Grigia_Polished"
+    subLayers = [
+        @../../open_pbr_uber_base_class.usda@
+    ]
+)
+
+def Material "Ardesia_Grigia_Polished" (
+    inherits = </open_pbr_uber_base>
+           prepend apiSchemas = ["SemanticsLabelsAPI:material", "SemanticsLabelsAPI:vMaterial_Ver", "SemanticsLabelsAPI:PhysicalAI_SimReady_Materials_Ver", "SemanticsLabelsAPI:OpenPBR_Ver"]
+    )
+    {
+        token[] semantics:labels:material= ["stone", "ardesia", "grigia", "natural", "interior", "exterior", "wall", "floor", "architecture", "sanitary", "infinite tiling", "polished", "smooth", "shiny", "new", "gray", "neutral"]
+        token[] semantics:labels:vMaterial_Ver= ["2.2"]
+        token[] semantics:labels:PhysicalAI_SimReady_Materials_Ver= ["0.1.0"]
+        token[] semantics:labels:OpenPBR_Ver= ["1.1"]
+        custom token[] omni:simready:nonvisual:attributes = ["none"]
+        custom token omni:simready:nonvisual:base = "stone"
+        custom token omni:simready:nonvisual:coating = "none"
+
+
+        float inputs:base_weight = 1 
+        float inputs:transmission_depth = 1 
+        color3f inputs:transmission_color = (0.00019378368563169549,0.00022940904407388636,1.273736945302651e-07) 
+        color3f inputs:subsurface_color = (0.4373599364941137,0.5294852316206239,0.4509005959276148) 
+        color3f inputs:subsurface_radius_scale = (0.029501065801739917,0.020194152170444395,0.015036514069084541) 
+        asset inputs:geometry_normal_texture_file = @textures/Ardesia_Grigia_Polished_normal.jpg@         (
+            colorSpace = "raw"
+        )
+        bool inputs:geometry_normal_texture_flip_g = 0 
+         asset inputs:base_color_texture_file = @textures/Ardesia_Grigia_Polished_diffuse.jpg@         (
+            colorSpace = "sRGB"
+        )
+        color3f inputs:specular_color = (1.0,1.0,1.0) 
+        float inputs:specular_roughness_ = 0.08 
+    }

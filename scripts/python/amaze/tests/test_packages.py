@@ -1,5 +1,6 @@
 """The `.amazepkg` format: export collects an asset's REAL file family plus its note page, plain files ride with their kind, the zip lands guarded and whole, and the reader refuses a format newer than it speaks."""
 
+import io
 import json
 import os
 import sys
@@ -853,10 +854,10 @@ class _Served:
     """One canned HTTP answer: the bytes and their headers."""
 
     def __init__(self, data, headers):
-        self._data, self.headers = data, headers
+        self._body, self.headers = io.BytesIO(data), headers
 
-    def read(self):
-        return self._data
+    def read(self, size=-1):
+        return self._body.read(size)
 
     def __enter__(self):
         return self

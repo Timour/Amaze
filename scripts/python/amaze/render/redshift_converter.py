@@ -166,14 +166,13 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
         rs = builder.createNode("redshift::StandardMaterial")
         pairs = [(rs_name, mtlx_name) for rs_name, mtlx_name in STANDARD_MATERIAL_PARM_MAP]
         colour_inputs = _COLOUR_INPUTS
-        bump_input = "bump_input"
-        normal_input = "normal"
+        normals = (("normal", "bump_input"),)    # (Karma input, Redshift input) per normal map
     else:
         rs = builder.createNode("redshift::OpenPBRMaterial")
         pairs = [(rs_name, rs_name) for rs_name, _standard_name in OPENPBR_MATERIAL_PARM_MAP]    # an mtlxopen_pbr_surface spells every input the way the RS OpenPBR material does (all 31 measured); the table's right column is the STANDARD-surface spelling and reads nothing here
         colour_inputs = OPENPBR_COLOUR_INPUTS
-        bump_input = "geometry_normal" if "geometry_normal" in rs.inputNames() else ""
-        normal_input = "normal"
+        normals = (("geometry_normal", "geometry_normal"),    # both take a Bump Map ▸r/redshift-nodes
+                   ("geometry_coat_normal", "geometry_coat_normal"))
     rs.setName(helpers.sanitize_usd_path(src.name()), unique_name=True)
 
     wired_inputs = _named_inputs(src)
@@ -185,24 +184,28 @@ def convert_karma_network(source: hou.Node, builder: hou.Node, report: Conversio
         role = "color" if mtlx_name in colour_inputs else "data"
         _connect(rs, rs_name, convert_upstream(feeding, builder, report, role), feeding, report)
 
-    mapped = {mtlx_name for _rs_name, mtlx_name in pairs} | {normal_input, "displacement", "tangent", "coat_normal"}
+    mapped = ({mtlx_name for _rs_name, mtlx_name in pairs} | {karma for karma, _rs in normals}
+              | {"displacement", "tangent", "coat_normal"})
     for mtlx_name, feeding in wired_inputs.items():    # a texture on an input the table does not carry is SAID, not dropped: the report is what the artist reads instead of a black slot
         if mtlx_name not in mapped and feeding is not None:
             report.skip('"%s" feeds %s, which the Redshift shader has no matching input for'
                         % (feeding.name(), mtlx_name))
 
-    normal_src = wired_inputs.get(normal_input)
-    if normal_src is not None:
+    for normal_input, bump_input in normals:
+        normal_src = wired_inputs.get(normal_input)
+        if normal_src is None:
+            continue
         bump = convert_upstream(normal_src, builder, report, "normal")
-        if bump is not None:
-            if bump_input:
-                _connect(rs, bump_input, bump, normal_src, report)
-            else:
-                terminal = material.redshift_terminal(builder)
-                names = list(terminal.inputNames()) if terminal is not None else []
-                spelling = next((s for s in material.TERMINAL_INPUTS["bump"] if s in names), "")
-                if spelling:
-                    terminal.setNamedInput(spelling, bump, 0)
+        if bump is None:
+            continue
+        if bump_input in rs.inputNames():
+            _connect(rs, bump_input, bump, normal_src, report)
+            continue
+        terminal = material.redshift_terminal(builder)
+        names = list(terminal.inputNames()) if terminal is not None else []
+        spelling = next((s for s in material.TERMINAL_INPUTS["bump"] if s in names), "")
+        if spelling:
+            terminal.setNamedInput(spelling, bump, 0)
 
     displacement = None
     disp_src = find_karma_displacement(source)
@@ -257,10 +260,15 @@ def _uv_scale(image: hou.Node) -> tuple:
     feeding = _named_inputs(image).get("texcoord")
     if feeding is None or feeding.type().name() != "mtlxmultiply":
         return (1.0, 1.0)
-    constant = _constant_behind(_named_inputs(feeding).get("in2"))    # a wired constant is the factor Karma applies; the multiply's own parm is then dead
+    return _pair(feeding, "in2", (1.0, 1.0))
+
+
+def _pair(node: hou.Node, name: str, default: tuple) -> tuple:
+    """A (u, v) input's value: a wired constant's when one feeds it, else the node's live slot."""
+    constant = _constant_behind(_named_inputs(node).get(name))    # a wired constant outranks the parm
     source, names = ((constant, _signature_slots(constant, "value"))
                      if constant is not None
-                     else (feeding, _signature_slots(feeding, "in2")))
+                     else (node, _signature_slots(node, name)))
     for parm_name in names:
         tuple_parm = source.parmTuple(parm_name)
         if tuple_parm is not None:
@@ -269,7 +277,7 @@ def _uv_scale(image: hou.Node) -> tuple:
                 return (float(values[0]), float(values[1]))
             if len(values) == 1:
                 return (float(values[0]), float(values[0]))
-    return (1.0, 1.0)
+    return default
 
 
 def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
@@ -279,8 +287,20 @@ def convert_image(node: hou.Node, builder: hou.Node, report: ConversionReport, r
     file_parm = node.parm("file")
     if file_parm is not None:
         sampler.parm("tex0").set(file_parm.unexpandedString())
-    sampler.parm("tex0_colorSpace").set("sRGB" if role == "color" else "Raw")
+    colour = role == "color" and _effective_signature(node) in ("color3", "color4")
+    sampler.parm("tex0_colorSpace").set("sRGB" if colour else "Raw")    # data types read raw, as in Karma
     sampler.parmTuple("scale").set(_uv_scale(node))
+    return sampler
+
+
+def convert_tiledimage(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
+    """mtlxtiledimage -> its image's sampler, the tiling and offset composed in. ▸r/rs-sampler-uv"""
+    sampler = convert_image(node, builder, report, role)
+    tiling = _pair(node, "uvtiling", (1.0, 1.0))
+    scale = tuple(c * t for c, t in zip(_uv_scale(node), tiling))
+    offset = _pair(node, "uvoffset", (0.0, 0.0))
+    sampler.parmTuple("scale").set(scale)
+    sampler.parmTuple("offset").set(tuple(-o / s if s else 0.0 for o, s in zip(offset, scale)))
     return sampler
 
 
@@ -424,7 +444,7 @@ def convert_extract(node: hou.Node, builder: hou.Node, report: ConversionReport,
 
 
 def convert_dot(node: hou.Node, builder: hou.Node, report: ConversionReport, role: str):
-    """mtlxdot passes its input through unchanged: the Redshift side is whatever feeds it, or nothing."""
+    """mtlxdot and mtlxconvert pass their input through: Redshift gets what feeds them."""
     feeding = _named_inputs(node).get("in")
     if feeding is None:
         return None
@@ -451,6 +471,8 @@ def _copy_signature_parm(src: hou.Node, src_name: str, dst: hou.Node, dst_name: 
 
 NODE_CONVERTERS = {    # MaterialX node type (version suffix stripped) -> converter; anything absent is reported, never guessed
     "mtlximage": convert_image,
+    "mtlxtiledimage": convert_tiledimage,
+    "mtlxconvert": convert_dot,
     "mtlxnormalmap": convert_normalmap,
     "mtlxdisplacement": convert_displacement,
     "mtlxmix": convert_mix,
