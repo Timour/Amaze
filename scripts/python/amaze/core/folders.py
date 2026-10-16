@@ -66,35 +66,32 @@ def _gone(thread) -> bool:
 
 
 class _CountWorker(QtCore.QThread):
-    """Counts a batch of locations off the GUI thread, each by the rule the GUI thread resolved."""
+    """Counts ONE location off the GUI thread, by the rule the GUI thread resolved."""
 
     counted = QtCore.Signal(object, object, object)    # (path, token, count)
 
-    def __init__(self, jobs) -> None:
+    def __init__(self, path, token, recursive, matches) -> None:
         super().__init__()
-        self._jobs = jobs    # [(path, token, recursive, matches)]
-        self._canceled = False    # the stop flag, the thumbnail loaders' contract
-
-    def jobs(self) -> list:
-        return [(path, token) for path, token, _recursive, _matches in self._jobs]
+        self.path, self.token = path, token
+        self._recursive, self._matches = recursive, matches
+        self.canceled = False    # the stop flag, the thumbnail loaders' contract; kept once it ends
 
     def cancel(self) -> None:
-        self._canceled = True
+        self.canceled = True
 
     def _stopped(self) -> bool:
-        return self._canceled or self.isInterruptionRequested()
+        return self.canceled or self.isInterruptionRequested()
 
     def run(self) -> None:
-        for path, token, recursive, matches in self._jobs:
-            try:
-                count = count_files(path, recursive, matches, self._stopped)
-            except Exception as exc:                          # noqa: BLE001 - one bad rule must not end the batch
-                debug.event("folders", "count failed", folder=path,
-                            error=str(exc))
-                continue
-            if count is None:
-                return
-            self.counted.emit(path, token, count)
+        try:
+            count = count_files(self.path, self._recursive, self._matches,
+                                self._stopped)
+        except Exception as exc:                          # noqa: BLE001 - logged; the worker still ends
+            debug.event("folders", "count failed", folder=self.path,
+                        error=str(exc))
+            return
+        if count is not None:
+            self.counted.emit(self.path, self.token, count)
 
 
 class _CountEngine(QtCore.QObject):
@@ -104,9 +101,9 @@ class _CountEngine(QtCore.QObject):
         super().__init__()
         self._threads = []    # a running QThread must keep a reference until it ends ▸r/model-contracts
 
-    def start(self, jobs, landed, ended) -> None:
-        """One worker over `jobs`: `landed(path, token, count)` per location, then `ended(worker)`."""
-        worker = _CountWorker(jobs)
+    def start(self, job, landed, ended) -> None:
+        """One worker over one location: `landed(path, token, count)`, then `ended(worker)`."""
+        worker = _CountWorker(*job)
         worker.counted.connect(landed)
         worker.finished.connect(    # bound here, never sender(): ordering is per sender ▸r/model-contracts
             functools.partial(self._finished, worker, ended))
@@ -312,18 +309,16 @@ class FolderListModel(QtCore.QAbstractListModel):
         self._queued.append(path)
         if not self._count_scheduled:
             self._count_scheduled = True
-            self._counts_asked.emit()    # one paint's asks, one batch
+            self._counts_asked.emit()    # one paint's asks, one dispatch
 
     def _dispatch_counts(self) -> None:
-        """Hand the queued locations to the free workers, every rule resolved HERE, on the GUI thread."""
+        """One queued location per free worker, its rule resolved HERE, on the GUI thread."""
         self._count_scheduled = False
-        free = self.COUNT_WORKERS - self._live
-        if free <= 0 or not self._queued:
+        if self._live >= self.COUNT_WORKERS or not self._queued:
             return    # a worker ending dispatches again
-        queued, self._queued = self._queued, []
         registered = set(self._folders())
-        jobs = []
-        for path in queued:
+        while self._queued and self._live < self.COUNT_WORKERS:
+            path = self._queued.pop(0)    # one each: a slow share then holds only its own worker
             if path not in registered:
                 self._walking.pop(path, None)    # removed before its walk began
                 continue
@@ -337,11 +332,8 @@ class FolderListModel(QtCore.QAbstractListModel):
                 continue
             token = self._tokens.get(path, 0)
             self._walking[path] = token
-            jobs.append((path, token) + rule)
-        for chunk in (jobs[i::free] for i in range(free)):
-            if chunk:
-                self._live += 1
-                counter.start(chunk, self._on_counted, self._walk_ended)
+            self._live += 1
+            counter.start((path, token) + rule, self._on_counted, self._walk_ended)
 
     def _on_counted(self, path, token, count) -> None:
         """A walk landed: kept and announced when still current, dropped and asked again when not."""
@@ -372,14 +364,16 @@ class FolderListModel(QtCore.QAbstractListModel):
             self.dataChanged.emit(index, index, [self.COUNT_ROLE])
 
     def _walk_ended(self, worker) -> None:
-        """A worker is done: what it left unanswered may be asked again, and a queue waiting moves."""
+        """A walk is done: unanswered, it may be asked again; the next queued location takes its slot."""
         self._live = max(0, self._live - 1)
-        for path, token in worker.jobs():
-            if path in self._walking and self._walking[path] == token:
-                self._walking.pop(path)
-        if self._queued and not self._count_scheduled:
-            self._count_scheduled = True
-            self._counts_asked.emit()
+        if worker.path in self._walking and self._walking[worker.path] == worker.token:
+            self._walking.pop(worker.path)
+        if worker.canceled:    # a shutdown: start nothing; the next paint asks again
+            for path in self._queued:
+                self._walking.pop(path, None)
+            self._queued = []
+        elif self._queued:
+            self._dispatch_counts()    # direct: `finished` lands on the GUI thread; a queued turn per location adds up
 
     def _on_folder_relocated(self, old_path: str, new_path: str) -> None:
         """Hook: per-location state follows a Locate Folder. Base: none."""

@@ -2370,6 +2370,27 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
             self.assertIn((row, row), changed,
                           "row %d was never told its count landed" % row)
 
+    def test_a_held_location_holds_back_no_other_count(self):
+        """A hung share holds only its own worker; every other location's count still lands."""
+        model, roots = self._model(*[1] * 8)
+        held_key = model._folders()[0]
+        others = model._folders()[1:]
+        listing, entered, release = self._held_listing(roots[0])
+        with mock.patch("os.listdir", listing):
+            for row in range(1, model.rowCount()):
+                model.data(model.index(row, 0), model.COUNT_ROLE)
+            landed = _pump_until(
+                lambda: all(model._counts.get(p) == 1 for p in others), timeout=5.0)
+            self.assertTrue(entered.is_set(), "premise: the held walk never ran on a worker")
+            self.assertIsNone(model._counts.get(held_key),
+                              "premise: the held location's count landed while held")
+            waiting = [p for p in others if model._counts.get(p) is None]
+            release.set()
+            counts = _landed_counts(model)
+        self.assertTrue(landed, "%d location(s) had no count while another walked: %s"
+                        % (len(waiting), waiting))
+        self.assertEqual([8] + [1] * 8, counts, "the counts that landed are wrong")
+
     def test_a_location_removed_mid_walk_keeps_no_count(self):
         model, roots = self._model(2, 3)
         doomed = model._folders()[0]
@@ -2482,6 +2503,37 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                          "a walk outlived the shutdown")
         self.assertEqual([], folders_mod._unstoppable,
                          "a walk had to be parked, so terminate() was reached")
+
+    def test_a_shutdown_starts_none_of_the_queued_walks(self):
+        """Walks the shutdown stopped hand nothing on; a later ask still counts every location."""
+        from amaze.core import folders as folders_mod
+        model, roots = self._model(*[1] * 6)
+        main = threading.get_ident()
+        walked = []
+        real = os.listdir
+
+        def listing(path="."):
+            if (threading.get_ident() != main
+                    and any(str(path).startswith(r) for r in roots)):
+                walked.append(str(path))
+                thread = QtCore.QThread.currentThread()
+                deadline = time.monotonic() + 3
+                while not thread.isInterruptionRequested() and time.monotonic() < deadline:
+                    time.sleep(0.005)    # held until the shutdown stops it
+            return real(path)
+
+        with mock.patch("os.listdir", listing):
+            for row in range(1, model.rowCount()):
+                model.data(model.index(row, 0), model.COUNT_ROLE)
+            self.assertTrue(_pump_until(lambda: len(walked) == model.COUNT_WORKERS),
+                            "premise: the workers never all started")
+            folders_mod.counter.shutdown()
+            _pump_until(lambda: False, timeout=0.3)    # every stopped walk's end is handled
+            started = list(walked)
+        self.assertEqual(model.COUNT_WORKERS, len(started),
+                         "the stopped walks started the queued ones after the shutdown")
+        self.assertEqual([6] + [1] * 6, _landed_counts(model),
+                         "after a shutdown the counts never landed")
 
 
 class RemovingANestedLocationTest(unittest.TestCase):
