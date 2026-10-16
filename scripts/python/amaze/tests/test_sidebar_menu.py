@@ -432,8 +432,8 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
             for row in range(self.panel.category_model.rowCount())])
 
 
-class RemovingACategoryLeavesNoTileOfIt(unittest.TestCase):
-    """Remove takes the row you stand on to All, any other row leaves you where you are."""
+class _FourAssetSidebars:
+    """Each asset section with a kept and a gone category holding a tile, and a row below."""
 
     SECTIONS = ("material", "cop", "code", "gradient")
 
@@ -502,11 +502,6 @@ class RemovingACategoryLeavesNoTileOfIt(unittest.TestCase):
         grid = self.panel.thumblist.model()
         return sorted(str(grid.index(row, 0).data()) for row in range(grid.rowCount()))
 
-    def _remove(self, stored):
-        index = self._press(stored)
-        self.panel._section().menu_remove_category([index], index)
-        QtWidgets.QApplication.processEvents()
-
     def _assert_standing(self, stored, tiles):
         st = self.panel._section().stack()
         self.assertEqual(tiles, self._tiles(), "the grid is not the row it stands on")
@@ -529,6 +524,15 @@ class RemovingACategoryLeavesNoTileOfIt(unittest.TestCase):
                 self.assertTrue(self._stand(gone), "premise: the removed one shows tiles")
                 case(kept, gone, everything, kept_tiles)
 
+
+class RemovingACategoryLeavesNoTileOfIt(_FourAssetSidebars, unittest.TestCase):
+    """Remove takes the row you stand on to All, any other row leaves you where you are."""
+
+    def _remove(self, stored):
+        index = self._press(stored)
+        self.panel._section().menu_remove_category([index], index)
+        QtWidgets.QApplication.processEvents()
+
     def test_removing_the_category_you_stand_on_stands_on_all(self):
         def case(kept, gone, everything, kept_tiles):
             self._stand(gone)
@@ -548,6 +552,70 @@ class RemovingACategoryLeavesNoTileOfIt(unittest.TestCase):
             self._stand("_All")
             self._remove(gone)
             self._assert_standing("_All", everything)
+        self._each_section(case)
+
+
+class RenameAndSortStandWhereTheGridStood(_FourAssetSidebars, unittest.TestCase):
+    """A right press moves only the sidebar, so Rename and Sort keep both on the grid's row."""
+
+    def _rename(self, stored):
+        index = self._press(stored)
+        with mock.patch.object(self.panel, "ask_category_name",
+                               lambda _title, _default="": "Renamed"):
+            self.panel._section().menu_rename_category([index], index)
+        QtWidgets.QApplication.processEvents()
+
+    def _sort(self, stored):
+        """Sort by name from a right press on `stored`, over a list the sort reorders."""
+        categories = self.panel._section().stack().categories
+        categories.check_add_category("Aaa")    # appended last, so the sort moves it
+        self.panel._refresh_sidebar_categories()
+        before = categories.order_snapshot()
+        index = self._press(stored)
+        self.panel._section().menu_sort_categories([index], index)
+        QtWidgets.QApplication.processEvents()
+        self.assertNotEqual(before, categories.order_snapshot(), "premise: no row moved")
+
+    def test_renaming_another_category_keeps_you_where_you_stand(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand(kept)
+            self._rename(gone)
+            self._assert_standing(kept, kept_tiles)
+        self._each_section(case)
+
+    def test_renaming_a_category_while_on_all_keeps_you_on_all(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand("_All")
+            self._rename(gone)
+            self._assert_standing("_All", everything)
+        self._each_section(case)
+
+    def test_renaming_the_category_you_stand_on_stands_on_its_new_name(self):
+        def case(kept, gone, everything, kept_tiles):
+            gone_tiles = self._stand(gone)
+            self._rename(gone)
+            self._assert_standing("Renamed", gone_tiles)
+        self._each_section(case)
+
+    def test_sorting_from_another_category_keeps_you_where_you_stand(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand(kept)
+            self._sort(gone)
+            self._assert_standing(kept, kept_tiles)
+        self._each_section(case)
+
+    def test_sorting_while_on_all_keeps_you_on_all(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand("_All")
+            self._sort(gone)
+            self._assert_standing("_All", everything)
+        self._each_section(case)
+
+    def test_sorting_from_the_category_you_stand_on_keeps_you_there(self):
+        def case(kept, gone, everything, kept_tiles):
+            gone_tiles = self._stand(gone)
+            self._sort(gone)
+            self._assert_standing(gone, gone_tiles)
         self._each_section(case)
 
 

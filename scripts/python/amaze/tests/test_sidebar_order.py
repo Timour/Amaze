@@ -109,6 +109,7 @@ class TheSortVerbKeepsTheSidebarStandingSomewhere(unittest.TestCase):
         cat_list.selectionModel().select(
             standing,
             QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.panel.update_selected_cat()    # the click: where you stand is the grid's row
 
         section.menu_sort_categories((), None)
 

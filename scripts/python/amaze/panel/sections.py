@@ -9,7 +9,7 @@ import hou
 from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
-from amaze.core import (category, code_library, cop_library, database, debug, dragengine, file_library,
+from amaze.core import (category, code_library, cop_library, debug, dragengine, file_library,
                         grid_columns, material, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
@@ -181,15 +181,18 @@ class Section:
 
     def stand_after_removal(self, removed) -> None:
         """Rows in `removed` left the sidebar: stand both on the row the grid stood on, or on All."""
+        standing = self.standing_key()
+        self.stand_on_key("" if standing in removed else standing)
+
+    def stand_on_key(self, key: str) -> None:
+        """Stand the sidebar and the grid on the row keyed `key`, or on All when no row is."""
         view = getattr(self.panel, "cat_list", None)
         model = view.model() if view is not None else None
         if model is None or model is not self._p(self.sidebar_attr) or not model.rowCount():
             return
-        standing = self.standing_key()
-        target = model.index(0, 0)    # All heads every sidebar; Qt slid the selection to a neighbour
-        rows = range(model.rowCount()) if standing and standing not in removed else ()
-        for row in rows:
-            if self.sidebar_key(model.index(row, 0)) == standing:
+        target = model.index(0, 0)    # All heads every sidebar
+        for row in range(model.rowCount()) if key else ():
+            if self.sidebar_key(model.index(row, 0)) == key:
                 target = model.index(row, 0)
                 break
         view.setCurrentIndex(target)
@@ -409,17 +412,14 @@ class AssetSection(Section):
             name = self.sidebar_key(index)
             if name and not category.is_all(name):
                 names.append(name)
-        standing = self.panel._selected_category_name()
+        standing = self.standing_key()    # the grid's row: a right press moved only the sidebar
         with ui_helpers.relayout(st.model):    # the asset rows change IN PLACE, the pair's one job
             for name in names:
                 st.model.rename_category(name, new_name)
         for name in names:
             st.categories.rename_category(name, new_name)    # OUTSIDE the pair: it saves its list
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
-        if standing in names:
-            self.panel._stand_on_category(database.category_label(new_name))    # merged rows go
-        else:
-            self._refilter_from_sidebar()    # the grid still holds the old name; re-point it as a click does
+        self.stand_on_key(new_name if standing in names else standing)    # a renamed row by its new name
         self.panel._refresh_sidebar_categories()    # counts and empty-category hiding follow the rename
 
     def export_package_to(self, indexes, path: str) -> int:
@@ -465,15 +465,6 @@ class AssetSection(Section):
         if path:
             self.export_category_to(name, path)
 
-    def _refilter_from_sidebar(self) -> None:
-        """Point the grid at whatever the sidebar is standing on now: both category verbs change what the current row MEANS, and the proxy holds the value it was given when the row was clicked."""
-        cat_list = getattr(self.panel, "cat_list", None)
-        if cat_list is None:
-            return
-        current = cat_list.currentIndex()
-        if current.isValid():
-            self.select_category(current)
-
     def menu_remove_category(self, indexes, current, payload=None) -> None:
         st = self.stack()
         if st is None:
@@ -496,15 +487,13 @@ class AssetSection(Section):
         self.stand_after_removal(names)
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
-        """The one-off Sort by name: the whole list below All, regardless of the clicked row, and the row you were standing on stays under you."""
+        """The one-off Sort by name: the whole list below All, whatever row was pressed."""
         _proxy, source = self._sidebar_categories()
         if source is None:
             return
-        cat_list = getattr(self.panel, "cat_list", None)
-        standing = cat_list.currentIndex().data() if cat_list is not None else None    # captured BEFORE the reorder: it lands through a model reset, which clears the selection and the current index with signals blocked, so nothing downstream can recover the row by itself
-        source.sort_categories()
-        if not self.panel._stand_on_category(standing or "All"):
-            self.panel._ensure_sidebar_selection(self.key)    # the row is gone or was never one: fall back the way the remove verb does, rather than leaving the sidebar empty while the grid stays filtered
+        standing = self.standing_key()    # the grid's row: a right press moved only the sidebar
+        source.sort_categories()    # a model reset, which clears the sidebar's selection
+        self.stand_on_key(standing)
 
     def tile_models(self):
         st = self.stack()
