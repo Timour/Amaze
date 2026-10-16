@@ -1480,15 +1480,15 @@ class ShelfTest(unittest.TestCase):
         with open(asset, "wb"):
             pass
         calls = []
-        fake = types.SimpleNamespace(
-            getenv=lambda name: os.path.join(root, "no-such-hfs"),
-            houdiniPath=lambda: [root],
-            hda=types.SimpleNamespace(
-                loadedFiles=lambda: [houdini_spelling(asset)],
-                reloadFile=lambda path: calls.append(("reload", path)),
-                installFile=lambda path: calls.append(("install", path))),
-            ui=types.SimpleNamespace(setStatusMessage=lambda text: None,
-                                     displayMessage=lambda *a, **k: 0))
+        fake = types.ModuleType("hou")    # a module, not a namespace: H21 reads its `__name__` ▸r/module-fakes-need-a-name
+        fake.getenv = lambda name: os.path.join(root, "no-such-hfs")
+        fake.houdiniPath = lambda: [root]
+        fake.hda = types.SimpleNamespace(
+            loadedFiles=lambda: [houdini_spelling(asset)],
+            reloadFile=lambda path: calls.append(("reload", path)),
+            installFile=lambda path: calls.append(("install", path)))
+        fake.ui = types.SimpleNamespace(setStatusMessage=lambda text: None,
+                                        displayMessage=lambda *a, **k: 0)
         tool = [t for t in self._shelf().findall("tool")
                 if t.get("name") == "amaze_reload"][0]
         with mock.patch.dict(sys.modules, {"hou": fake}):
