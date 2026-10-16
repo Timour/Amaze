@@ -8,9 +8,9 @@ import os
 import shutil
 import tempfile
 
-from amaze.core import database, debug, model_registry
 from amaze.helpers import hostos
-from amaze.prefs import prefs
+
+os.environ[hostos.SANDBOX_VAR] = "1"    # armed at IMPORT, however the test was started ▸p/hand-run-script-is-unguarded
 
 
 def _adopt_suite_root() -> str:
@@ -46,8 +46,8 @@ def isolate_user_folders() -> str:
     directory = scratch_dir("amaze_test_home_")
     atexit.register(shutil.rmtree, directory, True)
     os.environ[hostos.SANDBOX_HOME_VAR] = directory
-    if hostos.sandboxed() and not os.path.realpath(
-            hostos.config_root()).startswith(os.path.realpath(directory)):
+    if not os.path.realpath(hostos.config_root()).startswith(
+            os.path.realpath(directory)):
         raise RuntimeError(
             "test settings isolation failed - config_root() is %s, not "
             "under %s" % (hostos.config_root(), directory))
@@ -55,6 +55,9 @@ def isolate_user_folders() -> str:
 
 
 TEST_HOME = isolate_user_folders()    # before anything asks for a per-user folder
+
+from amaze.core import database, debug                  # noqa: E402
+from amaze.prefs import prefs                           # noqa: E402
 
 
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "library")
@@ -105,6 +108,7 @@ TEST_CACHE = isolate_cache_root()    # redirected at IMPORT for the same reason 
 
 def reset_database_singletons() -> None:
     """Drop every cached DatabaseConnector so the next construction loads from the test's own path - CLEARED in place, never rebound, and the identity check is load-bearing. ▸p/mutate-not-rebind, ▸p/harness-isolation"""
+    from amaze.core import model_registry
     database.DatabaseConnector._instances.clear()
     model_registry.release()    # the models alias the connector's document, so a dropped connector with a kept model hands the next panel rows from the previous test
     if database.DatabaseConnector._instances is not database._INSTANCES:

@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -23,8 +24,6 @@ sys.path.insert(
 from amaze.helpers import hostos                         # noqa: E402
 from amaze.prefs import prefs                            # noqa: E402
 from amaze.tests import test_support                     # noqa: E402,F401
-
-_SANDBOX_ARMED_AT_IMPORT = hostos.sandboxed()   # before any test runs
 
 
 class AtomicWriteTest(unittest.TestCase):
@@ -1727,13 +1726,55 @@ class OnePathHasOneSpelling(unittest.TestCase):
                 "the library pointer lost its trailing separator")
 
 
+class ImportingTheHarnessArmsTheSandboxTest(unittest.TestCase):
+    """A test started without the runner is armed by `test_support`. ▸p/hand-run-script-is-unguarded"""
+
+    CHILD = ("from amaze.core import database\n"
+             "from amaze.tests import test_support\n"
+             "from amaze.helpers import hostos\n"
+             "print('ARMED=%s' % hostos.sandboxed())\n"
+             "print('SETTINGS=%s' % hostos.config_root())\n")
+
+    def _plain_python(self):
+        """The Python under this one, started in under a second; hython itself costs 20 s."""
+        for name in (os.path.join("bin", "python3"), "python.exe"):
+            path = os.path.join(sys.base_prefix, name)
+            if os.path.isfile(path):
+                return path
+        return sys.executable
+
+    def _bare_run(self):
+        """{key: value} the child printed, run with none of the runner's sandbox environment."""
+        log = tempfile.mkdtemp(prefix="amaze_bare_run_log_")
+        self.addCleanup(shutil.rmtree, log, True)
+        env = dict(os.environ, AMAZE_LOG_DIR=log, PYTHONPATH=os.path.dirname(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        for name in (hostos.SANDBOX_VAR, hostos.SANDBOX_HOME_VAR):
+            env.pop(name, None)
+        result = subprocess.run([self._plain_python(), "-c", self.CHILD],
+                                capture_output=True, text=True, env=env,
+                                timeout=300)
+        self.assertEqual(0, result.returncode,
+                         "the bare run died: %s" % result.stderr[-800:])
+        return dict(line.split("=", 1) for line in result.stdout.splitlines()
+                    if line.startswith(("ARMED=", "SETTINGS=")))
+
+    def test_a_module_run_without_the_runner_is_armed(self):
+        said = self._bare_run()
+        self.assertEqual(
+            "True", said.get("ARMED"),
+            "a test module started without start_test.sh is not armed, so "
+            "it can write the user's real settings folder")
+        self.assertNotEqual(
+            os.path.realpath(hostos.real_config_root()),
+            os.path.realpath(said.get("SETTINGS", "")),
+            "the bare run's settings folder is the user's own")
+
+
 class TheSandboxStaysArmedForTheSuiteTest(unittest.TestCase):
     """The sentinel: `AMAZE_SANDBOX` is armed for the WHOLE process, so a pop-as-cleanup leaves every later test able to write live data. Named to sort behind the guard class it holds."""
 
     def test_the_armed_state_survived_the_sandbox_tests(self):
-        if not _SANDBOX_ARMED_AT_IMPORT:
-            self.skipTest("this process was never armed - run through "
-                          "start_test.sh to hold the restoration")
         self.assertTrue(
             hostos.sandboxed(),
             "a sandbox test disarmed the process and never re-armed it "
