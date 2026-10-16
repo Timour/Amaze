@@ -1455,6 +1455,13 @@ class ThePictureButtonIsActuallyRun(unittest.TestCase):
         labels = [a.text() for a in self.widget.add_button.menu().actions()]
         self.assertEqual(["Bullet point", "Image"], labels)
 
+    def test_the_plus_hover_names_what_its_menu_offers(self):
+        from amaze.panel import notes_panel
+        hover = self.widget.add_button.toolTip().lower()
+        for label, _handler in notes_panel.ADD_ITEMS:
+            self.assertIn(label.lower(), hover,
+                          "the + hover text does not name %s: %r" % (label, hover))
+
     def test_the_plus_opens_the_menu_rather_than_acting(self):
         """`InstantPopup` shows the menu on press and does NOT fire the button's own action, so nothing is inserted by the click itself. ▸r/menu-lifetime"""
         self.assertIs(
