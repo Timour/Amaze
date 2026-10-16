@@ -94,6 +94,8 @@ _move = {
     "pane_rect": None,
     "snap_pos": None,    # the drawn outline's snapped centre, while one is drawn
     "landing": None,    # the snap point at end(), answered until the next begin()
+    "snap_view": None,    # (editor, network, visible bounds) that `snap_rects` were fetched for
+    "snap_rects": [],
 }
 
 
@@ -107,6 +109,12 @@ def _reset_move() -> None:
     _move["pane"] = None
     _move["pane_kind"] = None
     _move["pane_rect"] = None
+    _forget_snap_rects()
+
+
+def _forget_snap_rects() -> None:
+    _move["snap_view"] = None
+    _move["snap_rects"] = []
 
 
 PANE_REVALIDATE = 0.25
@@ -180,11 +188,12 @@ def _is_vop_network(editor) -> bool:
 
 
 def _snap_delta(editor, rect):
-    """The host's own placement snap (nodegraphselectpos.py:302): `nodegraphsnap.snap` against `allVisibleRects` - None when it does not apply, and ALWAYS None headless, where the module's own `hou.ui` import refuses."""
+    """The host's placement snap delta for `rect`, or None - always None headless. ▸r/overlay-shapes"""
     try:
         import nodegraphsnap
-        result = nodegraphsnap.snap(editor, None, rect,
-                                    editor.allVisibleRects([]))
+        radius = nodegraphsnap.utils.getSnapRadius(editor)
+        near = _snap_candidates(_visible_snap_rects(editor), rect, radius)
+        result = nodegraphsnap.snap(editor, None, rect, near)
         if result.isValid():
             return result.delta()
     except Exception as exc:                              # noqa: BLE001
@@ -192,6 +201,37 @@ def _snap_delta(editor, rect):
             _hover["snap_failure_said"] = True
             _dbg("placement snap unavailable", error=repr(exc))
     return None
+
+
+def _visible_snap_rects(editor) -> list:
+    """The editor's visible rects as `_snap_entries`, fetched again for a new editor, network or view."""
+    view = (editor, editor.pwd(), editor.visibleBounds())
+    try:
+        same = view == _move["snap_view"]
+    except hou.ObjectWasDeleted:
+        same = False
+    if not same:
+        _move["snap_rects"] = _snap_entries(editor.allVisibleRects([]))
+        _move["snap_view"] = view
+    return _move["snap_rects"]
+
+
+def _snap_entries(pairs) -> list:
+    """(left, right, bottom, top, pair) for each (item, rect) pair, in the editor's order."""
+    entries = []
+    for pair in pairs:
+        low, high = pair[1].min(), pair[1].max()
+        entries.append((low.x(), high.x(), low.y(), high.y(), pair))
+    return entries
+
+
+def _snap_candidates(entries, rect, radius) -> list:
+    """The pairs whose x or y extent comes within `radius` of `rect`'s, in order: no other can snap."""
+    low, high = rect.min(), rect.max()
+    x0, y0, x1, y1 = low.x(), low.y(), high.x(), high.y()
+    return [pair for left, right, bottom, top, pair in entries    # never `left < x1 + radius`: rounds
+            if (left - x1 < radius and x0 - right < radius)
+            or (bottom - y1 < radius and y0 - top < radius)]
 
 
 def ghost_snap_position():
@@ -272,6 +312,7 @@ def ghost_show(editor, position, type_name: str = "",
 def ghost_clear() -> None:
     """Give every borrowed overlay back - on EVERY exit path."""
     _move["snap_pos"] = None
+    _forget_snap_rects()
     while _ghosted:
         editor = _ghosted.pop()
         try:

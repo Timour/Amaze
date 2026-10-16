@@ -1,6 +1,7 @@
 """The drag gesture replayed headlessly - real `QMouseEvent`s against the real view, asserting the STATE MACHINE, because a gesture ending with `_dragging` still True eats the next click. The drop ACTION is stubbed; the gesture is what is under test. ▸archive/test_drag_gesture.py"""
 
 import os
+import random
 import sys
 import types
 import unittest
@@ -929,20 +930,207 @@ class TheEnginesHousekeepingSurvivesOneFailure(unittest.TestCase):
 
     def test_a_snap_that_cannot_run_is_recorded_once_a_gesture(self):
         from amaze.core import dragengine
-        failing = types.ModuleType("nodegraphsnap")    # never a namespace ▸r/module-fakes-need-a-name
+        failing = _snap_module(0.1, [])
         failing.snap = mock.Mock(side_effect=RuntimeError("no snap"))
         records = []
         self.addCleanup(dragengine.end)
+        outline = hou.BoundingRect(0.0, 0.0, 1.0, 0.3)
         with mock.patch.dict(sys.modules, {"nodegraphsnap": failing}), \
                 mock.patch.object(dragengine, "_dbg",
                                   lambda msg, **_data: records.append(msg)):
             for _gesture in range(2):
                 dragengine.begin("Material")
                 for _move in range(3):
-                    self.assertIsNone(dragengine._snap_delta(mock.Mock(), None))
+                    self.assertIsNone(dragengine._snap_delta(
+                        _SnapEditor([]), outline))
         self.assertEqual(2, len(records), records)
         self.assertEqual(6, failing.snap.call_count,
                          "the snap stand-in was never reached: %r" % records)
+
+
+def _snap_module(radius, seen):
+    """A `nodegraphsnap` stand-in: its radius through `utils`, the items each snap was handed."""
+    utils = types.ModuleType("nodegraphutils")    # never a namespace ▸r/module-fakes-need-a-name
+    utils.getSnapRadius = lambda _editor: radius
+    module = types.ModuleType("nodegraphsnap")
+    module.utils = utils
+
+    def snap(_editor, _item, _rect, snaprects):
+        seen.append([item for item, _snaprect in snaprects])
+        return mock.Mock(isValid=lambda: False)
+
+    module.snap = snap
+    return module
+
+
+class _SnapEditor:
+    """The calls `_snap_delta` makes of a network editor, the rect fetch counted."""
+
+    def __init__(self, pairs, network="net"):
+        self.pairs = pairs
+        self.network = network
+        self.bounds = (0.0, 0.0, 10.0, 10.0)
+        self.fetches = 0
+
+    def allVisibleRects(self, _ignore):
+        self.fetches += 1
+        return list(self.pairs)
+
+    def pwd(self):
+        return self.network
+
+    def visibleBounds(self):
+        return hou.BoundingRect(*self.bounds)
+
+
+def _box(x0, y0, x1, y1):
+    return hou.BoundingRect(x0, y0, x1, y1)
+
+
+class TheSnapAsksOnlyTheRectsThatCanMoveIt(unittest.TestCase):
+    """The visible rects are fetched once per view, and the snap sees only those within a radius."""
+
+    OUTLINE = (0.0, 0.0, 1.0, 0.25)
+    RADIUS = 0.25
+    LAYOUT = (    # (label, rect, kept) around OUTLINE at RADIUS; binary-exact, so gaps are exact
+        ("far", (6.0, 6.0, 7.0, 6.25), False),
+        ("column", (0.5, 4.0, 1.5, 4.25), True),
+        ("row", (-5.0, 0.0, -4.0, 0.25), True),
+        ("right at radius", (1.25, 3.0, 2.25, 3.25), False),
+        ("right inside", (1.1875, 3.0, 2.25, 3.25), True),
+        ("diagonal", (1.125, 0.375, 2.0, 0.5), True),
+        ("left at radius", (-2.0, -3.0, -0.25, -2.0), False),
+        ("below inside", (5.0, -1.0, 6.0, -0.125), True),
+        ("below at radius", (5.0, -1.0, 6.0, -0.25), False),
+    )
+
+    def setUp(self):
+        from amaze.core import dragengine
+        self.engine = dragengine
+        dragengine.begin("material")
+        self.addCleanup(dragengine.end)
+        self.seen = []
+        patcher = mock.patch.dict(
+            sys.modules, {"nodegraphsnap": _snap_module(self.RADIUS, self.seen)})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _layout(self):
+        return [(label, _box(*rect)) for label, rect, _kept in self.LAYOUT]
+
+    def _move(self, editor, dx=0.0):
+        x0, y0, x1, y1 = self.OUTLINE
+        self.engine._snap_delta(editor, _box(x0 + dx, y0, x1 + dx, y1))
+
+    def test_the_rects_are_fetched_once_while_the_view_stays(self):
+        editor = _SnapEditor(self._layout())
+        for step in range(5):
+            self._move(editor, dx=step * 0.5)
+        self.assertEqual(1, editor.fetches,
+                         "every move asked the editor for every visible rect again")
+        self.assertEqual(5, len(self.seen), "premise: the snap did not run every move")
+
+    def test_a_pan_another_network_or_another_editor_fetches_them_again(self):
+        editor = _SnapEditor(self._layout())
+        self._move(editor)
+        editor.bounds = (2.0, 0.0, 12.0, 10.0)
+        self._move(editor)
+        self._move(editor)
+        self.assertEqual(2, editor.fetches, "a pan kept the old view's rects")
+        editor.network = "another"
+        self._move(editor)
+        self.assertEqual(3, editor.fetches, "another network kept the old rects")
+        other = _SnapEditor(self._layout())
+        self._move(other)
+        self.assertEqual(1, other.fetches, "another editor was handed the first one's rects")
+
+    def test_a_cleared_outline_and_a_new_gesture_drop_them(self):
+        editor = _SnapEditor(self._layout())
+        self._move(editor)
+        self.engine.ghost_clear()
+        self._move(editor)
+        self.assertEqual(2, editor.fetches, "rects outlived the outline they served")
+        self.engine.begin("material")
+        self._move(editor)
+        self.assertEqual(3, editor.fetches, "a new gesture inherited the last one's rects")
+
+    def test_the_snap_is_handed_exactly_the_rects_a_radius_band_reaches(self):
+        self._move(_SnapEditor(self._layout()))
+        kept = [label for label, _rect, keep in self.LAYOUT if keep]
+        self.assertEqual([kept], self.seen,
+                         "a rect at exactly the radius cannot snap, one inside can, "
+                         "and the order is the editor's: ties resolve by it")
+
+    def test_the_hosts_own_snap_answers_the_same_over_the_kept_rects(self):
+        snapper, settings = self._host_snap()
+        geo = hou.node("/obj").createNode("geo")
+        self.addCleanup(geo.destroy)
+        subnet = geo.createNode("subnet")
+        items = [None, geo.createNode("null"), geo.createNetworkBox(),
+                 geo.createStickyNote(), geo.createNetworkDot(),
+                 subnet.indirectInputs()[0]]
+        rng = random.Random(20261016)
+        dropped = snapped = 0
+        for case in range(400):
+            pairs, outline, radius = self._random_case(rng, items)
+            settings.update(radius=radius, snap=rng.random() < 0.9,
+                            grid=rng.random() < 0.3, mode=rng.choice((0, 1)),
+                            step=rng.choice((0.5, 1.0, 0.3)))
+            near = self.engine._snap_candidates(
+                self.engine._snap_entries(pairs), outline, radius)
+            whole = self._answer(snapper.snap(None, None, outline, pairs))
+            self.assertEqual(whole, self._answer(snapper.snap(None, None, outline, near)),
+                             "case %d: the kept rects snapped elsewhere" % case)
+            dropped += len(near) < len(pairs)
+            snapped += whole[0]
+        self.assertGreater(dropped, 100, "premise: the filter dropped almost nothing")
+        self.assertGreater(snapped, 100, "premise: almost nothing snapped")
+
+    def _host_snap(self):
+        """Houdini's own `nodegraphsnap`, its prefs and utils imports stood in for."""
+        settings = {"radius": 0.25, "snap": True, "grid": False, "mode": 0, "step": 1.0}
+        prefs = types.ModuleType("nodegraphprefs")
+        prefs.doSnapping = lambda _e: settings["snap"]
+        prefs.gridSnapping = lambda _e: settings["grid"]
+        prefs.gridMode = lambda _e: settings["mode"]
+        prefs.gridXStep = lambda _e: settings["step"]
+        prefs.gridYStep = lambda _e: settings["step"] * 0.5
+        utils = types.ModuleType("nodegraphutils")
+        utils.getSnapRadius = lambda _e: settings["radius"]
+        sys.modules.pop("nodegraphsnap", None)
+        sys.modules.update(nodegraphprefs=prefs, nodegraphutils=utils)
+        import nodegraphsnap
+        self.assertIs(utils, nodegraphsnap.utils, "premise: the host module was not loaded")
+        return nodegraphsnap, settings
+
+    @staticmethod
+    def _random_case(rng, items):
+        """Rects, an outline and a radius on a lattice or free, ties and zero sizes included."""
+        step = rng.choice((0.0, 0.125, 0.05))
+
+        def at(lo, hi):
+            value = rng.uniform(lo, hi)
+            return round(value / step) * step if step else value
+
+        pairs = []
+        for _ in range(rng.randrange(0, 40)):
+            if pairs and rng.random() < 0.15:
+                pairs.append((rng.choice(items), rng.choice(pairs)[1]))
+                continue
+            x, y = at(-6.0, 6.0), at(-4.0, 4.0)
+            pairs.append((rng.choice(items), _box(x, y, x + at(0.0, 2.0), y + at(0.0, 1.0))))
+        cx, cy = at(-6.0, 6.0), at(-4.0, 4.0)
+        hw, hh = rng.choice(((0.5, 0.15), (0.5, 0.5), (at(0.0, 1.0), at(0.0, 1.0))))
+        radius = rng.choice((0.1, 0.25, at(0.0, 1.0)))
+        return pairs, _box(cx - hw, cy - hh, cx + hw, cy + hh), radius
+
+    @staticmethod
+    def _answer(result):
+        """Everything a host SnapResult decided, as plain floats."""
+        def flat(vec):
+            return None if vec is None else (vec.x(), vec.y())
+        return (result.isValid(), flat(result.delta()),
+                flat(result.snapvertical), flat(result.snaphorizontal))
 
 
 if __name__ == "__main__":
