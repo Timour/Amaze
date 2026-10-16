@@ -15,7 +15,7 @@ def real_log_path() -> str:
     sys.path.insert(0, package_root)
     from amaze.helpers import hostos
     from amaze.core import debug
-    return os.path.join(hostos.log_root(), debug.DEFAULT_NAME)
+    return os.path.join(hostos.real_log_root(), debug.DEFAULT_NAME)
 
 
 def leaked_sessions(path: str, offset: int):

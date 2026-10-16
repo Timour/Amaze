@@ -1,5 +1,6 @@
 """The OS-integration engine, and the package's atomic writes: nothing else in the codebase may test sys.platform, name an OS path convention, or reach for Houdini's bundled binaries. ▸r/platform-files"""
 
+import atexit
 import contextlib
 import errno
 import glob
@@ -70,6 +71,7 @@ def rehome(path: str) -> str:
 
 def _ensure_dir(new_dir: str) -> str:
     """`new_dir`, made if missing; a failed write surfaces at the write site, not here."""
+    check_sandbox(new_dir)
     try:
         os.makedirs(new_dir, exist_ok=True)
     except OSError:
@@ -99,27 +101,42 @@ def set_cache_override(path: str) -> None:
 def cache_root() -> str:
     """The per-user cache directory: the user's override when set, then $AMAZE_CACHE_DIR, else this OS's convention."""
     for candidate in (_cache_override,
-                      os.environ.get(CACHE_DIR_ENV, "").strip()):
+                      os.environ.get(CACHE_DIR_ENV, "").strip(),
+                      _sandboxed_root("cache")):
         if not candidate:
             continue
+        check_sandbox(candidate)
         try:
             os.makedirs(candidate, exist_ok=True)
             return candidate
         except OSError:
             continue  # unusable - fall through to the next
+    return _ensure_dir(_real_cache_root())
+
+
+def _real_cache_root() -> str:
+    """This OS's own per-user cache folder, never made here."""
     if is_macos():
-        new = _home("Library", "Caches", APP_DIR)
-    elif is_windows():
+        return _home("Library", "Caches", APP_DIR)
+    if is_windows():
         local = os.environ.get("LOCALAPPDATA") or _home("AppData", "Local")
-        new = os.path.join(local, APP_DIR, "Cache")
-    else:
-        base = os.environ.get("XDG_CACHE_HOME") or _home(".cache")
-        new = os.path.join(base, APP_DIR)
-    return _ensure_dir(new)
+        return os.path.join(local, APP_DIR, "Cache")
+    base = os.environ.get("XDG_CACHE_HOME") or _home(".cache")
+    return os.path.join(base, APP_DIR)
 
 
 def config_root() -> str:
-    """The per-user PREFERENCES directory, per this OS's convention - never inside the install, which put a user's library path and favorites in the plugin folder."""
+    """The per-user settings folder: the sandbox's stand-in when armed, else this OS's own."""
+    return _ensure_dir(_sandboxed_root("config") or real_config_root())
+
+
+def log_root() -> str:
+    """The per-user log folder: the sandbox's stand-in when armed, else this OS's own."""
+    return _ensure_dir(_sandboxed_root("logs") or real_log_root())
+
+
+def real_config_root() -> str:
+    """This OS's own per-user settings folder, never inside the install, and never made here."""
     if is_macos():
         new = _home("Library", "Preferences", APP_DIR)  # where Houdini keeps its own, so it is the familiar place to look
     elif is_windows():
@@ -128,11 +145,11 @@ def config_root() -> str:
     else:
         base = os.environ.get("XDG_CONFIG_HOME") or _home(".config")
         new = os.path.join(base, APP_DIR)
-    return _ensure_dir(new)
+    return new
 
 
-def log_root() -> str:
-    """The per-user log directory, per this OS's convention."""
+def real_log_root() -> str:
+    """This OS's own per-user log folder, never made here."""
     if is_macos():
         new = _home("Library", "Logs", APP_DIR)
     elif is_windows():
@@ -141,7 +158,7 @@ def log_root() -> str:
     else:
         base = os.environ.get("XDG_STATE_HOME") or _home(".local", "state")
         new = os.path.join(base, APP_DIR)
-    return _ensure_dir(new)
+    return new
 
 
 def os_tag() -> str:
@@ -234,6 +251,7 @@ def preserve_unreadable(path: str, why: str = "") -> str:
     except OSError:
         return ""
     keep = path + ".unreadable"
+    check_sandbox(keep)
     try:
         existing = os.path.getsize(keep) if os.path.exists(keep) else -1
     except OSError:
@@ -434,6 +452,7 @@ def record_history(path: str, days: int = HISTORY_DAYS) -> str:
         folder = history_root(path)
         entry = os.path.join(folder,
                              "%s.%s.gz" % (os.path.basename(path), stamp))
+        check_sandbox(entry)
         if os.path.exists(entry):
             return ""                      # today is already recorded
         with open(path, "rb") as handle:
@@ -484,6 +503,7 @@ def seed_restore_floor(path: str) -> bool:
         _record("backup", "no restore floor seeded - what was just "
                 "written does not parse", path=path, bytes=len(current))
         return False
+    check_sandbox(first)
     try:
         shutil.copy2(path, first)
     except OSError as exc:
@@ -497,6 +517,7 @@ def seed_restore_floor(path: str) -> bool:
 
 def snapshot_before_write(path: str, keep: int = 3) -> None:
     """At most once per SNAPSHOT_INTERVAL per file, copy the CURRENT on-disk version to a rolling `.bak-N` beside it (bak-1 newest) plus a permanent `.bak-first`, and record the day's history entry. Best-effort: a failed snapshot never blocks the write."""
+    check_sandbox(path)
     record_history(path)  # BEFORE the throttle marker: the daily entry is keyed by date, not by session, so it must get its chance on the first save of TODAY even in a session that started yesterday
     last = _session_snapshots.get(path)
     if last is not None and time.monotonic() - last < SNAPSHOT_INTERVAL:
@@ -551,6 +572,7 @@ def snapshot_before_write(path: str, keep: int = 3) -> None:
 
 def replace_file(src: str, dst: str) -> None:
     """`os.replace` with a brief retry, then a final attempt that RAISES - so a persistent hold still reaches the caller's error path."""
+    check_sandbox(dst)
     for wait in (0.05, 0.15, 0.35):
         try:
             os.replace(src, dst)
@@ -576,6 +598,7 @@ _DEFAULT_FILE_MODE = _default_file_mode()  # read ONCE at import rather than per
 def unique_scratch(path: str, suffix: str = ".writing",
                    create: bool = True) -> str:
     """A UNIQUELY-named scratch path beside `path`, created empty unless `create=False`. A fixed scratch name is one shared buffer: two writers of the same destination interleave into it and the result can parse while holding both their records. ▸r/atomic-writes"""
+    check_sandbox(path)
     directory = os.path.dirname(path) or "."  # SAME DIRECTORY ALWAYS: `os.rename` cannot cross drives on any OS, so a scratch in the system temp dir turns every save into a cross-device failure
     handle, scratch = tempfile.mkstemp(
         dir=directory, prefix=os.path.basename(path) + ".", suffix=suffix)  # `suffix` is appended LAST, so a prefix carrying an extension does not decide the on-disk format a writer picks from the name
@@ -587,6 +610,7 @@ def unique_scratch(path: str, suffix: str = ".writing",
 
 def promote_scratch(scratch: str, path: str) -> None:
     """fsync `scratch`, give it the permissions the destination should have, and swap it into place. Raises whatever `replace_file` raises. ▸r/atomic-writes"""
+    check_sandbox(path)
     handle = os.open(scratch, os.O_RDWR)  # O_RDWR, not O_RDONLY: on Windows `os.fsync` commits through a handle that must be WRITABLE, and this is called for files another process wrote (Houdini's own `saveItemsToFile`), so the descriptor cannot be kept from the write
     try:
         os.fsync(handle)  # BEFORE the swap, or the rename lands while the bytes are still only in the page cache and a power loss leaves an intact directory entry pointing at a partial file
@@ -649,6 +673,26 @@ class SandboxRefused(RuntimeError):
 
 def sandboxed() -> bool:
     return os.environ.get(SANDBOX_VAR, "") in ("1", "true", "yes")
+
+
+SANDBOX_HOME_VAR = "AMAZE_SANDBOX_HOME"  # read only while armed; the suite points it into its temp dir
+
+
+def sandbox_home() -> str:
+    """The temp folder standing in for the user's own while armed, made on first ask; "" unarmed."""
+    if not sandboxed():
+        return ""
+    home = os.environ.get(SANDBOX_HOME_VAR, "").strip()
+    if not home:
+        home = tempfile.mkdtemp(prefix="amaze_sandbox_home_")
+        os.environ[SANDBOX_HOME_VAR] = home  # the environment, so a reload and a child find the same one
+        atexit.register(shutil.rmtree, home, True)
+    return home
+
+
+def _sandboxed_root(kind: str) -> str:
+    home = sandbox_home()
+    return os.path.join(home, kind) if home else ""
 
 
 def check_sandbox(path: str) -> None:

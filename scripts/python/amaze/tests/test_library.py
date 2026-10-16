@@ -59,8 +59,8 @@ class TestMaterialLibrary(unittest.TestCase):
             json.dump({"version": 2, "categories": ["_All"], "tags": [],
                        "assets": [{"id": "mat_001"}]}, handle)
         self.mock_prefs.dir = self._library_dir + os.sep
-        self.mock_prefs.img_dir = "/img/"
-        self.mock_prefs.asset_dir = "/assets/"
+        self.mock_prefs.img_dir = os.path.join(self._library_dir, "img", "")    # absolute, inside temp
+        self.mock_prefs.asset_dir = os.path.join(self._library_dir, "assets", "")
         self.mock_prefs.ext = ".mat"
         self.mock_prefs.img_ext = ".png"
         self.mock_prefs.render_on_import = False

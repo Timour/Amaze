@@ -16,7 +16,7 @@ from amaze.prefs import prefs
 def _adopt_suite_root() -> str:
     """Make `<test_dir>/suite/` THE tempdir for this whole process - settings' own Test Library folder is where suite debris belongs, and pointing `TMPDIR` there at IMPORT carries every consumer at once: the per-module `mkdtemp`s, the write sandbox and the fixture isolation asserts all define scratch as `tempfile.gettempdir()`. Answers "" on a machine that designates no folder, and tempfile's default stands. ▸p/suite-debris-home"""
     try:
-        with open(os.path.join(hostos.config_root(), "settings.json"),
+        with open(os.path.join(hostos.real_config_root(), "settings.json"),
                   encoding="utf-8") as handle:
             configured = str(json.load(handle).get("test_dir", "") or "")
     except (OSError, ValueError):
@@ -41,6 +41,22 @@ def scratch_dir(prefix: str) -> str:
     return tempfile.mkdtemp(prefix=prefix)
 
 
+def isolate_user_folders() -> str:
+    """Point the sandbox's stand-in settings, cache and log folders into this run's temp dir."""
+    directory = scratch_dir("amaze_test_home_")
+    atexit.register(shutil.rmtree, directory, True)
+    os.environ[hostos.SANDBOX_HOME_VAR] = directory
+    if hostos.sandboxed() and not os.path.realpath(
+            hostos.config_root()).startswith(os.path.realpath(directory)):
+        raise RuntimeError(
+            "test settings isolation failed - config_root() is %s, not "
+            "under %s" % (hostos.config_root(), directory))
+    return directory
+
+
+TEST_HOME = isolate_user_folders()    # before anything asks for a per-user folder
+
+
 FIXTURE_DIR = os.path.join(os.path.dirname(__file__), "assets", "library")
 
 FIXTURE_USER = "0f1e2d3c4b5a69788796a5b4c3d2e1f0"    # WHO a fixture library belongs to - a CONSTANT shaped like a minted UID, comparable across runs and printable in a failure. ▸p/harness-isolation
@@ -55,7 +71,7 @@ def isolate_debug_log() -> str:
         os.environ["AMAZE_LOG_DIR"] = directory
     path = os.path.join(directory, "test_debug.jsonl")
     debug.redirect(path)
-    real = os.path.realpath(hostos.log_root())
+    real = os.path.realpath(hostos.real_log_root())
     if os.path.realpath(os.path.dirname(path)).startswith(real):
         raise RuntimeError(
             "test log isolation failed - %s is inside the real log dir %s"
@@ -230,6 +246,7 @@ def row_moves_inside_a_layout_change(*models):
 def live_library_to_rehearse_on(testcase):
     """The machine's configured REAL library (`real_dir`, never the Test Mode overlay) or a skip - recovery rehearsals recover the owner's own snapshots or they prove nothing. ▸p/harness-isolation"""
     live = prefs.Prefs()
+    live.path = hostos.real_config_root()    # the user's own settings, read only - the sandbox refuses a write
     live.load()
     live.test_mode = False    # this instance's own overlay switch, so every `live.dir` downstream is the real library
     directory = getattr(live, "real_dir", "") or live.dir

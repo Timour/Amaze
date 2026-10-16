@@ -1527,6 +1527,151 @@ class SandboxRefusesAWriteOutsideTempTest(unittest.TestCase):
             "again")
 
 
+class SandboxRefusesEveryPrimitiveTest(unittest.TestCase):
+    """Every shared write primitive refuses a path outside the temp dir, not only the JSON door."""
+
+    def setUp(self):
+        base = tempfile.mkdtemp(prefix="amaze_sandbox_prim_")
+        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
+        self.inside = os.path.join(base, "inside")
+        self.outside = os.path.join(base, "outside")
+        os.makedirs(self.inside)
+        os.makedirs(self.outside)
+        self.addCleanup(setattr, tempfile, "tempdir", tempfile.tempdir)
+        tempfile.tempdir = self.inside    # `outside` is outside the temp dir for this test only
+        original = os.environ.get(hostos.SANDBOX_VAR)
+        if original is None:
+            self.addCleanup(os.environ.pop, hostos.SANDBOX_VAR, None)
+        else:
+            self.addCleanup(
+                os.environ.__setitem__, hostos.SANDBOX_VAR, original)
+        os.environ[hostos.SANDBOX_VAR] = "1"
+
+    def _refused(self, call, *args):
+        before = sorted(os.listdir(self.outside))
+        with self.assertRaises(hostos.SandboxRefused):
+            call(*args)
+        self.assertEqual(before, sorted(os.listdir(self.outside)),
+                         "%s wrote outside the temp dir before refusing"
+                         % call.__name__)
+
+    def _planted(self, name, text):
+        path = os.path.join(self.outside, name)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        self.addCleanup(hostos._session_snapshots.pop, path, None)
+        return path
+
+    def _inside_file(self):
+        path = os.path.join(self.inside, "scratch.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("{}")
+        return path
+
+    def test_a_scratch_beside_an_outside_path_is_refused(self):
+        target = os.path.join(self.outside, "a.json")
+        self._refused(hostos.unique_scratch, target)
+
+        def through_the_context(path):
+            with hostos.scratch_beside(path):
+                pass
+        self._refused(through_the_context, target)
+
+    def test_a_promote_or_replace_onto_an_outside_path_is_refused(self):
+        target = os.path.join(self.outside, "a.json")
+        self._refused(hostos.promote_scratch, self._inside_file(), target)
+        self._refused(hostos.replace_file, self._inside_file(), target)
+
+    def test_the_snapshot_copies_are_refused(self):
+        healthy = self._planted("lib.json", '{"assets": []}')
+        broken = self._planted("bad.json", "{ truncated")
+        self._refused(hostos.snapshot_before_write, healthy)
+        self._refused(hostos.seed_restore_floor, healthy)
+        self._refused(hostos.preserve_unreadable, broken)
+
+    def test_a_history_entry_outside_is_refused(self):
+        real_config = hostos.config_root
+        hostos.config_root = lambda: self.outside
+        self.addCleanup(setattr, hostos, "config_root", real_config)
+        source = os.path.join(self.inside, "library.json")
+        with open(source, "w", encoding="utf-8") as handle:
+            handle.write('{"assets": []}')
+        self._refused(hostos.record_history, source)
+
+    def test_a_quarantine_move_outside_is_refused(self):
+        from amaze.core import quarantine
+        real_config = hostos.config_root
+        hostos.config_root = lambda: self.outside
+        self.addCleanup(setattr, hostos, "config_root", real_config)
+        library = os.path.join(self.inside, "library")
+        os.makedirs(os.path.join(library, "mat"))
+        leftover = os.path.join(library, "mat", "LEFTOVER.mat")
+        with open(leftover, "w", encoding="utf-8") as handle:
+            handle.write("x")
+        self._refused(quarantine.quarantine_file, library, leftover)
+        self.assertTrue(os.path.exists(leftover),
+                        "the refused move still took the file")
+
+    def test_a_cache_folder_made_outside_is_refused(self):
+        self.addCleanup(hostos.set_cache_override, hostos._cache_override)
+        hostos.set_cache_override(os.path.join(self.outside, "cache"))
+        self._refused(hostos.cache_root)
+
+
+class SandboxKeepsThePerUserFoldersInTempTest(unittest.TestCase):
+    """Armed, the settings, cache and log folders stand in temp - a suite save's history lands there."""
+
+    def setUp(self):
+        original = os.environ.get(hostos.SANDBOX_VAR)
+        if original is None:
+            self.addCleanup(os.environ.pop, hostos.SANDBOX_VAR, None)
+        else:
+            self.addCleanup(
+                os.environ.__setitem__, hostos.SANDBOX_VAR, original)
+
+    def _assert_in_temp(self):
+        temp = os.path.realpath(tempfile.gettempdir()) + os.sep
+        library = os.path.join(temp, "library", "library.json")
+        for label, path in (("settings", hostos.config_root()),
+                            ("cache", hostos.cache_root()),
+                            ("log", hostos.log_root()),
+                            ("history", hostos.history_root(library))):
+            self.assertTrue(
+                os.path.realpath(path).startswith(temp),
+                "the %s folder is %s, outside the temp dir %s"
+                % (label, path, temp))
+
+    def test_armed_every_per_user_folder_is_inside_temp(self):
+        os.environ[hostos.SANDBOX_VAR] = "1"
+        self._assert_in_temp()
+        self.assertNotEqual(
+            os.path.realpath(hostos.real_config_root()),
+            os.path.realpath(hostos.config_root()),
+            "the settings folder is still the user's own")
+
+    def test_the_redirect_survives_a_reload_of_hostos(self):
+        import importlib
+        os.environ[hostos.SANDBOX_VAR] = "1"
+        before = hostos.config_root()
+        importlib.reload(hostos)
+        self.assertEqual(before, hostos.config_root(),
+                         "a reload moved the settings folder")
+        self._assert_in_temp()
+
+    def test_unarmed_the_folders_are_the_users_own(self):
+        """Nothing in the product arms it, so the stand-in must never answer for a real session."""
+        held = os.environ.get(hostos.SANDBOX_HOME_VAR)
+        if held is None:
+            self.addCleanup(os.environ.pop, hostos.SANDBOX_HOME_VAR, None)
+        else:
+            self.addCleanup(
+                os.environ.__setitem__, hostos.SANDBOX_HOME_VAR, held)
+        os.environ.pop(hostos.SANDBOX_VAR, None)
+        os.environ[hostos.SANDBOX_HOME_VAR] = tempfile.gettempdir()
+        self.assertEqual("", hostos.sandbox_home(),
+                         "an unarmed run answered the stand-in folder")
+
+
 class OnePathHasOneSpelling(unittest.TestCase):
     """Two encoders write the same folder into two files, and a `$AMAZE/..` walk breaks the moment the install moves where `~` survives it - both decoders read both spellings, so nothing migrates."""
 

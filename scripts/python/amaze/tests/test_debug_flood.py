@@ -251,7 +251,7 @@ class TestLogIsolation(unittest.TestCase):
     def test_the_log_is_not_the_users(self):
         self.assertFalse(
             os.path.realpath(debug.log_path()).startswith(
-                os.path.realpath(hostos.log_root())),
+                os.path.realpath(hostos.real_log_root())),
             "the suite is writing %s" % debug.log_path())
 
     def test_the_env_var_isolates_a_fresh_import(self):

@@ -72,6 +72,7 @@ def quarantine_file(library_dir: str, path: str) -> str:
     folder = quarantine_folder(library_dir)
     relative = os.path.relpath(path, library_dir)
     target = os.path.join(folder, relative)
+    hostos.check_sandbox(target)
     try:
         os.makedirs(os.path.dirname(target), exist_ok=True)
         if os.path.exists(target):
