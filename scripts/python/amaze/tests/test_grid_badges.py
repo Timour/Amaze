@@ -234,5 +234,57 @@ class TheCommentBadgeOpensThePane(unittest.TestCase):
         self.assertFalse(panel.btn_notes.isChecked(), "the badge click did not close the pane")
 
 
+class AQuickSecondClickOnABadgeIsAClick(unittest.TestCase):
+    """Two quick clicks on a badge are two badge clicks, and the tile's double-click import never runs."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.panel = test_support.fixture_panel(test_support.class_scope(cls))
+
+    def _double_click(self, at):
+        """The five events the Qt manual says a double-click delivers; answers (imports, heart clicks)."""
+        panel = self.panel
+        panel._on_tab_toggled("material", True)
+        view = panel.thumblist
+        window = view.window()
+        window.resize(1200, 800)
+        window.show()
+        self.addCleanup(window.hide)
+        QtWidgets.QApplication.processEvents()
+        index = view.model().index(0, 0)
+        delegate = view.itemDelegate()
+        point = QtCore.QPointF(at(delegate, view.visualRect(index)))
+        imports, clicks = [], []
+
+        def imported(index):
+            imports.append(index)
+        view.doubleClicked.connect(imported)
+        self.addCleanup(view.doubleClicked.disconnect, imported)
+        left, none = QtCore.Qt.MouseButton.LeftButton, QtCore.Qt.MouseButton.NoButton
+        steps = ((QtCore.QEvent.Type.MouseButtonPress, left),
+                 (QtCore.QEvent.Type.MouseButtonRelease, none),
+                 (QtCore.QEvent.Type.MouseButtonPress, left),
+                 (QtCore.QEvent.Type.MouseButtonDblClick, left),
+                 (QtCore.QEvent.Type.MouseButtonRelease, none))
+        with mock.patch.object(panel._section(), "double_click"), \
+                mock.patch.dict(delegate._badge_clicks, {"favourite": clicks.append}):
+            for kind, buttons in steps:
+                QtWidgets.QApplication.sendEvent(view.viewport(), QtGui.QMouseEvent(
+                    kind, point, view.viewport().mapToGlobal(point), left, buttons,
+                    QtCore.Qt.KeyboardModifier.NoModifier))
+        return imports, clicks
+
+    def test_a_double_click_on_the_heart_clicks_it_twice_and_imports_nothing(self):
+        imports, clicks = self._double_click(
+            lambda delegate, rect: delegate._badge_rect(rect, "favourite").center())
+        self.assertEqual([], imports, "a quick second click on the heart imported the tile")
+        self.assertEqual(2, len(clicks), "the heart did not take both clicks")
+
+    def test_a_double_click_on_the_tile_still_imports(self):
+        imports, clicks = self._double_click(lambda delegate, rect: rect.center())
+        self.assertEqual(1, len(imports), "a double-click on the tile no longer imports")
+        self.assertEqual([], clicks, "a double-click on the tile clicked the heart")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -128,6 +128,18 @@ class GridGestureMixin:
             self._drag_panel = None
         super().mousePressEvent(event)
 
+    @debug.guarded("DragDropListView.mouseDoubleClickEvent")
+    def mouseDoubleClickEvent(self, event: QtGui.QMouseEvent) -> None:
+        """On a button badge a double-click is a second press, as a Qt button takes it ▸r/item-double-click"""
+        point = event.position().toPoint()
+        index = self.indexAt(point)
+        delegate = self.itemDelegate()
+        if (index.isValid() and hasattr(delegate, "button_badge_at")
+                and delegate.button_badge_at(index, self.visualRect(index), point) is not None):
+            self.mousePressEvent(event)
+            return
+        super().mouseDoubleClickEvent(event)
+
     @debug.guarded("DragDropListView.mouseMoveEvent")
     def mouseMoveEvent(self, event: QtGui.QMouseEvent) -> None:
         """The gesture stays in our hands so WE resolve the target at release; a File row crossing a Parameters pane hands off to a real QDrag, because only mime fills a field. Never call super() during the gesture, even before the threshold - that lets the view fall back to rubber-band selection. ▸r/pick-boundary"""
