@@ -886,18 +886,23 @@ class PanelWiringTest(unittest.TestCase):
         panel._sync_notes_button_pixmaps()
         blue_name = QtGui.QColor(uih.IconMenuButton.IDLE_BODY).name()
         art_name = QtGui.QColor(notes_pane.COMMENT_INK).name()
-        image = panel.btn_notes._pms[(True, False)].toImage()
-        seen = {image.pixelColor(x, y).name()
-                for x in range(0, image.width(), 4)
-                for y in range(0, image.height(), 4)
-                if image.pixelColor(x, y).alpha() > 40}
-        self.assertIn(
-            blue_name, seen,
-            "the checked chip is not the toolbar's blue - it must not "
-            "go white when on")
+
+        def seen_in(state):
+            image = panel.btn_notes._pms[state].toImage()
+            return {image.pixelColor(x, y).name()
+                    for x in range(0, image.width(), 4)
+                    for y in range(0, image.height(), 4)
+                    if image.pixelColor(x, y).alpha() > 40}
+
+        seen = seen_in((False, False))
+        self.assertIn(art_name, seen_in((True, False)),
+                      "the chip is not the Comments colour while the pane is open")
+        self.assertNotIn(blue_name, seen_in((True, False)),
+                         "the open chip still wears the toolbar blue")
+        self.assertIn(blue_name, seen, "the closed chip is not the toolbar's blue")
         self.assertNotIn(
             QtGui.QColor(uih.IconMenuButton.LIT_BODY).name(), seen,
-            "the checked chip went white; blue in all four states")
+            "the closed chip went white")
         self.assertNotIn(  # and NOT the pane's own blue: a tint map keyed on a colour the art lacks does nothing - how it shipped blue in all four states
             art_name, seen,
             "the chip is painting the Comments blue - the tint map is "

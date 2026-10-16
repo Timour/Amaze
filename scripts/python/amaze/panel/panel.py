@@ -3333,7 +3333,7 @@ class AmazePanel(QtWidgets.QWidget):
             self._refresh_notes_subject()
 
     def _sync_notes_button_pixmaps(self) -> None:
-        """The chip's four states, in the TOOLBAR's own colours: the glyph wears the icon family's own blue, IDLE_BODY, in ALL FOUR of them, the state being carried by the chip's BACKGROUND, which is what a chip is for."""
+        """The chip's glyph: IDLE_BODY blue while the pane is closed, COMMENT_INK while it is open."""
         button = getattr(self, "btn_notes", None)
         if button is None:
             return
@@ -3341,7 +3341,8 @@ class AmazePanel(QtWidgets.QWidget):
             self._ui_icon_path("icon_comments.svg"),
             lighten_on_hover=False,    # the glyph is the section's blue as drawn, and it does not whiten when on
             recolour={notes_panel.COMMENT_INK:    # the tint map keys on the ART's colour, replacing a literal - so a map left keyed on a colour the drawing no longer contains matches NOTHING and the untinted art shows through in all four states instead
-                      ui_helpers.IconMenuButton.IDLE_BODY})
+                      ui_helpers.IconMenuButton.IDLE_BODY},
+            recolour_on={notes_panel.COMMENT_INK: notes_panel.COMMENT_INK})
 
     def _on_note_saved(self, _key: str) -> None:
         """A page was written - repaint the grid so the tile's note badge appears or clears with it."""
