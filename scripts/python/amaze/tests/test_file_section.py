@@ -2411,6 +2411,30 @@ class CountsWalkOffTheGuiThreadTest(unittest.TestCase):
                          "a count walked under the old rule was kept")
         self.assertNotIn(1, shown, "the old rule's count was announced")
 
+    def test_a_relocate_recounts_only_that_location(self):
+        model, roots = self._model(1, 2, 3)
+        _landed_counts(model)
+        new = tempfile.mkdtemp(prefix="amaze_walk_moved_")
+        self.addCleanup(shutil.rmtree, new, ignore_errors=True)
+        for i in range(4):
+            open(os.path.join(new, "g%d.png" % i), "w").close()
+        model.preferences.save = lambda: None
+        walked = []
+        real = os.listdir
+
+        def listing(path="."):
+            if any(str(path).startswith(r) for r in roots + [new]):
+                walked.append(str(path).rstrip("/"))
+            return real(path)
+
+        with mock.patch("os.listdir", listing):
+            self.assertGreaterEqual(model.relocate_folder(2, new), 0,
+                                    "premise: the Locate refused")
+            counts = _landed_counts(model)
+        self.assertEqual([8, 1, 4, 3], counts, "the moved location's count is wrong")
+        self.assertEqual([new.rstrip("/")], walked,
+                         "a Locate recounted locations it did not move")
+
     def test_a_count_asked_from_another_thread_still_lands(self):
         """hrpyc reads models off the GUI thread; a zero-timer armed there never fires."""
         model, _roots = self._model(5)

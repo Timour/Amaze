@@ -504,9 +504,12 @@ class FolderListModel(QtCore.QAbstractListModel):
             setattr(self.preferences, self.last_folder_attr, new_path)
         self._on_folder_relocated(old_path, new_path)    # everything else keyed on the old path rides along
         self.preferences.save()
-        index = self.index(row)
-        self.dataChanged.emit(index, index)
-        self.refresh_counts()
+        self._rows_key = None
+        self._records_key = None
+        self._out_of_date((old_path, new_path), keep=False)    # this location only; the rest still hold
+        for at in (row, 0):
+            index = self.index(at)
+            self.dataChanged.emit(index, index)
         return rewritten
 
 
