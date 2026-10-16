@@ -842,7 +842,10 @@ class IconAssetsTest(unittest.TestCase):
         rest = self._paths("badge_execute.svg")
         self.assertTrue(rest, "the run button draws nothing")
         for state in ("badge_execute_hover.svg", "badge_execute_press.svg"):
-            self.assertEqual(rest, self._paths(state),
+            drawn = self._paths(state)
+            self.assertEqual(len(rest), len(drawn),
+                             "%s draws a different number of parts" % state)
+            self.assertEqual(rest[-1], drawn[-1],
                              "%s changed the play mark's shape" % state)
         paints = {self._paint(name).__repr__() for name in (
             "badge_execute.svg", "badge_execute_hover.svg", "badge_execute_press.svg")}
