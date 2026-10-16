@@ -474,9 +474,9 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
     def test_a_click_between_marks_lands_on_the_nearest(self):
         slider = self._slider()
         slider._apply_mouse_value(slider._x_for_value(200))
-        self.assertEqual(256, slider.value(), "a click at 200 did not land on 256")
-        slider._apply_mouse_value(slider._x_for_value(70))
-        self.assertEqual(128, slider.value(), "a click at 70 did not land on 128")
+        self.assertEqual(192, slider.value(), "a click at 200 did not land on 192")
+        slider._apply_mouse_value(slider._x_for_value(140))
+        self.assertEqual(128, slider.value(), "a click at 140 did not land on 128")
 
     def test_keys_step_from_mark_to_mark(self):
         slider = self._slider()
@@ -486,7 +486,7 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
                     QtCore.Qt.Key.Key_Home):
             QtTest.QTest.keyClick(slider, key)
             steps.append(slider.value())
-        self.assertEqual([256, 384, 384, 256, 128], steps)
+        self.assertEqual([192, 512, 512, 448, 64], steps)
 
     def test_a_wheel_notch_is_one_mark_and_half_notches_add_up(self):
         slider = self._slider()
@@ -494,7 +494,7 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
         for dy in (120, 60, 60, -120):
             self._wheel(slider, dy)
             steps.append(slider.value())
-        self.assertEqual([256, 256, 384, 256], steps)
+        self.assertEqual([192, 192, 256, 192], steps)
 
     def test_off_the_slider_moves_freely(self):
         slider = self._slider(stepped=False)
@@ -507,7 +507,7 @@ class StepSizeKeepsTheSliderOnItsMarks(unittest.TestCase):
         from amaze.panel import grid
         prefs = types.SimpleNamespace(view_mode="grid", thumbsize=200, step_size=True)
         panel = types.SimpleNamespace(prefs=prefs, LIST_THUMB_SIZE=16)
-        self.assertEqual(256, grid.active_thumbsize(panel))
+        self.assertEqual(192, grid.active_thumbsize(panel))
         prefs.step_size = False
         self.assertEqual(200, grid.active_thumbsize(panel))
 

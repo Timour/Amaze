@@ -375,8 +375,8 @@ class ClickSlider(QtWidgets.QSlider):
     HANDLE_DIAMETER = theme.ui_px(11)   # 11 not 10: Qt centres an ellipse pen on the geometric edge, so the border eats inward into the fill by half its width rather than sitting outside it
     HANDLE_BORDER_COLOR = QtGui.QColor(theme.color_hex("surface"))   # was #2d2d2d, the toolbar row's own grey, so the handle border reads as punched out of the bar
     HANDLE_BORDER_WIDTH = theme.ui_px(1)
-    DEFAULT_VALUE = 128        # VALUE-domain (thumbnail sizes), deliberately unscaled; also the first SNAP_MARK, so the size the panel opens at is the size a drag falls back onto
-    SNAP_MARKS = (128, 256, 384)
+    DEFAULT_VALUE = 128        # a size, unscaled, and one of the SNAP_MARKS so a drag can land on it
+    SNAP_MARKS = (64, 128, 192, 256, 320, 384, 448, 512)
     SNAP_RADIUS = 5
     TICK_COLOR = QtGui.QColor(theme.color_hex("text_dim"))   # was #696969, byte-identical to this role
     TICK_PIXEL_SIZE = theme.ui_px(1)   # the snap-mark tick is pixel art, not a smooth ellipse - exactly 5 squares of this size (centre, up, down, left, right), never a thicker diamond
