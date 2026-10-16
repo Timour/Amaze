@@ -1459,5 +1459,47 @@ class TheHighlighterReadsEachLineOnce(unittest.TestCase):
             "the highlighter tokenized a line more than once: %r" % passes)
 
 
+class TheHighlighterBuildsOneFormatPerColour(unittest.TestCase):
+    """A re-highlight paints thousands of runs, so each colour's format is built once and shared."""
+
+    def _handed(self):
+        """Every format the highlighter hands Qt over the golden lines."""
+        from amaze.helpers import vex_syntax
+        handed = []
+
+        class _Recorder(vex_syntax.VexHighlighter):
+            def __init__(self):
+                self.state = -1
+
+            def previousBlockState(self):
+                return self.state
+
+            def setCurrentBlockState(self, value):
+                self.state = value
+
+            def setFormat(self, start, length, fmt):
+                handed.append(fmt)
+
+        recorder = _Recorder()
+        for line, _letters, _state in TheHighlighterReadsEachLineOnce.PAINTED:
+            recorder.highlightBlock(line)
+        return handed
+
+    def test_each_colour_is_painted_with_one_format(self):
+        handed = self._handed()
+        colours = {fmt.foreground().color().rgba() for fmt in handed}
+        self.assertEqual(
+            len(colours), len({id(fmt) for fmt in handed}),
+            "%d runs in %d colours were painted with a new format each"
+            % (len(handed), len(colours)))
+
+    def test_a_shared_format_carries_only_its_colour(self):
+        for fmt in self._handed():
+            fresh = QtGui.QTextCharFormat()
+            fresh.setForeground(fmt.foreground().color())
+            self.assertEqual(fresh, fmt,
+                             "a shared format carries more than its colour")
+
+
 if __name__ == "__main__":
     unittest.main()

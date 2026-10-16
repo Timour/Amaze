@@ -89,14 +89,21 @@ def _open_comment(line: str, runs):
     return None
 
 
+_FORMATS = {}    # one shared QTextCharFormat per colour, keyed on `rgba()`, built on its first paint
+
+
 class VexHighlighter(QtGui.QSyntaxHighlighter):
     """Applies the shared palette to a QPlainTextEdit - `spans` sees ONE line, so a `/*` block spanning lines is carried across on the block state. ▸p/vex-block-comments"""
 
     IN_BLOCK_COMMENT = 1
 
     def _paint(self, start: int, length: int, color) -> None:
-        fmt = QtGui.QTextCharFormat()
-        fmt.setForeground(color)
+        key = color.rgba()
+        fmt = _FORMATS.get(key)
+        if fmt is None:
+            fmt = QtGui.QTextCharFormat()
+            fmt.setForeground(color)
+            _FORMATS[key] = fmt
         self.setFormat(start, length, fmt)
 
     def highlightBlock(self, text: str) -> None:
