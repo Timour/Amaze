@@ -1207,14 +1207,17 @@ class NodeHandler:
                         material=mat.name, node=moved.path())
 
     def load_octane_builder(self, mat: material.Material) -> None:
-        """Octane's builder is saved whole: the one subnet in the .mat IS the material. ▸r/octane-builder"""
-        self._builder_node = self._hou_parent.createNode("subnet")    # the holder, dropped once empty
+        """Octane's builder is saved whole, so one loaded subnet IS the material. ▸r/octane-builder"""
+        self._builder_node = self._hou_parent.createNode("subnet")    # the holder
         loaded = self._load_into_holder(mat)
-        if len(loaded) != 1 or not is_octane_builder(loaded[0]):
-            raise hou.OperationFailed(
-                '"%s" is saved as an Octane builder, but its .mat holds %s'
-                % (mat.name, ", ".join(sorted(n.type().name() for n in loaded))))
-        self._place_whole_builder(mat, loaded[0])
+        if len(loaded) == 1 and loaded[0].type().name() == "subnet":
+            self._place_whole_builder(mat, loaded[0])
+            return
+        holder = self._builder_node    # loose nodes: the holder is their container, as before
+        holder.setName(helpers.sanitize_usd_path(mat.name), unique_name=True)
+        holder.setGenericFlag(hou.nodeFlag.Material, True)
+        self._builder_node = hou.moveNodesTo((holder,), self._import_path)[0]  # type: ignore
+        helpers.auto_place(self._builder_node)
 
     def load_items_file_mtlx(self, mat: material.Material) -> None:
         """Karma's load: keep the wrap so every library material has ONE container shape, and pick the terminal by output data type rather than by name. ▸r/node-items"""
