@@ -181,12 +181,11 @@ class FileFolders(folders.FolderListModel):
                              and kind_for(name) != KIND_OTHER)
 
     def includes_subfolders(self, path: str) -> bool:
-        return bool(locations.record(
-            self.preferences, path).get("recursive"))
+        return bool(self._record(path).get("recursive"))
 
     def display_name(self, path: str) -> str:
         """A rename wins; otherwise the FOLDER'S OWN NAME, never the path - the full path is the row's hover, not its label."""
-        custom = locations.record(self.preferences, path).get("name")
+        custom = self._record(path).get("name")
         if custom:
             return custom
         return os.path.basename(path.rstrip("/\\")) or path

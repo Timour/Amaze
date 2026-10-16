@@ -50,6 +50,8 @@ class FolderListModel(QtCore.QAbstractListModel):
         self._counts: dict = {}    # folder file-counts, cached so painting never touches the disk ▸p/folder-sidebar
         self._rows: list = []
         self._rows_key = None    # what `_rows` was read against; None reads again
+        self._records: dict = {}    # path -> its location record, read against `_records_key`
+        self._records_key = None
 
 
     def matches_in(self, path: str, filename: str) -> bool:
@@ -126,6 +128,7 @@ class FolderListModel(QtCore.QAbstractListModel):
         try:
             self._counts = {}    # counts are per-folder and the folders have just changed
             self._rows_key = None
+            self._records_key = None
         finally:
             self.endResetModel()
 
@@ -133,6 +136,19 @@ class FolderListModel(QtCore.QAbstractListModel):
         """Forget the counts and the rows - the doors where the disk or the library may have moved."""
         self._counts = {}
         self._rows_key = None
+        self._records_key = None
+
+    def _record(self, path: str) -> dict:
+        """One location's record, kept until a location write or a store rereads its file."""
+        from amaze.core import keyed_store, locations
+        key = (self._rows_token(), keyed_store.loads())
+        if key != self._records_key:
+            self._records = {}
+            self._records_key = key
+        found = self._records.get(path)
+        if found is None:
+            found = self._records[path] = locations.record(self.preferences, path)
+        return found
 
     def includes_subfolders(self, path: str) -> bool:
         """Whether THIS registered folder scans recursively - the base answers no, and recursion is the location record's. ▸p/folder-sidebar"""
@@ -213,8 +229,7 @@ class FolderListModel(QtCore.QAbstractListModel):
 
     def folder_color(self, path: str) -> str:
         """This location's colour, "" for none - reads the ONE record, never the whole colour table, because this runs per row per repaint. ▸p/folder-sidebar"""
-        from amaze.core import locations
-        return str(locations.record(self.preferences, path).get("color", ""))
+        return str(self._record(path).get("color", ""))
 
 
     def add_folder(self, path: str) -> bool:

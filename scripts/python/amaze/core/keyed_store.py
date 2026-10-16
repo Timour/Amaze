@@ -380,6 +380,12 @@ register(
 
 
 _open: dict = {}                    # (filename, resolved path) -> Store
+_loads: int = globals().get("_loads", 0)
+
+
+def loads() -> int:
+    """Moves each time any store fills its tables from its file: a first open or a reread."""
+    return _loads
 
 
 def _root_for(spec: Spec, preferences, library: str = "") -> str:
@@ -541,6 +547,8 @@ class Store:
         self._disk_state = (hostos.file_fingerprint(raw)    # the bytes parsed, never a second read
                             if raw is not None else None)
         self._remember_base(self._table)
+        global _loads
+        _loads += 1
 
     def _not_this_stores(self, loaded) -> str:
         """Why `loaded` is not this store's file, "" when it is - asked by the load and the commit alike."""

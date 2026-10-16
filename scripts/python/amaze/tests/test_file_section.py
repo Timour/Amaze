@@ -1941,6 +1941,61 @@ class LocationManagementTest(unittest.TestCase):
                              "a location registered outside the model "
                              "never reached it")
 
+    def test_a_sidebar_paint_reads_each_location_record_once(self):
+        """A name and a colour per row per paint come from one read per location, and an edit shows."""
+        from amaze.core import category
+        folders = [self._tmpdir() for _ in range(5)]
+        model, prefs = self._folders_model(*folders)
+        prefs.set_file_folder_name(folders[0], "Renamed")
+        roles = (QtCore.Qt.ItemDataRole.DisplayRole,
+                 category.SIDEBAR_COLOR_ROLE)
+
+        def paint():
+            return [[model.data(model.index(row, 0), role) for role in roles]
+                    for row in range(1, model.rowCount())]
+
+        reads = []
+        real = locations_mod.record
+        with mock.patch.object(locations_mod, "record",
+                               lambda p, path: (reads.append(path),
+                                                real(p, path))[1]):
+            first = paint()
+            paint()
+            self.assertEqual(5, len(reads), "two paints of five locations "
+                             "read %d records" % len(reads))
+            self.assertEqual(["Renamed", ""], first[0],
+                             "the paint lost the stored name")
+            prefs.set_file_folder_color(folders[1], "#e0523a")
+            self.assertEqual("#e0523a", paint()[1][1],
+                             "a colour set outside the model never showed")
+
+    def test_a_record_another_machine_wrote_shows_after_a_reread(self):
+        """A reread at the Preferences door shows another writer's name and colour on the next paint."""
+        from amaze.core import category, keyed_store
+        folders = [self._tmpdir() for _ in range(2)]
+        model, prefs = self._folders_model(*folders)
+        prefs.set_file_folder_name(folders[0], "Mine")
+        roles = (QtCore.Qt.ItemDataRole.DisplayRole,
+                 category.SIDEBAR_COLOR_ROLE)
+
+        def paint():
+            return [model.data(model.index(1, 0), role) for role in roles]
+
+        self.assertEqual(["Mine", ""], paint(), "premise: the stored name")
+        key = locations_mod.LOC_PREFIX + locations_mod.location_id(
+            prefs, folders[0])
+        other = keyed_store.own_store(locations_mod.SPEC, prefs)
+        self.assertTrue(other.set(key, dict(other.get(key), name="Theirs",
+                                            color="#e0523a")),
+                        "premise: the other writer did not save")
+        self.assertEqual(["Mine", ""], paint(),
+                         "premise: the file was read again before the door")
+        self.assertIn(locations_mod.SPEC.filename,
+                      keyed_store.refresh_all(prefs),
+                      "premise: the door did not reread the locations file")
+        self.assertEqual(["Theirs", "#e0523a"], paint(),
+                         "the sidebar kept the record from before the reread")
+
     def test_an_add_or_a_remove_recounts_only_that_location(self):
         """The other locations keep their counts: one walk for the folder added, none for one removed."""
         from amaze.core import category
