@@ -1,7 +1,5 @@
 # Amaze — Manual
 
-**Browse it, save it, drag it.**
-
 Amaze is an asset library that lives in a Houdini pane tab: materials,
 colour palettes, node setups, code snippets and the files on your
 disk, in one place. Every asset can be dragged to where it is used —
