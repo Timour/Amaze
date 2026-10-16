@@ -17,10 +17,10 @@ class Badge:
     """One tile badge by its ID: the role it reads, the verb it runs, its arts and its words."""
 
     __slots__ = ("name", "art", "role", "role_attr", "verb", "minimum", "equals", "dims",
-                 "hover_art", "press_art", "off_art", "tip", "off_tip")
+                 "hover_art", "press_art", "off_art", "off_hover_art", "tip", "off_tip")
 
     def __init__(self, name, art, role="", role_attr="", verb="", minimum=0, equals="",
-                 dims=False, hover_art="", press_art="", off_art="",
+                 dims=False, hover_art="", press_art="", off_art="", off_hover_art="",
                  tip="", off_tip="") -> None:
         self.name = name
         self.art = art
@@ -33,6 +33,7 @@ class Badge:
         self.hover_art = hover_art    # a hover state drawn as its own art, where it has one
         self.press_art = press_art    # while the button is held down, where it has one
         self.off_art = off_art        # drawn while the role is falsy, at the button opacities
+        self.off_hover_art = off_hover_art    # the off state under the pointer, drawn as it is
         self.tip = tip               # the hover words, from tooltips.py; "" = silent
         self.off_tip = off_tip        # the words in the off state, where a click does the opposite
 
@@ -50,15 +51,18 @@ BADGES = (      # in paint order; art in `ui/badge_*.svg`, one file each ▸r/ti
     Badge("open", "badge_open", "OpenSceneRole", "_open_role"),    # the scene currently open
     Badge("favourite", "badge_favourite", "FavoriteRole", "_favorite_role", "menu_favourite",
           off_art="badge_favourite_off",    # on is the colour as drawn, and ignores hover
+          off_hover_art="badge_favourite_off_hover",
           tip=tooltips.BADGE_FAVORITE_REMOVE, off_tip=tooltips.BADGE_FAVORITE_ADD),
     Badge("versions", "badge_versions", "VersionsRole", "_versions_role", "menu_versions",
-          minimum=2, dims=True, tip=tooltips.BADGE_VERSIONS),
+          minimum=2, dims=True, hover_art="badge_versions_hover", tip=tooltips.BADGE_VERSIONS),
     Badge("comment", "badge_comment", "NotesRole", "_notes_role", "menu_comments",
-          dims=True, tip=tooltips.BADGE_COMMENTS),
+          dims=True, off_art="badge_comment_off", off_hover_art="badge_comment_off_hover",
+          tip=tooltips.BADGE_COMMENTS),
     Badge("execute", "badge_execute", "RendererRole", "_execute_role", "menu_run",
           equals="Python", hover_art="badge_execute_hover", press_art="badge_execute_press",
           tip=tooltips.BADGE_EXECUTE),    # the language role: Run is for Python only
-    Badge("edit", "badge_edit", verb="menu_edit", dims=True, tip=tooltips.BADGE_EDIT),
+    Badge("edit", "badge_edit", verb="menu_edit", dims=True, hover_art="badge_edit_hover",
+          tip=tooltips.BADGE_EDIT),
 )
 BADGE = {badge.name: badge for badge in BADGES}
 
@@ -577,7 +581,9 @@ class AssetItemDelegate(QtWidgets.QStyledItemDelegate):
                 continue
             hovered = self._is_button_hovered(badge.name, index)
             opacity = self._button_opacity(hovered)
-            if state == "off":
+            if state == "off" and hovered and badge.off_hover_art:
+                art, opacity = badge.off_hover_art, None
+            elif state == "off":
                 art = badge.off_art
             elif badge.press_art and self._is_button_pressed(badge.name, index):
                 art, opacity = badge.press_art, None

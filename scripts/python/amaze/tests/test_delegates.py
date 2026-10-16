@@ -733,11 +733,12 @@ class BadgeFamilyTest(unittest.TestCase):
                 "asked for a badge nothing wired" % role_kw)
 
     def test_every_button_badge_wears_the_one_rest_and_hover_opacity(self):
-        """Change the rest or hover strength once and every button badge follows."""
+        """Every button badge rests at the one strength; under the pointer its hover art wins."""
         role = QtCore.Qt.ItemDataRole.UserRole + 66
         family = {b.name for b in delegates.BADGES if b.dims or b.off_art}
         self.assertEqual({"favourite", "versions", "comment", "edit"}, family)
-        values = {"favourite": False, "versions": 3, "comment": True, "edit": True}    # each in its family state
+        cases = (("favourite", False), ("versions", 3), ("comment", True),
+                 ("comment", False), ("edit", True))
         current = {}
 
         class _Model(QtCore.QAbstractListModel):
@@ -759,11 +760,13 @@ class BadgeFamilyTest(unittest.TestCase):
         for rest, hover in ((0.4, 0.75), (0.3, 0.9)):
             with mock.patch.object(amazetheme, "BADGE_REST_OPACITY", rest), \
                     mock.patch.object(amazetheme, "BADGE_HOVER_OPACITY", hover):
-                for name in sorted(family):
-                    current["value"] = values[name]
+                for name, value in cases:
+                    current["value"] = value
                     badge = delegates.BADGE[name]
-                    art = badge.off_art if values[name] is False else badge.art
-                    for hovered, want in ((False, rest), (True, hover)):
+                    art = badge.off_art if value is False else badge.art
+                    drawn = badge.off_hover_art if value is False else badge.hover_art
+                    for hovered, want in ((False, (art, rest)),
+                                          (True, (drawn, None) if drawn else (art, hover))):
                         delegate = test_support.tile_delegate({name: role})
                         delegate.set_badge_click(name, lambda index: None)
                         if hovered:
@@ -775,12 +778,13 @@ class BadgeFamilyTest(unittest.TestCase):
                             delegate._paint_badges(painter, index, 0, 0, 130)
                         finally:
                             painter.end()
-                        self.assertEqual([(art, want)], asked,
+                        self.assertEqual([want], asked,
                                          "%s at %s" % (name, "hover" if hovered else "rest"))
 
     def test_the_opacity_reaches_every_part_of_the_art(self):
         """Ground and icon alike take the state's strength, read off the rendered pixels."""
-        for name in ("badge_favourite_off", "badge_versions", "badge_comment", "badge_edit"):
+        for name in ("badge_favourite_off", "badge_versions", "badge_comment",
+                     "badge_comment_off", "badge_edit"):
             for opacity in (0.4, 0.75):
                 image = delegates.AssetItemDelegate._badge_pixmap(
                     name, 44, 1.0, opacity).toImage()

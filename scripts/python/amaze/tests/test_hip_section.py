@@ -810,14 +810,14 @@ class IconAssetsTest(unittest.TestCase):
         return 0.2126 * r + 0.7152 * g + 0.0722 * b
 
     def test_a_button_badge_is_one_art_at_two_strengths(self):
-        """Rest and hover are ONE file at the two `amazetheme` opacities, every part of it changed."""
+        """Every rest art is drawn at the rest strength, and the hover strength reaches all of it."""
         from amaze import amazetheme
         from amaze.helpers import ui_helpers
         from amaze.panel import delegates
         arts = sorted({b.off_art for b in delegates.BADGES if b.off_art}
                       | {b.art for b in delegates.BADGES if b.dims})
-        self.assertEqual(["badge_comment", "badge_edit", "badge_favourite_off",
-                          "badge_versions"], arts)
+        self.assertEqual(["badge_comment", "badge_comment_off", "badge_edit",
+                          "badge_favourite_off", "badge_versions"], arts)
         for art in arts:
             self.assertTrue(self._paths(art + ".svg"), "%s draws nothing" % art)
             with open(self._ui(art + ".svg"), encoding="utf-8") as fh:
@@ -836,6 +836,25 @@ class IconAssetsTest(unittest.TestCase):
                              "%s keeps a part the hover strength does not reach" % art)
         self.assertTrue(self._paths("badge_favourite.svg"),
                         "the favourite state draws nothing")
+
+    def test_a_hover_art_keeps_the_ground_and_colours_the_icon(self):
+        """Under the pointer the ground stays at the rest strength and the icon takes its colour."""
+        from amaze import amazetheme
+        from amaze.panel import delegates
+        pairs = [(b.off_art, b.off_hover_art) for b in delegates.BADGES if b.off_hover_art]
+        pairs += [(b.art, b.hover_art) for b in delegates.BADGES if b.dims and b.hover_art]
+        self.assertEqual(4, len(pairs), "the four button badges do not all colour on hover")
+        for rest, hover in pairs:
+            with open(self._ui(hover + ".svg"), encoding="utf-8") as fh:
+                text = fh.read()
+            ground = re.search(r'<path[^>]*?id="Rounded-Rectangle[^"]*"[^>]*?>', text, re.S)
+            self.assertIsNotNone(ground, "%s has no ground" % hover)
+            self.assertEqual(("#000000", amazetheme.BADGE_REST_OPACITY),
+                             self._effective_paint(ground.group(0)),
+                             "%s changed its ground" % hover)
+            inks = {ink.upper() for ink in re.findall(r'stroke="(#[0-9A-Fa-f]{6})"', text)}
+            self.assertTrue(inks, "%s draws no icon" % hover)
+            self.assertNotIn("#FFFFFF", inks, "%s keeps %s's white icon" % (hover, rest))
 
     def test_the_run_button_keeps_its_shape_and_changes_its_paint(self):
         """Rest, hover and press draw one play mark; only the disc's colour answers. ▸r/tile-from-frame"""
@@ -869,7 +888,8 @@ class IconAssetsTest(unittest.TestCase):
         """The badge art is delivered art, not a code decision: a parallel session once recoloured every backdrop in the working tree unasked - the luminance test above caught the light one, but a DARK wrong colour would have passed it, so this pins the actual value: the design's backdrop is black, identical across the family. If the design genuinely changes, this test changes WITH the art, in the same commit, from the delivered file - an art change becomes a deliberate, reviewed act instead of a silent edit nobody notices until a badge disappears on a white thumbnail."""
         expected_alpha = {"badge_open": 0.75, "badge_favourite": 0.75,    # as drawn; the button
                           "badge_versions": 0.75, "badge_comment": 0.75,    # arts' own value is
-                          "badge_favourite_off": 0.75, "badge_edit": 0.75}    # replaced when painted
+                          "badge_favourite_off": 0.75, "badge_edit": 0.75,    # replaced when painted
+                          "badge_comment_off": 0.75}
         backdrops = {}
         for name in expected_alpha:
             with open(self._ui(name + ".svg"), encoding="utf-8") as fh:

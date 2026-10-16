@@ -194,14 +194,15 @@ class TheCommentBadgeIsAButton(unittest.TestCase):
         self.assertTrue(handled, "the comment badge swallowed nothing")
         self.assertEqual([index], clicked)
 
-    def test_the_comment_badge_is_one_art_at_the_button_opacities(self):
+    def test_a_commentless_tile_shows_the_outline_badge_like_the_heart(self):
         row = next(b for b in delegates.BADGES if b.name == "comment")
         self.assertEqual("badge_comment", row.art)
         self.assertTrue(row.dims, "it does not wear the family's rest and hover strength")
-        self.assertFalse(row.hover_art, "a second art for hover is a second source")
-        self.assertFalse(row.off_art,
-                         "no badge on a commentless tile - the button "
-                         "exists only where a comment does")
+        self.assertFalse(row.hover_art, "the filled bubble grew a second art for hover")
+        self.assertEqual("badge_comment_off", row.off_art,
+                         "a tile with no comments shows no badge")
+        self.assertEqual("badge_comment_off_hover", row.off_hover_art,
+                         "the outline badge does not colour under the pointer")
 
 
 class TheCommentBadgeOpensThePane(unittest.TestCase):
