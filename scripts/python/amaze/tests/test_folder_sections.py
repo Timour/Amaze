@@ -19,6 +19,7 @@ _app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
 import hou  # noqa: E402,F401
 from amaze.core import texture_library, thumbnails  # noqa: E402
+from amaze.helpers import hostos  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -462,6 +463,82 @@ class FileOpensOnTheFolderItLeft(unittest.TestCase):
                 panel.section_tabs.setChecked("file")
                 QtWidgets.QApplication.processEvents()
                 self.assertEqual(row, panel.cat_list.currentIndex().row())
+
+
+class RemovingALocationLeavesNoTileOfIt(unittest.TestCase):
+    """Remove Location takes the row you stand on to All, any other row leaves you where you are."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+        self.panel.section_tabs.setChecked("file")
+        QtWidgets.QApplication.processEvents()
+        self.folders = self.panel.file_folders_model
+        self.kept = self.folders.data(self.folders.index(1, 0),
+                                      self.folders.PathRole)
+        self.gone = test_support.fresh_files_folder(self)
+        below = test_support.fresh_files_folder(self)    # the row Qt slides the selection onto
+        for path in (self.gone, below):
+            self.assertTrue(self.folders.add_folder(path), "premise: no location added")
+        self.section = self.panel.sections["file"]
+        self.kept_tiles = self._stand(self.folders.row_of(self.kept))
+        self.assertTrue(self.kept_tiles, "premise: the kept location shows tiles")
+        self.rest = sorted(self.kept_tiles + self._stand(self.folders.row_of(below)))
+
+    def _press(self, row):
+        """What a right press does: the row is selected and current, and no click handler runs."""
+        view = self.panel.cat_list
+        index = view.model().index(row, 0)
+        view.selectionModel().setCurrentIndex(
+            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        return index
+
+    def _stand(self, row):
+        """A left click: the press, then the sidebar's own clicked handler. Answers the tiles."""
+        self._press(row)
+        self.panel.update_selected_cat()
+        QtWidgets.QApplication.processEvents()
+        return self._tiles()
+
+    def _tiles(self):
+        grid = self.panel.thumblist.model()
+        role = self.panel.file_files_model.PathRole
+        return sorted(grid.index(row, 0).data(role)
+                      for row in range(grid.rowCount()))
+
+    def _remove_gone(self):
+        index = self._press(self.folders.row_of(self.gone))
+        self.section.menu_remove_location([index], index)
+        QtWidgets.QApplication.processEvents()
+        self.assertIsNone(self.folders.row_of(self.gone), "premise: the row is gone")
+
+    def _assert_standing(self, row, tiles):
+        prefix = hostos.canonical_path_key(self.gone).rstrip("/") + "/"
+        stale = [path for path in self._tiles() if path.startswith(prefix)]
+        self.assertEqual([], stale, "tiles of the removed location still show")
+        self.assertEqual(tiles, self._tiles(), "the grid is not the row it stands on")
+        view = self.panel.cat_list
+        self.assertEqual(row, view.currentIndex().row(), "the sidebar stands elsewhere")
+        self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
+                         "the sidebar highlights another row")
+
+    def test_removing_the_location_you_stand_on_stands_on_all(self):
+        self.assertNotEqual(self.kept_tiles, self._stand(self.folders.row_of(self.gone)),
+                            "premise: the removed location shows its own tiles")
+        self._remove_gone()
+        self._assert_standing(0, self.rest)
+        self.assertEqual(self.folders.ALL_LABEL, self.panel.prefs.last_file_folder,
+                         "File reopens on the removed location's neighbour")
+
+    def test_removing_another_location_keeps_you_where_you_stand(self):
+        self._stand(self.folders.row_of(self.kept))
+        self._remove_gone()
+        self._assert_standing(self.folders.row_of(self.kept), self.kept_tiles)
+
+    def test_removing_a_location_while_on_all_drops_its_tiles(self):
+        self.assertGreater(len(self._stand(0)), len(self.rest),
+                           "premise: All shows every location")
+        self._remove_gone()
+        self._assert_standing(0, self.rest)
 
 
 class _Source:

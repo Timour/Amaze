@@ -1964,13 +1964,18 @@ class AmazePanel(QtWidgets.QWidget):
             return
         self.file_folders_model.add_folder(hou.text.expandString(path))
 
-    def remove_file_folder_user(self) -> None:
-        """Unregister the selected folder pointer(s). Only removes the pointer from the list - never touches anything on disk."""
+    def remove_file_folder_user(self) -> list:
+        """Unregister the selected folder pointer(s), answering the paths removed; disk is untouched."""
+        folders = self.file_folders_model
         rows = sorted(
             (i.row() for i in self.cat_list.selectedIndexes()), reverse=True
         )
+        removed = []
         for row in rows:
-            self.file_folders_model.remove_folder(row)
+            path = folders.data(folders.index(row, 0), folders.PathRole)
+            if folders.remove_folder(row):
+                removed.append(path)
+        return removed
 
     ALL_SECTIONS = sections.all_sections()    # fixed section order + DISPLAY labels, of which the enabled_sections pref chooses which appear. The KEYS are STORAGE, not display: "cop" and "gradient" are what enabled_sections and the per-section state remember, so they stay put while labels change, and renaming one would silently reset which sections a user has enabled. Delegates to sections.all_sections() because the sections own their own labels - three copies of this list once existed and two silently disagreed
 

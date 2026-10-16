@@ -171,6 +171,28 @@ class Section:
     def select_category(self, index) -> None:
         pass
 
+    def standing_key(self) -> str:
+        """The sidebar key the GRID stands on, "" for All - a right press moves only the sidebar."""
+        return ""
+
+    def stand_after_removal(self, removed) -> None:
+        """Rows in `removed` left the sidebar: stand both on the row the grid stood on, or on All."""
+        view = getattr(self.panel, "cat_list", None)
+        model = view.model() if view is not None else None
+        if model is None or model is not self._p(self.sidebar_attr) or not model.rowCount():
+            return
+        standing = self.standing_key()
+        target = model.index(0, 0)    # All heads every sidebar; Qt slid the selection to a neighbour
+        rows = range(model.rowCount()) if standing and standing not in removed else ()
+        for row in rows:
+            if self.sidebar_key(model.index(row, 0)) == standing:
+                target = model.index(row, 0)
+                break
+        view.setCurrentIndex(target)
+        view.selectionModel().select(
+            target, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        self.select_category(target)
+
     reorders_sidebar = False  # the five below are the CATEGORY form; File overrides
 
     def _sidebar_categories(self):
@@ -467,8 +489,7 @@ class AssetSection(Section):
         st.model.save()    # AFTER the pair: a save adopts a peer's rows, and an insert in it segfaults H21
         for name in names:
             st.categories.remove_category(name)    # OUTSIDE the relayout wrapper: this announces itself with begin/endRemoveRows and pairing the two segfaults H21 (research.md, measured 2026-08-04). The asset rows changed inside the wrapper; the sidebar rows change here, bracketed by their own signals
-        self.panel._ensure_sidebar_selection(self.key)    # the row is gone and the filter is not: without this the grid stays narrowed to a category that no longer exists - zero tiles, nothing highlighted, no message - because the sidebar must never sit with an empty selection
-        self._refilter_from_sidebar()    # covers the case where the fallback lands somewhere other than All
+        self.stand_after_removal(names)
 
     def menu_sort_categories(self, indexes, current, payload=None) -> None:
         """The one-off Sort by name: the whole list below All, regardless of the clicked row, and the row you were standing on stays under you."""
@@ -601,6 +622,10 @@ class AssetSection(Section):
         stored = self.panel._raw_category_name(index)    # the one home for this question, never index.data(): Categories.data returns elem[1:] for DisplayRole on a leading "_" - the mechanism that sorts the stored _All first and reads it as "All" - so a category stored _WIP displays "WIP", which no asset carries, and the grid empties under a still-highlighted row
         st.proxy.setFilter(st.model.CategoryRole,
                         "" if category.is_all(stored) else stored)    # "" keeps _All meaning everything rather than a literal category nobody has
+
+    def standing_key(self) -> str:
+        st = self.stack()
+        return (st.proxy.filter_value(st.model.CategoryRole) or "") if st is not None else ""
 
 
 class MaterialSection(AssetSection):
@@ -1156,6 +1181,10 @@ class FolderSection(Section):
         folders = self._p(self.folders_attr)
         self._browse(index.data(folders.PathRole))
 
+    def standing_key(self) -> str:
+        files = self._p(self.files_attr)
+        return files.browsing() if files is not None else ""
+
     def tile_models(self):
         return self._p(self.files_attr), self._p(self.files_proxy_attr)
 
@@ -1510,7 +1539,7 @@ class FileSection(FolderSection):
         self.panel.add_file_folder_user()
 
     def menu_remove_location(self, indexes, current, payload=None) -> None:
-        self.panel.remove_file_folder_user()
+        self.stand_after_removal(self.panel.remove_file_folder_user())
 
     def menu_locate_location(self, indexes, current, payload=None) -> None:
         self.panel._locate_folder_user(self._p(self.folders_attr))

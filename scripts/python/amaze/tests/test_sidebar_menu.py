@@ -432,6 +432,125 @@ class TheCategoryVerbsMoveNoRowInsideALayoutChange(unittest.TestCase):
             for row in range(self.panel.category_model.rowCount())])
 
 
+class RemovingACategoryLeavesNoTileOfIt(unittest.TestCase):
+    """Remove takes the row you stand on to All, any other row leaves you where you are."""
+
+    SECTIONS = ("material", "cop", "code", "gradient")
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _file(self, key, name):
+        """One asset filed under `name` in this section's own library."""
+        panel = self.panel
+        if key == "cop":
+            net = hou.node("/obj").createNode("copnet", "probe_" + name.lower())
+            self.addCleanup(net.destroy)
+            kinds = hou.copNodeTypeCategory().nodeTypes()
+            net.createNode(next(kind for kind in ("constant", "ramp", "noise")
+                                if kind in kinds))
+            self.assertTrue(panel.cop_model.add_asset(net, name, "", False,
+                                                      name=name + " one"))
+        elif key == "code":
+            self.assertTrue(panel.code_model.add_asset(
+                "x = 1", name + " one", "Python", name, "", False))
+        else:
+            panel.gradient_model.add_user_gradient(
+                name + " one", name, {"keys": [0.0, 0.5],
+                                      "values": [[1, 0, 0], [0, 0, 1]],
+                                      "bases": ["Constant"] * 2})
+        panel._section().stack().categories.check_add_category(name)
+
+    def _enter(self, key):
+        """This section, with a kept and a removed category each holding a tile, and a row below."""
+        self.panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        kept, gone = "Karma_Mats", "usds"
+        if key != "material":
+            kept, gone = "Kept", "Gone"
+            for name in (kept, gone):
+                self._file(key, name)
+        self.panel._section().stack().categories.check_add_category("Below")    # where Qt slides
+        self.panel._refresh_sidebar_categories()
+        self.assertEqual(self._row(gone) + 1, self._row("Below"), "premise: no row below")
+        return kept, gone
+
+    def _row(self, stored):
+        proxy = self.panel.cat_list.model()
+        role = proxy.sourceModel().CatSortRole
+        for row in range(proxy.rowCount()):
+            if proxy.index(row, 0).data(role) == stored:
+                return row
+        self.fail("premise: no sidebar row is stored %r" % stored)
+
+    def _press(self, stored):
+        """What a right press does: the row is selected and current, and no click handler runs."""
+        view = self.panel.cat_list
+        index = view.model().index(self._row(stored), 0)
+        view.selectionModel().setCurrentIndex(
+            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        return index
+
+    def _stand(self, stored):
+        """A left click: the press, then the sidebar's own clicked handler. Answers the tiles."""
+        self._press(stored)
+        self.panel.update_selected_cat()
+        QtWidgets.QApplication.processEvents()
+        return self._tiles()
+
+    def _tiles(self):
+        grid = self.panel.thumblist.model()
+        return sorted(str(grid.index(row, 0).data()) for row in range(grid.rowCount()))
+
+    def _remove(self, stored):
+        index = self._press(stored)
+        self.panel._section().menu_remove_category([index], index)
+        QtWidgets.QApplication.processEvents()
+
+    def _assert_standing(self, stored, tiles):
+        st = self.panel._section().stack()
+        self.assertEqual(tiles, self._tiles(), "the grid is not the row it stands on")
+        self.assertEqual("" if category.is_all(stored) else stored,
+                         st.proxy.filter_value(st.model.CategoryRole) or "",
+                         "the grid is narrowed to another category")
+        view = self.panel.cat_list
+        row = self._row(stored)
+        self.assertEqual(row, view.currentIndex().row(), "the sidebar stands elsewhere")
+        self.assertEqual([row], [index.row() for index in view.selectedIndexes()],
+                         "the sidebar highlights another row")
+
+    def _each_section(self, case):
+        for key in self.SECTIONS:
+            with self.subTest(section=key):
+                kept, gone = self._enter(key)
+                everything = self._stand("_All")
+                kept_tiles = self._stand(kept)
+                self.assertTrue(kept_tiles, "premise: the kept category shows tiles")
+                self.assertTrue(self._stand(gone), "premise: the removed one shows tiles")
+                case(kept, gone, everything, kept_tiles)
+
+    def test_removing_the_category_you_stand_on_stands_on_all(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand(gone)
+            self._remove(gone)
+            self._assert_standing("_All", everything)
+        self._each_section(case)
+
+    def test_removing_another_category_keeps_you_where_you_stand(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand(kept)
+            self._remove(gone)
+            self._assert_standing(kept, kept_tiles)
+        self._each_section(case)
+
+    def test_removing_a_category_while_on_all_keeps_you_on_all(self):
+        def case(kept, gone, everything, kept_tiles):
+            self._stand("_All")
+            self._remove(gone)
+            self._assert_standing("_All", everything)
+        self._each_section(case)
+
+
 class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
     """`_WIP` reads WIP, so a typed WIP names it: Add and Rename never leave two rows reading alike."""
 

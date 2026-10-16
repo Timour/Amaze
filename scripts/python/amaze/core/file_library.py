@@ -297,6 +297,10 @@ class FileFiles(grid_columns.GridColumnsMixin,
         self._folder = ""
         self._load(list(self.preferences.file_folders))
 
+    def browsing(self) -> str:
+        """The location this model lists, "" for every location (All)."""
+        return "" if self._all_folders_mode else self._folder
+
     def refresh_current_folder(self) -> None:
         """Re-runs the current selection - cheap when nothing changed, every item is still a cache hit."""
         if self._all_folders_mode:
