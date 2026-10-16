@@ -718,7 +718,7 @@ class BadgeFamilyTest(unittest.TestCase):
             ("favourite", True, "badge_favourite", corner, None),
             ("versions", 3, "badge_versions", corner, rest),
             ("comment", True, "badge_comment", corner, rest),
-            ("execute", "Python", "badge_execute", min(36, round(36 * 128 / 130.0)), None),
+            ("execute", "Python", "badge_execute", min(45, round(45 * 128 / 130.0)), None),
             ("edit", True, "badge_edit", corner, rest),
         )
         self.assertEqual(
@@ -838,10 +838,10 @@ class BadgeFamilyTest(unittest.TestCase):
         middle = inset + badge // 2
         far = side - inset - badge // 2
         corners = {
-            "badge_open": (middle, middle),
+            "badge_comment": (middle, middle),
             "badge_favourite": (far, middle),
             "badge_versions": (middle, far),
-            "badge_comment": (far, far),
+            "badge_open": (far, far),
         }
         for name, (x, y) in corners.items():
             self.assertEqual(

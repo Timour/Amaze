@@ -75,7 +75,7 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
-COMMENT_INK = "#1e8051"        # ▸ the Comments pane (N01): the header icon's art colour
+COMMENT_INK = "#9269f1"        # ▸ the Comments pane (N01): the header icon's art colour
 COMMENT_DONE_INK = "#4af2a1"   # a done to-do
 COMMENT_OPEN_INK = "#ff7760"   # an open to-do
 COMMENT_ADD_INK = "#5d7abd"    # the + art's colour
@@ -538,10 +538,10 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
         "nodes": (
             ("tile card", 4, 4, 130, 173, None),
             ("thumbnail", 4, 4, 130, 130, None),
-            ("badge open (top-left) ▸ badge_open", 6, 6, 22, 22, None),
+            ("badge open (top-left) ▸ badge_open", 110, 110, 22, 22, None),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge versions (lower-left) ▸ badge_versions", 6, 110, 22, 22, None),
-            ("badge comment (lower-right) ▸ badge_comment", 110, 110, 22, 22, None),
+            ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
             ("tile name", 9, 142, 74, 15, "brushed_steel"),
             ("tile subtitle", 9, 157, 34, 15, "Karma"),
         ),
@@ -556,8 +556,8 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("tile subtitle", 9, 157, 37, 15, "Python"),
             ("badge favourite (top-right) ▸ badge_favourite", 110, 6, 22, 22, None),
             ("badge edit (lower-left) ▸ badge_edit", 6, 110, 22, 22, None),
-            ("badge comment (lower-right) ▸ badge_comment", 110, 110, 22, 22, None),
-            ("badge execute (centre) ▸ badge_execute", 51, 55, 36, 36, None),
+            ("badge comment (lower-right) ▸ badge_comment", 6, 6, 22, 22, None),
+            ("badge execute (centre) ▸ badge_execute", 46, 46, 45, 45, None),
         ),
     },
     "L01": {   # the list table from the live panel - its header, widths and ticks are read
