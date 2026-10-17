@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.0
+
+- Convert to ▸ Octane: a MaterialX or Redshift material becomes an Octane material, built in Octane's own material builder.
+- Convert to ▸ MaterialX and ▸ Redshift take Octane materials too.
+- The online Import to Materials and Import to Scene can build a material as Octane.
+- Copy To ▸ /stage takes an Octane material saved in the classic Octane container, rebuilt into Octane's Solaris builder on the way in.
+- Convert to greys a renderer whose plugin is not loaded, whether it is the material's own or the one it would become.
+
 ## 1.5.0
 
 - The category menu in the Material, Color, Node and Code sidebars reads Add, Rename, Delete, Sort by name, Label and Export Category. Label colours a category Red, Yellow, Blue, Green or a Custom colour; Remove takes the colour off.
