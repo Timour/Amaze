@@ -17,6 +17,8 @@ KIND_IMAGE = "image"  # row kinds in the order kind_for() checks them; values re
 KIND_GEO = "geometry"
 KIND_HIP = "hip"
 KIND_OTHER = "other"
+SHOWN_BY_DEFAULT = (KIND_IMAGE, KIND_GEO, KIND_HIP)    # what Show ▸ ticks on a new location
+EVERY_KIND = SHOWN_BY_DEFAULT + (KIND_OTHER,)    # the Import location's ticks: a package carries any file
 
 
 def kind_for(name: str) -> str:
@@ -144,15 +146,26 @@ def sweep_folder_cache(preferences, folder: str, remaining) -> int:
 
 
 def shows_all_files(preferences, location: str) -> bool:
-    """Whether one registered location shows its unknown files: the per-location Show All Files override when set, the global Show Unknown Files preference otherwise."""
+    """The rule before Show ▸: the location's Show All Files override, else `file_show_unknown`."""
     override = locations.record(preferences, location).get("show_all")
     if override is not None:
         return bool(override)
     return bool(getattr(preferences, "file_show_unknown", True))
 
 
+def location_kinds(preferences, location: str) -> frozenset:
+    """The kinds one location lists: its Show ▸ ticks, else what it listed before Show ▸ existed."""
+    kinds = locations.record(preferences, location).get("kinds")
+    if kinds is not None:
+        return frozenset(kinds)
+    shown = set(SHOWN_BY_DEFAULT)
+    if shows_all_files(preferences, location):
+        shown.add(KIND_OTHER)
+    return frozenset(shown)
+
+
 class FileFolders(folders.FolderListModel):
-    """The File section's registered-folder sidebar - counts and lists EVERY visible file, because this section's whole point is that a folder shows what is actually in it. Per-location state: recursion is per folder (file_recursive_folders), the display name defaults to the Houdini-collapsed PATH and can be renamed (file_folder_names), removal sweeps the folder's cached thumbnails, and Locate Folder carries name + recursion along with the favourites the base already rewrites."""
+    """The File section's registered-folder sidebar: each location counts the kinds its Show ▸ ticks."""
 
     folders_attr = "file_folders"
     favorites_attr = "file_favorites"
@@ -170,25 +183,22 @@ class FileFolders(folders.FolderListModel):
     def matches_in(self, path: str, filename: str) -> bool:  # the count asks the LOCATION's rule, so the sidebar number and the grid agree per location, not just globally
         if filename.startswith("."):
             return False
-        if shows_all_files(self.preferences, path):
-            return True
-        return kind_for(filename) != KIND_OTHER
+        return kind_for(filename) in location_kinds(self.preferences, path)
 
     def _matcher_for(self, path: str):
-        keep_other = shows_all_files(self.preferences, path)    # the location rule, resolved ONCE per folder - same hoist as _load's gather
-        if keep_other:
-            return lambda name: not name.startswith(".")
-        return lambda name: (not name.startswith(".")
-                             and kind_for(name) != KIND_OTHER)
+        kinds = location_kinds(self.preferences, path)    # resolved ONCE per folder, as _load's gather is
+        return lambda name: not name.startswith(".") and kind_for(name) in kinds
 
     def includes_subfolders(self, path: str) -> bool:
         return bool(self._record(path).get("recursive"))
 
     def display_name(self, path: str) -> str:
-        """A rename wins; otherwise the FOLDER'S OWN NAME, never the path - the full path is the row's hover, not its label."""
-        custom = self._record(path).get("name")
-        if custom:
-            return custom
+        """A rename wins; then the full path when Pathname is ticked; else the folder's own name."""
+        record = self._record(path)
+        if record.get("name"):
+            return record["name"]
+        if record.get("pathname"):    # written the way Write Paths As writes paths
+            return houdini_path(path, getattr(self.preferences, "path_style", "home"))
         return os.path.basename(path.rstrip("/\\")) or path
 
     def remove_folder(self, row: int) -> bool:
@@ -367,10 +377,10 @@ class FileFiles(grid_columns.GridColumnsMixin,
         entries = []
         known: dict = {}    # canonical path -> the one stat this load makes of it
         for folder in folder_list:
-            keep_other = shows_all_files(self.preferences, folder)  # unknowns are dropped at gather time, per the LOCATION they came from - the All view can show one location's unknowns and hide another's
+            kinds = location_kinds(self.preferences, folder)    # per the location a file came from
             for dirpath, name, st in self._scan(folder):
                 kind = kind_for(name)
-                if not keep_other and kind == KIND_OTHER:
+                if kind not in kinds:
                     continue
                 full = hostos.canonical_path_key(os.path.join(dirpath, name))
                 if st is not None:

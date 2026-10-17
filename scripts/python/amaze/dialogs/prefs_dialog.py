@@ -533,15 +533,6 @@ class PrefsDialog(base_dialog.AssetDialog):
             tooltips.PREFS_HIDE_EMPTY_CATEGORIES))
         form.addRow(self._label(""), self._cbx_hide_empty)
 
-        self._cbx_show_unknown = ui_helpers.ToggleSwitch(
-            "All show unknown files"
-        )
-        self._cbx_show_unknown.setToolTip(ui_helpers.tooltip_text(
-            tooltips.PREFS_SHOW_UNKNOWN_FILES))
-        self._cbx_show_unknown.setChecked(self._prefs.file_show_unknown)
-        self._cbx_show_unknown.toggled.connect(self.set_file_show_unknown)
-        form.addRow(self._label(""), self._cbx_show_unknown)
-
         self._cbx_step_size = ui_helpers.ToggleSwitch("Step Size")
         self._cbx_step_size.setToolTip(ui_helpers.tooltip_text(
             tooltips.PREFS_STEP_SIZE))
@@ -973,7 +964,6 @@ class PrefsDialog(base_dialog.AssetDialog):
     _USER_ROWS = (    # (row attribute, the per-user setting it shows); sections and scroll ride beside
         ("_cbx_sidebar_counts", "sidebar_counts"),
         ("_cbx_hide_empty", "hide_empty_categories"),
-        ("_cbx_show_unknown", "file_show_unknown"),
         ("_cbx_step_size", "step_size"),
         ("_combo_icon_weight", "icon_line_weight"),
         ("_cbx_debug", "debug_mode"),
@@ -1183,10 +1173,6 @@ class PrefsDialog(base_dialog.AssetDialog):
 
     def set_sidebar_counts(self, checked: bool) -> None:
         self._prefs.sidebar_counts = checked
-        self._prefs.save()
-
-    def set_file_show_unknown(self, checked: bool) -> None:
-        self._prefs.file_show_unknown = checked
         self._prefs.save()
 
     def _on_section_toggled(self, _checked: bool) -> None:

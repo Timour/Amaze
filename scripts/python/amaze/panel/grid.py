@@ -79,14 +79,24 @@ def build_menu(panel, context, entries, indexes, current):
             submenu = menu.addMenu(label)
             submenu.menuAction().setEnabled(enabled)    # the PARENT carries the enabled state - an openable submenu with nothing to pick reads as broken
             children = getattr(context, entry.children)(indexes, current)
-            for child_label, payload, colour, live in children:    # (label, payload, swatch colour, live); a child GREYS when it has nothing to act on, same law as the top level
+            for child in children:    # (label, payload, colour, live[, checked]); None is a divider
+                if child is None:
+                    submenu.addSeparator()
+                    continue
+                child_label, payload, colour, live = child[:4]
+                checked = child[4] if len(child) > 4 else None
                 if colour:
                     action = submenu.addAction(
                         _swatch_icon(colour), child_label)
                 else:
                     action = submenu.addAction(child_label)
-                action.setEnabled(bool(live))
-                verbs[action] = (entry.verb, payload)
+                action.setEnabled(bool(live))    # greys when it has nothing to act on, as at the top
+                if checked is None:
+                    verbs[action] = (entry.verb, payload)
+                else:    # a toggle: the verb gets the state the user just asked for
+                    action.setCheckable(True)
+                    action.setChecked(bool(checked))
+                    verbs[action] = (entry.verb, (payload, not checked))
             continue
         action = menu.addAction(label)
         action.setEnabled(enabled)

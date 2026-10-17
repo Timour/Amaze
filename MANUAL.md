@@ -106,7 +106,8 @@ its width.
 
 The **sidebar** holds categories (Material, Node, Code), registered
 folders (File) or palette groups (Color). Right-click to add, rename or
-remove one, or to give a category a [colour](#category-colors). **Sort
+delete a category, or to give it a [colour](#category-colors); File's
+folders have a menu of [their own](#locations). **Sort
 by name** puts the categories in alphabetical order once, with All on
 top; drag them where you like afterwards, and sort again whenever.
 Per-category counts and hiding empty categories are in
@@ -412,8 +413,8 @@ Browse folders on disk.
   button in the toolbar.
 - **Everything else** shows its system icon and has one action,
   **Copy Path**, which puts the path on the clipboard the way Houdini
-  writes paths — see **Write Paths As** below. Hide these rows with
-  Preferences ▸ Look ▸ **All show unknown files** off.
+  writes paths — see **Write Paths As** below. A location lists these
+  files when its **Show ▸ Other Files** is ticked.
 
 Right-click a row for **Load**, **Copy Path**, **Show Location**,
 **Capture Preview**, **Customize**, **Favorite** and **Export
@@ -425,29 +426,37 @@ Package**. There is no **Delete**: these are your files on disk.
 
 Right-click the sidebar:
 
-- **Add Location** registers a folder. Nothing is scanned or copied
-  until you open it.
-- **Remove** unregisters it and forgets its label, colour, Show
-  Subfolders and Show All Files settings, its favorites, comments and
-  tile icons, and its cached thumbnails. Re-adding the folder starts
-  from scratch. Captures are kept, since nothing can render them again.
+- **Add** registers a folder. Nothing is scanned or copied until you
+  open it.
+- **Locate** re-points a folder that moved on disk. Favorites, its name
+  and its settings follow.
+- **Rename ▸ Edit** gives it your own name. **Set to Default** goes back
+  to the folder's own name.
+- **Remove** unregisters it and forgets its name, colour and Show
+  settings, its favorites, comments and tile icons, and its cached
+  thumbnails. Re-adding the folder starts from scratch. Captures are
+  kept, since nothing can render them again.
 
   Removing a folder removes it for everyone who uses the library, so it
   does not come back from the other computer. Where Amaze was open
   there at the time, close and reopen it to see the removal.
-- **Locate** re-points a folder that moved on disk. Favorites, its name
-  and its settings follow.
-- **Label ▸** gives it your own name. The default is the path itself.
-- **Show Subfolders** is per location, so a deep asset tree can recurse
-  while a flat downloads folder stays shallow. Off by default.
-- **Show All Files** carries the Look tab's setting for unknown files.
-- **Set Color** and **Clear Color** work as they do on a
-  [category](#category-colors).
+- **Show ▸** sets what the location lists, one tick per entry:
+  - **Pathname** names it by its full path, written as **Write Paths
+    As** writes paths.
+  - **Subfolder** lists the folders inside it as well.
+  - **Other Files**, **Images**, **Geometry** and **HIP** are the kinds
+    of file it lists, in any combination. **Other Files** is everything
+    that is not an image, geometry or a scene.
+
+  A new location lists Images, Geometry and HIP, without its
+  subfolders.
+- **Label ▸** colours it, as on a [category](#category-colors).
 
 ### Write Paths As
 
 Preferences ▸ Look ▸ **Write Paths As** controls how Amaze writes
-paths — Copy Path and the location labels: **$HOME** (the default),
+paths — Copy Path, and a location named by its path with **Show ▸
+Pathname**: **$HOME** (the default),
 **$JOB**, **$HIP**, or **Absolute**. A variable applies when the
 path lives under it; otherwise the path stays absolute.
 
@@ -470,7 +479,8 @@ reads a package into your library. Every asset arrives with a new
 identity and is filed under a category called **Import**, so importing
 the same package twice gives you two copies rather than overwriting
 what you have. Files in a package land in an **Import** folder inside
-the library, which appears as a location in the File sidebar.
+the library, which appears as a location in the File sidebar with every
+kind of file ticked in its **Show ▸**.
 
 **Restoring instead.** The **Amaze** source in the
 [online browser](#online-materials) carries the official packages.
@@ -522,13 +532,14 @@ The line weight is in Preferences ▸ Look ▸ **Tile Icon Line**.
 
 ## Category colors
 
-Right-click a category in the sidebar ▸ **Set Color…**. Every tile in
-that category paints the strip under its thumbnail — the one carrying
-the name and type — in that colour, and the category's own sidebar row
-gets a matching bar down its left edge.
+Right-click a category in the sidebar ▸ **Label** and pick **Red**,
+**Yellow**, **Blue** or **Green**, or **Custom** for any other colour.
+Every tile in that category paints the strip under its thumbnail — the
+one carrying the name and type — in that colour, and the category's own
+sidebar row gets a matching bar down its left edge.
 
 In [list mode](#the-panel-at-a-glance) the Category column takes the
-same colour. **Clear Color** puts the normal dark strip back.
+same colour. **Label ▸ Remove** puts the normal dark strip back.
 
 The name and type text flips between dark and light automatically, so
 any colour stays readable. Renaming a category carries its colour
@@ -668,8 +679,7 @@ and which sections appear at all.
 
 <img src="docs/images/prefs_look.png" width="440">
 
-**Show Counts on Categories**, **Hide Empty Categories**, **All show
-unknown files** (the File section's system-icon rows), **Step Size**
+**Show Counts on Categories**, **Hide Empty Categories**, **Step Size**
 (the size slider moves from mark to mark, every 64 px), **Write Paths
 As**, **Tile Icon Line** (Thin, or Feather's own Regular) and **Scroll
 Speed (%)**.

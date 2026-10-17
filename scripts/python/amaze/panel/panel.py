@@ -1534,10 +1534,10 @@ class AmazePanel(QtWidgets.QWidget):
         dialog.exec()
         if dialog.canceled:
             return None
-        return dialog.name or ""    # "" is a real answer: File's Label clears a location's custom label back to the path with it, so folding it into Cancel would make Cancel wipe the label
+        return dialog.name or ""    # "" is a real answer: a cleared Rename goes back to the folder's name
 
-    def sidebar_set_colour(self, pick: bool) -> None:
-        """Set Color / Clear Color on the sidebar selection - the panel's ONE gesture for every sidebar: read the selection's keys, ask the context the first one's colour, open the picker once, hand the answer back."""
+    def sidebar_set_colour(self, pick: bool, preset: str = "") -> None:
+        """Label ▸ on the sidebar selection: `preset`, or "" for none; `pick` asks the picker once."""
         context = self._section()
         if context is None or self.cat_list is None:
             return
@@ -1548,7 +1548,7 @@ class AmazePanel(QtWidgets.QWidget):
         if not names:
             return
 
-        colour = ""
+        colour = preset
         if pick:
             chosen = ui_helpers.pick_color(
                 context.sidebar_colour(names[0])
@@ -2356,6 +2356,7 @@ class AmazePanel(QtWidgets.QWidget):
                       for path in self.prefs.file_folders}
             if folder not in listed:
                 self.prefs.set_file_folder_name(folder, "Import")    # before the row lands, and only here: a rename stays
+                self.prefs.set_file_folder_kinds(folder, file_library.EVERY_KIND)
                 if folders is None:
                     self.prefs.add_file_folder(folder)
                 else:

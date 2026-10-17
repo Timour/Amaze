@@ -55,8 +55,6 @@ PREFS_SIDEBAR_COUNTS = 'Show how many items each category has.'   # ▸ Preferen
 
 PREFS_HIDE_EMPTY_CATEGORIES = 'Hide categories that have no items. They come back when you add items.'
 
-PREFS_SHOW_UNKNOWN_FILES = 'Show files Amaze cannot preview, using their system icon. Each location can turn this off in its right-click menu.'
-
 PREFS_STEP_SIZE = 'Step the tile size slider from mark to mark.'
 
 PREFS_WRITE_PATHS_AS ='How Amaze writes paths in Copy Path and the File section. A variable is used when the path is inside it; otherwise the path is written as is.'

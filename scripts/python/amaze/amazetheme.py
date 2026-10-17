@@ -75,6 +75,13 @@ PREFS_DIVIDER_H = 1
 PREFS_DIVIDER_ABOVE = 8  # inside the divider's own row box
 PREFS_DIVIDER_BELOW = 6  # so a divider costs ROW_GAP + ABOVE + H + BELOW + ROW_GAP = 27
 
+LABEL_COLOURS = (              # ▸ the sidebar's Label submenu (C09c): its four chips
+    ("Red", "#e0693e"),
+    ("Yellow", "#f6ca6d"),
+    ("Blue", "#93b9e7"),
+    ("Green", "#a4c18a"),
+)
+
 COMMENT_INK = "#a05dfe"        # ▸ the Comments pane (N01): the header icon's art colour
 COMMENT_DONE_INK = "#4af2a1"   # a done to-do
 COMMENT_OPEN_INK = "#ff7760"   # an open to-do
@@ -415,21 +422,19 @@ DIALOG_LAYOUT = {    # ▸ EVERY DRAWN FIGURE: (kind, x, y, w, h, text) per node
             ("ToggleSwitch", 148, 69, 23, 15, None),
             ("ToggleSwitch ▸ text", 179,69, 114, 15, "Hide Empty Categories"),
             ("ToggleSwitch", 148, 94, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,94, 115, 15, "All show unknown files"),
-            ("ToggleSwitch", 148, 119, 23, 15, None),
-            ("ToggleSwitch ▸ text", 179,119, 46, 15, "Step Size"),
-            ("QComboBox", 148, 142, 105, 22, None),
-            ("QLabel", 69, 146, 71, 15, "Write Paths As"),
-            ("QComboBox ▸ text", 153, 146, 37, 15, "$HOME"),
-            ("QComboBox", 148, 170, 145, 22, None),
-            ("QLabel", 74, 174, 66, 15, "Tile Icon Line"),
-            ("QComboBox ▸ text", 153, 174, 23, 15, "Thin"),
-            ("QSpinBox", 148, 198, 64, 24, None),
-            ("QLineEdit", 149, 199, 62, 22, None),
-            ("ClickSlider", 220, 199, 250, 22, None),
-            ("QLabel", 57, 203, 83, 15, "Scroll Speed (%)"),
-            ("QSpinBox ▸ text", 153, 203, 12, 15, "75"),
-            ("QLineEdit ▸ text", 154, 203, 12, 15, "75"),
+            ("ToggleSwitch ▸ text", 179,94, 46, 15, "Step Size"),
+            ("QComboBox", 148, 117, 105, 22, None),
+            ("QLabel", 69, 121, 71, 15, "Write Paths As"),
+            ("QComboBox ▸ text", 153, 121, 37, 15, "$HOME"),
+            ("QComboBox", 148, 145, 145, 22, None),
+            ("QLabel", 74, 149, 66, 15, "Tile Icon Line"),
+            ("QComboBox ▸ text", 153, 149, 23, 15, "Thin"),
+            ("QSpinBox", 148, 173, 64, 24, None),
+            ("QLineEdit", 149, 174, 62, 22, None),
+            ("ClickSlider", 220, 174, 250, 22, None),
+            ("QLabel", 57, 178, 83, 15, "Scroll Speed (%)"),
+            ("QSpinBox ▸ text", 153, 178, 12, 15, "75"),
+            ("QLineEdit ▸ text", 154, 178, 12, 15, "75"),
         ),
     },
     "D08": {   # Preferences - About

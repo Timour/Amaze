@@ -17,7 +17,7 @@ sys.path.insert(
     0, os.path.dirname(os.path.dirname(
         os.path.dirname(os.path.abspath(__file__)))))
 
-from amaze.core import category  # noqa: E402
+from amaze.core import category, file_library, locations  # noqa: E402
 from amaze.panel import sections  # noqa: E402
 from amaze.tests import test_support  # noqa: E402
 
@@ -25,24 +25,28 @@ SIDEBAR_CONTEXTS = ("MaterialSection", "CopSection", "CodeSection",    # every c
                     "FileSection", "GradientSection")
 
 
+def _row(action) -> str:
+    """One row: "----" for a divider, else its label, tick state and "(off)" when greyed."""
+    if action.isSeparator():
+        return "----"
+    text = action.text()
+    if action.menu() is not None:
+        text += " > [%s]" % ", ".join(_row(child) for child in action.menu().actions())
+    if action.isCheckable():
+        text += "[x]" if action.isChecked() else "[ ]"
+    if not action.isEnabled():
+        text += "(off)"
+    return text
+
+
 def render(menu) -> list:
-    """Label, tick state, submenu children inline, "(off)" when greyed - the shape the before/after recording used."""
-    out = []
-    for action in menu.actions():
-        if action.isSeparator():
-            out.append("----")
-            continue
-        text = action.text()
-        if action.menu() is not None:
-            text += " > [%s]" % ", ".join(
-                child.text() + ("" if child.isEnabled() else "(off)")
-                for child in action.menu().actions())
-        if action.isCheckable():
-            text += "[x]" if action.isChecked() else "[ ]"
-        if not action.isEnabled():
-            text += "(off)"
-        out.append(text)
-    return out
+    """Every row of a menu, its submenus inline - the shape the before/after recording used."""
+    return [_row(action) for action in menu.actions()]
+
+
+LABEL = "Label > [Red, Yellow, Blue, Green, ----, Custom, Remove]"    # the colour submenu
+SHOW_NEW = ("Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], ----, "
+            "Images[x], Geometry[x], HIP[x]]")    # a location added today
 
 
 class TheTableIsWellFormED(unittest.TestCase):
@@ -84,17 +88,28 @@ class TheTableIsWellFormED(unittest.TestCase):
             1, len(tables),
             "Material, Node and Code no longer share one sidebar table")
 
-    def test_only_FILE_uses_a_checkable_entry(self):
-        """The two per-location toggles are the only ticks in any menu - a section growing one decides its law rather than copying it."""
+    def test_no_sidebar_entry_is_a_top_level_tick(self):
+        """File's ticks live in its Show submenu; a section growing one decides its own law."""
         for name in SIDEBAR_CONTEXTS:
             ticks = [e.label for e in getattr(sections, name).SIDEBAR_MENU
                      if e.checkable]
             with self.subTest(context=name):
-                if name == "FileSection":
-                    self.assertEqual(
-                        ["Show Subfolders", "Show All Files"], ticks)
-                else:
-                    self.assertEqual([], ticks)
+                self.assertEqual([], ticks)
+
+    def test_every_sidebar_labels_with_the_same_colours(self):
+        """Label is one submenu in every section: the four chips, Custom and Remove."""
+        from amaze import amazetheme
+        for name in SIDEBAR_CONTEXTS:
+            labels = [e for e in getattr(sections, name).SIDEBAR_MENU
+                      if e.label == "Label"]
+            with self.subTest(context=name):
+                self.assertEqual(1, len(labels), "%s has no Label submenu" % name)
+                self.assertEqual(("menu_label_colour", "label_colours"),
+                                 (labels[0].verb, labels[0].children))
+        chips = sections.Section.label_colours(None, [], None)
+        self.assertEqual(list(amazetheme.LABEL_COLOURS),
+                         [(row[0], row[2]) for row in chips[:4]],
+                         "a chip is not drawn in its own colour")
 
 
 class NoSidebarMenuIsWrittenInThePanel(unittest.TestCase):
@@ -149,9 +164,9 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
             panel._section().catlist_menu()
         return seen
 
-    SPINE = ["Add Category", "Rename", "Remove", "----",
+    SPINE = ["Add", "Rename", "Delete", "----",
              "Sort by name", "----",
-             "Set Color", "Clear Color", "----", "Export Category"]
+             LABEL, "----", "Export Category"]
 
     def test_the_three_asset_sidebars_render_the_same_spine(self):
         for key in ("material", "cop", "code"):
@@ -159,64 +174,75 @@ class TheSidebarMenusAreWhatSHIPPED(unittest.TestCase):
                 self.assertEqual(self.SPINE, self._show(key))
 
     def test_asset_rename_greys_on_two_rows(self):
-        """Renaming acts on ONE category; Remove and the colours act on the whole selection - the Grid's selection law, unchanged."""
+        """Renaming acts on ONE category; Delete and Label act on the whole selection."""
         shown = self._show("material", (0, 1))
         self.assertEqual(
-            ["Add Category", "Rename(off)", "Remove", "----",
+            ["Add", "Rename(off)", "Delete", "----",
              "Sort by name", "----",
-             "Set Color", "Clear Color", "----", "Export Category(off)"],
+             LABEL, "----", "Export Category(off)"],
             shown)
 
     def test_color_offers_only_add_on_the_All_row(self):
         """Everything below All is a real user category; All is a view, so the per-category entries do not exist on it - Export stays, exporting from All being the whole section."""
         self.assertEqual(
-            ["Add Category", "----", "Sort by name", "----",
+            ["Add", "----", "Sort by name", "----",
              "Export Category"],
             self._show("gradient", (0,)))
 
     def test_color_offers_the_whole_spine_on_a_category(self):
         self.assertEqual(self.SPINE, self._show("gradient", (1,)))
 
+    def _file_location(self):
+        """The fixture's first location, Show ticked the way a location added today is."""
+        prefs = self.panel.prefs
+        path = prefs.file_folders[0]
+        self.addCleanup(locations.set_field, prefs, path, "kinds",
+                        locations.record(prefs, path).get("kinds"))
+        prefs.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
+        return path
+
     def test_file_on_a_real_location(self):
+        self._file_location()
         shown = self._show("file", (1,))
         self.assertEqual(
-            ["Add Location", "Remove", "Locate", "Label > [Add, Remove(off)]",
-             "----", "Show Subfolders[ ]", "Show All Files[x]", "----",
-             "Set Color", "Clear Color"],
+            ["Add", "Locate", "Rename > [Edit, ----, Set to Default(off)]",
+             "Remove", "----", SHOW_NEW, "----", LABEL],
             shown)
 
     def test_file_on_the_All_row(self):
-        """The per-location entries grey; Show All Files stays live, because on All the tick IS the global preference."""
+        """The per-location entries grey: All is every location at once, each with its own ticks."""
         shown = self._show("file", (0,))
         self.assertEqual(
-            ["Add Location", "Remove(off)", "Locate(off)",
-             "Label > [Add, Remove(off)](off)", "----",
-             "Show Subfolders[ ](off)", "Show All Files[x]", "----",
-             "Set Color(off)", "Clear Color(off)"],
+            ["Add", "Locate(off)",
+             "Rename > [Edit, ----, Set to Default(off)](off)", "Remove(off)", "----",
+             "Show > [Pathname[ ], Subfolder[ ], ----, Other Files[ ], ----, "
+             "Images[ ], Geometry[ ], HIP[ ]](off)", "----", LABEL + "(off)"],
             shown)
 
-    def test_file_label_submenu_greys_remove(self):
-        """Remove GREYS in the Label submenu, never vanishes - an entry that vanishes moves the row under the cursor between two right-clicks."""
+    def test_file_rename_submenu_greys_set_to_default(self):
+        """Set to Default GREYS with no name set, never vanishes: the rows must not move."""
         for rows in ((0,), (1,)):
             with self.subTest(row=rows[0]):
-                label = [row for row in self._show("file", rows)
-                         if row.startswith("Label")]
-                self.assertEqual(1, len(label))
+                rename = [row for row in self._show("file", rows)
+                          if row.startswith("Rename")]
+                self.assertEqual(1, len(rename))
                 self.assertIn(
-                    "Remove(off)", label[0],
-                    "Remove left the Label submenu instead of greying: %s"
-                    % label[0])
+                    "Set to Default(off)", rename[0],
+                    "Set to Default left the Rename submenu instead of greying: %s"
+                    % rename[0])
 
-    def test_file_show_all_reflects_the_preference(self):
-        """A tick that does not read its own state is a switch showing the wrong position - and this one is per location."""
-        panel = self.panel
-        before = bool(panel.prefs.file_show_unknown)
-        shown = self._show("file", (0,))
-        tick = [r for r in shown if r.startswith("Show All Files")][0]
+    def test_file_show_reads_the_location_it_is_on(self):
+        """A tick that does not read its own state is a switch showing the wrong position."""
+        prefs = self.panel.prefs
+        path = self._file_location()
+        prefs.set_file_folder_kinds(path, (file_library.KIND_OTHER,
+                                           file_library.KIND_HIP))
+        self.addCleanup(prefs.set_file_folder_pathname, path, False)
+        prefs.set_file_folder_pathname(path, True)
+        show = [row for row in self._show("file", (1,)) if row.startswith("Show")]
         self.assertEqual(
-            before, "[x]" in tick,
-            "Show All Files shows %r while the preference is %r"
-            % (tick, before))
+            ["Show > [Pathname[x], Subfolder[ ], ----, Other Files[x], ----, "
+             "Images[ ], Geometry[ ], HIP[x]]"], show)
 
     def test_a_menu_never_starts_or_ends_on_a_divider(self):
         for key, rows in (("material", (0,)), ("gradient", (0,)),
@@ -273,6 +299,90 @@ class ADismissedSidebarMenuRunsNOTHING(unittest.TestCase):
                     [], called,
                     "%s ran %s after the menu was dismissed"
                     % (key, called))
+
+
+class EachSubmenuRowWritesWhatItSays(unittest.TestCase):
+    """Label, Show and Rename, picked through the menu's own dispatch."""
+
+    def setUp(self):
+        self.panel = test_support.fixture_panel(self)
+
+    def _on_row(self, key, row=1):
+        """A right press on `row` of `key`'s sidebar; answers the context and the row's key."""
+        self.panel.section_tabs.setChecked(key)
+        QtWidgets.QApplication.processEvents()
+        view = self.panel.cat_list
+        if row >= view.model().rowCount():
+            self.skipTest("the %s sidebar has no row %d" % (key, row))
+        index = view.model().index(row, 0)
+        view.selectionModel().setCurrentIndex(
+            index, QtCore.QItemSelectionModel.SelectionFlag.ClearAndSelect)
+        context = self.panel._section()
+        return context, context.sidebar_key(index)
+
+    def _choose(self, *labels):
+        """Open the sidebar menu and pick `labels`, a path through its submenus."""
+        def pick(menu, *_args, **_kwargs):
+            for label in labels:
+                action = next(a for a in menu.actions() if a.text() == label)
+                menu = action.menu() or menu
+            return action
+
+        with mock.patch.object(QtWidgets.QMenu, "exec_", pick):
+            self.panel._section().catlist_menu()
+
+    def test_a_chip_colours_every_kind_of_row_and_Remove_clears_it(self):
+        from amaze import amazetheme
+        for key in ("material", "gradient", "file"):
+            with self.subTest(section=key):
+                context, name = self._on_row(key)
+                for label, colour in amazetheme.LABEL_COLOURS:
+                    self._choose("Label", label)
+                    self.assertEqual(colour, context.sidebar_colour(name).lower())
+                self._choose("Label", "Remove")
+                self.assertEqual("", context.sidebar_colour(name))
+
+    def test_custom_opens_the_picker(self):
+        from PySide6 import QtGui
+        from amaze.helpers import ui_helpers
+        context, name = self._on_row("material")
+        with mock.patch.object(ui_helpers, "pick_color",
+                               lambda *_a: QtGui.QColor("#123456")):
+            self._choose("Label", "Custom")
+        self.assertEqual("#123456", context.sidebar_colour(name))
+
+    def test_each_show_tick_writes_its_own_field(self):
+        context, path = self._on_row("file")
+        prefs = self.panel.prefs
+        prefs.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
+        self._choose("Show", "Images")
+        self._choose("Show", "Other Files")
+        self.assertEqual({file_library.KIND_GEO, file_library.KIND_HIP,
+                          file_library.KIND_OTHER},
+                         set(file_library.location_kinds(prefs, path)))
+        self._choose("Show", "Subfolder")
+        self.assertIn(path, prefs.file_recursive_folders)
+        self._choose("Show", "Pathname")
+        folders = self.panel.file_folders_model
+        self.assertEqual(file_library.houdini_path(path, prefs.path_style),
+                         folders.display_name(path))
+        self._choose("Show", "Pathname")
+        self.assertEqual(os.path.basename(path.rstrip("/\\")),
+                         folders.display_name(path))
+
+    def test_rename_opens_on_the_folder_name_and_Set_to_Default_goes_back(self):
+        context, path = self._on_row("file")
+        asked = []
+        with mock.patch.object(self.panel, "ask_category_name",
+                               lambda title, default="": (asked.append(
+                                   (title, default)), "Textures")[1]):
+            self._choose("Rename", "Edit")
+        folder = os.path.basename(path.rstrip("/\\"))
+        self.assertEqual([("Rename Location", folder)], asked)
+        folders = self.panel.file_folders_model
+        self.assertEqual("Textures", folders.display_name(path))
+        self._choose("Rename", "Set to Default")
+        self.assertEqual(folder, folders.display_name(path))
 
 
 class StructuralSignalsStayOutsideRelayout(unittest.TestCase):
@@ -660,7 +770,7 @@ class ANameThatReadsAsAnotherIsThatCategory(unittest.TestCase):
         with self._typing("WIP"):
             self.section.menu_add_category([], None)
         self.assertEqual(1, self._rows_read().count("WIP"),
-                         "Add Category made a second row reading WIP")
+                         "Add made a second row reading WIP")
 
     def test_renaming_to_WIP_files_into_the_row_reading_WIP(self):
         filed = self._renamed("usds", "WIP")

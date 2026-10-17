@@ -168,7 +168,7 @@ class CodeDialog(base_dialog.AssetDialog):
             self._combo_lang.setCurrentText(language)
         left.addRow("Language", self._combo_lang)
 
-        self._combo_category = ui_helpers.DesignedComboBox()   # a PLAIN dropdown like Language beside it (the design's rule since 2026-08-30) - the sidebar's Add Category mints new ones
+        self._combo_category = ui_helpers.DesignedComboBox()   # a PLAIN dropdown; the sidebar's Add mints new ones
         base_dialog.fill_categories(self._combo_category, categories,
                                     category)    # unmatched: the first row
         right.addRow("Category", self._combo_category)

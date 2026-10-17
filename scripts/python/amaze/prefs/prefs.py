@@ -356,15 +356,17 @@ class Prefs(_Persistence):
         self._file_folders = [str(p) for p in (order or [])]
 
     def add_file_folder(self, path: str) -> None:
-        from amaze.core import locations
-        locations.register(self, path)
+        from amaze.core import file_library, locations
+        landed = locations.register(self, path)
+        if landed and locations.record(self, path).get("kinds") is None:    # new: Show ▸'s defaults
+            self.set_file_folder_kinds(path, file_library.SHOWN_BY_DEFAULT)
 
     def remove_file_folder(self, path: str) -> None:
         from amaze.core import locations
         locations.unregister(self, path)
 
     def relocate_file_folder(self, old: str, new: str) -> bool:
-        """Re-point one registered location, KEEPING ITS ROW - label, colour, recursion and Show All Files travel with it."""
+        """Re-point one registered location, KEEPING ITS ROW - its name, colour and Show ▸ ticks travel."""
         from amaze.core import locations
         if not old or not new or old == new:
             return False
@@ -419,7 +421,7 @@ class Prefs(_Persistence):
         return self._field_table("name")
 
     def set_file_folder_name(self, path: str, name: str) -> None:
-        """Custom display name for a location; empty clears it back to the default, the path itself."""
+        """Custom display name for a location; empty clears it back to the default, the folder's name."""
         self._set_location_field(path, "name", str(name or "").strip())
 
     @property
@@ -431,12 +433,20 @@ class Prefs(_Persistence):
         return self._field_table("show_all")
 
     def set_file_folder_show_all(self, path: str, value) -> None:
-        """The per-location Show All Files checkbox; None clears the override so the location follows the global preference."""
+        """The old Show All Files override, which a location saved before Show ▸ still lists by."""
         self._set_location_field(
             path, "show_all", None if value is None else bool(value))
 
+    def set_file_folder_kinds(self, path: str, kinds) -> None:
+        """The file kinds Show ▸ lists for one location, as `file_library`'s KIND_* values."""
+        self._set_location_field(path, "kinds", sorted(set(kinds)))
+
+    def set_file_folder_pathname(self, path: str, on: bool) -> None:
+        """Show ▸ Pathname: the location is named by its full path."""
+        self._set_location_field(path, "pathname", bool(on) or None)
+
     def set_file_folder_color(self, path: str, color: str) -> None:
-        """Colour one location, or clear it with an empty colour - the File section's Set Color / Clear Color."""
+        """Colour one location, or clear it with an empty colour - the File section's Label ▸."""
         self._set_location_field(path, "color", str(color or "").strip())
 
 

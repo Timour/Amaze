@@ -1448,6 +1448,12 @@ class _Prefs:
     def set_file_folder_recursive(self, path, on):
         locations_mod.set_field(self, path, "recursive", bool(on) or None)
 
+    def set_file_folder_kinds(self, path, kinds):
+        locations_mod.set_field(self, path, "kinds", sorted(set(kinds)))
+
+    def set_file_folder_pathname(self, path, on):
+        locations_mod.set_field(self, path, "pathname", bool(on) or None)
+
 
 class FileKeyIsCanonicalTest(unittest.TestCase):
     """file_key is the identity everything keyed about a file hangs on (comment, icon override, drag bookkeeping), so the same file produces the SAME key however its location was spelled - the detour registration is not exotic: `hou.text.expandString` substitutes verbatim, so real `$AMAZE`-relative locations carry `../../..` in every key."""
@@ -2904,7 +2910,7 @@ class CleanupPrunesOnlyFileFavouritesTest(unittest.TestCase):
 
 
 class ShowUnknownFilesSwitchTest(unittest.TestCase):
-    """Show Unknown Files ON (the default) means a folder shows what is in it; OFF restores the recognised-kinds-only view, and the sidebar count agrees with the grid in BOTH states."""
+    """`file_show_unknown`, read by a location saved before Show ▸: the count agrees either way."""
 
     def _folder(self):
         tmp = tempfile.mkdtemp(prefix="amaze_unknown_")
@@ -2945,21 +2951,80 @@ class ShowUnknownFilesSwitchTest(unittest.TestCase):
                 "show_unknown=%s: the sidebar says %s while the grid "
                 "shows %s tiles" % (show, count, expected))
 
-    def test_the_dialog_switch_writes_the_pref(self):
-        from amaze.dialogs import prefs_dialog
 
-        class _P:
-            file_show_unknown = True
-            saved = False
+class ShowTicksTest(unittest.TestCase):
+    """Show ▸'s kinds combine freely: a location lists exactly what is ticked, and counts it."""
 
-            def save(self):
-                self.saved = True
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="amaze_show_")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for name in ("a.png", "b.obj", "c.hip", "d.txt"):
+            with open(os.path.join(self.tmp, name), "w") as handle:
+                handle.write("x")
+        self.prefs = _Prefs([self.tmp])
 
-        stub = type("_Stub", (), {})()
-        stub._prefs = _P()
-        prefs_dialog.PrefsDialog.set_file_show_unknown(stub, False)
-        self.assertFalse(stub._prefs.file_show_unknown)
-        self.assertTrue(stub._prefs.saved)
+    def _listed(self, kinds):
+        self.prefs.set_file_folder_kinds(self.tmp, kinds)
+        model = file_library.FileFiles(self.prefs)
+        model.set_folder(self.tmp)
+        names = sorted(model._files[row][1] for row in range(len(model._files)))
+        count = _landed_counts(file_library.FileFolders(self.prefs))[1]
+        self.assertEqual(len(names), count, "the sidebar counts what the grid does not list")
+        return names
+
+    def test_each_combination_lists_exactly_its_kinds(self):
+        image, geo, hip, other = (file_library.KIND_IMAGE, file_library.KIND_GEO,
+                                  file_library.KIND_HIP, file_library.KIND_OTHER)
+        for kinds, expected in (
+                ((image,), ["a.png"]),
+                ((image, other), ["a.png", "d.txt"]),
+                ((geo, hip), ["b.obj", "c.hip"]),
+                ((image, geo, hip, other), ["a.png", "b.obj", "c.hip", "d.txt"]),
+                ((), [])):
+            with self.subTest(kinds=kinds):
+                self.assertEqual(expected, self._listed(kinds))
+
+    def test_a_location_saved_before_Show_keeps_what_it_showed(self):
+        """No ticks: the three known kinds, plus Other Files where the old rule showed all files."""
+        known = set(file_library.SHOWN_BY_DEFAULT)
+        for show_unknown, override, expected in (
+                (True, None, known | {file_library.KIND_OTHER}),
+                (False, None, known),
+                (False, True, known | {file_library.KIND_OTHER}),
+                (True, False, known)):
+            with self.subTest(show_unknown=show_unknown, override=override):
+                self.prefs.file_show_unknown = show_unknown
+                self.prefs.set_file_folder_show_all(self.tmp, override)
+                self.assertEqual(expected, set(
+                    file_library.location_kinds(self.prefs, self.tmp)))
+
+    def test_pathname_names_the_row_by_its_path_and_a_rename_wins(self):
+        self.prefs.path_style = "absolute"
+        folders = file_library.FileFolders(self.prefs)
+        folder = os.path.basename(self.tmp.rstrip("/\\"))
+        self.assertEqual(folder, folders.display_name(self.tmp))
+        self.prefs.set_file_folder_pathname(self.tmp, True)
+        self.assertEqual(file_library.houdini_path(self.tmp, "absolute"),
+                         folders.display_name(self.tmp))
+        self.prefs.set_file_folder_name(self.tmp, "Textures")
+        self.assertEqual("Textures", folders.display_name(self.tmp))
+
+
+class ANewLocationStartsWithTheKnownKindsTest(unittest.TestCase):
+    """Add ticks Images, Geometry and HIP; a folder added again keeps its own ticks."""
+
+    def test_add_ticks_the_three_known_kinds(self):
+        prefs, _library = _location_prefs(self, {})
+        folder = tempfile.mkdtemp(prefix="amaze_new_loc_")
+        self.addCleanup(shutil.rmtree, folder, ignore_errors=True)
+        prefs.add_file_folder(folder)
+        self.assertEqual(set(file_library.SHOWN_BY_DEFAULT),
+                         set(file_library.location_kinds(prefs, folder)))
+        prefs.set_file_folder_kinds(folder, (file_library.KIND_OTHER,))
+        prefs.add_file_folder(folder)
+        self.assertEqual({file_library.KIND_OTHER},
+                         set(file_library.location_kinds(prefs, folder)),
+                         "adding a folder again reset what it shows")
 
 
 class ReviewFixesTest(unittest.TestCase):

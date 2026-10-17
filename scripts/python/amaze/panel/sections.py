@@ -10,7 +10,7 @@ from PySide6 import QtCore, QtWidgets
 
 from amaze import amazetheme
 from amaze.core import (category, code_library, cop_library, debug, dragengine, file_library,
-                        grid_columns, material, multifilterproxy_model, packages,
+                        grid_columns, locations, material, multifilterproxy_model, packages,
                         scene_captures, notes)
 from amaze.dialogs import code_dialog
 from amaze.helpers import helpers, hostos, ui_helpers
@@ -269,11 +269,17 @@ class Section:
 
     colour_title = "Category Color"  # the colour picker's title, the one place
 
-    def menu_set_colour(self, indexes, current, payload=None) -> None:
-        self.panel.sidebar_set_colour(True)  # both entries, the panel's ONE gesture
+    def label_colours(self, indexes, current) -> tuple:
+        """Label ▸: the four chips, then Custom (the picker) and Remove (no colour)."""
+        chips = tuple((name, colour, colour, True)
+                      for name, colour in amazetheme.LABEL_COLOURS)
+        return chips + (None, ("Custom", True, "", True), ("Remove", "", "", True))
 
-    def menu_clear_colour(self, indexes, current, payload=None) -> None:
-        self.panel.sidebar_set_colour(False)
+    def menu_label_colour(self, indexes, current, payload=None) -> None:
+        if payload is True:    # Custom: the panel's ONE colour gesture opens the picker
+            self.panel.sidebar_set_colour(True)
+        else:
+            self.panel.sidebar_set_colour(False, payload or "")
 
     takes_category_drops = False  # a tile dropped on a row RECATEGORISES it. Only AssetSection sets it True: the File family keeps this default deliberately, because its sidebar lists filesystem FOLDERS, so a drop there would mean moving files on disk rather than changing metadata
 
@@ -378,16 +384,14 @@ class AssetSection(Section):
     takes_category_drops = True
 
     SIDEBAR_MENU = (  # the spine shared by Material, Node and Code. Rename acts on ONE category and greys beside the others, which act on the whole selection
-        MenuEntry("Add Category", verb="menu_add_category",
-                  needs="always"),
+        MenuEntry("Add", verb="menu_add_category", needs="always"),
         MenuEntry("Rename", verb="menu_rename_category", needs="one"),
-        MenuEntry("Remove", verb="menu_remove_category"),
+        MenuEntry("Delete", verb="menu_remove_category"),
         SEPARATOR,
         MenuEntry("Sort by name", verb="menu_sort_categories",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Set Color", verb="menu_set_colour"),
-        MenuEntry("Clear Color", verb="menu_clear_colour"),
+        MenuEntry("Label", verb="menu_label_colour", children="label_colours"),
         SEPARATOR,
         MenuEntry("Export Category", verb="menu_export_category",
                   needs="one"),
@@ -1479,26 +1483,25 @@ class FileSection(FolderSection):
         self.panel.copy_file_paths([index])
         return True
 
-    SIDEBAR_MENU = (  # a location's vocabulary. Per-location entries need a REAL row ("All" is synthetic, sidebar_key answers ""); Show All Files alone stays live there, where its tick IS the global preference
-        MenuEntry("Add Location", verb="menu_add_location",
-                  needs="always"),
-        MenuEntry("Remove", verb="menu_remove_location",
-                  needs="on_a_location"),
+    SIDEBAR_MENU = (  # per-location entries need a REAL row: All is synthetic and its key is ""
+        MenuEntry("Add", verb="menu_add_location", needs="always"),
         MenuEntry("Locate", verb="menu_locate_location",
                   needs="on_a_location"),
-        MenuEntry("Label", verb="menu_label", children="label_actions",
+        MenuEntry("Rename", verb="menu_rename_location",
+                  children="rename_actions", needs="on_a_location"),
+        MenuEntry("Remove", verb="menu_remove_location",
                   needs="on_a_location"),
         SEPARATOR,
-        MenuEntry("Show Subfolders", verb="menu_set_recursive",
-                  needs="on_a_location", checkable="is_recursive"),
-        MenuEntry("Show All Files", verb="menu_set_show_all",
-                  needs="always", checkable="shows_all_files"),
-        SEPARATOR,
-        MenuEntry("Set Color", verb="menu_set_colour",
+        MenuEntry("Show", verb="menu_show", children="show_actions",
                   needs="on_a_location"),
-        MenuEntry("Clear Color", verb="menu_clear_colour",
+        SEPARATOR,
+        MenuEntry("Label", verb="menu_label_colour", children="label_colours",
                   needs="on_a_location"),
     )
+
+    SHOW_KINDS = (("Images", file_library.KIND_IMAGE),    # Show ▸'s kind ticks, in menu order
+                  ("Geometry", file_library.KIND_GEO),
+                  ("HIP", file_library.KIND_HIP))
 
     def _selected_location(self, current) -> str:
         return self.sidebar_key(current) if current is not None else ""
@@ -1506,39 +1509,70 @@ class FileSection(FolderSection):
     def on_a_location(self, indexes, current) -> bool:
         return bool(self._selected_location(current))
 
-    def is_recursive(self, indexes, current) -> bool:
-        path = self._selected_location(current)
-        return bool(path) and path in self.panel.prefs.file_recursive_folders
-
-    def shows_all_files(self, indexes, current) -> bool:
-        path = self._selected_location(current)
-        if path:
-            return bool(file_library.shows_all_files(self.panel.prefs, path))
-        return bool(self.panel.prefs.file_show_unknown)
-
-    def label_actions(self, indexes, current) -> tuple:
-        """Add sets a custom name for the location link and Remove clears it back to the default, which is the path itself, because a rename must be reversible; Remove greys when there is nothing to remove, which is why the children are built per selection."""
+    def rename_actions(self, indexes, current) -> tuple:
+        """Edit names the location; Set to Default goes back to the folder's own name."""
         path = self._selected_location(current)
         named = bool(path and self.panel.prefs.file_folder_names.get(path))
-        return (("Add", "add", "", True),    # Remove is always OFFERED and greys with nothing to remove, never hidden: an entry that disappears moves the row under the cursor between two right-clicks
-                ("Remove", "remove", "", named))
+        return (("Edit", "edit", "", True), None,
+                ("Set to Default", "default", "", named))    # greys with no name set, never hides
 
-    def menu_label(self, indexes, current, payload=None) -> None:
+    def show_actions(self, indexes, current) -> tuple:
+        """Show ▸: every entry an independent tick on the location under the cursor."""
+        prefs = self.panel.prefs
+        path = self._selected_location(current)
+        kinds = file_library.location_kinds(prefs, path) if path else frozenset()
+        record = locations.record(prefs, path) if path else {}
+        return (("Pathname", "pathname", "", True, bool(record.get("pathname"))),
+                ("Subfolder", "subfolder", "", True, bool(record.get("recursive"))),
+                None,
+                ("Other Files", file_library.KIND_OTHER, "", True,
+                 file_library.KIND_OTHER in kinds),
+                None) + tuple((label, kind, "", True, kind in kinds)
+                              for label, kind in self.SHOW_KINDS)
+
+    def menu_show(self, indexes, current, payload=None) -> None:
+        path = self._selected_location(current)
+        if not path or not payload:
+            return
+        what, on = payload
+        prefs = self.panel.prefs
+        folders = self._p(self.folders_attr)
+        if what == "pathname":    # the row's name, nothing to rescan
+            prefs.set_file_folder_pathname(path, on)
+            self._repaint_location(path)
+            return
+        if what == "subfolder":
+            prefs.set_file_folder_recursive(path, on)
+        else:
+            kinds = set(file_library.location_kinds(prefs, path))
+            prefs.set_file_folder_kinds(
+                path, kinds | {what} if on else kinds - {what})
+        if folders is not None:
+            folders.refresh_counts()
+        self.panel.update_selected_cat()    # rescan what is showing under the new ticks
+
+    def _repaint_location(self, path: str) -> None:
+        folders = self._p(self.folders_attr)
+        row = folders.row_of(path) if folders is not None else None
+        if row is not None:
+            index = folders.index(row, 0)
+            folders.dataChanged.emit(index, index)
+
+    def menu_rename_location(self, indexes, current, payload=None) -> None:
         path = self._selected_location(current)
         if not path:
             return
-        if payload == "remove":
+        if payload == "default":
             name = ""
         else:
-            name = self.panel.ask_category_name("Add Label")
+            prefs = self.panel.prefs
+            name = self.panel.ask_category_name(
+                "Rename Location", prefs.file_folder_names.get(path)
+                or os.path.basename(path.rstrip("/\\")))    # opens on the name, never the path
             if name is None:
                 return
         self.panel.prefs.set_file_folder_name(path, name)
-        folders = self._p(self.folders_attr)
-        row = folders.row_of(path) if folders is not None else None
-        if folders is not None and row is not None:
-            index = folders.index(row, 0)
-            folders.dataChanged.emit(index, index)
+        self._repaint_location(path)
 
     def menu_add_location(self, indexes, current, payload=None) -> None:
         self.panel.add_file_folder_user()
@@ -1549,25 +1583,6 @@ class FileSection(FolderSection):
     def menu_locate_location(self, indexes, current, payload=None) -> None:
         self.panel._locate_folder_user(self._p(self.folders_attr))
 
-    def menu_set_recursive(self, indexes, current, payload=None) -> None:
-        path = self._selected_location(current)
-        if not path:
-            return
-        self.panel.prefs.set_file_folder_recursive(path, bool(payload))
-        self._p(self.folders_attr).refresh_counts()
-        # Rescan whatever is showing under the new mode.
-        self.panel.update_selected_cat()
-
-    def menu_set_show_all(self, indexes, current, payload=None) -> None:
-        path = self._selected_location(current)
-        if path:
-            self.panel.prefs.set_file_folder_show_all(path, bool(payload))
-        else:
-            # The All row edits the GLOBAL preference.
-            self.panel.prefs.file_show_unknown = bool(payload)
-            self.panel.prefs.save()
-        self._p(self.folders_attr).refresh_counts()
-        self.panel.update_selected_cat()
     files_proxy_attr = "file_sorted_model"
     selection_attr = "file_selection_model"
     delegate_attr = "file_delegate"
@@ -1822,19 +1837,16 @@ class GradientSection(AssetSection):
         return name in self.panel.gradient_model.user_categories()    # defensive: every gradient category listed is a real editable user category now, the palettes being seeded as such, but the sidebar has listed synthetic rows before
 
     SIDEBAR_MENU = (  # everything below All is a real user category, so the per-category entries exist only on such a row
-        MenuEntry("Add Category", verb="menu_add_category",
-                  needs="always"),
+        MenuEntry("Add", verb="menu_add_category", needs="always"),
         MenuEntry("Rename", verb="menu_rename_category", needs="one",
                   shown="on_a_category"),
-        MenuEntry("Remove", verb="menu_remove_category",
+        MenuEntry("Delete", verb="menu_remove_category",
                   shown="on_a_category"),
         SEPARATOR,
         MenuEntry("Sort by name", verb="menu_sort_categories",
                   needs="always"),
         SEPARATOR,
-        MenuEntry("Set Color", verb="menu_set_colour",
-                  shown="on_a_category"),
-        MenuEntry("Clear Color", verb="menu_clear_colour",
+        MenuEntry("Label", verb="menu_label_colour", children="label_colours",
                   shown="on_a_category"),
         SEPARATOR,
         MenuEntry("Export Category", verb="menu_export_category",

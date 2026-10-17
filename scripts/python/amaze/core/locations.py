@@ -17,7 +17,8 @@ LOC_PREFIX = keyed_store.LOC_PREFIX
 
 MIGRATED_KEY = "file_locations_migrated"  # set once the six settings.json keys proved to have landed in the library; `_store_was_lost` clears it on purpose, so the migration is also the recovery path for a deleted or restored-away locations.json
 
-FIELDS = ("registered", "name", "color", "show_all", "recursive")  # the record's fields; `registered` had no old settings surface of its own - it was membership of the file_folders LIST, which is why an undecorated location was invisible to location_paths()
+FIELDS = ("registered", "name", "color", "show_all", "recursive",
+          "kinds", "pathname")  # the record's fields, each with its own branch in normalise()
 
 _deferred: set = globals().get("_deferred", set())  # libraries whose migration was tried this session and did not land; survives module reloads for the same reason the registry does
 
@@ -40,6 +41,11 @@ def normalise(value) -> dict:
         record["show_all"] = bool(value.get("show_all"))
     if value.get("recursive"):
         record["recursive"] = True
+    kinds = value.get("kinds")
+    if isinstance(kinds, (list, tuple)):    # [] is a real value: Show ▸ with no kind ticked
+        record["kinds"] = sorted({kind for kind in kinds if isinstance(kind, str)})
+    if value.get("pathname"):
+        record["pathname"] = True
     return record
 
 

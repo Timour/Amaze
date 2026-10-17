@@ -178,7 +178,7 @@ class FolderListModel(QtCore.QAbstractListModel):
 
 
     def matches_in(self, path: str, filename: str) -> bool:
-        """Folder-aware match - the base asks the flat rule; File overrides it for the per-location Show All Files setting."""
+        """Folder-aware match - the base asks the flat rule; File overrides it for Show ▸'s ticks."""
         return self.matches(filename)
 
     def matches(self, filename: str) -> bool:
