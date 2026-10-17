@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0
+
+- The category menu in the Material, Color, Node and Code sidebars reads Add, Rename, Delete, Sort by name, Label and Export Category. Label colours a category Red, Yellow, Blue, Green or a Custom colour; Remove takes the colour off.
+- The File sidebar menu reads Add, Locate, Rename, Remove, Show and Label. Rename ▸ Edit names a location, and Set to Default goes back to the folder's own name.
+- Show ▸ sets what a location lists: Pathname names it by its full path, Subfolder lists the folders inside it, and Other Files, Images, Geometry and HIP are the kinds of file, in any combination. A new location lists Images, Geometry and HIP, the Import location a package creates lists every kind, and a location added before keeps what it listed.
+- Preferences ▸ Look no longer has All show unknown files; Show ▸ Other Files sets it per location.
+- The edit badge's underline is thinner at rest and wider under the pointer, and the comment badge's outline turns a brighter purple under the pointer.
+
 ## 1.4.1
 
 - The test suite starts each Houdini version with its own setup; nothing in the app changes.
